@@ -163,6 +163,12 @@ export function VerticalNav() {
             icon: "🧾",
             adminOnly: true,
           },
+        ]
+      : []),
+    
+    // Notas de Crédito (SOLO Admin)
+    ...(isAdmin
+      ? [
           {
             href: "/admin/pending-credit-notes",
             label: "Notas de Crédito",

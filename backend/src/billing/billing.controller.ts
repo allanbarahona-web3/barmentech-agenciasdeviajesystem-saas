@@ -329,7 +329,7 @@ export class BillingController {
   }
 
   @Post("credit-notes/:creditNoteId/apply")
-  @Roles("ADMIN", "FACTURACION_COBROS")
+  @Roles("ADMIN")
   @UseGuards(RolesGuard)
   applyCreditNote(
     @Req()
@@ -354,7 +354,7 @@ export class BillingController {
   }
 
   @Get("admin/credit-notes/pending")
-  @Roles("ADMIN", "FACTURACION_COBROS")
+  @Roles("ADMIN")
   @UseGuards(RolesGuard)
   listPendingCreditNotes(
     @Req()
@@ -427,7 +427,7 @@ export class BillingController {
   }
 
   @Post("admin/credit-notes/:creditNoteId/approve")
-  @Roles("ADMIN", "FACTURACION_COBROS")
+  @Roles("ADMIN")
   @UseGuards(RolesGuard)
   approveCreditNote(
     @Req()
@@ -452,7 +452,7 @@ export class BillingController {
   }
 
   @Post("admin/credit-notes/:creditNoteId/reject")
-  @Roles("ADMIN", "FACTURACION_COBROS")
+  @Roles("ADMIN")
   @UseGuards(RolesGuard)
   rejectCreditNote(
     @Req()
