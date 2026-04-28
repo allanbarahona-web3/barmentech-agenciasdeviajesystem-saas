@@ -575,6 +575,8 @@ export class BillingService {
     bankReference: string;
     issuedAt: Date | string | null;
     approvedAt: Date | string | null;
+    previousBalance: number;
+    newBalance: number;
   }) {
     const pdf = await PDFDocument.create();
     const page = pdf.addPage([595.28, 841.89]);
@@ -780,6 +782,112 @@ export class BillingService {
       size: 10,
       font,
       color: colors.slate,
+    });
+
+    // Divider before balance section
+    y -= 20;
+    page.drawLine({
+      start: { x: 40, y },
+      end: { x: 555, y },
+      thickness: 1,
+      color: colors.line,
+    });
+
+    // Balance Summary Section (Mini Estado de Cuenta)
+    y -= 22;
+    page.drawText("RESUMEN DE SALDO", {
+      x: 42,
+      y,
+      size: 12,
+      font: bold,
+      color: colors.ink,
+    });
+
+    // Previous Balance
+    y -= 24;
+    page.drawRectangle({
+      x: 40,
+      y: y - 4,
+      width: 515,
+      height: 22,
+      color: rgb(0.98, 0.98, 0.98),
+      borderColor: colors.line,
+      borderWidth: 0.5,
+    });
+    page.drawText("Saldo Anterior:", {
+      x: 50,
+      y: y + 4,
+      size: 10,
+      font: bold,
+      color: colors.slate,
+    });
+    page.drawText(this.formatCurrency(params.previousBalance), {
+      x: 440,
+      y: y + 4,
+      size: 11,
+      font: bold,
+      color: colors.ink,
+    });
+
+    // Payment Applied (negative)
+    y -= 22;
+    page.drawRectangle({
+      x: 40,
+      y: y - 4,
+      width: 515,
+      height: 22,
+      color: rgb(0.95, 1.0, 0.95),
+      borderColor: rgb(0.0, 0.5, 0.0),
+      borderWidth: 0.5,
+    });
+    page.drawText("Pago Aplicado:", {
+      x: 50,
+      y: y + 4,
+      size: 10,
+      font: bold,
+      color: rgb(0.0, 0.4, 0.0),
+    });
+    page.drawText(`- ${this.formatCurrency(params.amount)}`, {
+      x: 440,
+      y: y + 4,
+      size: 11,
+      font: bold,
+      color: rgb(0.0, 0.5, 0.0),
+    });
+
+    // Divider line
+    y -= 22;
+    page.drawLine({
+      start: { x: 50, y: y + 4 },
+      end: { x: 545, y: y + 4 },
+      thickness: 1,
+      color: colors.ink,
+    });
+
+    // New Balance (highlighted in brand color)
+    y -= 18;
+    page.drawRectangle({
+      x: 40,
+      y: y - 4,
+      width: 515,
+      height: 26,
+      color: colors.lightBg,
+      borderColor: colors.brand,
+      borderWidth: 1.5,
+    });
+    page.drawText("Saldo Pendiente:", {
+      x: 50,
+      y: y + 5,
+      size: 11,
+      font: bold,
+      color: colors.ink,
+    });
+    page.drawText(this.formatCurrency(params.newBalance), {
+      x: 440,
+      y: y + 5,
+      size: 13,
+      font: bold,
+      color: params.newBalance > 0 ? rgb(0.8, 0.0, 0.0) : rgb(0.0, 0.5, 0.0),
     });
 
     // Footer note
@@ -1897,6 +2005,11 @@ export class BillingService {
       .replace("TARJETA", "Tarjeta")
       || "-";
 
+    // Calcular saldos para el mini estado de cuenta
+    const paymentAmount = this.toNumber(receipt.amount, 0);
+    const previousBalance = this.toNumber(receipt.invoice?.balanceAmount, 0) + paymentAmount;
+    const newBalance = this.toNumber(receipt.invoice?.balanceAmount, 0);
+
     const pdfBuffer = await this.createReceiptPdfBuffer({
       receiptNumber: String(receipt.receiptNumber),
       contractNumber: String(receipt.contractNumber),
@@ -1908,6 +2021,8 @@ export class BillingService {
       bankReference: String(receipt.payment?.bankReference || "-"),
       issuedAt: receipt.issuedAt,
       approvedAt: receipt.approvedAt,
+      previousBalance,
+      newBalance,
     });
 
     const objectKey = [
@@ -4682,8 +4797,22 @@ contratos@viajesalmanova.com
     const amount = this.toNumber(receipt.amount, 0);
     const receiptPdf = await this.ensureReceiptPdf(receipt.id);
     const receiptPdfUrl = await this.buildSignedObjectUrl(String(receiptPdf.objectKeyPdf || ""), 86_400);
+    
+    // Calcular saldos para mostrar en el email
+    const previousBalance = this.toNumber(receipt.invoice?.balanceAmount, 0) + amount;
+    const newBalance = this.toNumber(receipt.invoice?.balanceAmount, 0);
+    
+    // Generar URL del estado de cuenta
+    const accountStatementUrl = await this.getAccountStatementPdfUrl(
+      { id: user.id, email: user.email, fullName: user.fullName },
+      receipt.invoice?.contractId,
+      86_400, // 24 horas
+    ).then(result => result.url).catch(() => '');
+    
     const clientName = String(receipt.invoice?.client?.fullName || "Cliente");
     const amountFormatted = `USD ${amount.toFixed(2)}`;
+    const previousBalanceFormatted = `USD ${previousBalance.toFixed(2)}`;
+    const newBalanceFormatted = `USD ${newBalance.toFixed(2)}`;
     const paymentRef = String(receipt.invoice?.contract?.paymentReference || "N/A");
     const logoSrc = await this.loadCompanyLogoEmailSrc();
 
@@ -4765,6 +4894,25 @@ contratos@viajesalmanova.com
                 </table>
               </div>
 
+              <!-- Balance Summary Card -->
+              <div style="background-color: #eff6ff; border: 2px solid #3b82f6; border-radius: 8px; padding: 20px; margin: 20px 0;">
+                <h3 style="margin: 0 0 16px 0; color: #1e40af; font-size: 16px; font-weight: 600;">💰 Resumen de Saldo</h3>
+                <table style="width: 100%; border-collapse: collapse;">
+                  <tr style="border-bottom: 1px solid #cbd5e1;">
+                    <td style="padding: 10px 0; color: #1e293b; font-size: 14px;">Saldo Anterior:</td>
+                    <td style="padding: 10px 0; color: #1e293b; font-weight: 600; text-align: right; font-size: 15px;">${previousBalanceFormatted}</td>
+                  </tr>
+                  <tr style="border-bottom: 1px solid #cbd5e1;">
+                    <td style="padding: 10px 0; color: #059669; font-size: 14px;">Pago Aplicado:</td>
+                    <td style="padding: 10px 0; color: #059669; font-weight: 700; text-align: right; font-size: 15px;">- ${amountFormatted}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 12px 0 0 0; color: #1e40af; font-size: 15px; font-weight: 700;">Saldo Pendiente:</td>
+                    <td style="padding: 12px 0 0 0; color: ${newBalance > 0 ? '#dc2626' : '#059669'}; font-weight: 700; text-align: right; font-size: 18px;">${newBalanceFormatted}</td>
+                  </tr>
+                </table>
+              </div>
+
               <!-- Payment Code Notice -->
               <div style="background-color: #fef2f2; border-left: 4px solid #ef4444; padding: 16px; border-radius: 4px; margin: 20px 0;">
                 <p style="margin: 0; color: #991b1b; font-size: 14px; line-height: 1.5;">
@@ -4772,15 +4920,20 @@ contratos@viajesalmanova.com
                 </p>
               </div>
 
-              <!-- Action Button -->
+              <!-- Action Buttons -->
               <div style="text-align: center; margin: 30px 0;">
-                <a href="${receiptPdfUrl}" style="display: inline-block; background-color: #667eea; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: 600; font-size: 16px;">
-                  📄 Descargar Recibo PDF
+                <a href="${receiptPdfUrl}" style="display: inline-block; background-color: #667eea; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600; font-size: 15px; margin: 0 8px 12px 8px;">
+                  📄 Ver Recibo
                 </a>
+                ${accountStatementUrl ? `
+                <a href="${accountStatementUrl}" style="display: inline-block; background-color: #10b981; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600; font-size: 15px; margin: 0 8px 12px 8px;">
+                  📊 Ver Estado de Cuenta
+                </a>
+                ` : ''}
               </div>
 
               <p style="margin: 20px 0 0 0; color: #6b7280; font-size: 14px; line-height: 1.6;">
-                Este recibo confirma que tu pago ha sido verificado contra nuestros registros bancarios. Guárdalo para tus registros personales.
+                Este recibo confirma que tu pago ha sido verificado contra nuestros registros bancarios. El estado de cuenta muestra el historial completo de movimientos.
               </p>
             </td>
           </tr>
