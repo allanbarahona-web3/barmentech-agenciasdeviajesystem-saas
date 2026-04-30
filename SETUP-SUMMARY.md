@@ -28,6 +28,7 @@ feature/* (features temporales)
 - ✅ CONTRIBUTING.md con workflow detallado
 - ✅ PR Template de GitHub configurado
 - ✅ Convenciones de commits documentadas
+- ✅ MULTI-TENANT-IMPLEMENTATION.md (guía para implementar multi-tenant)
 
 ### **4. GitHub Repository**
 ```
@@ -39,11 +40,42 @@ Branches en GitHub:
 ✅ develop
 ```
 
+### **5. Base de Datos**
+```
+Cluster: barmentech-saas-dev (DigitalOcean)
+├─ agenciaviajes-dev      ✅ Creada + Migraciones ejecutadas
+└─ agenciaviajes-staging  ✅ Creada (pendiente setup)
+
+Connection string (dev):
+postgresql://doadmin:PASS@host:25060/agenciaviajes-dev?sslmode=require
+
+Estado:
+✅ Todas las tablas creadas (24 migraciones aplicadas)
+✅ Backend configurado con .env.development
+⏳ Seed pendiente (falta implementar multi-tenant primero)
+```
+
 ---
 
 ## 🎯 **Próximos Pasos (Pendientes):**
 
-### **Paso 6: Configurar Vercel**
+### **Paso 6: Implementar Multi-Tenant** ⭐ (SIGUIENTE)
+
+**Documento:** Ver `MULTI-TENANT-IMPLEMENTATION.md` para guía completa.
+
+**Resumen:**
+1. Copiar modelo Tenant del proyecto viejo
+2. Agregar tenantId a todos los modelos
+3. Crear migración
+4. Implementar middleware y decorators
+5. Actualizar servicios con filtrado por tenant
+6. Testing de aislamiento
+
+**Tiempo estimado:** 4-6 horas
+
+---
+
+### **Paso 7: Configurar Vercel**
 
 1. **Conectar GitHub con Vercel:**
    - Ir a: https://vercel.com
@@ -80,10 +112,8 @@ Branches en GitHub:
    Production (main):
    DATABASE_URL=postgresql://prod-db
    JWT_SECRET=prod-secret
-   SPACES_ENDPOINT=https://nyc3.digitaloceanspaces.com
-   SPACES_KEY=prod-key
-   SPACES_SECRET=prod-secret
-   SMTP_HOST=smtp.gmail.com
+   SPACES_ENDPOINT=https://sfo3.digitaloceanspaces.com
+   ...
    
    Preview (staging):
    DATABASE_URL=postgresql://staging-db
@@ -91,86 +121,30 @@ Branches en GitHub:
    ...
    
    Development (develop):
-   DATABASE_URL=postgresql://dev-db
+   DATABASE_URL=postgresql://agenciaviajes-dev (ya configurado)
    JWT_SECRET=dev-secret
    ...
    ```
 
 ---
 
-### **Paso 7: Configurar Bases de Datos**
+### **Paso 8: Configurar DB de Producción**
 
-**Crear 3 DBs en DigitalOcean:**
-
-1. **DB de Producción:**
-   ```
-   Nombre: barmentech-prod
-   Tier: Production
-   Backup: Daily automático
-   ```
-
-2. **DB de Staging:**
-   ```
-   Nombre: barmentech-staging
-   Tier: Development
-   Backup: Weekly
-   Restore desde prod (datos sanitizados)
-   ```
-
-3. **DB de Development:**
-   ```
-   Nombre: barmentech-dev
-   Tier: Development
-   Backup: No necesario
-   Seed data fake
-   ```
-
-**Ejecutar migraciones en cada DB:**
-```bash
-# Production
-DATABASE_URL="postgresql://prod..." pnpm prisma:migrate:deploy
-
-# Staging
-DATABASE_URL="postgresql://staging..." pnpm prisma:migrate:deploy
-DATABASE_URL="postgresql://staging..." pnpm prisma:seed
-
-# Development
-DATABASE_URL="postgresql://dev..." pnpm prisma:migrate:deploy
-DATABASE_URL="postgresql://dev..." pnpm prisma:seed
+**Crear DB en cluster PROD:**
+```
+1. DigitalOcean → Databases → barmentech-prod cluster
+2. Users & Databases → Add Database
+3. Nombre: agenciaviajes-prod
+4. Ejecutar migraciones
+5. Ejecutar seed con datos reales
 ```
 
 ---
 
-### **Paso 8: Primer Feature (Workflow Profesional)**
-
-```bash
-# 1. Asegurarte de estar en develop
-cd /home/allanb/barmentech-agenciasdeviajesystem-saas
-git checkout develop
-git pull origin develop
-
-# 2. Crear feature branch
-git checkout -b feature/nombre-descriptivo
-
-# 3. Hacer cambios...
-# ... editar código ...
-
-# 4. Commit con convenciones
-git add .
-git commit -m "feat: descripción de la feature"
-
-# 5. Push al repo
-git push origin feature/nombre-descriptivo
-
-# 6. Crear PR en GitHub
-# GitHub → Pull Requests → New PR
-# Base: develop ← Compare: feature/nombre-descriptivo
-# Llenar template de PR
-# Merge cuando esté aprobado
-
-# 7. Deploy automático
-# Vercel detecta el push y deploya automáticamente
-```
+### **Paso 9: Primera Feature**
+- Crear tu primer feature branch
+- Hacer cambios
+- Crear tu primer PR profesional
 
 ---
 
