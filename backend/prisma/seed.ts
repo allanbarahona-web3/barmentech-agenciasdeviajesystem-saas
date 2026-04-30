@@ -8,17 +8,21 @@ async function main() {
   const password = process.env.SEED_ADMIN_PASSWORD || "Cambiar123!";
   const fullName = process.env.SEED_ADMIN_NAME || "Administrador Viajes Alma Nova";
 
+  // Check if user already exists
+  const existingUser = await prisma.user.findUnique({
+    where: { email },
+  });
+
+  if (existingUser) {
+    console.log(`✅ Usuario admin ya existe: ${email} (contraseña preservada)`);
+    return;
+  }
+
+  // Create new admin user
   const passwordHash = await hash(password, 10);
 
-  await prisma.user.upsert({
-    where: { email },
-    update: {
-      fullName,
-      passwordHash,
-      isActive: true,
-      role: "ADMIN",
-    },
-    create: {
+  await prisma.user.create({
+    data: {
       email,
       fullName,
       passwordHash,
@@ -27,7 +31,7 @@ async function main() {
     },
   });
 
-  console.log(`Usuario admin listo: ${email}`);
+  console.log(`✅ Usuario admin creado: ${email}`);
 }
 
 main()

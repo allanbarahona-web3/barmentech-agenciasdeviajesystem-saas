@@ -129,6 +129,25 @@ const escapeHtml = (value: unknown): string =>
     .replace(/\"/g, "&quot;")
     .replace(/'/g, "&#39;");
 
+const getContractSourceBadge = (source?: string | null): { label: string; color: string; bgColor: string } | null => {
+  const normalized = String(source || "").trim().toUpperCase();
+  
+  if (normalized === "MIGRATION") {
+    return { label: "MG", color: "#047857", bgColor: "#d1fae5" }; // Verde oscuro/claro
+  }
+  if (normalized === "SCHEDULED_TRIP") {
+    return { label: "VD", color: "#1d4ed8", bgColor: "#dbeafe" }; // Azul oscuro/claro
+  }
+  if (normalized === "CUSTOM_TRIP") {
+    return { label: "PS", color: "#7c2d12", bgColor: "#fed7aa" }; // Marrón/naranja
+  }
+  if (normalized === "QUOTE") {
+    return { label: "CT", color: "#581c87", bgColor: "#f3e8ff" }; // Púrpura oscuro/claro
+  }
+  
+  return null;
+};
+
 export default function BillingContractAccountPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -958,7 +977,30 @@ export default function BillingContractAccountPage() {
                 </article>
                 <article className="billing-kpi">
                   <span>Contrato</span>
-                  <strong>{account.invoice.contractNumber}</strong>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <strong>{account.invoice.contractNumber}</strong>
+                    {(() => {
+                      const badge = getContractSourceBadge(account.invoice.source);
+                      if (!badge) return null;
+                      return (
+                        <span
+                          style={{
+                            fontSize: '10px',
+                            fontWeight: 700,
+                            padding: '3px 8px',
+                            borderRadius: '4px',
+                            backgroundColor: badge.bgColor,
+                            color: badge.color,
+                            border: `1px solid ${badge.color}`,
+                            letterSpacing: '0.5px',
+                          }}
+                          title={badge.label === 'VD' ? 'Viaje Disponible' : badge.label === 'MG' ? 'Migrado' : badge.label === 'PS' ? 'Personalizado' : 'Cotización'}
+                        >
+                          {badge.label}
+                        </span>
+                      );
+                    })()}
+                  </div>
                 </article>
                 <article className="billing-kpi">
                   <span>Monto del contrato</span>

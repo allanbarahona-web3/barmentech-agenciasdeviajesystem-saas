@@ -51,4 +51,9 @@ export class ArchiveContractDto {
   @IsString()
   @MaxLength(40)
   endDate?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  source?: string; // SCHEDULED_TRIP | MIGRATION | CUSTOM_TRIP | QUOTE
 }

@@ -49,6 +49,7 @@ function ContractsPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const draftId = String(searchParams.get("draftId") || "").trim();
+  const mode = String(searchParams.get("mode") || "").trim();
   const token = useSyncExternalStore(
     () => () => {
       // No external store subscriptions yet; auth token is read-only snapshot here.
@@ -98,7 +99,11 @@ function ContractsPageContent() {
 
   return (
     <main className="app-shell">
-      <ContractsForm agent={session?.user || null} initialDraftId={draftId || null} />
+      <ContractsForm 
+        agent={session?.user || null} 
+        initialDraftId={draftId || null}
+        mode={mode || undefined}
+      />
     </main>
   );
 }

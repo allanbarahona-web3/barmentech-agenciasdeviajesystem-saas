@@ -2424,3 +2424,35 @@ body:has(.vertical-nav) .app-shell {
 .animate-shakeError {
   animation: shakeError 0.4s ease-in-out;
 }
+
+/* ============================================
+   TRAVEL PACKAGES GRID - Responsive
+   ============================================ */
+
+/* Desktop: 4 columnas */
+.travel-packages-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+}
+
+/* Tablet grande: 3 columnas */
+@media (max-width: 1200px) {
+  .travel-packages-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* Tablet: 2 columnas */
+@media (max-width: 900px) {
+  .travel-packages-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Móvil: 1 columna */
+@media (max-width: 640px) {
+  .travel-packages-grid {
+    grid-template-columns: 1fr;
+  }
+}

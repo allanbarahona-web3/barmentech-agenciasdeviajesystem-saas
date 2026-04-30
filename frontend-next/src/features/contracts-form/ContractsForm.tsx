@@ -79,9 +79,10 @@ type ContractsFormProps = {
     role?: string;
   } | null;
   initialDraftId?: string | null;
+  mode?: string;
 };
 
-export function ContractsForm({ agent = null, initialDraftId = null }: ContractsFormProps) {
+export function ContractsForm({ agent = null, initialDraftId = null, mode }: ContractsFormProps) {
   const [state, setState] = useState(() => createInitialFormState(agent || undefined));
   const [status, setStatus] = useState("Listo para iniciar migracion del formulario.");
   const [busyNumber, setBusyNumber] = useState(false);
@@ -113,6 +114,11 @@ export function ContractsForm({ agent = null, initialDraftId = null }: Contracts
   const autoReservationStarted = useRef(false);
   const loadedDraftIdRef = useRef("");
   const todayIso = useMemo(() => getTodayIsoLocal(), []);
+
+  // Determinar si los campos de viaje deben estar bloqueados
+  // Solo están desbloqueados en modo "migration"
+  const isMigrationMode = mode === "migration";
+  const travelFieldsLocked = !isMigrationMode;
 
   const rangeMessage = useMemo(() => getDateRangeValidityMessage(state), [state]);
   const itineraryMessage = useMemo(() => getItineraryValidityMessage(state), [state]);
@@ -318,6 +324,7 @@ export function ContractsForm({ agent = null, initialDraftId = null }: Contracts
         payloadJson,
         contractHtml,
         documents: docs,
+        source: isMigrationMode ? "MIGRATION" : "SCHEDULED_TRIP",
       });
       console.log("✅ Respuesta del backend recibida:", archived);
 
@@ -542,8 +549,34 @@ export function ContractsForm({ agent = null, initialDraftId = null }: Contracts
 
   return (
     <section className="card contracts-card">
-      <h1>Formulario de Contrato - Etapa 2</h1>
-      <p>Migracion ampliada: contrato, cliente, acompanantes, menores, itinerario, equipaje y adjuntos.</p>
+      <h1>
+        Formulario de Contrato - Etapa 2
+        {isMigrationMode && (
+          <span
+            style={{
+              marginLeft: 12,
+              padding: "6px 14px",
+              fontSize: "0.75rem",
+              fontWeight: 600,
+              background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+              color: "white",
+              borderRadius: 8,
+              textTransform: "uppercase",
+              letterSpacing: "0.05em",
+              boxShadow: "0 2px 8px rgba(16, 185, 129, 0.3)",
+            }}
+          >
+            📄 Modo Migración
+          </span>
+        )}
+      </h1>
+      {isMigrationMode ? (
+        <p style={{ color: "#059669", fontWeight: 500 }}>
+          ✓ Todos los campos son editables. Completa manualmente la información del contrato y viaje.
+        </p>
+      ) : (
+        <p>Migracion ampliada: contrato, cliente, acompanantes, menores, itinerario, equipaje y adjuntos.</p>
+      )}
       <p className="agent-line">
         Elaborado por: <strong>{agent?.fullName || "Agente no identificado"}</strong>
         {agent?.email ? ` (${agent.email})` : ""}
@@ -592,6 +625,8 @@ export function ContractsForm({ agent = null, initialDraftId = null }: Contracts
             value={state.destination}
             onChange={(event) => setState((prev) => ({ ...prev, destination: event.target.value }))}
             placeholder="Ej. España"
+            readOnly={travelFieldsLocked}
+            style={travelFieldsLocked ? { backgroundColor: "#f3f4f6", cursor: "not-allowed" } : undefined}
           />
         </label>
 
@@ -600,6 +635,8 @@ export function ContractsForm({ agent = null, initialDraftId = null }: Contracts
           <select
             value={state.lodgingType}
             onChange={(event) => setState((prev) => ({ ...prev, lodgingType: event.target.value }))}
+            disabled={travelFieldsLocked}
+            style={travelFieldsLocked ? { backgroundColor: "#f3f4f6", cursor: "not-allowed" } : undefined}
           >
             <option value="Hotel">Hotel</option>
             <option value="Hostel">Hostel</option>
@@ -612,6 +649,8 @@ export function ContractsForm({ agent = null, initialDraftId = null }: Contracts
           <select
             value={state.accommodationType}
             onChange={(event) => setState((prev) => ({ ...prev, accommodationType: event.target.value }))}
+            disabled={travelFieldsLocked}
+            style={travelFieldsLocked ? { backgroundColor: "#f3f4f6", cursor: "not-allowed" } : undefined}
           >
             <option value="Sencilla">Sencilla</option>
             <option value="Doble">Doble</option>
@@ -631,6 +670,8 @@ export function ContractsForm({ agent = null, initialDraftId = null }: Contracts
               const safe = selected && selected < todayIso ? todayIso : selected;
               setState((prev) => applyMoneyDerivedValues(syncTourDates(prev, "start", safe)));
             }}
+            disabled={travelFieldsLocked}
+            style={travelFieldsLocked ? { backgroundColor: "#f3f4f6", cursor: "not-allowed" } : undefined}
           />
         </label>
 
@@ -643,6 +684,8 @@ export function ContractsForm({ agent = null, initialDraftId = null }: Contracts
             onChange={(event) =>
               setState((prev) => applyMoneyDerivedValues(syncTourDates(prev, "end", event.target.value)))
             }
+            disabled={travelFieldsLocked}
+            style={travelFieldsLocked ? { backgroundColor: "#f3f4f6", cursor: "not-allowed" } : undefined}
           />
         </label>
 

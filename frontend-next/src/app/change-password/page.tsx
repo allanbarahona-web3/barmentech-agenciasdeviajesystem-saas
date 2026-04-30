@@ -84,167 +84,109 @@ export default function ChangePasswordPage() {
   }
 
   return (
-    <main className="shell">
-      <section className="card" style={{ maxWidth: "500px", width: "90%" }}>
-        <div
-          style={{
-            background: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
-            borderRadius: "12px",
-            padding: "24px",
-            marginBottom: "24px",
-            color: "white",
-          }}
-        >
-          <div
-            style={{
-              width: "48px",
-              height: "48px",
-              background: "rgba(255, 255, 255, 0.2)",
-              borderRadius: "50%",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: "1.5rem",
-              marginBottom: "12px",
-            }}
-          >
-            🔐
-          </div>
-          <h1 style={{ margin: "0 0 8px 0", fontSize: "1.5rem", fontWeight: 700 }}>
-            Cambio de Contraseña Obligatorio
-          </h1>
-          <p style={{ margin: 0, opacity: 0.95, fontSize: "0.95rem", lineHeight: 1.5 }}>
-            Por seguridad, debes actualizar tu contraseña antes de continuar.
-          </p>
-        </div>
-
-        <form onSubmit={onSubmit}>
-          <div style={{ marginBottom: "20px" }}>
-            <label style={{ display: "block", marginBottom: "8px", fontWeight: 600, color: "#374151" }}>
-              Contraseña Actual
-            </label>
-            <input
-              type="password"
-              value={currentPassword}
-              onChange={(e) => setCurrentPassword(e.target.value)}
-              required
-              disabled={saving}
-              placeholder="Tu contraseña temporal"
-              style={{
-                width: "100%",
-                padding: "12px 16px",
-                fontSize: "1rem",
-                border: "2px solid #e5e7eb",
-                borderRadius: "10px",
-                transition: "all 0.2s",
-                outline: "none",
-              }}
-            />
-          </div>
-
-          <div style={{ marginBottom: "20px" }}>
-            <label style={{ display: "block", marginBottom: "8px", fontWeight: 600, color: "#374151" }}>
-              Nueva Contraseña
-            </label>
-            <input
-              type="password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              required
-              disabled={saving}
-              placeholder="Mínimo 8 caracteres"
-              minLength={8}
-              style={{
-                width: "100%",
-                padding: "12px 16px",
-                fontSize: "1rem",
-                border: "2px solid #e5e7eb",
-                borderRadius: "10px",
-                transition: "all 0.2s",
-                outline: "none",
-              }}
-            />
-            <p style={{ 
-              fontSize: "0.85rem", 
-              color: "#6b7280", 
-              marginTop: "6px",
-              lineHeight: "1.4"
-            }}>
-              • Mínimo 8 caracteres • Una mayúscula • Un carácter especial (!@#$%&*...)
+    <main className="min-h-screen flex items-center justify-center p-6 bg-linear-to-br from-gray-50 to-gray-100">
+      <div className="w-full max-w-lg">
+        <div className="bg-white rounded-2xl shadow-xl p-8">
+          {/* Header de Advertencia */}
+          <div className="bg-linear-to-r from-amber-500 to-amber-600 rounded-xl p-6 mb-6 text-white">
+            <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center text-2xl mb-3">
+              🔐
+            </div>
+            <h1 className="text-2xl font-bold mb-2">
+              Cambio de Contraseña Obligatorio
+            </h1>
+            <p className="text-sm opacity-95 leading-relaxed">
+              Por seguridad, debes actualizar tu contraseña antes de continuar.
             </p>
           </div>
 
-          <div style={{ marginBottom: "24px" }}>
-            <label style={{ display: "block", marginBottom: "8px", fontWeight: 600, color: "#374151" }}>
-              Confirmar Nueva Contraseña
-            </label>
-            <input
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              required
-              disabled={saving}
-              placeholder="Repite la nueva contraseña"
-              minLength={8}
-              style={{
-                width: "100%",
-                padding: "12px 16px",
-                fontSize: "1rem",
-                border: "2px solid #e5e7eb",
-                borderRadius: "10px",
-                transition: "all 0.2s",
-                outline: "none",
-              }}
-            />
-          </div>
+          {/* Formulario */}
+          <form onSubmit={onSubmit} className="space-y-5">
+            {/* Contraseña Actual */}
+            <div>
+              <label htmlFor="currentPassword" className="block text-sm font-semibold text-gray-700 mb-2">
+                Contraseña Actual
+              </label>
+              <input
+                id="currentPassword"
+                type="password"
+                autoComplete="current-password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                required
+                disabled={saving}
+                placeholder="Tu contraseña temporal"
+                className="block w-full px-4 py-3 border-2 border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition disabled:bg-gray-100 disabled:cursor-not-allowed"
+              />
+            </div>
 
-          <div
-            style={{
-              background: "#eff6ff",
-              border: "1px solid #3b82f6",
-              borderRadius: "10px",
-              padding: "14px 16px",
-              marginBottom: "24px",
-            }}
-          >
-            <div style={{ display: "flex", gap: "10px" }}>
-              <span style={{ fontSize: "1.2rem", flexShrink: 0 }}>💡</span>
-              <div style={{ fontSize: "0.85rem", color: "#1e40af", lineHeight: 1.5 }}>
-                <strong>Recomendaciones:</strong>
-                <ul style={{ margin: "8px 0 0 0", paddingLeft: "20px" }}>
-                  <li>Usa al menos 8 caracteres</li>
-                  <li>Combina letras, números y símbolos</li>
-                  <li>Evita datos personales obvios</li>
-                </ul>
+            {/* Nueva Contraseña */}
+            <div>
+              <label htmlFor="newPassword" className="block text-sm font-semibold text-gray-700 mb-2">
+                Nueva Contraseña
+              </label>
+              <input
+                id="newPassword"
+                type="password"
+                autoComplete="new-password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                required
+                disabled={saving}
+                placeholder="Mínimo 8 caracteres"
+                minLength={8}
+                className="block w-full px-4 py-3 border-2 border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition disabled:bg-gray-100 disabled:cursor-not-allowed"
+              />
+              <p className="text-xs text-gray-500 mt-2 leading-snug">
+                • Mínimo 8 caracteres • Una mayúscula • Un carácter especial (!@#$%&*...)
+              </p>
+            </div>
+
+            {/* Confirmar Nueva Contraseña */}
+            <div>
+              <label htmlFor="confirmPassword" className="block text-sm font-semibold text-gray-700 mb-2">
+                Confirmar Nueva Contraseña
+              </label>
+              <input
+                id="confirmPassword"
+                type="password"
+                autoComplete="new-password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                required
+                disabled={saving}
+                placeholder="Repite la nueva contraseña"
+                minLength={8}
+                className="block w-full px-4 py-3 border-2 border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition disabled:bg-gray-100 disabled:cursor-not-allowed"
+              />
+            </div>
+
+            {/* Recomendaciones */}
+            <div className="bg-blue-50 border border-blue-300 rounded-lg p-4">
+              <div className="flex gap-3">
+                <span className="text-xl shrink-0">💡</span>
+                <div className="text-sm text-blue-900 leading-relaxed">
+                  <strong>Recomendaciones:</strong>
+                  <ul className="mt-2 pl-5 space-y-1 list-disc">
+                    <li>Usa al menos 8 caracteres</li>
+                    <li>Combina letras, números y símbolos</li>
+                    <li>Evita datos personales obvios</li>
+                  </ul>
+                </div>
               </div>
             </div>
-          </div>
 
-          <button
-            type="submit"
-            disabled={saving}
-            style={{
-              width: "100%",
-              padding: "14px 20px",
-              fontSize: "1.05rem",
-              fontWeight: 600,
-              border: "none",
-              borderRadius: "10px",
-              background: saving
-                ? "#d1d5db"
-                : "linear-gradient(135deg, #10b981 0%, #059669 100%)",
-              color: "white",
-              cursor: saving ? "not-allowed" : "pointer",
-              transition: "all 0.2s",
-              boxShadow: saving
-                ? "none"
-                : "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
-            }}
-          >
-            {saving ? "⏳ Actualizando..." : "✓ Cambiar Contraseña"}
-          </button>
-        </form>
-      </section>
+            {/* Botón Submit */}
+            <button
+              type="submit"
+              disabled={saving}
+              className="w-full px-4 py-3.5 text-lg font-semibold border-0 rounded-lg bg-linear-to-r from-green-500 to-green-600 text-white cursor-pointer transition-all shadow-md hover:shadow-lg disabled:bg-gray-400 disabled:cursor-not-allowed disabled:shadow-none"
+            >
+              {saving ? "⏳ Actualizando..." : "✓ Cambiar Contraseña"}
+            </button>
+          </form>
+        </div>
+      </div>
 
       <ToastNotification toasts={toasts} onDismiss={dismissToast} />
     </main>

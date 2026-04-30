@@ -129,13 +129,24 @@ export function VerticalNav() {
         ]
       : []),
     
-    // Formulario solo para Agentes
+    // Migrar Contrato para Agentes
     ...(!isAdminOrContador && !isFacturacionCobros
       ? [
           {
-            href: "/contracts",
-            label: "Formulario",
-            icon: "📝",
+            href: "/contracts?mode=migration",
+            label: "Migrar Contrato",
+            icon: "📄",
+          },
+        ]
+      : []),
+    
+    // Viajes Disponibles para Agentes/Ventas/Operaciones
+    ...(!isAdminOrContador && !isFacturacionCobros
+      ? [
+          {
+            href: "/trips",
+            label: "Viajes Disponibles",
+            icon: "✈️",
           },
         ]
       : []),
@@ -216,6 +227,12 @@ export function VerticalNav() {
             href: "/admin/bank-accounts",
             label: "Cuentas Bancarias",
             icon: "🏦",
+            adminOnly: true,
+          },
+          {
+            href: "/admin/travel-packages",
+            label: "Viajes Programados",
+            icon: "✈️",
             adminOnly: true,
           },
           {

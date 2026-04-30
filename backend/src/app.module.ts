@@ -10,6 +10,7 @@ import { ContractsModule } from "./contracts/contracts.module";
 import { ExchangeRateModule } from "./exchange-rate/exchange-rate.module";
 import { PaymentVerificationModule } from "./payment-verification/payment-verification.module";
 import { PrismaModule } from "./prisma/prisma.module";
+import { TravelPackagesModule } from "./travel-packages/travel-packages.module";
 
 @Module({
   controllers: [AppController],
@@ -31,6 +32,7 @@ import { PrismaModule } from "./prisma/prisma.module";
     CompanyBankAccountsModule,
     PaymentVerificationModule,
     ExchangeRateModule,
+    TravelPackagesModule,
   ],
   providers: [
     {

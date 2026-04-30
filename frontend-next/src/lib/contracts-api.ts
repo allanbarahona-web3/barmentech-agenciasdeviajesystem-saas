@@ -94,6 +94,7 @@ type ArchiveContractInput = {
   payloadJson: string;
   contractHtml: string;
   documents: File[];
+  source?: string; // SCHEDULED_TRIP | MIGRATION | CUSTOM_TRIP | QUOTE
 };
 
 type ArchiveContractResult = {
@@ -225,6 +226,9 @@ export const archiveContract = async (input: ArchiveContractInput): Promise<Arch
   formData.append("endDate", input.endDate);
   formData.append("payloadJson", input.payloadJson);
   formData.append("contractHtml", input.contractHtml);
+  if (input.source) {
+    formData.append("source", input.source);
+  }
 
   input.documents.forEach((doc) => {
     formData.append("documents", doc, doc.name);

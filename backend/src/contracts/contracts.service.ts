@@ -1460,6 +1460,11 @@ export class ContractsService {
 
     let archived: any;
     try {
+      // Mapear el source del DTO al enum de Prisma
+      const sourceValue = dto.source?.trim().toUpperCase() || 'SCHEDULED_TRIP';
+      const validSources = ['SCHEDULED_TRIP', 'MIGRATION', 'CUSTOM_TRIP', 'QUOTE'];
+      const contractSource = validSources.includes(sourceValue) ? sourceValue : 'SCHEDULED_TRIP';
+
       archived = await (this.prisma as any).contract.create({
         data: {
           contractNumber,
@@ -1479,6 +1484,7 @@ export class ContractsService {
           pdfMimeType: "application/pdf",
           pdfSize: pdfBuffer.length,
           htmlObjectKey: htmlKey,
+          source: contractSource, // Agregar el campo source
           documents: {
             create: uploadedDocuments.map((doc) => ({
               kind: null,

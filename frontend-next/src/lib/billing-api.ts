@@ -47,6 +47,7 @@ export type BillingAccount = {
     isOverdue?: boolean;
     overdueDays?: number;
     hasPdf: boolean;
+    source?: string | null; // SCHEDULED_TRIP | MIGRATION | CUSTOM_TRIP | QUOTE
     amounts: {
       grossInvoiced?: number;
       creditNotesApplied?: number;

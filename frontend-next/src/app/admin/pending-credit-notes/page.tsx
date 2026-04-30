@@ -31,9 +31,8 @@ export default function PendingCreditNotesPage() {
   const [rejectModalCreditNote, setRejectModalCreditNote] = useState<BillingPendingCreditNoteItem | null>(null);
   const [rejectReason, setRejectReason] = useState("");
   const [statusText, setStatusText] = useState("");
-
-  const role = String(getStoredSession()?.user?.role || "").toUpperCase();
-  const isAuthorized = ["ADMIN", "FACTURACION_COBROS"].includes(role);
+  const [isAuthorized, setIsAuthorized] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -49,14 +48,19 @@ export default function PendingCreditNotesPage() {
   };
 
   useEffect(() => {
+    setMounted(true);
     const token = getStoredToken();
-    if (!token || !isAuthorized) {
+    const role = String(getStoredSession()?.user?.role || "").toUpperCase();
+    const authorized = ["ADMIN", "FACTURACION_COBROS"].includes(role);
+    setIsAuthorized(authorized);
+    
+    if (!token || !authorized) {
       router.replace("/");
       return;
     }
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router, isAuthorized]);
+  }, [router]);
 
   const openApproveModal = (creditNote: BillingPendingCreditNoteItem) => {
     setApproveModalCreditNote(creditNote);
@@ -105,7 +109,7 @@ export default function PendingCreditNotesPage() {
     }
   };
 
-  if (!isAuthorized) {
+  if (!mounted || !isAuthorized) {
     return null;
   }
 

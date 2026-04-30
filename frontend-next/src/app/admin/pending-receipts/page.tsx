@@ -38,9 +38,8 @@ export default function PendingReceiptsPage() {
   const [emailTo, setEmailTo] = useState("");
   const [emailCc, setEmailCc] = useState("");
   const [statusText, setStatusText] = useState("");
-
-  const role = String(getStoredSession()?.user?.role || "").toUpperCase();
-  const isAuthorized = ["ADMIN", "FACTURACION_COBROS"].includes(role);
+  const [isAuthorized, setIsAuthorized] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   const loadPendingReceipts = async () => {
     setLoading(true);
@@ -90,14 +89,19 @@ export default function PendingReceiptsPage() {
   };
 
   useEffect(() => {
+    setMounted(true);
     const token = getStoredToken();
-    if (!token || !isAuthorized) {
+    const role = String(getStoredSession()?.user?.role || "").toUpperCase();
+    const authorized = ["ADMIN", "FACTURACION_COBROS"].includes(role);
+    setIsAuthorized(authorized);
+    
+    if (!token || !authorized) {
       router.replace("/");
       return;
     }
     void loadPendingReceipts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router, isAuthorized]);
+  }, [router]);
 
   const openEmailModal = (receipt: PendingReceipt) => {
     setEmailModalReceipt(receipt);
@@ -124,7 +128,7 @@ export default function PendingReceiptsPage() {
     }
   };
 
-  if (!isAuthorized) {
+  if (!mounted || !isAuthorized) {
     return null;
   }
 

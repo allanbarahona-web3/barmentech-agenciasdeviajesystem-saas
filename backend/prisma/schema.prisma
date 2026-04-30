@@ -49,6 +49,13 @@ model ContractNumber {
   @@index([createdAt])
 }
 
+enum ContractSource {
+  SCHEDULED_TRIP  // [VD] Viaje Disponible (desde paquete programado)
+  MIGRATION       // [MG] Migrado manualmente (sin viaje asociado)
+  CUSTOM_TRIP     // [PS] Personalizado (futuro: viaje a medida)
+  QUOTE           // [CT] Desde cotización (futuro)
+}
+
 model Contract {
   id                String             @id @default(cuid())
   contractNumber    String             @unique
@@ -79,9 +86,14 @@ model Contract {
   viewedAt              DateTime?
   cancelledAt           DateTime?
   signaturePngObjectKey String?
+  contractType      String             @default("CUSTOM") // CUSTOM | SCHEDULED
+  travelPackageId   String?            // FK opcional a TravelPackage
+  participantCount  Int                @default(1)        // titular + acompañantes
+  source            ContractSource     @default(SCHEDULED_TRIP) // Origen del contrato
   createdAt             DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
   client            Client             @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  travelPackage     TravelPackage?     @relation(fields: [travelPackageId], references: [id], onDelete: SetNull)
   documents         ContractDocument[]
   signatureEvents   ContractSignatureEvent[]
   usedTokens        ContractUsedToken[]
@@ -91,6 +103,8 @@ model Contract {
   billingCreditNotes BillingCreditNote[]
 
   @@index([clientId])
+  @@index([travelPackageId])
+  @@index([contractType])
   @@index([createdAt])
 }
 
@@ -104,6 +118,7 @@ model ContractDraft {
   clientPhone       String?
   destination       String?
   payload           Json
+  source            ContractSource     @default(SCHEDULED_TRIP) // Origen del contrato
   generatedByUserId String
   generatedByEmail  String
   generatedByName   String
@@ -431,4 +446,28 @@ model PaymentReceiptImage {
   @@index([paymentId])
   @@index([processingStatus])
   @@index([createdAt])
+}
+
+// Viajes programados — cada viaje es una "plantilla" reutilizable
+model TravelPackage {
+  id                String      @id @default(cuid())
+  packageCode       String      @unique // TP-2026-05-001 (generado automáticamente)
+  name              String      // "Tour Costa Rica Mayo 2026" (manual)
+  destination       String
+  departureDate     DateTime
+  returnDate        DateTime
+  capacity          Int         // Cupo máximo
+  occupiedSlots     Int         @default(0) // Personas actualmente asignadas
+  status            String      @default("OPEN") // OPEN | CLOSED | CANCELLED
+  packagePrice      Decimal?    @db.Decimal(14, 2) // Precio del paquete (manual por ahora, futuro: calculado)
+  priceCurrency     String      @default("USD") // USD | CRC
+  createdByUserId   String
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  contracts         Contract[]
+
+  @@index([departureDate])
+  @@index([status])
+  @@index([createdAt])
+  @@index([packageCode])
 }

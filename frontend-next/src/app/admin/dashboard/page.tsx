@@ -44,9 +44,8 @@ export default function AdminDashboardPage() {
   const [to, setTo] = useState("");
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
   const [error, setError] = useState("");
-
-  const role = String(getStoredSession()?.user?.role || "").toUpperCase();
-  const isAuthorized = ["ADMIN", "CONTADOR"].includes(role);
+  const [isAuthorized, setIsAuthorized] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -83,16 +82,21 @@ export default function AdminDashboardPage() {
   };
 
   useEffect(() => {
+    setMounted(true);
     const token = getStoredToken();
-    if (!token || !isAuthorized) {
+    const role = String(getStoredSession()?.user?.role || "").toUpperCase();
+    const authorized = ["ADMIN", "CONTADOR"].includes(role);
+    setIsAuthorized(authorized);
+    
+    if (!token || !authorized) {
       router.replace("/");
       return;
     }
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router, period, from, to, isAuthorized]);
+  }, [router, period, from, to]);
 
-  if (!isAuthorized) {
+  if (!mounted || !isAuthorized) {
     return null;
   }
 

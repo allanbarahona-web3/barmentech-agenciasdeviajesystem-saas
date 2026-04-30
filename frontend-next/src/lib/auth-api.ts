@@ -394,10 +394,10 @@ export const getHomeRouteForRole = (role?: string): string => {
       return "/admin/pending-payments";
     case "VENTAS":
     case "OPERACIONES":
-      return "/billing";
+      return "/agent-start"; // Flujo con modales
     default:
       // AGENTE and other roles
-      return "/contracts";
+      return "/agent-start"; // Flujo con modales
   }
 };
 

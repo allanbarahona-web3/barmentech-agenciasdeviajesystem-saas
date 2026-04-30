@@ -3811,6 +3811,7 @@ contratos@viajesalmanova.com
         isOverdue: overdueDays > 0,
         overdueDays,
         hasPdf: Boolean(invoice.objectKeyPdf),
+        source: invoice.contract?.source || null, // Agregar source del contrato
         amounts: {
           grossInvoiced: grossInvoicedAmount,
           creditNotesApplied: creditNotesAppliedAmount,
@@ -5159,13 +5160,13 @@ contratos@viajesalmanova.com
 
     const dailyPayments = await (this.prisma as any).$queryRaw`
       SELECT 
-        DATE(reported_at) as day,
+        DATE("reportedAt") as day,
         SUM(amount) as total,
         COUNT(*) as count
-      FROM billing_payment
-      WHERE reported_at >= ${thirtyDaysAgo}
+      FROM "BillingPayment"
+      WHERE "reportedAt" >= ${thirtyDaysAgo}
         AND status = 'ABONO_VERIFICADO'
-      GROUP BY DATE(reported_at)
+      GROUP BY DATE("reportedAt")
       ORDER BY day ASC
     `;
 
@@ -5173,15 +5174,15 @@ contratos@viajesalmanova.com
     const topOverdueClients = await (this.prisma as any).$queryRaw`
       SELECT 
         c.id,
-        c.full_name,
+        c."fullName" as full_name,
         c.email,
-        SUM(bi.balance_amount) as total_balance,
+        SUM(bi."balanceAmount") as total_balance,
         COUNT(bi.id) as invoice_count
-      FROM billing_invoice bi
-      INNER JOIN client c ON c.id = bi.client_id
-      WHERE bi.balance_amount > 0
-        AND bi.payment_due_date < ${now}
-      GROUP BY c.id, c.full_name, c.email
+      FROM "BillingInvoice" bi
+      INNER JOIN "Client" c ON c.id = bi."clientId"
+      WHERE bi."balanceAmount" > 0
+        AND bi."paymentDueDate" < ${now}
+      GROUP BY c.id, c."fullName", c.email
       ORDER BY total_balance DESC
       LIMIT 10
     `;
