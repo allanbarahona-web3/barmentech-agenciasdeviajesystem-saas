@@ -11,6 +11,8 @@ import { AdminUpdateUserDto } from "./dto/admin-update-user.dto";
 import { RequestPasswordResetDto } from "./dto/request-password-reset.dto";
 import { ConfirmPasswordResetDto } from "./dto/confirm-password-reset.dto";
 import { AdminResetPasswordDto } from "./dto/admin-reset-password.dto";
+import { ResolvedTenant } from "../tenant/tenant.service";
+import { UserRole } from "@prisma/client";
 
 type JwtSessionPayload = {
   sub: string;
@@ -31,8 +33,9 @@ export class AuthService {
   /**
    * Load company logo for email templates (returns URL or base64 data URI)
    */
-  private async loadCompanyLogoEmailSrc(): Promise<string | null> {
-    const configuredUrl = this.configService.get<string>("COMPANY_LOGO_EMAIL_URL", "").trim();
+  private async loadCompanyLogoEmailSrc(tenant?: { emailLogoUrl: string | null; logoUrl: string | null } | null): Promise<string | null> {
+    // Prioridad 1: Usar emailLogoUrl del tenant, si no está, usar logoUrl del tenant
+    const configuredUrl = tenant?.emailLogoUrl || tenant?.logoUrl || this.configService.get<string>("COMPANY_LOGO_EMAIL_URL", "").trim();
     if (configuredUrl) {
       return configuredUrl;
     }
@@ -40,17 +43,40 @@ export class AuthService {
     return null;
   }
 
-  async login(dto: LoginDto) {
+  async login(dto: LoginDto, tenant: ResolvedTenant) {
     const honeypot = (dto.website || "").trim();
     if (honeypot) {
       throw new UnauthorizedException("Credenciales invalidas");
     }
 
     const email = dto.email.trim().toLowerCase();
-    const user = await this.prisma.user.findUnique({ where: { email } });
+    const user = await this.prisma.user.findUnique({ 
+      where: { email },
+      include: { tenant: true },
+    });
 
     if (!user) {
       throw new UnauthorizedException("Credenciales invalidas");
+    }
+
+    // ✅ Validar que el usuario pertenece al tenant del dominio
+    // Super admins (tenantId = null) pueden hacer login desde cualquier dominio
+    if (user.tenantId !== null && user.tenantId !== tenant.id) {
+      this.logger.warn(
+        `❌ Intento de login con usuario de otro tenant: ${email} (user.tenantId=${user.tenantId}, domain.tenantId=${tenant.id})`,
+      );
+      throw new UnauthorizedException("Credenciales invalidas");
+    }
+
+    // ✅ Validar que el tenant no esté suspendido
+    if (user.tenant && !user.tenant.isActive) {
+      this.logger.warn(
+        `❌ Intento de login en tenant suspendido: ${email} (tenant: ${user.tenant.name}, subdomain: ${user.tenant.subdomain})`,
+      );
+      throw new UnauthorizedException(
+        "Su cuenta ha sido suspendida temporalmente debido a irregularidades administrativas. " +
+        "Por favor, contacte a soporte técnico para obtener más información y resolver esta situación."
+      );
     }
 
     if (!user.isActive) {
@@ -78,6 +104,7 @@ export class AuthService {
       email: user.email,
       fullName: user.fullName,
       role: user.role,
+      tenantId: user.tenantId,
       },
       { jwtid: tokenId },
     );
@@ -90,6 +117,8 @@ export class AuthService {
         email: user.email,
         fullName: user.fullName,
         role: user.role,
+        tenantId: user.tenantId,
+        tenantName: user.tenant?.name || null,
         mustChangePassword: user.mustChangePassword,
       },
     };
@@ -105,6 +134,13 @@ export class AuthService {
         role: true,
         mustChangePassword: true,
         isActive: true,
+        tenantId: true,
+        tenant: {
+          select: {
+            name: true,
+            contractPrefix: true,
+          },
+        },
       },
     });
 
@@ -143,8 +179,9 @@ export class AuthService {
     }
   }
 
-  async adminListUsers() {
+  async adminListUsers(tenantId: string) {
     const users = await this.prisma.user.findMany({
+      where: { tenantId },
       orderBy: [{ createdAt: "desc" }],
       select: {
         id: true,
@@ -161,12 +198,23 @@ export class AuthService {
     return users;
   }
 
-  async adminCreateUser(dto: AdminCreateUserDto) {
+  async adminCreateUser(dto: AdminCreateUserDto, adminTenantId: string) {
     const email = String(dto.email || "").trim().toLowerCase();
     const fullName = String(dto.fullName || "").trim();
     const password = String(dto.password || "");
     const roleInput = String(dto.role || "AGENT").trim().toUpperCase();
-    const role = ["ADMIN", "CONTADOR", "FACTURACION_COBROS", "VENTAS", "OPERACIONES"].includes(roleInput) ? roleInput : "AGENT";
+    
+    // Mapear string a enum UserRole
+    const validRoles: Record<string, UserRole> = {
+      'ADMIN': UserRole.ADMIN,
+      'CONTADOR': UserRole.CONTADOR,
+      'FACTURACION_COBROS': UserRole.FACTURACION_COBROS,
+      'VENTAS': UserRole.VENTAS,
+      'OPERACIONES': UserRole.OPERACIONES,
+      'AGENT': UserRole.AGENT,
+    };
+    
+    const role = validRoles[roleInput] || UserRole.AGENT;
 
     const passwordHash = await hash(password, 10);
 
@@ -177,6 +225,7 @@ export class AuthService {
         passwordHash,
         role,
         isActive: true,
+        tenantId: adminTenantId,
       },
       select: {
         id: true,
@@ -188,10 +237,53 @@ export class AuthService {
       },
     });
 
+    // Obtener información del tenant para el email
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: adminTenantId },
+      select: {
+        name: true,
+        subdomain: true,
+        customDomain: true,
+        logoUrl: true,
+        emailLogoUrl: true,
+        fromEmail: true,
+        replyToEmail: true,
+      },
+    });
+
+    // Enviar email de bienvenida con credenciales (no bloquear si falla)
+    try {
+      const emailResult = await this.sendWelcomeEmail(email, fullName, password, role, tenant);
+      this.logger.log(`✅ Email de bienvenida enviado a ${email} (Usuario ID: ${created.id})`);
+      this.logger.debug(`📧 Resend Response:`, JSON.stringify(emailResult, null, 2));
+    } catch (emailError) {
+      this.logger.error(`❌ Error al enviar email de bienvenida a ${email}:`);
+      this.logger.error(`Error completo:`, emailError);
+      if (emailError instanceof Error) {
+        this.logger.error(`Mensaje: ${emailError.message}`);
+        this.logger.error(`Stack: ${emailError.stack}`);
+      }
+      // No lanzar error - el usuario ya fue creado exitosamente
+    }
+
     return created;
   }
 
-  async adminUpdateUser(userId: string, dto: AdminUpdateUserDto, currentUserId: string) {
+  async adminUpdateUser(userId: string, dto: AdminUpdateUserDto, currentUserId: string, adminTenantId: string) {
+    // Verificar que el usuario target pertenece al mismo tenant que el admin
+    const targetUser = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: true, isActive: true, tenantId: true },
+    });
+
+    if (!targetUser) {
+      throw new NotFoundException("Usuario no encontrado");
+    }
+
+    if (targetUser.tenantId !== adminTenantId) {
+      throw new BadRequestException("No tienes permiso para modificar este usuario");
+    }
+
     // Rule 1: User cannot suspend themselves
     if (typeof dto.isActive === "boolean" && !dto.isActive && userId === currentUserId) {
       throw new BadRequestException("No puedes suspenderte a ti mismo.");
@@ -199,15 +291,11 @@ export class AuthService {
 
     // Rule 2: Cannot suspend the last active ADMIN
     if (typeof dto.isActive === "boolean" && !dto.isActive) {
-      const targetUser = await this.prisma.user.findUnique({
-        where: { id: userId },
-        select: { role: true, isActive: true },
-      });
-
       if (targetUser?.role === "ADMIN" && targetUser.isActive) {
-        // Count active admins
+        // Count active admins WITHIN THE SAME TENANT
         const activeAdminCount = await this.prisma.user.count({
           where: {
+            tenantId: adminTenantId,
             role: "ADMIN",
             isActive: true,
           },
@@ -282,7 +370,7 @@ export class AuthService {
    * Request a password reset token
    * Always returns success to avoid email enumeration attacks
    */
-  async requestPasswordReset(dto: RequestPasswordResetDto) {
+  async requestPasswordReset(dto: RequestPasswordResetDto, tenant: ResolvedTenant) {
     // Check honeypot
     const honeypot = (dto.website || "").trim();
     if (honeypot) {
@@ -327,7 +415,7 @@ export class AuthService {
 
     // Send password reset email
     try {
-      await this.sendPasswordResetEmail(user.email, user.fullName, token);
+      await this.sendPasswordResetEmail(user.email, user.fullName, token, tenant);
       this.logger.log(`[PASSWORD RESET] Email sent to ${user.email}`);
     } catch (emailError) {
       this.logger.error(`[PASSWORD RESET] Failed to send email to ${user.email}:`, emailError);
@@ -431,7 +519,7 @@ export class AuthService {
    * Admin resets a user's password to a temporary one
    * User must change password on next login
    */
-  async adminResetUserPassword(dto: AdminResetPasswordDto) {
+  async adminResetUserPassword(dto: AdminResetPasswordDto, adminTenantId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: dto.userId },
       select: {
@@ -439,11 +527,17 @@ export class AuthService {
         email: true,
         fullName: true,
         isActive: true,
+        tenantId: true,
       },
     });
 
     if (!user) {
       throw new NotFoundException("Usuario no encontrado");
+    }
+
+    // Validar que el usuario pertenece al mismo tenant que el admin
+    if (user.tenantId !== adminTenantId) {
+      throw new BadRequestException("No tienes permiso para resetear la contraseña de este usuario");
     }
 
     // Generate temporary password
@@ -513,12 +607,214 @@ export class AuthService {
   }
 
   /**
+   * Send welcome email with credentials to new user
+   */
+  private async sendWelcomeEmail(
+    email: string,
+    fullName: string,
+    temporaryPassword: string,
+    role: UserRole,
+    tenant: { name: string; subdomain: string | null; customDomain: string | null; logoUrl: string | null; emailLogoUrl: string | null; fromEmail?: string | null; replyToEmail?: string | null } | null
+  ) {
+    const apiKey = this.configService.get<string>("RESEND_API_KEY", "").trim();
+    const fallbackFromEmail = this.configService.get<string>("AUTH_FROM_EMAIL", "").trim();
+    const baseDomain = this.configService.get<string>("FRONTEND_BASE_DOMAIN", "").trim();
+
+    if (!apiKey) {
+      throw new InternalServerErrorException("Falta configurar RESEND_API_KEY.");
+    }
+
+    // Usar fromEmail del tenant si existe, sino fallback al del sistema
+    const fromEmail = tenant?.fromEmail || fallbackFromEmail;
+    const replyTo = tenant?.replyToEmail || undefined;
+
+    if (!fromEmail) {
+      throw new InternalServerErrorException("No hay email configurado para enviar (ni en tenant ni en sistema).");
+    }
+
+    this.logger.debug(`📧 Enviando email desde: ${fromEmail} (tenant: ${tenant?.name || 'N/A'})`);
+
+    // Construir URL de login del tenant
+    const loginUrl = tenant?.customDomain
+      ? `https://${tenant.customDomain}`
+      : tenant?.subdomain
+      ? `https://${tenant.subdomain}.${baseDomain}`
+      : baseDomain;
+
+    const resend = new Resend(apiKey);
+    const logoSrc = await this.loadCompanyLogoEmailSrc(tenant);
+    const tenantName = tenant?.name || "Agencia de Viajes";
+
+    // Mapear rol a español
+    const roleLabels: Record<string, string> = {
+      'ADMIN': 'Administrador',
+      'CONTADOR': 'Contador',
+      'FACTURACION_COBROS': 'Facturación y Cobros',
+      'VENTAS': 'Ventas',
+      'OPERACIONES': 'Operaciones',
+      'AGENT': 'Agente',
+    };
+    const roleLabel = roleLabels[role] || role;
+
+    const emailPayload: any = {
+      from: fromEmail,
+      to: [email],
+      subject: `🎉 Bienvenido a ${tenantName} - Credenciales de Acceso`,
+    };
+
+    // Agregar reply-to si existe
+    if (replyTo) {
+      emailPayload.reply_to = replyTo;
+    }
+
+    this.logger.debug(`📤 Payload del email:`, JSON.stringify({ from: fromEmail, to: email, replyTo, subject: emailPayload.subject }, null, 2));
+
+    const result = await resend.emails.send({
+      ...emailPayload,
+      html: `
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bienvenido a ${tenantName}</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f3f4f6; line-height: 1.6;">
+  <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #f3f4f6;">
+    <tr>
+      <td align="center" style="padding: 40px 20px;">
+        <table role="presentation" style="max-width: 600px; width: 100%; border-collapse: collapse; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+          
+          <!-- Header -->
+          <tr>
+            <td style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px 30px; text-align: center;">
+              ${logoSrc ? `<img src="${logoSrc}" alt="${tenantName}" style="max-width: 180px; height: auto; margin-bottom: 16px;" />` : ''}
+              <h1 style="margin: 0; color: #ffffff; font-size: 32px; font-weight: 700; letter-spacing: 1px;">
+                ${tenantName}
+              </h1>
+              <p style="margin: 8px 0 0 0; color: #e9d5ff; font-size: 14px; font-weight: 500;">
+                Experiencias inolvidables, destinos únicos
+              </p>
+            </td>
+          </tr>
+
+          <!-- Icon Badge -->
+          <tr>
+            <td style="padding: 30px 30px 0 30px; text-align: center;">
+              <div style="display: inline-block; background-color: #10b981; color: #ffffff; width: 80px; height: 80px; border-radius: 50%; line-height: 80px; font-size: 40px; margin-bottom: 10px;">
+                🎉
+              </div>
+            </td>
+          </tr>
+
+          <!-- Main Content -->
+          <tr>
+            <td style="padding: 30px;">
+              <h2 style="margin: 0 0 20px 0; color: #1f2937; font-size: 24px; font-weight: 600; text-align: center;">
+                ¡Bienvenido al equipo!
+              </h2>
+              
+              <p style="margin: 0 0 20px 0; color: #4b5563; font-size: 16px; line-height: 1.6;">
+                Hola <strong>${fullName}</strong>,
+              </p>
+
+              <p style="margin: 0 0 20px 0; color: #4b5563; font-size: 16px; line-height: 1.6;">
+                Se ha creado tu cuenta en el sistema de <strong>${tenantName}</strong> con el rol de <strong>${roleLabel}</strong>.
+              </p>
+
+              <p style="margin: 0 0 20px 0; color: #4b5563; font-size: 16px; line-height: 1.6;">
+                A continuación encontrarás tus credenciales de acceso:
+              </p>
+
+              <!-- Credentials Box -->
+              <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #f9fafb; border: 2px solid #e5e7eb; border-radius: 8px; margin: 20px 0;">
+                <tr>
+                  <td style="padding: 20px;">
+                    <p style="margin: 0 0 12px 0; color: #6b7280; font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">
+                      📧 Correo Electrónico
+                    </p>
+                    <p style="margin: 0 0 20px 0; color: #1f2937; font-size: 16px; font-weight: 600;">
+                      ${email}
+                    </p>
+                    
+                    <p style="margin: 0 0 12px 0; color: #6b7280; font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">
+                      🔑 Contraseña Temporal
+                    </p>
+                    <p style="margin: 0; color: #1f2937; font-size: 18px; font-weight: 700; font-family: 'Courier New', monospace; background-color: #ffffff; padding: 12px; border-radius: 6px; border: 1px solid #d1d5db;">
+                      ${temporaryPassword}
+                    </p>
+                  </td>
+                </tr>
+              </table>
+
+              <!-- Important Notice -->
+              <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #fef3c7; border-left: 4px solid #f59e0b; border-radius: 6px; margin: 20px 0;">
+                <tr>
+                  <td style="padding: 16px;">
+                    <p style="margin: 0; color: #92400e; font-size: 14px; line-height: 1.5;">
+                      <strong>⚠️ Importante:</strong> Por seguridad, deberás cambiar esta contraseña temporal al iniciar sesión por primera vez.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="margin: 20px 0; color: #4b5563; font-size: 16px; line-height: 1.6;">
+                Haz clic en el botón de abajo para acceder al sistema:
+              </p>
+
+              <!-- CTA Button -->
+              <table role="presentation" style="width: 100%; border-collapse: collapse; margin: 30px 0;">
+                <tr>
+                  <td align="center">
+                    <a href="${loginUrl}" style="display: inline-block; padding: 16px 40px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #ffffff; text-decoration: none; font-weight: 600; font-size: 16px; border-radius: 8px; box-shadow: 0 4px 6px rgba(102, 126, 234, 0.4);">
+                      🚀 Iniciar Sesión
+                    </a>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="margin: 20px 0 0 0; color: #6b7280; font-size: 14px; line-height: 1.6; text-align: center;">
+                Si el botón no funciona, copia y pega este enlace en tu navegador:<br/>
+                <a href="${loginUrl}" style="color: #667eea; text-decoration: none; word-break: break-all;">${loginUrl}</a>
+              </p>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="background-color: #f9fafb; padding: 30px; text-align: center; border-top: 1px solid #e5e7eb;">
+              <p style="margin: 0 0 10px 0; color: #6b7280; font-size: 14px;">
+                Este correo fue enviado automáticamente por el sistema de ${tenantName}.
+              </p>
+              <p style="margin: 0; color: #9ca3af; font-size: 12px;">
+                Si tienes alguna pregunta, contacta a tu administrador.
+              </p>
+              <p style="margin: 16px 0 0 0; color: #9ca3af; font-size: 12px;">
+                © ${new Date().getFullYear()} ${tenantName}. Todos los derechos reservados.
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+      `,
+    });
+
+    this.logger.debug(`📨 Email enviado exitosamente a ${email}. ID:`, result.data?.id || 'N/A');
+    return result;
+  }
+
+  /**
    * Send password reset email using Resend
    */
-  private async sendPasswordResetEmail(email: string, fullName: string, token: string) {
+  private async sendPasswordResetEmail(email: string, fullName: string, token: string, tenant?: ResolvedTenant | null) {
     const apiKey = this.configService.get<string>("RESEND_API_KEY", "").trim();
     const fromEmail = this.configService.get<string>("AUTH_FROM_EMAIL", "").trim();
-    const frontendUrl = this.configService.get<string>("FRONTEND_URL", "http://localhost:3000").trim();
+    const frontendUrl = this.configService.get<string>("FRONTEND_URL", "").trim();
 
     if (!apiKey || !fromEmail) {
       throw new InternalServerErrorException("Falta configurar RESEND_API_KEY o AUTH_FROM_EMAIL.");
@@ -526,7 +822,7 @@ export class AuthService {
 
     const resetLink = `${frontendUrl}/reset-password?token=${token}`;
     const resend = new Resend(apiKey);
-    const logoSrc = await this.loadCompanyLogoEmailSrc();
+    const logoSrc = await this.loadCompanyLogoEmailSrc(tenant);
 
     await resend.emails.send({
       from: fromEmail,
@@ -634,5 +930,54 @@ export class AuthService {
 </html>
       `,
     });
+  }
+
+  /**
+   * Actualizar información legal del tenant (solo ADMIN)
+   */
+  async updateTenantLegalInfo(
+    tenantId: string,
+    dto: {
+      legalName?: string;
+      legalId?: string;
+      representativeName?: string;
+      representativeId?: string;
+      representativeTitle?: string;
+      representativeMaritalStatus?: string;
+      representativeAddress?: string;
+      representativePowers?: string;
+    },
+  ) {
+    const updateData: Record<string, string | null> = {};
+
+    if (dto.legalName !== undefined) updateData.legalName = dto.legalName?.trim() || null;
+    if (dto.legalId !== undefined) updateData.legalId = dto.legalId?.trim() || null;
+    if (dto.representativeName !== undefined) updateData.representativeName = dto.representativeName?.trim() || null;
+    if (dto.representativeId !== undefined) updateData.representativeId = dto.representativeId?.trim() || null;
+    if (dto.representativeTitle !== undefined) updateData.representativeTitle = dto.representativeTitle?.trim() || null;
+    if (dto.representativeMaritalStatus !== undefined) updateData.representativeMaritalStatus = dto.representativeMaritalStatus?.trim() || null;
+    if (dto.representativeAddress !== undefined) updateData.representativeAddress = dto.representativeAddress?.trim() || null;
+    if (dto.representativePowers !== undefined) updateData.representativePowers = dto.representativePowers?.trim() || null;
+
+    const tenant = await this.prisma.tenant.update({
+      where: { id: tenantId },
+      data: updateData,
+    });
+
+    return {
+      message: "Información legal actualizada correctamente",
+      tenant: {
+        id: tenant.id,
+        name: tenant.name,
+        legalName: tenant.legalName,
+        legalId: tenant.legalId,
+        representativeName: tenant.representativeName,
+        representativeId: tenant.representativeId,
+        representativeTitle: tenant.representativeTitle,
+        representativeMaritalStatus: tenant.representativeMaritalStatus,
+        representativeAddress: tenant.representativeAddress,
+        representativePowers: tenant.representativePowers,
+      },
+    };
   }
 }

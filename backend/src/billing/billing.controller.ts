@@ -50,7 +50,7 @@ export class BillingController {
   listContracts(
     @Req()
     req: {
-      user: { id: string; email: string; fullName: string };
+      user: { id: string; email: string; fullName: string; tenantId: string };
     },
     @Query() query: ListBillingContractsDto,
   ) {

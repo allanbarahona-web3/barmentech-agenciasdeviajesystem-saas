@@ -30,44 +30,61 @@ export class CompanyBankAccountsController {
   @Roles('ADMIN')
   @UseGuards(RolesGuard)
   create(
-    @Req() req: { user: { id: string; fullName: string } },
+    @Req() req: { user: { id: string; fullName: string; tenantId: string } },
     @Body() dto: CreateBankAccountDto,
   ) {
     return this.companyBankAccountsService.create(
       dto,
       req.user.id,
       req.user.fullName,
+      req.user.tenantId,
     );
   }
 
   @Get()
-  findAll(@Query() filters: ListBankAccountsDto) {
-    return this.companyBankAccountsService.findAll(filters);
+  findAll(
+    @Query() filters: ListBankAccountsDto,
+    @Req() req: { user: { tenantId: string } },
+  ) {
+    return this.companyBankAccountsService.findAll(filters, req.user.tenantId);
   }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.companyBankAccountsService.findOne(id);
+  findOne(
+    @Param('id') id: string,
+    @Req() req: { user: { tenantId: string } },
+  ) {
+    return this.companyBankAccountsService.findOne(id, req.user.tenantId);
   }
 
   @Put(':id')
   @Roles('ADMIN')
   @UseGuards(RolesGuard)
-  update(@Param('id') id: string, @Body() dto: UpdateBankAccountDto) {
-    return this.companyBankAccountsService.update(id, dto);
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateBankAccountDto,
+    @Req() req: { user: { tenantId: string } },
+  ) {
+    return this.companyBankAccountsService.update(id, dto, req.user.tenantId);
   }
 
   @Delete(':id')
   @Roles('ADMIN')
   @UseGuards(RolesGuard)
-  remove(@Param('id') id: string) {
-    return this.companyBankAccountsService.remove(id);
+  remove(
+    @Param('id') id: string,
+    @Req() req: { user: { tenantId: string } },
+  ) {
+    return this.companyBankAccountsService.remove(id, req.user.tenantId);
   }
 
   @Patch(':id/toggle-active')
   @Roles('ADMIN')
   @UseGuards(RolesGuard)
-  toggleActive(@Param('id') id: string) {
-    return this.companyBankAccountsService.toggleActive(id);
+  toggleActive(
+    @Param('id') id: string,
+    @Req() req: { user: { tenantId: string } },
+  ) {
+    return this.companyBankAccountsService.toggleActive(id, req.user.tenantId);
   }
 }

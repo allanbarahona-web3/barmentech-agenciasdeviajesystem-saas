@@ -11,6 +11,12 @@ const nextConfig: NextConfig = {
         port: '',
         pathname: '/contracts-assets/**',
       },
+      {
+        protocol: 'https',
+        hostname: 'agencia-viajes-saas.sfo3.cdn.digitaloceanspaces.com',
+        port: '',
+        pathname: '/**',
+      },
     ],
   },
   

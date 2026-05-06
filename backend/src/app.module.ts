@@ -1,6 +1,6 @@
-import { Module } from "@nestjs/common";
+import { Module, NestModule, MiddlewareConsumer } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
-import { APP_GUARD } from "@nestjs/core";
+import { APP_GUARD, APP_INTERCEPTOR } from "@nestjs/core";
 import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
 import { AppController } from "./app.controller";
 import { AuthModule } from "./auth/auth.module";
@@ -11,13 +11,17 @@ import { ExchangeRateModule } from "./exchange-rate/exchange-rate.module";
 import { PaymentVerificationModule } from "./payment-verification/payment-verification.module";
 import { PrismaModule } from "./prisma/prisma.module";
 import { TravelPackagesModule } from "./travel-packages/travel-packages.module";
+import { TenantModule } from "./tenant/tenant.module";
+import { SuperAdminModule } from "./super-admin/super-admin.module";
+import { TenantMiddleware } from "./tenant/tenant.middleware";
+import { RLSInterceptor } from "./common/interceptors/rls.interceptor";
 
 @Module({
   controllers: [AppController],
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: [".env.local", ".env"],
+      envFilePath: [".env.local", ".env.development", ".env"],
     }),
     ThrottlerModule.forRoot([
       {
@@ -26,7 +30,9 @@ import { TravelPackagesModule } from "./travel-packages/travel-packages.module";
       },
     ]),
     PrismaModule,
+    TenantModule,
     AuthModule,
+    SuperAdminModule,
     ContractsModule,
     BillingModule,
     CompanyBankAccountsModule,
@@ -39,6 +45,15 @@ import { TravelPackagesModule } from "./travel-packages/travel-packages.module";
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
     },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: RLSInterceptor,
+    },
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    // TenantMiddleware se aplica a todas las rutas
+    consumer.apply(TenantMiddleware).forRoutes('*');
+  }
+}

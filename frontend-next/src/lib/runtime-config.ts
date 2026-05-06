@@ -5,7 +5,9 @@ const normalizeBase = (value: string | undefined | null): string =>
   String(value || "").trim().replace(/\/+$/, "");
 
 const isLocalHost = (hostname: string): boolean =>
-  hostname === "localhost" || hostname === "127.0.0.1";
+  hostname === "localhost" || 
+  hostname === "127.0.0.1" || 
+  hostname.endsWith(".localhost");
 
 export const resolveApiBase = (): string => {
   if (typeof window === "undefined") {
@@ -33,7 +35,12 @@ export const resolveApiBase = (): string => {
   };
 
   const hostFallback = normalizeBase(hostFallbackByDomain[host] || "");
-  const localFallback = local ? "http://localhost:3001" : "";
+  
+  // En desarrollo con subdominios, preservar el subdominio en el API_BASE
+  // Ejemplo: empresa.localhost:3000 → http://empresa.localhost:3001
+  const localFallback = local 
+    ? `http://${window.location.hostname}:3001` 
+    : "";
 
   return envBase || metaBase || localStorageOverride || hostFallback || localFallback;
 };

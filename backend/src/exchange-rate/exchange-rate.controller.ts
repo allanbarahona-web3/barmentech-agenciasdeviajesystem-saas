@@ -25,8 +25,8 @@ export class ExchangeRateController {
    * Get current exchange rate (available to all authenticated users)
    */
   @Get("current")
-  async getCurrentRate() {
-    const rate = await this.exchangeRateService.getCurrentExchangeRate();
+  async getCurrentRate(@Request() req: { user: { tenantId: string } }) {
+    const rate = await this.exchangeRateService.getCurrentExchangeRate(req.user.tenantId);
     return { rate };
   }
 
@@ -34,8 +34,8 @@ export class ExchangeRateController {
    * Get exchange rate for a specific date (available to all authenticated users)
    */
   @Get()
-  async getRate(@Query("date") date?: string) {
-    const rate = await this.exchangeRateService.getExchangeRate(date);
+  async getRate(@Request() req: { user: { tenantId: string } }, @Query("date") date?: string) {
+    const rate = await this.exchangeRateService.getExchangeRate(req.user.tenantId, date);
     return { rate };
   }
 
@@ -43,9 +43,9 @@ export class ExchangeRateController {
    * Get exchange rate history (available to all authenticated users)
    */
   @Get("history")
-  async getHistory(@Query("days") days?: string) {
+  async getHistory(@Request() req: { user: { tenantId: string } }, @Query("days") days?: string) {
     const daysNum = days ? parseInt(days, 10) : 30;
-    const rates = await this.exchangeRateService.getExchangeRateHistory(daysNum);
+    const rates = await this.exchangeRateService.getExchangeRateHistory(req.user.tenantId, daysNum);
     return { rates };
   }
 
@@ -57,7 +57,7 @@ export class ExchangeRateController {
   @UseGuards(RolesGuard)
   async setRate(@Body() dto: SetExchangeRateDto, @Request() req: any) {
     const user = req.user;
-    const rate = await this.exchangeRateService.setExchangeRate(dto, user);
+    const rate = await this.exchangeRateService.setExchangeRate(dto, user, user.tenantId);
     return { rate };
   }
 
@@ -68,11 +68,12 @@ export class ExchangeRateController {
   async getHistoryRange(
     @Query("startDate") startDate: string,
     @Query("endDate") endDate: string,
+    @Request() req: { user: { tenantId: string } },
   ) {
     if (!startDate || !endDate) {
       return { error: "startDate and endDate are required", rates: [] };
     }
-    const rates = await this.exchangeRateService.getExchangeRateHistoryRange(startDate, endDate);
+    const rates = await this.exchangeRateService.getExchangeRateHistoryRange(req.user.tenantId, startDate, endDate);
     return { rates };
   }
 
@@ -84,12 +85,13 @@ export class ExchangeRateController {
     @Query("startDate") startDate: string,
     @Query("endDate") endDate: string,
     @Res() res: Response,
+    @Request() req: { user: { tenantId: string } },
   ) {
     if (!startDate || !endDate) {
       return res.status(HttpStatus.BAD_REQUEST).json({ error: "startDate and endDate are required" });
     }
 
-    const pdfBuffer = await this.exchangeRateService.generateHistoryPdf(startDate, endDate);
+    const pdfBuffer = await this.exchangeRateService.generateHistoryPdf(req.user.tenantId, startDate, endDate);
     
     res.set({
       "Content-Type": "application/pdf",
@@ -128,7 +130,7 @@ export class ExchangeRateController {
     const userName = String(user?.fullName || "Usuario");
 
     try {
-      await this.exchangeRateService.sendHistoryEmail(startDate, endDate, email, userName);
+      await this.exchangeRateService.sendHistoryEmail(user.tenantId, startDate, endDate, email, userName);
       console.log("[ExchangeRate Controller] Email sent successfully to:", email);
       return { success: true, message: "Historial enviado por correo exitosamente" };
     } catch (error: any) {

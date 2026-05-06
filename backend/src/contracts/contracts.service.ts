@@ -18,6 +18,7 @@ import { ArchiveContractDto } from "./dto/archive-contract.dto";
 import { SendContractEmailDto } from "./dto/send-contract-email.dto";
 import { SendSigningEmailDto } from "./dto/send-signing-email.dto";
 import { SearchContractsDto } from "./dto/search-contracts.dto";
+import { ResolvedTenant } from "../tenant/tenant.service";
 
 const CONTRACT_STATUS_PENDING_PAYMENT_RESERVE = "PENDING_PAYMENT_RESERVE";
 const CONTRACT_STATUS_RESERVE_IN_REVIEW = "RESERVE_IN_REVIEW";
@@ -60,8 +61,9 @@ export class ContractsService {
   /**
    * Load company logo for email templates (returns URL or base64 data URI)
    */
-  private async loadCompanyLogoEmailSrc(): Promise<string | null> {
-    const configuredUrl = this.configService.get<string>("COMPANY_LOGO_EMAIL_URL", "").trim();
+  private async loadCompanyLogoEmailSrc(tenant?: { emailLogoUrl: string | null; logoUrl: string | null } | null): Promise<string | null> {
+    // Prioridad 1: Usar emailLogoUrl del tenant, si no está, usar logoUrl del tenant
+    const configuredUrl = tenant?.emailLogoUrl || tenant?.logoUrl || this.configService.get<string>("COMPANY_LOGO_EMAIL_URL", "").trim();
     if (configuredUrl) {
       return configuredUrl;
     }
@@ -240,6 +242,38 @@ export class ContractsService {
     });
 
     return this.s3Client;
+  }
+
+  /**
+   * Construye la ruta base para un tenant en Spaces
+   * Formato: {ambiente}-agencias-saas/{subdomain}/
+   * Ejemplo: "dev-agencias-saas/almanova/" o "production-agencias-saas/lucitours/"
+   */
+  private getTenantBasePath(tenantSubdomain: string): string {
+    const appEnv = this.configService.get<string>("APP_ENV", "dev").trim();
+    return `${appEnv}/${tenantSubdomain}/`;
+  }
+
+  /**
+   * Construye la ruta completa para un archivo en Spaces
+   * @param tenantSubdomain - Subdomain del tenant (ej: "almanova")
+   * @param category - Categoría del archivo (ej: "logos", "firmas", "contracts", "documents", "receipts")
+   * @param filename - Nombre del archivo
+   */
+  private getSpacesObjectKey(tenantSubdomain: string, category: string, filename: string): string {
+    const basePath = this.getTenantBasePath(tenantSubdomain);
+    return `${basePath}${category}/${filename}`;
+  }
+
+  /**
+   * Construye la URL pública para un asset del tenant usando CDN
+   * Ejemplo: https://agencia-viajes-saas.sfo3.cdn.digitaloceanspaces.com/dev-agencias-saas/almanova/logos/logo.png
+   */
+  private getTenantAssetUrl(tenantSubdomain: string, category: string, assetFilename: string): string {
+    const cfg = this.getSpacesConfig();
+    const objectKey = this.getSpacesObjectKey(tenantSubdomain, category, assetFilename);
+    // Usar CDN endpoint para mejor performance
+    return `https://${cfg.bucket}.${cfg.region}.cdn.digitaloceanspaces.com/${objectKey}`;
   }
 
   private sanitizeSegment(value: string) {
@@ -589,6 +623,7 @@ export class ContractsService {
     user: { id: string; email: string; fullName: string },
     dto: SendContractEmailDto,
     pdfBuffer: Buffer,
+    tenant?: ResolvedTenant | null,
   ) {
     const apiKey = this.configService.get<string>("RESEND_API_KEY", "").trim();
     const fromEmail = this.configService
@@ -602,7 +637,7 @@ export class ContractsService {
     }
 
     const resend = new Resend(apiKey);
-    const logoSrc = await this.loadCompanyLogoEmailSrc();
+    const logoSrc = await this.loadCompanyLogoEmailSrc(tenant);
     if (!pdfBuffer.length) {
       throw new InternalServerErrorException("Adjunto PDF invalido o vacio.");
     }
@@ -760,6 +795,7 @@ export class ContractsService {
   async sendContractSigningEmail(
     user: { id: string; email: string; fullName: string },
     dto: SendSigningEmailDto,
+    tenant?: ResolvedTenant | null,
   ) {
     const apiKey = this.configService.get<string>("RESEND_API_KEY", "").trim();
     const fromEmail =
@@ -773,7 +809,7 @@ export class ContractsService {
     }
 
     const resend = new Resend(apiKey);
-    const logoSrc = await this.loadCompanyLogoEmailSrc();
+    const logoSrc = await this.loadCompanyLogoEmailSrc(tenant);
     const html = `
 <!DOCTYPE html>
 <html lang="es">
@@ -930,6 +966,7 @@ export class ContractsService {
   async resendSignedContractEmailToParties(
     user: { id: string; email: string; fullName: string },
     contractId: string,
+    tenant?: ResolvedTenant | null,
   ) {
     const contract = await (this.prisma as any).contract.findUnique({
       where: { id: contractId },
@@ -986,7 +1023,7 @@ export class ContractsService {
     }
 
     const resend = new Resend(apiKey);
-    const logoSrc = await this.loadCompanyLogoEmailSrc();
+    const logoSrc = await this.loadCompanyLogoEmailSrc(tenant);
     const pdfBase64 = signedPdfBuffer.toString("base64");
     const fileName =
       String(contract.signedPdfFileName || "").trim() || `${String(contract.contractNumber || "contrato").trim()}-signed.pdf`;
@@ -1291,7 +1328,7 @@ export class ContractsService {
   }
 
   async archiveContract(
-    user: { id: string; email: string; fullName: string },
+    user: { id: string; email: string; fullName: string; tenantId: string },
     dto: ArchiveContractDto,
     documents: Array<{
       buffer: Buffer;
@@ -1367,11 +1404,19 @@ export class ContractsService {
       },
     });
 
+    // Obtener tenant para organizar archivos
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: user.tenantId },
+      select: { subdomain: true },
+    });
+    const tenantSubdomain = tenant?.subdomain || 'unknown';
+    const appEnv = this.configService.get<string>('APP_ENV', 'dev');
+
     const now = new Date();
     const y = now.getFullYear();
     const m = this.pad(now.getMonth() + 1);
     const d = this.pad(now.getDate());
-    const baseFolder = `contracts/${y}/${m}/${d}/${this.sanitizeSegment(contractNumber)}`;
+    const baseFolder = `${appEnv}/${tenantSubdomain}/contracts/${y}/${m}/${d}/${this.sanitizeSegment(contractNumber)}`;
     
     // Generar código de pago único ANTES de renderizar el PDF
     const paymentReference = await this.generateUniquePaymentReference();
@@ -1677,7 +1722,7 @@ export class ContractsService {
   }
 
   async getContractDraft(
-    user: { id: string; email: string; fullName: string },
+    user: { id: string; email: string; fullName: string; tenantId: string },
     draftId: string,
   ) {
     const normalizedId = String(draftId || "").trim();
@@ -1688,6 +1733,7 @@ export class ContractsService {
     const draft = await (this.prisma as any).contractDraft.findFirst({
       where: {
         id: normalizedId,
+        tenantId: user.tenantId, // 🔒 SEGURIDAD: Validar tenant
         generatedByUserId: user.id,
       },
     });
@@ -1784,7 +1830,19 @@ export class ContractsService {
     }
 
     const keyRoot = String(contract.pdfObjectKey || "").replace(/\/contract\.pdf$/i, "");
-    const fallbackKeyRoot = `contracts/signed/${this.sanitizeSegment(contract.contractNumber)}`;
+    
+    // Fallback con estructura nueva (ambiente/tenant/...)
+    let fallbackKeyRoot = `contracts/signed/${this.sanitizeSegment(contract.contractNumber)}`;
+    if (contract.tenantId) {
+      const tenant = await this.prisma.tenant.findUnique({
+        where: { id: contract.tenantId },
+        select: { subdomain: true },
+      });
+      const tenantSubdomain = tenant?.subdomain || 'unknown';
+      const appEnv = this.configService.get<string>('APP_ENV', 'dev');
+      fallbackKeyRoot = `${appEnv}/${tenantSubdomain}/contracts/signed/${this.sanitizeSegment(contract.contractNumber)}`;
+    }
+    
     const baseFolder = keyRoot || fallbackKeyRoot;
 
     const pngBuffer = Buffer.from(signatureImageBase64.trim(), "base64");
@@ -2112,7 +2170,7 @@ export class ContractsService {
     };
   }
 
-  async searchContracts(_user: { id: string; email: string; fullName: string }, query: SearchContractsDto) {
+  async searchContracts(_user: { id: string; email: string; fullName: string; tenantId: string }, query: SearchContractsDto) {
     const q = String(query.q || "").trim();
     const limit = Math.min(Math.max(query.limit || 20, 1), 100);
     const status = String(query.status || "").trim().toUpperCase();
@@ -2170,6 +2228,7 @@ export class ContractsService {
     const statusFilter = status ? { status: { equals: status } } : {};
 
     const where = {
+      tenantId: _user.tenantId, // 🔒 SEGURIDAD: Filtrar por tenant
       ...textFilter,
       ...statusFilter,
       ...dateRangeFilter,
@@ -2192,6 +2251,7 @@ export class ContractsService {
     // Filtros para drafts
     const draftTextFilter = q
       ? {
+          tenantId: _user.tenantId, // 🔒 SEGURIDAD: Filtrar por tenant
           generatedByUserId: _user.id,
           OR: [
             { contractNumber: { contains: q, mode: "insensitive" as const } },
@@ -2200,7 +2260,7 @@ export class ContractsService {
             { clientEmail: { contains: q, mode: "insensitive" as const } },
           ],
         }
-      : { generatedByUserId: _user.id };
+      : { tenantId: _user.tenantId, generatedByUserId: _user.id };
 
     const draftWhere = {
       ...draftTextFilter,
@@ -2278,7 +2338,7 @@ export class ContractsService {
   }
 
   async getContractFiles(
-    _user: { id: string; email: string; fullName: string },
+    _user: { id: string; email: string; fullName: string; tenantId: string },
     contractId: string,
   ) {
     const contract = await (this.prisma as any).contract.findUnique({
@@ -2287,6 +2347,11 @@ export class ContractsService {
     });
 
     if (!contract) {
+      throw new NotFoundException("Contrato no encontrado.");
+    }
+
+    // 🔒 SEGURIDAD: Validar que el contrato pertenece al tenant del usuario
+    if (contract.tenantId !== _user.tenantId) {
       throw new NotFoundException("Contrato no encontrado.");
     }
 

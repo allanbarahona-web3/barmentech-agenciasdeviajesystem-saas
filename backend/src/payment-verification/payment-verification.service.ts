@@ -150,6 +150,7 @@ export class PaymentVerificationService {
     },
     userId: string,
     userName: string,
+    tenantId: string,
   ): Promise<{
     receiptId: string;
     extractedData: ExtractedPaymentData;
@@ -174,11 +175,21 @@ export class PaymentVerificationService {
 
     const warnings: string[] = [];
 
+    // Obtener subdomain del tenant
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { subdomain: true },
+    });
+    const tenantSubdomain = tenant?.subdomain || 'unknown';
+    const appEnv = this.configService.get<string>('APP_ENV', 'dev');
+
     // Convertir imagen a WebP automáticamente
     const processedFile = await this.convertImageToWebP(file);
 
     // 1. Subir imagen a Spaces
     const objectKey = [
+      appEnv,
+      tenantSubdomain,
       'payment-receipts',
       new Date().toISOString().split('T')[0], // YYYY-MM-DD
       `${Date.now()}-${this.sanitizeSegment(processedFile.originalname)}`,
@@ -228,7 +239,7 @@ export class PaymentVerificationService {
 
     if (data.currency === 'CRC' && data.amount) {
       try {
-        const exchangeRate = await this.exchangeRateService.getCurrentExchangeRate();
+        const exchangeRate = await this.exchangeRateService.getCurrentExchangeRate(tenantId);
         if (exchangeRate) {
           // Convertir CRC a USD usando TC de VENTA (la empresa compra dólares con los colones recibidos)
           convertedAmount = data.amount / exchangeRate.sellRate;
@@ -274,7 +285,7 @@ export class PaymentVerificationService {
 
       if (!detectedBankAccount) {
         // Log adicional para debugging
-        const allAccounts = await this.bankAccountsService.findAll({});
+        const allAccounts = await this.bankAccountsService.findAll({}, tenantId);
         this.logger.warn(
           `❌ Cuenta destino NO encontrada: "${searchTerm}"`,
         );

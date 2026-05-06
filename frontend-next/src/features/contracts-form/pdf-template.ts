@@ -44,15 +44,39 @@ const getResponsibleAdultIdentity = (
   return { idType: "ID", idNumber: "" };
 };
 
+export type TenantLegalInfo = {
+  name: string;
+  legalName: string | null;
+  legalId: string | null;
+  representativeName: string | null;
+  representativeId: string | null;
+  representativeTitle: string | null;
+  representativeMaritalStatus: string | null;
+  representativeAddress: string | null;
+  representativePowers: string | null;
+};
+
 export const buildContractPdfHtml = (
   state: ContractFormState,
   assets: { logoSrc: string | null; representativeSignSrc: string | null },
+  tenantLegalInfo: TenantLegalInfo | null,
 ): string => {
   const signatureDate = formatDate(new Date().toISOString().slice(0, 10));
   const contractDestinationUpper = String(state.destination || "").trim().toLocaleUpperCase("es-CR");
 
   const v = (value: unknown) => `<span class="cv">${esc(String(value ?? "___"))}</span>`;
   const clause = (title: string, body: string) => `<section class="clause"><p><strong>${title}</strong></p>${body}</section>`;
+
+  // Valores por defecto si no hay tenant legal info
+  const tenantName = tenantLegalInfo?.name || "Agencia de Viajes";
+  const legalName = tenantLegalInfo?.legalName || "___";
+  const legalId = tenantLegalInfo?.legalId || "___";
+  const repName = tenantLegalInfo?.representativeName || "___";
+  const repId = tenantLegalInfo?.representativeId || "___";
+  const repTitle = tenantLegalInfo?.representativeTitle || "___";
+  const repMaritalStatus = tenantLegalInfo?.representativeMaritalStatus || "___";
+  const repAddress = tenantLegalInfo?.representativeAddress || "___";
+  const repPowers = tenantLegalInfo?.representativePowers || "___";
 
   const companionsIntro = state.companions.length
     ? `<section class="clause">
@@ -133,9 +157,9 @@ export const buildContractPdfHtml = (
               src="${escapeAttr(assets.representativeSignSrc || "/firmakaren.png")}" 
              alt="Firma de Karen Campos" />
       </div>
-      <p class="sig-name">KAREN KEITLYN CAMPOS CANTILLO</p>
-      <p>Cedula: 3-0522-0023</p>
-      <p>Representante legal de Viajes Alma Nova</p>
+      <p class="sig-name">${esc(repName)}</p>
+      <p>Cedula: ${esc(repId)}</p>
+      <p>Representante legal de ${esc(tenantName)}</p>
       <p>Fecha: ${v(signatureDate)}</p>
     </div>`;
 
@@ -181,7 +205,7 @@ export const buildContractPdfHtml = (
 
             <section class="annex-clause">
               <p><strong>CUARTO: DECLARACION DE AUTORIZACION</strong></p>
-              <p>La persona firmante, en su condicion de tutor legal y/o quien ejerce la patria potestad, declara bajo fe de juramento que cuenta con facultades legales suficientes para autorizar el viaje del menor e identifica expresamente a ${esc(minor.travelingWith)} como el adulto responsable que acompanara al menor durante el viaje. Asimismo, exonera a Viajes Alma Nova de responsabilidad por informacion inexacta o documentacion insuficiente aportada por el representante.</p>
+              <p>La persona firmante, en su condicion de tutor legal y/o quien ejerce la patria potestad, declara bajo fe de juramento que cuenta con facultades legales suficientes para autorizar el viaje del menor e identifica expresamente a ${esc(minor.travelingWith)} como el adulto responsable que acompanara al menor durante el viaje. Asimismo, exonera a ${esc(tenantName)} de responsabilidad por informacion inexacta o documentacion insuficiente aportada por el representante.</p>
             </section>
 
             <section class="annex-clause">
@@ -214,7 +238,7 @@ export const buildContractPdfHtml = (
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Contrato ${esc(state.contractNumber)} - Viajes Alma Nova</title>
+<title>Contrato ${esc(state.contractNumber)} - ${esc(tenantName)}</title>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -518,9 +542,9 @@ html, body {
 <header class="doc-header">
   <img class="doc-header-logo"
   src="${escapeAttr(assets.logoSrc || "/assets/LOGO ALMANOVA.png")}" 
-       alt="Viajes Alma Nova" />
+       alt="${esc(tenantName)}" />
   <div class="doc-header-text">
-    <h1>Viajes Alma Nova</h1>
+    <h1>${esc(tenantName)}</h1>
     <p class="doc-meta">
       Cedula juridica: 3-101-960028 &nbsp;|&nbsp;
       contratos@viajesalmanova.com &nbsp;|&nbsp; Tel. 6015-9906<br />
@@ -543,7 +567,7 @@ html, body {
 <h3 class="section-heading">Partes</h3>
 
 <section class="clause">
-  <p>(a) <strong>KAREN KEITLYN CAMPOS CANTILLO</strong>, mayor, soltera, administradora de agencia de viajes, portadora de la cedula de identidad numero <strong>3-0522-0023</strong>, vecina de Cartago, en condicion de representante legal, con facultades de apoderado generalisimo sin limite de suma de <strong>VIAJES ALMA NOVA</strong>, cedula juridica numero 3-101-960028, en adelante denominada <strong>"Viajes Alma Nova"</strong>; y</p>
+  <p>(a) <strong>${esc(repName)}</strong>, mayor, ${esc(repMaritalStatus)}, ${esc(repTitle)}, portadora de la cedula de identidad numero <strong>${esc(repId)}</strong>, vecina de ${esc(repAddress)}, en condicion de representante legal, con facultades de ${esc(repPowers)} de <strong>${esc(legalName)}</strong>, cedula juridica numero ${esc(legalId)}, en adelante denominada <strong>"${esc(tenantName)}"</strong>; y</p>
 </section>
 
 <section class="clause">
@@ -588,54 +612,54 @@ ${clause(
   <ul>
     <li>Cuenta bancaria (IBAN): CR25011610400074756807, Banco Promerica.</li>
     <li>Sinpe Movil: 7296-9551.</li>
-    <li>Pagos en efectivo o tarjeta en oficinas de Viajes Alma Nova.</li>
+    <li>Pagos en efectivo o tarjeta en oficinas de ${esc(tenantName)}.</li>
   </ul>`,
 )}
 
 ${clause(
   "QUINTO: DEPOSITO DE RESERVA.",
   `<p>La cuota de reserva inicial se utiliza como deposito minimo para reservar y garantizar el espacio del Cliente en el Tour y los operadores turisticos, por lo que dicho deposito no sera transferible, reutilizable ni reembolsable.</p>
-  <p>En caso de incumplimiento en pagos, Viajes Alma Nova podra notificar una fecha limite para poner al dia los montos. De mantenerse el incumplimiento, Viajes Alma Nova podra excluir al Cliente del Tour y los dineros recibidos al momento no seran reembolsables.</p>`,
+  <p>En caso de incumplimiento en pagos, ${esc(tenantName)} podra notificar una fecha limite para poner al dia los montos. De mantenerse el incumplimiento, ${esc(tenantName)} podra excluir al Cliente del Tour y los dineros recibidos al momento no seran reembolsables.</p>`,
 )}
 
 ${clause(
   "SEXTO: ALOJAMIENTOS Y HOSPEDAJES.",
   `<p>Como parte del Tour, el Cliente sera alojado en establecimientos tipo hostel, hotel u otros similares, conforme a la logistica del viaje, disponibilidad y condiciones operativas del proveedor.</p>
   <p>Como referencia de preferencia del Cliente, se registra tipo de hospedaje ${v(state.lodgingType)} y acomodacion solicitada ${v(state.accommodationType)}. Esta preferencia no constituye garantia absoluta y estara sujeta a disponibilidad y criterios operativos del Tour.</p>
-  <p>La asignacion final de habitaciones y tipo de acomodacion sera determinada por Viajes Alma Nova segun criterios operativos, pudiendo incluir habitaciones individuales, dobles, multiples o compartidas.</p>
+  <p>La asignacion final de habitaciones y tipo de acomodacion sera determinada por ${esc(tenantName)} segun criterios operativos, pudiendo incluir habitaciones individuales, dobles, multiples o compartidas.</p>
   <p>El Cliente reconoce y acepta expresamente que la acomodacion podra implicar el uso de habitaciones compartidas con otros participantes del Tour, ya sean conocidos o no, asi como el uso de banos privados o compartidos, segun disponibilidad del hospedaje.</p>
-  <p>Viajes Alma Nova podra modificar el hospedaje originalmente previsto, incluyendo cambios de establecimiento, categoria o tipo de habitacion, siempre que se mantengan condiciones razonables de servicio dentro del Tour contratado.</p>
+  <p>${esc(tenantName)} podra modificar el hospedaje originalmente previsto, incluyendo cambios de establecimiento, categoria o tipo de habitacion, siempre que se mantengan condiciones razonables de servicio dentro del Tour contratado.</p>
   <p>Todo lo anterior estara sujeto a disponibilidad, necesidades operativas del Tour, asi como a casos fortuitos o de fuerza mayor.</p>`,
 )}
 
 ${clause(
   "SEPTIMO: CHECK IN Y ASIGNACION DE ASIENTOS.",
-  `<p>Viajes Alma Nova realizara el check in segun apertura de aerolinea. La asignacion de asientos la realiza la aerolinea de forma aleatoria.</p>
+  `<p>${esc(tenantName)} realizara el check in segun apertura de aerolinea. La asignacion de asientos la realiza la aerolinea de forma aleatoria.</p>
   <p>Equipaje permitido: ${v(state.luggageClause)}</p>`,
 )}
 
 ${clause(
   "OCTAVO: SEGURO DE VIAJE.",
-  `<p>Viajes Alma Nova podra colaborar con la adquisicion de seguro de viaje mediante agencia aliada Assist Card, siendo opcional para el Cliente.</p>
-  <p>El Cliente acepta que, en caso de no contratar seguro con Viajes Alma Nova o bien no contar con un seguro viajero propio durante el Tour en este mismo acto, exonera a Viajes Alma Nova de toda responsabilidad por cualquier accidente, enfermedad, gasto medico, muerte o repatriacion.</p>
-  <p>Asimismo, el Cliente declara que exime a Viajes Alma Nova, en este mismo acto y en la medida permitida por ley, de responsabilidad por gastos medicos, hospitalarios, emergencias, cancelaciones, retrasos, perdida de equipaje u otras contingencias cubribles por el seguro de viaje.</p>`,
+  `<p>${esc(tenantName)} podra colaborar con la adquisicion de seguro de viaje mediante agencia aliada Assist Card, siendo opcional para el Cliente.</p>
+  <p>El Cliente acepta que, en caso de no contratar seguro con ${esc(tenantName)} o bien no contar con un seguro viajero propio durante el Tour en este mismo acto, exonera a ${esc(tenantName)} de toda responsabilidad por cualquier accidente, enfermedad, gasto medico, muerte o repatriacion.</p>
+  <p>Asimismo, el Cliente declara que exime a ${esc(tenantName)}, en este mismo acto y en la medida permitida por ley, de responsabilidad por gastos medicos, hospitalarios, emergencias, cancelaciones, retrasos, perdida de equipaje u otras contingencias cubribles por el seguro de viaje.</p>`,
 )}
 
 ${clause(
   "NOVENO: PERSONAL DE ACOMPANAMIENTO.",
-  `<p>Dependiendo del Tour, Viajes Alma Nova podra asignar personal de acompanamiento desde Costa Rica.</p>
-  <p>El Cliente debe presentarse con al menos 3 horas de anticipacion al aeropuerto y con toda la documentacion requerida para viajar. Viajes Alma Nova no sera responsable por llegada tardia, documentos vencidos o documentacion incompleta del Cliente.</p>`,
+  `<p>Dependiendo del Tour, ${esc(tenantName)} podra asignar personal de acompanamiento desde Costa Rica.</p>
+  <p>El Cliente debe presentarse con al menos 3 horas de anticipacion al aeropuerto y con toda la documentacion requerida para viajar. ${esc(tenantName)} no sera responsable por llegada tardia, documentos vencidos o documentacion incompleta del Cliente.</p>`,
 )}
 
 ${clause(
   "DECIMO: FICHA DE ACTIVIDADES E ITINERARIO.",
   `${itineraryHtml}
-  <p>Viajes Alma Nova podra modificar itinerario, ruta, hospedajes u orden del Tour cuando sea necesario para seguridad, resguardo y ejecucion efectiva del servicio.</p>`,
+  <p>${esc(tenantName)} podra modificar itinerario, ruta, hospedajes u orden del Tour cuando sea necesario para seguridad, resguardo y ejecucion efectiva del servicio.</p>`,
 )}
 
 ${clause(
   "DECIMO PRIMERO: TRANSPORTES.",
-  `<p>Viajes Alma Nova brindara, por medio de terceros contratados, transportes relacionados con el Tour (vehiculo privado, microbus, colectivo o transporte publico). Todo transporte fuera de itinerario corre por cuenta del Cliente.</p>`,
+  `<p>${esc(tenantName)} brindara, por medio de terceros contratados, transportes relacionados con el Tour (vehiculo privado, microbus, colectivo o transporte publico). Todo transporte fuera de itinerario corre por cuenta del Cliente.</p>`,
 )}
 
 ${clause(
@@ -645,12 +669,12 @@ ${clause(
 
 ${clause(
   "DECIMO TERCERO: CANCELACIONES, REEMBOLSOS, CREDITOS Y FUERZA MAYOR.",
-  `<p><strong>13.1 Politica de Reembolsos y Plazos de Devolucion.</strong> En caso de que proceda un reembolso total o parcial por cualquier concepto relacionado con los servicios contratados, el Cliente acepta y reconoce que Viajes Alma Nova dispondra de un plazo minimo de tres (3) meses y maximo de seis (6) meses calendario para efectuar dicha devolucion. El plazo comenzara a computarse a partir de la fecha en que Viajes Alma Nova confirme formalmente la procedencia del reembolso.</p>
-  <p>El Cliente acepta que este plazo responde a la operativa del sector turistico, incluyendo procesos de recuperacion de fondos con terceros proveedores como aerolineas, hoteles, operadores y servicios internacionales, los cuales no dependen directamente de Viajes Alma Nova. El Cliente renuncia expresamente a cualquier reclamacion adicional, intereses, indemnizacion o penalizacion relacionada con el tiempo de espera dentro del plazo establecido.</p>
-  <p><strong>13.2 Politica de Creditos a Favor (Voucher).</strong> Como alternativa al reembolso, Viajes Alma Nova podra ofrecer al Cliente un credito a favor (voucher) equivalente al monto pagado, utilizable en futuros viajes, servicios o experiencias ofrecidas por la agencia. Este credito tendra una vigencia de hasta doce (12) meses y sera transferible previa autorizacion de Viajes Alma Nova. La aceptacion del credito por parte del Cliente implica la renuncia al reembolso en dinero.</p>
-  <p><strong>13.3 Responsabilidad frente a Terceros Proveedores.</strong> Viajes Alma Nova actua como intermediario entre el Cliente y terceros proveedores (incluyendo, pero no limitado a, aerolineas, hoteles, operadores turisticos y transportistas). Por lo tanto, Viajes Alma Nova no sera responsable por cancelaciones, retrasos, modificaciones, perdidas o incumplimientos atribuibles a dichos proveedores. Cualquier gestion de reembolso estara sujeta a las politicas y tiempos de respuesta de estos terceros.</p>
-  <p><strong>13.4 Cancelaciones por Parte del Cliente.</strong> En caso de cancelacion voluntaria por parte del Cliente, los montos pagados podran estar sujetos a penalidades, cargos administrativos y condiciones de los proveedores. Si la cancelacion se realiza con menos de veintidos (22) dias calendario de antelacion a la fecha de inicio del viaje, aplicara una penalidad equivalente al diez por ciento (10%) del valor total del contrato. Viajes Alma Nova no garantiza reembolsos en estos casos, pudiendo ofrecer unicamente creditos a favor segun la evaluacion del caso.</p>
-  <p><strong>13.5 Fuerza Mayor.</strong> Viajes Alma Nova no sera responsable por la imposibilidad total o parcial de prestar los servicios contratados cuando esto se deba a causas de fuerza mayor, incluyendo pero no limitado a: pandemias, conflictos politicos, desastres naturales, restricciones gubernamentales, huelgas, cancelaciones masivas o cualquier evento fuera del control razonable de la agencia. En estos casos, Viajes Alma Nova podra reprogramar el servicio o emitir un credito a favor, sin obligacion inmediata de reembolso.</p>
+  `<p><strong>13.1 Politica de Reembolsos y Plazos de Devolucion.</strong> En caso de que proceda un reembolso total o parcial por cualquier concepto relacionado con los servicios contratados, el Cliente acepta y reconoce que ${esc(tenantName)} dispondra de un plazo minimo de tres (3) meses y maximo de seis (6) meses calendario para efectuar dicha devolucion. El plazo comenzara a computarse a partir de la fecha en que ${esc(tenantName)} confirme formalmente la procedencia del reembolso.</p>
+  <p>El Cliente acepta que este plazo responde a la operativa del sector turistico, incluyendo procesos de recuperacion de fondos con terceros proveedores como aerolineas, hoteles, operadores y servicios internacionales, los cuales no dependen directamente de ${esc(tenantName)}. El Cliente renuncia expresamente a cualquier reclamacion adicional, intereses, indemnizacion o penalizacion relacionada con el tiempo de espera dentro del plazo establecido.</p>
+  <p><strong>13.2 Politica de Creditos a Favor (Voucher).</strong> Como alternativa al reembolso, ${esc(tenantName)} podra ofrecer al Cliente un credito a favor (voucher) equivalente al monto pagado, utilizable en futuros viajes, servicios o experiencias ofrecidas por la agencia. Este credito tendra una vigencia de hasta doce (12) meses y sera transferible previa autorizacion de ${esc(tenantName)}. La aceptacion del credito por parte del Cliente implica la renuncia al reembolso en dinero.</p>
+  <p><strong>13.3 Responsabilidad frente a Terceros Proveedores.</strong> ${esc(tenantName)} actua como intermediario entre el Cliente y terceros proveedores (incluyendo, pero no limitado a, aerolineas, hoteles, operadores turisticos y transportistas). Por lo tanto, ${esc(tenantName)} no sera responsable por cancelaciones, retrasos, modificaciones, perdidas o incumplimientos atribuibles a dichos proveedores. Cualquier gestion de reembolso estara sujeta a las politicas y tiempos de respuesta de estos terceros.</p>
+  <p><strong>13.4 Cancelaciones por Parte del Cliente.</strong> En caso de cancelacion voluntaria por parte del Cliente, los montos pagados podran estar sujetos a penalidades, cargos administrativos y condiciones de los proveedores. Si la cancelacion se realiza con menos de veintidos (22) dias calendario de antelacion a la fecha de inicio del viaje, aplicara una penalidad equivalente al diez por ciento (10%) del valor total del contrato. ${esc(tenantName)} no garantiza reembolsos en estos casos, pudiendo ofrecer unicamente creditos a favor segun la evaluacion del caso.</p>
+  <p><strong>13.5 Fuerza Mayor.</strong> ${esc(tenantName)} no sera responsable por la imposibilidad total o parcial de prestar los servicios contratados cuando esto se deba a causas de fuerza mayor, incluyendo pero no limitado a: pandemias, conflictos politicos, desastres naturales, restricciones gubernamentales, huelgas, cancelaciones masivas o cualquier evento fuera del control razonable de la agencia. En estos casos, ${esc(tenantName)} podra reprogramar el servicio o emitir un credito a favor, sin obligacion inmediata de reembolso.</p>
   <p><strong>13.6 Aceptacion de Condiciones.</strong> Al contratar los servicios, el Cliente declara haber leido, entendido y aceptado todas las condiciones de esta clausula, incluyendo tiempos de reembolso, politicas de credito y limitaciones de responsabilidad.</p>`,
 )}
 
@@ -663,36 +687,36 @@ ${clause(
   "DECIMO CUARTO BIS: CONDUCTA Y NORMAS DEL CLIENTE.",
   `<p>El Cliente se compromete a mantener una conducta respetuosa, adecuada y alineada con las normas de convivencia durante todo el desarrollo del tour, tanto con el personal de la Agencia como con otros participantes, proveedores y terceros.</p>
   <p>Queda estrictamente prohibido cualquier comportamiento que implique agresion verbal o fisica, discriminacion, acoso, consumo excesivo de sustancias que afecten la convivencia, incumplimiento de normas locales o cualquier accion que ponga en riesgo la operacion del tour o la experiencia del grupo.</p>
-  <p>Viajes Alma Nova se reserva el derecho de excluir, sin derecho a reembolso alguno, a cualquier Cliente cuya conducta sea considerada inapropiada, riesgosa o perjudicial para el desarrollo del tour o la experiencia de terceros.</p>
+  <p>${esc(tenantName)} se reserva el derecho de excluir, sin derecho a reembolso alguno, a cualquier Cliente cuya conducta sea considerada inapropiada, riesgosa o perjudicial para el desarrollo del tour o la experiencia de terceros.</p>
   <p>Asimismo, cualquier gasto adicional derivado de dicha exclusion sera asumido en su totalidad por el Cliente.</p>`,
 )}
 
 ${clause(
   "DECIMO QUINTO: DERECHOS Y OBLIGACIONES DE VIAJES ALMA NOVA.",
-  `<p>Viajes Alma Nova se obliga, entre otros, a ejecutar el Tour contratado; contratar y pagar a proveedores del servicio; brindar acompanamiento contractual y soporte operativo; y gestionar check in cuando corresponda.</p>`,
+  `<p>${esc(tenantName)} se obliga, entre otros, a ejecutar el Tour contratado; contratar y pagar a proveedores del servicio; brindar acompanamiento contractual y soporte operativo; y gestionar check in cuando corresponda.</p>`,
 )}
 
 ${clause(
   "DECIMO SEXTO: EXONERACION Y LIMITACION DE RESPONSABILIDAD.",
   `<p>El Cliente reconoce y acepta que la participacion en el tour implica riesgos inherentes propios de los viajes nacionales e internacionales, incluyendo, pero no limitado a, condiciones climaticas adversas, retrasos, cancelaciones, accidentes, enfermedades, situaciones politicas, sociales o sanitarias, y cualquier otro evento fuera del control razonable de la Agencia.</p>
-  <p>En consecuencia, el Cliente exonera expresa e irrevocablemente a Viajes Alma Nova de toda responsabilidad por danos, perdidas, lesiones, gastos medicos, retrasos, modificaciones de itinerario, perdida de equipaje, o cualquier otra contingencia que pueda surgir durante el desarrollo del tour, cuando estos no sean atribuibles directamente a dolo o culpa grave comprobada de la Agencia.</p>
+  <p>En consecuencia, el Cliente exonera expresa e irrevocablemente a ${esc(tenantName)} de toda responsabilidad por danos, perdidas, lesiones, gastos medicos, retrasos, modificaciones de itinerario, perdida de equipaje, o cualquier otra contingencia que pueda surgir durante el desarrollo del tour, cuando estos no sean atribuibles directamente a dolo o culpa grave comprobada de la Agencia.</p>
   <p>Asimismo, el Cliente acepta que la Agencia no garantiza resultados subjetivos del viaje, tales como satisfaccion personal, experiencias individuales, condiciones climaticas especificas, calidad percibida de servicios de terceros, ni expectativas personales no estipuladas expresamente en el presente contrato.</p>
   <p>La responsabilidad total de la Agencia, en cualquier caso comprobado, se limitara exclusivamente al monto efectivamente pagado por el Cliente por los servicios contratados.</p>`,
 )}
 
 ${clause(
   "DECIMO SEPTIMO: INTERMEDIACION Y RESPONSABILIDAD DE TERCEROS.",
-  `<p>El Cliente reconoce que Viajes Alma Nova actua exclusivamente como intermediario entre el Cliente y los distintos proveedores de servicios turisticos, incluyendo, pero no limitado a, aerolineas, hoteles, operadores turisticos, empresas de transporte y otros prestadores.</p>
+  `<p>El Cliente reconoce que ${esc(tenantName)} actua exclusivamente como intermediario entre el Cliente y los distintos proveedores de servicios turisticos, incluyendo, pero no limitado a, aerolineas, hoteles, operadores turisticos, empresas de transporte y otros prestadores.</p>
   <p>En consecuencia, la Agencia no sera responsable por actos, omisiones, incumplimientos, retrasos, cancelaciones, sobreventas, cambios de itinerario, perdidas, danos o cualquier otra situacion atribuible a dichos proveedores.</p>
   <p>El Cliente acepta que cualquier reclamacion derivada de servicios prestados por terceros debera dirigirse directamente contra el proveedor correspondiente, conforme a sus propias politicas, terminos y condiciones.</p>`,
 )}
 
 ${clause(
   "DECIMO OCTAVO: EMISION DE TIQUETES AEREOS.",
-  `<p>El Cliente reconoce y acepta que la emision de los tiquetes aereos forma parte de la gestion operativa del Tour, la cual sera realizada por Viajes Alma Nova conforme a criterios de disponibilidad, condiciones de mercado y coordinacion con proveedores.</p>
+  `<p>El Cliente reconoce y acepta que la emision de los tiquetes aereos forma parte de la gestion operativa del Tour, la cual sera realizada por ${esc(tenantName)} conforme a criterios de disponibilidad, condiciones de mercado y coordinacion con proveedores.</p>
   <p>En ese sentido, la emision de los tiquetes aereos no necesariamente se realizara de forma inmediata al momento del pago de la reserva, pagos parciales o incluso la cancelacion total del Tour, pudiendo efectuarse en cualquier momento hasta un plazo maximo de cuarenta y ocho (48) horas previas al inicio del viaje.</p>
   <p>El Cliente entiende y acepta que la confirmacion de su espacio dentro del Tour es independiente del momento de emision de los tiquetes aereos, y que estos podran ser adquiridos en una fecha posterior segun condiciones operativas y comerciales.</p>
-  <p>Viajes Alma Nova garantiza la prestacion del servicio de transporte aereo conforme a lo contratado, por lo que el Cliente renuncia a cualquier reclamo relacionado exclusivamente con el momento de emision de los tiquetes, siempre que los mismos sean entregados dentro del plazo indicado y el servicio sea efectivamente brindado.</p>`,
+  <p>${esc(tenantName)} garantiza la prestacion del servicio de transporte aereo conforme a lo contratado, por lo que el Cliente renuncia a cualquier reclamo relacionado exclusivamente con el momento de emision de los tiquetes, siempre que los mismos sean entregados dentro del plazo indicado y el servicio sea efectivamente brindado.</p>`,
 )}
 
 ${clause(
@@ -713,7 +737,7 @@ ${clause(
 ${clause(
   "VIGESIMO SEGUNDO: NOTIFICACIONES Y COMUNICACIONES.",
   `<ul>
-    <li><strong>Viajes Alma Nova:</strong> contratos@viajesalmanova.com y WhatsApp 6015-9906.</li>
+    <li><strong>${esc(tenantName)}:</strong> contratos@viajesalmanova.com y WhatsApp 6015-9906.</li>
     <li><strong>Cliente:</strong> Direccion ${v(state.clientAddress)}, correo ${v(state.clientEmail)} y telefono ${v(state.clientPhone)}.</li>
   </ul>`,
 )}
@@ -725,7 +749,7 @@ ${clause(
 
 ${clause(
   "VIGESIMO CUARTO: AUTORIZACION DE USO DE IMAGEN.",
-  `<p>El Cliente autoriza de forma expresa, voluntaria y gratuita a Viajes Alma Nova para captar, reproducir, publicar y utilizar su imagen, voz y/o apariencia en fotografias, videos o cualquier material audiovisual generado durante el desarrollo del tour.</p>
+  `<p>El Cliente autoriza de forma expresa, voluntaria y gratuita a ${esc(tenantName)} para captar, reproducir, publicar y utilizar su imagen, voz y/o apariencia en fotografias, videos o cualquier material audiovisual generado durante el desarrollo del tour.</p>
   <p>Dicho material podra ser utilizado con fines comerciales, publicitarios y promocionales en redes sociales, sitios web, campanas de marketing y cualquier otro medio de difusion de la Agencia, sin limitacion territorial ni temporal.</p>
   <p>El Cliente renuncia a cualquier compensacion economica derivada del uso de su imagen en los terminos aqui establecidos.</p>
   <p>En caso de no estar de acuerdo, el Cliente debera manifestarlo por escrito previo al inicio del tour.</p>`,

@@ -23,7 +23,7 @@ export class PaymentVerificationController {
   @Post('process-receipt')
   @UseInterceptors(FileInterceptor('receipt'))
   async processReceipt(
-    @Req() req: { user: { id: string; fullName: string } },
+    @Req() req: { user: { id: string; fullName: string; tenantId: string } },
     @UploadedFile() file: {
       buffer: Buffer;
       mimetype: string;
@@ -35,6 +35,7 @@ export class PaymentVerificationController {
       file,
       req.user.id,
       req.user.fullName,
+      req.user.tenantId,
     );
   }
 

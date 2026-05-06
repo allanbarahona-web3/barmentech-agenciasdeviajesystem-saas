@@ -38,21 +38,13 @@ export class TravelPackagesService {
     const sequential = String(count + 1).padStart(3, '0');
     const packageCode = `TP-${year}-${month}-${sequential}`;
 
-    // Validar que no exista (por si acaso)
-    const existing = await this.prisma.travelPackage.findUnique({
-      where: { packageCode },
-    });
-
-    if (existing) {
-      // Si existe, intentar con el siguiente número
-      const nextSequential = String(count + 2).padStart(3, '0');
-      return `TP-${year}-${month}-${nextSequential}`;
-    }
+    // No es necesario validar unicidad aquí porque packageCode tiene @unique en schema
+    // y cada tenant genera códigos independientes por mes
 
     return packageCode;
   }
 
-  async create(dto: CreateTravelPackageDto, createdByUserId: string) {
+  async create(dto: CreateTravelPackageDto, createdByUserId: string, tenantId: string) {
     // Validar que la fecha de retorno sea posterior a la de salida
     const departure = new Date(dto.departureDate);
     const returnDate = new Date(dto.returnDate);
@@ -79,6 +71,7 @@ export class TravelPackagesService {
         packagePrice: dto.packagePrice,
         priceCurrency: dto.priceCurrency || 'USD',
         createdByUserId,
+        tenantId,
       },
     });
 
@@ -89,22 +82,24 @@ export class TravelPackagesService {
     return travelPackage;
   }
 
-  async findAll() {
+  async findAll(tenantId: string) {
     return await this.prisma.travelPackage.findMany({
+      where: { tenantId }, // 🔒 SEGURIDAD: Filtrar por tenant
       orderBy: { departureDate: 'asc' },
     });
   }
 
-  async findAvailable() {
+  async findAvailable(tenantId: string) {
     return await this.prisma.travelPackage.findMany({
       where: {
+        tenantId, // 🔒 SEGURIDAD: Filtrar por tenant
         status: 'OPEN',
       },
       orderBy: { departureDate: 'asc' },
     });
   }
 
-  async findById(id: string) {
+  async findById(id: string, tenantId: string) {
     const travelPackage = await this.prisma.travelPackage.findUnique({
       where: { id },
     });
@@ -113,10 +108,15 @@ export class TravelPackagesService {
       throw new NotFoundException(`Travel package ${id} not found`);
     }
 
+    // 🔒 SEGURIDAD: Validar que el paquete pertenece al tenant
+    if (travelPackage.tenantId !== tenantId) {
+      throw new NotFoundException(`Travel package ${id} not found`);
+    }
+
     return travelPackage;
   }
 
-  async findByCode(packageCode: string) {
+  async findByCode(packageCode: string, tenantId: string) {
     const travelPackage = await this.prisma.travelPackage.findUnique({
       where: { packageCode },
     });
@@ -125,11 +125,16 @@ export class TravelPackagesService {
       throw new NotFoundException(`Travel package ${packageCode} not found`);
     }
 
+    // 🔒 SEGURIDAD: Validar que el paquete pertenece al tenant
+    if (travelPackage.tenantId !== tenantId) {
+      throw new NotFoundException(`Travel package ${packageCode} not found`);
+    }
+
     return travelPackage;
   }
 
-  async update(id: string, dto: UpdateTravelPackageDto) {
-    const travelPackage = await this.findById(id);
+  async update(id: string, dto: UpdateTravelPackageDto, tenantId: string) {
+    const travelPackage = await this.findById(id, tenantId);
 
     // Validar si está cancelado
     if (travelPackage.status === 'CANCELLED') {
@@ -179,8 +184,8 @@ export class TravelPackagesService {
     return updated;
   }
 
-  async delete(id: string) {
-    const travelPackage = await this.findById(id);
+  async delete(id: string, tenantId: string) {
+    const travelPackage = await this.findById(id, tenantId);
 
     // Soft delete: marcar como CANCELLED
     const deleted = await this.prisma.travelPackage.update({
@@ -197,12 +202,14 @@ export class TravelPackagesService {
    * Incrementar occupiedSlots cuando se vincule un contrato
    * @param travelPackageId ID del viaje
    * @param participantCount Número de participantes a agregar
+   * @param tenantId ID del tenant (validación de seguridad)
    */
   async incrementOccupiedSlots(
     travelPackageId: string,
     participantCount: number,
+    tenantId: string,
   ) {
-    const travelPackage = await this.findById(travelPackageId);
+    const travelPackage = await this.findById(travelPackageId, tenantId);
 
     // Validar que hay cupo disponible
     if (travelPackage.occupiedSlots + participantCount > travelPackage.capacity) {
@@ -232,12 +239,14 @@ export class TravelPackagesService {
    * Decrementar occupiedSlots cuando se elimine/cancele un contrato
    * @param travelPackageId ID del viaje
    * @param participantCount Número de participantes a restar
+   * @param tenantId ID del tenant (validación de seguridad)
    */
   async decrementOccupiedSlots(
     travelPackageId: string,
     participantCount: number,
+    tenantId: string,
   ) {
-    const travelPackage = await this.findById(travelPackageId);
+    const travelPackage = await this.findById(travelPackageId, tenantId);
 
     const newOccupiedSlots = Math.max(0, travelPackage.occupiedSlots - participantCount);
 

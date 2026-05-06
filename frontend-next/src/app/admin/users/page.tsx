@@ -39,6 +39,55 @@ export default function AdminUsersPage() {
   const [fullName, setFullName] = useState("");
   const [password, setPassword] = useState("");
   const [newRole, setNewRole] = useState<"AGENT" | "ADMIN" | "CONTADOR" | "FACTURACION_COBROS" | "VENTAS" | "OPERACIONES">("AGENT");
+  const [showPassword, setShowPassword] = useState(false);
+  const [copiedPassword, setCopiedPassword] = useState(false);
+
+  // Generar password temporal aleatorio que cumple requisitos
+  const generateRandomPassword = () => {
+    const uppercase = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    const lowercase = "abcdefghijklmnopqrstuvwxyz";
+    const numbers = "0123456789";
+    const special = "!@#$%&*_-+=";
+    
+    // Asegurar al menos: 1 mayúscula, 1 minúscula, 1 número, 1 especial
+    let pwd = "";
+    pwd += uppercase[Math.floor(Math.random() * uppercase.length)];
+    pwd += lowercase[Math.floor(Math.random() * lowercase.length)];
+    pwd += numbers[Math.floor(Math.random() * numbers.length)];
+    pwd += special[Math.floor(Math.random() * special.length)];
+    
+    // Completar hasta 12 caracteres con caracteres aleatorios
+    const allChars = uppercase + lowercase + numbers + special;
+    for (let i = pwd.length; i < 12; i++) {
+      pwd += allChars[Math.floor(Math.random() * allChars.length)];
+    }
+    
+    // Mezclar el password
+    const shuffled = pwd.split('').sort(() => Math.random() - 0.5).join('');
+    return shuffled;
+  };
+
+  const handleGeneratePassword = () => {
+    const newPassword = generateRandomPassword();
+    setPassword(newPassword);
+    showSuccess("Password generado correctamente");
+  };
+
+  const handleCopyPassword = async () => {
+    if (!password) {
+      showError("No hay password para copiar");
+      return;
+    }
+    
+    try {
+      await navigator.clipboard.writeText(password);
+      setCopiedPassword(true);
+      showSuccess("Password copiado al portapapeles");
+      setTimeout(() => setCopiedPassword(false), 3000);
+    } catch (err) {
+      showError("No se pudo copiar el password");
+    }
+  };
 
   // Modal de contraseña temporal
   const [resetModalUser, setResetModalUser] = useState<{
@@ -155,7 +204,7 @@ export default function AdminUsersPage() {
       // Add new user to the list immediately (at the top since it's newest)
       setItems((prevItems) => [newUser, ...prevItems]);
       
-      showSuccess("Usuario creado correctamente.");
+      showSuccess(`Usuario creado correctamente. Se ha enviado un email a ${trimmedEmail} con las credenciales de acceso.`);
       
       // Clear form
       setEmail("");
@@ -349,7 +398,102 @@ export default function AdminUsersPage() {
           </label>
           <label>
             Password temporal
-            <input value={password} type="password" onChange={(event) => setPassword(event.target.value)} placeholder="Mínimo 8 caracteres" />
+            <div style={{ display: "flex", gap: "8px", alignItems: "flex-start" }}>
+              <div style={{ flex: 1, position: "relative" }}>
+                <input 
+                  value={password} 
+                  type={showPassword ? "text" : "password"} 
+                  onChange={(event) => setPassword(event.target.value)} 
+                  placeholder="Mínimo 8 caracteres"
+                  style={{ width: "100%", paddingRight: "40px" }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  style={{
+                    position: "absolute",
+                    right: "8px",
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    fontSize: "1.2rem",
+                    padding: "4px 8px",
+                    color: "#6b7280",
+                  }}
+                  title={showPassword ? "Ocultar password" : "Mostrar password"}
+                >
+                  {showPassword ? "👁️" : "👁️‍🗨️"}
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={handleGeneratePassword}
+                style={{
+                  padding: "10px 16px",
+                  background: "linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "8px",
+                  fontSize: "0.9rem",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                  boxShadow: "0 2px 8px rgba(139, 92, 246, 0.3)",
+                  transition: "all 0.2s",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = "translateY(-2px)";
+                  e.currentTarget.style.boxShadow = "0 4px 12px rgba(139, 92, 246, 0.4)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = "translateY(0)";
+                  e.currentTarget.style.boxShadow = "0 2px 8px rgba(139, 92, 246, 0.3)";
+                }}
+                title="Generar password aleatorio seguro"
+              >
+                🎲 Generar
+              </button>
+              <button
+                type="button"
+                onClick={handleCopyPassword}
+                disabled={!password}
+                style={{
+                  padding: "10px 16px",
+                  background: copiedPassword 
+                    ? "linear-gradient(135deg, #10b981 0%, #059669 100%)" 
+                    : "linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)",
+                  color: "white",
+                  border: "none",
+                  borderRadius: "8px",
+                  fontSize: "0.9rem",
+                  fontWeight: 600,
+                  cursor: password ? "pointer" : "not-allowed",
+                  whiteSpace: "nowrap",
+                  boxShadow: password ? "0 2px 8px rgba(59, 130, 246, 0.3)" : "none",
+                  opacity: password ? 1 : 0.5,
+                  transition: "all 0.2s",
+                }}
+                onMouseEnter={(e) => {
+                  if (password) {
+                    e.currentTarget.style.transform = "translateY(-2px)";
+                    e.currentTarget.style.boxShadow = copiedPassword 
+                      ? "0 4px 12px rgba(16, 185, 129, 0.4)"
+                      : "0 4px 12px rgba(59, 130, 246, 0.4)";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = "translateY(0)";
+                  e.currentTarget.style.boxShadow = password 
+                    ? (copiedPassword ? "0 2px 8px rgba(16, 185, 129, 0.3)" : "0 2px 8px rgba(59, 130, 246, 0.3)")
+                    : "none";
+                }}
+                title="Copiar password al portapapeles"
+              >
+                {copiedPassword ? "✓ Copiado" : "📋 Copiar"}
+              </button>
+            </div>
             <p style={{ 
               fontSize: "0.85rem", 
               color: "#6b7280", 

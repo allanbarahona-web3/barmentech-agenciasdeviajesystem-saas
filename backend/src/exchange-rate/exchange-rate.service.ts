@@ -11,7 +11,12 @@ export class ExchangeRateService {
   /**
    * Get the exchange rate for a specific date (or today if not provided)
    */
-  async getExchangeRate(date?: string) {
+  async getExchangeRate(tenantId: string, date?: string) {
+    // Super admins don't have a tenant, return null
+    if (!tenantId) {
+      return null;
+    }
+
     let targetDate: Date;
     if (date) {
       // Parse YYYY-MM-DD as local date to avoid timezone issues
@@ -23,7 +28,12 @@ export class ExchangeRateService {
     targetDate.setHours(0, 0, 0, 0);
 
     const rate = await (this.prisma as any).exchangeRate.findUnique({
-      where: { date: targetDate },
+      where: {
+        date_tenantId: {
+          date: targetDate,
+          tenantId: tenantId,
+        },
+      },
     });
 
     if (!rate) {
@@ -46,15 +56,16 @@ export class ExchangeRateService {
   /**
    * Get current (today's) exchange rate
    */
-  async getCurrentExchangeRate() {
-    return this.getExchangeRate();
+  async getCurrentExchangeRate(tenantId: string) {
+    return this.getExchangeRate(tenantId);
   }
 
   /**
    * Get exchange rate history (last N days)
    */
-  async getExchangeRateHistory(days = 30) {
+  async getExchangeRateHistory(tenantId: string, days = 30) {
     const rates = await (this.prisma as any).exchangeRate.findMany({
+      where: { tenantId },
       orderBy: { date: "desc" },
       take: days,
     });
@@ -75,7 +86,7 @@ export class ExchangeRateService {
   /**
    * Get exchange rate history for a specific date range
    */
-  async getExchangeRateHistoryRange(startDate: string, endDate: string) {
+  async getExchangeRateHistoryRange(tenantId: string, startDate: string, endDate: string) {
     // Parse YYYY-MM-DD as local dates
     const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
     const [endYear, endMonth, endDay] = endDate.split('-').map(Number);
@@ -88,6 +99,7 @@ export class ExchangeRateService {
 
     const rates = await (this.prisma as any).exchangeRate.findMany({
       where: {
+        tenantId,
         date: {
           gte: start,
           lte: end,
@@ -114,7 +126,8 @@ export class ExchangeRateService {
    */
   async setExchangeRate(
     dto: SetExchangeRateDto,
-    user: { id: string; fullName: string },
+    user: { id: string; fullName: string; tenantId: string },
+    tenantId: string,
   ) {
     // Parse YYYY-MM-DD as local date to avoid timezone issues
     const [year, month, day] = dto.date.split('-').map(Number);
@@ -122,7 +135,12 @@ export class ExchangeRateService {
     targetDate.setHours(0, 0, 0, 0);
 
     const existing = await (this.prisma as any).exchangeRate.findUnique({
-      where: { date: targetDate },
+      where: {
+        date_tenantId: {
+          date: targetDate,
+          tenantId: tenantId,
+        },
+      },
     });
 
     let rate;
@@ -147,6 +165,7 @@ export class ExchangeRateService {
           buyRate: dto.buyRate.toFixed(4),
           sellRate: dto.sellRate.toFixed(4),
           source: "MANUAL",
+          tenantId: tenantId,
           setByUserId: user.id,
           setByName: user.fullName,
           notes: dto.notes || null,
@@ -170,8 +189,8 @@ export class ExchangeRateService {
   /**
    * Generate PDF report of exchange rate history for a date range
    */
-  async generateHistoryPdf(startDate: string, endDate: string): Promise<Buffer> {
-    const rates = await this.getExchangeRateHistoryRange(startDate, endDate);
+  async generateHistoryPdf(tenantId: string, startDate: string, endDate: string): Promise<Buffer> {
+    const rates = await this.getExchangeRateHistoryRange(tenantId, startDate, endDate);
 
     const pdf = await PDFDocument.create();
     const font = await pdf.embedFont(StandardFonts.Helvetica);
@@ -349,6 +368,7 @@ export class ExchangeRateService {
    * Send exchange rate history via email
    */
   async sendHistoryEmail(
+    tenantId: string,
     startDate: string,
     endDate: string,
     recipientEmail: string,
@@ -363,8 +383,8 @@ export class ExchangeRateService {
     }
 
     console.log("[ExchangeRate Service] Generating PDF for range:", { startDate, endDate });
-    const pdfBuffer = await this.generateHistoryPdf(startDate, endDate);
-    const rates = await this.getExchangeRateHistoryRange(startDate, endDate);
+    const pdfBuffer = await this.generateHistoryPdf(tenantId, startDate, endDate);
+    const rates = await this.getExchangeRateHistoryRange(tenantId, startDate, endDate);
     console.log("[ExchangeRate Service] PDF generated. Size:", pdfBuffer.length, "bytes. Records:", rates.length);
 
     const formatDateDisplay = (dateStr: string) => {

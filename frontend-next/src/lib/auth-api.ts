@@ -1,5 +1,21 @@
 import { AUTH_SESSION_KEY, AUTH_TOKEN_KEY, resolveApiBase } from "@/lib/runtime-config";
 
+/**
+ * Obtiene la configuración pública del tenant (logo, colores) sin autenticación
+ * Necesario para mostrar branding en la página de login
+ */
+export async function getTenantConfig(): Promise<TenantConfig> {
+  const apiBase = resolveApiBase();
+  const response = await fetch(`${apiBase}/auth/tenant-config`, {
+    method: "GET",
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!response.ok) {
+    throw new Error("No se pudo obtener la configuración del tenant");
+  }
+  return response.json();
+}
+
 export type LoginResponse = {
   access_token: string;
   user: {
@@ -21,6 +37,15 @@ export type AuthSession = {
     mustChangePassword?: boolean;
   };
   loginAt: string;
+};
+
+export type TenantConfig = {
+  name: string;
+  subdomain: string;
+  logoUrl: string | null;
+  signatureUrl: string | null;
+  primaryColor: string | null;
+  secondaryColor: string | null;
 };
 
 export type AdminUserListItem = {
@@ -386,6 +411,8 @@ export const getHomeRouteForRole = (role?: string): string => {
   const normalizedRole = String(role || "").toUpperCase();
   
   switch (normalizedRole) {
+    case "SUPER_ADMIN":
+      return "/super-admin/dashboard";
     case "ADMIN":
       return "/admin/dashboard";
     case "CONTADOR":
@@ -400,4 +427,394 @@ export const getHomeRouteForRole = (role?: string): string => {
       return "/agent-start"; // Flujo con modales
   }
 };
+
+// ========================================
+// TENANT LEGAL CONFIG
+// ========================================
+
+export type TenantLegalConfig = {
+  name: string;
+  legalName: string | null;
+  legalId: string | null;
+  representativeName: string | null;
+  representativeId: string | null;
+  representativeTitle: string | null;
+  representativeMaritalStatus: string | null;
+  representativeAddress: string | null;
+  representativePowers: string | null;
+};
+
+export type UpdateTenantLegalConfigDto = {
+  legalName?: string;
+  legalId?: string;
+  representativeName?: string;
+  representativeId?: string;
+  representativeTitle?: string;
+  representativeMaritalStatus?: string;
+  representativeAddress?: string;
+  representativePowers?: string;
+};
+
+/**
+ * Obtiene la configuración legal del tenant (público, para construir contratos)
+ */
+export const getTenantLegalConfig = async (): Promise<TenantLegalConfig> => {
+  const apiBase = resolveApiBase();
+  const response = await fetch(`${apiBase}/auth/tenant-config/legal`, {
+    method: "GET",
+    headers: { "Content-Type": "application/json" },
+  });
+  if (!response.ok) {
+    throw new Error("No se pudo obtener la configuración legal del tenant");
+  }
+  return response.json();
+};
+
+/**
+ * Actualiza la configuración legal del tenant (solo ADMIN)
+ */
+export const updateTenantLegalConfig = async (
+  dto: UpdateTenantLegalConfigDto,
+): Promise<{ message: string; tenant: TenantLegalConfig }> => {
+  const apiBase = resolveApiBase();
+  const response = await authenticatedFetch(`${apiBase}/auth/tenant-config/legal`, {
+    method: "PATCH",
+    headers: authHeaders(),
+    body: JSON.stringify(dto),
+  });
+
+  const payload = await response.json();
+  if (!response.ok) {
+    const errorMsg =
+      typeof payload?.message === "string"
+        ? payload.message
+        : "Error al actualizar la configuración legal";
+    throw new Error(errorMsg);
+  }
+
+  return payload;
+};
+
+// ========================================
+// SUPER ADMIN API
+// ========================================
+
+export type SuperAdminTenant = {
+  id: string;
+  name: string;
+  subdomain: string | null;
+  customDomain: string | null;
+  contractPrefix: string;
+  isActive: boolean;
+  suspendedAt: Date | null;
+  suspendReason: string | null;
+  planType: string | null;
+  planExpiresAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+  _count?: {
+    users: number;
+    contracts: number;
+    clients: number;
+  };
+};
+
+export type TenantDetail = {
+  id: string;
+  name: string;
+  subdomain: string | null;
+  customDomain: string | null;
+  contractPrefix: string;
+  isActive: boolean;
+  suspendedAt: Date | null;
+  suspendReason: string | null;
+  planType: string | null;
+  planExpiresAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+  // Branding
+  logoUrl: string | null;
+  signatureUrl: string | null;
+  emailLogoUrl: string | null;
+  primaryColor: string | null;
+  secondaryColor: string | null;
+  // Legal info
+  legalName: string | null;
+  legalId: string | null;
+  representativeName: string | null;
+  representativeId: string | null;
+  representativeTitle: string | null;
+  representativeMaritalStatus: string | null;
+  representativeAddress: string | null;
+  representativePowers: string | null;
+  // Admin users
+  admins: Array<{
+    id: string;
+    email: string;
+    fullName: string;
+    role: string;
+    isActive: boolean;
+    createdAt: Date;
+  }>;
+  // Counts
+  counts: {
+    users: number;
+    clients: number;
+    contracts: number;
+  };
+};
+
+export type PlatformStats = {
+  tenants: {
+    total: number;
+    active: number;
+    suspended: number;
+  };
+  users: number;
+  clients: number;
+  contracts: number;
+};
+
+export type CreateTenantDto = {
+  name: string;
+  subdomain: string; // Obligatorio
+  customDomain?: string;
+  contractPrefix: string;
+  adminEmail: string;
+  adminFullName: string; // Backend espera adminFullName
+  adminPassword: string;
+};
+
+export type UpdateTenantStatusDto = {
+  action: "ACTIVATE" | "SUSPEND";
+  reason?: string;
+};
+
+/**
+ * Obtener todos los tenants (solo SUPER_ADMIN)
+ */
+export const superAdminGetAllTenants = async (): Promise<SuperAdminTenant[]> => {
+  const apiBase = resolveApiBase();
+  const response = await authenticatedFetch(`${apiBase}/super-admin/tenants`, {
+    method: "GET",
+    headers: authHeaders(),
+  });
+
+  if (!response.ok) {
+    const payload = await response.json();
+    throw new Error(payload?.message || "Error al obtener tenants");
+  }
+
+  return response.json();
+};
+
+/**
+ * Obtener detalles de un tenant específico (solo SUPER_ADMIN)
+ */
+export const superAdminGetTenantById = async (tenantId: string): Promise<TenantDetail> => {
+  const apiBase = resolveApiBase();
+  const response = await authenticatedFetch(`${apiBase}/super-admin/tenants/${tenantId}`, {
+    method: "GET",
+    headers: authHeaders(),
+  });
+
+  if (!response.ok) {
+    const payload = await response.json();
+    throw new Error(payload?.message || "Error al obtener detalles del tenant");
+  }
+
+  return response.json();
+};
+
+/**
+ * Crear un nuevo tenant (solo SUPER_ADMIN)
+ */
+export const superAdminCreateTenant = async (dto: CreateTenantDto): Promise<{ message: string; tenant: SuperAdminTenant }> => {
+  const apiBase = resolveApiBase();
+  const response = await authenticatedFetch(`${apiBase}/super-admin/tenants`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: JSON.stringify(dto),
+  });
+
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(payload?.message || "Error al crear tenant");
+  }
+
+  return payload;
+};
+
+/**
+ * Actualizar estado de un tenant (solo SUPER_ADMIN)
+ */
+export const superAdminUpdateTenantStatus = async (
+  tenantId: string,
+  dto: UpdateTenantStatusDto,
+): Promise<{ message: string; tenant: SuperAdminTenant }> => {
+  const apiBase = resolveApiBase();
+  const response = await authenticatedFetch(`${apiBase}/super-admin/tenants/${tenantId}/status`, {
+    method: "PATCH",
+    headers: authHeaders(),
+    body: JSON.stringify(dto),
+  });
+
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(payload?.message || "Error al actualizar estado del tenant");
+  }
+
+  return payload;
+};
+
+/**
+ * Obtener estadísticas de la plataforma (solo SUPER_ADMIN)
+ */
+export const superAdminGetPlatformStats = async (): Promise<PlatformStats> => {
+  const apiBase = resolveApiBase();
+  const response = await authenticatedFetch(`${apiBase}/super-admin/stats`, {
+    method: "GET",
+    headers: authHeaders(),
+  });
+
+  if (!response.ok) {
+    const payload = await response.json();
+    throw new Error(payload?.message || "Error al obtener estadísticas");
+  }
+
+  return response.json();
+};
+
+// ========================================
+// TENANT CONFIGURATION (ADMIN only)
+// ========================================
+
+export type TenantConfigResponse = {
+  id: string;
+  name: string;
+  subdomain: string | null;
+  customDomain: string | null;
+  contractPrefix: string;
+  logoUrl: string | null;
+  signatureUrl: string | null;
+  emailLogoUrl: string | null;
+  primaryColor: string | null;
+  secondaryColor: string | null;
+  legalName: string | null;
+  legalId: string | null;
+  representativeName: string | null;
+  representativeId: string | null;
+  representativeTitle: string | null;
+  representativeMaritalStatus: string | null;
+  representativeAddress: string | null;
+  representativePowers: string | null;
+};
+
+export type UpdateTenantConfigDto = {
+  primaryColor?: string;
+  secondaryColor?: string;
+  fromEmail?: string;
+  replyToEmail?: string;
+  legalName?: string;
+  legalId?: string;
+  representativeName?: string;
+  representativeId?: string;
+  representativeTitle?: string;
+  representativeMaritalStatus?: string;
+  representativeAddress?: string;
+  representativePowers?: string;
+};
+
+/**
+ * Obtener configuración del tenant actual (ADMIN)
+ */
+export const getTenantConfigAdmin = async (): Promise<TenantConfigResponse> => {
+  const apiBase = resolveApiBase();
+  const response = await authenticatedFetch(`${apiBase}/tenant/config`, {
+    method: "GET",
+    headers: authHeaders(),
+  });
+
+  if (!response.ok) {
+    const payload = await response.json();
+    throw new Error(payload?.message || "Error al obtener configuración del tenant");
+  }
+
+  return response.json();
+};
+
+/**
+ * Actualizar configuración del tenant (ADMIN)
+ */
+export const updateTenantConfigAdmin = async (
+  dto: UpdateTenantConfigDto,
+): Promise<{ id: string; name: string; primaryColor: string | null; secondaryColor: string | null; legalName: string | null }> => {
+  const apiBase = resolveApiBase();
+  const response = await authenticatedFetch(`${apiBase}/tenant/config`, {
+    method: "PATCH",
+    headers: authHeaders(),
+    body: JSON.stringify(dto),
+  });
+
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(payload?.message || "Error al actualizar configuración");
+  }
+
+  return payload;
+};
+
+/**
+ * Subir logo del tenant (ADMIN)
+ */
+export const uploadTenantLogo = async (file: File): Promise<{ success: boolean; assetType: string; url: string }> => {
+  const apiBase = resolveApiBase();
+  const token = getStoredToken();
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const response = await fetch(`${apiBase}/tenant/assets/logo`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      // NO incluir Content-Type para que el browser lo setee automáticamente con boundary
+    },
+    body: formData,
+  });
+
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(payload?.message || "Error al subir logo");
+  }
+
+  return payload;
+};
+
+/**
+ * Subir firma del tenant (ADMIN)
+ */
+export const uploadTenantSignature = async (file: File): Promise<{ success: boolean; assetType: string; url: string }> => {
+  const apiBase = resolveApiBase();
+  const token = getStoredToken();
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const response = await fetch(`${apiBase}/tenant/assets/signature`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      // NO incluir Content-Type para que el browser lo setee automáticamente con boundary
+    },
+    body: formData,
+  });
+
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(payload?.message || "Error al subir firma");
+  }
+
+  return payload;
+};
+
+
 

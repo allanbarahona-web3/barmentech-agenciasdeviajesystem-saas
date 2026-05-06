@@ -28,6 +28,8 @@ import { ContractsService } from "./contracts.service";
 import { SendContractEmailDto } from "./dto/send-contract-email.dto";
 import { SendSigningEmailDto } from "./dto/send-signing-email.dto";
 import { SaveContractDraftDto } from "./dto/save-contract-draft.dto";
+import { Tenant } from "../tenant/tenant.decorator";
+import { ResolvedTenant } from "../tenant/tenant.service";
 
 @Controller("contracts")
 export class ContractsController {
@@ -55,6 +57,7 @@ export class ContractsController {
       user: { id: string; email: string; fullName: string };
     },
     @Body() dto: SendContractEmailDto,
+    @Tenant() tenant: ResolvedTenant,
     @UploadedFile()
     file?: {
       buffer: Buffer;
@@ -73,7 +76,7 @@ export class ContractsController {
       throw new BadRequestException("El PDF adjunto esta vacio.");
     }
 
-    return this.contractsService.sendContractEmail(req.user, dto, file.buffer);
+    return this.contractsService.sendContractEmail(req.user, dto, file.buffer, tenant);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -95,7 +98,7 @@ export class ContractsController {
   getDraft(
     @Req()
     req: {
-      user: { id: string; email: string; fullName: string };
+      user: { id: string; email: string; fullName: string; tenantId: string };
     },
     @Param("draftId") draftId: string,
   ) {
@@ -134,7 +137,7 @@ export class ContractsController {
   archiveContract(
     @Req()
     req: {
-      user: { id: string; email: string; fullName: string };
+      user: { id: string; email: string; fullName: string; tenantId: string };
     },
     @Body() dto: ArchiveContractDto,
     @UploadedFiles()
@@ -185,7 +188,7 @@ export class ContractsController {
   searchContracts(
     @Req()
     req: {
-      user: { id: string; email: string; fullName: string };
+      user: { id: string; email: string; fullName: string; tenantId: string };
     },
     @Query() query: SearchContractsDto,
   ) {
@@ -197,7 +200,7 @@ export class ContractsController {
   getContractFiles(
     @Req()
     req: {
-      user: { id: string; email: string; fullName: string };
+      user: { id: string; email: string; fullName: string; tenantId: string };
     },
     @Param("contractId") contractId: string,
   ) {
@@ -227,8 +230,9 @@ export class ContractsController {
       user: { id: string; email: string; fullName: string };
     },
     @Body() dto: SendSigningEmailDto,
+    @Tenant() tenant: ResolvedTenant,
   ) {
-    return this.contractsService.sendContractSigningEmail(req.user, dto);
+    return this.contractsService.sendContractSigningEmail(req.user, dto, tenant);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -240,8 +244,9 @@ export class ContractsController {
       user: { id: string; email: string; fullName: string };
     },
     @Param("contractId") contractId: string,
+    @Tenant() tenant: ResolvedTenant,
   ) {
-    return this.contractsService.resendSignedContractEmailToParties(req.user, contractId);
+    return this.contractsService.resendSignedContractEmailToParties(req.user, contractId, tenant);
   }
 
   @Throttle({ default: { ttl: 60000, limit: 20 } })

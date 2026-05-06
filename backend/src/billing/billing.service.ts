@@ -38,6 +38,21 @@ export class BillingService {
     private readonly configService: ConfigService,
   ) {}
 
+  /**
+   * Obtiene el tenant desde el contractId para poder acceder a sus assets
+   */
+  private async getTenantFromContract(contractId: string) {
+    const contract = await this.prisma.contract.findUnique({
+      where: { id: contractId },
+      select: { tenantId: true },
+    });
+    if (!contract?.tenantId) return null;
+    return this.prisma.tenant.findUnique({
+      where: { id: contract.tenantId },
+      select: { id: true, subdomain: true, logoUrl: true, signatureUrl: true, emailLogoUrl: true },
+    });
+  }
+
   private toNumber(value: unknown, fallback = 0): number {
     const parsed = Number.parseFloat(String(value ?? "").trim());
     return Number.isFinite(parsed) ? parsed : fallback;
@@ -78,9 +93,9 @@ export class BillingService {
     return match?.[1] || null;
   }
 
-  private async loadCompanyLogo(): Promise<{ bytes: Buffer; format: "png" | "jpg" } | null> {
-    // Prioridad 1: Descargar desde URL (producción y desarrollo)
-    const logoUrl = this.configService.get<string>("COMPANY_LOGO_URL", "").trim();
+  private async loadCompanyLogo(tenant?: { logoUrl: string | null } | null): Promise<{ bytes: Buffer; format: "png" | "jpg" } | null> {
+    // Prioridad 1: Usar logoUrl del tenant si está disponible
+    const logoUrl = tenant?.logoUrl || this.configService.get<string>("COMPANY_LOGO_URL", "").trim();
     if (logoUrl) {
       try {
         const response = await fetch(logoUrl);
@@ -125,13 +140,14 @@ export class BillingService {
     return null;
   }
 
-  private async loadCompanyLogoEmailSrc(): Promise<string | null> {
-    const configuredUrl = this.configService.get<string>("COMPANY_LOGO_EMAIL_URL", "").trim();
+  private async loadCompanyLogoEmailSrc(tenant?: { emailLogoUrl: string | null; logoUrl: string | null } | null): Promise<string | null> {
+    // Prioridad 1: Usar emailLogoUrl del tenant, si no está, usar logoUrl del tenant
+    const configuredUrl = tenant?.emailLogoUrl || tenant?.logoUrl || this.configService.get<string>("COMPANY_LOGO_EMAIL_URL", "").trim();
     if (configuredUrl) {
       return configuredUrl;
     }
 
-    const logo = await this.loadCompanyLogo();
+    const logo = await this.loadCompanyLogo(tenant);
     if (!logo) {
       return null;
     }
@@ -236,12 +252,13 @@ export class BillingService {
     };
     detailRows: Array<{ label: string; value: string }>;
     note?: string;
+    tenant?: { logoUrl: string | null } | null;
   }) {
     const pdf = await PDFDocument.create();
     const page = pdf.addPage([595.28, 841.89]);
     const font = await pdf.embedFont(StandardFonts.Helvetica);
     const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
-    const logo = await this.loadCompanyLogo();
+    const logo = await this.loadCompanyLogo(params.tenant);
 
     page.drawRectangle({
       x: 36,
@@ -577,12 +594,13 @@ export class BillingService {
     approvedAt: Date | string | null;
     previousBalance: number;
     newBalance: number;
+    tenant?: { logoUrl: string | null } | null;
   }) {
     const pdf = await PDFDocument.create();
     const page = pdf.addPage([595.28, 841.89]);
     const font = await pdf.embedFont(StandardFonts.Helvetica);
     const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
-    const logo = await this.loadCompanyLogo();
+    const logo = await this.loadCompanyLogo(params.tenant);
     const colors = this.getPdfColors();
 
     // Draw standard header with logo and company info
@@ -979,12 +997,13 @@ export class BillingService {
       installmentsLabel: string;
     };
     paymentAccountNote: string;
+    tenant?: { logoUrl: string | null } | null;
   }) {
     const pdf = await PDFDocument.create();
     const page = pdf.addPage([595.28, 841.89]);
     const font = await pdf.embedFont(StandardFonts.Helvetica);
     const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
-    const logo = await this.loadCompanyLogo();
+    const logo = await this.loadCompanyLogo(params.tenant);
 
     const colors = this.getPdfColors();
     const ink = colors.ink;
@@ -1369,12 +1388,13 @@ export class BillingService {
       actor: string;
       status: string;
     }>;
+    tenant?: { logoUrl: string | null } | null;
   }) {
     const pdf = await PDFDocument.create();
     const page = pdf.addPage([595.28, 841.89]);
     const font = await pdf.embedFont(StandardFonts.Helvetica);
     const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
-    const logo = await this.loadCompanyLogo();
+    const logo = await this.loadCompanyLogo(params.tenant);
 
     const ink = rgb(0.09, 0.14, 0.24);
     const slate = rgb(0.34, 0.4, 0.5);
@@ -1877,7 +1897,7 @@ export class BillingService {
   private async ensureInvoicePdf(invoiceId: string) {
     const invoice = await (this.prisma as any).billingInvoice.findUnique({
       where: { id: invoiceId },
-      include: { client: true, contract: true },
+      include: { client: true, contract: { include: { tenant: { select: { logoUrl: true, emailLogoUrl: true, fromEmail: true, replyToEmail: true } } } } },
     });
     if (!invoice) {
       throw new NotFoundException("Factura no encontrada.");
@@ -1885,6 +1905,7 @@ export class BillingService {
 
     const fileName = `factura-${invoice.invoiceNumber}.pdf`;
     const company = this.getCompanyProfile(invoice.contract);
+    const tenant = invoice.contract?.tenant || null;
     const payload =
       invoice.contract?.payload && typeof invoice.contract.payload === "object"
         ? (invoice.contract.payload as Record<string, unknown>)
@@ -1947,9 +1968,14 @@ export class BillingService {
         installmentsLabel: isCredit ? String(installmentCount) : "1",
       },
       paymentAccountNote,
+      tenant,
     });
 
+    const appEnv = this.configService.get<string>('APP_ENV', 'dev');
+    const tenantSubdomain = tenant.subdomain || 'unknown';
     const objectKey = [
+      appEnv,
+      tenantSubdomain,
       "billing",
       this.sanitizeSegment(invoice.contractNumber),
       "invoice",
@@ -1984,7 +2010,7 @@ export class BillingService {
       include: {
         invoice: { include: { client: true } },
         payment: true,
-        contract: true,
+        contract: { include: { tenant: { select: { logoUrl: true } } } },
       },
     });
 
@@ -2010,6 +2036,7 @@ export class BillingService {
     const previousBalance = this.toNumber(receipt.invoice?.balanceAmount, 0) + paymentAmount;
     const newBalance = this.toNumber(receipt.invoice?.balanceAmount, 0);
 
+    const tenant = receipt.contract?.tenant || null;
     const pdfBuffer = await this.createReceiptPdfBuffer({
       receiptNumber: String(receipt.receiptNumber),
       contractNumber: String(receipt.contractNumber),
@@ -2023,9 +2050,14 @@ export class BillingService {
       approvedAt: receipt.approvedAt,
       previousBalance,
       newBalance,
+      tenant,
     });
 
+    const appEnv = this.configService.get<string>('APP_ENV', 'dev');
+    const tenantSubdomain = tenant.subdomain || 'unknown';
     const objectKey = [
+      appEnv,
+      tenantSubdomain,
       "billing",
       this.sanitizeSegment(receipt.contractNumber),
       "receipts",
@@ -2054,7 +2086,7 @@ export class BillingService {
       where: { id: creditNoteId },
       include: {
         invoice: { include: { client: true } },
-        contract: true,
+        contract: { include: { tenant: { select: { logoUrl: true } } } },
       },
     });
 
@@ -2063,6 +2095,7 @@ export class BillingService {
     }
 
     const company = this.getCompanyProfile(creditNote.contract);
+    const tenant = creditNote.contract?.tenant || null;
     const pdfBuffer = await this.createCorporatePdfBuffer({
       documentTitle: "Nota de Credito",
       documentNumber: String(creditNote.creditNoteNumber),
@@ -2079,9 +2112,14 @@ export class BillingService {
         { label: "Aplicada", value: this.formatDateTime(creditNote.appliedAt) },
       ],
       note: "La aplicacion de la nota de credito se gestiona bajo flujo de aprobacion administrativa.",
+      tenant,
     });
 
+    const appEnv = this.configService.get<string>('APP_ENV', 'dev');
+    const tenantSubdomain = tenant.subdomain || 'unknown';
     const objectKey = [
+      appEnv,
+      tenantSubdomain,
       "billing",
       this.sanitizeSegment(creditNote.contractNumber),
       "credit-notes",
@@ -2133,7 +2171,7 @@ export class BillingService {
       where: { contractId },
       include: {
         client: true,
-        contract: true,
+        contract: { include: { tenant: { select: { logoUrl: true } } } },
         payments: { orderBy: { reportedAt: "asc" } },
         creditNotes: { orderBy: { issuedAt: "asc" } },
       },
@@ -2144,6 +2182,7 @@ export class BillingService {
     }
 
     const company = this.getCompanyProfile(invoice.contract);
+    const tenant = invoice.contract?.tenant || null;
     const appliedNotes = (invoice.creditNotes || []).filter((n: any) => String(n?.status || "") === "NC_APLICADA");
     const grossInvoiced = this.toNumber(invoice.totalAmount, 0) +
       appliedNotes.reduce((sum: number, n: any) => sum + this.toNumber(n.amount, 0), 0);
@@ -2234,9 +2273,14 @@ export class BillingService {
         currency: String(invoice.currency || "USD"),
       },
       movements,
+      tenant,
     });
 
+    const appEnv = this.configService.get<string>('APP_ENV', 'dev');
+    const tenantSubdomain = tenant.subdomain || 'unknown';
     const objectKey = [
+      appEnv,
+      tenantSubdomain,
       "billing",
       this.sanitizeSegment(invoice.contractNumber),
       "account-statements",
@@ -2266,6 +2310,7 @@ export class BillingService {
       include: {
         client: true,
         billingInvoice: true,
+        tenant: { select: { logoUrl: true, emailLogoUrl: true, fromEmail: true, replyToEmail: true } },
       },
     });
 
@@ -2324,21 +2369,32 @@ export class BillingService {
     }
 
     const apiKey = this.configService.get<string>("RESEND_API_KEY", "").trim();
-    const fromEmail = this.configService.get<string>("CONTRACTS_FROM_EMAIL", "").trim();
-    if (!apiKey || !fromEmail) {
-      throw new InternalServerErrorException("Falta configurar RESEND_API_KEY o CONTRACTS_FROM_EMAIL.");
+    const fallbackFromEmail = this.configService.get<string>("CONTRACTS_FROM_EMAIL", "").trim();
+    
+    if (!apiKey) {
+      throw new InternalServerErrorException("Falta configurar RESEND_API_KEY.");
     }
 
     const pdf = await this.ensureInvoicePdf(invoice.id);
     const invoicePdfUrl = await this.buildSignedObjectUrl(String(pdf.objectKeyPdf || ""), 86_400);
-    const logoSrc = await this.loadCompanyLogoEmailSrc();
+    const tenant = contract?.tenant || null;
+    
+    // Usar email del tenant si existe, sino fallback al sistema
+    const fromEmail = tenant?.fromEmail || fallbackFromEmail;
+    const replyTo = tenant?.replyToEmail || undefined;
+    
+    if (!fromEmail) {
+      throw new InternalServerErrorException("No hay email configurado (ni en tenant ni en sistema).");
+    }
+    
+    const logoSrc = await this.loadCompanyLogoEmailSrc(tenant);
     const currency = String(invoice.currency || "USD").trim().toUpperCase() || "USD";
     const amount = (value: unknown) => `${currency} ${this.toNumber(value, 0).toFixed(2)}`;
     const paymentRef = String(contract.paymentReference || "N/A");
     
     const resend = new Resend(apiKey);
 
-    await resend.emails.send({
+    const emailPayload: any = {
       from: fromEmail,
       to: [targetEmail],
       subject: `Contrato ${invoice.contractNumber} - Estado de cuenta inicial - Viajes Alma Nova`,
@@ -2492,7 +2548,16 @@ contratos@viajesalmanova.com
         </body>
         </html>
       `,
-    });
+    };
+
+    // Agregar reply-to si existe
+    if (replyTo) {
+      emailPayload.reply_to = replyTo;
+    }
+
+    this.logger.debug(`📧 [Billing] Enviando estado de cuenta desde: ${fromEmail} (tenant: ${tenant?.name || 'Sistema'})`);
+    
+    await resend.emails.send(emailPayload);
 
     await this.logAudit({
       entityType: "INVOICE",
@@ -2555,6 +2620,7 @@ contratos@viajesalmanova.com
             client: true,
           },
         },
+        contract: { include: { tenant: { select: { logoUrl: true, emailLogoUrl: true } } } },
       },
     });
 
@@ -2573,9 +2639,10 @@ contratos@viajesalmanova.com
     const normalizedCc = String(ccEmail || "").trim();
 
     const apiKey = this.configService.get<string>("RESEND_API_KEY", "").trim();
-    const fromEmail = this.configService.get<string>("CONTRACTS_FROM_EMAIL", "").trim();
-    if (!apiKey || !fromEmail) {
-      throw new InternalServerErrorException("Falta configurar RESEND_API_KEY o CONTRACTS_FROM_EMAIL.");
+    const fallbackFromEmail = this.configService.get<string>("CONTRACTS_FROM_EMAIL", "").trim();
+    
+    if (!apiKey) {
+      throw new InternalServerErrorException("Falta configurar RESEND_API_KEY.");
     }
 
     const pdf = await this.ensureCreditNotePdf(creditNote.id);
@@ -2584,10 +2651,20 @@ contratos@viajesalmanova.com
     const clientName = String(creditNote.invoice?.client?.fullName || "Cliente");
     const amountFormatted = `USD ${this.toNumber(creditNote.amount, 0).toFixed(2)}`;
     const reason = String(creditNote.reason || "-");
-    const logoSrc = await this.loadCompanyLogoEmailSrc();
+    const tenant = creditNote.contract?.tenant || null;
+    
+    // Usar email del tenant si existe, sino fallback al sistema
+    const fromEmail = tenant?.fromEmail || fallbackFromEmail;
+    const replyTo = tenant?.replyToEmail || undefined;
+    
+    if (!fromEmail) {
+      throw new InternalServerErrorException("No hay email configurado (ni en tenant ni en sistema).");
+    }
+    
+    const logoSrc = await this.loadCompanyLogoEmailSrc(tenant);
 
     const resend = new Resend(apiKey);
-    await resend.emails.send({
+    const emailPayload: any = {
       from: fromEmail,
       to: [targetEmail],
       ...(normalizedCc ? { cc: [normalizedCc] } : {}),
@@ -2709,7 +2786,16 @@ contratos@viajesalmanova.com
 </html>
       `,
       text: `Nota de Crédito Aprobada\n\nCliente: ${clientName}\nContrato: ${String(creditNote.contractNumber || "-")}\nNota de Crédito: ${String(creditNote.creditNoteNumber || "-")}\nMonto: ${amountFormatted}\nMotivo: ${reason}\n\nDescarga el PDF aquí: ${pdfUrl}\n\nViajes Alma Nova\nCédula Jurídica: 3-101-960028\nTeléfono: +506 7006-7572\nEmail: contratos@viajesalmanova.com`,
-    });
+    };
+
+    // Agregar reply-to si existe
+    if (replyTo) {
+      emailPayload.reply_to = replyTo;
+    }
+
+    this.logger.debug(`📧 [Billing] Enviando nota de crédito desde: ${fromEmail} (tenant: ${tenant?.name || 'Sistema'})`);
+    
+    await resend.emails.send(emailPayload);
 
     await this.logAudit({
       entityType: "CREDIT_NOTE",
@@ -2748,7 +2834,7 @@ contratos@viajesalmanova.com
       where: { contractId },
       include: {
         client: true,
-        contract: true,
+        contract: { include: { tenant: { select: { logoUrl: true, emailLogoUrl: true } } } },
       },
     });
 
@@ -2764,16 +2850,27 @@ contratos@viajesalmanova.com
     const normalizedCc = String(ccEmail || "").trim();
 
     const apiKey = this.configService.get<string>("RESEND_API_KEY", "").trim();
-    const fromEmail = this.configService.get<string>("CONTRACTS_FROM_EMAIL", "").trim();
-    if (!apiKey || !fromEmail) {
-      throw new InternalServerErrorException("Falta configurar RESEND_API_KEY o CONTRACTS_FROM_EMAIL.");
+    const fallbackFromEmail = this.configService.get<string>("CONTRACTS_FROM_EMAIL", "").trim();
+    
+    if (!apiKey) {
+      throw new InternalServerErrorException("Falta configurar RESEND_API_KEY.");
     }
 
     const statementPdf = await this.getAccountStatementPdfUrl(user, contractId, 86_400);
     const documentUrl = statementPdf.url;
     const clientName = String(invoice.client?.fullName || "Cliente");
     const paymentRef = String(invoice.contract?.paymentReference || "N/A");
-    const logoSrc = await this.loadCompanyLogoEmailSrc();
+    const tenant = invoice.contract?.tenant || null;
+    
+    // Usar email del tenant si existe, sino fallback al sistema
+    const fromEmail = tenant?.fromEmail || fallbackFromEmail;
+    const replyTo = tenant?.replyToEmail || undefined;
+    
+    if (!fromEmail) {
+      throw new InternalServerErrorException("No hay email configurado (ni en tenant ni en sistema).");
+    }
+    
+    const logoSrc = await this.loadCompanyLogoEmailSrc(tenant);
     const statusLabels: Record<string, string> = {
       FACTURA_EMITIDA: "Emitida",
       FACTURA_PARCIAL: "Parcial",
@@ -2790,7 +2887,7 @@ contratos@viajesalmanova.com
     const balanceAmount = formatAmount(invoice.balanceAmount);
 
     const resend = new Resend(apiKey);
-    await resend.emails.send({
+    const emailPayload: any = {
       from: fromEmail,
       to: [targetEmail],
       ...(normalizedCc ? { cc: [normalizedCc] } : {}),
@@ -2935,7 +3032,16 @@ contratos@viajesalmanova.com
 </html>
       `,
       text: `Estado de Cuenta del Contrato\n\nCliente: ${clientName}\nContrato: ${String(invoice.contractNumber || "-")}\nEstado: ${statusText}\n\nRESUMEN DE MONTOS:\nTotal del contrato: ${totalAmount}\nTotal verificado: ${verifiedAmount}\nEn revisión bancaria: ${pendingAmount}\nSaldo por cobrar: ${balanceAmount}\n\nVer estado de cuenta completo (PDF): ${documentUrl}\n\nViajes Alma Nova\nCédula Jurídica: 3-101-960028\nTeléfono: +506 7006-7572\nEmail: contratos@viajesalmanova.com`,
-    });
+    };
+
+    // Agregar reply-to si existe
+    if (replyTo) {
+      emailPayload.reply_to = replyTo;
+    }
+
+    this.logger.debug(`📧 [Billing] Enviando estado de cuenta desde: ${fromEmail} (tenant: ${tenant?.name || 'Sistema'})`);
+    
+    await resend.emails.send(emailPayload);
 
     await this.logAudit({
       entityType: "INVOICE",
@@ -3133,14 +3239,16 @@ contratos@viajesalmanova.com
   }
 
   async listBillingContracts(
-    _user: { id: string; email: string; fullName: string },
+    _user: { id: string; email: string; fullName: string; tenantId: string },
     query: ListBillingContractsDto,
   ) {
     const q = String(query.q || "").trim();
     const limit = Math.min(Math.max(query.limit || 30, 1), 100);
     const status = String(query.status || "").trim();
 
-    const where: Record<string, unknown> = {};
+    const where: Record<string, unknown> = {
+      tenantId: _user.tenantId, // 🔒 SEGURIDAD: Filtrar por tenant
+    };
     if (status) {
       where.status = status;
     }
@@ -3897,6 +4005,7 @@ contratos@viajesalmanova.com
         contract: {
           include: {
             documents: true,
+            tenant: { select: { subdomain: true } },
           },
         },
       },
@@ -4075,7 +4184,11 @@ contratos@viajesalmanova.com
         // Convertir imágenes a WebP automáticamente
         const processedFile = await this.convertImageToWebP(file);
 
+        const appEnv = this.configService.get<string>('APP_ENV', 'dev');
+        const tenantSubdomain = invoice.contract?.tenant?.subdomain || 'unknown';
         const objectKey = [
+          appEnv,
+          tenantSubdomain,
           "billing",
           this.sanitizeSegment(invoice.contractNumber),
           "payments",
@@ -4756,7 +4869,7 @@ contratos@viajesalmanova.com
         invoice: {
           include: {
             client: true,
-            contract: true,
+            contract: { include: { tenant: { select: { logoUrl: true, emailLogoUrl: true } } } },
           },
         },
       },
@@ -4815,7 +4928,8 @@ contratos@viajesalmanova.com
     const previousBalanceFormatted = `USD ${previousBalance.toFixed(2)}`;
     const newBalanceFormatted = `USD ${newBalance.toFixed(2)}`;
     const paymentRef = String(receipt.invoice?.contract?.paymentReference || "N/A");
-    const logoSrc = await this.loadCompanyLogoEmailSrc();
+    const tenant = receipt.invoice?.contract?.tenant || null;
+    const logoSrc = await this.loadCompanyLogoEmailSrc(tenant);
 
     await resend.emails.send({
       from: fromEmail,

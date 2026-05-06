@@ -42,7 +42,7 @@ const getStatusBadge = (status: string) => {
     case "OPEN":
       return { label: "✅ ABIERTO", bg: "#d1fae5", color: "#065f46" };
     case "CLOSED":
-      return { label: "🔴 LLENO", bg: "#fee2e2", color: "#991b1b" };
+      return { label: "⏸ SUSPENDIDO", bg: "#fef3c7", color: "#92400e" };
     case "CANCELLED":
       return { label: "⚫ CANCELADO", bg: "#f3f4f6", color: "#374151" };
     default:

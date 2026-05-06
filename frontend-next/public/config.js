@@ -1,6 +1,10 @@
 (() => {
   const normalizeBase = (value) => String(value || "").trim().replace(/\/+$/, "");
-  const isLocalHost = ["localhost", "127.0.0.1"].includes(window.location.hostname);
+  const hostname = String(window.location.hostname || "").toLowerCase();
+  const isLocalHost = 
+    hostname === "localhost" || 
+    hostname === "127.0.0.1" || 
+    hostname.endsWith(".localhost");
   const productionFallbackByHost = {
     "contratos.lucitour.com": "https://lucitourops-vww2w.ondigitalocean.app",
     "www.contratos.lucitour.com": "https://lucitourops-vww2w.ondigitalocean.app",
@@ -22,9 +26,15 @@
     : "";
 
   const hostFallback = normalizeBase(
-    productionFallbackByHost[String(window.location.hostname || "").toLowerCase()] || "",
+    productionFallbackByHost[hostname] || "",
   );
-  const localFallback = isLocalHost ? "http://localhost:3001" : "";
+  
+  // En desarrollo con subdominios, preservar el subdominio en el API_BASE
+  // Ejemplo: empresa.localhost:3000 → http://empresa.localhost:3001
+  const localFallback = isLocalHost 
+    ? `http://${hostname}:3001`
+    : "";
+  
   const apiBase = runtimeApiBase || localStorageOverride || hostFallback || localFallback;
 
   window.APP_CONFIG = {

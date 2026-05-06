@@ -7,35 +7,155 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ========================================
+// ENUMS
+// ========================================
+
+enum UserRole {
+  SUPER_ADMIN // Administrador de la plataforma SaaS (ve todos los tenants)
+  ADMIN // Administrador del tenant
+  CONTADOR // Contador del tenant
+  FACTURACION_COBROS // Facturación y cobros del tenant
+  VENTAS // Equipo de ventas del tenant
+  OPERACIONES // Operaciones del tenant
+  AGENT // Agente de viajes del tenant (default)
+}
+
+// ========================================
+// MULTI-TENANT MODEL
+// ========================================
+
+model Tenant {
+  id             String  @id @default(cuid())
+  name           String  @unique // "Viajes Alma Nova", "Lucitours"
+  subdomain      String? @unique // "almanova", "lucitours" (futuro)
+  customDomain   String? @unique // "system.viajesalmanova.com", "system.lucitour.com"
+  contractPrefix String  @unique // "ALM", "LUC" para números de contrato
+  isActive       Boolean @default(true)
+
+  // Suspension management (Super Admin)
+  suspendedAt   DateTime? // Fecha de suspensión
+  suspendReason String? // Razón de suspensión (ej: "Falta de pago")
+
+  // Plan/Subscription (futuro)
+  planType      String?   @default("FREE") // FREE, BASIC, PRO, ENTERPRISE
+  planExpiresAt DateTime? // Fecha de expiración del plan
+
+  // Branding assets (URLs en DigitalOcean Spaces organizadas por ambiente/tenant)
+  logoUrl        String? // Logo principal para PDFs de contratos
+  signatureUrl   String? // Firma digital para contratos
+  emailLogoUrl   String? // Logo para emails transaccionales
+  fromEmail      String? // Email desde el cual se envían emails transaccionales (ej: "noreply@viajesalmanova.com")
+  replyToEmail   String? // Email de respuesta para emails transaccionales (ej: "info@viajesalmanova.com")
+  primaryColor   String? // Color principal hex (ej: "#4F46E5")
+  secondaryColor String? // Color secundario hex
+
+  // Información legal de la empresa (para contratos)
+  legalName                   String? // "VIAJES ALMA NOVA"
+  legalId                     String? // "3-101-960028" (cédula jurídica)
+  representativeName          String? // "KAREN KEITLYN CAMPOS CANTILLO"
+  representativeId            String? // "3-0522-0023"
+  representativeTitle         String? // "administradora de agencia de viajes"
+  representativeMaritalStatus String? // "soltera"
+  representativeAddress       String? // "Cartago"
+  representativePowers        String? // "apoderado generalísimo sin límite de suma"
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relaciones con todos los modelos
+  users                 User[]
+  clients               Client[]
+  contracts             Contract[]
+  contractDrafts        ContractDraft[]
+  contractNumbers       ContractNumber[]
+  billingInvoices       BillingInvoice[]
+  billingPayments       BillingPayment[]
+  billingReceipts       BillingReceipt[]
+  billingCreditNotes    BillingCreditNote[]
+  billingClientBalances BillingClientBalance[]
+  billingAuditLogs      BillingAuditLog[]
+  travelPackages        TravelPackage[]
+  companyBankAccounts   CompanyBankAccount[]
+  exchangeRates         ExchangeRate[]
+  clientPortalUsers     ClientPortalUser[] // Usuarios del portal de clientes
+
+  @@map("tenants")
+}
+
+// ========================================
+// USER & AUTH MODELS
+// ========================================
+
 model User {
-  id                 String   @id @default(cuid())
-  email              String   @unique
+  id                 String    @id @default(cuid())
+  email              String    @unique
   fullName           String
-  role               String   @default("AGENT")
+  role               UserRole  @default(AGENT)
   passwordHash       String
-  isActive           Boolean  @default(true)
-  mustChangePassword Boolean  @default(false)
+  isActive           Boolean   @default(true)
+  mustChangePassword Boolean   @default(false)
   activeJti          String?
   activeAt           DateTime?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  // Multi-tenant
+  // Super admins tienen tenantId = NULL, usuarios normales tienen tenantId obligatorio
+  tenantId String?
+  tenant   Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   passwordResetTokens PasswordResetToken[]
+
+  @@index([tenantId])
 }
 
 model PasswordResetToken {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  token     String   @unique
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String    @unique
   expiresAt DateTime
   usedAt    DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   @@index([userId])
   @@index([token])
   @@index([expiresAt])
   @@map("password_reset_token")
+}
+
+// ========================================
+// CLIENT PORTAL (FUTURO)
+// ========================================
+
+// Usuarios del portal de clientes (clientes finales que ven sus contratos/pagos)
+model ClientPortalUser {
+  id           String  @id @default(cuid())
+  email        String  @unique
+  fullName     String
+  passwordHash String
+  isActive     Boolean @default(true)
+
+  // Cliente que representa (viajero registrado)
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  // Multi-tenant: Cliente pertenece a un tenant específico
+  tenantId String @db.Text
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Session management
+  activeJti   String?
+  lastLoginAt DateTime?
+
+  // Auditoría
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([clientId])
+  @@index([email])
 }
 
 model ContractNumber {
@@ -46,38 +166,43 @@ model ContractNumber {
   createdByName   String
   createdAt       DateTime @default(now())
 
+  // Multi-tenant
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@index([createdAt])
+  @@index([tenantId])
 }
 
 enum ContractSource {
-  SCHEDULED_TRIP  // [VD] Viaje Disponible (desde paquete programado)
-  MIGRATION       // [MG] Migrado manualmente (sin viaje asociado)
-  CUSTOM_TRIP     // [PS] Personalizado (futuro: viaje a medida)
-  QUOTE           // [CT] Desde cotización (futuro)
+  SCHEDULED_TRIP // [VD] Viaje Disponible (desde paquete programado)
+  MIGRATION // [MG] Migrado manualmente (sin viaje asociado)
+  CUSTOM_TRIP // [PS] Personalizado (futuro: viaje a medida)
+  QUOTE // [CT] Desde cotización (futuro)
 }
 
 model Contract {
-  id                String             @id @default(cuid())
-  contractNumber    String             @unique
-  paymentReference  String             @unique
-  clientId          String
-  destination       String
-  status            String             @default("PENDING_SIGNATURE")
-  generatedByUserId String
-  generatedByEmail  String
-  generatedByName   String
-  issuedAt          DateTime?
-  startDate         DateTime?
-  endDate           DateTime?
-  payload           Json
-  pdfObjectKey      String
-  pdfFileName       String
-  pdfMimeType       String
-  pdfSize           Int
-  signedPdfObjectKey String?
-  signedPdfFileName  String?
-  signedPdfMimeType  String?
-  signedPdfSize      Int?
+  id                    String         @id @default(cuid())
+  contractNumber        String         @unique
+  paymentReference      String         @unique
+  clientId              String
+  destination           String
+  status                String         @default("PENDING_SIGNATURE")
+  generatedByUserId     String
+  generatedByEmail      String
+  generatedByName       String
+  issuedAt              DateTime?
+  startDate             DateTime?
+  endDate               DateTime?
+  payload               Json
+  pdfObjectKey          String
+  pdfFileName           String
+  pdfMimeType           String
+  pdfSize               Int
+  signedPdfObjectKey    String?
+  signedPdfFileName     String?
+  signedPdfMimeType     String?
+  signedPdfSize         Int?
   signedByName          String?
   signedAt              DateTime?
   signedClientIp        String?
@@ -86,65 +211,83 @@ model Contract {
   viewedAt              DateTime?
   cancelledAt           DateTime?
   signaturePngObjectKey String?
-  contractType      String             @default("CUSTOM") // CUSTOM | SCHEDULED
-  travelPackageId   String?            // FK opcional a TravelPackage
-  participantCount  Int                @default(1)        // titular + acompañantes
-  source            ContractSource     @default(SCHEDULED_TRIP) // Origen del contrato
-  createdAt             DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
-  client            Client             @relation(fields: [clientId], references: [id], onDelete: Restrict)
-  travelPackage     TravelPackage?     @relation(fields: [travelPackageId], references: [id], onDelete: SetNull)
-  documents         ContractDocument[]
-  signatureEvents   ContractSignatureEvent[]
-  usedTokens        ContractUsedToken[]
-  billingInvoice    BillingInvoice?
-  billingPayments   BillingPayment[]
-  billingReceipts   BillingReceipt[]
+  contractType          String         @default("CUSTOM") // CUSTOM | SCHEDULED
+  travelPackageId       String? // FK opcional a TravelPackage
+  participantCount      Int            @default(1) // titular + acompañantes
+  source                ContractSource @default(SCHEDULED_TRIP) // Origen del contrato
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+
+  // Multi-tenant
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  client             Client                   @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  travelPackage      TravelPackage?           @relation(fields: [travelPackageId], references: [id], onDelete: SetNull)
+  documents          ContractDocument[]
+  signatureEvents    ContractSignatureEvent[]
+  usedTokens         ContractUsedToken[]
+  billingInvoice     BillingInvoice?
+  billingPayments    BillingPayment[]
+  billingReceipts    BillingReceipt[]
   billingCreditNotes BillingCreditNote[]
 
   @@index([clientId])
   @@index([travelPackageId])
   @@index([contractType])
   @@index([createdAt])
+  @@index([tenantId])
 }
 
 model ContractDraft {
-  id                String   @id @default(cuid())
-  contractNumber    String   @unique
-  status            String   @default("DRAFT")
+  id                String         @id @default(cuid())
+  contractNumber    String         @unique
+  status            String         @default("DRAFT")
   clientFullName    String?
   clientIdNumber    String?
   clientEmail       String?
   clientPhone       String?
   destination       String?
   payload           Json
-  source            ContractSource     @default(SCHEDULED_TRIP) // Origen del contrato
+  source            ContractSource @default(SCHEDULED_TRIP) // Origen del contrato
   generatedByUserId String
   generatedByEmail  String
   generatedByName   String
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  // Multi-tenant
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([generatedByUserId])
   @@index([createdAt])
+  @@index([tenantId])
 }
 
 model Client {
-  id                    String     @id @default(cuid())
+  id                    String   @id @default(cuid())
   fullName              String
-  idNumber              String     @unique
+  idNumber              String   @unique
   email                 String
   phone                 String?
   emergencyContactName  String?
   emergencyContactPhone String?
-  createdAt             DateTime   @default(now())
-  updatedAt             DateTime   @updatedAt
-  contracts             Contract[]
-  billingInvoices       BillingInvoice[]
-  billingClientBalance  BillingClientBalance?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  // Multi-tenant
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  contracts            Contract[]
+  billingInvoices      BillingInvoice[]
+  billingClientBalance BillingClientBalance?
+  portalUsers          ClientPortalUser[] // Usuarios del portal para este cliente
 
   @@index([fullName])
   @@index([email])
+  @@index([tenantId])
 }
 
 model ContractDocument {
@@ -167,17 +310,17 @@ model ContractDocument {
 model ContractSignatureEvent {
   id              String   @id @default(cuid())
   contractId      String
-  signerKey       String   // "client" | "companion-0" etc.
-  signerRole      String   // "CLIENTE" | "ACOMPANANTE"
+  signerKey       String // "client" | "companion-0" etc.
+  signerRole      String // "CLIENTE" | "ACOMPANANTE"
   signerName      String
   signedAt        DateTime
   signedClientIp  String?
   signedUserAgent String?
-  signaturePngKey String?  // Spaces object key of the captured PNG
-  signedPdfKey    String?  // Spaces object key of the PDF after this signer
+  signaturePngKey String? // Spaces object key of the captured PNG
+  signedPdfKey    String? // Spaces object key of the PDF after this signer
   signedPdfBytes  Int?
-  signedPdfSha256 String?  // hex SHA-256 of the signed PDF at this step
-  tokenHash       String?  // SHA-256 of the token used (for cross-reference)
+  signedPdfSha256 String? // hex SHA-256 of the signed PDF at this step
+  tokenHash       String? // SHA-256 of the token used (for cross-reference)
   createdAt       DateTime @default(now())
   contract        Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
 
@@ -191,7 +334,7 @@ model ContractSignatureEvent {
 model ContractUsedToken {
   id         String   @id @default(cuid())
   contractId String
-  tokenHash  String   @unique  // SHA-256 of the raw token string
+  tokenHash  String   @unique // SHA-256 of the raw token string
   signerKey  String
   usedAt     DateTime @default(now())
   contract   Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
@@ -200,71 +343,82 @@ model ContractUsedToken {
 }
 
 model BillingInvoice {
-  id                String   @id @default(cuid())
-  contractId        String   @unique
-  clientId          String
-  contractNumber    String   @unique
-  invoiceNumber     String   @unique
-  currency          String   @default("CRC")
-  totalAmount       Decimal  @db.Decimal(14, 2)
-  verifiedAmount    Decimal  @db.Decimal(14, 2)
-  pendingAmount     Decimal  @db.Decimal(14, 2)
-  balanceAmount     Decimal  @db.Decimal(14, 2)
-  status            String   @default("FACTURA_EMITIDA")
-  issuedAt          DateTime @default(now())
-  paymentDueDate    DateTime?
-  closedAt          DateTime?
-  objectKeyPdf      String?
-  pdfFileName       String?
-  pdfMimeType       String?
-  pdfSize           Int?
-  createdByUserId   String
-  createdByName     String
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  contract          Contract @relation(fields: [contractId], references: [id], onDelete: Restrict)
-  client            Client   @relation(fields: [clientId], references: [id], onDelete: Restrict)
-  payments          BillingPayment[]
-  receipts          BillingReceipt[]
-  creditNotes       BillingCreditNote[]
+  id              String    @id @default(cuid())
+  contractId      String    @unique
+  clientId        String
+  contractNumber  String    @unique
+  invoiceNumber   String    @unique
+  currency        String    @default("CRC")
+  totalAmount     Decimal   @db.Decimal(14, 2)
+  verifiedAmount  Decimal   @db.Decimal(14, 2)
+  pendingAmount   Decimal   @db.Decimal(14, 2)
+  balanceAmount   Decimal   @db.Decimal(14, 2)
+  status          String    @default("FACTURA_EMITIDA")
+  issuedAt        DateTime  @default(now())
+  paymentDueDate  DateTime?
+  closedAt        DateTime?
+  objectKeyPdf    String?
+  pdfFileName     String?
+  pdfMimeType     String?
+  pdfSize         Int?
+  createdByUserId String
+  createdByName   String
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // Multi-tenant
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  contract    Contract            @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  client      Client              @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  payments    BillingPayment[]
+  receipts    BillingReceipt[]
+  creditNotes BillingCreditNote[]
 
   @@index([clientId])
   @@index([status])
   @@index([createdAt])
+  @@index([tenantId])
 }
 
 model BillingPayment {
-  id                String   @id @default(cuid())
-  invoiceId         String
-  contractId        String
-  type              String   @default("OTHER")
-  amount            Decimal  @db.Decimal(14, 2)
-  currency          String   @default("CRC")
-  reportedAt        DateTime @default(now())
-  status            String   @default("ABONO_REPORTADO")
-  bankReference     String?
-  payerName         String?
-  notes             String?
+  id                   String    @id @default(cuid())
+  invoiceId            String
+  contractId           String
+  type                 String    @default("OTHER")
+  amount               Decimal   @db.Decimal(14, 2)
+  currency             String    @default("CRC")
+  reportedAt           DateTime  @default(now())
+  status               String    @default("ABONO_REPORTADO")
+  bankReference        String?
+  payerName            String?
+  notes                String?
   // Nuevos campos para procesamiento de comprobantes
-  originBank        String?  // Banco desde donde se hizo el pago
-  destinationBank   String?  // Banco destino (derivado de la cuenta)
+  originBank           String? // Banco desde donde se hizo el pago
+  destinationBank      String? // Banco destino (derivado de la cuenta)
   destinationAccountId String? // Referencia a CompanyBankAccount
-  paymentCode       String?  // Código único de pago (LUC-XXXXX)
-  receiptDate       DateTime? // Fecha del comprobante (puede diferir de reportedAt)
-  verifiedAt        DateTime?
-  verifiedByUserId  String?
-  verifiedByName    String?
-  rejectionReason   String?
-  createdByUserId   String
-  createdByName     String
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  invoice           BillingInvoice @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
-  contract          Contract       @relation(fields: [contractId], references: [id], onDelete: Restrict)
-  destinationAccount CompanyBankAccount? @relation(fields: [destinationAccountId], references: [id], onDelete: Restrict)
-  attachments       BillingPaymentAttachment[]
-  receipt           BillingReceipt?
-  receiptImage      PaymentReceiptImage?
+  paymentCode          String? // Código único de pago (LUC-XXXXX)
+  receiptDate          DateTime? // Fecha del comprobante (puede diferir de reportedAt)
+  verifiedAt           DateTime?
+  verifiedByUserId     String?
+  verifiedByName       String?
+  rejectionReason      String?
+  createdByUserId      String
+  createdByName        String
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  // Multi-tenant
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  invoice            BillingInvoice             @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  contract           Contract                   @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  destinationAccount CompanyBankAccount?        @relation(fields: [destinationAccountId], references: [id], onDelete: Restrict)
+  attachments        BillingPaymentAttachment[]
+  receipt            BillingReceipt?
+  receiptImage       PaymentReceiptImage?
 
   @@index([invoiceId])
   @@index([contractId])
@@ -272,16 +426,17 @@ model BillingPayment {
   @@index([paymentCode])
   @@index([status])
   @@index([reportedAt])
+  @@index([tenantId])
 }
 
 model BillingPaymentAttachment {
-  id               String   @id @default(cuid())
+  id               String         @id @default(cuid())
   paymentId        String
-  objectKey        String   @unique
+  objectKey        String         @unique
   originalFileName String
   mimeType         String
   size             Int
-  createdAt        DateTime @default(now())
+  createdAt        DateTime       @default(now())
   payment          BillingPayment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
 
   @@index([paymentId])
@@ -289,69 +444,88 @@ model BillingPaymentAttachment {
 }
 
 model BillingReceipt {
-  id                String   @id @default(cuid())
-  paymentId         String   @unique
-  invoiceId         String
-  contractId        String
-  contractNumber    String
-  receiptNumber     String   @unique
-  amount            Decimal  @db.Decimal(14, 2)
-  issuedAt          DateTime @default(now())
-  issuedByUserId    String
-  issuedByName      String
-  approvedAt        DateTime?
-  approvedByUserId  String?
-  approvedByName    String?
-  sentAt            DateTime?
-  sentToEmail       String?
-  objectKeyPdf      String?
-  status            String   @default("RECIBO_PENDIENTE_VERIFICACION")
-  createdAt         DateTime @default(now())
-  payment           BillingPayment @relation(fields: [paymentId], references: [id], onDelete: Restrict)
-  invoice           BillingInvoice @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
-  contract          Contract       @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  id               String    @id @default(cuid())
+  paymentId        String    @unique
+  invoiceId        String
+  contractId       String
+  contractNumber   String
+  receiptNumber    String    @unique
+  amount           Decimal   @db.Decimal(14, 2)
+  issuedAt         DateTime  @default(now())
+  issuedByUserId   String
+  issuedByName     String
+  approvedAt       DateTime?
+  approvedByUserId String?
+  approvedByName   String?
+  sentAt           DateTime?
+  sentToEmail      String?
+  objectKeyPdf     String?
+  status           String    @default("RECIBO_PENDIENTE_VERIFICACION")
+  createdAt        DateTime  @default(now())
+
+  // Multi-tenant
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  payment  BillingPayment @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  invoice  BillingInvoice @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  contract Contract       @relation(fields: [contractId], references: [id], onDelete: Restrict)
 
   @@index([invoiceId])
   @@index([contractId])
   @@index([status])
   @@index([issuedAt])
+  @@index([tenantId])
 }
 
 model BillingCreditNote {
-  id                 String   @id @default(cuid())
-  creditNoteNumber   String   @unique
+  id                 String    @id @default(cuid())
+  creditNoteNumber   String    @unique
   contractId         String
   invoiceId          String
   contractNumber     String
   reason             String
-  amount             Decimal  @db.Decimal(14, 2)
-  status             String   @default("NC_EMITIDA")
+  amount             Decimal   @db.Decimal(14, 2)
+  status             String    @default("NC_EMITIDA")
   sourceDocumentType String
   sourceDocumentId   String
-  issuedAt           DateTime @default(now())
+  issuedAt           DateTime  @default(now())
   issuedByUserId     String
   issuedByName       String
   appliedAt          DateTime?
   appliedByUserId    String?
   appliedByName      String?
   objectKeyPdf       String?
-  createdAt          DateTime @default(now())
-  invoice            BillingInvoice @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
-  contract           Contract       @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  createdAt          DateTime  @default(now())
+
+  // Multi-tenant
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  invoice  BillingInvoice @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  contract Contract       @relation(fields: [contractId], references: [id], onDelete: Restrict)
 
   @@index([invoiceId])
   @@index([contractId])
   @@index([status])
   @@index([issuedAt])
+  @@index([tenantId])
 }
 
 model BillingClientBalance {
-  id                   String   @id @default(cuid())
-  clientId             String   @unique
-  availableCreditAmount Decimal @db.Decimal(14, 2)
-  currency             String   @default("CRC")
-  updatedAt            DateTime @updatedAt
-  client               Client   @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  id                    String   @id @default(cuid())
+  clientId              String   @unique
+  availableCreditAmount Decimal  @db.Decimal(14, 2)
+  currency              String   @default("CRC")
+  updatedAt             DateTime @updatedAt
+
+  // Multi-tenant
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId])
 }
 
 model BillingAuditLog {
@@ -367,9 +541,14 @@ model BillingAuditLog {
   userAgent   String?
   createdAt   DateTime @default(now())
 
+  // Multi-tenant
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
   @@index([entityType, entityId])
   @@index([actorUserId])
   @@index([createdAt])
+  @@index([tenantId])
 }
 
 model ExchangeRate {
@@ -384,20 +563,25 @@ model ExchangeRate {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  @@unique([date])
+  // Multi-tenant
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([date, tenantId])
   @@index([date])
   @@index([setByUserId])
+  @@index([tenantId])
 }
 
 // Cuentas bancarias de la empresa para recibir pagos
 model CompanyBankAccount {
   id                String   @id @default(cuid())
-  bankName          String   // BAC, BCR, Promerica, etc.
+  bankName          String // BAC, BCR, Promerica, etc.
   accountNumber     String   @unique // Número de cuenta o IBAN
-  accountType       String   // "CUENTA_CORRIENTE", "CUENTA_AHORRO"
-  currency          String   // "CRC", "USD"
-  sinpeNumber       String?  // Número SINPE móvil (opcional)
-  accountHolderName String   // Nombre del titular (Empresa)
+  accountType       String // "CUENTA_CORRIENTE", "CUENTA_AHORRO"
+  currency          String // "CRC", "USD"
+  sinpeNumber       String? // Número SINPE móvil (opcional)
+  accountHolderName String // Nombre del titular (Empresa)
   companyName       String   @default("Viajes Alma Nova") // Nombre de la empresa (ej: "Viajes Alma Nova", "Lucitours")
   isActive          Boolean  @default(true)
   notes             String?
@@ -405,43 +589,49 @@ model CompanyBankAccount {
   createdByName     String
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
-  payments          BillingPayment[]
+
+  // Multi-tenant
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  payments BillingPayment[]
 
   @@index([bankName])
   @@index([currency])
   @@index([isActive])
   @@index([companyName])
   @@index([createdAt])
+  @@index([tenantId])
 }
 
 // Imágenes de comprobantes procesados con Vision AI
 model PaymentReceiptImage {
-  id                      String   @id @default(cuid())
-  paymentId               String?  @unique
-  objectKey               String   @unique // Spaces/S3 key
-  originalFileName        String
-  mimeType                String
-  size                    Int
+  id                          String          @id @default(cuid())
+  paymentId                   String?         @unique
+  objectKey                   String          @unique // Spaces/S3 key
+  originalFileName            String
+  mimeType                    String
+  size                        Int
   // Datos extraídos por Vision AI
-  extractedData           Json     // Raw JSON de OpenAI
-  extractedAmount         Decimal? @db.Decimal(14, 2)
-  extractedCurrency       String?
-  extractedDate           DateTime?
-  extractedReference      String?
-  extractedOriginBank     String?
-  extractedDestinationBank String?
+  extractedData               Json // Raw JSON de OpenAI
+  extractedAmount             Decimal?        @db.Decimal(14, 2)
+  extractedCurrency           String?
+  extractedDate               DateTime?
+  extractedReference          String?
+  extractedOriginBank         String?
+  extractedDestinationBank    String?
   extractedDestinationAccount String?
-  extractedPayerName      String?
-  extractedPaymentCode    String?  // Código único de pago
-  extractedNotes          String?  // Resto del detalle
-  confidenceScore         Decimal? @db.Decimal(5, 4) // 0.0000 - 1.0000
-  processingStatus        String   @default("PENDING") // PENDING, PROCESSED, ERROR
-  processingError         String?
-  processedAt             DateTime?
-  uploadedByUserId        String
-  uploadedByName          String
-  createdAt               DateTime @default(now())
-  payment                 BillingPayment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  extractedPayerName          String?
+  extractedPaymentCode        String? // Código único de pago
+  extractedNotes              String? // Resto del detalle
+  confidenceScore             Decimal?        @db.Decimal(5, 4) // 0.0000 - 1.0000
+  processingStatus            String          @default("PENDING") // PENDING, PROCESSED, ERROR
+  processingError             String?
+  processedAt                 DateTime?
+  uploadedByUserId            String
+  uploadedByName              String
+  createdAt                   DateTime        @default(now())
+  payment                     BillingPayment? @relation(fields: [paymentId], references: [id], onDelete: SetNull)
 
   @@index([paymentId])
   @@index([processingStatus])
@@ -450,24 +640,30 @@ model PaymentReceiptImage {
 
 // Viajes programados — cada viaje es una "plantilla" reutilizable
 model TravelPackage {
-  id                String      @id @default(cuid())
-  packageCode       String      @unique // TP-2026-05-001 (generado automáticamente)
-  name              String      // "Tour Costa Rica Mayo 2026" (manual)
-  destination       String
-  departureDate     DateTime
-  returnDate        DateTime
-  capacity          Int         // Cupo máximo
-  occupiedSlots     Int         @default(0) // Personas actualmente asignadas
-  status            String      @default("OPEN") // OPEN | CLOSED | CANCELLED
-  packagePrice      Decimal?    @db.Decimal(14, 2) // Precio del paquete (manual por ahora, futuro: calculado)
-  priceCurrency     String      @default("USD") // USD | CRC
-  createdByUserId   String
-  createdAt         DateTime    @default(now())
-  updatedAt         DateTime    @updatedAt
-  contracts         Contract[]
+  id              String   @id @default(cuid())
+  packageCode     String   @unique // TP-2026-05-001 (generado automáticamente)
+  name            String // "Tour Costa Rica Mayo 2026" (manual)
+  destination     String
+  departureDate   DateTime
+  returnDate      DateTime
+  capacity        Int // Cupo máximo
+  occupiedSlots   Int      @default(0) // Personas actualmente asignadas
+  status          String   @default("OPEN") // OPEN | CLOSED | CANCELLED
+  packagePrice    Decimal? @db.Decimal(14, 2) // Precio del paquete (manual por ahora, futuro: calculado)
+  priceCurrency   String   @default("USD") // USD | CRC
+  createdByUserId String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Multi-tenant
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  contracts Contract[]
 
   @@index([departureDate])
   @@index([status])
   @@index([createdAt])
   @@index([packageCode])
+  @@index([tenantId])
 }

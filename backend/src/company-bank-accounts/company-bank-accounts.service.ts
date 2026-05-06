@@ -20,10 +20,14 @@ export class CompanyBankAccountsService {
     dto: CreateBankAccountDto,
     userId: string,
     userName: string,
+    tenantId: string,
   ) {
-    // Verificar que no exista otra cuenta con el mismo número
-    const existing = await this.prisma.companyBankAccount.findUnique({
-      where: { accountNumber: dto.accountNumber },
+    // 🔒 SEGURIDAD: Verificar unicidad DENTRO del tenant (dos tenants pueden tener mismo número)
+    const existing = await this.prisma.companyBankAccount.findFirst({
+      where: { 
+        accountNumber: dto.accountNumber,
+        tenantId: tenantId,
+      },
     });
 
     if (existing) {
@@ -38,12 +42,15 @@ export class CompanyBankAccountsService {
         isActive: dto.isActive ?? true,
         createdByUserId: userId,
         createdByName: userName,
+        tenantId,
       },
     });
   }
 
-  async findAll(filters: ListBankAccountsDto) {
-    const where: any = {};
+  async findAll(filters: ListBankAccountsDto, tenantId: string) {
+    const where: any = {
+      tenantId,
+    };
 
     if (filters.bankName) {
       where.bankName = { contains: filters.bankName, mode: 'insensitive' };
@@ -69,7 +76,7 @@ export class CompanyBankAccountsService {
     return accounts;
   }
 
-  async findOne(id: string) {
+  async findOne(id: string, tenantId: string) {
     const account = await this.prisma.companyBankAccount.findUnique({
       where: { id },
       include: {
@@ -80,6 +87,13 @@ export class CompanyBankAccountsService {
     });
 
     if (!account) {
+      throw new NotFoundException(
+        `Cuenta bancaria con ID ${id} no encontrada`,
+      );
+    }
+
+    // 🔒 SEGURIDAD: Validar que la cuenta pertenece al tenant
+    if (account.tenantId !== tenantId) {
       throw new NotFoundException(
         `Cuenta bancaria con ID ${id} no encontrada`,
       );
@@ -140,15 +154,16 @@ export class CompanyBankAccountsService {
     return found || null;
   }
 
-  async update(id: string, dto: UpdateBankAccountDto) {
+  async update(id: string, dto: UpdateBankAccountDto, tenantId: string) {
     // Verificar que existe
-    await this.findOne(id);
+    await this.findOne(id, tenantId);
 
     // Si está cambiando el número de cuenta, verificar que no exista
     if (dto.accountNumber) {
       const existing = await this.prisma.companyBankAccount.findFirst({
         where: {
           accountNumber: dto.accountNumber,
+          tenantId: tenantId, // 🔒 SEGURIDAD: Validar dentro del tenant
           NOT: { id },
         },
       });
@@ -166,8 +181,8 @@ export class CompanyBankAccountsService {
     });
   }
 
-  async remove(id: string) {
-    const account = await this.findOne(id);
+  async remove(id: string, tenantId: string) {
+    const account = await this.findOne(id, tenantId);
 
     // Verificar que no tenga pagos asociados
     if ((account as any)._count.payments > 0) {
@@ -181,8 +196,8 @@ export class CompanyBankAccountsService {
     });
   }
 
-  async toggleActive(id: string) {
-    const account = await this.findOne(id);
+  async toggleActive(id: string, tenantId: string) {
+    const account = await this.findOne(id, tenantId);
 
     return this.prisma.companyBankAccount.update({
       where: { id },

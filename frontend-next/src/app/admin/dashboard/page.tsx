@@ -103,7 +103,17 @@ export default function AdminDashboardPage() {
   return (
     <main className="app-shell">
       <section className="card contracts-card">
-        <h1>📊 Dashboard de Gestión</h1>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+          <h1>📊 Dashboard de Gestión</h1>
+          <button
+            type="button"
+            onClick={() => router.push("/settings")}
+            className="btn btn-secondary"
+            style={{ fontSize: "14px", padding: "8px 16px" }}
+          >
+            ⚙️ Configurar Empresa
+          </button>
+        </div>
         
         {/* Filtros de Fecha */}
         <div style={{ marginBottom: "20px", padding: "16px", background: "#f9fafb", borderRadius: "8px", border: "1px solid #e5e7eb" }}>

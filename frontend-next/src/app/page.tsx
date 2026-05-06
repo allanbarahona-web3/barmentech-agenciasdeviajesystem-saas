@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
-import { getStoredSession, getStoredToken, loginWithEmailPassword, requestPasswordReset, getHomeRouteForRole } from "@/lib/auth-api";
+import { getStoredSession, getStoredToken, loginWithEmailPassword, requestPasswordReset, getHomeRouteForRole, getTenantConfig } from "@/lib/auth-api";
 
 export default function Home() {
   const router = useRouter();
@@ -18,6 +18,8 @@ export default function Home() {
   const [resetLoading, setResetLoading] = useState(false);
   const [resetMessage, setResetMessage] = useState("");
   const [resetError, setResetError] = useState("");
+  const [tenantLogoUrl, setTenantLogoUrl] = useState<string | null>(null);
+  const [tenantName, setTenantName] = useState<string>("Viajes Alma Nova");
 
   useEffect(() => {
     const token = getStoredToken();
@@ -26,6 +28,18 @@ export default function Home() {
       const homeRoute = getHomeRouteForRole(session?.user?.role);
       router.replace(homeRoute);
     }
+    // Obtener configuración del tenant para branding dinámico
+    void (async () => {
+      try {
+        const config = await getTenantConfig();
+        setTenantLogoUrl(config.logoUrl);
+        setTenantName(config.name);
+      } catch (err) {
+        console.error("No se pudo cargar la configuración del tenant:", err);
+        // Usar logo por defecto si falla
+        setTenantLogoUrl("https://lucitouroperations.sfo3.digitaloceanspaces.com/contracts-assets/Almanova%20azul+dorado.webp");
+      }
+    })();
   }, [router]);
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -91,14 +105,18 @@ export default function Home() {
         <div className="bg-white rounded-2xl shadow-xl p-8">
           {/* Logo */}
           <div className="flex justify-center mb-8">
-            <Image
-              src="https://lucitouroperations.sfo3.digitaloceanspaces.com/contracts-assets/Almanova%20azul+dorado.webp"
-              alt="Viajes Alma Nova"
-              width={180}
-              height={90}
-              className="h-auto"
-              priority
-            />
+            {tenantLogoUrl ? (
+              <Image
+                src={tenantLogoUrl}
+                alt={tenantName}
+                width={180}
+                height={90}
+                className="h-auto"
+                priority
+              />
+            ) : (
+              <div className="w-[180px] h-[90px] bg-gray-200 animate-pulse rounded" />
+            )}
           </div>
 
           {/* Título */}

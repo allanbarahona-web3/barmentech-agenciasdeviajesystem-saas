@@ -4,6 +4,7 @@ import { NestFactory } from "@nestjs/core";
 import { json, urlencoded } from "express";
 import helmet from "helmet";
 import { AppModule } from "./app.module";
+import { PrismaService } from "./prisma/prisma.service";
 
 const normalizeDatabaseUrl = () => {
   const raw = String(process.env.DATABASE_URL || "");
@@ -60,10 +61,41 @@ async function bootstrap() {
 
   const app = await NestFactory.create(AppModule);
   const configService = app.get(ConfigService);
+  const prisma = app.get(PrismaService);
+  
   const allowedOrigins = parseAllowedOrigins(
     configService.get<string>("ALLOWED_ORIGIN", "*"),
     configService.get<string>("PUBLIC_APP_BASE_URL", ""),
   );
+
+  const nodeEnv = configService.get<string>("NODE_ENV", "development");
+  const frontendBaseDomain = configService.get<string>("FRONTEND_BASE_DOMAIN", ""); // ej: agenciasdeviaje.barmentech.com
+
+  // Cache de tenants activos para validación CORS (actualizar cada 5 minutos)
+  let cachedTenants: { subdomain: string | null; customDomain: string | null }[] = [];
+  let lastTenantsRefresh = 0;
+  const TENANTS_CACHE_TTL = 5 * 60 * 1000; // 5 minutos
+
+  const refreshTenants = async () => {
+    const now = Date.now();
+    if (now - lastTenantsRefresh < TENANTS_CACHE_TTL) {
+      return; // Cache aún válido
+    }
+    
+    cachedTenants = await prisma.tenant.findMany({
+      where: { 
+        isActive: true,
+        subdomain: { not: null }, // Solo tenants con subdomain válido
+      },
+      select: { subdomain: true, customDomain: true },
+    });
+    
+    lastTenantsRefresh = now;
+    console.log(`[CORS] Tenants cache actualizado: ${cachedTenants.length} tenants activos`);
+  };
+
+  // Cargar tenants al inicio
+  await refreshTenants();
 
   // Accept larger JSON/form payloads for base64 PDF attachments.
   app.use(json({ limit: "20mb" }));
@@ -71,7 +103,7 @@ async function bootstrap() {
   app.use(helmet());
 
   app.enableCors({
-    origin: (origin, callback) => {
+    origin: async (origin, callback) => {
       // Requests without Origin (curl/postman/server-to-server) are allowed.
       if (!origin) {
         callback(null, true);
@@ -79,11 +111,51 @@ async function bootstrap() {
       }
 
       const normalized = normalizeOrigin(origin);
+      
+      // 1. En desarrollo: permitir subdominios de localhost automáticamente
+      // Soporta: http://localhost:3000, http://almanova.localhost:3000, http://empresa.localhost:3000, etc.
+      if (nodeEnv === "development" && normalized.match(/^https?:\/\/([^.]+\.)?localhost(:\d+)?$/)) {
+        callback(null, true);
+        return;
+      }
+      
+      // 2. Verificar contra lista explícita de ALLOWED_ORIGIN
       if (allowedOrigins.mode === "all" || allowedOrigins.list.has(normalized)) {
         callback(null, true);
         return;
       }
 
+      // 3. Validación dinámica contra tenants en DB (para subdominios y dominios personalizados)
+      try {
+        await refreshTenants(); // Actualizar cache si es necesario
+        
+        // Extraer host del origin (sin protocolo ni puerto)
+        const originHost = normalized.replace(/^https?:\/\//, '').split(':')[0].toLowerCase();
+        
+        // Verificar dominios personalizados (customDomain)
+        if (cachedTenants.some(t => t.customDomain && t.customDomain.toLowerCase() === originHost)) {
+          callback(null, true);
+          return;
+        }
+        
+        // Verificar subdominios (ej: almanova.agenciasdeviaje.barmentech.com)
+        if (frontendBaseDomain) {
+          const subdomainPattern = new RegExp(`^([^.]+)\\.${frontendBaseDomain.replace(/\./g, '\\.')}$`);
+          const match = originHost.match(subdomainPattern);
+          
+          if (match) {
+            const subdomain = match[1];
+            if (cachedTenants.some(t => t.subdomain && t.subdomain === subdomain)) {
+              callback(null, true);
+              return;
+            }
+          }
+        }
+      } catch (error) {
+        console.error('[CORS] Error validando tenant:', error);
+      }
+
+      console.warn(`[CORS] Origin bloqueado: ${normalized}`);
       callback(new Error(`CORS origin not allowed: ${normalized}`), false);
     },
     credentials: false,

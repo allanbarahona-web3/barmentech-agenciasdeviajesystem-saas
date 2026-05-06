@@ -27,6 +27,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         role: true,
         isActive: true,
         activeJti: true,
+        tenantId: true,
       },
     });
 

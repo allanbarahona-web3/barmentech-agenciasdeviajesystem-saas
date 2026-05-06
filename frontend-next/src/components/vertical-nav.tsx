@@ -57,6 +57,9 @@ export function VerticalNav() {
 
   useEffect(() => {
     if (!token) return;
+    
+    // Skip data loading for SUPER_ADMIN
+    if (session?.user?.role === "SUPER_ADMIN") return;
 
     const loadPendingCounts = async () => {
       try {
@@ -71,10 +74,13 @@ export function VerticalNav() {
     void loadPendingCounts();
     const interval = window.setInterval(() => void loadPendingCounts(), 30000); // Refresh every 30s
     return () => window.clearInterval(interval);
-  }, [token]);
+  }, [token, session]);
 
   useEffect(() => {
     if (!token) return;
+    
+    // Skip data loading for SUPER_ADMIN
+    if (session?.user?.role === "SUPER_ADMIN") return;
 
     const loadExchangeRate = async () => {
       try {
@@ -88,7 +94,7 @@ export function VerticalNav() {
     void loadExchangeRate();
     const interval = window.setInterval(() => void loadExchangeRate(), 30000); // Refresh every 30s
     return () => window.clearInterval(interval);
-  }, [token]);
+  }, [token, session]);
 
   // Prevent hydration mismatch - only show on client
   if (!mounted) {
@@ -100,6 +106,12 @@ export function VerticalNav() {
   }
 
   const role = String(session.user.role || "AGENT").toUpperCase();
+  
+  // Super Admin has its own layout, hide this nav
+  if (role === "SUPER_ADMIN") {
+    return null;
+  }
+
   const isAdmin = role === "ADMIN";
   const isContador = role === "CONTADOR";
   const isFacturacionCobros = role === "FACTURACION_COBROS";

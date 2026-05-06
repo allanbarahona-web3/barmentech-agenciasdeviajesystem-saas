@@ -7,7 +7,8 @@ import {
   saveContractDraft,
 } from "@/lib/contracts-api";
 import { bootstrapBillingContract } from "@/lib/billing-api";
-import { buildContractPdfHtml } from "@/features/contracts-form/pdf-template";
+import { getTenantLegalConfig, getTenantConfig, type TenantLegalConfig } from "@/lib/auth-api";
+import { buildContractPdfHtml, type TenantLegalInfo } from "@/features/contracts-form/pdf-template";
 import {
   addCompanion,
   addCustomItineraryItem,
@@ -274,18 +275,26 @@ export function ContractsForm({ agent = null, initialDraftId = null, mode }: Con
       console.log("🔵 Paso 1: Preparando contrato...");
       setStatus("Preparando contrato...");
       
-      // Usar URLs directas de Spaces en vez de cargar assets locales
-      // Esto reduce el HTML de 1.4MB a ~50KB
-      const logoSrc = "https://lucitouroperations.sfo3.digitaloceanspaces.com/contracts-assets/Almanova%20azul+dorado.webp";
-      const representativeSignSrc = "https://lucitouroperations.sfo3.digitaloceanspaces.com/contracts-assets/Firma%20Karen-Lucitour.webp";
+      // Obtener información legal del tenant
+      console.log("🔵 Obteniendo configuración legal del tenant...");
+      const tenantLegalInfo: TenantLegalInfo = await getTenantLegalConfig();
+      console.log("✅ Configuración legal obtenida:", tenantLegalInfo.name);
       
-      console.log("✅ Assets configurados (URLs directas)");
+      // Obtener configuración de branding del tenant (logo y firma)
+      const tenantConfig = await getTenantConfig();
+      console.log("✅ Configuración de branding obtenida:", tenantConfig.name);
+      
+      // Usar URLs del tenant, con fallbacks si no están configuradas
+      const logoSrc = tenantConfig.logoUrl || "https://lucitouroperations.sfo3.digitaloceanspaces.com/contracts-assets/Almanova%20azul+dorado.webp";
+      const representativeSignSrc = tenantConfig.signatureUrl || "https://lucitouroperations.sfo3.digitaloceanspaces.com/contracts-assets/Firma%20Karen-Lucitour.webp";
+      
+      console.log("✅ Assets configurados:", { logoSrc: logoSrc ? "✓" : "✗", signatureSrc: representativeSignSrc ? "✓" : "✗" });
 
       console.log("🔵 Paso 2: Construyendo HTML del contrato...");
       const contractHtml = buildContractPdfHtml(state, {
         logoSrc,
         representativeSignSrc,
-      });
+      }, tenantLegalInfo);
       console.log("✅ HTML construido, longitud:", contractHtml.length);
 
       console.log("🔵 Paso 3: Recolectando documentos...");
@@ -376,14 +385,20 @@ export function ContractsForm({ agent = null, initialDraftId = null, mode }: Con
     try {
       setStatus("Generando vista previa...");
 
-      // Usar URLs directas de Spaces en vez de cargar assets locales
-      const logoSrc = "https://lucitouroperations.sfo3.digitaloceanspaces.com/contracts-assets/Almanova%20azul+dorado.webp";
-      const representativeSignSrc = "https://lucitouroperations.sfo3.digitaloceanspaces.com/contracts-assets/Firma%20Karen-Lucitour.webp";
+      // Obtener información legal del tenant
+      const tenantLegalInfo: TenantLegalInfo = await getTenantLegalConfig();
+
+      // Obtener configuración de branding del tenant (logo y firma)
+      const tenantConfig = await getTenantConfig();
+
+      // Usar URLs del tenant, con fallbacks si no están configuradas
+      const logoSrc = tenantConfig.logoUrl || "https://lucitouroperations.sfo3.digitaloceanspaces.com/contracts-assets/Almanova%20azul+dorado.webp";
+      const representativeSignSrc = tenantConfig.signatureUrl || "https://lucitouroperations.sfo3.digitaloceanspaces.com/contracts-assets/Firma%20Karen-Lucitour.webp";
 
       const contractHtml = buildContractPdfHtml(state, {
         logoSrc,
         representativeSignSrc,
-      });
+      }, tenantLegalInfo);
 
       setPreviewHtml(contractHtml);
       setStatus("Vista previa actualizada abajo del formulario.");
