@@ -29,14 +29,34 @@ export class TenantMiddleware implements NestMiddleware {
       // Resolver tenant desde el dominio
       const tenant = await this.tenantService.resolveTenant(host);
 
+      // Validar si está suspendido (prioridad sobre isActive)
+      if (tenant.suspendedAt) {
+        this.logger.warn(
+          `❌ Intento de acceso a tenant suspendido: ${tenant.name} (razón: ${tenant.suspendReason || 'N/A'})`,
+        );
+        throw new UnauthorizedException({
+          statusCode: 403,
+          message: 'TENANT_SUSPENDED',
+          details: {
+            tenantName: tenant.name,
+            suspendedAt: tenant.suspendedAt,
+            reason: tenant.suspendReason || 'Suspensión administrativa',
+          },
+        });
+      }
+
       // Validar que esté activo
       if (!tenant.isActive) {
         this.logger.warn(
           `❌ Intento de acceso a tenant inactivo: ${tenant.name}`,
         );
-        throw new UnauthorizedException(
-          `El servicio para ${tenant.name} no está disponible`,
-        );
+        throw new UnauthorizedException({
+          statusCode: 403,
+          message: 'TENANT_INACTIVE',
+          details: {
+            tenantName: tenant.name,
+          },
+        });
       }
 
       // Adjuntar tenant al request
@@ -47,6 +67,11 @@ export class TenantMiddleware implements NestMiddleware {
       );
       next();
     } catch (error) {
+      // Si ya es un error de autorización, propagarlo
+      if (error instanceof UnauthorizedException) {
+        throw error;
+      }
+      
       this.logger.error(`❌ Error resolviendo tenant para ${host}:`, error);
       throw new UnauthorizedException(
         `No se pudo identificar el tenant para este dominio`,

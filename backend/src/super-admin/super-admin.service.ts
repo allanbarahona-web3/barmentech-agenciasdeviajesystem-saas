@@ -282,7 +282,16 @@ export class SuperAdminService {
           },
         });
 
-        this.logger.log(`⛔ Tenant "${tenant.name}" suspendido`);
+        // 🔒 Invalidar todas las sesiones activas del tenant
+        await this.prisma.user.updateMany({
+          where: { tenantId },
+          data: {
+            activeJti: null, // Invalida el JWT activo
+            activeAt: null,
+          },
+        });
+
+        this.logger.log(`⛔ Tenant "${tenant.name}" suspendido - ${await this.prisma.user.count({ where: { tenantId } })} sesiones invalidadas`);
         return updated;
       } else {
         // Activar tenant

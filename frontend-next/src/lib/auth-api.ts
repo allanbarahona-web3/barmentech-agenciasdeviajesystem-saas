@@ -3,6 +3,7 @@ import { AUTH_SESSION_KEY, AUTH_TOKEN_KEY, resolveApiBase } from "@/lib/runtime-
 /**
  * Obtiene la configuración pública del tenant (logo, colores) sin autenticación
  * Necesario para mostrar branding en la página de login
+ * @throws {TenantSuspendedError} Si el tenant está suspendido
  */
 export async function getTenantConfig(): Promise<TenantConfig> {
   const apiBase = resolveApiBase();
@@ -10,9 +11,34 @@ export async function getTenantConfig(): Promise<TenantConfig> {
     method: "GET",
     headers: { "Content-Type": "application/json" },
   });
+  
   if (!response.ok) {
+    // Intentar parsear el error
+    const payload = await response.json().catch(() => ({}));
+    
+    // Detectar si es un error de tenant suspendido
+    if (
+      typeof payload === 'object' && 
+      payload !== null && 
+      'message' in payload && 
+      payload.message === 'TENANT_SUSPENDED' &&
+      'details' in payload
+    ) {
+      const details = payload.details as { 
+        tenantName: string; 
+        suspendedAt: string; 
+        reason: string;
+      };
+      throw new TenantSuspendedError(
+        details.tenantName,
+        new Date(details.suspendedAt),
+        details.reason
+      );
+    }
+    
     throw new Error("No se pudo obtener la configuración del tenant");
   }
+  
   return response.json();
 }
 
@@ -59,6 +85,21 @@ export type AdminUserListItem = {
   updatedAt?: string;
 };
 
+// Error personalizado para tenant suspendido
+export class TenantSuspendedError extends Error {
+  tenantName: string;
+  suspendedAt: Date;
+  reason: string;
+  
+  constructor(tenantName: string, suspendedAt: Date, reason: string) {
+    super('TENANT_SUSPENDED');
+    this.name = 'TenantSuspendedError';
+    this.tenantName = tenantName;
+    this.suspendedAt = suspendedAt;
+    this.reason = reason;
+  }
+}
+
 const parseErrorMessage = (payload: unknown, fallback: string): string => {
   if (!payload || typeof payload !== "object") {
     return fallback;
@@ -97,6 +138,25 @@ export const loginWithEmailPassword = async (
 
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
+    // Detectar si es un error de tenant suspendido
+    if (
+      typeof payload === 'object' && 
+      payload !== null && 
+      'message' in payload && 
+      payload.message === 'TENANT_SUSPENDED' &&
+      'details' in payload
+    ) {
+      const details = payload.details as { 
+        tenantName: string; 
+        suspendedAt: string; 
+        reason: string;
+      };
+      throw new TenantSuspendedError(
+        details.tenantName,
+        new Date(details.suspendedAt),
+        details.reason
+      );
+    }
     throw new Error(parseErrorMessage(payload, "No se pudo iniciar sesion."));
   }
 

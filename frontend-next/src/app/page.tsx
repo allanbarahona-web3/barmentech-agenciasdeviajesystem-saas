@@ -3,7 +3,8 @@
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
-import { getStoredSession, getStoredToken, loginWithEmailPassword, requestPasswordReset, getHomeRouteForRole, getTenantConfig } from "@/lib/auth-api";
+import { getStoredSession, getStoredToken, loginWithEmailPassword, requestPasswordReset, getHomeRouteForRole, getTenantConfig, TenantSuspendedError } from "@/lib/auth-api";
+import TenantSuspendedModal from "@/components/tenant-suspended-modal";
 
 export default function Home() {
   const router = useRouter();
@@ -20,6 +21,14 @@ export default function Home() {
   const [resetError, setResetError] = useState("");
   const [tenantLogoUrl, setTenantLogoUrl] = useState<string | null>(null);
   const [tenantName, setTenantName] = useState<string>("Viajes Alma Nova");
+  
+  // Estados para modal de suspensión
+  const [showSuspendedModal, setShowSuspendedModal] = useState(false);
+  const [suspensionDetails, setSuspensionDetails] = useState<{
+    tenantName: string;
+    reason: string;
+    suspendedAt: Date;
+  } | null>(null);
 
   useEffect(() => {
     const token = getStoredToken();
@@ -35,6 +44,17 @@ export default function Home() {
         setTenantLogoUrl(config.logoUrl);
         setTenantName(config.name);
       } catch (err) {
+        // Si el tenant está suspendido, mostrar modal inmediatamente
+        if (err instanceof TenantSuspendedError) {
+          setSuspensionDetails({
+            tenantName: err.tenantName,
+            reason: err.reason,
+            suspendedAt: err.suspendedAt,
+          });
+          setShowSuspendedModal(true);
+          return; // No cargar logo ni mostrar formulario
+        }
+        
         console.error("No se pudo cargar la configuración del tenant:", err);
         // Usar logo por defecto si falla
         setTenantLogoUrl("https://lucitouroperations.sfo3.digitaloceanspaces.com/contracts-assets/Almanova%20azul+dorado.webp");
@@ -66,8 +86,18 @@ export default function Home() {
         router.push(homeRoute);
       }
     } catch (submitError) {
-      const message = submitError instanceof Error ? submitError.message : "No se pudo iniciar sesion.";
-      setError(message);
+      // Si es un error de tenant suspendido, mostrar modal especial
+      if (submitError instanceof TenantSuspendedError) {
+        setSuspensionDetails({
+          tenantName: submitError.tenantName,
+          reason: submitError.reason,
+          suspendedAt: submitError.suspendedAt,
+        });
+        setShowSuspendedModal(true);
+      } else {
+        const message = submitError instanceof Error ? submitError.message : "No se pudo iniciar sesion.";
+        setError(message);
+      }
     } finally {
       setLoading(false);
     }
@@ -101,29 +131,42 @@ export default function Home() {
 
   return (
     <main className="min-h-screen flex items-center justify-center p-6 bg-linear-to-br from-gray-50 to-gray-100">
-      <div className="w-full max-w-md">
-        <div className="bg-white rounded-2xl shadow-xl p-8">
-          {/* Logo */}
-          <div className="flex justify-center mb-8">
-            {tenantLogoUrl ? (
-              <Image
-                src={tenantLogoUrl}
-                alt={tenantName}
-                width={180}
-                height={90}
-                className="h-auto"
-                priority
-              />
-            ) : (
-              <div className="w-[180px] h-[90px] bg-gray-200 animate-pulse rounded" />
-            )}
-          </div>
+      {/* Si el tenant está suspendido, solo mostrar modal (sin formulario) */}
+      {showSuspendedModal && suspensionDetails ? (
+        <TenantSuspendedModal
+          isOpen={showSuspendedModal}
+          tenantName={suspensionDetails.tenantName}
+          reason={suspensionDetails.reason}
+          suspendedAt={suspensionDetails.suspendedAt}
+          onClose={() => {
+            setShowSuspendedModal(false);
+            setSuspensionDetails(null);
+          }}
+        />
+      ) : (
+        <div className="w-full max-w-md">
+          <div className="bg-white rounded-2xl shadow-xl p-8">
+            {/* Logo */}
+            <div className="flex justify-center mb-8">
+              {tenantLogoUrl ? (
+                <Image
+                  src={tenantLogoUrl}
+                  alt={tenantName}
+                  width={180}
+                  height={90}
+                  className="h-auto"
+                  priority
+                />
+              ) : (
+                <div className="w-[180px] h-[90px] bg-gray-200 animate-pulse rounded" />
+              )}
+            </div>
 
-          {/* Título */}
-          <div className="text-center mb-8">
-            <h1 className="text-2xl font-bold text-gray-800 mb-2">Ingreso de Agente</h1>
-            <p className="text-sm text-gray-500">Ingresa tus credenciales para continuar</p>
-          </div>
+            {/* Título */}
+            <div className="text-center mb-8">
+              <h1 className="text-2xl font-bold text-gray-800 mb-2">Ingreso de Agente</h1>
+              <p className="text-sm text-gray-500">Ingresa tus credenciales para continuar</p>
+            </div>
 
           {/* Formulario */}
           <form onSubmit={onSubmit} className="space-y-5">
@@ -217,113 +260,114 @@ export default function Home() {
             </button>
           </form>
         </div>
-      </div>
 
-      {/* Modal de Reset de Contraseña */}
-      {showResetModal && (
-        <div
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-          onClick={() => {
-            if (!resetLoading) {
-              setShowResetModal(false);
-              setResetError("");
-              setResetMessage("");
-            }
-          }}
-        >
+        {/* Modal de Reset de Contraseña */}
+        {showResetModal && (
           <div
-            className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 relative"
-            onClick={(e) => e.stopPropagation()}
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+            onClick={() => {
+              if (!resetLoading) {
+                setShowResetModal(false);
+                setResetError("");
+                setResetMessage("");
+              }
+            }}
           >
-            {/* Botón cerrar */}
-            <button
-              onClick={() => {
-                if (!resetLoading) {
-                  setShowResetModal(false);
-                  setResetError("");
-                  setResetMessage("");
-                }
-              }}
-              disabled={resetLoading}
-              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-50"
+            <div
+              className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 relative"
+              onClick={(e) => e.stopPropagation()}
             >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-
-            {/* Icono */}
-            <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
-              </svg>
-            </div>
-
-            {/* Título */}
-            <h2 className="text-xl font-semibold text-gray-900 text-center mb-2">
-              Recuperar Contraseña
-            </h2>
-            <p className="text-sm text-gray-500 text-center mb-6">
-              Te enviaremos un enlace para restablecer tu contraseña
-            </p>
-
-            {/* Formulario */}
-            <form onSubmit={onRequestReset} className="space-y-4">
-              <div>
-                <label htmlFor="reset-email" className="block text-sm font-medium text-gray-700 mb-1.5">
-                  Correo electrónico
-                </label>
-                <input
-                  id="reset-email"
-                  type="email"
-                  value={resetEmail}
-                  onChange={(e) => setResetEmail(e.target.value)}
-                  required
-                  disabled={resetLoading}
-                  placeholder="tu@email.com"
-                  className="w-full px-4 py-2.5 text-[15px] bg-white border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all disabled:bg-gray-50 disabled:text-gray-500"
-                />
-              </div>
-
-              {/* Error */}
-              {resetError && (
-                <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-                  <p className="text-sm text-red-600 font-medium">{resetError}</p>
-                </div>
-              )}
-
-              {/* Success */}
-              {resetMessage && (
-                <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-                  <p className="text-sm text-green-600 font-medium">{resetMessage}</p>
-                </div>
-              )}
-
-              {/* Botones */}
-              <div className="flex gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => {
+              {/* Botón cerrar */}
+              <button
+                onClick={() => {
+                  if (!resetLoading) {
                     setShowResetModal(false);
                     setResetError("");
                     setResetMessage("");
-                  }}
-                  disabled={resetLoading}
-                  className="flex-1 py-2.5 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={resetLoading || !!resetMessage}
-                  className="flex-1 py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-blue-600"
-                >
-                  {resetLoading ? "Enviando..." : resetMessage ? "Enviado ✓" : "Enviar enlace"}
-                </button>
+                  }
+                }}
+                disabled={resetLoading}
+                className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-50"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+
+              {/* Icono */}
+              <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                </svg>
               </div>
-            </form>
+
+              {/* Título */}
+              <h2 className="text-xl font-semibold text-gray-900 text-center mb-2">
+                Recuperar Contraseña
+              </h2>
+              <p className="text-sm text-gray-500 text-center mb-6">
+                Te enviaremos un enlace para restablecer tu contraseña
+              </p>
+
+              {/* Formulario */}
+              <form onSubmit={onRequestReset} className="space-y-4">
+                <div>
+                  <label htmlFor="reset-email" className="block text-sm font-medium text-gray-700 mb-1.5">
+                    Correo electrónico
+                  </label>
+                  <input
+                    id="reset-email"
+                    type="email"
+                    value={resetEmail}
+                    onChange={(e) => setResetEmail(e.target.value)}
+                    required
+                    disabled={resetLoading}
+                    placeholder="tu@email.com"
+                    className="w-full px-4 py-2.5 text-[15px] bg-white border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all disabled:bg-gray-50 disabled:text-gray-500"
+                  />
+                </div>
+
+                {/* Error */}
+                {resetError && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                    <p className="text-sm text-red-600 font-medium">{resetError}</p>
+                  </div>
+                )}
+
+                {/* Success */}
+                {resetMessage && (
+                  <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                    <p className="text-sm text-green-600 font-medium">{resetMessage}</p>
+                  </div>
+                )}
+
+                {/* Botones */}
+                <div className="flex gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowResetModal(false);
+                      setResetError("");
+                      setResetMessage("");
+                    }}
+                    disabled={resetLoading}
+                    className="flex-1 py-2.5 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={resetLoading || !!resetMessage}
+                    className="flex-1 py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-blue-600"
+                  >
+                    {resetLoading ? "Enviando..." : resetMessage ? "Enviado ✓" : "Enviar enlace"}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
-        </div>
+        )}
+      </div>
       )}
     </main>
   );

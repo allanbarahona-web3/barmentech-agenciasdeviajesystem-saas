@@ -12,6 +12,9 @@ export interface ResolvedTenant {
   customDomain: string | null;
   contractPrefix: string;
   isActive: boolean;
+  // Suspension info
+  suspendedAt: Date | null;
+  suspendReason: string | null;
   // Branding assets
   logoUrl: string | null;
   signatureUrl: string | null;

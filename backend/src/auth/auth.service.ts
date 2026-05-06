@@ -69,13 +69,28 @@ export class AuthService {
     }
 
     // ✅ Validar que el tenant no esté suspendido
+    if (user.tenant && user.tenant.suspendedAt) {
+      this.logger.warn(
+        `❌ Intento de login en tenant suspendido: ${email} (tenant: ${user.tenant.name}, razón: ${user.tenant.suspendReason || 'N/A'})`,
+      );
+      throw new UnauthorizedException({
+        statusCode: 403,
+        message: 'TENANT_SUSPENDED',
+        details: {
+          tenantName: user.tenant.name,
+          suspendedAt: user.tenant.suspendedAt,
+          reason: user.tenant.suspendReason || 'Su cuenta ha sido suspendida temporalmente. Contacte a soporte técnico.',
+        },
+      });
+    }
+
+    // Validar que el tenant esté activo (por si acaso)
     if (user.tenant && !user.tenant.isActive) {
       this.logger.warn(
-        `❌ Intento de login en tenant suspendido: ${email} (tenant: ${user.tenant.name}, subdomain: ${user.tenant.subdomain})`,
+        `❌ Intento de login en tenant inactivo: ${email} (tenant: ${user.tenant.name})`,
       );
       throw new UnauthorizedException(
-        "Su cuenta ha sido suspendida temporalmente debido a irregularidades administrativas. " +
-        "Por favor, contacte a soporte técnico para obtener más información y resolver esta situación."
+        "El servicio no está disponible actualmente. Contacte a soporte técnico."
       );
     }
 
