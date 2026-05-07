@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import AttachmentViewer from '@/components/attachment-viewer';
 import { LoadingModal } from '@/components/loading-modal';
+import { ConfirmModal } from '@/components/confirm-modal';
 import {
   getEmployees,
   getEmployee,
@@ -49,6 +50,10 @@ export default function EmployeesPage() {
   const [loadingModalOpen, setLoadingModalOpen] = useState(false);
   const [loadingModalState, setLoadingModalState] = useState<'loading' | 'success' | 'error'>('loading');
   const [loadingModalMessage, setLoadingModalMessage] = useState('');
+
+  // Delete confirmation modal
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [documentToDelete, setDocumentToDelete] = useState<string | null>(null);
 
   // Filtros
   const [statusFilter, setStatusFilter] = useState('');
@@ -242,19 +247,37 @@ export default function EmployeesPage() {
     }
   }
 
-  async function handleDeleteDocument(docId: string) {
-    if (!confirm('¿Eliminar este documento?')) return;
+  function handleDeleteDocument(docId: string) {
+    setDocumentToDelete(docId);
+    setDeleteConfirmOpen(true);
+  }
+
+  async function confirmDeleteDocument() {
+    if (!documentToDelete) return;
+    
+    setDeleteConfirmOpen(false);
+    setLoadingModalOpen(true);
+    setLoadingModalState('loading');
+    setLoadingModalMessage('🗑️ Eliminando documento...');
 
     try {
-      await deleteEmployeeDocument(docId);
-      setSuccess('Documento eliminado');
+      await deleteEmployeeDocument(documentToDelete);
+      setLoadingModalState('success');
+      setLoadingModalMessage('✅ Documento eliminado exitosamente');
 
       if (selectedEmployee) {
         const updated = await getEmployee(selectedEmployee.id);
         setSelectedEmployee(updated);
       }
+      
+      setTimeout(() => {
+        setLoadingModalOpen(false);
+        setDocumentToDelete(null);
+      }, 1500);
     } catch (err: any) {
-      setError(err.message);
+      setLoadingModalState('error');
+      setLoadingModalMessage(err.message || 'Error al eliminar documento');
+      setDocumentToDelete(null);
     }
   }
 
@@ -351,7 +374,7 @@ export default function EmployeesPage() {
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+            gridTemplateColumns: 'repeat(4, 1fr)',
             gap: '20px',
             marginBottom: '30px',
           }}
@@ -1353,6 +1376,21 @@ export default function EmployeesPage() {
         successMessage={loadingModalMessage}
         errorMessage={loadingModalMessage}
         onClose={() => setLoadingModalOpen(false)}
+      />
+
+      {/* Delete Confirmation Modal */}
+      <ConfirmModal
+        isOpen={deleteConfirmOpen}
+        title="🗑️ Eliminar Documento"
+        message="¿Estás seguro de que deseas eliminar este documento? Esta acción no se puede deshacer."
+        confirmText="Eliminar"
+        cancelText="Cancelar"
+        confirmVariant="danger"
+        onConfirm={confirmDeleteDocument}
+        onCancel={() => {
+          setDeleteConfirmOpen(false);
+          setDocumentToDelete(null);
+        }}
       />
     </div>
   );
