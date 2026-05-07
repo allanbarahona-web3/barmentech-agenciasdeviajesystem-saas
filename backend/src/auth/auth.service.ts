@@ -263,6 +263,7 @@ export class AuthService {
         emailLogoUrl: true,
         fromEmail: true,
         replyToEmail: true,
+        emailVerified: true,
       },
     });
 
@@ -629,7 +630,7 @@ export class AuthService {
     fullName: string,
     temporaryPassword: string,
     role: UserRole,
-    tenant: { name: string; subdomain: string | null; customDomain: string | null; logoUrl: string | null; emailLogoUrl: string | null; fromEmail?: string | null; replyToEmail?: string | null } | null
+    tenant: { name: string; subdomain: string | null; customDomain: string | null; logoUrl: string | null; emailLogoUrl: string | null; fromEmail?: string | null; replyToEmail?: string | null; emailVerified?: boolean } | null
   ) {
     const apiKey = this.configService.get<string>("RESEND_API_KEY", "").trim();
     const fallbackFromEmail = this.configService.get<string>("AUTH_FROM_EMAIL", "").trim();
@@ -639,9 +640,9 @@ export class AuthService {
       throw new InternalServerErrorException("Falta configurar RESEND_API_KEY.");
     }
 
-    // Usar fromEmail del tenant si existe, sino fallback al del sistema
-    const fromEmail = tenant?.fromEmail || fallbackFromEmail;
-    const replyTo = tenant?.replyToEmail || undefined;
+    // Usar fromEmail del tenant solo si está verificado, sino fallback al del sistema
+    const fromEmail = (tenant?.emailVerified && tenant?.fromEmail) ? tenant.fromEmail : fallbackFromEmail;
+    const replyTo = (tenant?.emailVerified && tenant?.replyToEmail) ? tenant.replyToEmail : undefined;
 
     if (!fromEmail) {
       throw new InternalServerErrorException("No hay email configurado para enviar (ni en tenant ni en sistema).");
@@ -838,11 +839,12 @@ export class AuthService {
     const resetLink = `${frontendUrl}/reset-password?token=${token}`;
     const resend = new Resend(apiKey);
     const logoSrc = await this.loadCompanyLogoEmailSrc(tenant);
+    const tenantName = tenant?.name || "Sistema de Viajes";
 
     await resend.emails.send({
       from: fromEmail,
       to: [email],
-      subject: "🔐 Restablece tu contraseña - Viajes Alma Nova",
+      subject: `🔐 Restablece tu contraseña - ${tenantName}`,
       html: `
 <!DOCTYPE html>
 <html lang="es">
@@ -860,12 +862,12 @@ export class AuthService {
           <!-- Header -->
           <tr>
             <td style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px 30px; text-align: center;">
-              ${logoSrc ? `<img src="${logoSrc}" alt="Viajes Alma Nova" style="max-width: 180px; height: auto; margin-bottom: 16px;" />` : ''}
+              ${logoSrc ? `<img src="${logoSrc}" alt="${tenantName}" style="max-width: 180px; height: auto; margin-bottom: 16px;" />` : ''}
               <h1 style="margin: 0; color: #ffffff; font-size: 32px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;">
-                Viajes Alma Nova
+                ${tenantName}
               </h1>
               <p style="margin: 8px 0 0 0; color: #e9d5ff; font-size: 14px; font-weight: 500;">
-                Experiencias inolvidables, destinos únicos
+                Gestión profesional de viajes
               </p>
             </td>
           </tr>
@@ -932,7 +934,7 @@ export class AuthService {
                 Este es un correo automático, por favor no respondas.
               </p>
               <p style="margin: 0; color: #6b7280; font-size: 13px;">
-                © ${new Date().getFullYear()} <strong style="color: #764ba2;">Viajes Alma Nova</strong> - Todos los derechos reservados
+                © ${new Date().getFullYear()} <strong style="color: #764ba2;">${tenantName}</strong> - Todos los derechos reservados
               </p>
             </td>
           </tr>

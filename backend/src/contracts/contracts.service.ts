@@ -638,20 +638,21 @@ export class ContractsService {
 
     const resend = new Resend(apiKey);
     const logoSrc = await this.loadCompanyLogoEmailSrc(tenant);
+    const tenantName = tenant?.name || "Sistema de Viajes";
     if (!pdfBuffer.length) {
       throw new InternalServerErrorException("Adjunto PDF invalido o vacio.");
     }
 
     const pdfBase64 = pdfBuffer.toString("base64");
 
-    const subject = `📄 Contrato para Firma - ${dto.contractNumber} | Viajes Alma Nova`;
+    const subject = `📄 Contrato para Firma - ${dto.contractNumber} | ${tenantName}`;
     const html = `
 <!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Contrato para Firma - Viajes Alma Nova</title>
+  <title>Contrato para Firma - ${tenantName}</title>
 </head>
 <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f3f4f6; line-height: 1.6;">
   <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #f3f4f6;">
@@ -662,12 +663,12 @@ export class ContractsService {
           <!-- Header -->
           <tr>
             <td style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px 30px; text-align: center;">
-              ${logoSrc ? `<img src="${logoSrc}" alt="Viajes Alma Nova" style="max-width: 180px; height: auto; margin-bottom: 16px;" />` : ''}
+              ${logoSrc ? `<img src="${logoSrc}" alt="${tenantName}" style="max-width: 180px; height: auto; margin-bottom: 16px;" />` : ''}
               <h1 style="margin: 0; color: #ffffff; font-size: 32px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;">
-                Viajes Alma Nova
+                ${tenantName}
               </h1>
               <p style="margin: 8px 0 0 0; color: #e9d5ff; font-size: 14px; font-weight: 500;">
-                Tu destino, nuestra pasión
+                Gesti\u00f3n profesional de viajes
               </p>
             </td>
           </tr>
@@ -737,7 +738,7 @@ export class ContractsService {
                 Atentamente,
               </p>
               <p style="margin: 0 0 20px 0; color: #667eea; font-size: 18px; font-weight: 700;">
-                Equipo Viajes Alma Nova
+                Equipo ${tenantName}
               </p>
               
               <div style="border-top: 1px solid #e5e7eb; padding-top: 20px; margin-top: 20px;">
@@ -753,7 +754,7 @@ export class ContractsService {
         
         <!-- Bottom Spacer -->
         <p style="margin: 20px 0 0 0; color: #9ca3af; font-size: 11px; text-align: center;">
-          © ${new Date().getFullYear()} Viajes Alma Nova. Todos los derechos reservados.
+          © ${new Date().getFullYear()} ${tenantName}. Todos los derechos reservados.
         </p>
       </td>
     </tr>
@@ -810,13 +811,14 @@ export class ContractsService {
 
     const resend = new Resend(apiKey);
     const logoSrc = await this.loadCompanyLogoEmailSrc(tenant);
+    const tenantName = tenant?.name || "Sistema de Viajes";
     const html = `
 <!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Firma tu Contrato - Viajes Alma Nova</title>
+  <title>Firma tu Contrato - ${tenantName}</title>
 </head>
 <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f3f4f6; line-height: 1.6;">
   <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #f3f4f6;">
@@ -827,12 +829,12 @@ export class ContractsService {
           <!-- Header -->
           <tr>
             <td style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px 30px; text-align: center;">
-              ${logoSrc ? `<img src="${logoSrc}" alt="Viajes Alma Nova" style="max-width: 180px; height: auto; margin-bottom: 16px;" />` : ''}
+              ${logoSrc ? `<img src="${logoSrc}" alt="${tenantName}" style="max-width: 180px; height: auto; margin-bottom: 16px;" />` : ''}
               <h1 style="margin: 0; color: #ffffff; font-size: 32px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;">
-                Viajes Alma Nova
+                ${tenantName}
               </h1>
               <p style="margin: 8px 0 0 0; color: #e9d5ff; font-size: 14px; font-weight: 500;">
-                Tu destino, nuestra pasión
+                Gestión profesional de viajes
               </p>
             </td>
           </tr>
@@ -914,7 +916,7 @@ export class ContractsService {
                 Atentamente,
               </p>
               <p style="margin: 0 0 20px 0; color: #667eea; font-size: 18px; font-weight: 700;">
-                Equipo Viajes Alma Nova
+                Equipo ${tenantName}
               </p>
               
               <div style="border-top: 1px solid #e5e7eb; padding-top: 20px; margin-top: 20px;">
@@ -930,7 +932,7 @@ export class ContractsService {
         
         <!-- Bottom Spacer -->
         <p style="margin: 20px 0 0 0; color: #9ca3af; font-size: 11px; text-align: center;">
-          © ${new Date().getFullYear()} Viajes Alma Nova. Todos los derechos reservados.
+          © ${new Date().getFullYear()} ${tenantName}. Todos los derechos reservados.
         </p>
       </td>
     </tr>
@@ -943,7 +945,7 @@ export class ContractsService {
       const result = await resend.emails.send({
         from: fromEmail,
         to: [dto.toEmail],
-        subject: `✍️ Firma tu Contrato - ${dto.contractNumber} | Viajes Alma Nova`,
+        subject: `✍️ Firma tu Contrato - ${dto.contractNumber} | ${tenantName}`,
         html,
       });
 
@@ -1024,6 +1026,7 @@ export class ContractsService {
 
     const resend = new Resend(apiKey);
     const logoSrc = await this.loadCompanyLogoEmailSrc(tenant);
+    const tenantName = tenant?.name || "Sistema de Viajes";
     const pdfBase64 = signedPdfBuffer.toString("base64");
     const fileName =
       String(contract.signedPdfFileName || "").trim() || `${String(contract.contractNumber || "contrato").trim()}-signed.pdf`;
@@ -1038,7 +1041,7 @@ export class ContractsService {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Contrato Firmado - Viajes Alma Nova</title>
+  <title>Contrato Firmado - ${tenantName}</title>
 </head>
 <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f3f4f6; line-height: 1.6;">
   <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #f3f4f6;">
@@ -1049,12 +1052,12 @@ export class ContractsService {
           <!-- Header -->
           <tr>
             <td style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px 30px; text-align: center;">
-              ${logoSrc ? `<img src="${logoSrc}" alt="Viajes Alma Nova" style="max-width: 180px; height: auto; margin-bottom: 16px;" />` : ''}
+              ${logoSrc ? `<img src="${logoSrc}" alt="${tenantName}" style="max-width: 180px; height: auto; margin-bottom: 16px;" />` : ''}
               <h1 style="margin: 0; color: #ffffff; font-size: 32px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;">
-                Viajes Alma Nova
+                ${tenantName}
               </h1>
               <p style="margin: 8px 0 0 0; color: #e9d5ff; font-size: 14px; font-weight: 500;">
-                Experiencias inolvidables, destinos únicos
+                Gestión profesional de viajes
               </p>
             </td>
           </tr>
@@ -1121,7 +1124,7 @@ export class ContractsService {
                 Atentamente,
               </p>
               <p style="margin: 0 0 20px 0; color: #667eea; font-size: 18px; font-weight: 700;">
-                Equipo Viajes Alma Nova
+                Equipo ${tenantName}
               </p>
               
               <div style="border-top: 1px solid #e5e7eb; padding-top: 20px; margin-top: 20px;">
@@ -1137,7 +1140,7 @@ export class ContractsService {
         
         <!-- Bottom Spacer -->
         <p style="margin: 20px 0 0 0; color: #9ca3af; font-size: 11px; text-align: center;">
-          © ${new Date().getFullYear()} Viajes Alma Nova. Todos los derechos reservados.
+          © ${new Date().getFullYear()} ${tenantName}. Todos los derechos reservados.
         </p>
       </td>
     </tr>
@@ -1150,7 +1153,7 @@ export class ContractsService {
         await resend.emails.send({
           from: fromEmail,
           to: [recipient.email],
-          subject: `✅ Contrato Firmado - ${contract.contractNumber} | Viajes Alma Nova`,
+          subject: `✅ Contrato Firmado - ${contract.contractNumber} | ${tenantName}`,
           html,
           attachments: [
             {

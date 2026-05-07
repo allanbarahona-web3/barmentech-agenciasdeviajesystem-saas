@@ -2379,15 +2379,16 @@ export class BillingService {
     const invoicePdfUrl = await this.buildSignedObjectUrl(String(pdf.objectKeyPdf || ""), 86_400);
     const tenant = contract?.tenant || null;
     
-    // Usar email del tenant si existe, sino fallback al sistema
-    const fromEmail = tenant?.fromEmail || fallbackFromEmail;
-    const replyTo = tenant?.replyToEmail || undefined;
+    // Usar email del tenant solo si está verificado, sino fallback al sistema
+    const fromEmail = (tenant?.emailVerified && tenant?.fromEmail) ? tenant.fromEmail : fallbackFromEmail;
+    const replyTo = (tenant?.emailVerified && tenant?.replyToEmail) ? tenant.replyToEmail : undefined;
     
     if (!fromEmail) {
       throw new InternalServerErrorException("No hay email configurado (ni en tenant ni en sistema).");
     }
     
     const logoSrc = await this.loadCompanyLogoEmailSrc(tenant);
+    const tenantName = tenant?.name || "Sistema de Viajes";
     const currency = String(invoice.currency || "USD").trim().toUpperCase() || "USD";
     const amount = (value: unknown) => `${currency} ${this.toNumber(value, 0).toFixed(2)}`;
     const paymentRef = String(contract.paymentReference || "N/A");
@@ -2397,7 +2398,7 @@ export class BillingService {
     const emailPayload: any = {
       from: fromEmail,
       to: [targetEmail],
-      subject: `Contrato ${invoice.contractNumber} - Estado de cuenta inicial - Viajes Alma Nova`,
+      subject: `Contrato ${invoice.contractNumber} - Estado de cuenta inicial - ${tenantName}`,
       text: `
 ESTADO DE CUENTA INICIAL
 
@@ -2422,12 +2423,12 @@ IMPORTANTE: Este correo se envió únicamente al titular del contrato. El estado
 Contáctanos en contratos@viajesalmanova.com o llámanos al +506 7006-7572
 
 ---
-Viajes Alma Nova
+${tenantName}
 Cédula jurídica 3-101-960028
 Costa Rica · +506 7006-7572
 contratos@viajesalmanova.com
 
-© ${new Date().getFullYear()} Viajes Alma Nova. Todos los derechos reservados.
+© ${new Date().getFullYear()} ${tenantName}. Todos los derechos reservados.
       `,
       html: `
         <!DOCTYPE html>
@@ -2442,7 +2443,7 @@ contratos@viajesalmanova.com
               
               <!-- Header -->
               <div style="background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%); padding:32px 24px; text-align:center;">
-                ${logoSrc ? `<img src="${logoSrc}" alt="Viajes Alma Nova" style="display:block; max-width:180px; height:auto; margin:0 auto 16px; filter: brightness(0) invert(1);" />` : ""}
+                ${logoSrc ? `<img src="${logoSrc}" alt="${tenantName}" style="display:block; max-width:180px; height:auto; margin:0 auto 16px; filter: brightness(0) invert(1);" />` : ""}
                 <h1 style="margin:0; color:#ffffff; font-size:28px; font-weight:700; line-height:1.2;">
                   📊 Estado de Cuenta Inicial
                 </h1>
@@ -2529,7 +2530,7 @@ contratos@viajesalmanova.com
               <!-- Footer -->
               <div style="background:#f1f5f9; padding:24px; text-align:center; border-top:1px solid #e2e8f0;">
                 <p style="margin:0 0 8px; font-size:15px; color:#1e293b; font-weight:600;">
-                  Viajes Alma Nova
+                  ${tenantName}
                 </p>
                 <p style="margin:0; font-size:13px; color:#64748b; line-height:1.5;">
                   Cédula jurídica 3-101-960028<br/>
@@ -2542,7 +2543,7 @@ contratos@viajesalmanova.com
             
             <!-- Copyright -->
             <p style="text-align:center; margin:20px 0 0; font-size:12px; color:#94a3b8;">
-              © ${new Date().getFullYear()} Viajes Alma Nova. Todos los derechos reservados.
+              © ${new Date().getFullYear()} ${tenantName}. Todos los derechos reservados.
             </p>
           </div>
         </body>
@@ -2653,29 +2654,30 @@ contratos@viajesalmanova.com
     const reason = String(creditNote.reason || "-");
     const tenant = creditNote.contract?.tenant || null;
     
-    // Usar email del tenant si existe, sino fallback al sistema
-    const fromEmail = tenant?.fromEmail || fallbackFromEmail;
-    const replyTo = tenant?.replyToEmail || undefined;
+    // Usar email del tenant solo si está verificado, sino fallback al sistema
+    const fromEmail = (tenant?.emailVerified && tenant?.fromEmail) ? tenant.fromEmail : fallbackFromEmail;
+    const replyTo = (tenant?.emailVerified && tenant?.replyToEmail) ? tenant.replyToEmail : undefined;
     
     if (!fromEmail) {
       throw new InternalServerErrorException("No hay email configurado (ni en tenant ni en sistema).");
     }
     
     const logoSrc = await this.loadCompanyLogoEmailSrc(tenant);
+    const tenantName = tenant?.name || "Sistema de Viajes";
 
     const resend = new Resend(apiKey);
     const emailPayload: any = {
       from: fromEmail,
       to: [targetEmail],
       ...(normalizedCc ? { cc: [normalizedCc] } : {}),
-      subject: `💳 Nota de Crédito ${creditNote.creditNoteNumber} - Viajes Alma Nova`,
+      subject: `💳 Nota de Crédito ${creditNote.creditNoteNumber} - ${tenantName}`,
       html: `
 <!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Nota de Crédito - Viajes Alma Nova</title>
+  <title>Nota de Crédito - ${tenantName}</title>
 </head>
 <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f3f4f6; line-height: 1.6;">
   <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #f3f4f6;">
@@ -2862,9 +2864,9 @@ contratos@viajesalmanova.com
     const paymentRef = String(invoice.contract?.paymentReference || "N/A");
     const tenant = invoice.contract?.tenant || null;
     
-    // Usar email del tenant si existe, sino fallback al sistema
-    const fromEmail = tenant?.fromEmail || fallbackFromEmail;
-    const replyTo = tenant?.replyToEmail || undefined;
+    // Usar email del tenant solo si está verificado, sino fallback al sistema
+    const fromEmail = (tenant?.emailVerified && tenant?.fromEmail) ? tenant.fromEmail : fallbackFromEmail;
+    const replyTo = (tenant?.emailVerified && tenant?.replyToEmail) ? tenant.replyToEmail : undefined;
     
     if (!fromEmail) {
       throw new InternalServerErrorException("No hay email configurado (ni en tenant ni en sistema).");
@@ -4902,12 +4904,11 @@ contratos@viajesalmanova.com
     const normalizedCc = String(ccEmail || "").trim();
 
     const apiKey = this.configService.get<string>("RESEND_API_KEY", "").trim();
-    const fromEmail = this.configService.get<string>("CONTRACTS_FROM_EMAIL", "").trim();
-    if (!apiKey || !fromEmail) {
-      throw new InternalServerErrorException("Falta configurar RESEND_API_KEY o CONTRACTS_FROM_EMAIL.");
+    const fallbackFromEmail = this.configService.get<string>("CONTRACTS_FROM_EMAIL", "").trim();
+    if (!apiKey) {
+      throw new InternalServerErrorException("Falta configurar RESEND_API_KEY.");
     }
 
-    const resend = new Resend(apiKey);
     const amount = this.toNumber(receipt.amount, 0);
     const receiptPdf = await this.ensureReceiptPdf(receipt.id);
     const receiptPdfUrl = await this.buildSignedObjectUrl(String(receiptPdf.objectKeyPdf || ""), 86_400);
@@ -4930,9 +4931,19 @@ contratos@viajesalmanova.com
     const paymentRef = String(receipt.invoice?.contract?.paymentReference || "N/A");
     const tenant = receipt.invoice?.contract?.tenant || null;
     const logoSrc = await this.loadCompanyLogoEmailSrc(tenant);
+    
+    // Usar email del tenant solo si está verificado, sino fallback al sistema
+    const fromEmail = (tenant?.emailVerified && tenant?.fromEmail) ? tenant.fromEmail : fallbackFromEmail;
+    const replyTo = (tenant?.emailVerified && tenant?.replyToEmail) ? tenant.replyToEmail : undefined;
+    
+    if (!fromEmail) {
+      throw new InternalServerErrorException("No hay email configurado (ni en tenant ni en sistema).");
+    }
 
+    const resend = new Resend(apiKey);
     await resend.emails.send({
       from: fromEmail,
+      ...(replyTo ? { reply_to: replyTo } : {}),
       to: [targetEmail],
       ...(normalizedCc ? { cc: [normalizedCc] } : {}),
       subject: `✅ Recibo Aprobado ${receipt.receiptNumber} - Viajes Alma Nova`,

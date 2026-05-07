@@ -842,6 +842,10 @@ export const updateTenantConfigAdmin = async (
 
   const payload = await response.json();
   if (!response.ok) {
+    // Si es un error estructurado del backend (con code, domain, etc), lanzarlo completo
+    if (payload?.code) {
+      throw payload; // Preserva toda la información del error
+    }
     throw new Error(payload?.message || "Error al actualizar configuración");
   }
 
@@ -898,6 +902,42 @@ export const uploadTenantSignature = async (file: File): Promise<{ success: bool
   }
 
   return payload;
+};
+
+/**
+ * Eliminar logo del tenant (ADMIN)
+ */
+export const deleteTenantLogo = async (): Promise<{ success: boolean; message: string }> => {
+  const apiBase = resolveApiBase();
+  const response = await authenticatedFetch(`${apiBase}/tenant/assets/logo`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
+
+  if (!response.ok) {
+    const payload = await response.json();
+    throw new Error(payload?.message || "Error al eliminar logo");
+  }
+
+  return response.json();
+};
+
+/**
+ * Eliminar firma del tenant (ADMIN)
+ */
+export const deleteTenantSignature = async (): Promise<{ success: boolean; message: string }> => {
+  const apiBase = resolveApiBase();
+  const response = await authenticatedFetch(`${apiBase}/tenant/assets/signature`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
+
+  if (!response.ok) {
+    const payload = await response.json();
+    throw new Error(payload?.message || "Error al eliminar firma");
+  }
+
+  return response.json();
 };
 
 

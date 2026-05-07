@@ -1,4 +1,4 @@
-import { IsOptional, IsString, MaxLength, IsEmail } from 'class-validator';
+import { IsOptional, IsString, MaxLength, IsEmail, ValidateIf } from 'class-validator';
 
 export class UpdateTenantConfigDto {
   @IsOptional()
@@ -52,12 +52,14 @@ export class UpdateTenantConfigDto {
   representativePowers?: string;
 
   @IsOptional()
-  @IsEmail()
+  @ValidateIf((o) => o.fromEmail !== null)
+  @IsEmail({}, { message: 'Email de envío inválido' })
   @MaxLength(200)
-  fromEmail?: string;
+  fromEmail?: string | null;
 
   @IsOptional()
-  @IsEmail()
+  @ValidateIf((o) => o.replyToEmail !== null)
+  @IsEmail({}, { message: 'Email de respuesta inválido' })
   @MaxLength(200)
-  replyToEmail?: string;
+  replyToEmail?: string | null;
 }

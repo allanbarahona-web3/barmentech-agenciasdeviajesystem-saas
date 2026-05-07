@@ -280,7 +280,7 @@ export default function SuperAdminDashboard() {
                     <p className="text-xs text-blue-900 font-semibold mb-2">📝 Qué hacer:</p>
                     <ol className="text-xs text-blue-800 space-y-1 ml-4 list-decimal">
                       <li>Ve a <a href="https://resend.com/domains" target="_blank" rel="noopener noreferrer" className="underline font-medium">Resend Dashboard → Domains</a></li>
-                      <li>Agrega el dominio del email (ej: si es info@almanova.com → agrega almanova.com)</li>
+                      <li>Agrega el dominio del email (ej: si es info@tuempresa.com → agrega tuempresa.com)</li>
                       <li>Configura los DNS records que te proporciona Resend</li>
                       <li>Espera la verificación (usualmente ~10 minutos)</li>
                       <li>Una vez verificado en Resend, haz clic en &quot;✅ Marcar Verificado&quot;</li>

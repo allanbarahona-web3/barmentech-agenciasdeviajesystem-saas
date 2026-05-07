@@ -21,6 +21,8 @@ export default function Home() {
   const [resetError, setResetError] = useState("");
   const [tenantLogoUrl, setTenantLogoUrl] = useState<string | null>(null);
   const [tenantName, setTenantName] = useState<string>("Viajes Alma Nova");
+  const [primaryColor, setPrimaryColor] = useState<string>("#3B82F6"); // Azul por defecto
+  const [accentColor, setAccentColor] = useState<string>("#8B5CF6"); // Morado por defecto
   
   // Estados para modal de suspensión
   const [showSuspendedModal, setShowSuspendedModal] = useState(false);
@@ -43,6 +45,8 @@ export default function Home() {
         const config = await getTenantConfig();
         setTenantLogoUrl(config.logoUrl);
         setTenantName(config.name);
+        setPrimaryColor(config.primaryColor || "#3B82F6");
+        setAccentColor(config.secondaryColor || "#8B5CF6");
       } catch (err) {
         // Si el tenant está suspendido, mostrar modal inmediatamente
         if (err instanceof TenantSuspendedError) {
@@ -195,7 +199,16 @@ export default function Home() {
                 onChange={(event) => setEmail(event.target.value)}
                 required
                 placeholder="tu@email.com"
-                className="block w-full px-4 py-3 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                className="block w-full px-4 py-3 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:border-transparent transition"
+                style={{
+                  ['--tw-ring-color' as string]: primaryColor,
+                }}
+                onFocus={(e) => {
+                  e.currentTarget.style.boxShadow = `0 0 0 2px ${primaryColor}40`;
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.boxShadow = "";
+                }}
               />
             </div>
 
@@ -213,7 +226,16 @@ export default function Home() {
                   onChange={(event) => setPassword(event.target.value)}
                   required
                   placeholder="••••••••"
-                  className="block w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+                  className="block w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:border-transparent transition"
+                  style={{
+                    ['--tw-ring-color' as string]: primaryColor,
+                  }}
+                  onFocus={(e) => {
+                    e.currentTarget.style.boxShadow = `0 0 0 2px ${primaryColor}40`;
+                  }}
+                  onBlur={(e) => {
+                    e.currentTarget.style.boxShadow = "";
+                  }}
                 />
                 <button
                   type="button"
@@ -237,7 +259,14 @@ export default function Home() {
               <button
                 type="button"
                 onClick={() => setShowResetModal(true)}
-                className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+                className="text-sm font-medium transition-colors"
+                style={{ color: accentColor }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.opacity = "0.8";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.opacity = "1";
+                }}
               >
                 ¿Olvidaste tu contraseña?
               </button>
@@ -254,7 +283,19 @@ export default function Home() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full py-3 px-4 text-white font-semibold rounded-lg shadow-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{
+                backgroundColor: primaryColor,
+                borderColor: primaryColor,
+              }}
+              onMouseEnter={(e) => {
+                if (!loading) {
+                  e.currentTarget.style.opacity = "0.9";
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.opacity = "1";
+              }}
             >
               {loading ? "Ingresando..." : "Iniciar sesión"}
             </button>
@@ -295,8 +336,8 @@ export default function Home() {
               </button>
 
               {/* Icono */}
-              <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4" style={{ backgroundColor: `${primaryColor}20` }}>
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: primaryColor }}>
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
                 </svg>
               </div>
@@ -323,7 +364,16 @@ export default function Home() {
                     required
                     disabled={resetLoading}
                     placeholder="tu@email.com"
-                    className="w-full px-4 py-2.5 text-[15px] bg-white border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all disabled:bg-gray-50 disabled:text-gray-500"
+                    className="w-full px-4 py-2.5 text-[15px] bg-white border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:border-transparent transition-all disabled:bg-gray-50 disabled:text-gray-500"
+                    style={{
+                      ['--tw-ring-color' as string]: primaryColor,
+                    }}
+                    onFocus={(e) => {
+                      e.currentTarget.style.boxShadow = `0 0 0 2px ${primaryColor}40`;
+                    }}
+                    onBlur={(e) => {
+                      e.currentTarget.style.boxShadow = "";
+                    }}
                   />
                 </div>
 
@@ -358,7 +408,19 @@ export default function Home() {
                   <button
                     type="submit"
                     disabled={resetLoading || !!resetMessage}
-                    className="flex-1 py-2.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-blue-600"
+                    className="flex-1 py-2.5 px-4 text-white font-semibold rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    style={{
+                      backgroundColor: primaryColor,
+                      borderColor: primaryColor,
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!resetLoading && !resetMessage) {
+                        e.currentTarget.style.opacity = "0.9";
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.opacity = "1";
+                    }}
                   >
                     {resetLoading ? "Enviando..." : resetMessage ? "Enviado ✓" : "Enviar enlace"}
                   </button>

@@ -1661,6 +1661,50 @@ body {
   color: var(--danger);
 }
 
+/* Menús desplegables (grupos) */
+.vertical-nav-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.vertical-nav-group-header {
+  position: relative;
+  padding-right: 32px; /* Espacio para el chevron */
+}
+
+.vertical-nav-chevron {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 10px;
+  opacity: 0.6;
+  transition: transform 0.2s ease;
+}
+
+.vertical-nav-group-items {
+  display: flex;
+  flex-direction: column;
+  background: rgba(0, 0, 0, 0.02);
+  border-left: 2px solid var(--accent);
+  margin-left: 8px;
+}
+
+.vertical-nav-subitem {
+  padding-left: 32px !important;
+  font-size: 13px;
+  min-height: 38px;
+}
+
+.vertical-nav-subitem .vertical-nav-icon {
+  font-size: 14px;
+  width: 20px;
+}
+
+.vertical-nav-subitem .vertical-nav-label {
+  font-size: 13px;
+}
+
 /* Layout adjustment for vertical nav */
 body:has(.vertical-nav) .app-shell {
   margin-left: 260px;
@@ -2455,4 +2499,33 @@ body:has(.vertical-nav) .app-shell {
   .travel-packages-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* Generic Email Blocked Modal Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.2s ease-out;
+}
+
+.animate-slideUp {
+  animation: slideUp 0.3s ease-out;
 }

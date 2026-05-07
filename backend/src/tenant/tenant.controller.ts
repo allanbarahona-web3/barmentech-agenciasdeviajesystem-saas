@@ -3,7 +3,9 @@ import {
   Get,
   Patch,
   Post,
+  Delete,
   Body,
+  Param,
   UseGuards,
   UseInterceptors,
   UploadedFile,
@@ -113,5 +115,23 @@ export class TenantController {
         size: file.size,
       },
     );
+  }
+
+  /**
+   * 🗑️ DELETE /tenant/assets/logo
+   * Eliminar logo del tenant
+   */
+  @Delete('assets/logo')
+  async deleteLogo(@Req() req: { user: { tenantId: string } }) {
+    return this.tenantService.deleteTenantAsset(req.user.tenantId, 'logo');
+  }
+
+  /**
+   * 🗑️ DELETE /tenant/assets/signature
+   * Eliminar firma del tenant
+   */
+  @Delete('assets/signature')
+  async deleteSignature(@Req() req: { user: { tenantId: string } }) {
+    return this.tenantService.deleteTenantAsset(req.user.tenantId, 'signature');
   }
 }

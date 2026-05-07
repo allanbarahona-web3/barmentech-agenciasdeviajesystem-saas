@@ -7,10 +7,13 @@ import {
   updateTenantConfigAdmin,
   uploadTenantLogo,
   uploadTenantSignature,
+  deleteTenantLogo,
+  deleteTenantSignature,
   getStoredSession,
   type TenantConfigResponse,
 } from "@/lib/auth-api";
 import Image from "next/image";
+import { GenericEmailBlockedModal } from "@/components/generic-email-blocked-modal";
 
 /**
  * 🏢 Configuración del Tenant
@@ -30,6 +33,10 @@ export default function SettingsPage() {
   const [config, setConfig] = useState<TenantConfigResponse | null>(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  
+  // Estado del modal de email genérico bloqueado
+  const [showGenericEmailModal, setShowGenericEmailModal] = useState(false);
+  const [blockedEmailDomain, setBlockedEmailDomain] = useState("");
 
   // Refs para inputs de archivos
   const logoInputRef = useRef<HTMLInputElement>(null);
@@ -161,6 +168,52 @@ export default function SettingsPage() {
     }
   };
 
+  const handleLogoDelete = async () => {
+    if (!confirm("¿Estás seguro de eliminar el logo actual?")) {
+      return;
+    }
+
+    try {
+      setUploadingLogo(true);
+      setError("");
+      setSuccess("");
+
+      await deleteTenantLogo();
+      setSuccess("Logo eliminado exitosamente");
+
+      // Recargar configuración
+      await loadConfig();
+    } catch (err) {
+      console.error("Error al eliminar logo:", err);
+      setError(err instanceof Error ? err.message : "Error al eliminar logo");
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
+
+  const handleSignatureDelete = async () => {
+    if (!confirm("¿Estás seguro de eliminar la firma actual?")) {
+      return;
+    }
+
+    try {
+      setUploadingSignature(true);
+      setError("");
+      setSuccess("");
+
+      await deleteTenantSignature();
+      setSuccess("Firma eliminada exitosamente");
+
+      // Recargar configuración
+      await loadConfig();
+    } catch (err) {
+      console.error("Error al eliminar firma:", err);
+      setError(err instanceof Error ? err.message : "Error al eliminar firma");
+    } finally {
+      setUploadingSignature(false);
+    }
+  };
+
   const handleSaveConfig = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -177,8 +230,8 @@ export default function SettingsPage() {
       await updateTenantConfigAdmin({
         primaryColor,
         secondaryColor,
-        fromEmail: fromEmail.trim() || undefined,
-        replyToEmail: replyToEmail.trim() || undefined,
+        fromEmail: fromEmail.trim() || null,
+        replyToEmail: replyToEmail.trim() || null,
         legalName,
         legalId,
         representativeName,
@@ -202,7 +255,24 @@ export default function SettingsPage() {
       }
     } catch (err) {
       console.error("Error al guardar configuración:", err);
-      setError(err instanceof Error ? err.message : "Error al guardar configuración");
+      
+      // Verificar si es un error de email genérico bloqueado
+      if (err && typeof err === 'object' && 'code' in err && err.code === 'GENERIC_EMAIL_BLOCKED') {
+        const errorData = err as { domain?: string; message?: string };
+        setBlockedEmailDomain(errorData.domain || 'genérico');
+        setShowGenericEmailModal(true);
+        return;
+      }
+      
+      // Extraer mensaje de error
+      let errorMessage = "Error al guardar configuración";
+      if (err instanceof Error) {
+        errorMessage = err.message;
+      } else if (err && typeof err === 'object' && 'message' in err) {
+        errorMessage = String(err.message);
+      }
+      
+      setError(errorMessage);
     } finally {
       setSaving(false);
     }
@@ -260,11 +330,12 @@ export default function SettingsPage() {
                 {config?.logoUrl ? (
                   <div className="mb-4">
                     <Image
-                      src={config.logoUrl}
+                      src={`${config.logoUrl}?t=${Date.now()}`}
                       alt="Logo"
                       width={200}
                       height={100}
                       className="mx-auto object-contain"
+                      unoptimized
                     />
                   </div>
                 ) : (
@@ -283,16 +354,28 @@ export default function SettingsPage() {
                   className="hidden"
                   id="logo-upload"
                 />
-                <label
-                  htmlFor="logo-upload"
-                  className={`cursor-pointer inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white ${
-                    uploadingLogo
-                      ? "bg-gray-400"
-                      : "bg-purple-600 hover:bg-purple-700"
-                  }`}
-                >
-                  {uploadingLogo ? "Subiendo..." : "Subir Logo"}
-                </label>
+                <div className="flex gap-2 justify-center">
+                  <label
+                    htmlFor="logo-upload"
+                    className={`cursor-pointer inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white ${
+                      uploadingLogo
+                        ? "bg-gray-400"
+                        : "bg-purple-600 hover:bg-purple-700"
+                    }`}
+                  >
+                    {uploadingLogo ? "Subiendo..." : config?.logoUrl ? "Cambiar Logo" : "Subir Logo"}
+                  </label>
+                  {config?.logoUrl && (
+                    <button
+                      type="button"
+                      onClick={handleLogoDelete}
+                      disabled={uploadingLogo}
+                      className="px-4 py-2 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      🗑️ Eliminar
+                    </button>
+                  )}
+                </div>
                 <p className="text-xs text-gray-500 mt-2">JPEG, PNG o WebP. Máximo 5 MB</p>
               </div>
             </div>
@@ -306,11 +389,12 @@ export default function SettingsPage() {
                 {config?.signatureUrl ? (
                   <div className="mb-4">
                     <Image
-                      src={config.signatureUrl}
+                      src={`${config.signatureUrl}?t=${Date.now()}`}
                       alt="Firma"
                       width={200}
                       height={100}
                       className="mx-auto object-contain"
+                      unoptimized
                     />
                   </div>
                 ) : (
@@ -329,16 +413,28 @@ export default function SettingsPage() {
                   className="hidden"
                   id="signature-upload"
                 />
-                <label
-                  htmlFor="signature-upload"
-                  className={`cursor-pointer inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white ${
-                    uploadingSignature
-                      ? "bg-gray-400"
-                      : "bg-purple-600 hover:bg-purple-700"
-                  }`}
-                >
-                  {uploadingSignature ? "Subiendo..." : "Subir Firma"}
-                </label>
+                <div className="flex gap-2 justify-center">
+                  <label
+                    htmlFor="signature-upload"
+                    className={`cursor-pointer inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white ${
+                      uploadingSignature
+                        ? "bg-gray-400"
+                        : "bg-purple-600 hover:bg-purple-700"
+                    }`}
+                  >
+                    {uploadingSignature ? "Subiendo..." : config?.signatureUrl ? "Cambiar Firma" : "Subir Firma"}
+                  </label>
+                  {config?.signatureUrl && (
+                    <button
+                      type="button"
+                      onClick={handleSignatureDelete}
+                      disabled={uploadingSignature}
+                      className="px-4 py-2 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      🗑️ Eliminar
+                    </button>
+                  )}
+                </div>
                 <p className="text-xs text-gray-500 mt-2">JPEG, PNG o WebP. Máximo 5 MB</p>
               </div>
             </div>
@@ -440,13 +536,28 @@ export default function SettingsPage() {
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Email de Envío (From)
               </label>
-              <input
-                type="email"
-                value={fromEmail}
-                onChange={(e) => setFromEmail(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                placeholder="noreply@tudominio.com"
-              />
+              <div className="flex gap-2">
+                <input
+                  type="email"
+                  value={fromEmail}
+                  onChange={(e) => setFromEmail(e.target.value)}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md"
+                  placeholder="noreply@tudominio.com"
+                />
+                {fromEmail && (
+                  <button
+                    type="button"
+                    onClick={() => setFromEmail("")}
+                    className="px-3 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-md transition-colors flex items-center gap-1 text-sm font-medium"
+                    title="Limpiar email"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                    Limpiar
+                  </button>
+                )}
+              </div>
               <p className="text-xs text-gray-500 mt-1">
                 Desde dónde se envían los emails de bienvenida, contratos, etc.
               </p>
@@ -456,13 +567,28 @@ export default function SettingsPage() {
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Email de Respuesta (Reply-To)
               </label>
-              <input
-                type="email"
-                value={replyToEmail}
-                onChange={(e) => setReplyToEmail(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                placeholder="info@tudominio.com"
-              />
+              <div className="flex gap-2">
+                <input
+                  type="email"
+                  value={replyToEmail}
+                  onChange={(e) => setReplyToEmail(e.target.value)}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md"
+                  placeholder="info@tudominio.com"
+                />
+                {replyToEmail && (
+                  <button
+                    type="button"
+                    onClick={() => setReplyToEmail("")}
+                    className="px-3 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-md transition-colors flex items-center gap-1 text-sm font-medium"
+                    title="Limpiar email"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                    Limpiar
+                  </button>
+                )}
+              </div>
               <p className="text-xs text-gray-500 mt-1">
                 A dónde llegan las respuestas de los usuarios (opcional).
               </p>
@@ -599,6 +725,17 @@ export default function SettingsPage() {
           </div>
         </form>
       </div>
+      
+      {/* Modal de Email Genérico Bloqueado */}
+      <GenericEmailBlockedModal
+        isOpen={showGenericEmailModal}
+        onClose={() => {
+          setShowGenericEmailModal(false);
+          setBlockedEmailDomain("");
+        }}
+        domain={blockedEmailDomain}
+        tenantName={config?.name}
+      />
     </div>
   );
 }

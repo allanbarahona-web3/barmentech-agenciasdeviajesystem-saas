@@ -1,6 +1,6 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdateTenantConfigDto } from './dto/update-tenant-config.dto';
 import * as sharp from 'sharp';
@@ -119,6 +119,49 @@ export class TenantService {
   }
 
   /**
+   * 🚫 Lista de dominios genéricos no permitidos para emails empresariales
+   */
+  private readonly GENERIC_EMAIL_DOMAINS = [
+    'gmail.com',
+    'hotmail.com',
+    'outlook.com',
+    'yahoo.com',
+    'live.com',
+    'icloud.com',
+    'protonmail.com',
+    'aol.com',
+    'mail.com',
+    'zoho.com',
+    'yandex.com',
+    'gmx.com',
+  ];
+
+  /**
+   * Valida que un email NO use un dominio genérico
+   */
+  private validateBusinessEmail(email: string | null | undefined): void {
+    if (!email) {
+      return; // Emails opcionales, no validar si está vacío
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail.includes('@')) {
+      throw new BadRequestException('Email inválido');
+    }
+
+    const domain = normalizedEmail.split('@')[1];
+    
+    if (this.GENERIC_EMAIL_DOMAINS.includes(domain)) {
+      throw new BadRequestException({
+        message: 'No se permiten emails con dominios genéricos',
+        code: 'GENERIC_EMAIL_BLOCKED',
+        domain: domain,
+        hint: 'Usa un email con dominio empresarial propio (ej: info@tuempresa.com)',
+      });
+    }
+  }
+
+  /**
    * Verifica que un tenant esté activo
    */
   async validateTenantIsActive(tenantId: string): Promise<void> {
@@ -180,7 +223,11 @@ export class TenantService {
     // Extraer campos de email
     const { fromEmail, replyToEmail, ...otherFields } = dto;
 
-    // 🔍 Obtener tenant actual para detectar cambios en emails
+    // � Validar que no sean emails genéricos
+    this.validateBusinessEmail(fromEmail);
+    this.validateBusinessEmail(replyToEmail);
+
+    // �🔍 Obtener tenant actual para detectar cambios en emails
     const currentTenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
       select: {
@@ -219,8 +266,9 @@ export class TenantService {
       data: {
         primaryColor: dto.primaryColor,
         secondaryColor: dto.secondaryColor,
-        fromEmail: fromEmail,
-        replyToEmail: replyToEmail,
+        // Actualizar emails solo si están presentes (undefined = no cambiar, null = borrar)
+        ...(fromEmail !== undefined && { fromEmail: fromEmail }),
+        ...(replyToEmail !== undefined && { replyToEmail: replyToEmail }),
         // 🔓 Invalidar verificación si cambiaron los emails
         emailVerified: shouldInvalidateVerification
           ? false
@@ -340,6 +388,74 @@ export class TenantService {
     };
   }
 
+  /**
+   * 🗑️ Eliminar asset del tenant (logo o firma)
+   */
+  async deleteTenantAsset(tenantId: string, assetType: 'logo' | 'signature') {
+    // Obtener tenant
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: {
+        id: true,
+        subdomain: true,
+        name: true,
+        logoUrl: true,
+        signatureUrl: true,
+      },
+    });
+
+    if (!tenant || !tenant.subdomain) {
+      throw new NotFoundException('Tenant no encontrado');
+    }
+
+    // Verificar si existe el asset
+    const currentUrl = assetType === 'logo' ? tenant.logoUrl : tenant.signatureUrl;
+    if (!currentUrl) {
+      throw new BadRequestException(`No hay ${assetType} configurado para eliminar`);
+    }
+
+    // Construir ruta en Spaces (misma lógica que al subir)
+    const appEnv = this.configService.get<string>('APP_ENV', 'dev');
+    const category = assetType === 'logo' ? 'logos' : 'signatures';
+    const filename = `${assetType}.webp`;
+    const objectKey = `${appEnv}/${tenant.subdomain}/${category}/${filename}`;
+
+    // Eliminar de Spaces
+    try {
+      await this.deleteFromSpaces(objectKey);
+      this.logger.log(`🗑️ Archivo eliminado de Spaces: ${objectKey}`);
+    } catch (error) {
+      this.logger.warn(`⚠️ No se pudo eliminar de Spaces (puede no existir): ${error instanceof Error ? error.message : String(error)}`);
+      // Continuar para limpiar la BD de todas formas
+    }
+
+    // Actualizar en BD (set null)
+    const fieldName = assetType === 'logo' ? 'logoUrl' : 'signatureUrl';
+    const updated = await this.prisma.tenant.update({
+      where: { id: tenantId },
+      data: {
+        [fieldName]: null,
+        // Si eliminamos logo, también limpiar emailLogoUrl
+        ...(assetType === 'logo' ? { emailLogoUrl: null } : {}),
+      },
+      select: {
+        id: true,
+        name: true,
+        logoUrl: true,
+        signatureUrl: true,
+        emailLogoUrl: true,
+      },
+    });
+
+    this.logger.log(`✅ ${assetType} eliminado para tenant: ${tenant.name}`);
+
+    return {
+      success: true,
+      message: `${assetType} eliminado exitosamente`,
+      tenant: updated,
+    };
+  }
+
   // Helpers privados
 
   private getSpacesConfig() {
@@ -381,6 +497,18 @@ export class TenantService {
       Body: params.body,
       ContentType: params.contentType,
       ACL: 'public-read',
+    });
+
+    await client.send(command);
+  }
+
+  private async deleteFromSpaces(objectKey: string): Promise<void> {
+    const cfg = this.getSpacesConfig();
+    const client = this.getSpacesClient();
+
+    const command = new DeleteObjectCommand({
+      Bucket: cfg.bucket,
+      Key: objectKey,
     });
 
     await client.send(command);

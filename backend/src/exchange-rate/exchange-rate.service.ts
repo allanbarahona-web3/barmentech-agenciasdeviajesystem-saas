@@ -1,12 +1,16 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
+import { TenantService } from "../tenant/tenant.service";
 import { SetExchangeRateDto } from "./dto/set-exchange-rate.dto";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { Resend } from "resend";
 
 @Injectable()
 export class ExchangeRateService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private tenantService: TenantService,
+  ) {}
 
   /**
    * Get the exchange rate for a specific date (or today if not provided)
@@ -382,6 +386,9 @@ export class ExchangeRateService {
       throw new Error("RESEND_API_KEY no configurado");
     }
 
+    // Get tenant config for email settings
+    const tenantConfig = await this.tenantService.getTenantConfig(tenantId);
+
     console.log("[ExchangeRate Service] Generating PDF for range:", { startDate, endDate });
     const pdfBuffer = await this.generateHistoryPdf(tenantId, startDate, endDate);
     const rates = await this.getExchangeRateHistoryRange(tenantId, startDate, endDate);
@@ -395,13 +402,20 @@ export class ExchangeRateService {
       return `${day}/${month}/${year}`;
     };
 
-    const fromEmail = String(process.env.RESEND_FROM_EMAIL || process.env.CONTRACTS_FROM_EMAIL || "onboarding@resend.dev");
-    console.log("[ExchangeRate Service] Sending from:", fromEmail);
+    // Use tenant email config only if verified, otherwise fallback to system email
+    const fromEmail = (tenantConfig.emailVerified && tenantConfig.fromEmail) 
+      ? String(tenantConfig.fromEmail) 
+      : String(process.env.CONTRACTS_FROM_EMAIL || "onboarding@resend.dev");
+    const replyTo = (tenantConfig.emailVerified && tenantConfig.replyToEmail) 
+      ? String(tenantConfig.replyToEmail) 
+      : undefined;
+    console.log("[ExchangeRate Service] Sending from:", fromEmail, "| Reply-To:", replyTo || "(not set)", "| Verified:", tenantConfig.emailVerified);
     
     const resend = new Resend(apiKey);
 
     await resend.emails.send({
       from: fromEmail,
+      replyTo: replyTo,
       to: [recipientEmail],
       subject: `📊 Historial de Tipos de Cambio - ${formatDateDisplay(startDate)} a ${formatDateDisplay(endDate)}`,
       html: `

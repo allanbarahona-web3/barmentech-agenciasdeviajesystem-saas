@@ -21,6 +21,23 @@ enum UserRole {
   AGENT // Agente de viajes del tenant (default)
 }
 
+enum EmployeeStatus {
+  ACTIVO
+  SUSPENDIDO
+  INACTIVO
+}
+
+enum EmployeeDocumentType {
+  CONTRATO // Contrato laboral
+  CEDULA_FRONTAL // Cédula de identidad - lado frontal
+  CEDULA_TRASERA // Cédula de identidad - lado trasero
+  PASAPORTE // Pasaporte
+  LICENCIA // Licencia de conducir
+  INCAPACIDAD // Incapacidad médica
+  CERTIFICADO // Certificaciones profesionales
+  OTRO // Otros documentos
+}
+
 // ========================================
 // MULTI-TENANT MODEL
 // ========================================
@@ -80,6 +97,8 @@ model Tenant {
   companyBankAccounts   CompanyBankAccount[]
   exchangeRates         ExchangeRate[]
   clientPortalUsers     ClientPortalUser[] // Usuarios del portal de clientes
+  employees             Employee[]
+  employeeDocuments     EmployeeDocument[]
 
   @@map("tenants")
 }
@@ -107,6 +126,7 @@ model User {
   tenant   Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   passwordResetTokens PasswordResetToken[]
+  employee            Employee? // Relación opcional con empleado
 
   @@index([tenantId])
 }
@@ -667,4 +687,82 @@ model TravelPackage {
   @@index([createdAt])
   @@index([packageCode])
   @@index([tenantId])
+}
+
+// ========================================
+// EMPLOYEE & PAYROLL MODELS
+// ========================================
+
+// Registro de empleados - Base de datos maestro para RH
+model Employee {
+  id         String         @id @default(cuid())
+  tenantId   String
+  // Datos personales
+  fullName    String
+  documentId  String // Cédula de identidad
+  dateOfBirth DateTime? // Fecha de nacimiento (para calcular edad)
+  email       String
+  phone       String?
+  address     String?
+
+  // Datos laborales
+  hireDate       DateTime
+  position       String // Puesto
+  department     String?
+  monthlySalary  Decimal        @db.Decimal(12, 2) // Salario mensual base
+  dailySalary    Decimal        @db.Decimal(12, 2) // Salario diario = monthlySalary / 30
+  status         EmployeeStatus @default(ACTIVO)
+  terminationDate DateTime?     // Fecha de terminación (si aplica)
+
+  // Relación con Usuario del sistema (opcional)
+  userId String? @unique
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  // Relación con Tenant
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Documentos del empleado
+  documents EmployeeDocument[]
+
+  // Metadata
+  createdByUserId String
+  createdByName   String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([tenantId, documentId]) // No duplicar cédulas en mismo tenant
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([status])
+  @@index([position])
+  @@index([department])
+  @@index([userId])
+  @@map("employees")
+}
+
+// Documentos asociados a empleados (contratos, incapacidades, etc.)
+model EmployeeDocument {
+  id               String               @id @default(cuid())
+  employeeId       String
+  tenantId         String
+  documentType     EmployeeDocumentType
+  fileName         String // Nombre original del archivo
+  fileUrl          String // URL en Spaces/S3
+  objectKey        String               @unique // Key en Spaces/S3
+  mimeType         String
+  size             Int
+  notes            String? // Notas adicionales
+  uploadedByUserId String
+  uploadedByName   String
+  uploadedAt       DateTime             @default(now())
+
+  // Relaciones
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId])
+  @@index([tenantId])
+  @@index([documentType])
+  @@index([uploadedAt])
+  @@map("employee_documents")
 }

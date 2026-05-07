@@ -7,6 +7,7 @@ import { AuthModule } from "./auth/auth.module";
 import { BillingModule } from "./billing/billing.module";
 import { CompanyBankAccountsModule } from "./company-bank-accounts/company-bank-accounts.module";
 import { ContractsModule } from "./contracts/contracts.module";
+import { EmployeesModule } from "./employees/employees.module";
 import { ExchangeRateModule } from "./exchange-rate/exchange-rate.module";
 import { PaymentVerificationModule } from "./payment-verification/payment-verification.module";
 import { PrismaModule } from "./prisma/prisma.module";
@@ -36,6 +37,7 @@ import { RLSInterceptor } from "./common/interceptors/rls.interceptor";
     ContractsModule,
     BillingModule,
     CompanyBankAccountsModule,
+    EmployeesModule,
     PaymentVerificationModule,
     ExchangeRateModule,
     TravelPackagesModule,

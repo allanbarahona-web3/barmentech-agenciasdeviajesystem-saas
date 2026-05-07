@@ -16,6 +16,17 @@ type NavItem = {
   adminOnly?: boolean;
 };
 
+type NavGroup = {
+  label: string;
+  icon: string;
+  items: NavItem[];
+  adminOnly?: boolean;
+};
+
+type NavElement = NavItem | NavGroup;
+
+const isNavGroup = (item: NavElement): item is NavGroup => 'items' in item;
+
 const formatDuration = (seconds: number): string => {
   const safe = Math.max(0, Math.floor(seconds));
   const hh = Math.floor(safe / 3600)
@@ -38,6 +49,8 @@ export function VerticalNav() {
   const [exchangeRate, setExchangeRate] = useState<ExchangeRate | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [session, setSession] = useState<ReturnType<typeof getStoredSession>>(null);
+  const [finanzasOpen, setFinanzasOpen] = useState(false);
+  const [empleadosOpen, setEmpleadosOpen] = useState(false);
 
   // Fix hydration - only render on client
   useEffect(() => {
@@ -128,7 +141,7 @@ export function VerticalNav() {
     return pathname.startsWith(`${href}/`);
   };
 
-  const navItems: NavItem[] = [
+  const navElements: NavElement[] = [
     // Dashboard para Admin/Contador (NO Facturacion)
     ...(isAdminOrContador
       ? [
@@ -163,44 +176,54 @@ export function VerticalNav() {
         ]
       : []),
     
-    // Estados de cuenta (Admin/Contador/Facturacion/Agentes)
-    {
-      href: "/billing",
-      label: "Estados de cuenta",
-      icon: "💰",
-    },
-    
-    // Sección de Tareas Pendientes (Admin/Contador/Facturacion)
+    // 💰 Menú Finanzas (Admin/Contador/Facturacion)
     ...(isAdminOrContador || isFacturacionCobros
       ? [
           {
-            href: "/admin/pending-payments",
-            label: "Pagos Pendientes",
-            icon: "⏳",
-            badge: pendingCounts.pendingReceipts || 0,
+            label: "Finanzas",
+            icon: "💰",
             adminOnly: true,
-          },
-          {
-            href: "/admin/pending-receipts",
-            label: "Recibos por Enviar",
-            icon: "🧾",
-            adminOnly: true,
-          },
+            items: [
+              {
+                href: "/billing",
+                label: "Estados de cuenta",
+                icon: "💰",
+              },
+              {
+                href: "/admin/pending-payments",
+                label: "Pagos Pendientes",
+                icon: "⏳",
+                badge: pendingCounts.pendingReceipts || 0,
+                adminOnly: true,
+              },
+              {
+                href: "/admin/pending-receipts",
+                label: "Recibos por Enviar",
+                icon: "🧾",
+                adminOnly: true,
+              },
+              ...(isAdmin
+                ? [
+                    {
+                      href: "/admin/pending-credit-notes",
+                      label: "Notas de Crédito",
+                      icon: "📋",
+                      badge: pendingCounts.pendingCreditNotes || 0,
+                      adminOnly: true,
+                    },
+                  ]
+                : []),
+            ],
+          } as NavGroup,
         ]
-      : []),
-    
-    // Notas de Crédito (SOLO Admin)
-    ...(isAdmin
-      ? [
+      : [
+          // Para Agentes: solo Estados de cuenta directo
           {
-            href: "/admin/pending-credit-notes",
-            label: "Notas de Crédito",
-            icon: "📋",
-            badge: pendingCounts.pendingCreditNotes || 0,
-            adminOnly: true,
+            href: "/billing",
+            label: "Estados de cuenta",
+            icon: "💰",
           },
-        ]
-      : []),
+        ]),
     
     // Sección de Administración (SOLO Admin/Contador, NO Facturacion)
     ...(isAdminOrContador
@@ -247,12 +270,51 @@ export function VerticalNav() {
             icon: "✈️",
             adminOnly: true,
           },
+        ]
+      : []),
+    
+    // 👥 Menú Recursos Humanos / Empleados (solo Admin)
+    // ⚠️ MULTI-TENANT: TODOS los módulos deben tener tenantId + RLS
+    // Arquitectura propuesta:
+    // 1. EMPLEADOS: Datos personales, documentos, salario base [tenantId]
+    // 2. USUARIOS: Credenciales, roles, permisos vinculados a empleado [tenantId]
+    // 3. PLANILLA: Nómina, provisiones, tasas de pago [tenantId]
+    // 4. TIMECLOCK: Control de asistencia, marcajes entrada/salida [tenantId]
+    // Flujo: Empleado → Botón "Crear Usuario" → Asignar role en Usuarios
+    // RLS Policy: WHERE tenantId = current_setting('app.current_tenant')::uuid
+    ...(isAdmin
+      ? [
           {
-            href: "/admin/users",
-            label: "Usuarios",
+            label: "Recursos Humanos",
             icon: "👥",
             adminOnly: true,
-          },
+            items: [
+              {
+                href: "/admin/users",
+                label: "Usuarios",
+                icon: "🔑",
+                adminOnly: true,
+              },
+              {
+                href: "/admin/employees",
+                label: "Empleados",
+                icon: "🧑‍💼",
+                adminOnly: true,
+              },
+              {
+                href: "/admin/payroll",
+                label: "Planilla/Nómina",
+                icon: "💰",
+                adminOnly: true,
+              },
+              {
+                href: "/admin/timeclock",
+                label: "Control de Asistencia",
+                icon: "⏰",
+                adminOnly: true,
+              },
+            ],
+          } as NavGroup,
         ]
       : []),
     
@@ -269,10 +331,10 @@ export function VerticalNav() {
       : []),
   ];
 
-  // Debug: Log navItems para ver badges
+  // Debug: Log navElements para ver badges
   console.log("[VerticalNav] Role:", role, "isAdminOrContador:", isAdminOrContador);
   console.log("[VerticalNav] Pending counts:", pendingCounts);
-  const historialItem = navItems.find(item => item.href === "/history");
+  const historialItem = navElements.find(item => !isNavGroup(item) && item.href === "/history") as NavItem | undefined;
   if (historialItem) {
     console.log("[VerticalNav] Historial badge:", historialItem.badge);
   }
@@ -314,17 +376,68 @@ export function VerticalNav() {
         </div>
 
         <div className="vertical-nav-items">
-          {navItems.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`vertical-nav-item${isActive(item.href) ? " vertical-nav-item-active" : ""}`}
-            >
-              <span className="vertical-nav-icon">{item.icon}</span>
-              <span className="vertical-nav-label">{item.label}</span>
-              {item.badge && item.badge > 0 ? <span className="vertical-nav-badge">{item.badge}</span> : null}
-            </Link>
-          ))}
+          {navElements.map((element, idx) => {
+            if (isNavGroup(element)) {
+              // Menú desplegable
+              const group = element;
+              const totalBadge = group.items.reduce((sum, item) => sum + (item.badge || 0), 0);
+              const isAnyActive = group.items.some(item => isActive(item.href));
+              
+              // Determinar qué estado usar según el grupo
+              const isOpen = group.label === "Finanzas" ? finanzasOpen : empleadosOpen;
+              const toggleOpen = group.label === "Finanzas" 
+                ? () => setFinanzasOpen(!finanzasOpen)
+                : () => setEmpleadosOpen(!empleadosOpen);
+              
+              return (
+                <div key={`group-${idx}`} className="vertical-nav-group">
+                  <button
+                    type="button"
+                    className={`vertical-nav-item vertical-nav-group-header${isAnyActive ? " vertical-nav-item-active" : ""}`}
+                    onClick={toggleOpen}
+                  >
+                    <span className="vertical-nav-icon">{group.icon}</span>
+                    <span className="vertical-nav-label">{group.label}</span>
+                    {!isOpen && totalBadge > 0 ? (
+                      <span className="vertical-nav-badge">{totalBadge}</span>
+                    ) : null}
+                    <span className="vertical-nav-chevron">{isOpen ? "▼" : "▶"}</span>
+                  </button>
+                  {isOpen && (
+                    <div className="vertical-nav-group-items">
+                      {group.items.map((item) => (
+                        <Link
+                          key={item.href}
+                          href={item.href}
+                          className={`vertical-nav-item vertical-nav-subitem${isActive(item.href) ? " vertical-nav-item-active" : ""}`}
+                        >
+                          <span className="vertical-nav-icon">{item.icon}</span>
+                          <span className="vertical-nav-label">{item.label}</span>
+                          {item.badge && item.badge > 0 ? (
+                            <span className="vertical-nav-badge">{item.badge}</span>
+                          ) : null}
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            } else {
+              // Item individual normal
+              const item = element;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`vertical-nav-item${isActive(item.href) ? " vertical-nav-item-active" : ""}`}
+                >
+                  <span className="vertical-nav-icon">{item.icon}</span>
+                  <span className="vertical-nav-label">{item.label}</span>
+                  {item.badge && item.badge > 0 ? <span className="vertical-nav-badge">{item.badge}</span> : null}
+                </Link>
+              );
+            }
+          })}
         </div>
 
         <div className="vertical-nav-footer">
