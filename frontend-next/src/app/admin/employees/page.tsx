@@ -441,7 +441,7 @@ export default function EmployeesPage() {
         }}
       >
         <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '15px', color: '#374151' }}>🔍 Filtros de Búsqueda</h3>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '15px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '15px' }}>
           <div>
             <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500' }}>Estado</label>
             <select
@@ -654,32 +654,33 @@ export default function EmployeesPage() {
             style={{
               background: 'white',
               borderRadius: '12px',
-              padding: '30px',
+              padding: '20px',
               maxWidth: '800px',
               width: '90%',
               maxHeight: '90vh',
-              overflow: 'auto',
+              overflow: 'hidden',
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 style={{ fontSize: '22px', fontWeight: 'bold', marginBottom: '10px', color: '#1f2937' }}>
+            <h2 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '8px', color: '#1f2937' }}>
               {modalMode === 'create' ? '➕ Nuevo Empleado' : '✏️ Editar Empleado'}
             </h2>
             {modalMode === 'create' && (
               <div
                 style={{
-                  padding: '12px',
+                  padding: '8px 12px',
                   background: '#dbeafe',
                   borderLeft: '4px solid #3b82f6',
                   borderRadius: '6px',
-                  marginBottom: '20px',
-                  fontSize: '13px',
+                  marginBottom: '12px',
+                  fontSize: '12px',
                   color: '#1e40af',
                 }}
               >
                 ℹ️ Los documentos del empleado se pueden cargar después de crearlo, en la opción "Ver Detalles".
               </div>
             )}
+
 
             {error && (
               <div
@@ -712,9 +713,9 @@ export default function EmployeesPage() {
             )}
 
             <form onSubmit={handleSubmit}>
-              <div style={{ display: 'grid', gap: '15px' }}>
+              <div style={{ display: 'grid', gap: '10px' }}>
                 <div>
-                  <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500' }}>
+                  <label style={{ display: 'block', marginBottom: '4px', fontSize: '13px', fontWeight: '500' }}>
                     Nombre Completo *
                   </label>
                   <input
@@ -724,15 +725,15 @@ export default function EmployeesPage() {
                     onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
                     style={{
                       width: '100%',
-                      padding: '10px',
+                      padding: '8px',
                       border: '1px solid #d1d5db',
                       borderRadius: '6px',
-                      fontSize: '14px',
+                      fontSize: '13px',
                     }}
                   />
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                   <div>
                     <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500' }}>
                       Cédula *
@@ -926,13 +927,13 @@ export default function EmployeesPage() {
                 </div>
               </div>
 
-              <div style={{ display: 'flex', gap: '10px', marginTop: '25px' }}>
+              <div style={{ display: 'flex', gap: '10px', marginTop: '15px' }}>
                 <button
                   type="button"
                   onClick={handleCloseModal}
                   style={{
                     flex: 1,
-                    padding: '12px',
+                    padding: '10px',
                     background: '#e5e7eb',
                     color: '#374151',
                     border: 'none',
@@ -948,14 +949,14 @@ export default function EmployeesPage() {
                   type="submit"
                   style={{
                     flex: 1,
-                    padding: '12px',
+                    padding: '10px',
                     background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
                     color: 'white',
                     border: 'none',
                     borderRadius: '8px',
                     cursor: 'pointer',
                     fontWeight: '600',
-                    fontSize: '14px',
+                    fontSize: '13px',
                   }}
                 >
                   {modalMode === 'create' ? 'Crear Empleado' : 'Guardar Cambios'}
