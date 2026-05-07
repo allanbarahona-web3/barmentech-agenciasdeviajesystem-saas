@@ -13,7 +13,7 @@ import {
 import { ToastNotification, useToast } from "@/components/toast-notification";
 import { ConfirmModal } from "@/components/confirm-modal";
 import { PageLoader } from "@/components/loading-spinner";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
 const roleLabel = (role: string) => {
@@ -28,6 +28,7 @@ const roleLabel = (role: string) => {
 
 export default function AdminUsersPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -41,6 +42,21 @@ export default function AdminUsersPage() {
   const [newRole, setNewRole] = useState<"AGENT" | "ADMIN" | "CONTADOR" | "FACTURACION_COBROS" | "VENTAS" | "OPERACIONES">("AGENT");
   const [showPassword, setShowPassword] = useState(false);
   const [copiedPassword, setCopiedPassword] = useState(false);
+
+  // Pre-llenar desde query params si viene desde empleados
+  useEffect(() => {
+    if (searchParams.get('createFrom') === 'employee') {
+      const name = searchParams.get('name');
+      const emailParam = searchParams.get('email');
+      if (name) setFullName(decodeURIComponent(name));
+      if (emailParam) setEmail(decodeURIComponent(emailParam));
+      
+      // Auto-generar password temporal
+      const newPassword = generateRandomPassword();
+      setPassword(newPassword);
+      showSuccess('📋 Datos precargados desde empleado. Asigna un rol y crea el usuario.');
+    }
+  }, [searchParams]);
 
   // Generar password temporal aleatorio que cumple requisitos
   const generateRandomPassword = () => {

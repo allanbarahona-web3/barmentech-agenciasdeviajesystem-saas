@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import AttachmentViewer from '@/components/attachment-viewer';
+import { LoadingModal } from '@/components/loading-modal';
 import {
   getEmployees,
   getEmployee,
@@ -43,6 +44,11 @@ export default function EmployeesPage() {
   const [modalMode, setModalMode] = useState<ModalMode>(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+
+  // LoadingModal states
+  const [loadingModalOpen, setLoadingModalOpen] = useState(false);
+  const [loadingModalState, setLoadingModalState] = useState<'loading' | 'success' | 'error'>('loading');
+  const [loadingModalMessage, setLoadingModalMessage] = useState('');
 
   // Filtros
   const [statusFilter, setStatusFilter] = useState('');
@@ -159,11 +165,15 @@ export default function EmployeesPage() {
     e.preventDefault();
     setError('');
     setSuccess('');
+    setLoadingModalOpen(true);
+    setLoadingModalState('loading');
+    setLoadingModalMessage(modalMode === 'create' ? 'Creando empleado...' : 'Guardando cambios...');
 
     try {
       if (modalMode === 'create') {
         await createEmployee(formData);
-        setSuccess('Empleado creado exitosamente');
+        setLoadingModalState('success');
+        setLoadingModalMessage('✅ Empleado creado exitosamente');
       } else if (modalMode === 'edit' && selectedEmployee) {
         const updateData: UpdateEmployeeDto = {};
         if (formData.fullName) updateData.fullName = formData.fullName;
@@ -179,15 +189,18 @@ export default function EmployeesPage() {
         if (formData.status) updateData.status = formData.status;
 
         await updateEmployee(selectedEmployee.id, updateData);
-        setSuccess('Empleado actualizado exitosamente');
+        setLoadingModalState('success');
+        setLoadingModalMessage('✅ Empleado actualizado exitosamente');
       }
 
       await loadData();
       setTimeout(() => {
+        setLoadingModalOpen(false);
         handleCloseModal();
       }, 1500);
     } catch (err: any) {
-      setError(err.message || 'Error al guardar empleado');
+      setLoadingModalState('error');
+      setLoadingModalMessage(err.message || 'Error al guardar empleado');
     }
   }
 
@@ -205,10 +218,14 @@ export default function EmployeesPage() {
     setUploadingDoc(true);
     setError('');
     setSuccess('');
+    setLoadingModalOpen(true);
+    setLoadingModalState('loading');
+    setLoadingModalMessage('📤 Subiendo documento...');
 
     try {
       await uploadEmployeeDocument(selectedEmployee.id, file, selectedDocType, documentNotes);
-      setSuccess('Documento subido exitosamente');
+      setLoadingModalState('success');
+      setLoadingModalMessage('✅ Documento subido exitosamente');
       setSelectedDocType('');
       setDocumentNotes('');
       fileInput.value = '';
@@ -216,8 +233,10 @@ export default function EmployeesPage() {
       // Recargar empleado para mostrar nuevo documento
       const updated = await getEmployee(selectedEmployee.id);
       setSelectedEmployee(updated);
+      setTimeout(() => setLoadingModalOpen(false), 1500);
     } catch (err: any) {
-      setError(err.message || 'Error al subir documento');
+      setLoadingModalState('error');
+      setLoadingModalMessage(err.message || 'Error al subir documento');
     } finally {
       setUploadingDoc(false);
     }
@@ -613,7 +632,7 @@ export default function EmployeesPage() {
               background: 'white',
               borderRadius: '12px',
               padding: '30px',
-              maxWidth: '600px',
+              maxWidth: '800px',
               width: '90%',
               maxHeight: '90vh',
               overflow: 'auto',
@@ -954,21 +973,45 @@ export default function EmployeesPage() {
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
               <h2 style={{ fontSize: '20px', fontWeight: 'bold' }}>👤 Perfil del Empleado</h2>
-              <button
-                onClick={handleCloseModal}
-                style={{
-                  padding: '8px 16px',
-                  background: '#e5e7eb',
-                  border: 'none',
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                }}
-              >
-                Cerrar
-              </button>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                {!selectedEmployee.userId && (
+                  <button
+                    onClick={() => {
+                      router.push(
+                        `/admin/users?createFrom=employee&name=${encodeURIComponent(selectedEmployee.fullName)}&email=${encodeURIComponent(selectedEmployee.email)}&employeeId=${selectedEmployee.id}`
+                      );
+                    }}
+                    style={{
+                      padding: '8px 16px',
+                      background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      boxShadow: '0 2px 4px rgba(16, 185, 129, 0.3)',
+                    }}
+                  >
+                    👤 Crear Usuario del Sistema
+                  </button>
+                )}
+                <button
+                  onClick={handleCloseModal}
+                  style={{
+                    padding: '8px 16px',
+                    background: '#e5e7eb',
+                    border: 'none',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                  }}
+                >
+                  Cerrar
+                </button>
+              </div>
             </div>
 
             {error && (
@@ -1301,6 +1344,16 @@ export default function EmployeesPage() {
           onClose={() => setAttachmentViewerData(null)}
         />
       )}
+
+      {/* Loading Modal */}
+      <LoadingModal
+        isOpen={loadingModalOpen}
+        state={loadingModalState}
+        loadingMessage={loadingModalMessage}
+        successMessage={loadingModalMessage}
+        errorMessage={loadingModalMessage}
+        onClose={() => setLoadingModalOpen(false)}
+      />
     </div>
   );
 }
