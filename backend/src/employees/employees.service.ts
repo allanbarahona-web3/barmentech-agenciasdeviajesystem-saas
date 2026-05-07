@@ -27,14 +27,20 @@ export class EmployeesService {
   ) {}
 
   private getSpacesConfig() {
-    return {
-      endpoint: String(this.configService.get('SPACES_ENDPOINT') || ''),
-      region: String(this.configService.get('SPACES_REGION') || ''),
-      bucket: String(this.configService.get('SPACES_BUCKET') || ''),
-      key: String(this.configService.get('SPACES_KEY') || ''),
-      secret: String(this.configService.get('SPACES_SECRET') || ''),
-      cdnEndpoint: String(this.configService.get('SPACES_CDN_ENDPOINT') || ''),
-    };
+    const region = this.configService.get<string>('DO_SPACES_REGION', '').trim();
+    const endpoint = this.configService.get<string>('DO_SPACES_ENDPOINT', '').trim();
+    const bucket = this.configService.get<string>('DO_SPACES_BUCKET', '').trim();
+    const key = this.configService.get<string>('DO_SPACES_KEY', '').trim();
+    const secret = this.configService.get<string>('DO_SPACES_SECRET', '').trim();
+    const cdnEndpoint = this.configService.get<string>('DO_SPACES_CDN_ENDPOINT', '').trim();
+
+    if (!region || !endpoint || !bucket || !key || !secret) {
+      throw new Error(
+        'Faltan variables DO_SPACES_REGION, DO_SPACES_ENDPOINT, DO_SPACES_BUCKET, DO_SPACES_KEY o DO_SPACES_SECRET.',
+      );
+    }
+
+    return { region, endpoint, bucket, key, secret, cdnEndpoint };
   }
 
   private getSpacesClient() {

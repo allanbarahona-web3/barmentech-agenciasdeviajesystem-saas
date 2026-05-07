@@ -1,4 +1,5 @@
 import { authenticatedFetch, getStoredToken } from './auth-api';
+import { resolveApiBase } from './runtime-config';
 
 // Types
 export interface Employee {
@@ -82,8 +83,9 @@ export interface EmployeeStats {
 
 // API Functions
 export async function createEmployee(data: CreateEmployeeDto): Promise<Employee> {
+  const apiBase = resolveApiBase();
   const token = getStoredToken();
-  const response = await authenticatedFetch(`/employees`, {
+  const response = await authenticatedFetch(`${apiBase}/employees`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -106,6 +108,7 @@ export async function getEmployees(filters?: {
   department?: string;
   search?: string;
 }): Promise<Employee[]> {
+  const apiBase = resolveApiBase();
   const token = getStoredToken();
   const params = new URLSearchParams();
   if (filters?.status) params.append('status', filters.status);
@@ -113,7 +116,7 @@ export async function getEmployees(filters?: {
   if (filters?.department) params.append('department', filters.department);
   if (filters?.search) params.append('search', filters.search);
 
-  const response = await authenticatedFetch(`/employees?${params.toString()}`, {
+  const response = await authenticatedFetch(`${apiBase}/employees?${params.toString()}`, {
     headers: {
       Authorization: `Bearer ${token}`,
     },
@@ -127,8 +130,9 @@ export async function getEmployees(filters?: {
 }
 
 export async function getEmployee(id: string): Promise<Employee> {
+  const apiBase = resolveApiBase();
   const token = getStoredToken();
-  const response = await authenticatedFetch(`/employees/${id}`, {
+  const response = await authenticatedFetch(`${apiBase}/employees/${id}`, {
     headers: {
       Authorization: `Bearer ${token}`,
     },
@@ -142,8 +146,9 @@ export async function getEmployee(id: string): Promise<Employee> {
 }
 
 export async function updateEmployee(id: string, data: UpdateEmployeeDto): Promise<Employee> {
+  const apiBase = resolveApiBase();
   const token = getStoredToken();
-  const response = await authenticatedFetch(`/employees/${id}`, {
+  const response = await authenticatedFetch(`${apiBase}/employees/${id}`, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
@@ -166,13 +171,14 @@ export async function uploadEmployeeDocument(
   documentType: string,
   notes?: string,
 ): Promise<EmployeeDocument> {
+  const apiBase = resolveApiBase();
   const token = getStoredToken();
   const formData = new FormData();
   formData.append('file', file);
   formData.append('documentType', documentType);
   if (notes) formData.append('notes', notes);
 
-  const response = await authenticatedFetch(`/employees/${employeeId}/documents`, {
+  const response = await authenticatedFetch(`${apiBase}/employees/${employeeId}/documents`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -189,8 +195,9 @@ export async function uploadEmployeeDocument(
 }
 
 export async function deleteEmployeeDocument(documentId: string): Promise<void> {
+  const apiBase = resolveApiBase();
   const token = getStoredToken();
-  const response = await authenticatedFetch(`/employees/documents/${documentId}`, {
+  const response = await authenticatedFetch(`${apiBase}/employees/documents/${documentId}`, {
     method: 'DELETE',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -203,8 +210,9 @@ export async function deleteEmployeeDocument(documentId: string): Promise<void> 
 }
 
 export async function getEmployeeDocumentUrl(documentId: string): Promise<{ url: string; fileName: string }> {
+  const apiBase = resolveApiBase();
   const token = getStoredToken();
-  const response = await authenticatedFetch(`/employees/documents/${documentId}/url`, {
+  const response = await authenticatedFetch(`${apiBase}/employees/documents/${documentId}/url`, {
     headers: {
       Authorization: `Bearer ${token}`,
     },
@@ -218,8 +226,9 @@ export async function getEmployeeDocumentUrl(documentId: string): Promise<{ url:
 }
 
 export async function getEmployeeStats(): Promise<EmployeeStats> {
+  const apiBase = resolveApiBase();
   const token = getStoredToken();
-  const response = await authenticatedFetch(`/employees/stats`, {
+  const response = await authenticatedFetch(`${apiBase}/employees/stats`, {
     headers: {
       Authorization: `Bearer ${token}`,
     },
