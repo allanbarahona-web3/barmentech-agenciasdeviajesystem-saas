@@ -47,6 +47,7 @@ model Tenant {
   emailLogoUrl   String? // Logo para emails transaccionales
   fromEmail      String? // Email desde el cual se envían emails transaccionales (ej: "noreply@viajesalmanova.com")
   replyToEmail   String? // Email de respuesta para emails transaccionales (ej: "info@viajesalmanova.com")
+  emailVerified  Boolean @default(false) // Super Admin marca como verificado en Resend
   primaryColor   String? // Color principal hex (ej: "#4F46E5")
   secondaryColor String? // Color secundario hex
 

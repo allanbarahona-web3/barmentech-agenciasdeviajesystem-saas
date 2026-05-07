@@ -38,6 +38,9 @@ export class SuperAdminService {
         suspendReason: true,
         planType: true,
         planExpiresAt: true,
+        fromEmail: true,
+        replyToEmail: true,
+        emailVerified: true,
         createdAt: true,
         updatedAt: true,
         _count: {
@@ -118,6 +121,10 @@ export class SuperAdminService {
         logoUrl: tenant.logoUrl,
         signatureUrl: tenant.signatureUrl,
         emailLogoUrl: tenant.emailLogoUrl,
+        // Email configuration
+        fromEmail: tenant.fromEmail,
+        replyToEmail: tenant.replyToEmail,
+        emailVerified: tenant.emailVerified,
         primaryColor: tenant.primaryColor,
         secondaryColor: tenant.secondaryColor,
         // Legal info
@@ -311,6 +318,46 @@ export class SuperAdminService {
         this.logger.log(`✅ Tenant "${tenant.name}" activado`);
         return updated;
       }
+    } finally {
+      // Re-habilitar RLS después de la operación
+      await this.prisma.enableRLS();
+    }
+  }
+
+  /**
+   * ✅ Marcar email del tenant como verificado en Resend
+   * Solo super admins pueden hacer esto
+   */
+  async verifyTenantEmail(tenantId: string) {
+    this.logger.log(`✅ Super admin: verificando email del tenant ${tenantId}`);
+
+    // Bypass RLS para operar cross-tenant
+    await this.prisma.bypassRLS();
+
+    try {
+      const tenant = await this.prisma.tenant.findUnique({
+        where: { id: tenantId },
+      });
+
+      if (!tenant) {
+        throw new NotFoundException(`Tenant con ID ${tenantId} no encontrado`);
+      }
+
+      if (!tenant.fromEmail && !tenant.replyToEmail) {
+        throw new BadRequestException('El tenant no tiene emails configurados');
+      }
+
+      const updated = await this.prisma.tenant.update({
+        where: { id: tenantId },
+        data: {
+          emailVerified: true,
+        },
+      });
+
+      this.logger.log(
+        `✅ Email del tenant "${tenant.name}" marcado como verificado`,
+      );
+      return updated;
     } finally {
       // Re-habilitar RLS después de la operación
       await this.prisma.enableRLS();

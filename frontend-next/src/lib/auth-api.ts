@@ -570,6 +570,9 @@ export type SuperAdminTenant = {
   suspendReason: string | null;
   planType: string | null;
   planExpiresAt: Date | null;
+  fromEmail: string | null;
+  replyToEmail: string | null;
+  emailVerified: boolean;
   createdAt: Date;
   updatedAt: Date;
   _count?: {
@@ -728,6 +731,24 @@ export const superAdminUpdateTenantStatus = async (
 };
 
 /**
+ * Marcar email del tenant como verificado en Resend (solo SUPER_ADMIN)
+ */
+export const superAdminVerifyTenantEmail = async (tenantId: string): Promise<SuperAdminTenant> => {
+  const apiBase = resolveApiBase();
+  const response = await authenticatedFetch(`${apiBase}/super-admin/tenants/${tenantId}/verify-email`, {
+    method: "PATCH",
+    headers: authHeaders(),
+  });
+
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(payload?.message || "Error al verificar email del tenant");
+  }
+
+  return payload;
+};
+
+/**
  * Obtener estadísticas de la plataforma (solo SUPER_ADMIN)
  */
 export const superAdminGetPlatformStats = async (): Promise<PlatformStats> => {
@@ -760,6 +781,9 @@ export type TenantConfigResponse = {
   emailLogoUrl: string | null;
   primaryColor: string | null;
   secondaryColor: string | null;
+  fromEmail: string | null;
+  replyToEmail: string | null;
+  emailVerified: boolean;
   legalName: string | null;
   legalId: string | null;
   representativeName: string | null;

@@ -80,6 +80,15 @@ export class SuperAdminController {
   }
 
   /**
+   * ✅ PATCH /super-admin/tenants/:id/verify-email
+   * Marcar email del tenant como verificado en Resend
+   */
+  @Patch('tenants/:id/verify-email')
+  async verifyTenantEmail(@Param('id') tenantId: string) {
+    return this.superAdminService.verifyTenantEmail(tenantId);
+  }
+
+  /**
    * 📊 GET /super-admin/stats
    * Obtener estadísticas de la plataforma
    */

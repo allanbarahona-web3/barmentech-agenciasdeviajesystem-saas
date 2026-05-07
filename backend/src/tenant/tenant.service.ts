@@ -152,6 +152,7 @@ export class TenantService {
         emailLogoUrl: true,
         fromEmail: true,
         replyToEmail: true,
+        emailVerified: true,
         primaryColor: true,
         secondaryColor: true,
         legalName: true,
@@ -179,6 +180,40 @@ export class TenantService {
     // Extraer campos de email
     const { fromEmail, replyToEmail, ...otherFields } = dto;
 
+    // 🔍 Obtener tenant actual para detectar cambios en emails
+    const currentTenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: {
+        id: true,
+        name: true,
+        fromEmail: true,
+        replyToEmail: true,
+        emailVerified: true,
+      },
+    });
+
+    if (!currentTenant) {
+      throw new NotFoundException('Tenant no encontrado');
+    }
+
+    // 🔐 Detectar cambios en los emails
+    const fromEmailChanged =
+      fromEmail !== undefined && fromEmail !== currentTenant.fromEmail;
+    const replyToEmailChanged =
+      replyToEmail !== undefined &&
+      replyToEmail !== currentTenant.replyToEmail;
+
+    const emailsChanged = fromEmailChanged || replyToEmailChanged;
+
+    // 📧 Si cambiaron los emails, invalidar verificación
+    let shouldInvalidateVerification = false;
+    if (emailsChanged && currentTenant.emailVerified) {
+      shouldInvalidateVerification = true;
+      this.logger.warn(
+        `⚠️ Emails modificados para tenant ${currentTenant.name}. Requiere nueva verificación.`,
+      );
+    }
+
     const updated = await this.prisma.tenant.update({
       where: { id: tenantId },
       data: {
@@ -186,6 +221,10 @@ export class TenantService {
         secondaryColor: dto.secondaryColor,
         fromEmail: fromEmail,
         replyToEmail: replyToEmail,
+        // 🔓 Invalidar verificación si cambiaron los emails
+        emailVerified: shouldInvalidateVerification
+          ? false
+          : currentTenant.emailVerified,
         legalName: dto.legalName,
         legalId: dto.legalId,
         representativeName: dto.representativeName,
@@ -202,9 +241,16 @@ export class TenantService {
         secondaryColor: true,
         fromEmail: true,
         replyToEmail: true,
+        emailVerified: true,
         legalName: true,
       },
     });
+
+    if (shouldInvalidateVerification) {
+      this.logger.log(
+        `🔓 Verificación invalidada para tenant: ${updated.name}. Requiere nueva aprobación del super admin.`,
+      );
+    }
 
     this.logger.log(`✅ Configuración actualizada para tenant: ${updated.name}`);
     return updated;

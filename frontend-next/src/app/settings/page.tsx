@@ -169,6 +169,11 @@ export default function SettingsPage() {
       setError("");
       setSuccess("");
 
+      // Detectar si se están cambiando los emails
+      const emailsChanging =
+        (fromEmail.trim() !== (config?.fromEmail || "")) ||
+        (replyToEmail.trim() !== (config?.replyToEmail || ""));
+
       await updateTenantConfigAdmin({
         primaryColor,
         secondaryColor,
@@ -184,8 +189,17 @@ export default function SettingsPage() {
         representativePowers,
       });
 
-      setSuccess("Configuración guardada exitosamente");
+      // Recargar config para obtener el nuevo estado de emailVerified
       await loadConfig();
+
+      // Mensaje específico si se cambiaron emails
+      if (emailsChanging && config?.emailVerified) {
+        setSuccess(
+          "⚠️ Configuración guardada. Los emails modificados requieren nueva verificación del super admin."
+        );
+      } else {
+        setSuccess("✅ Configuración guardada exitosamente");
+      }
     } catch (err) {
       console.error("Error al guardar configuración:", err);
       setError(err instanceof Error ? err.message : "Error al guardar configuración");
@@ -384,6 +398,42 @@ export default function SettingsPage() {
             Configure los emails desde donde se enviarán las notificaciones del sistema.
             <strong className="text-amber-600"> Importante:</strong> Los dominios deben estar verificados en Resend.
           </p>
+          
+          {/* Banner de estado de verificación */}
+          {(config?.fromEmail || config?.replyToEmail) && (
+            <div className={`mb-6 p-4 rounded-lg border-2 ${
+              config.emailVerified 
+                ? 'bg-green-50 border-green-300' 
+                : 'bg-yellow-50 border-yellow-300'
+            }`}>
+              <div className="flex items-start gap-3">
+                <span className="text-2xl">{config.emailVerified ? '✅' : '⚠️'}</span>
+                <div className="flex-1">
+                  {config.emailVerified ? (
+                    <>
+                      <p className="text-sm font-semibold text-green-900 mb-1">
+                        Email Verificado
+                      </p>
+                      <p className="text-xs text-green-800">
+                        Los emails configurados han sido verificados por el administrador del sistema. 
+                        Ya puedes enviar correos desde tu dominio personalizado.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-sm font-semibold text-yellow-900 mb-1">
+                        Verificación Pendiente
+                      </p>
+                      <p className="text-xs text-yellow-800">
+                        Los emails configurados están pendientes de verificación por el administrador del sistema.
+                        Mientras tanto, los emails se enviarán desde el dominio por defecto del sistema.
+                      </p>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
           
           <div className="grid md:grid-cols-2 gap-6 mb-8">
             <div>

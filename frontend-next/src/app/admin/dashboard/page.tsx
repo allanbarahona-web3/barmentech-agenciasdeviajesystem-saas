@@ -2,6 +2,7 @@
 
 import { getStoredSession, getStoredToken } from "@/lib/auth-api";
 import { getBillingDashboardMetrics, type DashboardMetrics } from "@/lib/billing-api";
+import { ExchangeRateChecker } from "@/components/exchange-rate-checker";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
@@ -101,19 +102,23 @@ export default function AdminDashboardPage() {
   }
 
   return (
-    <main className="app-shell">
-      <section className="card contracts-card">
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-          <h1>📊 Dashboard de Gestión</h1>
-          <button
-            type="button"
-            onClick={() => router.push("/settings")}
-            className="btn btn-secondary"
-            style={{ fontSize: "14px", padding: "8px 16px" }}
-          >
-            ⚙️ Configurar Empresa
-          </button>
-        </div>
+    <>
+      {/* Verificador de Tipo de Cambio - Solo después de login */}
+      <ExchangeRateChecker />
+      
+      <main className="app-shell">
+        <section className="card contracts-card">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+            <h1>📊 Dashboard de Gestión</h1>
+            <button
+              type="button"
+              onClick={() => router.push("/settings")}
+              className="btn btn-secondary"
+              style={{ fontSize: "14px", padding: "8px 16px" }}
+            >
+              ⚙️ Configurar Empresa
+            </button>
+          </div>
         
         {/* Filtros de Fecha */}
         <div style={{ marginBottom: "20px", padding: "16px", background: "#f9fafb", borderRadius: "8px", border: "1px solid #e5e7eb" }}>
@@ -378,5 +383,6 @@ export default function AdminDashboardPage() {
         ) : null}
       </section>
     </main>
+  </>
   );
 }

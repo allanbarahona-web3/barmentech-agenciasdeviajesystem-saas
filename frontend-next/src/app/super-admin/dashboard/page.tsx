@@ -10,6 +10,7 @@ import {
   superAdminCreateTenant,
   superAdminUpdateTenantStatus,
   superAdminGetTenantById,
+  superAdminVerifyTenantEmail,
   type SuperAdminTenant,
   type PlatformStats,
   type CreateTenantDto,
@@ -98,6 +99,22 @@ export default function SuperAdminDashboard() {
     }
   };
 
+  const handleVerifyEmail = async (tenantId: string) => {
+    setLoadingModalOpen(true);
+    setLoadingModalState("loading");
+    setLoadingModalMessage("Verificando email...");
+    
+    try {
+      await superAdminVerifyTenantEmail(tenantId);
+      await loadData();
+      setLoadingModalState("success");
+      setLoadingModalMessage("Email verificado exitosamente");
+    } catch (err) {
+      setLoadingModalState("error");
+      setLoadingModalMessage(err instanceof Error ? err.message : "Error al verificar email");
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-purple-50 to-indigo-100 flex items-center justify-center">
@@ -110,6 +127,27 @@ export default function SuperAdminDashboard() {
     <div className="min-h-screen bg-gradient-to-br from-purple-50 to-indigo-100">
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Header */}
+        <div className="mb-8">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-4xl font-bold text-gray-900">Super Admin Dashboard</h1>
+              <p className="text-gray-600 mt-2">Gestión global de la plataforma</p>
+            </div>
+            {tenants.filter(t => (t.fromEmail || t.replyToEmail) && !t.emailVerified).length > 0 && (
+              <div className="flex items-center gap-2 px-4 py-2 bg-yellow-100 border-2 border-yellow-400 rounded-lg">
+                <span className="text-2xl">⚠️</span>
+                <div>
+                  <p className="text-sm font-semibold text-yellow-900">
+                    {tenants.filter(t => (t.fromEmail || t.replyToEmail) && !t.emailVerified).length} Email{tenants.filter(t => (t.fromEmail || t.replyToEmail) && !t.emailVerified).length > 1 ? 's' : ''}
+                  </p>
+                  <p className="text-xs text-yellow-800">Pendiente verificación</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
         {error && (
           <div className="mb-6 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg">
             {error}
@@ -151,6 +189,104 @@ export default function SuperAdminDashboard() {
                   <p className="text-xs text-gray-500 mt-1">{stats.clients} clientes</p>
                 </div>
                 <div className="text-5xl">📄</div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Panel de Emails Pendientes de Verificación */}
+        {tenants.filter(t => (t.fromEmail || t.replyToEmail) && !t.emailVerified).length > 0 && (
+          <div className="bg-gradient-to-r from-yellow-50 to-orange-50 rounded-xl shadow-md border-2 border-yellow-300">
+            <div className="p-6">
+              <div className="flex items-start gap-4">
+                <div className="text-4xl">⚠️</div>
+                <div className="flex-1">
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">
+                    📧 Emails Personalizados Configurados
+                  </h3>
+                  <p className="text-sm text-gray-700 mb-4">
+                    Los siguientes tenants han configurado emails personalizados. 
+                    <span className="font-semibold"> Debes verificarlos en Resend</span> antes de que puedan usarlos para enviar correos.
+                  </p>
+
+                  {/* Lista de tenants con emails */}
+                  <div className="space-y-3">
+                    {tenants
+                      .filter(t => (t.fromEmail || t.replyToEmail) && !t.emailVerified)
+                      .map(tenant => (
+                        <div key={tenant.id} className="bg-white rounded-lg p-4 shadow-sm border border-yellow-200">
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-2">
+                                <span className="text-sm font-semibold text-gray-900">{tenant.name}</span>
+                                <span className="px-2 py-0.5 text-xs bg-yellow-100 text-yellow-800 rounded-full font-medium">
+                                  PENDIENTE VERIFICACIÓN
+                                </span>
+                              </div>
+                              
+                              {tenant.fromEmail && (
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className="text-xs text-gray-600 w-24">From Email:</span>
+                                  <code className="text-xs bg-gray-100 px-2 py-1 rounded border border-gray-300 font-mono">
+                                    {tenant.fromEmail}
+                                  </code>
+                                  <button
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(tenant.fromEmail!);
+                                      alert('Email copiado al portapapeles');
+                                    }}
+                                    className="text-xs text-blue-600 hover:text-blue-800"
+                                    title="Copiar"
+                                  >
+                                    📋
+                                  </button>
+                                </div>
+                              )}
+                              
+                              {tenant.replyToEmail && (
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs text-gray-600 w-24">Reply-To:</span>
+                                  <code className="text-xs bg-gray-100 px-2 py-1 rounded border border-gray-300 font-mono">
+                                    {tenant.replyToEmail}
+                                  </code>
+                                  <button
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(tenant.replyToEmail!);
+                                      alert('Email copiado al portapapeles');
+                                    }}
+                                    className="text-xs text-blue-600 hover:text-blue-800"
+                                    title="Copiar"
+                                  >
+                                    📋
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                            
+                            {/* Botón para marcar como verificado */}
+                            <button
+                              onClick={() => handleVerifyEmail(tenant.id)}
+                              className="ml-4 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-semibold rounded-lg transition-colors shadow-sm"
+                            >
+                              ✅ Marcar Verificado
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+
+                  {/* Instrucciones */}
+                  <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                    <p className="text-xs text-blue-900 font-semibold mb-2">📝 Qué hacer:</p>
+                    <ol className="text-xs text-blue-800 space-y-1 ml-4 list-decimal">
+                      <li>Ve a <a href="https://resend.com/domains" target="_blank" rel="noopener noreferrer" className="underline font-medium">Resend Dashboard → Domains</a></li>
+                      <li>Agrega el dominio del email (ej: si es info@almanova.com → agrega almanova.com)</li>
+                      <li>Configura los DNS records que te proporciona Resend</li>
+                      <li>Espera la verificación (usualmente ~10 minutos)</li>
+                      <li>Una vez verificado en Resend, haz clic en &quot;✅ Marcar Verificado&quot;</li>
+                    </ol>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
