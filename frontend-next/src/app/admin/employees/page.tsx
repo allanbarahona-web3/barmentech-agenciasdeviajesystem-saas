@@ -285,50 +285,105 @@ export default function EmployeesPage() {
   }
 
   return (
-    <div style={{ padding: '20px', maxWidth: '1400px', margin: '0 auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-        <h1 style={{ fontSize: '24px', fontWeight: 'bold' }}>🧑‍💼 Gestión de Empleados</h1>
-        <button
-          onClick={() => handleOpenModal('create')}
-          style={{
-            padding: '10px 20px',
-            background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-            color: 'white',
-            border: 'none',
-            borderRadius: '8px',
-            cursor: 'pointer',
-            fontWeight: '600',
-          }}
-        >
-          + Nuevo Empleado
-        </button>
+    <div style={{ padding: '20px', maxWidth: '1400px', margin: '0 auto', background: '#f9fafb', minHeight: '100vh' }}>
+      {/* Header con gradiente */}
+      <div
+        style={{
+          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          padding: '30px',
+          borderRadius: '12px',
+          marginBottom: '30px',
+          boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <h1 style={{ fontSize: '28px', fontWeight: 'bold', color: 'white', marginBottom: '8px' }}>
+              🧑‍💼 Gestión de Empleados
+            </h1>
+            <p style={{ color: 'rgba(255,255,255,0.9)', fontSize: '14px' }}>
+              Administra tu equipo de trabajo y documentación laboral
+            </p>
+          </div>
+          <button
+            onClick={() => handleOpenModal('create')}
+            style={{
+              padding: '12px 24px',
+              background: 'white',
+              color: '#667eea',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontWeight: '600',
+              fontSize: '15px',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+              transition: 'transform 0.2s',
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.05)')}
+            onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
+          >
+            ➕ Nuevo Empleado
+          </button>
+        </div>
       </div>
 
-      {/* Stats */}
+      {/* Stats Cards */}
       {stats && (
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-            gap: '15px',
-            marginBottom: '25px',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+            gap: '20px',
+            marginBottom: '30px',
           }}
         >
-          <div style={{ padding: '20px', background: 'white', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
-            <div style={{ fontSize: '14px', color: '#666', marginBottom: '8px' }}>Total Empleados</div>
-            <div style={{ fontSize: '32px', fontWeight: 'bold', color: '#667eea' }}>{stats.total}</div>
+          <div
+            style={{
+              padding: '24px',
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              borderRadius: '12px',
+              boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+              color: 'white',
+            }}
+          >
+            <div style={{ fontSize: '14px', opacity: 0.9, marginBottom: '10px', fontWeight: '500' }}>👥 Total Empleados</div>
+            <div style={{ fontSize: '36px', fontWeight: 'bold' }}>{stats.total}</div>
           </div>
-          <div style={{ padding: '20px', background: 'white', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
-            <div style={{ fontSize: '14px', color: '#666', marginBottom: '8px' }}>Activos</div>
-            <div style={{ fontSize: '32px', fontWeight: 'bold', color: '#10b981' }}>{stats.activos}</div>
+          <div
+            style={{
+              padding: '24px',
+              background: 'white',
+              borderRadius: '12px',
+              boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+              borderLeft: '4px solid #10b981',
+            }}
+          >
+            <div style={{ fontSize: '14px', color: '#666', marginBottom: '10px', fontWeight: '500' }}>✅ Activos</div>
+            <div style={{ fontSize: '36px', fontWeight: 'bold', color: '#10b981' }}>{stats.activos}</div>
           </div>
-          <div style={{ padding: '20px', background: 'white', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
-            <div style={{ fontSize: '14px', color: '#666', marginBottom: '8px' }}>Suspendidos</div>
-            <div style={{ fontSize: '32px', fontWeight: 'bold', color: '#f59e0b' }}>{stats.suspendidos}</div>
+          <div
+            style={{
+              padding: '24px',
+              background: 'white',
+              borderRadius: '12px',
+              boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+              borderLeft: '4px solid #f59e0b',
+            }}
+          >
+            <div style={{ fontSize: '14px', color: '#666', marginBottom: '10px', fontWeight: '500' }}>⏸️ Suspendidos</div>
+            <div style={{ fontSize: '36px', fontWeight: 'bold', color: '#f59e0b' }}>{stats.suspendidos}</div>
           </div>
-          <div style={{ padding: '20px', background: 'white', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
-            <div style={{ fontSize: '14px', color: '#666', marginBottom: '8px' }}>Inactivos</div>
-            <div style={{ fontSize: '32px', fontWeight: 'bold', color: '#ef4444' }}>{stats.inactivos}</div>
+          <div
+            style={{
+              padding: '24px',
+              background: 'white',
+              borderRadius: '12px',
+              boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+              borderLeft: '4px solid #ef4444',
+            }}
+          >
+            <div style={{ fontSize: '14px', color: '#666', marginBottom: '10px', fontWeight: '500' }}>❌ Inactivos</div>
+            <div style={{ fontSize: '36px', fontWeight: 'bold', color: '#ef4444' }}>{stats.inactivos}</div>
           </div>
         </div>
       )}
@@ -337,13 +392,14 @@ export default function EmployeesPage() {
       <div
         style={{
           background: 'white',
-          padding: '20px',
-          borderRadius: '8px',
-          marginBottom: '20px',
-          boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+          padding: '24px',
+          borderRadius: '12px',
+          marginBottom: '25px',
+          boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
         }}
       >
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px' }}>
+        <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '15px', color: '#374151' }}>🔍 Filtros de Búsqueda</h3>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '15px' }}>
           <div>
             <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500' }}>Estado</label>
             <select
@@ -415,33 +471,42 @@ export default function EmployeesPage() {
       </div>
 
       {/* Lista de empleados */}
-      <div style={{ background: 'white', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)', overflow: 'hidden' }}>
+      <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', overflow: 'hidden' }}>
+        <div style={{ padding: '20px 24px', borderBottom: '2px solid #e5e7eb' }}>
+          <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#1f2937' }}>📋 Lista de Empleados</h3>
+        </div>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
-            <tr style={{ background: '#f9fafb', borderBottom: '2px solid #e5e7eb' }}>
-              <th style={{ padding: '12px', textAlign: 'left', fontSize: '14px', fontWeight: '600', color: '#374151' }}>Nombre</th>
-              <th style={{ padding: '12px', textAlign: 'left', fontSize: '14px', fontWeight: '600', color: '#374151' }}>Cédula</th>
-              <th style={{ padding: '12px', textAlign: 'left', fontSize: '14px', fontWeight: '600', color: '#374151' }}>Posición</th>
-              <th style={{ padding: '12px', textAlign: 'left', fontSize: '14px', fontWeight: '600', color: '#374151' }}>Departamento</th>
-              <th style={{ padding: '12px', textAlign: 'left', fontSize: '14px', fontWeight: '600', color: '#374151' }}>Estado</th>
-              <th style={{ padding: '12px', textAlign: 'center', fontSize: '14px', fontWeight: '600', color: '#374151' }}>Acciones</th>
+            <tr style={{ background: 'linear-gradient(to right, #f9fafb, #f3f4f6)', borderBottom: '2px solid #e5e7eb' }}>
+              <th style={{ padding: '14px 16px', textAlign: 'left', fontSize: '13px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Nombre</th>
+              <th style={{ padding: '14px 16px', textAlign: 'left', fontSize: '13px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Cédula</th>
+              <th style={{ padding: '14px 16px', textAlign: 'left', fontSize: '13px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Posición</th>
+              <th style={{ padding: '14px 16px', textAlign: 'left', fontSize: '13px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Departamento</th>
+              <th style={{ padding: '14px 16px', textAlign: 'left', fontSize: '13px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Estado</th>
+              <th style={{ padding: '14px 16px', textAlign: 'center', fontSize: '13px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Acciones</th>
             </tr>
           </thead>
           <tbody>
             {employees.length === 0 ? (
               <tr>
-                <td colSpan={6} style={{ padding: '40px', textAlign: 'center', color: '#9ca3af' }}>
-                  No hay empleados registrados
+                <td colSpan={6} style={{ padding: '50px', textAlign: 'center' }}>
+                  <div style={{ fontSize: '48px', marginBottom: '15px' }}>👥</div>
+                  <p style={{ color: '#9ca3af', fontSize: '15px' }}>No hay empleados registrados</p>
                 </td>
               </tr>
             ) : (
               employees.map((emp) => (
-                <tr key={emp.id} style={{ borderBottom: '1px solid #e5e7eb' }}>
-                  <td style={{ padding: '12px', fontSize: '14px' }}>{emp.fullName}</td>
-                  <td style={{ padding: '12px', fontSize: '14px' }}>{emp.documentId}</td>
-                  <td style={{ padding: '12px', fontSize: '14px' }}>{emp.position}</td>
-                  <td style={{ padding: '12px', fontSize: '14px' }}>{emp.department || '-'}</td>
-                  <td style={{ padding: '12px' }}>
+                <tr 
+                  key={emp.id} 
+                  style={{ borderBottom: '1px solid #f3f4f6', transition: 'background 0.2s' }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = '#f9fafb')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'white')}
+                >
+                  <td style={{ padding: '14px 16px', fontSize: '14px', fontWeight: '500', color: '#1f2937' }}>{emp.fullName}</td>
+                  <td style={{ padding: '14px 16px', fontSize: '14px', color: '#4b5563' }}>{emp.documentId}</td>
+                  <td style={{ padding: '14px 16px', fontSize: '14px', color: '#4b5563' }}>{emp.position}</td>
+                  <td style={{ padding: '14px 16px', fontSize: '14px', color: '#6b7280' }}>{emp.department || '-'}</td>
+                  <td style={{ padding: '14px 16px' }}>
                     <span
                       style={{
                         padding: '4px 12px',
@@ -465,36 +530,59 @@ export default function EmployeesPage() {
                       {emp.status}
                     </span>
                   </td>
-                  <td style={{ padding: '12px', textAlign: 'center' }}>
-                    <button
-                      onClick={() => handleOpenModal('view', emp.id)}
-                      style={{
-                        padding: '6px 12px',
-                        background: '#667eea',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '6px',
-                        cursor: 'pointer',
-                        fontSize: '13px',
-                        marginRight: '8px',
-                      }}
-                    >
-                      Ver
-                    </button>
-                    <button
-                      onClick={() => handleOpenModal('edit', emp.id)}
-                      style={{
-                        padding: '6px 12px',
-                        background: '#10b981',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '6px',
-                        cursor: 'pointer',
-                        fontSize: '13px',
-                      }}
-                    >
-                      Editar
-                    </button>
+                  <td style={{ padding: '14px 16px', textAlign: 'center' }}>
+                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+                      <button
+                        onClick={() => handleOpenModal('view', emp.id)}
+                        style={{
+                          padding: '7px 14px',
+                          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          fontSize: '13px',
+                          fontWeight: '500',
+                          transition: 'transform 0.2s, box-shadow 0.2s',
+                          boxShadow: '0 2px 4px rgba(102, 126, 234, 0.3)',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.transform = 'translateY(-1px)';
+                          e.currentTarget.style.boxShadow = '0 4px 8px rgba(102, 126, 234, 0.4)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.transform = 'translateY(0)';
+                          e.currentTarget.style.boxShadow = '0 2px 4px rgba(102, 126, 234, 0.3)';
+                        }}
+                      >
+                        👁️ Ver
+                      </button>
+                      <button
+                        onClick={() => handleOpenModal('edit', emp.id)}
+                        style={{
+                          padding: '7px 14px',
+                          background: '#10b981',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          fontSize: '13px',
+                          fontWeight: '500',
+                          transition: 'transform 0.2s, box-shadow 0.2s',
+                          boxShadow: '0 2px 4px rgba(16, 185, 129, 0.3)',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.transform = 'translateY(-1px)';
+                          e.currentTarget.style.boxShadow = '0 4px 8px rgba(16, 185, 129, 0.4)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.transform = 'translateY(0)';
+                          e.currentTarget.style.boxShadow = '0 2px 4px rgba(16, 185, 129, 0.3)';
+                        }}
+                      >
+                        ✏️ Editar
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))
@@ -532,9 +620,24 @@ export default function EmployeesPage() {
             }}
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '20px' }}>
+            <h2 style={{ fontSize: '22px', fontWeight: 'bold', marginBottom: '10px', color: '#1f2937' }}>
               {modalMode === 'create' ? '➕ Nuevo Empleado' : '✏️ Editar Empleado'}
             </h2>
+            {modalMode === 'create' && (
+              <div
+                style={{
+                  padding: '12px',
+                  background: '#dbeafe',
+                  borderLeft: '4px solid #3b82f6',
+                  borderRadius: '6px',
+                  marginBottom: '20px',
+                  fontSize: '13px',
+                  color: '#1e40af',
+                }}
+              >
+                ℹ️ Los documentos del empleado se pueden cargar después de crearlo, en la opción "Ver Detalles".
+              </div>
+            )}
 
             {error && (
               <div
@@ -738,15 +841,16 @@ export default function EmployeesPage() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
                   <div>
                     <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500' }}>
-                      Salario Mensual *
+                      💰 Salario Mensual (₡) *
                     </label>
                     <input
                       type="number"
                       required
                       min="0"
                       step="0.01"
-                      value={formData.monthlySalary}
+                      value={formData.monthlySalary || ''}
                       onChange={(e) => setFormData({ ...formData, monthlySalary: Number(e.target.value) })}
+                      placeholder="Ej: 500000"
                       style={{
                         width: '100%',
                         padding: '10px',
@@ -755,6 +859,9 @@ export default function EmployeesPage() {
                         fontSize: '14px',
                       }}
                     />
+                    <span style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px', display: 'block' }}>
+                      Salario en colones costarricenses
+                    </span>
                   </div>
                   <div>
                     <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500' }}>Estado</label>

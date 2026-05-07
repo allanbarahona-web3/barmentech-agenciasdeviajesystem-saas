@@ -1,4 +1,4 @@
-import { authenticatedFetch, getToken } from './auth-api';
+import { authenticatedFetch, getStoredToken } from './auth-api';
 
 // Types
 export interface Employee {
@@ -82,7 +82,7 @@ export interface EmployeeStats {
 
 // API Functions
 export async function createEmployee(data: CreateEmployeeDto): Promise<Employee> {
-  const token = getToken();
+  const token = getStoredToken();
   const response = await authenticatedFetch(`/employees`, {
     method: 'POST',
     headers: {
@@ -106,7 +106,7 @@ export async function getEmployees(filters?: {
   department?: string;
   search?: string;
 }): Promise<Employee[]> {
-  const token = getToken();
+  const token = getStoredToken();
   const params = new URLSearchParams();
   if (filters?.status) params.append('status', filters.status);
   if (filters?.position) params.append('position', filters.position);
@@ -127,7 +127,7 @@ export async function getEmployees(filters?: {
 }
 
 export async function getEmployee(id: string): Promise<Employee> {
-  const token = getToken();
+  const token = getStoredToken();
   const response = await authenticatedFetch(`/employees/${id}`, {
     headers: {
       Authorization: `Bearer ${token}`,
@@ -142,7 +142,7 @@ export async function getEmployee(id: string): Promise<Employee> {
 }
 
 export async function updateEmployee(id: string, data: UpdateEmployeeDto): Promise<Employee> {
-  const token = getToken();
+  const token = getStoredToken();
   const response = await authenticatedFetch(`/employees/${id}`, {
     method: 'PUT',
     headers: {
@@ -166,7 +166,7 @@ export async function uploadEmployeeDocument(
   documentType: string,
   notes?: string,
 ): Promise<EmployeeDocument> {
-  const token = getToken();
+  const token = getStoredToken();
   const formData = new FormData();
   formData.append('file', file);
   formData.append('documentType', documentType);
@@ -189,7 +189,7 @@ export async function uploadEmployeeDocument(
 }
 
 export async function deleteEmployeeDocument(documentId: string): Promise<void> {
-  const token = getToken();
+  const token = getStoredToken();
   const response = await authenticatedFetch(`/employees/documents/${documentId}`, {
     method: 'DELETE',
     headers: {
@@ -203,7 +203,7 @@ export async function deleteEmployeeDocument(documentId: string): Promise<void> 
 }
 
 export async function getEmployeeDocumentUrl(documentId: string): Promise<{ url: string; fileName: string }> {
-  const token = getToken();
+  const token = getStoredToken();
   const response = await authenticatedFetch(`/employees/documents/${documentId}/url`, {
     headers: {
       Authorization: `Bearer ${token}`,
@@ -218,7 +218,7 @@ export async function getEmployeeDocumentUrl(documentId: string): Promise<{ url:
 }
 
 export async function getEmployeeStats(): Promise<EmployeeStats> {
-  const token = getToken();
+  const token = getStoredToken();
   const response = await authenticatedFetch(`/employees/stats`, {
     headers: {
       Authorization: `Bearer ${token}`,
