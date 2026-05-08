@@ -205,7 +205,7 @@ export default function BankAccountsPage() {
         onConfirm={confirmModal.onConfirm}
         onCancel={closeConfirm}
       />
-      <main style={{ maxWidth: 1200, margin: "0 auto" }}>
+      <main className="app-shell">
         <div style={{ marginBottom: 30, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
             <h1 style={{ marginBottom: 8, fontSize: "1.8rem", fontWeight: 600 }}>🏦 Cuentas Bancarias</h1>
@@ -350,8 +350,8 @@ export default function BankAccountsPage() {
           )}
 
           {!loading && accounts.length > 0 && (
-            <div style={{ overflowX: "auto" }}>
-              <table style={{ width: "100%", minWidth: "1100px" }}>
+            <div className="history-table-wrap">
+              <table style={{ width: "100%", minWidth: "900px" }} className="history-table">
                 <thead>
                   <tr>
                     <th style={{ width: "10%", minWidth: "100px" }}>Empresa</th>

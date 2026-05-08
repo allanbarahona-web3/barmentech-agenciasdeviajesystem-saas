@@ -6,7 +6,7 @@ export default function PayrollPage() {
   const router = useRouter();
 
   return (
-    <div className="container">
+    <main className="app-shell">
       <div style={{
         maxWidth: "600px",
         margin: "80px auto",
@@ -65,6 +65,6 @@ export default function PayrollPage() {
           ← Volver
         </button>
       </div>
-    </div>
+    </main>
   );
 }

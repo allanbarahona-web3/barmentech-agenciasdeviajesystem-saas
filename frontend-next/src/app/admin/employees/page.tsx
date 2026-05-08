@@ -320,14 +320,14 @@ export default function EmployeesPage() {
 
   if (loading && employees.length === 0) {
     return (
-      <div style={{ padding: '20px', textAlign: 'center' }}>
+      <main className="app-shell">
         <p>Cargando empleados...</p>
-      </div>
+      </main>
     );
   }
 
   return (
-    <div style={{ padding: '20px', maxWidth: '1400px', margin: '0 auto', background: '#f9fafb', minHeight: '100vh' }}>
+    <main className="app-shell">
       {/* Header con gradiente */}
       <div
         style={{
@@ -1393,6 +1393,6 @@ export default function EmployeesPage() {
           setDocumentToDelete(null);
         }}
       />
-    </div>
+    </main>
   );
 }

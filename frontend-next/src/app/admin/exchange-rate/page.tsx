@@ -302,7 +302,7 @@ export default function AdminExchangeRatePage() {
   }
 
   return (
-    <main style={{ maxWidth: 1200, margin: "0 auto" }}>
+    <main className="app-shell">
       <div style={{ marginBottom: 30 }}>
         <h1 style={{ marginBottom: 8, fontSize: "1.8rem", fontWeight: 600 }}>💱 Tipo de Cambio USD/CRC</h1>
         <p style={{ color: "#6b7280", margin: 0 }}>Configura el tipo de cambio diario para conversiones de moneda</p>

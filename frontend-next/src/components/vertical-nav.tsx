@@ -51,6 +51,7 @@ export function VerticalNav() {
   const [session, setSession] = useState<ReturnType<typeof getStoredSession>>(null);
   const [finanzasOpen, setFinanzasOpen] = useState(false);
   const [empleadosOpen, setEmpleadosOpen] = useState(false);
+  const [navOpen, setNavOpen] = useState(false);
 
   // Fix hydration - only render on client
   useEffect(() => {
@@ -61,6 +62,7 @@ export function VerticalNav() {
   useEffect(() => {
     setToken(getStoredToken());
     setSession(getStoredSession());
+    setNavOpen(false); // Cerrar nav al cambiar de ruta (mobile)
   }, [pathname]);
 
   useEffect(() => {
@@ -341,8 +343,37 @@ export function VerticalNav() {
 
   return (
     <>
-      <nav className="vertical-nav">
+      {/* Botón hamburger para móviles/tablets */}
+      <button
+        type="button"
+        className="nav-hamburger"
+        onClick={() => setNavOpen(true)}
+        aria-label="Abrir menú"
+      >
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+
+      {/* Overlay para cerrar nav en móviles */}
+      {navOpen && (
+        <div
+          className="nav-overlay"
+          onClick={() => setNavOpen(false)}
+        />
+      )}
+
+      <nav className={`vertical-nav${navOpen ? " open" : ""}`}>
         <div className="vertical-nav-header">
+          {/* Botón cerrar para móviles/tablets */}
+          <button
+            type="button"
+            className="nav-close"
+            onClick={() => setNavOpen(false)}
+            aria-label="Cerrar menú"
+          >
+            ✕
+          </button>
           <div className="vertical-nav-user">
             <div className="vertical-nav-avatar">{session.user.fullName.charAt(0).toUpperCase()}</div>
             <div className="vertical-nav-user-info">

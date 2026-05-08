@@ -316,7 +316,7 @@ export default function AdminDashboardPage() {
               <section style={{ marginBottom: "24px" }}>
                 <h2 style={{ fontSize: "18px", marginBottom: "12px", color: "#374151" }}>📈 Cobros Diarios (Últimos 30 días)</h2>
                 <div style={{ overflowX: "auto" }}>
-                  <div style={{ display: "flex", gap: "4px", alignItems: "flex-end", minHeight: "200px", padding: "20px", background: "#f9fafb", borderRadius: "8px", minWidth: "800px" }}>
+                  <div style={{ display: "flex", gap: "4px", alignItems: "flex-end", minHeight: "200px", padding: "20px", background: "#f9fafb", borderRadius: "8px", minWidth: "600px" }}>
                     {metrics.charts.dailyPayments.map((day, idx) => {
                       const maxAmount = Math.max(...metrics.charts.dailyPayments.map((d) => d.total));
                       const height = maxAmount > 0 ? (day.total / maxAmount) * 150 : 0;
