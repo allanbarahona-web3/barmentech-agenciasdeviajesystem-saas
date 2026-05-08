@@ -23,7 +23,7 @@ import { ReceiptProcessor } from "@/components/receipt-processor";
 import { LoadingModal } from "@/components/loading-modal";
 import type { ExtractedPaymentData } from "@/lib/payment-verification-api";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, Suspense } from "react";
 
 type BillingModalMode = "RESERVATION" | "INSTALLMENT" | "CREDIT_NOTE" | "NONE";
 type DocumentEmailType = "RECEIPT" | "CREDIT_NOTE";
@@ -150,7 +150,7 @@ const getContractSourceBadge = (source?: string | null): { label: string; color:
   return null;
 };
 
-export default function BillingContractAccountPage() {
+function BillingContractAccountContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const params = useParams<{ contractId: string }>();
@@ -2019,5 +2019,19 @@ export default function BillingContractAccountPage() {
         autoCloseDelay={2000}
       />
     </main>
+  );
+}
+
+export default function BillingContractAccountPage() {
+  return (
+    <Suspense fallback={
+      <main className="app-shell">
+        <section className="card">
+          <p>Cargando estado de cuenta...</p>
+        </section>
+      </main>
+    }>
+      <BillingContractAccountContent />
+    </Suspense>
   );
 }

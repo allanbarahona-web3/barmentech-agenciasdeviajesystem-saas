@@ -16,7 +16,7 @@ import { ToastNotification, useToast } from "@/components/toast-notification";
 import { ConfirmModal } from "@/components/confirm-modal";
 import { PageLoader } from "@/components/loading-spinner";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 
 const roleLabel = (role: string) => {
   const normalized = String(role || "").toUpperCase();
@@ -28,7 +28,7 @@ const roleLabel = (role: string) => {
   return "AGENT";
 };
 
-export default function AdminUsersPage() {
+function AdminUsersContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   
@@ -1143,5 +1143,13 @@ export default function AdminUsersPage() {
 
       <ToastNotification toasts={toasts} onDismiss={dismissToast} />
     </main>
+  );
+}
+
+export default function AdminUsersPage() {
+  return (
+    <Suspense fallback={<PageLoader message="Cargando usuarios..." />}>
+      <AdminUsersContent />
+    </Suspense>
   );
 }
