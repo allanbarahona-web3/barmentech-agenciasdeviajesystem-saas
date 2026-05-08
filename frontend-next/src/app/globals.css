@@ -42,6 +42,57 @@ body {
 
 /* .login-card, .login-logo, .login-title, .login-subtitle, .login-form migrados a Tailwind */
 
+/* Login card - Responsive para evitar scroll vertical en laptops */
+.login-card {
+  max-height: 95vh;
+  overflow-y: auto;
+}
+
+/* Laptops y pantallas con altura limitada */
+@media (max-height: 850px) {
+  .login-card {
+    padding: 1.25rem !important; /* 20px - compacto pero no chato */
+  }
+  
+  .login-card img {
+    max-height: 60px !important;
+    width: auto !important;
+  }
+  
+  .login-card input {
+    padding-top: 0.65rem !important;
+    padding-bottom: 0.65rem !important;
+  }
+  
+  .login-card button[type="submit"] {
+    padding-top: 0.65rem !important;
+    padding-bottom: 0.65rem !important;
+  }
+  
+  .login-card label {
+    margin-bottom: 0.375rem !important;
+    font-size: 0.85rem !important;
+  }
+}
+
+@media (max-height: 768px) {
+  .login-card {
+    padding: 1rem !important; /* 16px - más compacto en pantallas muy pequeñas */
+  }
+  
+  .login-card img {
+    max-height: 50px !important;
+    width: auto !important;
+  }
+}
+
+@media (max-height: 950px) and (min-height: 851px) {
+  .login-card img {
+    max-height: 70px !important;
+    width: auto !important;
+  }
+}
+
 .card {
   width: min(460px, 92vw);
   background: var(--surface);
@@ -68,8 +119,31 @@ body {
 .actions {
   display: flex;
   gap: 8px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap; /* Forzar una sola línea horizontal */
   margin-top: 14px;
+}
+
+/* Botones más compactos en laptops para mantener layout horizontal */
+@media (max-width: 1366px) {
+  .actions button {
+    padding: 5px 10px !important;
+    font-size: 0.8rem !important;
+  }
+  
+  .actions {
+    gap: 5px;
+  }
+}
+
+@media (max-width: 1024px) {
+  .actions button {
+    padding: 4px 8px !important;
+    font-size: 0.75rem !important;
+  }
+  
+  .actions {
+    gap: 4px;
+  }
 }
 
 /* Botones secundarios y de éxito - migrados a Tailwind */

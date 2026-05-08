@@ -134,7 +134,7 @@ export default function Home() {
   };
 
   return (
-    <main className="min-h-screen flex items-center justify-center p-6 bg-linear-to-br from-gray-50 to-gray-100">
+    <main className="min-h-screen flex items-center justify-center p-4 md:p-6 bg-linear-to-br from-gray-50 to-gray-100">
       {/* Si el tenant está suspendido, solo mostrar modal (sin formulario) */}
       {showSuspendedModal && suspensionDetails ? (
         <TenantSuspendedModal
@@ -148,10 +148,10 @@ export default function Home() {
           }}
         />
       ) : (
-        <div className="w-full max-w-md">
-          <div className="bg-white rounded-2xl shadow-xl p-8">
+        <div className="w-full max-w-[410px] my-auto">
+          <div className="bg-white rounded-2xl shadow-xl p-5 md:p-8 login-card">
             {/* Logo */}
-            <div className="flex justify-center mb-8">
+            <div className="flex justify-center mb-4 md:mb-8">
               {tenantLogoUrl ? (
                 <Image
                   src={tenantLogoUrl}
@@ -167,13 +167,13 @@ export default function Home() {
             </div>
 
             {/* Título */}
-            <div className="text-center mb-8">
-              <h1 className="text-2xl font-bold text-gray-800 mb-2">Ingreso de Agente</h1>
-              <p className="text-sm text-gray-500">Ingresa tus credenciales para continuar</p>
+            <div className="text-center mb-4 md:mb-8">
+              <h1 className="text-xl md:text-2xl font-bold text-gray-800 mb-1.5">Ingreso de Agente</h1>
+              <p className="text-xs md:text-sm text-gray-500">Ingresa tus credenciales para continuar</p>
             </div>
 
           {/* Formulario */}
-          <form onSubmit={onSubmit} className="space-y-5">
+          <form onSubmit={onSubmit} className="space-y-3.5 md:space-y-5">
             {/* Honeypot field */}
             <input
               type="text"

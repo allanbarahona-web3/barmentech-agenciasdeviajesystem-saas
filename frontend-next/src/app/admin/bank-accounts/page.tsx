@@ -127,6 +127,33 @@ export default function BankAccountsPage() {
       return;
     }
 
+    // Validación del formato IBAN (CR + 20 dígitos = 22 caracteres)
+    const ibanValue = accountNumber.trim().toUpperCase();
+    if (ibanValue.startsWith("CR")) {
+      if (ibanValue.length !== 22) {
+        showConfirm({
+          title: "⚠️ Error en formato IBAN",
+          message: `El IBAN debe tener exactamente 22 caracteres (CR + 20 dígitos).\n\nActualmente tiene ${ibanValue.length} caracteres.\n\nPor favor, verifica el número ingresado.`,
+          confirmText: "Entendido",
+          variant: "warning",
+          onConfirm: () => closeConfirm(),
+        });
+        return;
+      }
+      // Verificar que después de "CR" solo haya dígitos
+      const digits = ibanValue.substring(2);
+      if (!/^\d{20}$/.test(digits)) {
+        showConfirm({
+          title: "⚠️ Error en formato IBAN",
+          message: "El IBAN debe tener el formato: CR seguido de 20 dígitos numéricos.\n\nEjemplo: CR05001614040007456807\n\nPor favor, verifica que no contenga letras después de CR.",
+          confirmText: "Entendido",
+          variant: "warning",
+          onConfirm: () => closeConfirm(),
+        });
+        return;
+      }
+    }
+
     const input: CreateBankAccountInput = {
       bankName: bankName.trim(),
       accountNumber: accountNumber.trim(),
@@ -249,6 +276,9 @@ export default function BankAccountsPage() {
                     required
                     style={{ width: "100%", padding: "10px 12px", fontSize: "1rem" }}
                   />
+                  <small style={{ display: "block", marginTop: "4px", color: "#6b7280", fontSize: "0.85rem" }}>
+                    💡 IBAN: CR + 20 dígitos (22 caracteres total)
+                  </small>
                 </div>
               </div>
 
