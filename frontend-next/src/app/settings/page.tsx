@@ -230,8 +230,8 @@ export default function SettingsPage() {
       await updateTenantConfigAdmin({
         primaryColor,
         secondaryColor,
-        fromEmail: fromEmail.trim() || null,
-        replyToEmail: replyToEmail.trim() || null,
+        fromEmail: fromEmail.trim() || undefined,
+        replyToEmail: replyToEmail.trim() || undefined,
         legalName,
         legalId,
         representativeName,
