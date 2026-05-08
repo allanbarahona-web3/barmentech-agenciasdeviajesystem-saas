@@ -1,5 +1,7 @@
 "use client";
 
+export const dynamic = 'force-dynamic';
+
 import { getStoredSession, getStoredToken } from "@/lib/auth-api";
 import { getBillingDashboardMetrics, type DashboardMetrics } from "@/lib/billing-api";
 import { ExchangeRateChecker } from "@/components/exchange-rate-checker";

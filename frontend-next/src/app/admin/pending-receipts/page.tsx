@@ -1,5 +1,7 @@
 "use client";
 
+export const dynamic = 'force-dynamic';
+
 import { getStoredSession, getStoredToken } from "@/lib/auth-api";
 import { approveAndSendBillingReceipt } from "@/lib/billing-api";
 import { useRouter } from "next/navigation";

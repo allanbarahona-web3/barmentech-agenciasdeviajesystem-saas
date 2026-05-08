@@ -1,5 +1,7 @@
 "use client";
 
+export const dynamic = 'force-dynamic';
+
 import { ContractsForm } from "@/features/contracts-form/ContractsForm";
 import { getStoredToken, type AuthSession } from "@/lib/auth-api";
 import { AUTH_SESSION_KEY } from "@/lib/runtime-config";

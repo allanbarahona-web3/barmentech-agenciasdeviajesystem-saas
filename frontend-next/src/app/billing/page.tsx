@@ -1,5 +1,7 @@
 "use client";
 
+export const dynamic = 'force-dynamic';
+
 import { getStoredToken } from "@/lib/auth-api";
 import { listBillingContracts, type BillingListItem } from "@/lib/billing-api";
 import { ToastNotification, useToast } from "@/components/toast-notification";

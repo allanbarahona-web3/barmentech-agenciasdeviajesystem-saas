@@ -1,5 +1,7 @@
 "use client";
 
+export const dynamic = 'force-dynamic';
+
 import { changePassword, clearStoredToken, getStoredSession, getHomeRouteForRole } from "@/lib/auth-api";
 import { ToastNotification, useToast } from "@/components/toast-notification";
 import { useRouter } from "next/navigation";

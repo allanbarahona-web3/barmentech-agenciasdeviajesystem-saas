@@ -1,5 +1,7 @@
 "use client";
 
+export const dynamic = 'force-dynamic';
+
 import { useState, useEffect } from "react";
 import { getTenantLegalConfig, updateTenantLegalConfig, type TenantLegalConfig } from "@/lib/auth-api";
 
