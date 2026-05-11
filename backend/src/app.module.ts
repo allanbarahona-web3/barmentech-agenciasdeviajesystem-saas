@@ -14,6 +14,7 @@ import { PrismaModule } from "./prisma/prisma.module";
 import { TravelPackagesModule } from "./travel-packages/travel-packages.module";
 import { TenantModule } from "./tenant/tenant.module";
 import { SuperAdminModule } from "./super-admin/super-admin.module";
+import { EmailModule } from "./email/email.module";
 import { TenantMiddleware } from "./tenant/tenant.middleware";
 import { RLSInterceptor } from "./common/interceptors/rls.interceptor";
 
@@ -32,6 +33,7 @@ import { RLSInterceptor } from "./common/interceptors/rls.interceptor";
     ]),
     PrismaModule,
     TenantModule,
+    EmailModule,
     AuthModule,
     SuperAdminModule,
     ContractsModule,

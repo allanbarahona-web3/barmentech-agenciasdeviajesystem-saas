@@ -1,15 +1,16 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { TenantService } from "../tenant/tenant.service";
+import { EmailService } from "../email/email.service";
 import { SetExchangeRateDto } from "./dto/set-exchange-rate.dto";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
-import { Resend } from "resend";
 
 @Injectable()
 export class ExchangeRateService {
   constructor(
     private prisma: PrismaService,
     private tenantService: TenantService,
+    private emailService: EmailService,
   ) {}
 
   /**
@@ -370,8 +371,57 @@ export class ExchangeRateService {
 
   /**
    * Send exchange rate history via email
+   * ✅ Migrado al nuevo EmailService centralizado (2026-05-11)
    */
   async sendHistoryEmail(
+    tenantId: string,
+    startDate: string,
+    endDate: string,
+    recipientEmail: string,
+    userName: string,
+  ): Promise<void> {
+    console.log("[ExchangeRate Service] Preparando envío de email a:", recipientEmail);
+
+    // 1. Generar PDF
+    console.log("[ExchangeRate Service] Generando PDF para rango:", { startDate, endDate });
+    const pdfBuffer = await this.generateHistoryPdf(tenantId, startDate, endDate);
+    const rates = await this.getExchangeRateHistoryRange(tenantId, startDate, endDate);
+    console.log("[ExchangeRate Service] PDF generado. Tamaño:", pdfBuffer.length, "bytes. Registros:", rates.length);
+
+    // 2. Enviar usando EmailService centralizado
+    const result = await this.emailService.sendEmail({
+      tenantId,
+      to: recipientEmail,
+      subject: `📊 Historial de Tipos de Cambio - {{startDate}} a {{endDate}}`,
+      template: 'exchange-rate-history',
+      templateData: {
+        userName,
+        startDate,
+        endDate,
+        totalRecords: rates.length,
+      },
+      attachments: [
+        {
+          filename: `historial-tipo-cambio-${startDate}-${endDate}.pdf`,
+          content: pdfBuffer.toString('base64'),
+        },
+      ],
+    });
+
+    if (!result.success) {
+      console.error("[ExchangeRate Service] Error enviando email:", result.error);
+      throw new Error(`Error al enviar email: ${result.error}`);
+    }
+
+    console.log("[ExchangeRate Service] Email enviado exitosamente a:", recipientEmail, "| Resend ID:", result.emailId);
+  }
+
+  /**
+   * FUNCIÓN VIEJA - Mantener comentada por si acaso
+   * Eliminar después de confirmar que el nuevo sistema funciona
+   */
+  /*
+  async sendHistoryEmail_OLD(
     tenantId: string,
     startDate: string,
     endDate: string,
@@ -482,4 +532,5 @@ export class ExchangeRateService {
 
     console.log("[ExchangeRate Service] Email sent successfully to:", recipientEmail);
   }
+  */
 }
