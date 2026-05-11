@@ -85,7 +85,7 @@ export const buildContractPdfHtml = (
   const tenantName = tenantLegalInfo?.name || "Agencia de Viajes";
   const contactPhone = tenantLegalInfo?.contactPhone || "N/A";
   const contactWhatsApp = tenantLegalInfo?.contactWhatsApp || "N/A";
-  const contactEmail = tenantLegalInfo?.contactEmail || "contacto@agencia.com";
+  const contactEmail = tenantLegalInfo?.contactEmail || "N/A";
   const businessAddress = tenantLegalInfo?.businessAddress || "N/A";
   const legalName = tenantLegalInfo?.legalName || "___";
   const legalId = tenantLegalInfo?.legalId || "___";
@@ -564,12 +564,12 @@ html, body {
   <div class="doc-header-text">
     <h1>${esc(tenantName)}</h1>
     <p class="doc-meta">
-      ${legalId !== "___" ? `Cedula juridica: ${esc(legalId)} &nbsp;|&nbsp;` : ""}
-      ${contactEmail !== "N/A" ? `${esc(contactEmail)} &nbsp;|&nbsp;` : ""}
-      ${contactPhone !== "N/A" ? `Tel. ${esc(contactPhone)}` : ""}<br />
+      ${legalId !== "___" ? `Cedula juridica: <strong>${esc(legalId)}</strong> &nbsp;|&nbsp;` : ""}
+      ${contactEmail !== "N/A" ? `<strong>${esc(contactEmail)}</strong> &nbsp;|&nbsp;` : ""}
+      ${contactPhone !== "N/A" ? `Tel. <strong>${esc(contactPhone)}</strong>` : ""}<br />
       Contrato N.° <strong>${esc(state.contractNumber)}</strong> &nbsp;|&nbsp;
-      Emitido: ${esc(formatDate(state.issuedAt || new Date().toISOString().slice(0, 10)))} &nbsp;|&nbsp;
-      Agente: ${esc(state.generatedByAgentName || "")}
+      Emitido: <strong>${esc(formatDate(state.issuedAt || new Date().toISOString().slice(0, 10)))}</strong> &nbsp;|&nbsp;
+      Agente: <strong>${esc(state.generatedByAgentName || "")}</strong>
     </p>
   </div>
 </header>
@@ -577,16 +577,16 @@ html, body {
 <h2 class="contract-title">Contrato General de Viaje Turistico a ${esc(contractDestinationUpper)}</h2>
 
 <table class="contract-meta">
-  <tr><td>Numero de contrato:</td><td>${esc(state.contractNumber)}</td></tr>
-  <tr><td>Destino:</td><td>${esc(state.destination)}</td></tr>
-  <tr><td>Fechas del Tour:</td><td>${esc(formatDate(state.startDate))} al ${esc(formatDate(state.endDate))}</td></tr>
-  <tr><td>Emitido el:</td><td>${esc(formatDate(state.issuedAt || new Date().toISOString().slice(0, 10)))}</td></tr>
+  <tr><td>Numero de contrato:</td><td><strong>${esc(state.contractNumber)}</strong></td></tr>
+  <tr><td>Destino:</td><td><strong>${esc(state.destination)}</strong></td></tr>
+  <tr><td>Fechas del Tour:</td><td><strong>${esc(formatDate(state.startDate))}</strong> al <strong>${esc(formatDate(state.endDate))}</strong></td></tr>
+  <tr><td>Emitido el:</td><td><strong>${esc(formatDate(state.issuedAt || new Date().toISOString().slice(0, 10)))}</strong></td></tr>
 </table>
 
 <h3 class="section-heading">Partes</h3>
 
 <section class="clause">
-  <p>(a) <strong>${esc(repName)}</strong>, mayor, ${esc(repMaritalStatus)}, ${esc(repTitle)}, portadora de la cedula de identidad numero <strong>${esc(repId)}</strong>, vecina de ${esc(repAddress)}, en condicion de representante legal, con facultades de ${esc(repPowers)} de <strong>${esc(legalName)}</strong>, cedula juridica numero ${esc(legalId)}, en adelante denominada <strong>"${esc(tenantName)}"</strong>; y</p>
+  <p>(a) <strong>${esc(repName)}</strong>, mayor, <strong>${esc(repMaritalStatus)}</strong>, <strong>${esc(repTitle)}</strong>, portadora de la cedula de identidad numero <strong>${esc(repId)}</strong>, vecina de <strong>${esc(repAddress)}</strong>, en condicion de representante legal, con facultades de <strong>${esc(repPowers)}</strong> de <strong>${esc(legalName)}</strong>, cedula juridica numero <strong>${esc(legalId)}</strong>, en adelante denominada <strong>"${esc(tenantName)}"</strong>; y</p>
 </section>
 
 <section class="clause">
@@ -764,7 +764,7 @@ ${clause(
 ${clause(
   "VIGESIMO SEGUNDO: NOTIFICACIONES Y COMUNICACIONES.",
   `<ul>
-    <li><strong>${esc(tenantName)}:</strong> ${contactEmail !== "N/A" ? esc(contactEmail) : "___"}${contactWhatsApp !== "N/A" ? ` y WhatsApp ${esc(contactWhatsApp)}` : ""}.</li>
+    <li><strong>${esc(tenantName)}:</strong> ${contactEmail !== "N/A" ? `<strong>${esc(contactEmail)}</strong>` : "___"}${contactWhatsApp !== "N/A" ? ` y WhatsApp <strong>${esc(contactWhatsApp)}</strong>` : ""}.</li>
     <li><strong>Cliente:</strong> Direccion ${v(state.clientAddress)}, correo ${v(state.clientEmail)} y telefono ${v(state.clientPhone)}.</li>
   </ul>`,
 )}
