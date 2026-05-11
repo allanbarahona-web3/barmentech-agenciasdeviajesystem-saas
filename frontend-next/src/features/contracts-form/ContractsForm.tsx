@@ -293,12 +293,12 @@ export function ContractsForm({ agent = null, initialDraftId = null, initialTrav
       // Validar que el tenant tenga logo y firma configurados
       if (!tenantConfig.logoUrl) {
         setStatus("Error: El logo de la empresa no está configurado. Por favor, configure el logo en la página de Ajustes.");
-        setArchiving(false);
+        setSubmitting(false);
         return;
       }
       if (!tenantConfig.signatureUrl) {
         setStatus("Error: La firma del representante no está configurada. Por favor, configure la firma en la página de Ajustes.");
-        setArchiving(false);
+        setSubmitting(false);
         return;
       }
       
