@@ -136,17 +136,28 @@ export default function SuperAdminDashboard() {
               <h1 className="text-4xl font-bold text-gray-900">Super Admin Dashboard</h1>
               <p className="text-gray-600 mt-2">Gestión global de la plataforma</p>
             </div>
-            {tenants.filter(t => (t.fromEmail || t.replyToEmail) && !t.emailVerified).length > 0 && (
-              <div className="flex items-center gap-2 px-4 py-2 bg-yellow-100 border-2 border-yellow-400 rounded-lg">
-                <span className="text-2xl">⚠️</span>
-                <div>
-                  <p className="text-sm font-semibold text-yellow-900">
-                    {tenants.filter(t => (t.fromEmail || t.replyToEmail) && !t.emailVerified).length} Email{tenants.filter(t => (t.fromEmail || t.replyToEmail) && !t.emailVerified).length > 1 ? 's' : ''}
-                  </p>
-                  <p className="text-xs text-yellow-800">Pendiente verificación</p>
+            <div className="flex items-center gap-4">
+              {/* Email Stats Button */}
+              <button
+                onClick={() => router.push("/super-admin/email-stats")}
+                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-lg transition-all shadow-md hover:shadow-lg font-semibold"
+              >
+                📧 Email Stats
+              </button>
+              
+              {/* Email Verification Warning */}
+              {tenants.filter(t => (t.fromEmail || t.replyToEmail) && !t.emailVerified).length > 0 && (
+                <div className="flex items-center gap-2 px-4 py-2 bg-yellow-100 border-2 border-yellow-400 rounded-lg">
+                  <span className="text-2xl">⚠️</span>
+                  <div>
+                    <p className="text-sm font-semibold text-yellow-900">
+                      {tenants.filter(t => (t.fromEmail || t.replyToEmail) && !t.emailVerified).length} Email{tenants.filter(t => (t.fromEmail || t.replyToEmail) && !t.emailVerified).length > 1 ? 's' : ''}
+                    </p>
+                    <p className="text-xs text-yellow-800">Pendiente verificación</p>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
 
