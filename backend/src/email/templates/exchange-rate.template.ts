@@ -12,6 +12,9 @@ export interface ExchangeRateHistoryData {
   tenantLogo?: string;
   contactEmail?: string;
   contactPhone?: string;
+  websiteUrl?: string;
+  primaryColor?: string;
+  secondaryColor?: string;
 }
 
 export function exchangeRateHistoryTemplate(data: ExchangeRateHistoryData): string {
@@ -28,6 +31,8 @@ export function exchangeRateHistoryTemplate(data: ExchangeRateHistoryData): stri
     tenantLogo: data.tenantLogo,
     title: '📊 Historial de Tipos de Cambio',
     subtitle: data.tenantName,
+    primaryColor: data.primaryColor,
+    secondaryColor: data.secondaryColor,
     content: `
       <h2 style="margin: 0 0 20px 0; color: #1f2937; font-size: 24px; font-weight: 600;">
         Hola ${data.userName},
@@ -73,6 +78,7 @@ export function exchangeRateHistoryTemplate(data: ExchangeRateHistoryData): stri
     footer: {
       contactEmail: data.contactEmail,
       contactPhone: data.contactPhone,
+      websiteUrl: data.websiteUrl,
     },
   };
 

@@ -21,7 +21,11 @@ export interface BaseTemplateOptions {
     contactEmail?: string;
     contactPhone?: string;
     businessAddress?: string;
+    websiteUrl?: string;
   };
+  // Branding colors (dinámicos por tenant)
+  primaryColor?: string;
+  secondaryColor?: string;
 }
 
 const badgeColors = {
@@ -41,6 +45,8 @@ export function baseEmailTemplate(options: BaseTemplateOptions): string {
     content,
     cta,
     footer,
+    primaryColor = '#667eea',
+    secondaryColor = '#764ba2',
   } = options;
 
   const badgeColor = badge ? badgeColors[badge.color] : undefined;
@@ -61,7 +67,7 @@ export function baseEmailTemplate(options: BaseTemplateOptions): string {
           
           <!-- Header con branding dinámico -->
           <tr>
-            <td style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px 30px; text-align: center;">
+            <td style="background: linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%); padding: 40px 30px; text-align: center;">
               ${tenantLogo ? `<img src="${tenantLogo}" alt="${tenantName}" style="max-width: 180px; height: auto; margin-bottom: 16px;" />` : ''}
               <h1 style="margin: 0; color: #ffffff; font-size: 32px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;">
                 ${title}
@@ -96,11 +102,11 @@ export function baseEmailTemplate(options: BaseTemplateOptions): string {
                 <tr>
                   <td align="center">
                     ${cta.url ? `
-                      <a href="${cta.url}" target="_blank" style="display: inline-block; background-color: #667eea; color: #ffffff; padding: 16px 32px; border-radius: 8px; font-size: 16px; font-weight: 600; text-decoration: none;">
+                      <a href="${cta.url}" target="_blank" style="display: inline-block; background-color: ${primaryColor}; color: #ffffff; padding: 16px 32px; border-radius: 8px; font-size: 16px; font-weight: 600; text-decoration: none;">
                         ${cta.text}
                       </a>
                     ` : `
-                      <div style="background-color: #667eea; color: #ffffff; padding: 16px 32px; border-radius: 8px; font-size: 16px; font-weight: 600; display: inline-block;">
+                      <div style="background-color: ${primaryColor}; color: #ffffff; padding: 16px 32px; border-radius: 8px; font-size: 16px; font-weight: 600; display: inline-block;">
                         ${cta.text}
                       </div>
                     `}
@@ -118,14 +124,15 @@ export function baseEmailTemplate(options: BaseTemplateOptions): string {
               <p style="margin: 0 0 8px 0; color: #1f2937; font-size: 15px; font-weight: 600;">
                 Atentamente,
               </p>
-              <p style="margin: 0 0 20px 0; color: #667eea; font-size: 18px; font-weight: 700;">
+              <p style="margin: 0 0 20px 0; color: ${primaryColor}; font-size: 18px; font-weight: 700;">
                 Equipo ${tenantName}
               </p>
               
-              ${footer && (footer.contactEmail || footer.contactPhone || footer.businessAddress) ? `
+              ${footer && (footer.contactEmail || footer.contactPhone || footer.businessAddress || footer.websiteUrl) ? `
               <div style="border-top: 1px solid #e5e7eb; padding-top: 20px; margin-top: 20px;">
                 ${footer.contactEmail ? `<p style="margin: 4px 0; color: #6b7280; font-size: 13px;">📧 ${footer.contactEmail}</p>` : ''}
                 ${footer.contactPhone ? `<p style="margin: 4px 0; color: #6b7280; font-size: 13px;">📞 ${footer.contactPhone}</p>` : ''}
+                ${footer.websiteUrl ? `<p style="margin: 4px 0; color: #6b7280; font-size: 13px;">🌐 <a href="${footer.websiteUrl}" style="color: ${primaryColor}; text-decoration: none;">${footer.websiteUrl}</a></p>` : ''}
                 ${footer.businessAddress ? `<p style="margin: 4px 0; color: #6b7280; font-size: 13px;">📍 ${footer.businessAddress}</p>` : ''}
               </div>
               ` : ''}

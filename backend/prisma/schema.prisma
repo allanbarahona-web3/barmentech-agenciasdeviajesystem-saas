@@ -81,6 +81,7 @@ model Tenant {
   contactWhatsApp String? @map("contact_whatsapp") // Número de WhatsApp (ej: "6015-9906")
   contactEmail    String? @map("contact_email") // Email de contacto para contratos (ej: "contratos@viajesalmanova.com")
   businessAddress String? @map("business_address") // Dirección física de la empresa
+  websiteUrl      String? @map("website_url") // Página web de la empresa (ej: "https://viajesalmanova.com")
 
   // Información legal de la empresa (para contratos)
   legalName                   String? // "VIAJES ALMA NOVA"

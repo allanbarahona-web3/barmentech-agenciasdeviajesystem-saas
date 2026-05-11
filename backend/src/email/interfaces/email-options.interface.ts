@@ -115,4 +115,9 @@ export interface TenantEmailConfig {
   contactWhatsApp?: string;
   contactEmail?: string;
   businessAddress?: string;
+  websiteUrl?: string;
+  
+  // Branding colors
+  primaryColor?: string;
+  secondaryColor?: string;
 }

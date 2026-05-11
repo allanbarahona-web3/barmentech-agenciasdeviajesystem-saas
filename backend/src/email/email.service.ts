@@ -72,6 +72,9 @@ export class EmailService {
         contactEmail: tenant.contactEmail,
         contactPhone: tenant.contactPhone,
         businessAddress: tenant.businessAddress,
+        websiteUrl: tenant.websiteUrl,
+        primaryColor: tenant.primaryColor || '#667eea',
+        secondaryColor: tenant.secondaryColor || '#764ba2',
       });
 
       // 6. Normalizar destinatarios
@@ -166,6 +169,9 @@ export class EmailService {
         contactWhatsApp: true,
         contactEmail: true,
         businessAddress: true,
+        websiteUrl: true,
+        primaryColor: true,
+        secondaryColor: true,
       },
     });
 
@@ -190,6 +196,9 @@ export class EmailService {
       contactWhatsApp: tenant.contactWhatsApp || undefined,
       contactEmail: tenant.contactEmail || undefined,
       businessAddress: tenant.businessAddress || undefined,
+      websiteUrl: tenant.websiteUrl || undefined,
+      primaryColor: tenant.primaryColor || undefined,
+      secondaryColor: tenant.secondaryColor || undefined,
     };
   }
 
