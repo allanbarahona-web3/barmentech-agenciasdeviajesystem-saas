@@ -43,8 +43,9 @@ export class ContractsController {
     req: {
       user: { id: string; email: string; fullName: string };
     },
+    @Tenant() tenant: ResolvedTenant,
   ) {
-    return this.contractsService.reserveNextNumber(req.user);
+    return this.contractsService.reserveNextNumber(req.user, tenant);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)

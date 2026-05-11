@@ -49,6 +49,10 @@ export default function SettingsPage() {
   const [secondaryColor, setSecondaryColor] = useState("#10B981"); // Verde por defecto
   const [fromEmail, setFromEmail] = useState("");
   const [replyToEmail, setReplyToEmail] = useState("");
+  const [contactPhone, setContactPhone] = useState("");
+  const [contactWhatsApp, setContactWhatsApp] = useState("");
+  const [contactEmail, setContactEmail] = useState("");
+  const [businessAddress, setBusinessAddress] = useState("");
   const [legalName, setLegalName] = useState("");
   const [legalId, setLegalId] = useState("");
   const [representativeName, setRepresentativeName] = useState("");
@@ -80,6 +84,10 @@ export default function SettingsPage() {
       setSecondaryColor(data.secondaryColor || "#10B981");
       setFromEmail(data.fromEmail || "");
       setReplyToEmail(data.replyToEmail || "");
+      setContactPhone(data.contactPhone || "");
+      setContactWhatsApp(data.contactWhatsApp || "");
+      setContactEmail(data.contactEmail || "");
+      setBusinessAddress(data.businessAddress || "");
       setLegalName(data.legalName || "");
       setLegalId(data.legalId || "");
       setRepresentativeName(data.representativeName || "");
@@ -234,6 +242,10 @@ export default function SettingsPage() {
         secondaryColor,
         fromEmail: fromEmail.trim() || undefined,
         replyToEmail: replyToEmail.trim() || undefined,
+        contactPhone: contactPhone.trim() || undefined,
+        contactWhatsApp: contactWhatsApp.trim() || undefined,
+        contactEmail: contactEmail.trim() || undefined,
+        businessAddress: businessAddress.trim() || undefined,
         legalName,
         legalId,
         representativeName,
@@ -597,7 +609,78 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          <h2 className="text-xl font-bold text-gray-900 mb-4 mt-8">📋 Datos Legales</h2>
+          <h2 className="text-xl font-bold text-gray-900 mb-4 mt-8">� Información de Contacto</h2>
+          <p className="text-sm text-gray-600 mb-4">
+            Datos de contacto que aparecerán en los contratos y documentos de la empresa.
+          </p>
+          
+          <div className="grid md:grid-cols-2 gap-6 mb-8">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Teléfono de Contacto
+              </label>
+              <input
+                type="text"
+                value={contactPhone}
+                onChange={(e) => setContactPhone(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                placeholder="Ej: 6015-9906"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Se mostrará en contratos y comunicaciones oficiales.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                WhatsApp de Contacto
+              </label>
+              <input
+                type="text"
+                value={contactWhatsApp}
+                onChange={(e) => setContactWhatsApp(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                placeholder="Ej: 6015-9906"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Número de WhatsApp para soporte y comunicación con clientes.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Email de Contacto (Contratos)
+              </label>
+              <input
+                type="email"
+                value={contactEmail}
+                onChange={(e) => setContactEmail(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                placeholder="Ej: contratos@tuempresa.com"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Email de contacto que aparecerá en los contratos.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Dirección Física
+              </label>
+              <input
+                type="text"
+                value={businessAddress}
+                onChange={(e) => setBusinessAddress(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                placeholder="Ej: San José, Costa Rica"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Dirección de las oficinas de la empresa (opcional).
+              </p>
+            </div>
+          </div>
+
+          <h2 className="text-xl font-bold text-gray-900 mb-4 mt-8">�📋 Datos Legales</h2>
           
           <div className="grid md:grid-cols-2 gap-6">
             <div>

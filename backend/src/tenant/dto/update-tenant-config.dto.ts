@@ -13,6 +13,27 @@ export class UpdateTenantConfigDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(50)
+  contactPhone?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  contactWhatsApp?: string;
+
+  @IsOptional()
+  @ValidateIf((o) => o.contactEmail !== null)
+  @IsEmail({}, { message: 'Email de contacto inválido' })
+  @MaxLength(200)
+  contactEmail?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  businessAddress?: string;
+
+  @IsOptional()
+  @IsString()
   @MaxLength(500)
   legalName?: string;
 

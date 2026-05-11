@@ -87,7 +87,7 @@ export default function TripsPage() {
     if (pkg.status !== "OPEN") return;
     
     // Redirigir al formulario de contratos con el travelPackageId
-    router.push(`/contracts/new?travelPackageId=${pkg.id}`);
+    router.push(`/contracts?travelPackageId=${pkg.id}`);
   };
 
   if (!mounted || loading) {

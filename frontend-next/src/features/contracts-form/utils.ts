@@ -123,7 +123,7 @@ export const createInitialFormState = (agent?: { fullName?: string; email?: stri
     paymentFrequency: "MENSUAL",
     monthlyInstallmentAmount: "",
     lastInstallmentAmount: "",
-    paymentDueDate: minusDaysIso(today, 22),
+    paymentDueDate: today, // Inicializado como today, se actualizará cuando el usuario cambie startDate
     companions: [],
     hasMinorCompanion: false,
     minors: [],

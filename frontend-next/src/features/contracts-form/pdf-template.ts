@@ -46,6 +46,10 @@ const getResponsibleAdultIdentity = (
 
 export type TenantLegalInfo = {
   name: string;
+  contactPhone: string | null;
+  contactWhatsApp: string | null;
+  contactEmail: string | null;
+  businessAddress: string | null;
   legalName: string | null;
   legalId: string | null;
   representativeName: string | null;
@@ -56,10 +60,20 @@ export type TenantLegalInfo = {
   representativePowers: string | null;
 };
 
+export type BankAccountForContract = {
+  bankName: string;
+  accountNumber: string;
+  accountType: string;
+  currency: string;
+  sinpeNumber?: string | null;
+  accountHolderName: string;
+};
+
 export const buildContractPdfHtml = (
   state: ContractFormState,
   assets: { logoSrc: string | null; representativeSignSrc: string | null },
   tenantLegalInfo: TenantLegalInfo | null,
+  bankAccounts: BankAccountForContract[] = [],
 ): string => {
   const signatureDate = formatDate(new Date().toISOString().slice(0, 10));
   const contractDestinationUpper = String(state.destination || "").trim().toLocaleUpperCase("es-CR");
@@ -69,6 +83,10 @@ export const buildContractPdfHtml = (
 
   // Valores por defecto si no hay tenant legal info
   const tenantName = tenantLegalInfo?.name || "Agencia de Viajes";
+  const contactPhone = tenantLegalInfo?.contactPhone || "N/A";
+  const contactWhatsApp = tenantLegalInfo?.contactWhatsApp || "N/A";
+  const contactEmail = tenantLegalInfo?.contactEmail || "contacto@agencia.com";
+  const businessAddress = tenantLegalInfo?.businessAddress || "N/A";
   const legalName = tenantLegalInfo?.legalName || "___";
   const legalId = tenantLegalInfo?.legalId || "___";
   const repName = tenantLegalInfo?.representativeName || "___";
@@ -546,8 +564,9 @@ html, body {
   <div class="doc-header-text">
     <h1>${esc(tenantName)}</h1>
     <p class="doc-meta">
-      Cedula juridica: 3-101-960028 &nbsp;|&nbsp;
-      contratos@viajesalmanova.com &nbsp;|&nbsp; Tel. 6015-9906<br />
+      ${legalId !== "___" ? `Cedula juridica: ${esc(legalId)} &nbsp;|&nbsp;` : ""}
+      ${contactEmail !== "N/A" ? `${esc(contactEmail)} &nbsp;|&nbsp;` : ""}
+      ${contactPhone !== "N/A" ? `Tel. ${esc(contactPhone)}` : ""}<br />
       Contrato N.° <strong>${esc(state.contractNumber)}</strong> &nbsp;|&nbsp;
       Emitido: ${esc(formatDate(state.issuedAt || new Date().toISOString().slice(0, 10)))} &nbsp;|&nbsp;
       Agente: ${esc(state.generatedByAgentName || "")}
@@ -610,8 +629,16 @@ ${clause(
   </ul>
   <p>Los medios de pago para realizar los pagos son los siguientes:</p>
   <ul>
-    <li>Cuenta bancaria (IBAN): CR25011610400074756807, Banco Promerica.</li>
-    <li>Sinpe Movil: 7296-9551.</li>
+    ${bankAccounts.length > 0 ? bankAccounts.map(account => {
+      const parts = [];
+      if (account.accountNumber) {
+        parts.push(`<li>Cuenta bancaria ${account.accountType === "CUENTA_CORRIENTE" ? "corriente" : "ahorro"} (${account.currency}): ${esc(account.accountNumber)} - ${esc(account.bankName)}.</li>`);
+      }
+      if (account.sinpeNumber) {
+        parts.push(`<li>Sinpe Movil: ${esc(account.sinpeNumber)} - ${esc(account.bankName)}.</li>`);
+      }
+      return parts.join('');
+    }).join('') : `<li>Consultar con ${esc(tenantName)} las cuentas bancarias activas para realizar pagos.</li>`}
     <li>Pagos en efectivo o tarjeta en oficinas de ${esc(tenantName)}.</li>
   </ul>`,
 )}
@@ -737,7 +764,7 @@ ${clause(
 ${clause(
   "VIGESIMO SEGUNDO: NOTIFICACIONES Y COMUNICACIONES.",
   `<ul>
-    <li><strong>${esc(tenantName)}:</strong> contratos@viajesalmanova.com y WhatsApp 6015-9906.</li>
+    <li><strong>${esc(tenantName)}:</strong> ${contactEmail !== "N/A" ? esc(contactEmail) : "___"}${contactWhatsApp !== "N/A" ? ` y WhatsApp ${esc(contactWhatsApp)}` : ""}.</li>
     <li><strong>Cliente:</strong> Direccion ${v(state.clientAddress)}, correo ${v(state.clientEmail)} y telefono ${v(state.clientPhone)}.</li>
   </ul>`,
 )}

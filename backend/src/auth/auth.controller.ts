@@ -32,6 +32,10 @@ export class AuthController {
       signatureUrl: tenant.signatureUrl || null,
       primaryColor: tenant.primaryColor || null,
       secondaryColor: tenant.secondaryColor || null,
+      contactPhone: tenant.contactPhone || null,
+      contactWhatsApp: tenant.contactWhatsApp || null,
+      contactEmail: tenant.contactEmail || null,
+      businessAddress: tenant.businessAddress || null,
     };
   }
 
@@ -160,6 +164,10 @@ export class AuthController {
   getTenantLegalConfig(@Tenant() tenant: ResolvedTenant) {
     return {
       name: tenant.name,
+      contactPhone: tenant.contactPhone,
+      contactWhatsApp: tenant.contactWhatsApp,
+      contactEmail: tenant.contactEmail,
+      businessAddress: tenant.businessAddress,
       legalName: tenant.legalName,
       legalId: tenant.legalId,
       representativeName: tenant.representativeName,

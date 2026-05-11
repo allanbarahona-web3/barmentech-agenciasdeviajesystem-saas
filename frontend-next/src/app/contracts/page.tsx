@@ -52,6 +52,7 @@ function ContractsPageContent() {
   const searchParams = useSearchParams();
   const draftId = String(searchParams.get("draftId") || "").trim();
   const mode = String(searchParams.get("mode") || "").trim();
+  const travelPackageId = String(searchParams.get("travelPackageId") || "").trim();
   const token = useSyncExternalStore(
     () => () => {
       // No external store subscriptions yet; auth token is read-only snapshot here.
@@ -104,6 +105,7 @@ function ContractsPageContent() {
       <ContractsForm 
         agent={session?.user || null} 
         initialDraftId={draftId || null}
+        initialTravelPackageId={travelPackageId || null}
         mode={mode || undefined}
       />
     </main>

@@ -79,7 +79,7 @@ export class ContractsService {
     return randomBytes(bytes).toString("hex").toUpperCase();
   }
 
-  private buildContractNumber() {
+  private buildContractNumber(prefix = "LUC") {
     const now = new Date();
     const yyyy = now.getFullYear();
     const mm = this.pad(now.getMonth() + 1);
@@ -90,7 +90,7 @@ export class ContractsService {
     const ms = this.pad(now.getMilliseconds(), 3);
     const unique = this.randomHex(2);
 
-    return `LUC-${yyyy}${mm}${dd}-${hh}${min}${ss}${ms}-${unique}`;
+    return `${prefix}-${yyyy}${mm}${dd}-${hh}${min}${ss}${ms}-${unique}`;
   }
 
   /**
@@ -579,9 +579,12 @@ export class ContractsService {
     return Buffer.from(bytes);
   }
 
-  async reserveNextNumber(user: { id: string; email: string; fullName: string }) {
+  async reserveNextNumber(
+    user: { id: string; email: string; fullName: string },
+    tenant: { id: string; name: string; contractPrefix: string },
+  ) {
     for (let attempt = 0; attempt < 6; attempt += 1) {
-      const contractNumber = this.buildContractNumber();
+      const contractNumber = this.buildContractNumber(tenant.contractPrefix);
 
       try {
         await (this.prisma as any).contractNumber.create({
@@ -590,6 +593,7 @@ export class ContractsService {
             createdByUserId: user.id,
             createdByEmail: user.email,
             createdByName: user.fullName,
+            tenantId: tenant.id,
           },
         });
 

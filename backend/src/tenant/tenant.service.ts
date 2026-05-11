@@ -21,6 +21,11 @@ export interface ResolvedTenant {
   emailLogoUrl: string | null;
   primaryColor: string | null;
   secondaryColor: string | null;
+  // Contact information
+  contactPhone: string | null;
+  contactWhatsApp: string | null;
+  contactEmail: string | null;
+  businessAddress: string | null;
   // Legal information
   legalName: string | null;
   legalId: string | null;
@@ -198,6 +203,10 @@ export class TenantService {
         emailVerified: true,
         primaryColor: true,
         secondaryColor: true,
+        contactPhone: true,
+        contactWhatsApp: true,
+        contactEmail: true,
+        businessAddress: true,
         legalName: true,
         legalId: true,
         representativeName: true,

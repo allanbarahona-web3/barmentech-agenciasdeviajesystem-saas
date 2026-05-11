@@ -68,6 +68,12 @@ model Tenant {
   primaryColor   String? // Color principal hex (ej: "#4F46E5")
   secondaryColor String? // Color secundario hex
 
+  // Información de contacto (para contratos y comunicaciones)
+  contactPhone    String? @map("contact_phone") // Teléfono de contacto (ej: "6015-9906")
+  contactWhatsApp String? @map("contact_whatsapp") // Número de WhatsApp (ej: "6015-9906")
+  contactEmail    String? @map("contact_email") // Email de contacto para contratos (ej: "contratos@viajesalmanova.com")
+  businessAddress String? @map("business_address") // Dirección física de la empresa
+
   // Información legal de la empresa (para contratos)
   legalName                   String? // "VIAJES ALMA NOVA"
   legalId                     String? // "3-101-960028" (cédula jurídica)

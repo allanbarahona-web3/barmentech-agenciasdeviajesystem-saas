@@ -7,6 +7,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { CurrencyCalculator } from "./currency-calculator";
+import { SupportModal } from "./support-modal";
 
 type NavItem = {
   href: string;
@@ -44,6 +45,7 @@ export function VerticalNav() {
   const pathname = usePathname();
   const [tick, setTick] = useState(Date.now());
   const [showCalculator, setShowCalculator] = useState(false);
+  const [showSupportModal, setShowSupportModal] = useState(false);
   const [pendingCounts, setPendingCounts] = useState<PendingCounts>({ pendingReceipts: 0, pendingCreditNotes: 0, contractsPendingSignature: 0 });
   const [mounted, setMounted] = useState(false);
   const [exchangeRate, setExchangeRate] = useState<ExchangeRate | null>(null);
@@ -482,6 +484,18 @@ export function VerticalNav() {
             <span className="vertical-nav-label">Calculadora</span>
           </button>
 
+          {isAdmin && (
+            <button
+              type="button"
+              className="vertical-nav-item vertical-nav-action"
+              onClick={() => setShowSupportModal(true)}
+              title="Contactar soporte técnico de BarmenTech"
+            >
+              <span className="vertical-nav-icon">💬</span>
+              <span className="vertical-nav-label">Soporte Técnico</span>
+            </button>
+          )}
+
           <button
             type="button"
             className="vertical-nav-item vertical-nav-action vertical-nav-logout"
@@ -497,6 +511,12 @@ export function VerticalNav() {
       </nav>
 
       <CurrencyCalculator isOpen={showCalculator} onClose={() => setShowCalculator(false)} />
+      <SupportModal 
+        isOpen={showSupportModal} 
+        onClose={() => setShowSupportModal(false)}
+        userName={session?.user?.fullName || ""}
+        userEmail={session?.user?.email || ""}
+      />
     </>
   );
 }

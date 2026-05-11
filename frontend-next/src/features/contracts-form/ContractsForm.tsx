@@ -8,7 +8,9 @@ import {
 } from "@/lib/contracts-api";
 import { bootstrapBillingContract } from "@/lib/billing-api";
 import { getTenantLegalConfig, getTenantConfig, type TenantLegalConfig } from "@/lib/auth-api";
-import { buildContractPdfHtml, type TenantLegalInfo } from "@/features/contracts-form/pdf-template";
+import { getTravelPackageById } from "@/lib/travel-packages-api";
+import { getAllBankAccounts } from "@/lib/bank-accounts-api";
+import { buildContractPdfHtml, type TenantLegalInfo, type BankAccountForContract } from "@/features/contracts-form/pdf-template";
 import {
   addCompanion,
   addCustomItineraryItem,
@@ -80,10 +82,11 @@ type ContractsFormProps = {
     role?: string;
   } | null;
   initialDraftId?: string | null;
+  initialTravelPackageId?: string | null;
   mode?: string;
 };
 
-export function ContractsForm({ agent = null, initialDraftId = null, mode }: ContractsFormProps) {
+export function ContractsForm({ agent = null, initialDraftId = null, initialTravelPackageId = null, mode }: ContractsFormProps) {
   const [state, setState] = useState(() => createInitialFormState(agent || undefined));
   const [status, setStatus] = useState("Listo para iniciar migracion del formulario.");
   const [busyNumber, setBusyNumber] = useState(false);
@@ -114,12 +117,15 @@ export function ContractsForm({ agent = null, initialDraftId = null, mode }: Con
   >({});
   const autoReservationStarted = useRef(false);
   const loadedDraftIdRef = useRef("");
+  const loadedTravelPackageIdRef = useRef("");
   const todayIso = useMemo(() => getTodayIsoLocal(), []);
 
   // Determinar si los campos de viaje deben estar bloqueados
   // Solo están desbloqueados en modo "migration"
+  // Si viene con travelPackageId, los campos de viaje están bloqueados
   const isMigrationMode = mode === "migration";
-  const travelFieldsLocked = !isMigrationMode;
+  const hasSelectedPackage = Boolean(initialTravelPackageId);
+  const travelFieldsLocked = !isMigrationMode || hasSelectedPackage;
 
   const rangeMessage = useMemo(() => getDateRangeValidityMessage(state), [state]);
   const itineraryMessage = useMemo(() => getItineraryValidityMessage(state), [state]);
@@ -284,17 +290,41 @@ export function ContractsForm({ agent = null, initialDraftId = null, mode }: Con
       const tenantConfig = await getTenantConfig();
       console.log("✅ Configuración de branding obtenida:", tenantConfig.name);
       
-      // Usar URLs del tenant, con fallbacks si no están configuradas
-      const logoSrc = tenantConfig.logoUrl || "https://lucitouroperations.sfo3.digitaloceanspaces.com/contracts-assets/Almanova%20azul+dorado.webp";
-      const representativeSignSrc = tenantConfig.signatureUrl || "https://lucitouroperations.sfo3.digitaloceanspaces.com/contracts-assets/Firma%20Karen-Lucitour.webp";
+      // Validar que el tenant tenga logo y firma configurados
+      if (!tenantConfig.logoUrl) {
+        setStatus("Error: El logo de la empresa no está configurado. Por favor, configure el logo en la página de Ajustes.");
+        setArchiving(false);
+        return;
+      }
+      if (!tenantConfig.signatureUrl) {
+        setStatus("Error: La firma del representante no está configurada. Por favor, configure la firma en la página de Ajustes.");
+        setArchiving(false);
+        return;
+      }
       
-      console.log("✅ Assets configurados:", { logoSrc: logoSrc ? "✓" : "✗", signatureSrc: representativeSignSrc ? "✓" : "✗" });
+      // Obtener cuentas bancarias activas
+      console.log("🔵 Obteniendo cuentas bancarias activas...");
+      const allBankAccounts = await getAllBankAccounts({ isActive: "true" });
+      const bankAccountsForContract: BankAccountForContract[] = allBankAccounts.map(acc => ({
+        bankName: acc.bankName,
+        accountNumber: acc.accountNumber,
+        accountType: acc.accountType,
+        currency: acc.currency,
+        sinpeNumber: acc.sinpeNumber || null,
+        accountHolderName: acc.accountHolderName,
+      }));
+      console.log("✅ Cuentas bancarias activas:", bankAccountsForContract.length);
+      
+      const logoSrc = tenantConfig.logoUrl;
+      const representativeSignSrc = tenantConfig.signatureUrl;
+      
+      console.log("✅ Assets configurados:", { logoSrc: "✓", signatureSrc: "✓" });
 
       console.log("🔵 Paso 2: Construyendo HTML del contrato...");
       const contractHtml = buildContractPdfHtml(state, {
         logoSrc,
         representativeSignSrc,
-      }, tenantLegalInfo);
+      }, tenantLegalInfo, bankAccountsForContract);
       console.log("✅ HTML construido, longitud:", contractHtml.length);
 
       console.log("🔵 Paso 3: Recolectando documentos...");
@@ -391,14 +421,34 @@ export function ContractsForm({ agent = null, initialDraftId = null, mode }: Con
       // Obtener configuración de branding del tenant (logo y firma)
       const tenantConfig = await getTenantConfig();
 
-      // Usar URLs del tenant, con fallbacks si no están configuradas
-      const logoSrc = tenantConfig.logoUrl || "https://lucitouroperations.sfo3.digitaloceanspaces.com/contracts-assets/Almanova%20azul+dorado.webp";
-      const representativeSignSrc = tenantConfig.signatureUrl || "https://lucitouroperations.sfo3.digitaloceanspaces.com/contracts-assets/Firma%20Karen-Lucitour.webp";
+      // Validar que el tenant tenga logo y firma configurados
+      if (!tenantConfig.logoUrl) {
+        setStatus("Error: El logo de la empresa no está configurado. Por favor, configure el logo en la página de Ajustes.");
+        return;
+      }
+      if (!tenantConfig.signatureUrl) {
+        setStatus("Error: La firma del representante no está configurada. Por favor, configure la firma en la página de Ajustes.");
+        return;
+      }
+
+      // Obtener cuentas bancarias activas
+      const allBankAccounts = await getAllBankAccounts({ isActive: "true" });
+      const bankAccountsForContract: BankAccountForContract[] = allBankAccounts.map(acc => ({
+        bankName: acc.bankName,
+        accountNumber: acc.accountNumber,
+        accountType: acc.accountType,
+        currency: acc.currency,
+        sinpeNumber: acc.sinpeNumber || null,
+        accountHolderName: acc.accountHolderName,
+      }));
+
+      const logoSrc = tenantConfig.logoUrl;
+      const representativeSignSrc = tenantConfig.signatureUrl;
 
       const contractHtml = buildContractPdfHtml(state, {
         logoSrc,
         representativeSignSrc,
-      }, tenantLegalInfo);
+      }, tenantLegalInfo, bankAccountsForContract);
 
       setPreviewHtml(contractHtml);
       setStatus("Vista previa actualizada abajo del formulario.");
@@ -410,20 +460,26 @@ export function ContractsForm({ agent = null, initialDraftId = null, mode }: Con
   };
 
   const reserveNumber = async ({ silent = false }: { silent?: boolean } = {}) => {
-    if (busyNumber) return;
+    if (busyNumber) {
+      console.log("⚠️ Ya se está reservando un número, saltando...");
+      return;
+    }
 
+    console.log("🔵 [reserveNumber] Iniciando reserva...");
     setBusyNumber(true);
     if (!silent) {
       setStatus("Reservando numero...");
     }
     try {
       const contractNumber = await reserveNextContractNumber();
+      console.log(`✅ [reserveNumber] Número reservado: ${contractNumber}`);
       setState((prev) => ({ ...prev, contractNumber }));
       if (!silent) {
         setStatus(`Numero asignado: ${contractNumber}`);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "No se pudo reservar numero.";
+      console.error("❌ [reserveNumber] Error:", message);
       setStatus(message);
     } finally {
       setBusyNumber(false);
@@ -521,7 +577,9 @@ export function ContractsForm({ agent = null, initialDraftId = null, mode }: Con
 
         const base = createInitialFormState(agent || undefined);
         const payloadState = payload as Partial<ContractFormState>;
-        setState({
+        
+        // Restaurar el estado del borrador
+        const restoredState = {
           ...base,
           ...payloadState,
           companions: Array.isArray(payloadState.companions) ? payloadState.companions : base.companions,
@@ -532,7 +590,13 @@ export function ContractsForm({ agent = null, initialDraftId = null, mode }: Con
             : base.contractDocumentsNames,
           generatedByAgentName: base.generatedByAgentName,
           generatedByAgentEmail: base.generatedByAgentEmail,
-        });
+        };
+
+        // Recalcular paymentDueDate y valores monetarios derivados para asegurar consistencia
+        const withUpdatedDates = syncTourDates(restoredState, "start", restoredState.startDate);
+        const withCalculations = applyMoneyDerivedValues(withUpdatedDates);
+        
+        setState(withCalculations);
         setActiveDraftId(draft.id);
         setPreviewHtml("");
         setLatestSigningLinks([]);
@@ -549,6 +613,54 @@ export function ContractsForm({ agent = null, initialDraftId = null, mode }: Con
       });
   }, [agent, initialDraftId]);
 
+  // Cargar paquete de viaje si viene desde /trips
+  useEffect(() => {
+    const packageId = String(initialTravelPackageId || "").trim();
+    if (!packageId) {
+      loadedTravelPackageIdRef.current = "";
+      return;
+    }
+    // No cargar si ya se cargó este paquete
+    if (loadedTravelPackageIdRef.current === packageId) {
+      return;
+    }
+    // No cargar si hay un borrador activo
+    if (String(initialDraftId || "").trim()) {
+      return;
+    }
+
+    loadedTravelPackageIdRef.current = packageId;
+    setStatus("Cargando información del viaje...");
+
+    void getTravelPackageById(packageId)
+      .then((travelPackage) => {
+        // Pre-llenar el formulario con los datos del paquete
+        setState((prev) => {
+          const price = travelPackage.packagePrice
+            ? String(typeof travelPackage.packagePrice === 'string' 
+                ? parseFloat(travelPackage.packagePrice).toFixed(2) 
+                : travelPackage.packagePrice.toFixed(2))
+            : "";
+
+          // Primero sincronizar las fechas del tour para actualizar paymentDueDate
+          const withDates = syncTourDates({
+            ...prev,
+            destination: travelPackage.destination,
+            startDate: travelPackage.departureDate.split('T')[0],
+            endDate: travelPackage.returnDate.split('T')[0],
+            totalAmount: price,
+          }, "start", travelPackage.departureDate.split('T')[0]);
+
+          // Luego aplicar los cálculos monetarios derivados
+          return applyMoneyDerivedValues(withDates);
+        });
+        setStatus(`Viaje "${travelPackage.name}" cargado. Completa la información del cliente.`);
+      })
+      .catch((error) => {
+        setStatus(error instanceof Error ? error.message : "No se pudo cargar el viaje.");
+      });
+  }, [initialTravelPackageId, initialDraftId]);
+
   useEffect(() => {
     if (autoReservationStarted.current) {
       return;
@@ -557,7 +669,8 @@ export function ContractsForm({ agent = null, initialDraftId = null, mode }: Con
     if (String(initialDraftId || "").trim()) {
       return;
     }
-    void reserveNumber();
+    console.log("🔵 Auto-reservando número de contrato...");
+    void reserveNumber({ silent: false });
     // Contract number must be automatic and immutable; reserve once when form mounts.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialDraftId]);
@@ -606,27 +719,13 @@ export function ContractsForm({ agent = null, initialDraftId = null, mode }: Con
       <div className="contracts-grid">
         <label>
           Numero de contrato
-          <div className="grid grid-cols-[1fr_auto] gap-2">
-            <input 
-              value={state.contractNumber} 
-              readOnly 
-              placeholder="Generando automaticamente..." 
-              className="font-mono text-sm overflow-hidden text-ellipsis"
-              title={state.contractNumber || "Esperando asignación..."}
-            />
-            {!state.contractNumber ? (
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => {
-                  void reserveNumber();
-                }}
-                disabled={busyNumber}
-              >
-                {busyNumber ? "Reservando..." : "Reintentar"}
-              </button>
-            ) : null}
-          </div>
+          <input 
+            value={state.contractNumber} 
+            readOnly 
+            placeholder="Generando automaticamente..." 
+            className="font-mono text-sm"
+            title={state.contractNumber || "Esperando asignación automática..."}
+          />
         </label>
 
         <label>

@@ -72,6 +72,10 @@ export type TenantConfig = {
   signatureUrl: string | null;
   primaryColor: string | null;
   secondaryColor: string | null;
+  contactPhone: string | null;
+  contactWhatsApp: string | null;
+  contactEmail: string | null;
+  businessAddress: string | null;
 };
 
 export type AdminUserListItem = {
@@ -494,6 +498,10 @@ export const getHomeRouteForRole = (role?: string): string => {
 
 export type TenantLegalConfig = {
   name: string;
+  contactPhone: string | null;
+  contactWhatsApp: string | null;
+  contactEmail: string | null;
+  businessAddress: string | null;
   legalName: string | null;
   legalId: string | null;
   representativeName: string | null;
@@ -780,8 +788,10 @@ export type TenantConfigResponse = {
   signatureUrl: string | null;
   emailLogoUrl: string | null;
   primaryColor: string | null;
-  secondaryColor: string | null;
-  fromEmail: string | null;
+  secondaryColor: string | null;  contactPhone?: string | null;
+  contactWhatsApp?: string | null;
+  contactEmail?: string | null;
+  businessAddress?: string | null;  fromEmail: string | null;
   replyToEmail: string | null;
   emailVerified: boolean;
   legalName: string | null;
@@ -797,6 +807,10 @@ export type TenantConfigResponse = {
 export type UpdateTenantConfigDto = {
   primaryColor?: string;
   secondaryColor?: string;
+  contactPhone?: string;
+  contactWhatsApp?: string;
+  contactEmail?: string;
+  businessAddress?: string;
   fromEmail?: string;
   replyToEmail?: string;
   legalName?: string;
