@@ -65,6 +65,14 @@ model Tenant {
   fromEmail      String? // Email desde el cual se envían emails transaccionales (ej: "noreply@viajesalmanova.com")
   replyToEmail   String? // Email de respuesta para emails transaccionales (ej: "info@viajesalmanova.com")
   emailVerified  Boolean @default(false) // Super Admin marca como verificado en Resend
+  
+  // Email Rate Limiting (preparado para futuro - sin enforcement en MVP)
+  emailQuotaDaily    Int      @default(1000)  @map("email_quota_daily")     // Límite diario de emails
+  emailQuotaMonthly  Int      @default(30000) @map("email_quota_monthly")   // Límite mensual de emails
+  emailsSentToday    Int      @default(0)     @map("emails_sent_today")     // Contador de emails enviados hoy
+  emailsSentMonth    Int      @default(0)     @map("emails_sent_month")     // Contador de emails enviados este mes
+  lastEmailResetDate DateTime?                @map("last_email_reset_date") // Última fecha de reset de contadores
+  
   primaryColor   String? // Color principal hex (ej: "#4F46E5")
   secondaryColor String? // Color secundario hex
 

@@ -77,24 +77,27 @@ export class TenantService {
       return tenant;
     }
 
-    // 2. Intentar por subdomain (extraer primera parte)
+    // 2. Intentar por subdomain (extraer primera parte antes del primer punto)
     const subdomainMatch = cleanHost.match(/^([^.]+)\./);
     if (subdomainMatch) {
       const subdomain = subdomainMatch[1];
+      this.logger.debug(`🔍 Intentando resolver subdomain: ${subdomain}`);
       tenant = await this.prisma.tenant.findUnique({
         where: { subdomain },
       });
 
       if (tenant) {
-        this.logger.debug(`✅ Tenant resuelto por subdomain: ${tenant.name}`);
+        this.logger.debug(`✅ Tenant resuelto por subdomain: ${tenant.name} (${subdomain})`);
         return tenant;
+      } else {
+        this.logger.warn(`⚠️  Subdomain '${subdomain}' no existe en la base de datos`);
       }
     }
 
-    // 3. Fallback para localhost en desarrollo → almanova
-    if (cleanHost === 'localhost' || cleanHost.startsWith('127.0.0.1')) {
+    // 3. Fallback SOLO para localhost sin subdomain (desarrollo)
+    if (cleanHost === 'localhost' || cleanHost === '127.0.0.1') {
       this.logger.warn(
-        `⚠️  Localhost detectado, usando tenant por defecto: almanova`,
+        `⚠️  Localhost sin subdomain detectado, usando tenant por defecto: almanova`,
       );
       tenant = await this.prisma.tenant.findUnique({
         where: { subdomain: 'almanova' },
@@ -282,6 +285,12 @@ export class TenantService {
         emailVerified: shouldInvalidateVerification
           ? false
           : currentTenant.emailVerified,
+        // 📞 Información de contacto
+        contactPhone: dto.contactPhone,
+        contactWhatsApp: dto.contactWhatsApp,
+        ...(dto.contactEmail !== undefined && { contactEmail: dto.contactEmail }),
+        businessAddress: dto.businessAddress,
+        // 📋 Datos legales
         legalName: dto.legalName,
         legalId: dto.legalId,
         representativeName: dto.representativeName,

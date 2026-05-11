@@ -562,13 +562,12 @@ export default function SettingsPage() {
                   <button
                     type="button"
                     onClick={() => setFromEmail("")}
-                    className="px-3 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-md transition-colors flex items-center gap-1 text-sm font-medium"
-                    title="Limpiar email"
+                    className="p-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-md transition-colors"
+                    title="Eliminar email"
                   >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                     </svg>
-                    Limpiar
                   </button>
                 )}
               </div>
@@ -593,13 +592,12 @@ export default function SettingsPage() {
                   <button
                     type="button"
                     onClick={() => setReplyToEmail("")}
-                    className="px-3 py-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-md transition-colors flex items-center gap-1 text-sm font-medium"
-                    title="Limpiar email"
+                    className="p-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-md transition-colors"
+                    title="Eliminar email"
                   >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                     </svg>
-                    Limpiar
                   </button>
                 )}
               </div>
@@ -619,13 +617,27 @@ export default function SettingsPage() {
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Teléfono de Contacto
               </label>
-              <input
-                type="text"
-                value={contactPhone}
-                onChange={(e) => setContactPhone(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                placeholder="Ej: 6015-9906"
-              />
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={contactPhone}
+                  onChange={(e) => setContactPhone(e.target.value)}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md"
+                  placeholder="Ej: 6015-9906"
+                />
+                {contactPhone && (
+                  <button
+                    type="button"
+                    onClick={() => setContactPhone("")}
+                    className="p-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-md transition-colors"
+                    title="Eliminar teléfono"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                )}
+              </div>
               <p className="text-xs text-gray-500 mt-1">
                 Se mostrará en contratos y comunicaciones oficiales.
               </p>
@@ -635,13 +647,27 @@ export default function SettingsPage() {
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 WhatsApp de Contacto
               </label>
-              <input
-                type="text"
-                value={contactWhatsApp}
-                onChange={(e) => setContactWhatsApp(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                placeholder="Ej: 6015-9906"
-              />
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={contactWhatsApp}
+                  onChange={(e) => setContactWhatsApp(e.target.value)}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md"
+                  placeholder="Ej: 6015-9906"
+                />
+                {contactWhatsApp && (
+                  <button
+                    type="button"
+                    onClick={() => setContactWhatsApp("")}
+                    className="p-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-md transition-colors"
+                    title="Eliminar WhatsApp"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                )}
+              </div>
               <p className="text-xs text-gray-500 mt-1">
                 Número de WhatsApp para soporte y comunicación con clientes.
               </p>
@@ -651,13 +677,27 @@ export default function SettingsPage() {
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Email de Contacto (Contratos)
               </label>
-              <input
-                type="email"
-                value={contactEmail}
-                onChange={(e) => setContactEmail(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                placeholder="Ej: contratos@tuempresa.com"
-              />
+              <div className="flex gap-2">
+                <input
+                  type="email"
+                  value={contactEmail}
+                  onChange={(e) => setContactEmail(e.target.value)}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md"
+                  placeholder="Ej: contratos@tuempresa.com"
+                />
+                {contactEmail && (
+                  <button
+                    type="button"
+                    onClick={() => setContactEmail("")}
+                    className="p-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-md transition-colors"
+                    title="Eliminar email"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                )}
+              </div>
               <p className="text-xs text-gray-500 mt-1">
                 Email de contacto que aparecerá en los contratos.
               </p>
@@ -667,13 +707,27 @@ export default function SettingsPage() {
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Dirección Física
               </label>
-              <input
-                type="text"
-                value={businessAddress}
-                onChange={(e) => setBusinessAddress(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                placeholder="Ej: San José, Costa Rica"
-              />
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={businessAddress}
+                  onChange={(e) => setBusinessAddress(e.target.value)}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md"
+                  placeholder="Ej: San José, Costa Rica"
+                />
+                {businessAddress && (
+                  <button
+                    type="button"
+                    onClick={() => setBusinessAddress("")}
+                    className="p-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-md transition-colors"
+                    title="Eliminar dirección"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                )}
+              </div>
               <p className="text-xs text-gray-500 mt-1">
                 Dirección de las oficinas de la empresa (opcional).
               </p>
@@ -687,104 +741,216 @@ export default function SettingsPage() {
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Razón Social
               </label>
-              <input
-                type="text"
-                value={legalName}
-                onChange={(e) => setLegalName(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                placeholder="Ej: Viajes Alma Nova S.A. de C.V."
-              />
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={legalName}
+                  onChange={(e) => setLegalName(e.target.value)}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md"
+                  placeholder="Ej: Viajes Alma Nova S.A. de C.V."
+                />
+                {legalName && (
+                  <button
+                    type="button"
+                    onClick={() => setLegalName("")}
+                    className="p-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-md transition-colors"
+                    title="Eliminar razón social"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                )}
+              </div>
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 RFC / ID Legal
               </label>
-              <input
-                type="text"
-                value={legalId}
-                onChange={(e) => setLegalId(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                placeholder="Ej: VAN123456ABC"
-              />
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={legalId}
+                  onChange={(e) => setLegalId(e.target.value)}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md"
+                  placeholder="Ej: VAN123456ABC"
+                />
+                {legalId && (
+                  <button
+                    type="button"
+                    onClick={() => setLegalId("")}
+                    className="p-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-md transition-colors"
+                    title="Eliminar ID legal"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                )}
+              </div>
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Nombre del Representante Legal
               </label>
-              <input
-                type="text"
-                value={representativeName}
-                onChange={(e) => setRepresentativeName(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                placeholder="Ej: Juan Pérez García"
-              />
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={representativeName}
+                  onChange={(e) => setRepresentativeName(e.target.value)}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md"
+                  placeholder="Ej: Juan Pérez García"
+                />
+                {representativeName && (
+                  <button
+                    type="button"
+                    onClick={() => setRepresentativeName("")}
+                    className="p-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-md transition-colors"
+                    title="Eliminar nombre"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                )}
+              </div>
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 ID del Representante
               </label>
-              <input
-                type="text"
-                value={representativeId}
-                onChange={(e) => setRepresentativeId(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                placeholder="Ej: CURP o INE"
-              />
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={representativeId}
+                  onChange={(e) => setRepresentativeId(e.target.value)}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md"
+                  placeholder="Ej: CURP o INE"
+                />
+                {representativeId && (
+                  <button
+                    type="button"
+                    onClick={() => setRepresentativeId("")}
+                    className="p-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-md transition-colors"
+                    title="Eliminar ID"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                )}
+              </div>
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Cargo del Representante
               </label>
-              <input
-                type="text"
-                value={representativeTitle}
-                onChange={(e) => setRepresentativeTitle(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                placeholder="Ej: Director General"
-              />
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={representativeTitle}
+                  onChange={(e) => setRepresentativeTitle(e.target.value)}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md"
+                  placeholder="Ej: Director General"
+                />
+                {representativeTitle && (
+                  <button
+                    type="button"
+                    onClick={() => setRepresentativeTitle("")}
+                    className="p-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-md transition-colors"
+                    title="Eliminar cargo"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                )}
+              </div>
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Estado Civil
               </label>
-              <input
-                type="text"
-                value={representativeMaritalStatus}
-                onChange={(e) => setRepresentativeMaritalStatus(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                placeholder="Ej: Soltero(a) / Casado(a)"
-              />
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={representativeMaritalStatus}
+                  onChange={(e) => setRepresentativeMaritalStatus(e.target.value)}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md"
+                  placeholder="Ej: Soltero(a) / Casado(a)"
+                />
+                {representativeMaritalStatus && (
+                  <button
+                    type="button"
+                    onClick={() => setRepresentativeMaritalStatus("")}
+                    className="p-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-md transition-colors"
+                    title="Eliminar estado civil"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Dirección del Representante
               </label>
-              <textarea
-                value={representativeAddress}
-                onChange={(e) => setRepresentativeAddress(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                rows={2}
-                placeholder="Calle, número, colonia, ciudad, estado, CP"
-              />
+              <div className="flex gap-2">
+                <textarea
+                  value={representativeAddress}
+                  onChange={(e) => setRepresentativeAddress(e.target.value)}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md"
+                  rows={2}
+                  placeholder="Calle, número, colonia, ciudad, estado, CP"
+                />
+                {representativeAddress && (
+                  <button
+                    type="button"
+                    onClick={() => setRepresentativeAddress("")}
+                    className="p-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-md transition-colors"
+                    title="Eliminar dirección"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Poderes del Representante
               </label>
-              <textarea
-                value={representativePowers}
-                onChange={(e) => setRepresentativePowers(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                rows={3}
-                placeholder="Descripción de las facultades legales del representante..."
-              />
+              <div className="flex gap-2">
+                <textarea
+                  value={representativePowers}
+                  onChange={(e) => setRepresentativePowers(e.target.value)}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md"
+                  rows={3}
+                  placeholder="Descripción de las facultades legales del representante..."
+                />
+                {representativePowers && (
+                  <button
+                    type="button"
+                    onClick={() => setRepresentativePowers("")}
+                    className="p-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-md transition-colors"
+                    title="Eliminar poderes"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
