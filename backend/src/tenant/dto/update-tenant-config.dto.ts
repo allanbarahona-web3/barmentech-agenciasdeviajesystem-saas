@@ -35,6 +35,11 @@ export class UpdateTenantConfigDto {
   @IsOptional()
   @IsString()
   @MaxLength(500)
+  websiteUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
   legalName?: string;
 
   @IsOptional()

@@ -210,6 +210,7 @@ export class TenantService {
         contactWhatsApp: true,
         contactEmail: true,
         businessAddress: true,
+        websiteUrl: true,
         legalName: true,
         legalId: true,
         representativeName: true,
@@ -290,6 +291,7 @@ export class TenantService {
         contactWhatsApp: dto.contactWhatsApp,
         ...(dto.contactEmail !== undefined && { contactEmail: dto.contactEmail }),
         businessAddress: dto.businessAddress,
+        websiteUrl: dto.websiteUrl,
         // 📋 Datos legales
         legalName: dto.legalName,
         legalId: dto.legalId,
@@ -308,6 +310,7 @@ export class TenantService {
         fromEmail: true,
         replyToEmail: true,
         emailVerified: true,
+        websiteUrl: true,
         legalName: true,
       },
     });
@@ -358,34 +361,51 @@ export class TenantService {
       throw new NotFoundException('Tenant no encontrado');
     }
 
-    // Convertir a WebP para optimizar
+    // Convertir a WebP para optimizar (para uso en web)
     const processedFile = await this.convertImageToWebP(file);
 
-    // Construir ruta en Spaces
+    // Construir rutas en Spaces
     const appEnv = this.configService.get<string>('APP_ENV', 'dev');
     const category = assetType === 'logo' ? 'logos' : 'signatures';
-    const filename = `${assetType}.webp`;
-    const objectKey = `${appEnv}/${tenant.subdomain}/${category}/${filename}`;
+    
+    // WebP para web (optimizado)
+    const webpFilename = `${assetType}.webp`;
+    const webpObjectKey = `${appEnv}/${tenant.subdomain}/${category}/${webpFilename}`;
+    
+    // Original para emails (compatible)
+    const emailExt = file.mimetype === 'image/png' ? 'png' : 'jpg';
+    const emailFilename = `${assetType}-email.${emailExt}`;
+    const emailObjectKey = `${appEnv}/${tenant.subdomain}/${category}/${emailFilename}`;
 
-    // Subir a Spaces
-    await this.uploadToSpaces({
-      objectKey,
-      contentType: processedFile.mimetype,
-      body: processedFile.buffer,
-    });
+    // Subir ambas versiones a Spaces
+    await Promise.all([
+      // WebP optimizado para web
+      this.uploadToSpaces({
+        objectKey: webpObjectKey,
+        contentType: processedFile.mimetype,
+        body: processedFile.buffer,
+      }),
+      // Original para emails
+      this.uploadToSpaces({
+        objectKey: emailObjectKey,
+        contentType: file.mimetype,
+        body: file.buffer,
+      }),
+    ]);
 
-    // Construir URL pública con CDN
+    // Construir URLs públicas con CDN
     const cfg = this.getSpacesConfig();
-    const assetUrl = `https://${cfg.bucket}.${cfg.region}.cdn.digitaloceanspaces.com/${objectKey}`;
+    const webpUrl = `https://${cfg.bucket}.${cfg.region}.cdn.digitaloceanspaces.com/${webpObjectKey}`;
+    const emailUrl = `https://${cfg.bucket}.${cfg.region}.cdn.digitaloceanspaces.com/${emailObjectKey}`;
 
     // Actualizar en BD
     const fieldName = assetType === 'logo' ? 'logoUrl' : 'signatureUrl';
     const updated = await this.prisma.tenant.update({
       where: { id: tenantId },
       data: {
-        [fieldName]: assetUrl,
-        // Si subimos logo, también usarlo como emailLogoUrl si no existe
-        ...(assetType === 'logo' ? { emailLogoUrl: assetUrl } : {}),
+        [fieldName]: webpUrl,
+        // Si subimos logo, usar versión original para emails (compatible)
+        ...(assetType === 'logo' ? { emailLogoUrl: emailUrl } : {}),
       },
       select: {
         id: true,
@@ -396,12 +416,17 @@ export class TenantService {
       },
     });
 
-    this.logger.log(`✅ ${assetType} subido para tenant: ${tenant.name} → ${assetUrl}`);
+    this.logger.log(`✅ ${assetType} subido para tenant: ${tenant.name}`);
+    this.logger.log(`   Web (WebP): ${webpUrl}`);
+    if (assetType === 'logo') {
+      this.logger.log(`   Email (${emailExt.toUpperCase()}): ${emailUrl}`);
+    }
 
     return {
       success: true,
       assetType,
-      url: assetUrl,
+      url: webpUrl,
+      emailUrl: assetType === 'logo' ? emailUrl : undefined,
       tenant: updated,
     };
   }
@@ -432,16 +457,28 @@ export class TenantService {
       throw new BadRequestException(`No hay ${assetType} configurado para eliminar`);
     }
 
-    // Construir ruta en Spaces (misma lógica que al subir)
+    // Construir rutas en Spaces
     const appEnv = this.configService.get<string>('APP_ENV', 'dev');
     const category = assetType === 'logo' ? 'logos' : 'signatures';
-    const filename = `${assetType}.webp`;
-    const objectKey = `${appEnv}/${tenant.subdomain}/${category}/${filename}`;
+    
+    // WebP para web
+    const webpFilename = `${assetType}.webp`;
+    const webpObjectKey = `${appEnv}/${tenant.subdomain}/${category}/${webpFilename}`;
+    
+    // Versión email (PNG/JPG)
+    const emailPngKey = `${appEnv}/${tenant.subdomain}/${category}/${assetType}-email.png`;
+    const emailJpgKey = `${appEnv}/${tenant.subdomain}/${category}/${assetType}-email.jpg`;
 
-    // Eliminar de Spaces
+    // Eliminar de Spaces (ambas versiones)
+    const deletePromises = [
+      this.deleteFromSpaces(webpObjectKey),
+      this.deleteFromSpaces(emailPngKey).catch(() => {}), // Puede no existir
+      this.deleteFromSpaces(emailJpgKey).catch(() => {}), // Puede no existir
+    ];
+
     try {
-      await this.deleteFromSpaces(objectKey);
-      this.logger.log(`🗑️ Archivo eliminado de Spaces: ${objectKey}`);
+      await Promise.all(deletePromises);
+      this.logger.log(`🗑️ Archivos eliminados de Spaces: ${webpObjectKey}`);
     } catch (error) {
       this.logger.warn(`⚠️ No se pudo eliminar de Spaces (puede no existir): ${error instanceof Error ? error.message : String(error)}`);
       // Continuar para limpiar la BD de todas formas

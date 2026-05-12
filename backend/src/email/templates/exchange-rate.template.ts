@@ -11,7 +11,7 @@ export interface ExchangeRateHistoryData {
   tenantName: string;
   tenantLogo?: string;
   contactEmail?: string;
-  contactPhone?: string;
+  contactWhatsApp?: string;
   websiteUrl?: string;
   primaryColor?: string;
   secondaryColor?: string;
@@ -77,7 +77,7 @@ export function exchangeRateHistoryTemplate(data: ExchangeRateHistoryData): stri
     },
     footer: {
       contactEmail: data.contactEmail,
-      contactPhone: data.contactPhone,
+      contactWhatsApp: data.contactWhatsApp,
       websiteUrl: data.websiteUrl,
     },
   };

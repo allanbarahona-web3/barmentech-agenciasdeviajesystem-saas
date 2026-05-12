@@ -5,6 +5,7 @@ import { compare, hash } from "bcryptjs";
 import { randomUUID, randomBytes } from "crypto";
 import { Resend } from "resend";
 import { PrismaService } from "../prisma/prisma.service";
+import { EmailService } from "../email/email.service";
 import { LoginDto } from "./dto/login.dto";
 import { AdminCreateUserDto } from "./dto/admin-create-user.dto";
 import { AdminUpdateUserDto } from "./dto/admin-update-user.dto";
@@ -28,6 +29,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly emailService: EmailService,
   ) {}
 
   /**
@@ -241,6 +243,7 @@ export class AuthService {
         role,
         isActive: true,
         tenantId: adminTenantId,
+        mustChangePassword: true,  // ⚠️ Forzar cambio de contraseña en primer login
       },
       select: {
         id: true,
@@ -256,6 +259,7 @@ export class AuthService {
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: adminTenantId },
       select: {
+        id: true,
         name: true,
         subdomain: true,
         customDomain: true,
@@ -556,6 +560,26 @@ export class AuthService {
       throw new BadRequestException("No tienes permiso para resetear la contraseña de este usuario");
     }
 
+    // Cargar tenant completo para enviar email
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: user.tenantId },
+      select: {
+        id: true,
+        name: true,
+        subdomain: true,
+        customDomain: true,
+        logoUrl: true,
+        emailLogoUrl: true,
+        fromEmail: true,
+        replyToEmail: true,
+        emailVerified: true,
+      },
+    });
+
+    if (!tenant) {
+      throw new InternalServerErrorException("Tenant no encontrado para enviar email.");
+    }
+
     // Generate temporary password
     const temporaryPassword = this.generateTemporaryPassword();
     const passwordHash = await hash(temporaryPassword, 10);
@@ -570,9 +594,34 @@ export class AuthService {
       },
     });
 
-    // TODO: Send email with temporary password
-    // For now, return it in the response (admin will communicate it manually)
-    console.log(`[PASSWORD RESET] User: ${user.email}, Temporary Password: ${temporaryPassword}`);
+    // Construir URL de login del tenant
+    const baseDomain = this.configService.get<string>("FRONTEND_BASE_DOMAIN", "").trim();
+    const loginUrl = tenant.customDomain
+      ? `https://${tenant.customDomain}`
+      : tenant.subdomain
+      ? `https://${tenant.subdomain}.${baseDomain}`
+      : baseDomain;
+
+    // Enviar email con contraseña temporal usando EmailService
+    try {
+      await this.emailService.sendEmail({
+        tenantId: tenant.id,
+        to: user.email,
+        subject: `🔄 Tu contraseña ha sido restablecida - ${tenant.name}`,
+        template: 'password-reset-by-admin',
+        templateData: {
+          userName: user.fullName,
+          temporaryPassword,
+          loginUrl,
+          tenantName: tenant.name,
+        },
+      });
+
+      this.logger.log(`✅ Email de reset de contraseña (admin) enviado a ${user.email} mediante EmailService`);
+    } catch (emailError) {
+      this.logger.error(`❌ Error al enviar email de reset (admin) a ${user.email}:`, emailError);
+      // No lanzamos error para que el admin al menos vea la contraseña temporal en respuesta
+    }
 
     return {
       ok: true,
@@ -625,41 +674,28 @@ export class AuthService {
   /**
    * Send welcome email with credentials to new user
    */
+  /**
+   * Enviar email de bienvenida con credenciales (usando EmailService centralizado)
+   */
   private async sendWelcomeEmail(
     email: string,
     fullName: string,
     temporaryPassword: string,
     role: UserRole,
-    tenant: { name: string; subdomain: string | null; customDomain: string | null; logoUrl: string | null; emailLogoUrl: string | null; fromEmail?: string | null; replyToEmail?: string | null; emailVerified?: boolean } | null
+    tenant: { id: string; name: string; subdomain: string | null; customDomain: string | null; logoUrl: string | null; emailLogoUrl: string | null; fromEmail?: string | null; replyToEmail?: string | null; emailVerified?: boolean } | null
   ) {
-    const apiKey = this.configService.get<string>("RESEND_API_KEY", "").trim();
-    const fallbackFromEmail = this.configService.get<string>("AUTH_FROM_EMAIL", "").trim();
+    if (!tenant) {
+      throw new InternalServerErrorException("Tenant no encontrado para enviar email de bienvenida.");
+    }
+
     const baseDomain = this.configService.get<string>("FRONTEND_BASE_DOMAIN", "").trim();
 
-    if (!apiKey) {
-      throw new InternalServerErrorException("Falta configurar RESEND_API_KEY.");
-    }
-
-    // Usar fromEmail del tenant solo si está verificado, sino fallback al del sistema
-    const fromEmail = (tenant?.emailVerified && tenant?.fromEmail) ? tenant.fromEmail : fallbackFromEmail;
-    const replyTo = (tenant?.emailVerified && tenant?.replyToEmail) ? tenant.replyToEmail : undefined;
-
-    if (!fromEmail) {
-      throw new InternalServerErrorException("No hay email configurado para enviar (ni en tenant ni en sistema).");
-    }
-
-    this.logger.debug(`📧 Enviando email desde: ${fromEmail} (tenant: ${tenant?.name || 'N/A'})`);
-
     // Construir URL de login del tenant
-    const loginUrl = tenant?.customDomain
+    const loginUrl = tenant.customDomain
       ? `https://${tenant.customDomain}`
-      : tenant?.subdomain
+      : tenant.subdomain
       ? `https://${tenant.subdomain}.${baseDomain}`
       : baseDomain;
-
-    const resend = new Resend(apiKey);
-    const logoSrc = await this.loadCompanyLogoEmailSrc(tenant);
-    const tenantName = tenant?.name || "Agencia de Viajes";
 
     // Mapear rol a español
     const roleLabels: Record<string, string> = {
@@ -672,162 +708,61 @@ export class AuthService {
     };
     const roleLabel = roleLabels[role] || role;
 
-    const emailPayload: any = {
-      from: fromEmail,
-      to: [email],
-      subject: `🎉 Bienvenido a ${tenantName} - Credenciales de Acceso`,
-    };
-
-    // Agregar reply-to si existe
-    if (replyTo) {
-      emailPayload.reply_to = replyTo;
-    }
-
-    this.logger.debug(`📤 Payload del email:`, JSON.stringify({ from: fromEmail, to: email, replyTo, subject: emailPayload.subject }, null, 2));
-
-    const result = await resend.emails.send({
-      ...emailPayload,
-      html: `
-<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Bienvenido a ${tenantName}</title>
-</head>
-<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f3f4f6; line-height: 1.6;">
-  <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #f3f4f6;">
-    <tr>
-      <td align="center" style="padding: 40px 20px;">
-        <table role="presentation" style="max-width: 600px; width: 100%; border-collapse: collapse; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
-          
-          <!-- Header -->
-          <tr>
-            <td style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px 30px; text-align: center;">
-              ${logoSrc ? `<img src="${logoSrc}" alt="${tenantName}" style="max-width: 180px; height: auto; margin-bottom: 16px;" />` : ''}
-              <h1 style="margin: 0; color: #ffffff; font-size: 32px; font-weight: 700; letter-spacing: 1px;">
-                ${tenantName}
-              </h1>
-              <p style="margin: 8px 0 0 0; color: #e9d5ff; font-size: 14px; font-weight: 500;">
-                Experiencias inolvidables, destinos únicos
-              </p>
-            </td>
-          </tr>
-
-          <!-- Icon Badge -->
-          <tr>
-            <td style="padding: 30px 30px 0 30px; text-align: center;">
-              <div style="display: inline-block; background-color: #10b981; color: #ffffff; width: 80px; height: 80px; border-radius: 50%; line-height: 80px; font-size: 40px; margin-bottom: 10px;">
-                🎉
-              </div>
-            </td>
-          </tr>
-
-          <!-- Main Content -->
-          <tr>
-            <td style="padding: 30px;">
-              <h2 style="margin: 0 0 20px 0; color: #1f2937; font-size: 24px; font-weight: 600; text-align: center;">
-                ¡Bienvenido al equipo!
-              </h2>
-              
-              <p style="margin: 0 0 20px 0; color: #4b5563; font-size: 16px; line-height: 1.6;">
-                Hola <strong>${fullName}</strong>,
-              </p>
-
-              <p style="margin: 0 0 20px 0; color: #4b5563; font-size: 16px; line-height: 1.6;">
-                Se ha creado tu cuenta en el sistema de <strong>${tenantName}</strong> con el rol de <strong>${roleLabel}</strong>.
-              </p>
-
-              <p style="margin: 0 0 20px 0; color: #4b5563; font-size: 16px; line-height: 1.6;">
-                A continuación encontrarás tus credenciales de acceso:
-              </p>
-
-              <!-- Credentials Box -->
-              <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #f9fafb; border: 2px solid #e5e7eb; border-radius: 8px; margin: 20px 0;">
-                <tr>
-                  <td style="padding: 20px;">
-                    <p style="margin: 0 0 12px 0; color: #6b7280; font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">
-                      📧 Correo Electrónico
-                    </p>
-                    <p style="margin: 0 0 20px 0; color: #1f2937; font-size: 16px; font-weight: 600;">
-                      ${email}
-                    </p>
-                    
-                    <p style="margin: 0 0 12px 0; color: #6b7280; font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">
-                      🔑 Contraseña Temporal
-                    </p>
-                    <p style="margin: 0; color: #1f2937; font-size: 18px; font-weight: 700; font-family: 'Courier New', monospace; background-color: #ffffff; padding: 12px; border-radius: 6px; border: 1px solid #d1d5db;">
-                      ${temporaryPassword}
-                    </p>
-                  </td>
-                </tr>
-              </table>
-
-              <!-- Important Notice -->
-              <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #fef3c7; border-left: 4px solid #f59e0b; border-radius: 6px; margin: 20px 0;">
-                <tr>
-                  <td style="padding: 16px;">
-                    <p style="margin: 0; color: #92400e; font-size: 14px; line-height: 1.5;">
-                      <strong>⚠️ Importante:</strong> Por seguridad, deberás cambiar esta contraseña temporal al iniciar sesión por primera vez.
-                    </p>
-                  </td>
-                </tr>
-              </table>
-
-              <p style="margin: 20px 0; color: #4b5563; font-size: 16px; line-height: 1.6;">
-                Haz clic en el botón de abajo para acceder al sistema:
-              </p>
-
-              <!-- CTA Button -->
-              <table role="presentation" style="width: 100%; border-collapse: collapse; margin: 30px 0;">
-                <tr>
-                  <td align="center">
-                    <a href="${loginUrl}" style="display: inline-block; padding: 16px 40px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #ffffff; text-decoration: none; font-weight: 600; font-size: 16px; border-radius: 8px; box-shadow: 0 4px 6px rgba(102, 126, 234, 0.4);">
-                      🚀 Iniciar Sesión
-                    </a>
-                  </td>
-                </tr>
-              </table>
-
-              <p style="margin: 20px 0 0 0; color: #6b7280; font-size: 14px; line-height: 1.6; text-align: center;">
-                Si el botón no funciona, copia y pega este enlace en tu navegador:<br/>
-                <a href="${loginUrl}" style="color: #667eea; text-decoration: none; word-break: break-all;">${loginUrl}</a>
-              </p>
-            </td>
-          </tr>
-
-          <!-- Footer -->
-          <tr>
-            <td style="background-color: #f9fafb; padding: 30px; text-align: center; border-top: 1px solid #e5e7eb;">
-              <p style="margin: 0 0 10px 0; color: #6b7280; font-size: 14px;">
-                Este correo fue enviado automáticamente por el sistema de ${tenantName}.
-              </p>
-              <p style="margin: 0; color: #9ca3af; font-size: 12px;">
-                Si tienes alguna pregunta, contacta a tu administrador.
-              </p>
-              <p style="margin: 16px 0 0 0; color: #9ca3af; font-size: 12px;">
-                © ${new Date().getFullYear()} ${tenantName}. Todos los derechos reservados.
-              </p>
-            </td>
-          </tr>
-
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>
-      `,
+    // Enviar email usando el servicio centralizado
+    const result = await this.emailService.sendEmail({
+      tenantId: tenant.id,
+      to: email,
+      subject: `🎉 Bienvenido a ${tenant.name} - Credenciales de Acceso`,
+      template: 'welcome-user',
+      templateData: {
+        userName: fullName,
+        userEmail: email,
+        temporaryPassword,
+        roleLabel,
+        loginUrl,
+        tenantName: tenant.name,
+      },
     });
 
-    this.logger.debug(`📨 Email enviado exitosamente a ${email}. ID:`, result.data?.id || 'N/A');
+    this.logger.log(`✅ Email de bienvenida enviado a ${email} mediante EmailService`);
     return result;
+
+    /* CÓDIGO ANTIGUO COMENTADO PARA ROLLBACK:
+    ... (HTML inline omitido) ...
+    this.logger.debug(\`📨 Email enviado exitosamente a \${email}. ID:\`, result.data?.id || 'N/A');
+    return result;
+    FIN CÓDIGO ANTIGUO */
   }
 
   /**
-   * Send password reset email using Resend
+   * Enviar email de reset de contraseña (usando EmailService centralizado)
    */
   private async sendPasswordResetEmail(email: string, fullName: string, token: string, tenant?: ResolvedTenant | null) {
+    if (!tenant) {
+      throw new InternalServerErrorException("Tenant no encontrado para enviar email de reset de contraseña.");
+    }
+
+    const frontendUrl = this.configService.get<string>("FRONTEND_URL", "").trim();
+    const resetLink = `${frontendUrl}/reset-password?token=${token}`;
+    const expirationMinutes = 5; // Tokens expiran en 5 minutos
+
+    // Enviar email usando el servicio centralizado
+    await this.emailService.sendEmail({
+      tenantId: tenant.id,
+      to: email,
+      subject: `🔐 Restablece tu contraseña - ${tenant.name}`,
+      template: 'password-reset',
+      templateData: {
+        userName: fullName,
+        resetLink,
+        expirationMinutes,
+        tenantName: tenant.name,
+      },
+    });
+
+    this.logger.log(`✅ Email de reset de contraseña enviado a ${email} mediante EmailService`);
+
+    /* CÓDIGO ANTIGUO COMENTADO PARA ROLLBACK:
     const apiKey = this.configService.get<string>("RESEND_API_KEY", "").trim();
     const fromEmail = this.configService.get<string>("AUTH_FROM_EMAIL", "").trim();
     const frontendUrl = this.configService.get<string>("FRONTEND_URL", "").trim();
@@ -836,117 +771,12 @@ export class AuthService {
       throw new InternalServerErrorException("Falta configurar RESEND_API_KEY o AUTH_FROM_EMAIL.");
     }
 
-    const resetLink = `${frontendUrl}/reset-password?token=${token}`;
+    const resetLink = \`\${frontendUrl}/reset-password?token=\${token}\`;
     const resend = new Resend(apiKey);
     const logoSrc = await this.loadCompanyLogoEmailSrc(tenant);
-    const tenantName = tenant?.name || "Sistema de Viajes";
-
-    await resend.emails.send({
-      from: fromEmail,
-      to: [email],
-      subject: `🔐 Restablece tu contraseña - ${tenantName}`,
-      html: `
-<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Restablecer Contraseña</title>
-</head>
-<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f3f4f6; line-height: 1.6;">
-  <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #f3f4f6;">
-    <tr>
-      <td align="center" style="padding: 40px 20px;">
-        <table role="presentation" style="max-width: 600px; width: 100%; border-collapse: collapse; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
-          
-          <!-- Header -->
-          <tr>
-            <td style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px 30px; text-align: center;">
-              ${logoSrc ? `<img src="${logoSrc}" alt="${tenantName}" style="max-width: 180px; height: auto; margin-bottom: 16px;" />` : ''}
-              <h1 style="margin: 0; color: #ffffff; font-size: 32px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;">
-                ${tenantName}
-              </h1>
-              <p style="margin: 8px 0 0 0; color: #e9d5ff; font-size: 14px; font-weight: 500;">
-                Gestión profesional de viajes
-              </p>
-            </td>
-          </tr>
-
-          <!-- Icon Badge -->
-          <tr>
-            <td style="padding: 30px 30px 0 30px; text-align: center;">
-              <div style="display: inline-block; background-color: #f59e0b; color: #ffffff; width: 80px; height: 80px; border-radius: 50%; line-height: 80px; font-size: 40px; margin-bottom: 10px;">
-                🔐
-              </div>
-            </td>
-          </tr>
-
-          <!-- Main Content -->
-          <tr>
-            <td style="padding: 30px;">
-              <h2 style="margin: 0 0 20px 0; color: #1f2937; font-size: 24px; font-weight: 600; text-align: center;">
-                Restablece tu contraseña
-              </h2>
-              
-              <p style="margin: 0 0 20px 0; color: #4b5563; font-size: 16px; line-height: 1.6;">
-                Hola <strong>${fullName}</strong>,
-              </p>
-
-              <p style="margin: 0 0 20px 0; color: #4b5563; font-size: 16px; line-height: 1.6;">
-                Recibimos una solicitud para restablecer la contraseña de tu cuenta. Si fuiste tú, haz clic en el botón de abajo para crear una nueva contraseña.
-              </p>
-
-              <!-- CTA Button -->
-              <div style="text-align: center; margin: 30px 0;">
-                <a href="${resetLink}" 
-                   style="display: inline-block; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: #ffffff; text-decoration: none; padding: 14px 40px; border-radius: 8px; font-size: 16px; font-weight: 600; box-shadow: 0 4px 6px rgba(245, 158, 11, 0.3);">
-                  Restablecer Contraseña
-                </a>
-              </div>
-
-              <!-- Alternative Link -->
-              <div style="background-color: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; margin: 20px 0;">
-                <p style="margin: 0 0 8px 0; color: #6b7280; font-size: 13px;">
-                  Si el botón no funciona, copia y pega este enlace en tu navegador:
-                </p>
-                <p style="margin: 0; word-break: break-all;">
-                  <a href="${resetLink}" style="color: #3b82f6; font-size: 13px; text-decoration: none;">${resetLink}</a>
-                </p>
-              </div>
-
-              <!-- Warning -->
-              <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 16px; margin: 20px 0;">
-                <p style="margin: 0; color: #92400e; font-size: 14px; line-height: 1.6;">
-                  <strong>⚠️ Importante:</strong> Este enlace expirará en <strong>5 minutos</strong>. Si no solicitaste este cambio, ignora este correo y tu contraseña permanecerá igual.
-                </p>
-              </div>
-
-              <p style="margin: 20px 0 0 0; color: #6b7280; font-size: 14px; line-height: 1.6;">
-                Por tu seguridad, nunca compartas este enlace con nadie.
-              </p>
-            </td>
-          </tr>
-
-          <!-- Footer -->
-          <tr>
-            <td style="background-color: #f9fafb; padding: 30px; text-align: center; border-top: 1px solid #e5e7eb;">
-              <p style="margin: 0 0 10px 0; color: #6b7280; font-size: 13px;">
-                Este es un correo automático, por favor no respondas.
-              </p>
-              <p style="margin: 0; color: #6b7280; font-size: 13px;">
-                © ${new Date().getFullYear()} <strong style="color: #764ba2;">${tenantName}</strong> - Todos los derechos reservados
-              </p>
-            </td>
-          </tr>
-
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>
-      `,
-    });
+    ... (HTML inline omitido) ...
+    await resend.emails.send({ ... });
+    FIN CÓDIGO ANTIGUO */
   }
 
   /**

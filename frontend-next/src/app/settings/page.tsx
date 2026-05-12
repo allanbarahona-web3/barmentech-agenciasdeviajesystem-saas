@@ -16,6 +16,7 @@ import {
 } from "@/lib/auth-api";
 import Image from "next/image";
 import { GenericEmailBlockedModal } from "@/components/generic-email-blocked-modal";
+import { LoadingModal } from "@/components/loading-modal";
 
 /**
  * 🏢 Configuración del Tenant
@@ -40,6 +41,11 @@ export default function SettingsPage() {
   const [showGenericEmailModal, setShowGenericEmailModal] = useState(false);
   const [blockedEmailDomain, setBlockedEmailDomain] = useState("");
 
+  // Estados del modal de loading/success/error
+  const [showLoadingModal, setShowLoadingModal] = useState(false);
+  const [loadingModalState, setLoadingModalState] = useState<"loading" | "success" | "error">("loading");
+  const [loadingModalMessage, setLoadingModalMessage] = useState("");
+
   // Refs para inputs de archivos
   const logoInputRef = useRef<HTMLInputElement>(null);
   const signatureInputRef = useRef<HTMLInputElement>(null);
@@ -53,6 +59,7 @@ export default function SettingsPage() {
   const [contactWhatsApp, setContactWhatsApp] = useState("");
   const [contactEmail, setContactEmail] = useState("");
   const [businessAddress, setBusinessAddress] = useState("");
+  const [websiteUrl, setWebsiteUrl] = useState("");
   const [legalName, setLegalName] = useState("");
   const [legalId, setLegalId] = useState("");
   const [representativeName, setRepresentativeName] = useState("");
@@ -88,6 +95,7 @@ export default function SettingsPage() {
       setContactWhatsApp(data.contactWhatsApp || "");
       setContactEmail(data.contactEmail || "");
       setBusinessAddress(data.businessAddress || "");
+      setWebsiteUrl(data.websiteUrl || "");
       setLegalName(data.legalName || "");
       setLegalId(data.legalId || "");
       setRepresentativeName(data.representativeName || "");
@@ -125,14 +133,28 @@ export default function SettingsPage() {
       setError("");
       setSuccess("");
 
+      // Mostrar modal de loading
+      setLoadingModalMessage("Subiendo logo...");
+      setLoadingModalState("loading");
+      setShowLoadingModal(true);
+
       const result = await uploadTenantLogo(file);
+      
+      // Mostrar success
+      setLoadingModalMessage("Logo subido exitosamente");
+      setLoadingModalState("success");
       setSuccess(`Logo subido exitosamente`);
 
       // Recargar configuración
       await loadConfig();
     } catch (err) {
       console.error("Error al subir logo:", err);
-      setError(err instanceof Error ? err.message : "Error al subir logo");
+      const errorMsg = err instanceof Error ? err.message : "Error al subir logo";
+      setError(errorMsg);
+      
+      // Mostrar error en modal
+      setLoadingModalMessage(errorMsg);
+      setLoadingModalState("error");
     } finally {
       setUploadingLogo(false);
       if (logoInputRef.current) {
@@ -162,14 +184,28 @@ export default function SettingsPage() {
       setError("");
       setSuccess("");
 
+      // Mostrar modal de loading
+      setLoadingModalMessage("Subiendo firma...");
+      setLoadingModalState("loading");
+      setShowLoadingModal(true);
+
       const result = await uploadTenantSignature(file);
+      
+      // Mostrar success
+      setLoadingModalMessage("Firma subida exitosamente");
+      setLoadingModalState("success");
       setSuccess(`Firma subida exitosamente`);
 
       // Recargar configuración
       await loadConfig();
     } catch (err) {
       console.error("Error al subir firma:", err);
-      setError(err instanceof Error ? err.message : "Error al subir firma");
+      const errorMsg = err instanceof Error ? err.message : "Error al subir firma";
+      setError(errorMsg);
+      
+      // Mostrar error en modal
+      setLoadingModalMessage(errorMsg);
+      setLoadingModalState("error");
     } finally {
       setUploadingSignature(false);
       if (signatureInputRef.current) {
@@ -188,14 +224,28 @@ export default function SettingsPage() {
       setError("");
       setSuccess("");
 
+      // Mostrar modal de loading
+      setLoadingModalMessage("Eliminando logo...");
+      setLoadingModalState("loading");
+      setShowLoadingModal(true);
+
       await deleteTenantLogo();
+      
+      // Mostrar success
+      setLoadingModalMessage("Logo eliminado exitosamente");
+      setLoadingModalState("success");
       setSuccess("Logo eliminado exitosamente");
 
       // Recargar configuración
       await loadConfig();
     } catch (err) {
       console.error("Error al eliminar logo:", err);
-      setError(err instanceof Error ? err.message : "Error al eliminar logo");
+      const errorMsg = err instanceof Error ? err.message : "Error al eliminar logo";
+      setError(errorMsg);
+      
+      // Mostrar error en modal
+      setLoadingModalMessage(errorMsg);
+      setLoadingModalState("error");
     } finally {
       setUploadingLogo(false);
     }
@@ -211,14 +261,28 @@ export default function SettingsPage() {
       setError("");
       setSuccess("");
 
+      // Mostrar modal de loading
+      setLoadingModalMessage("Eliminando firma...");
+      setLoadingModalState("loading");
+      setShowLoadingModal(true);
+
       await deleteTenantSignature();
+      
+      // Mostrar success
+      setLoadingModalMessage("Firma eliminada exitosamente");
+      setLoadingModalState("success");
       setSuccess("Firma eliminada exitosamente");
 
       // Recargar configuración
       await loadConfig();
     } catch (err) {
       console.error("Error al eliminar firma:", err);
-      setError(err instanceof Error ? err.message : "Error al eliminar firma");
+      const errorMsg = err instanceof Error ? err.message : "Error al eliminar firma";
+      setError(errorMsg);
+      
+      // Mostrar error en modal
+      setLoadingModalMessage(errorMsg);
+      setLoadingModalState("error");
     } finally {
       setUploadingSignature(false);
     }
@@ -231,6 +295,12 @@ export default function SettingsPage() {
       setSaving(true);
       setError("");
       setSuccess("");
+
+      // Normalizar websiteUrl: agregar https:// si no tiene protocolo
+      let normalizedWebsiteUrl = websiteUrl.trim();
+      if (normalizedWebsiteUrl && !normalizedWebsiteUrl.match(/^https?:\/\//i)) {
+        normalizedWebsiteUrl = `https://${normalizedWebsiteUrl}`;
+      }
 
       // Detectar si se están cambiando los emails
       const emailsChanging =
@@ -246,6 +316,7 @@ export default function SettingsPage() {
         contactWhatsApp: contactWhatsApp.trim() || undefined,
         contactEmail: contactEmail.trim() || undefined,
         businessAddress: businessAddress.trim() || undefined,
+        websiteUrl: normalizedWebsiteUrl || undefined,
         legalName,
         legalId,
         representativeName,
@@ -342,55 +413,62 @@ export default function SettingsPage() {
               </label>
               <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center">
                 {config?.logoUrl ? (
-                  <div className="mb-4">
-                    <Image
-                      src={`${config.logoUrl}?t=${Date.now()}`}
-                      alt="Logo"
-                      width={200}
-                      height={100}
-                      className="mx-auto object-contain"
-                      unoptimized
-                    />
+                  <div>
+                    <div className="mb-4">
+                      <Image
+                        src={`${config.logoUrl}?t=${Date.now()}`}
+                        alt="Logo"
+                        width={200}
+                        height={100}
+                        className="mx-auto object-contain"
+                        unoptimized
+                      />
+                    </div>
+                    <div className="flex justify-center">
+                      <button
+                        type="button"
+                        onClick={handleLogoDelete}
+                        disabled={uploadingLogo}
+                        className="px-4 py-2 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        🗑️ Eliminar Logo
+                      </button>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-2">
+                      Para cambiar el logo, primero elimínalo y luego sube uno nuevo.
+                    </p>
                   </div>
                 ) : (
-                  <div className="mb-4 text-gray-400">
-                    <svg className="mx-auto h-12 w-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                    </svg>
-                    <p className="mt-2">Sin logo</p>
+                  <div>
+                    <div className="mb-4 text-gray-400">
+                      <svg className="mx-auto h-12 w-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      <p className="mt-2">Sin logo</p>
+                    </div>
+                    <input
+                      ref={logoInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      onChange={handleLogoUpload}
+                      className="hidden"
+                      id="logo-upload"
+                    />
+                    <div className="flex justify-center">
+                      <label
+                        htmlFor="logo-upload"
+                        className={`cursor-pointer inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white ${
+                          uploadingLogo
+                            ? "bg-gray-400"
+                            : "bg-purple-600 hover:bg-purple-700"
+                        }`}
+                      >
+                        {uploadingLogo ? "Subiendo..." : "Subir Logo"}
+                      </label>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-2">JPEG, PNG o WebP. Máximo 5 MB</p>
                   </div>
                 )}
-                <input
-                  ref={logoInputRef}
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  onChange={handleLogoUpload}
-                  className="hidden"
-                  id="logo-upload"
-                />
-                <div className="flex gap-2 justify-center">
-                  <label
-                    htmlFor="logo-upload"
-                    className={`cursor-pointer inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white ${
-                      uploadingLogo
-                        ? "bg-gray-400"
-                        : "bg-purple-600 hover:bg-purple-700"
-                    }`}
-                  >
-                    {uploadingLogo ? "Subiendo..." : config?.logoUrl ? "Cambiar Logo" : "Subir Logo"}
-                  </label>
-                  {config?.logoUrl && (
-                    <button
-                      type="button"
-                      onClick={handleLogoDelete}
-                      disabled={uploadingLogo}
-                      className="px-4 py-2 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      🗑️ Eliminar
-                    </button>
-                  )}
-                </div>
-                <p className="text-xs text-gray-500 mt-2">JPEG, PNG o WebP. Máximo 5 MB</p>
               </div>
             </div>
 
@@ -401,55 +479,62 @@ export default function SettingsPage() {
               </label>
               <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center">
                 {config?.signatureUrl ? (
-                  <div className="mb-4">
-                    <Image
-                      src={`${config.signatureUrl}?t=${Date.now()}`}
-                      alt="Firma"
-                      width={200}
-                      height={100}
-                      className="mx-auto object-contain"
-                      unoptimized
-                    />
+                  <div>
+                    <div className="mb-4">
+                      <Image
+                        src={`${config.signatureUrl}?t=${Date.now()}`}
+                        alt="Firma"
+                        width={200}
+                        height={100}
+                        className="mx-auto object-contain"
+                        unoptimized
+                      />
+                    </div>
+                    <div className="flex justify-center">
+                      <button
+                        type="button"
+                        onClick={handleSignatureDelete}
+                        disabled={uploadingSignature}
+                        className="px-4 py-2 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        🗑️ Eliminar Firma
+                      </button>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-2">
+                      Para cambiar la firma, primero elimínala y luego sube una nueva.
+                    </p>
                   </div>
                 ) : (
-                  <div className="mb-4 text-gray-400">
-                    <svg className="mx-auto h-12 w-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                    </svg>
-                    <p className="mt-2">Sin firma</p>
+                  <div>
+                    <div className="mb-4 text-gray-400">
+                      <svg className="mx-auto h-12 w-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                      </svg>
+                      <p className="mt-2">Sin firma</p>
+                    </div>
+                    <input
+                      ref={signatureInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      onChange={handleSignatureUpload}
+                      className="hidden"
+                      id="signature-upload"
+                    />
+                    <div className="flex justify-center">
+                      <label
+                        htmlFor="signature-upload"
+                        className={`cursor-pointer inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white ${
+                          uploadingSignature
+                            ? "bg-gray-400"
+                            : "bg-purple-600 hover:bg-purple-700"
+                        }`}
+                      >
+                        {uploadingSignature ? "Subiendo..." : "Subir Firma"}
+                      </label>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-2">JPEG, PNG o WebP. Máximo 5 MB</p>
                   </div>
                 )}
-                <input
-                  ref={signatureInputRef}
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp"
-                  onChange={handleSignatureUpload}
-                  className="hidden"
-                  id="signature-upload"
-                />
-                <div className="flex gap-2 justify-center">
-                  <label
-                    htmlFor="signature-upload"
-                    className={`cursor-pointer inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white ${
-                      uploadingSignature
-                        ? "bg-gray-400"
-                        : "bg-purple-600 hover:bg-purple-700"
-                    }`}
-                  >
-                    {uploadingSignature ? "Subiendo..." : config?.signatureUrl ? "Cambiar Firma" : "Subir Firma"}
-                  </label>
-                  {config?.signatureUrl && (
-                    <button
-                      type="button"
-                      onClick={handleSignatureDelete}
-                      disabled={uploadingSignature}
-                      className="px-4 py-2 border border-red-300 text-sm font-medium rounded-md text-red-700 bg-red-50 hover:bg-red-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      🗑️ Eliminar
-                    </button>
-                  )}
-                </div>
-                <p className="text-xs text-gray-500 mt-2">JPEG, PNG o WebP. Máximo 5 MB</p>
               </div>
             </div>
           </div>
@@ -732,7 +817,35 @@ export default function SettingsPage() {
                 Dirección de las oficinas de la empresa (opcional).
               </p>
             </div>
-          </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Página Web
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={websiteUrl}
+                  onChange={(e) => setWebsiteUrl(e.target.value)}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-md"
+                  placeholder="Ej: www.tuempresa.com o https://tuempresa.com"
+                />
+                {websiteUrl && (
+                  <button
+                    type="button"
+                    onClick={() => setWebsiteUrl("")}
+                    className="p-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-md transition-colors"
+                    title="Eliminar página web"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                Dirección de tu sitio web. Se agregará https:// automáticamente si no lo incluyes.
+              </p>
+            </div>          </div>
 
           <h2 className="text-xl font-bold text-gray-900 mb-4 mt-8">�📋 Datos Legales</h2>
           
@@ -986,6 +1099,17 @@ export default function SettingsPage() {
         }}
         domain={blockedEmailDomain}
         tenantName={config?.name}
+      />
+
+      {/* Modal de Loading/Success/Error */}
+      <LoadingModal
+        isOpen={showLoadingModal}
+        state={loadingModalState}
+        loadingMessage={loadingModalMessage}
+        successMessage={loadingModalMessage}
+        errorMessage={loadingModalMessage}
+        onClose={() => setShowLoadingModal(false)}
+        autoCloseDelay={1500}
       />
     </main>
   );

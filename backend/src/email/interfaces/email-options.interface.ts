@@ -79,6 +79,7 @@ export type EmailTemplate =
   // Auth
   | 'welcome-user'
   | 'password-reset'
+  | 'password-reset-by-admin'
   
   // Billing
   | 'credit-note-approved'

@@ -791,7 +791,8 @@ export type TenantConfigResponse = {
   secondaryColor: string | null;  contactPhone?: string | null;
   contactWhatsApp?: string | null;
   contactEmail?: string | null;
-  businessAddress?: string | null;  fromEmail: string | null;
+  businessAddress?: string | null;
+  websiteUrl?: string | null;  fromEmail: string | null;
   replyToEmail: string | null;
   emailVerified: boolean;
   legalName: string | null;
@@ -811,6 +812,7 @@ export type UpdateTenantConfigDto = {
   contactWhatsApp?: string;
   contactEmail?: string;
   businessAddress?: string;
+  websiteUrl?: string;
   fromEmail?: string;
   replyToEmail?: string;
   legalName?: string;

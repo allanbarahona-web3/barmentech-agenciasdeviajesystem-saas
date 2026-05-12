@@ -15,6 +15,9 @@ import {
   EmailTemplate,
 } from './interfaces/email-options.interface';
 import { exchangeRateHistoryTemplate } from './templates';
+import { welcomeUserTemplate } from './templates/welcome-user.template';
+import { passwordResetTemplate } from './templates/password-reset.template';
+import { passwordResetByAdminTemplate } from './templates/password-reset-by-admin.template';
 
 @Injectable()
 export class EmailService {
@@ -70,7 +73,7 @@ export class EmailService {
         tenantName: tenant.name,
         tenantLogo: logoSrc,
         contactEmail: tenant.contactEmail,
-        contactPhone: tenant.contactPhone,
+        contactWhatsApp: tenant.contactWhatsApp,
         businessAddress: tenant.businessAddress,
         websiteUrl: tenant.websiteUrl,
         primaryColor: tenant.primaryColor || '#667eea',
@@ -350,9 +353,16 @@ export class EmailService {
       case 'exchange-rate-history':
         return exchangeRateHistoryTemplate(data as any);
 
+      case 'welcome-user':
+        return welcomeUserTemplate(data as any);
+
+      case 'password-reset':
+        return passwordResetTemplate(data as any);
+
+      case 'password-reset-by-admin':
+        return passwordResetByAdminTemplate(data as any);
+
       // Agregar más templates aquí
-      // case 'welcome-user':
-      //   return welcomeUserTemplate(data);
 
       default:
         throw new InternalServerErrorException(

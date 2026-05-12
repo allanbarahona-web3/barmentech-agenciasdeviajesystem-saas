@@ -17,9 +17,10 @@ export interface BaseTemplateOptions {
     url?: string;
     info?: string;  // Para CTAs sin URL (ej: "Documento adjunto al final")
   };
+  extraContent?: string;  // Contenido adicional después del CTA (ej: links alternativos, warnings)
   footer?: {
     contactEmail?: string;
-    contactPhone?: string;
+    contactWhatsApp?: string;
     businessAddress?: string;
     websiteUrl?: string;
   };
@@ -44,6 +45,7 @@ export function baseEmailTemplate(options: BaseTemplateOptions): string {
     badge,
     content,
     cta,
+    extraContent,
     footer,
     primaryColor = '#667eea',
     secondaryColor = '#764ba2',
@@ -68,7 +70,11 @@ export function baseEmailTemplate(options: BaseTemplateOptions): string {
           <!-- Header con branding dinámico -->
           <tr>
             <td style="background: linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%); padding: 40px 30px; text-align: center;">
-              ${tenantLogo ? `<img src="${tenantLogo}" alt="${tenantName}" style="max-width: 180px; height: auto; margin-bottom: 16px;" />` : ''}
+              ${tenantLogo ? `
+              <div style="background-color: #ffffff; border-radius: 12px; padding: 16px; display: inline-block; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);">
+                <img src="${tenantLogo}" alt="${tenantName}" style="max-width: 180px; height: auto; display: block;" />
+              </div>
+              ` : ''}
               <h1 style="margin: 0; color: #ffffff; font-size: 32px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;">
                 ${title}
               </h1>
@@ -118,6 +124,15 @@ export function baseEmailTemplate(options: BaseTemplateOptions): string {
           </tr>
           ` : ''}
 
+          <!-- Extra content opcional (warnings, links alternativos, etc) -->
+          ${extraContent ? `
+          <tr>
+            <td style="padding: 0 30px 30px 30px;">
+              ${extraContent}
+            </td>
+          </tr>
+          ` : ''}
+
           <!-- Footer -->
           <tr>
             <td style="background-color: #f9fafb; padding: 30px; border-top: 2px solid #e5e7eb;">
@@ -128,10 +143,10 @@ export function baseEmailTemplate(options: BaseTemplateOptions): string {
                 Equipo ${tenantName}
               </p>
               
-              ${footer && (footer.contactEmail || footer.contactPhone || footer.businessAddress || footer.websiteUrl) ? `
-              <div style="border-top: 1px solid #e5e7eb; padding-top: 20px; margin-top: 20px;">
+              ${footer && (footer.contactEmail || footer.contactWhatsApp || footer.businessAddress || footer.websiteUrl) ? `
+              <div style="border-top: 1px solid #e5e7eb; padding-top: 20px; margin-top: 20px; text-align: center;">
                 ${footer.contactEmail ? `<p style="margin: 4px 0; color: #6b7280; font-size: 13px;">📧 ${footer.contactEmail}</p>` : ''}
-                ${footer.contactPhone ? `<p style="margin: 4px 0; color: #6b7280; font-size: 13px;">📞 ${footer.contactPhone}</p>` : ''}
+                ${footer.contactWhatsApp ? `<p style="margin: 4px 0; color: #6b7280; font-size: 13px;">💬 WhatsApp: ${footer.contactWhatsApp}</p>` : ''}
                 ${footer.websiteUrl ? `<p style="margin: 4px 0; color: #6b7280; font-size: 13px;">🌐 <a href="${footer.websiteUrl}" style="color: ${primaryColor}; text-decoration: none;">${footer.websiteUrl}</a></p>` : ''}
                 ${footer.businessAddress ? `<p style="margin: 4px 0; color: #6b7280; font-size: 13px;">📍 ${footer.businessAddress}</p>` : ''}
               </div>

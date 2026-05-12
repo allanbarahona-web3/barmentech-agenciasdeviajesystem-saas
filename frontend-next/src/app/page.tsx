@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import { getStoredSession, getStoredToken, loginWithEmailPassword, requestPasswordReset, getHomeRouteForRole, getTenantConfig, TenantSuspendedError } from "@/lib/auth-api";
 import TenantSuspendedModal from "@/components/tenant-suspended-modal";
+import { ForcePasswordChangeModal } from "@/components/force-password-change-modal";
 
 export default function Home() {
   const router = useRouter();
@@ -33,6 +34,10 @@ export default function Home() {
     reason: string;
     suspendedAt: Date;
   } | null>(null);
+
+  // Estado para modal de cambio de contraseña obligatorio
+  const [showForcePasswordChange, setShowForcePasswordChange] = useState(false);
+  const [forcePasswordChangeEmail, setForcePasswordChangeEmail] = useState("");
 
   useEffect(() => {
     const token = getStoredToken();
@@ -86,7 +91,10 @@ export default function Home() {
       // Check if user must change password
       const session = getStoredSession();
       if (session?.user?.mustChangePassword) {
-        router.push("/change-password");
+        // Mostrar modal bloqueador en lugar de navegar
+        setForcePasswordChangeEmail(session.user.email);
+        setShowForcePasswordChange(true);
+        setLoading(false);
       } else {
         const homeRoute = getHomeRouteForRole(session?.user?.role);
         router.push(homeRoute);
@@ -433,6 +441,12 @@ export default function Home() {
         )}
       </div>
       )}
+
+      {/* Modal bloqueador de cambio de contraseña obligatorio */}
+      <ForcePasswordChangeModal 
+        isOpen={showForcePasswordChange} 
+        userEmail={forcePasswordChangeEmail}
+      />
     </main>
   );
 }
