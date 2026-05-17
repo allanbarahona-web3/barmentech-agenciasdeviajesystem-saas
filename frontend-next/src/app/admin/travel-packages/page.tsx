@@ -47,6 +47,8 @@ const getStatusBadge = (status: string) => {
       return { label: "⏸ SUSPENDIDO", bg: "#fef3c7", color: "#92400e" };
     case "CANCELLED":
       return { label: "⚫ CANCELADO", bg: "#f3f4f6", color: "#374151" };
+    case "COMPLETED":
+      return { label: "🏁 FINALIZADO", bg: "#e0e7ff", color: "#3730a3" };
     default:
       return { label: status, bg: "#f3f4f6", color: "#6b7280" };
   }
@@ -58,6 +60,7 @@ export default function TravelPackagesPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [packages, setPackages] = useState<TravelPackage[]>([]);
+  const [showArchived, setShowArchived] = useState(false); // Toggle para mostrar archivo
   const [showForm, setShowForm] = useState(false);
   const [editingPackage, setEditingPackage] = useState<TravelPackage | null>(null);
   const { toasts, showSuccess, showError, dismissToast } = useToast();
@@ -69,8 +72,9 @@ export default function TravelPackagesPage() {
   const [returnDate, setReturnDate] = useState("");
   const [capacity, setCapacity] = useState("");
   const [packagePrice, setPackagePrice] = useState("");
+  const [minReservation, setMinReservation] = useState("");
   const [priceCurrency, setPriceCurrency] = useState<"USD" | "CRC">("USD");
-  const [status, setStatus] = useState<"OPEN" | "CLOSED" | "CANCELLED">("OPEN");
+  const [status, setStatus] = useState<"OPEN" | "CLOSED" | "CANCELLED" | "COMPLETED">("OPEN");
 
   // Modal de confirmación
   const [confirmModal, setConfirmModal] = useState<{
@@ -133,6 +137,7 @@ export default function TravelPackagesPage() {
     setReturnDate("");
     setCapacity("");
     setPackagePrice("");
+    setMinReservation("");
     setPriceCurrency("USD");
     setStatus("OPEN");
     setEditingPackage(null);
@@ -151,6 +156,7 @@ export default function TravelPackagesPage() {
     setReturnDate(pkg.returnDate.split("T")[0]);
     setCapacity(String(pkg.capacity));
     setPackagePrice(pkg.packagePrice ? String(pkg.packagePrice) : "");
+    setMinReservation(pkg.minReservation ? String(pkg.minReservation) : "");
     setPriceCurrency(pkg.priceCurrency as "USD" | "CRC");
     setStatus(pkg.status);
     setShowForm(true);
@@ -179,6 +185,12 @@ export default function TravelPackagesPage() {
       return;
     }
 
+    const minResNum = minReservation.trim() ? parseFloat(minReservation) : undefined;
+    if (minResNum !== undefined && (isNaN(minResNum) || minResNum < 0)) {
+      showError("El monto de reserva debe ser un número válido");
+      return;
+    }
+
     const data: CreateTravelPackageInput = {
       name: name.trim(),
       destination: destination.trim(),
@@ -186,6 +198,7 @@ export default function TravelPackagesPage() {
       returnDate,
       capacity: capacityNum,
       packagePrice: priceNum,
+      minReservation: minResNum,
       priceCurrency,
       status,
     };
@@ -248,95 +261,98 @@ export default function TravelPackagesPage() {
       <main className="app-shell" style={{ padding: "20px" }}>
         <div style={{ maxWidth: 1400, margin: "0 auto" }}>
           {/* Header */}
-          <div style={{ marginBottom: 30, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div>
-              <h1 style={{ marginBottom: 8, fontSize: "1.8rem", fontWeight: 600 }}>✈️ Viajes Programados</h1>
+          <div style={{ marginBottom: 30 }}>
+            <h1 style={{ marginBottom: 8, fontSize: "1.8rem", fontWeight: 600 }}>✈️ Viajes Internacionales</h1>
             <p style={{ color: "#6b7280", margin: 0 }}>Gestiona los paquetes turísticos y sus cupos</p>
           </div>
-          <button
-            onClick={openCreateForm}
-            style={{
-              padding: "12px 24px",
-              background: "linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)",
-              color: "white",
-              border: "none",
-              borderRadius: 10,
-              fontSize: "1rem",
-              fontWeight: 600,
-              cursor: "pointer",
-              boxShadow: "0 4px 12px rgba(59, 130, 246, 0.3)",
-              transition: "transform 0.2s",
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.transform = "translateY(-2px)")}
-            onMouseLeave={(e) => (e.currentTarget.style.transform = "translateY(0)")}
-          >
-            + Crear Viaje
-          </button>
-        </div>
+
+          {/* Toggle Mostrar Archivo */}
+          {packages.length > 0 && (
+            <div style={{ marginBottom: 20, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' }}>
+                <input
+                  type="checkbox"
+                  checked={showArchived}
+                  onChange={(e) => setShowArchived(e.target.checked)}
+                  style={{ width: 18, height: 18, cursor: 'pointer' }}
+                />
+                <span style={{ fontSize: '0.95rem', color: '#6b7280', fontWeight: 500 }}>
+                  📦 Mostrar archivo (cancelados/finalizados)
+                </span>
+              </label>
+            </div>
+          )}
 
         {/* Grid de tarjetas */}
-        {packages.length === 0 ? (
-          <div
-            style={{
-              background: "white",
-              borderRadius: 12,
-              padding: 60,
-              textAlign: "center",
-              border: "1px solid #e5e7eb",
-            }}
-          >
-            <div style={{ fontSize: "3rem", marginBottom: 16 }}>✈️</div>
-            <h3 style={{ marginBottom: 8, color: "#374151" }}>No hay viajes programados</h3>
-            <p style={{ color: "#6b7280", marginBottom: 24 }}>Crea tu primer viaje para comenzar</p>
-            <button
-              onClick={openCreateForm}
+        {(() => {
+          // Filtrar packages según showArchived
+          const filteredPackages = showArchived 
+            ? packages.filter(pkg => pkg.status === 'CANCELLED' || pkg.status === 'COMPLETED')
+            : packages.filter(pkg => pkg.status === 'OPEN' || pkg.status === 'CLOSED');
+          
+          if (filteredPackages.length === 0) {
+            return (
+              <div
+                style={{
+                  background: "white",
+                  borderRadius: 12,
+                  padding: 60,
+                  textAlign: "center",
+                  border: "1px solid #e5e7eb",
+                }}
+              >
+                <div style={{ fontSize: "3rem", marginBottom: 16 }}>✈️</div>
+                <h3 style={{ marginBottom: 8, color: "#374151" }}>
+                  {showArchived ? "No hay viajes en archivo" : "No hay viajes activos"}
+                </h3>
+                <p style={{ color: "#6b7280", marginBottom: 24 }}>
+                  {showArchived 
+                    ? "Los viajes cancelados y finalizados aparecerán aquí" 
+                    : "Accede desde el menú \"Viajes Programados\" → \"+ Crear Viaje\" para comenzar"}
+                </p>
+              </div>
+            );
+          }
+
+          return (
+            <div
+              className="travel-packages-grid"
               style={{
-                padding: "10px 20px",
-                background: "#3b82f6",
-                color: "white",
-                border: "none",
-                borderRadius: 8,
-                cursor: "pointer",
-                fontSize: "0.95rem",
-                fontWeight: 600,
+                width: "100%",
               }}
             >
-              Crear Viaje
-            </button>
-          </div>
-        ) : (
-          <div
-            className="travel-packages-grid"
-            style={{
-              width: "100%",
-            }}
-          >
-            {packages.map((pkg) => {
-              const percentage = Math.round((pkg.occupiedSlots / pkg.capacity) * 100);
-              const statusInfo = getStatusBadge(pkg.status);
+              {filteredPackages.map((pkg) => {
+                const percentage = Math.round((pkg.occupiedSlots / pkg.capacity) * 100);
+                const statusInfo = getStatusBadge(pkg.status);
+                const isArchived = pkg.status === 'CANCELLED' || pkg.status === 'COMPLETED';
 
-              return (
-                <div
-                  key={pkg.id}
-                  style={{
-                    background: "white",
-                    borderRadius: 14,
-                    border: "1px solid #e5e7eb",
-                    padding: 20,
-                    boxShadow: "0 2px 8px rgba(0, 0, 0, 0.04)",
-                    transition: "transform 0.2s, box-shadow 0.2s",
-                    cursor: "pointer",
-                    minWidth: 0, // Allow grid to shrink
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = "translateY(-4px)";
-                    e.currentTarget.style.boxShadow = "0 8px 24px rgba(0, 0, 0, 0.12)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = "translateY(0)";
-                    e.currentTarget.style.boxShadow = "0 2px 8px rgba(0, 0, 0, 0.04)";
-                  }}
-                >
+                return (
+                  <div
+                    key={pkg.id}
+                    style={{
+                      background: "white",
+                      borderRadius: 14,
+                      border: "1px solid #e5e7eb",
+                      padding: 20,
+                      boxShadow: "0 2px 8px rgba(0, 0, 0, 0.04)",
+                      transition: "transform 0.2s, box-shadow 0.2s",
+                      cursor: isArchived ? "default" : "pointer",
+                      minWidth: 0,
+                      opacity: isArchived ? 0.7 : 1,
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isArchived) {
+                        e.currentTarget.style.transform = "translateY(-4px)";
+                        e.currentTarget.style.boxShadow = "0 8px 24px rgba(0, 0, 0, 0.12)";
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isArchived) {
+                        e.currentTarget.style.transform = "translateY(0)";
+                        e.currentTarget.style.boxShadow = "0 2px 8px rgba(0, 0, 0, 0.04)";
+                      }
+                    }}
+                  >
                   {/* Código del viaje */}
                   <div
                     style={{
@@ -379,12 +395,22 @@ export default function TravelPackagesPage() {
                   </div>
 
                   {/* Precio */}
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 16 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
                     <span style={{ fontSize: "1rem" }}>💰</span>
                     <span style={{ color: "#111827", fontSize: "1rem", fontWeight: 600 }}>
                       {formatPrice(pkg.packagePrice, pkg.priceCurrency)}
                     </span>
                   </div>
+
+                  {/* Monto de Reserva */}
+                  {pkg.minReservation && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 16 }}>
+                      <span style={{ fontSize: "1rem" }}>🏷️</span>
+                      <span style={{ color: "#059669", fontSize: "0.9rem", fontWeight: 600 }}>
+                        Reserva: {formatPrice(pkg.minReservation, pkg.priceCurrency)}
+                      </span>
+                    </div>
+                  )}
 
                   {/* Barra de progreso */}
                   <div style={{ marginBottom: 12 }}>
@@ -445,50 +471,54 @@ export default function TravelPackagesPage() {
                         e.stopPropagation();
                         openEditForm(pkg);
                       }}
+                      disabled={isArchived}
                       style={{
                         flex: 1,
                         padding: "10px 16px",
-                        background: "#3b82f6",
+                        background: isArchived ? "#d1d5db" : "#3b82f6",
                         color: "white",
                         border: "none",
                         borderRadius: 8,
                         fontSize: "0.9rem",
                         fontWeight: 600,
-                        cursor: "pointer",
+                        cursor: isArchived ? "not-allowed" : "pointer",
                         transition: "background 0.2s",
                       }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = "#2563eb")}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = "#3b82f6")}
+                      onMouseEnter={(e) => !isArchived && (e.currentTarget.style.background = "#2563eb")}
+                      onMouseLeave={(e) => !isArchived && (e.currentTarget.style.background = "#3b82f6")}
                     >
-                      Editar
+                      {isArchived ? "🔒 Bloqueado" : "Editar"}
                     </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDelete(pkg);
-                      }}
-                      style={{
-                        padding: "10px 16px",
-                        background: "#fee2e2",
-                        color: "#991b1b",
-                        border: "none",
-                        borderRadius: 8,
-                        fontSize: "0.9rem",
-                        fontWeight: 600,
-                        cursor: "pointer",
-                        transition: "background 0.2s",
-                      }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = "#fecaca")}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = "#fee2e2")}
-                    >
-                      ❌
-                    </button>
+                    {!isArchived && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDelete(pkg);
+                        }}
+                        style={{
+                          padding: "10px 16px",
+                          background: "#fee2e2",
+                          color: "#991b1b",
+                          border: "none",
+                          borderRadius: 8,
+                          fontSize: "0.9rem",
+                          fontWeight: 600,
+                          cursor: "pointer",
+                          transition: "background 0.2s",
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = "#fecaca")}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = "#fee2e2")}
+                      >
+                        ❌
+                      </button>
+                    )}
                   </div>
                 </div>
               );
             })}
           </div>
-        )}
+        );
+        })()}
         </div>
       </main>
 
@@ -700,6 +730,27 @@ export default function TravelPackagesPage() {
                     </select>
                   </label>
                 </div>
+
+                {/* Monto de Reserva */}
+                <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <span style={{ fontSize: "0.9rem", fontWeight: 600, color: "#374151" }}>
+                    🏷️ Monto de Reserva (opcional)
+                  </span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={minReservation}
+                    onChange={(e) => setMinReservation(e.target.value)}
+                    placeholder="250.00 (adelanto para confirmar)"
+                    style={{
+                      padding: "12px 16px",
+                      border: "1px solid #d1d5db",
+                      borderRadius: 8,
+                      fontSize: "1rem",
+                    }}
+                  />
+                </label>
 
                 <div
                   style={{

@@ -4,6 +4,7 @@ import {
   NotFoundException,
   Logger,
 } from '@nestjs/common';
+import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTravelPackageDto } from './dto/create-travel-package.dto';
 import { UpdateTravelPackageDto } from './dto/update-travel-package.dto';
@@ -70,6 +71,7 @@ export class TravelPackagesService {
         status: dto.status || 'OPEN',
         packagePrice: dto.packagePrice,
         priceCurrency: dto.priceCurrency || 'USD',
+        minReservation: dto.minReservation ? new Decimal(String(dto.minReservation)) : null,
         createdByUserId,
         tenantId,
       },
@@ -83,10 +85,26 @@ export class TravelPackagesService {
   }
 
   async findAll(tenantId: string) {
-    return await this.prisma.travelPackage.findMany({
+    const packages = await this.prisma.travelPackage.findMany({
       where: { tenantId }, // 🔒 SEGURIDAD: Filtrar por tenant
       orderBy: { departureDate: 'asc' },
     });
+
+    // Auto-marcar como COMPLETED si returnDate ya pasó
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    for (const pkg of packages) {
+      if (pkg.returnDate < today && pkg.status !== 'COMPLETED' && pkg.status !== 'CANCELLED') {
+        await this.prisma.travelPackage.update({
+          where: { id: pkg.id },
+          data: { status: 'COMPLETED' },
+        });
+        pkg.status = 'COMPLETED';
+      }
+    }
+
+    return packages;
   }
 
   async findAvailable(tenantId: string) {
@@ -136,9 +154,13 @@ export class TravelPackagesService {
   async update(id: string, dto: UpdateTravelPackageDto, tenantId: string) {
     const travelPackage = await this.findById(id, tenantId);
 
-    // Validar si está cancelado
+    // Validar si está cancelado o completado (no editable)
     if (travelPackage.status === 'CANCELLED') {
       throw new BadRequestException('Cannot update a cancelled travel package');
+    }
+
+    if (travelPackage.status === 'COMPLETED') {
+      throw new BadRequestException('Cannot update a completed travel package (trip already occurred)');
     }
 
     // Si se intenta cambiar capacidad, validar que no sea menor a ocupados
@@ -175,6 +197,7 @@ export class TravelPackagesService {
         ...(dto.capacity !== undefined && { capacity: dto.capacity }),
         ...(dto.packagePrice !== undefined && { packagePrice: dto.packagePrice }),
         ...(dto.priceCurrency && { priceCurrency: dto.priceCurrency }),
+        ...(dto.minReservation !== undefined && { minReservation: dto.minReservation ? new Decimal(String(dto.minReservation)) : null }),
         ...(newStatus && { status: newStatus }),
       },
     });

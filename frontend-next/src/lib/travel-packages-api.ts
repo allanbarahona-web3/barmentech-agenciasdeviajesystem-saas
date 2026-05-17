@@ -10,8 +10,9 @@ export type TravelPackage = {
   returnDate: string;
   capacity: number;
   occupiedSlots: number;
-  status: "OPEN" | "CLOSED" | "CANCELLED";
+  status: "OPEN" | "CLOSED" | "CANCELLED" | "COMPLETED";
   packagePrice: number | string | null; // Decimal comes as string from API
+  minReservation?: number | string | null; // Monto de reserva mínima
   priceCurrency: string;
   createdByUserId: string;
   createdAt: string;
@@ -25,8 +26,9 @@ export type CreateTravelPackageInput = {
   returnDate: string;
   capacity: number;
   packagePrice?: number;
+  minReservation?: number;
   priceCurrency?: "USD" | "CRC";
-  status?: "OPEN" | "CLOSED" | "CANCELLED";
+  status?: "OPEN" | "CLOSED" | "CANCELLED" | "COMPLETED";
 };
 
 export type UpdateTravelPackageInput = Partial<CreateTravelPackageInput>;

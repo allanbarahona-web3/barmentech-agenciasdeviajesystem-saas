@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 type ToastType = "success" | "error" | "warning" | "info";
 
@@ -77,6 +77,3 @@ export function useToast() {
     dismissToast,
   };
 }
-
-// Necesitamos importar useState
-import { useState } from "react";

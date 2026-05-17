@@ -53,6 +53,12 @@ export default function AgentStartPage() {
     setTimeout(() => router.push("/contracts?mode=migration"), 100);
   };
 
+  const handleSelectInternalTrips = () => {
+    setShowMenuModal(false);
+    // Redirigir a la página de viajes internos disponibles
+    setTimeout(() => router.push("/internal-trips-available"), 100);
+  };
+
   const handleSelectQuote = () => {
     // Futuro: Redirigir a página de cotización
     console.log("Cotización seleccionada (futuro)");
@@ -93,6 +99,7 @@ export default function AgentStartPage() {
         isOpen={showMenuModal}
         onSelectTrips={handleSelectTrips}
         onSelectMigration={handleSelectMigration}
+        onSelectInternalTrips={handleSelectInternalTrips}
         onSelectQuote={handleSelectQuote}
         onSelectCustom={handleSelectCustom}
       />

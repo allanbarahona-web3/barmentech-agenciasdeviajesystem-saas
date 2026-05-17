@@ -34,6 +34,11 @@ export class UpdateTravelPackageDto {
   priceCurrency?: string;
 
   @IsOptional()
+  @IsNumber()
+  @Min(0)
+  minReservation?: number; // Monto de reserva mínima (opcional)
+
+  @IsOptional()
   @IsEnum(['OPEN', 'CLOSED', 'CANCELLED'], {
     message: 'status must be OPEN, CLOSED, or CANCELLED',
   })

@@ -88,9 +88,14 @@ export type EmailTemplate =
   | 'invoice-initial'
   
   // Contracts
-  | 'contract-sign'
+  | 'contract-pdf-attachment'
   | 'contract-signing-link'
-  | 'contract-signed-confirmation';
+  | 'contract-signed-confirmation'
+  
+  // Internal Tourism
+  | 'booking-confirmation'
+  | 'payment-received'
+  | 'trip-cancelled';
 
 /**
  * Configuración de email del tenant

@@ -15,6 +15,9 @@ import * as sharp from "sharp";
 import * as path from "path";
 import { readFile } from "fs/promises";
 import { PrismaService } from "../prisma/prisma.service";
+import { EmailService } from "../email/email.service";
+import { TravelPackagesService } from "../travel-packages/travel-packages.service";
+import { InternalToursService } from "../internal-tourism/internal-tours.service";
 import { ApplyCreditNoteDto } from "./dto/apply-credit-note.dto";
 import { CreateCreditNoteDto } from "./dto/create-credit-note.dto";
 import { ListBillingContractsDto } from "./dto/list-billing-contracts.dto";
@@ -36,6 +39,9 @@ export class BillingService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
+    private readonly emailService: EmailService,
+    private readonly travelPackagesService: TravelPackagesService,
+    private readonly internalToursService: InternalToursService,
   ) {}
 
   /**
@@ -2368,197 +2374,40 @@ export class BillingService {
       throw new BadRequestException("El titular no tiene correo para enviar la factura.");
     }
 
-    const apiKey = this.configService.get<string>("RESEND_API_KEY", "").trim();
-    const fallbackFromEmail = this.configService.get<string>("CONTRACTS_FROM_EMAIL", "").trim();
-    
-    if (!apiKey) {
-      throw new InternalServerErrorException("Falta configurar RESEND_API_KEY.");
-    }
-
     const pdf = await this.ensureInvoicePdf(invoice.id);
     const invoicePdfUrl = await this.buildSignedObjectUrl(String(pdf.objectKeyPdf || ""), 86_400);
     const tenant = contract?.tenant || null;
-    
-    // Usar email del tenant solo si está verificado, sino fallback al sistema
-    const fromEmail = (tenant?.emailVerified && tenant?.fromEmail) ? tenant.fromEmail : fallbackFromEmail;
-    const replyTo = (tenant?.emailVerified && tenant?.replyToEmail) ? tenant.replyToEmail : undefined;
-    
-    if (!fromEmail) {
-      throw new InternalServerErrorException("No hay email configurado (ni en tenant ni en sistema).");
+
+    if (!tenant) {
+      throw new InternalServerErrorException("Tenant no encontrado para enviar email.");
     }
-    
-    const logoSrc = await this.loadCompanyLogoEmailSrc(tenant);
-    const tenantName = tenant?.name || "Sistema de Viajes";
+
     const currency = String(invoice.currency || "USD").trim().toUpperCase() || "USD";
     const amount = (value: unknown) => `${currency} ${this.toNumber(value, 0).toFixed(2)}`;
     const paymentRef = String(contract.paymentReference || "N/A");
-    
-    const resend = new Resend(apiKey);
 
-    const emailPayload: any = {
-      from: fromEmail,
-      to: [targetEmail],
-      subject: `Contrato ${invoice.contractNumber} - Estado de cuenta inicial - ${tenantName}`,
-      text: `
-ESTADO DE CUENTA INICIAL
-
-Estimado(a) ${String(invoice.client?.fullName || "Cliente")},
-
-Tu contrato ha sido procesado exitosamente y se ha generado tu estado de cuenta inicial.
-
-DETALLES DEL CONTRATO
-• Número de contrato: ${String(invoice.contractNumber || "-")}
-• CÓDIGO DE PAGO (úsalo en comprobantes): ${paymentRef}
-• Monto total del viaje: ${amount(invoice.totalAmount)}
-
-IMPORTANTE: Cuando hagas transferencias o depósitos, SIEMPRE incluye tu código de pago: ${paymentRef}
-Esto nos ayuda a identificar tus pagos de forma inmediata.
-
-Descarga tu estado de cuenta inicial aquí:
-${invoicePdfUrl}
-
-IMPORTANTE: Este correo se envió únicamente al titular del contrato. El estado de cuenta incluye el desglose completo de pagos y saldos.
-
-¿Tienes preguntas?
-Contáctanos en contratos@viajesalmanova.com o llámanos al +506 7006-7572
-
----
-${tenantName}
-Cédula jurídica 3-101-960028
-Costa Rica · +506 7006-7572
-contratos@viajesalmanova.com
-
-© ${new Date().getFullYear()} ${tenantName}. Todos los derechos reservados.
-      `,
-      html: `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="utf-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        </head>
-        <body style="margin:0; padding:0; background-color:#f5f7fb;">
-          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background:#f5f7fb; padding:40px 20px;">
-            <div style="max-width:600px; margin:0 auto; background:#ffffff; border-radius:16px; overflow:hidden; box-shadow:0 4px 6px rgba(0,0,0,0.07);">
-              
-              <!-- Header -->
-              <div style="background: linear-gradient(135deg, #1e3a8a 0%, #2563eb 100%); padding:32px 24px; text-align:center;">
-                ${logoSrc ? `<img src="${logoSrc}" alt="${tenantName}" style="display:block; max-width:180px; height:auto; margin:0 auto 16px; filter: brightness(0) invert(1);" />` : ""}
-                <h1 style="margin:0; color:#ffffff; font-size:28px; font-weight:700; line-height:1.2;">
-                  📊 Estado de Cuenta Inicial
-                </h1>
-                <p style="margin:12px 0 0; color:#e0e7ff; font-size:15px;">
-                  Resumen de pagos de tu contrato
-                </p>
-              </div>
-
-              <!-- Content -->
-              <div style="padding:32px 24px;">
-                <p style="margin:0 0 20px; font-size:16px; color:#1e293b; line-height:1.6;">
-                  Estimado(a) <strong style="color:#1e3a8a;">${String(invoice.client?.fullName || "Cliente")}</strong>,
-                </p>
-                
-                <p style="margin:0 0 24px; font-size:15px; color:#334155; line-height:1.7;">
-                  Tu contrato ha sido procesado exitosamente y se ha generado tu <strong>estado de cuenta inicial</strong>. 
-                  A continuación encontrarás los detalles de tu viaje y el resumen de pagos.
-                </p>
-
-                <!-- Info Box -->
-                <div style="background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); border:2px solid #3b82f6; border-radius:12px; padding:20px; margin:0 0 24px;">
-                  <table style="width:100%; border-collapse:collapse;">
-                    <tr>
-                      <td style="padding:8px 0; font-size:14px; color:#475569;">
-                        <strong>Número de contrato:</strong>
-                      </td>
-                      <td style="padding:8px 0; text-align:right; font-size:14px; color:#1e293b; font-weight:600;">
-                        ${String(invoice.contractNumber || "-")}
-                      </td>
-                    </tr>
-                    <tr style="border-top:1px solid #bfdbfe;">
-                      <td style="padding:12px 0 8px; font-size:15px; color:#1e293b;">
-                        <strong style="font-size:16px;">Monto total del viaje:</strong>
-                      </td>
-                      <td style="padding:12px 0 8px; text-align:right;">
-                        <span style="font-size:22px; font-weight:700; color:#1e3a8a;">${amount(invoice.totalAmount)}</span>
-                      </td>
-                    </tr>
-                  </table>
-                </div>
-
-                <!-- Payment Reference Box - DESTACADO -->
-                <div style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border:3px solid #f59e0b; border-radius:12px; padding:20px; margin:0 0 24px; text-align:center;">
-                  <p style="margin:0 0 8px; font-size:14px; color:#78350f; font-weight:600; text-transform:uppercase; letter-spacing:0.5px;">
-                    ⚠️ Tu Código de Pago Personal
-                  </p>
-                  <p style="margin:0 0 12px; font-size:38px; font-weight:900; color:#92400e; letter-spacing:2px; font-family:Monaco,Consolas,monospace;">
-                    ${paymentRef}
-                  </p>
-                  <p style="margin:0; font-size:13px; color:#78350f; line-height:1.6;">
-                    <strong>Úsalo en TODOS tus pagos</strong> (transferencias, SINPE, depósitos)<br/>
-                    para que identifiquemos tu pago de inmediato.
-                  </p>
-                </div>
-
-                <!-- CTA Button -->
-                <div style="text-align:center; margin:0 0 28px;">
-                  <a href="${invoicePdfUrl}" style="display:inline-block; background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%); color:#ffffff; text-decoration:none; padding:14px 32px; border-radius:8px; font-weight:700; font-size:16px; box-shadow:0 4px 6px rgba(37,99,235,0.3);">
-                    📄 Ver Estado de Cuenta Inicial
-                  </a>
-                </div>
-
-                <!-- Info Notice -->
-                <div style="background:#fef3c7; border-left:4px solid #f59e0b; padding:14px 16px; border-radius:6px; margin:0 0 24px;">
-                  <p style="margin:0; font-size:14px; color:#78350f; line-height:1.5;">
-                    <strong>📌 Importante:</strong> Este correo se envió únicamente al titular del contrato. 
-                    El estado de cuenta incluye el desglose completo de pagos.
-                  </p>
-                </div>
-
-                <!-- Support -->
-                <div style="background:#f8fafc; border-radius:8px; padding:18px; margin:0 0 0;">
-                  <p style="margin:0 0 8px; font-size:14px; color:#475569; line-height:1.6;">
-                    <strong style="color:#1e293b;">¿Tienes preguntas?</strong>
-                  </p>
-                  <p style="margin:0; font-size:14px; color:#64748b; line-height:1.6;">
-                    Contáctanos en 
-                    <a href="mailto:contratos@viajesalmanova.com" style="color:#2563eb; text-decoration:none; font-weight:600;">contratos@viajesalmanova.com</a>
-                    o llámanos al <strong style="color:#1e293b;">+506 7006-7572</strong>
-                  </p>
-                </div>
-              </div>
-
-              <!-- Footer -->
-              <div style="background:#f1f5f9; padding:24px; text-align:center; border-top:1px solid #e2e8f0;">
-                <p style="margin:0 0 8px; font-size:15px; color:#1e293b; font-weight:600;">
-                  ${tenantName}
-                </p>
-                <p style="margin:0; font-size:13px; color:#64748b; line-height:1.5;">
-                  Cédula jurídica 3-101-960028<br/>
-                  Costa Rica · +506 7006-7572<br/>
-                  <a href="mailto:contratos@viajesalmanova.com" style="color:#2563eb; text-decoration:none;">contratos@viajesalmanova.com</a>
-                </p>
-              </div>
-
-            </div>
-            
-            <!-- Copyright -->
-            <p style="text-align:center; margin:20px 0 0; font-size:12px; color:#94a3b8;">
-              © ${new Date().getFullYear()} ${tenantName}. Todos los derechos reservados.
-            </p>
-          </div>
-        </body>
-        </html>
-      `,
-    };
-
-    // Agregar reply-to si existe
-    if (replyTo) {
-      emailPayload.reply_to = replyTo;
-    }
-
-    this.logger.debug(`📧 [Billing] Enviando estado de cuenta desde: ${fromEmail} (tenant: ${tenant?.name || 'Sistema'})`);
-    
-    await resend.emails.send(emailPayload);
+    // Enviar email usando EmailService centralizado
+    await this.emailService.sendEmail({
+      tenantId: tenant.id,
+      to: targetEmail,
+      subject: `Contrato ${invoice.contractNumber} - Estado de cuenta inicial - ${tenant.name}`,
+      template: 'invoice-initial',
+      templateData: {
+        clientName: String(invoice.client?.fullName || "Cliente"),
+        contractNumber: String(invoice.contractNumber || "-"),
+        invoiceNumber: String(invoice.invoiceNumber || "-"),
+        paymentReference: paymentRef,
+        currency,
+        totalAmount: amount(invoice.totalAmount),
+        invoicePdfUrl,
+        tenantName: tenant.name,
+      },
+      triggeredBy: {
+        userId: input.actorUserId,
+        email: input.actorEmail,
+        fullName: input.actorName,
+      },
+    });
 
     await this.logAudit({
       entityType: "INVOICE",
@@ -2581,6 +2430,14 @@ contratos@viajesalmanova.com
       invoiceNumber: invoice.invoiceNumber,
       sentToEmail: targetEmail,
     };
+
+    /* CÓDIGO ANTIGUO COMENTADO PARA ROLLBACK:
+    const apiKey = this.configService.get<string>("RESEND_API_KEY", "").trim();
+    const logoSrc = await this.loadCompanyLogoEmailSrc(tenant);
+    const resend = new Resend(apiKey);
+    await resend.emails.send(emailPayload);
+    ... (HTML inline omitido - ver templates/invoice-initial.template.ts) ...
+    FIN CÓDIGO ANTIGUO */
   }
 
   async getReceiptPdfUrl(
@@ -2621,7 +2478,7 @@ contratos@viajesalmanova.com
             client: true,
           },
         },
-        contract: { include: { tenant: { select: { logoUrl: true, emailLogoUrl: true } } } },
+        contract: { include: { tenant: true } },
       },
     });
 
@@ -2639,13 +2496,6 @@ contratos@viajesalmanova.com
     }
     const normalizedCc = String(ccEmail || "").trim();
 
-    const apiKey = this.configService.get<string>("RESEND_API_KEY", "").trim();
-    const fallbackFromEmail = this.configService.get<string>("CONTRACTS_FROM_EMAIL", "").trim();
-    
-    if (!apiKey) {
-      throw new InternalServerErrorException("Falta configurar RESEND_API_KEY.");
-    }
-
     const pdf = await this.ensureCreditNotePdf(creditNote.id);
     const pdfUrl = await this.buildSignedObjectUrl(String(pdf.objectKeyPdf || ""), 86_400);
 
@@ -2653,151 +2503,35 @@ contratos@viajesalmanova.com
     const amountFormatted = `USD ${this.toNumber(creditNote.amount, 0).toFixed(2)}`;
     const reason = String(creditNote.reason || "-");
     const tenant = creditNote.contract?.tenant || null;
-    
-    // Usar email del tenant solo si está verificado, sino fallback al sistema
-    const fromEmail = (tenant?.emailVerified && tenant?.fromEmail) ? tenant.fromEmail : fallbackFromEmail;
-    const replyTo = (tenant?.emailVerified && tenant?.replyToEmail) ? tenant.replyToEmail : undefined;
-    
-    if (!fromEmail) {
-      throw new InternalServerErrorException("No hay email configurado (ni en tenant ni en sistema).");
-    }
-    
-    const logoSrc = await this.loadCompanyLogoEmailSrc(tenant);
-    const tenantName = tenant?.name || "Sistema de Viajes";
 
-    const resend = new Resend(apiKey);
-    const emailPayload: any = {
-      from: fromEmail,
-      to: [targetEmail],
-      ...(normalizedCc ? { cc: [normalizedCc] } : {}),
+    if (!tenant) {
+      throw new InternalServerErrorException("Tenant no encontrado para enviar email.");
+    }
+
+    const tenantName = tenant.name || "Sistema de Viajes";
+
+    // Enviar email usando EmailService centralizado
+    await this.emailService.sendEmail({
+      tenantId: tenant.id,
+      to: targetEmail,
+      ...(normalizedCc ? { cc: normalizedCc } : {}),
       subject: `💳 Nota de Crédito ${creditNote.creditNoteNumber} - ${tenantName}`,
-      html: `
-<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Nota de Crédito - ${tenantName}</title>
-</head>
-<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f3f4f6; line-height: 1.6;">
-  <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #f3f4f6;">
-    <tr>
-      <td align="center" style="padding: 40px 20px;">
-        <table role="presentation" style="max-width: 600px; width: 100%; border-collapse: collapse; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
-          
-          <!-- Header -->
-          <tr>
-            <td style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px 30px; text-align: center;">
-              ${logoSrc ? `<img src="${logoSrc}" alt="Viajes Alma Nova" style="max-width: 180px; height: auto; margin-bottom: 16px;" />` : ''}
-              <h1 style="margin: 0; color: #ffffff; font-size: 32px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;">
-                Viajes Alma Nova
-              </h1>
-              <p style="margin: 8px 0 0 0; color: #e9d5ff; font-size: 14px; font-weight: 500;">
-                Experiencias inolvidables, destinos únicos
-              </p>
-            </td>
-          </tr>
-
-          <!-- Status Badge -->
-          <tr>
-            <td style="padding: 30px 30px 0 30px; text-align: center;">
-              <div style="display: inline-block; background-color: #10b981; color: #ffffff; padding: 12px 24px; border-radius: 50px; font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">
-                💳 Nota de Crédito Aprobada
-              </div>
-            </td>
-          </tr>
-
-          <!-- Main Content -->
-          <tr>
-            <td style="padding: 30px;">
-              <h2 style="margin: 0 0 20px 0; color: #1f2937; font-size: 24px; font-weight: 600;">
-                Hola ${clientName},
-              </h2>
-              
-              <p style="margin: 0 0 20px 0; color: #4b5563; font-size: 16px; line-height: 1.6;">
-                Se ha aplicado una nota de crédito a tu contrato. Este ajuste se verá reflejado en tu saldo actual.
-              </p>
-
-              <!-- Info Card -->
-              <div style="background-color: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; margin: 20px 0;">
-                <table style="width: 100%; border-collapse: collapse;">
-                  <tr>
-                    <td style="padding: 8px 0; color: #6b7280; font-size: 14px;">Contrato:</td>
-                    <td style="padding: 8px 0; color: #1f2937; font-weight: 600; text-align: right;">${String(creditNote.contractNumber || "-")}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 8px 0; color: #6b7280; font-size: 14px;">Nota de Crédito:</td>
-                    <td style="padding: 8px 0; color: #1f2937; font-weight: 600; text-align: right;">${String(creditNote.creditNoteNumber || "-")}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 8px 0; color: #6b7280; font-size: 14px;">Monto:</td>
-                    <td style="padding: 8px 0; color: #10b981; font-weight: 700; font-size: 18px; text-align: right;">${amountFormatted}</td>
-                  </tr>
-                  <tr>
-                    <td colspan="2" style="padding: 12px 0 8px 0; border-top: 1px solid #e5e7eb;">
-                      <p style="margin: 0; color: #6b7280; font-size: 14px;"><strong>Motivo:</strong></p>
-                      <p style="margin: 4px 0 0 0; color: #1f2937; font-size: 14px; line-height: 1.5;">${reason}</p>
-                    </td>
-                  </tr>
-                </table>
-              </div>
-
-              <!-- Action Button -->
-              <div style="text-align: center; margin: 30px 0;">
-                <a href="${pdfUrl}" style="display: inline-block; background-color: #667eea; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: 600; font-size: 16px;">
-                  📄 Descargar Nota de Crédito PDF
-                </a>
-              </div>
-
-              <p style="margin: 20px 0 0 0; color: #6b7280; font-size: 14px; line-height: 1.6;">
-                Este documento ha sido generado automáticamente. Guárdalo para tus registros.
-              </p>
-            </td>
-          </tr>
-
-          <!-- Footer -->
-          <tr>
-            <td style="background-color: #f9fafb; padding: 30px; border-top: 1px solid #e5e7eb;">
-              <p style="margin: 0 0 8px 0; color: #1f2937; font-size: 15px; font-weight: 600;">
-                Atentamente,
-              </p>
-              <p style="margin: 0 0 20px 0; color: #667eea; font-size: 18px; font-weight: 700;">
-                Equipo Viajes Alma Nova
-              </p>
-              
-              <div style="border-top: 1px solid #e5e7eb; padding-top: 20px; margin-top: 20px;">
-                <p style="margin: 0 0 8px 0; color: #6b7280; font-size: 13px; line-height: 1.5;">
-                  <strong>Cédula Jurídica:</strong> 3-101-960028<br>
-                  <strong>Teléfono:</strong> +506 7006-7572<br>
-                  <strong>Email:</strong> contratos@viajesalmanova.com
-                </p>
-              </div>
-            </td>
-          </tr>
-
-        </table>
-        
-        <!-- Bottom Spacer -->
-        <p style="margin: 20px 0 0 0; color: #9ca3af; font-size: 11px; text-align: center;">
-          © ${new Date().getFullYear()} Viajes Alma Nova. Todos los derechos reservados.
-        </p>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>
-      `,
-      text: `Nota de Crédito Aprobada\n\nCliente: ${clientName}\nContrato: ${String(creditNote.contractNumber || "-")}\nNota de Crédito: ${String(creditNote.creditNoteNumber || "-")}\nMonto: ${amountFormatted}\nMotivo: ${reason}\n\nDescarga el PDF aquí: ${pdfUrl}\n\nViajes Alma Nova\nCédula Jurídica: 3-101-960028\nTeléfono: +506 7006-7572\nEmail: contratos@viajesalmanova.com`,
-    };
-
-    // Agregar reply-to si existe
-    if (replyTo) {
-      emailPayload.reply_to = replyTo;
-    }
-
-    this.logger.debug(`📧 [Billing] Enviando nota de crédito desde: ${fromEmail} (tenant: ${tenant?.name || 'Sistema'})`);
-    
-    await resend.emails.send(emailPayload);
+      template: 'credit-note-approved',
+      templateData: {
+        clientName,
+        contractNumber: String(creditNote.contractNumber || "-"),
+        creditNoteNumber: String(creditNote.creditNoteNumber || "-"),
+        amount: amountFormatted,
+        reason,
+        pdfUrl,
+        tenantName,
+      },
+      triggeredBy: {
+        userId: user.id,
+        email: user.email,
+        fullName: user.fullName,
+      },
+    });
 
     await this.logAudit({
       entityType: "CREDIT_NOTE",
@@ -2822,6 +2556,17 @@ contratos@viajesalmanova.com
       sentToEmail: targetEmail,
       ccEmail: normalizedCc || null,
     };
+
+    /* CÓDIGO ANTIGUO COMENTADO PARA ROLLBACK:
+    const apiKey = this.configService.get<string>("RESEND_API_KEY", "").trim();
+    const fallbackFromEmail = this.configService.get<string>("CONTRACTS_FROM_EMAIL", "").trim();
+    
+    if (!apiKey) {
+      throw new InternalServerErrorException("Falta configurar RESEND_API_KEY.");
+    }
+    ... (HTML inline omitido - ver templates/credit-note-approved.template.ts) ...
+    await resend.emails.send(emailPayload);
+    FIN CÓDIGO ANTIGUO */
   }
 
   async sendContractAccountStatementEmail(
@@ -2836,7 +2581,7 @@ contratos@viajesalmanova.com
       where: { contractId },
       include: {
         client: true,
-        contract: { include: { tenant: { select: { logoUrl: true, emailLogoUrl: true } } } },
+        contract: { include: { tenant: true } },
       },
     });
 
@@ -2851,28 +2596,16 @@ contratos@viajesalmanova.com
 
     const normalizedCc = String(ccEmail || "").trim();
 
-    const apiKey = this.configService.get<string>("RESEND_API_KEY", "").trim();
-    const fallbackFromEmail = this.configService.get<string>("CONTRACTS_FROM_EMAIL", "").trim();
-    
-    if (!apiKey) {
-      throw new InternalServerErrorException("Falta configurar RESEND_API_KEY.");
-    }
-
     const statementPdf = await this.getAccountStatementPdfUrl(user, contractId, 86_400);
     const documentUrl = statementPdf.url;
     const clientName = String(invoice.client?.fullName || "Cliente");
     const paymentRef = String(invoice.contract?.paymentReference || "N/A");
     const tenant = invoice.contract?.tenant || null;
-    
-    // Usar email del tenant solo si está verificado, sino fallback al sistema
-    const fromEmail = (tenant?.emailVerified && tenant?.fromEmail) ? tenant.fromEmail : fallbackFromEmail;
-    const replyTo = (tenant?.emailVerified && tenant?.replyToEmail) ? tenant.replyToEmail : undefined;
-    
-    if (!fromEmail) {
-      throw new InternalServerErrorException("No hay email configurado (ni en tenant ni en sistema).");
+
+    if (!tenant) {
+      throw new InternalServerErrorException("Tenant no encontrado para enviar email.");
     }
-    
-    const logoSrc = await this.loadCompanyLogoEmailSrc(tenant);
+
     const statusLabels: Record<string, string> = {
       FACTURA_EMITIDA: "Emitida",
       FACTURA_PARCIAL: "Parcial",
@@ -2883,167 +2616,33 @@ contratos@viajesalmanova.com
     const statusText = statusLabels[String(invoice.status || "").trim().toUpperCase()] || "En gestión";
     const currency = String(invoice.currency || "USD").trim().toUpperCase();
     const formatAmount = (value: unknown) => `${currency} ${this.toNumber(value, 0).toFixed(2)}`;
-    const totalAmount = formatAmount(invoice.totalAmount);
-    const verifiedAmount = formatAmount(invoice.verifiedAmount);
-    const pendingAmount = formatAmount(invoice.pendingAmount);
-    const balanceAmount = formatAmount(invoice.balanceAmount);
 
-    const resend = new Resend(apiKey);
-    const emailPayload: any = {
-      from: fromEmail,
-      to: [targetEmail],
-      ...(normalizedCc ? { cc: [normalizedCc] } : {}),
+    // Enviar email usando EmailService centralizado
+    await this.emailService.sendEmail({
+      tenantId: tenant.id,
+      to: targetEmail,
+      ...(normalizedCc ? { cc: normalizedCc } : {}),
       subject: `📄 Estado de Cuenta - Contrato ${invoice.contractNumber}`,
-      html: `
-<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Estado de Cuenta - Viajes Alma Nova</title>
-</head>
-<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f3f4f6; line-height: 1.6;">
-  <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #f3f4f6;">
-    <tr>
-      <td align="center" style="padding: 40px 20px;">
-        <table role="presentation" style="max-width: 600px; width: 100%; border-collapse: collapse; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
-          
-          <!-- Header -->
-          <tr>
-            <td style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px 30px; text-align: center;">
-              ${logoSrc ? `<img src="${logoSrc}" alt="Viajes Alma Nova" style="max-width: 180px; height: auto; margin-bottom: 16px;" />` : ''}
-              <h1 style="margin: 0; color: #ffffff; font-size: 32px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;">
-                Viajes Alma Nova
-              </h1>
-              <p style="margin: 8px 0 0 0; color: #e9d5ff; font-size: 14px; font-weight: 500;">
-                Experiencias inolvidables, destinos únicos
-              </p>
-            </td>
-          </tr>
-
-          <!-- Status Badge -->
-          <tr>
-            <td style="padding: 30px 30px 0 30px; text-align: center;">
-              <div style="display: inline-block; background-color: #3b82f6; color: #ffffff; padding: 12px 24px; border-radius: 50px; font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">
-                📄 Estado de Cuenta
-              </div>
-            </td>
-          </tr>
-
-          <!-- Main Content -->
-          <tr>
-            <td style="padding: 30px;">
-              <h2 style="margin: 0 0 20px 0; color: #1f2937; font-size: 24px; font-weight: 600;">
-                Hola ${clientName},
-              </h2>
-              
-              <p style="margin: 0 0 20px 0; color: #4b5563; font-size: 16px; line-height: 1.6;">
-                Aquí tienes el estado de cuenta actualizado de tu contrato con Viajes Alma Nova.
-              </p>
-
-              <!-- Contract Info -->
-              <div style="background-color: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; margin: 20px 0;">
-                <table style="width: 100%; border-collapse: collapse;">
-                  <tr>
-                    <td style="padding: 8px 0; color: #6b7280; font-size: 14px;">Contrato:</td>
-                    <td style="padding: 8px 0; color: #1f2937; font-weight: 600; text-align: right;">${String(invoice.contractNumber || "-")}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 8px 0; color: #6b7280; font-size: 14px;">Código de pago:</td>
-                    <td style="padding: 8px 0; color: #dc2626; font-weight: 700; font-size: 16px; text-align: right; font-family: monospace;">${paymentRef}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 8px 0; color: #6b7280; font-size: 14px;">Estado:</td>
-                    <td style="padding: 8px 0; color: #1f2937; font-weight: 600; text-align: right;">${statusText}</td>
-                  </tr>
-                </table>
-              </div>
-
-              <!-- Payment Code Notice -->
-              <div style="background-color: #fef2f2; border-left: 4px solid #ef4444; padding: 16px; border-radius: 4px; margin: 20px 0;">
-                <p style="margin: 0; color: #991b1b; font-size: 14px; line-height: 1.5;">
-                  <strong>⚠️ IMPORTANTE:</strong> Al realizar transferencias o depósitos, SIEMPRE incluye tu código de pago <strong>${paymentRef}</strong> para identificar tu abono automáticamente.
-                </p>
-              </div>
-
-              <!-- Amounts Summary -->
-              <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 8px; padding: 20px; margin: 20px 0;">
-                <table style="width: 100%; border-collapse: collapse;">
-                  <tr>
-                    <td style="padding: 10px 0; color: #e9d5ff; font-size: 14px; border-bottom: 1px solid rgba(255,255,255,0.2);">Total del contrato:</td>
-                    <td style="padding: 10px 0; color: #ffffff; font-weight: 700; font-size: 16px; text-align: right; border-bottom: 1px solid rgba(255,255,255,0.2);">${totalAmount}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 10px 0; color: #e9d5ff; font-size: 14px; border-bottom: 1px solid rgba(255,255,255,0.2);">Total verificado:</td>
-                    <td style="padding: 10px 0; color: #10b981; font-weight: 600; font-size: 16px; text-align: right; border-bottom: 1px solid rgba(255,255,255,0.2);">${verifiedAmount}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 10px 0; color: #e9d5ff; font-size: 14px; border-bottom: 1px solid rgba(255,255,255,0.2);">En revisión bancaria:</td>
-                    <td style="padding: 10px 0; color: #fbbf24; font-weight: 600; font-size: 16px; text-align: right; border-bottom: 1px solid rgba(255,255,255,0.2);">${pendingAmount}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 12px 0 0 0; color: #ffffff; font-size: 16px; font-weight: 600;">Saldo por cobrar:</td>
-                    <td style="padding: 12px 0 0 0; color: #ffffff; font-weight: 700; font-size: 20px; text-align: right;">${balanceAmount}</td>
-                  </tr>
-                </table>
-              </div>
-
-              <!-- Action Button -->
-              <div style="text-align: center; margin: 30px 0;">
-                <a href="${documentUrl}" style="display: inline-block; background-color: #667eea; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-weight: 600; font-size: 16px;">
-                  📄 Ver Estado de Cuenta Completo (PDF)
-                </a>
-              </div>
-
-              <p style="margin: 20px 0 0 0; color: #6b7280; font-size: 14px; line-height: 1.6;">
-                Este documento incluye el detalle completo de pagos, abonos y saldos. Si tienes alguna pregunta, no dudes en contactarnos.
-              </p>
-            </td>
-          </tr>
-
-          <!-- Footer -->
-          <tr>
-            <td style="background-color: #f9fafb; padding: 30px; border-top: 1px solid #e5e7eb;">
-              <p style="margin: 0 0 8px 0; color: #1f2937; font-size: 15px; font-weight: 600;">
-                Atentamente,
-              </p>
-              <p style="margin: 0 0 20px 0; color: #667eea; font-size: 18px; font-weight: 700;">
-                Equipo Viajes Alma Nova
-              </p>
-              
-              <div style="border-top: 1px solid #e5e7eb; padding-top: 20px; margin-top: 20px;">
-                <p style="margin: 0 0 8px 0; color: #6b7280; font-size: 13px; line-height: 1.5;">
-                  <strong>Cédula Jurídica:</strong> 3-101-960028<br>
-                  <strong>Teléfono:</strong> +506 7006-7572<br>
-                  <strong>Email:</strong> contratos@viajesalmanova.com
-                </p>
-              </div>
-            </td>
-          </tr>
-
-        </table>
-        
-        <!-- Bottom Spacer -->
-        <p style="margin: 20px 0 0 0; color: #9ca3af; font-size: 11px; text-align: center;">
-          © ${new Date().getFullYear()} Viajes Alma Nova. Todos los derechos reservados.
-        </p>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>
-      `,
-      text: `Estado de Cuenta del Contrato\n\nCliente: ${clientName}\nContrato: ${String(invoice.contractNumber || "-")}\nEstado: ${statusText}\n\nRESUMEN DE MONTOS:\nTotal del contrato: ${totalAmount}\nTotal verificado: ${verifiedAmount}\nEn revisión bancaria: ${pendingAmount}\nSaldo por cobrar: ${balanceAmount}\n\nVer estado de cuenta completo (PDF): ${documentUrl}\n\nViajes Alma Nova\nCédula Jurídica: 3-101-960028\nTeléfono: +506 7006-7572\nEmail: contratos@viajesalmanova.com`,
-    };
-
-    // Agregar reply-to si existe
-    if (replyTo) {
-      emailPayload.reply_to = replyTo;
-    }
-
-    this.logger.debug(`📧 [Billing] Enviando estado de cuenta desde: ${fromEmail} (tenant: ${tenant?.name || 'Sistema'})`);
-    
-    await resend.emails.send(emailPayload);
+      template: 'contract-account-statement',
+      templateData: {
+        clientName,
+        contractNumber: String(invoice.contractNumber || "-"),
+        paymentReference: paymentRef,
+        status: statusText,
+        currency,
+        totalAmount: formatAmount(invoice.totalAmount),
+        verifiedAmount: formatAmount(invoice.verifiedAmount),
+        pendingAmount: formatAmount(invoice.pendingAmount),
+        balanceAmount: formatAmount(invoice.balanceAmount),
+        documentUrl,
+        tenantName: tenant.name,
+      },
+      triggeredBy: {
+        userId: user.id,
+        email: user.email,
+        fullName: user.fullName,
+      },
+    });
 
     await this.logAudit({
       entityType: "INVOICE",
@@ -3069,6 +2668,13 @@ contratos@viajesalmanova.com
       sentToEmail: targetEmail,
       ccEmail: normalizedCc || null,
     };
+
+    /* CÓDIGO ANTIGUO COMENTADO PARA ROLLBACK:
+    const apiKey = this.configService.get<string>("RESEND_API_KEY", "").trim();
+    const fallbackFromEmail = this.configService.get<string>("CONTRACTS_FROM_EMAIL", "").trim();
+    ... (HTML inline omitido - ver templates/contract-account-statement.template.ts) ...
+    await resend.emails.send(emailPayload);
+    FIN CÓDIGO ANTIGUO */
   }
 
   async bootstrapContractBilling(
@@ -3107,6 +2713,7 @@ contratos@viajesalmanova.com
       data: {
         contractId: contract.id,
         clientId: contract.clientId,
+        tenantId: contract.tenantId,
         contractNumber: contract.contractNumber,
         invoiceNumber: `FAC-${contract.contractNumber}`,
         currency: "USD",
@@ -3146,6 +2753,7 @@ contratos@viajesalmanova.com
         data: {
           invoiceId: invoice.id,
           contractId: contract.id,
+          tenantId: contract.tenantId,
           type: "RESERVATION",
           amount: this.toDecimalString(reservationAmount),
           currency: "USD",
@@ -3163,6 +2771,7 @@ contratos@viajesalmanova.com
           paymentId: payment.id,
           invoiceId: invoice.id,
           contractId: contract.id,
+          tenantId: contract.tenantId,
           contractNumber: contract.contractNumber,
           receiptNumber: await this.buildReceiptNumber(),
           amount: this.toDecimalString(reservationAmount),
@@ -4128,6 +3737,7 @@ contratos@viajesalmanova.com
       data: {
         invoiceId: invoice.id,
         contractId,
+        tenantId: invoice.tenantId,
         type: dto.type,
         amount: this.toDecimalString(amount),
         currency: invoice.currency,
@@ -4149,6 +3759,7 @@ contratos@viajesalmanova.com
         paymentId: payment.id,
         invoiceId: invoice.id,
         contractId,
+        tenantId: invoice.tenantId,
         contractNumber: invoice.contractNumber,
         receiptNumber: await this.buildReceiptNumber(),
         amount: this.toDecimalString(amount),
@@ -4392,7 +4003,13 @@ contratos@viajesalmanova.com
       try {
         const contract = await (this.prisma as any).contract.findUnique({
           where: { id: payment.invoice.contractId },
-          select: { id: true, status: true },
+          select: { 
+            id: true, 
+            status: true, 
+            travelPackageId: true, 
+            participantCount: true,
+            tenantId: true 
+          },
         });
 
         if (contract && ["PENDING_PAYMENT_RESERVE", "RESERVE_IN_REVIEW"].includes(String(contract.status || ""))) {
@@ -4401,11 +4018,71 @@ contratos@viajesalmanova.com
             data: { status: "PENDING_SIGNATURE" },
           });
           this.logger.log(`[verifyPayment] ✅ Contrato ${contract.id} habilitado para firma tras pago de reserva aprobado.`);
+
+          // Incrementar occupiedSlots del paquete de viaje
+          if (contract.travelPackageId) {
+            try {
+              await this.travelPackagesService.incrementOccupiedSlots(
+                contract.travelPackageId,
+                contract.participantCount || 1,
+                contract.tenantId,
+              );
+              this.logger.log(
+                `[verifyPayment] ✅ Incrementados ${contract.participantCount || 1} cupos en paquete ${contract.travelPackageId}`
+              );
+            } catch (incrementError) {
+              this.logger.error(
+                `[verifyPayment] ⚠️ No se pudo incrementar occupiedSlots: ${incrementError instanceof Error ? incrementError.message : String(incrementError)}`
+              );
+              // No revertir la aprobación si falla el incremento
+            }
+          }
         }
       } catch (contractUpdateError) {
         this.logger.error(
           `[verifyPayment] ⚠️ No se pudo actualizar el status del contrato: ${contractUpdateError instanceof Error ? contractUpdateError.message : String(contractUpdateError)}`,
         );
+      }
+    }
+
+    // Si el pago es para un viaje interno, incrementar occupiedSlots cuando se pague completamente
+    if (String(payment.type || "") === "INTERNAL_TOUR" && payment.internalTourBookingId) {
+      try {
+        const booking = await (this.prisma as any).internalTourBooking.findUnique({
+          where: { id: payment.internalTourBookingId },
+          select: {
+            id: true,
+            internalTripId: true,
+            participantCount: true,
+            totalAmount: true,
+            paidAmount: true,
+            status: true,
+            tenantId: true,
+          },
+        });
+
+        if (booking) {
+          // Recalcular monto pagado sumando este pago recién aprobado
+          const newPaidAmount = this.toNumber(booking.paidAmount) + this.toNumber(payment.amount);
+          const totalAmount = this.toNumber(booking.totalAmount);
+
+          // Si ahora está completamente pagado y antes no lo estaba, incrementar occupiedSlots
+          if (newPaidAmount >= totalAmount && booking.status !== 'PAID') {
+            await this.internalToursService.incrementOccupiedSlots(
+              booking.internalTripId,
+              booking.participantCount || 1,
+              booking.tenantId,
+            );
+            this.logger.log(
+              `[verifyPayment] ✅ Incrementados ${booking.participantCount || 1} cupos en viaje interno ${booking.internalTripId}`
+            );
+          }
+        }
+      } catch (internalTripError) {
+        this.logger.error(
+          `[verifyPayment] ⚠️ No se pudo incrementar occupiedSlots del viaje interno: ${internalTripError instanceof Error ? internalTripError.message : String(internalTripError)}`
+        );
+        // No revertir la aprobación si falla el incremento
       }
     }
 
@@ -4594,6 +4271,7 @@ contratos@viajesalmanova.com
         creditNoteNumber: this.buildCreditNoteNumber(invoice.contractNumber),
         contractId,
         invoiceId: invoice.id,
+        tenantId: invoice.tenantId,
         contractNumber: invoice.contractNumber,
         reason: normalizedReason,
         amount: this.toDecimalString(amount),
@@ -4871,7 +4549,7 @@ contratos@viajesalmanova.com
         invoice: {
           include: {
             client: true,
-            contract: { include: { tenant: { select: { logoUrl: true, emailLogoUrl: true } } } },
+            contract: { include: { tenant: true } },
           },
         },
       },
@@ -4903,10 +4581,9 @@ contratos@viajesalmanova.com
     }
     const normalizedCc = String(ccEmail || "").trim();
 
-    const apiKey = this.configService.get<string>("RESEND_API_KEY", "").trim();
-    const fallbackFromEmail = this.configService.get<string>("CONTRACTS_FROM_EMAIL", "").trim();
-    if (!apiKey) {
-      throw new InternalServerErrorException("Falta configurar RESEND_API_KEY.");
+    const tenant = receipt.invoice?.contract?.tenant || null;
+    if (!tenant) {
+      throw new InternalServerErrorException("Tenant no encontrado para enviar email.");
     }
 
     const amount = this.toNumber(receipt.amount, 0);
@@ -4929,174 +4606,31 @@ contratos@viajesalmanova.com
     const previousBalanceFormatted = `USD ${previousBalance.toFixed(2)}`;
     const newBalanceFormatted = `USD ${newBalance.toFixed(2)}`;
     const paymentRef = String(receipt.invoice?.contract?.paymentReference || "N/A");
-    const tenant = receipt.invoice?.contract?.tenant || null;
-    const logoSrc = await this.loadCompanyLogoEmailSrc(tenant);
-    
-    // Usar email del tenant solo si está verificado, sino fallback al sistema
-    const fromEmail = (tenant?.emailVerified && tenant?.fromEmail) ? tenant.fromEmail : fallbackFromEmail;
-    const replyTo = (tenant?.emailVerified && tenant?.replyToEmail) ? tenant.replyToEmail : undefined;
-    
-    if (!fromEmail) {
-      throw new InternalServerErrorException("No hay email configurado (ni en tenant ni en sistema).");
-    }
 
-    const resend = new Resend(apiKey);
-    await resend.emails.send({
-      from: fromEmail,
-      ...(replyTo ? { reply_to: replyTo } : {}),
-      to: [targetEmail],
-      ...(normalizedCc ? { cc: [normalizedCc] } : {}),
-      subject: `✅ Recibo Aprobado ${receipt.receiptNumber} - Viajes Alma Nova`,
-      html: `
-<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Recibo Aprobado - Viajes Alma Nova</title>
-</head>
-<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f3f4f6; line-height: 1.6;">
-  <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #f3f4f6;">
-    <tr>
-      <td align="center" style="padding: 40px 20px;">
-        <table role="presentation" style="max-width: 600px; width: 100%; border-collapse: collapse; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
-          
-          <!-- Header -->
-          <tr>
-            <td style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px 30px; text-align: center;">
-              ${logoSrc ? `<img src="${logoSrc}" alt="Viajes Alma Nova" style="max-width: 180px; height: auto; margin-bottom: 16px;" />` : ''}
-              <h1 style="margin: 0; color: #ffffff; font-size: 32px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;">
-                Viajes Alma Nova
-              </h1>
-              <p style="margin: 8px 0 0 0; color: #e9d5ff; font-size: 14px; font-weight: 500;">
-                Experiencias inolvidables, destinos únicos
-              </p>
-            </td>
-          </tr>
-
-          <!-- Status Badge -->
-          <tr>
-            <td style="padding: 30px 30px 0 30px; text-align: center;">
-              <div style="display: inline-block; background-color: #10b981; color: #ffffff; padding: 12px 24px; border-radius: 50px; font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">
-                ✅ Recibo Aprobado
-              </div>
-            </td>
-          </tr>
-
-          <!-- Main Content -->
-          <tr>
-            <td style="padding: 30px;">
-              <h2 style="margin: 0 0 20px 0; color: #1f2937; font-size: 24px; font-weight: 600;">
-                Hola ${clientName},
-              </h2>
-              
-              <p style="margin: 0 0 20px 0; color: #4b5563; font-size: 16px; line-height: 1.6;">
-                ¡Excelentes noticias! Tu pago ha sido verificado y aprobado. El monto ha sido aplicado a tu contrato.
-              </p>
-
-              <!-- Payment Info Card -->
-              <div style="background-color: #f0fdf4; border: 2px solid #10b981; border-radius: 8px; padding: 20px; margin: 20px 0;">
-                <table style="width: 100%; border-collapse: collapse;">
-                  <tr>
-                    <td style="padding: 8px 0; color: #065f46; font-size: 14px;">Contrato:</td>
-                    <td style="padding: 8px 0; color: #1f2937; font-weight: 600; text-align: right;">${String(receipt.contractNumber || "-")}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 8px 0; color: #065f46; font-size: 14px;">Código de pago:</td>
-                    <td style="padding: 8px 0; color: #dc2626; font-weight: 700; font-size: 16px; text-align: right; font-family: monospace;">${paymentRef}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 8px 0; color: #065f46; font-size: 14px;">Recibo:</td>
-                    <td style="padding: 8px 0; color: #1f2937; font-weight: 600; text-align: right;">${String(receipt.receiptNumber || "-")}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 8px 0; color: #065f46; font-size: 14px;">Monto pagado:</td>
-                    <td style="padding: 8px 0; color: #10b981; font-weight: 700; font-size: 18px; text-align: right;">${amountFormatted}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 8px 0; color: #065f46; font-size: 14px;">Estado:</td>
-                    <td style="padding: 8px 0; color: #10b981; font-weight: 600; text-align: right;">✅ Verificado y Aprobado</td>
-                  </tr>
-                </table>
-              </div>
-
-              <!-- Balance Summary Card -->
-              <div style="background-color: #eff6ff; border: 2px solid #3b82f6; border-radius: 8px; padding: 20px; margin: 20px 0;">
-                <h3 style="margin: 0 0 16px 0; color: #1e40af; font-size: 16px; font-weight: 600;">💰 Resumen de Saldo</h3>
-                <table style="width: 100%; border-collapse: collapse;">
-                  <tr style="border-bottom: 1px solid #cbd5e1;">
-                    <td style="padding: 10px 0; color: #1e293b; font-size: 14px;">Saldo Anterior:</td>
-                    <td style="padding: 10px 0; color: #1e293b; font-weight: 600; text-align: right; font-size: 15px;">${previousBalanceFormatted}</td>
-                  </tr>
-                  <tr style="border-bottom: 1px solid #cbd5e1;">
-                    <td style="padding: 10px 0; color: #059669; font-size: 14px;">Pago Aplicado:</td>
-                    <td style="padding: 10px 0; color: #059669; font-weight: 700; text-align: right; font-size: 15px;">- ${amountFormatted}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 12px 0 0 0; color: #1e40af; font-size: 15px; font-weight: 700;">Saldo Pendiente:</td>
-                    <td style="padding: 12px 0 0 0; color: ${newBalance > 0 ? '#dc2626' : '#059669'}; font-weight: 700; text-align: right; font-size: 18px;">${newBalanceFormatted}</td>
-                  </tr>
-                </table>
-              </div>
-
-              <!-- Payment Code Notice -->
-              <div style="background-color: #fef2f2; border-left: 4px solid #ef4444; padding: 16px; border-radius: 4px; margin: 20px 0;">
-                <p style="margin: 0; color: #991b1b; font-size: 14px; line-height: 1.5;">
-                  <strong>⚠️ Recuerda:</strong> Para futuros pagos, SIEMPRE incluye tu código <strong>${paymentRef}</strong> al hacer transferencias o depósitos.
-                </p>
-              </div>
-
-              <!-- Action Buttons -->
-              <div style="text-align: center; margin: 30px 0;">
-                <a href="${receiptPdfUrl}" style="display: inline-block; background-color: #667eea; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600; font-size: 15px; margin: 0 8px 12px 8px;">
-                  📄 Ver Recibo
-                </a>
-                ${accountStatementUrl ? `
-                <a href="${accountStatementUrl}" style="display: inline-block; background-color: #10b981; color: #ffffff; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: 600; font-size: 15px; margin: 0 8px 12px 8px;">
-                  📊 Ver Estado de Cuenta
-                </a>
-                ` : ''}
-              </div>
-
-              <p style="margin: 20px 0 0 0; color: #6b7280; font-size: 14px; line-height: 1.6;">
-                Este recibo confirma que tu pago ha sido verificado contra nuestros registros bancarios. El estado de cuenta muestra el historial completo de movimientos.
-              </p>
-            </td>
-          </tr>
-
-          <!-- Footer -->
-          <tr>
-            <td style="background-color: #f9fafb; padding: 30px; border-top: 1px solid #e5e7eb;">
-              <p style="margin: 0 0 8px 0; color: #1f2937; font-size: 15px; font-weight: 600;">
-                Atentamente,
-              </p>
-              <p style="margin: 0 0 20px 0; color: #667eea; font-size: 18px; font-weight: 700;">
-                Equipo Viajes Alma Nova
-              </p>
-              
-              <div style="border-top: 1px solid #e5e7eb; padding-top: 20px; margin-top: 20px;">
-                <p style="margin: 0 0 8px 0; color: #6b7280; font-size: 13px; line-height: 1.5;">
-                  <strong>Cédula Jurídica:</strong> 3-101-960028<br>
-                  <strong>Teléfono:</strong> +506 7006-7572<br>
-                  <strong>Email:</strong> contratos@viajesalmanova.com
-                </p>
-              </div>
-            </td>
-          </tr>
-
-        </table>
-        
-        <!-- Bottom Spacer -->
-        <p style="margin: 20px 0 0 0; color: #9ca3af; font-size: 11px; text-align: center;">
-          © ${new Date().getFullYear()} Viajes Alma Nova. Todos los derechos reservados.
-        </p>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>
-      `,
-      text: `Recibo Aprobado\n\nCliente: ${clientName}\nContrato: ${String(receipt.contractNumber || "-")}\nRecibo: ${String(receipt.receiptNumber || "-")}\nMonto pagado: ${amountFormatted}\nEstado: Verificado y Aprobado\n\nTu pago ha sido verificado contra nuestros registros bancarios y aplicado a tu contrato.\n\nDescarga el recibo PDF aquí: ${receiptPdfUrl}\n\nViajes Alma Nova\nCédula Jurídica: 3-101-960028\nTeléfono: +506 7006-7572\nEmail: contratos@viajesalmanova.com`,
+    // Enviar email usando EmailService centralizado
+    await this.emailService.sendEmail({
+      tenantId: tenant.id,
+      to: targetEmail,
+      ...(normalizedCc ? { cc: normalizedCc } : {}),
+      subject: `✅ Recibo Aprobado ${receipt.receiptNumber} - ${tenant.name}`,
+      template: 'receipt-approved',
+      templateData: {
+        clientName,
+        contractNumber: String(receipt.contractNumber || "-"),
+        receiptNumber: String(receipt.receiptNumber || "-"),
+        paymentReference: paymentRef,
+        amount: amountFormatted,
+        previousBalance: previousBalanceFormatted,
+        newBalance: newBalanceFormatted,
+        receiptPdfUrl,
+        accountStatementUrl: accountStatementUrl || undefined,
+        tenantName: tenant.name,
+      },
+      triggeredBy: {
+        userId: user.id,
+        email: user.email,
+        fullName: user.fullName,
+      },
     });
 
     const now = new Date();
@@ -5138,6 +4672,13 @@ contratos@viajesalmanova.com
       sentToEmail: updated.sentToEmail,
       ccEmail: normalizedCc || null,
     };
+
+    /* CÓDIGO ANTIGUO COMENTADO PARA ROLLBACK:
+    const logoSrc = await this.loadCompanyLogoEmailSrc(tenant);
+    const resend = new Resend(apiKey);
+    await resend.emails.send({ ... html inline ...});
+    ... (HTML inline omitido - ver templates/receipt-approved.template.ts) ...
+    FIN CÓDIGO ANTIGUO */
   }
 
   async getPendingPaymentsCount(): Promise<number> {

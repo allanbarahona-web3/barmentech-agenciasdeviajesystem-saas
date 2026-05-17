@@ -103,7 +103,7 @@ async function bootstrap() {
   app.use(helmet());
 
   app.enableCors({
-    origin: async (origin, callback) => {
+    origin: async (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
       // Requests without Origin (curl/postman/server-to-server) are allowed.
       if (!origin) {
         callback(null, true);

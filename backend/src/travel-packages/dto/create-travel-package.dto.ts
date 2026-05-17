@@ -29,8 +29,13 @@ export class CreateTravelPackageDto {
   priceCurrency?: string = 'USD';
 
   @IsOptional()
-  @IsEnum(['OPEN', 'CLOSED', 'CANCELLED'], {
-    message: 'status must be OPEN, CLOSED, or CANCELLED',
+  @IsEnum(['OPEN', 'CLOSED', 'CANCELLED', 'COMPLETED'], {
+    message: 'status must be OPEN, CLOSED, CANCELLED, or COMPLETED',
   })
   status?: string = 'OPEN';
+
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  minReservation?: number; // Monto de reserva mínima (opcional)
 }

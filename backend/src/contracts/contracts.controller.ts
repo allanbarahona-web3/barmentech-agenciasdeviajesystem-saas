@@ -86,7 +86,7 @@ export class ContractsController {
   saveDraft(
     @Req()
     req: {
-      user: { id: string; email: string; fullName: string };
+      user: { id: string; email: string; fullName: string; tenantId: string };
     },
     @Body() dto: SaveContractDraftDto,
   ) {

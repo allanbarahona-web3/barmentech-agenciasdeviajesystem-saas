@@ -18,6 +18,20 @@ import { exchangeRateHistoryTemplate } from './templates';
 import { welcomeUserTemplate } from './templates/welcome-user.template';
 import { passwordResetTemplate } from './templates/password-reset.template';
 import { passwordResetByAdminTemplate } from './templates/password-reset-by-admin.template';
+import { creditNoteApprovedTemplate } from './templates/credit-note-approved.template';
+import { contractAccountStatementTemplate } from './templates/contract-account-statement.template';
+import { receiptApprovedTemplate } from './templates/receipt-approved.template';
+import { invoiceInitialTemplate } from './templates/invoice-initial.template';
+
+// Contract templates
+import { contractPdfAttachmentTemplate } from './templates/contract-pdf-attachment.template';
+import { contractSigningLinkTemplate } from './templates/contract-signing-link.template';
+import { contractSignedConfirmationTemplate } from './templates/contract-signed-confirmation.template';
+
+// Internal Tourism templates
+import { bookingConfirmationTemplate } from './templates/booking-confirmation.template';
+import { paymentReceivedTemplate } from './templates/payment-received.template';
+import { tripCancelledNotificationTemplate } from './templates/trip-cancelled.template';
 
 @Injectable()
 export class EmailService {
@@ -362,7 +376,35 @@ export class EmailService {
       case 'password-reset-by-admin':
         return passwordResetByAdminTemplate(data as any);
 
-      // Agregar más templates aquí
+      case 'credit-note-approved':
+        return creditNoteApprovedTemplate(data as any);
+
+      case 'contract-account-statement':
+        return contractAccountStatementTemplate(data as any);
+
+      case 'receipt-approved':
+        return receiptApprovedTemplate(data as any);
+
+      case 'invoice-initial':
+        return invoiceInitialTemplate(data as any);
+
+      case 'contract-pdf-attachment':
+        return contractPdfAttachmentTemplate(data as any);
+
+      case 'contract-signing-link':
+        return contractSigningLinkTemplate(data as any);
+
+      case 'contract-signed-confirmation':
+        return contractSignedConfirmationTemplate(data as any);
+
+      case 'booking-confirmation':
+        return bookingConfirmationTemplate(data as any);
+
+      case 'payment-received':
+        return paymentReceivedTemplate(data as any);
+
+      case 'trip-cancelled':
+        return tripCancelledNotificationTemplate(data as any);
 
       default:
         throw new InternalServerErrorException(

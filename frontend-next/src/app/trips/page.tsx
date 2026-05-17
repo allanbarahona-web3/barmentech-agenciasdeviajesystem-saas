@@ -37,8 +37,8 @@ const getStatusBadge = (status: string) => {
     case "CLOSED":
       return { label: "🔴 LLENO", bg: "#fee2e2", color: "#991b1b" };
     case "CANCELLED":
-      return { label: "⚫ CANCELADO", bg: "#f3f4f6", color: "#374151" };
-    default:
+      return { label: "⚫ CANCELADO", bg: "#f3f4f6", color: "#374151" };    case "COMPLETED":
+      return { label: "🏁 FINALIZADO", bg: "#e0e7ff", color: "#3730a3" };    default:
       return { label: status, bg: "#f3f4f6", color: "#6b7280" };
   }
 };
@@ -233,12 +233,22 @@ export default function TripsPage() {
                   </div>
 
                   {/* Precio */}
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 16 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
                     <span style={{ fontSize: "1rem" }}>💰</span>
                     <span style={{ color: "#111827", fontSize: "1rem", fontWeight: 600 }}>
                       {formatPrice(pkg.packagePrice, pkg.priceCurrency)}
                     </span>
                   </div>
+
+                  {/* Monto de Reserva */}
+                  {pkg.minReservation && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 16 }}>
+                      <span style={{ fontSize: "1rem" }}>🏷️</span>
+                      <span style={{ color: "#059669", fontSize: "0.9rem", fontWeight: 600 }}>
+                        Reserva: {formatPrice(pkg.minReservation, pkg.priceCurrency)}
+                      </span>
+                    </div>
+                  )}
 
                   {/* Barra de progreso */}
                   <div style={{ marginBottom: 12 }}>

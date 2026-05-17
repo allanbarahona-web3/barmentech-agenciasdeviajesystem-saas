@@ -35,6 +35,8 @@ export interface ResolvedTenant {
   representativeMaritalStatus: string | null;
   representativeAddress: string | null;
   representativePowers: string | null;
+  // Currency settings for internal tours
+  preferredCurrency: string;
 }
 
 @Injectable()

@@ -38,6 +38,15 @@ enum EmployeeDocumentType {
   OTRO // Otros documentos
 }
 
+enum TransportType {
+  AIR      // Avión
+  BUS      // Autobús
+  PRIVATE  // Vehículo privado
+  CRUISE   // Crucero
+  WALKING  // A pie
+  MIXED    // Combinado
+}
+
 // ========================================
 // MULTI-TENANT MODEL
 // ========================================
@@ -93,6 +102,9 @@ model Tenant {
   representativeAddress       String? // "Cartago"
   representativePowers        String? // "apoderado generalísimo sin límite de suma"
 
+  // Configuración de moneda para viajes internos
+  preferredCurrency String @default("CRC") @map("preferred_currency") // Moneda preferida para viajes internos
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -114,6 +126,9 @@ model Tenant {
   clientPortalUsers     ClientPortalUser[] // Usuarios del portal de clientes
   employees             Employee[]
   employeeDocuments     EmployeeDocument[]
+  internalTrips         InternalTrip[] // Viajes internos (turismo doméstico)
+  internalBookings      InternalTourBooking[] // Reservas de viajes internos
+  internalInvoices      InternalTourInvoice[] // Facturas de viajes internos
 
   @@map("tenants")
 }
@@ -215,6 +230,7 @@ enum ContractSource {
   MIGRATION // [MG] Migrado manualmente (sin viaje asociado)
   CUSTOM_TRIP // [PS] Personalizado (futuro: viaje a medida)
   QUOTE // [CT] Desde cotización (futuro)
+  INTERNAL_TRIP // [IT] Viaje interno/doméstico (turismo nacional)
 }
 
 model Contract {
@@ -248,7 +264,8 @@ model Contract {
   cancelledAt           DateTime?
   signaturePngObjectKey String?
   contractType          String         @default("CUSTOM") // CUSTOM | SCHEDULED
-  travelPackageId       String? // FK opcional a TravelPackage
+  travelPackageId       String? // FK opcional a TravelPackage (internacional)
+  internalTripId        String? // FK opcional a InternalTrip (doméstico)
   participantCount      Int            @default(1) // titular + acompañantes
   source                ContractSource @default(SCHEDULED_TRIP) // Origen del contrato
   createdAt             DateTime       @default(now())
@@ -260,6 +277,7 @@ model Contract {
 
   client             Client                   @relation(fields: [clientId], references: [id], onDelete: Restrict)
   travelPackage      TravelPackage?           @relation(fields: [travelPackageId], references: [id], onDelete: SetNull)
+  internalTrip       InternalTrip?            @relation(fields: [internalTripId], references: [id], onDelete: SetNull)
   documents          ContractDocument[]
   signatureEvents    ContractSignatureEvent[]
   usedTokens         ContractUsedToken[]
@@ -270,6 +288,7 @@ model Contract {
 
   @@index([clientId])
   @@index([travelPackageId])
+  @@index([internalTripId])
   @@index([contractType])
   @@index([createdAt])
   @@index([tenantId])
@@ -304,7 +323,7 @@ model ContractDraft {
 model Client {
   id                    String   @id @default(cuid())
   fullName              String
-  idNumber              String   @unique
+  idNumber              String
   email                 String
   phone                 String?
   emergencyContactName  String?
@@ -320,7 +339,9 @@ model Client {
   billingInvoices      BillingInvoice[]
   billingClientBalance BillingClientBalance?
   portalUsers          ClientPortalUser[] // Usuarios del portal para este cliente
+  internalBookings     InternalTourBooking[] // Reservas de viajes internos
 
+  @@unique([idNumber, tenantId])
   @@index([fullName])
   @@index([email])
   @@index([tenantId])
@@ -419,45 +440,48 @@ model BillingInvoice {
 }
 
 model BillingPayment {
-  id                   String    @id @default(cuid())
-  invoiceId            String
-  contractId           String
-  type                 String    @default("OTHER")
-  amount               Decimal   @db.Decimal(14, 2)
-  currency             String    @default("CRC")
-  reportedAt           DateTime  @default(now())
-  status               String    @default("ABONO_REPORTADO")
-  bankReference        String?
-  payerName            String?
-  notes                String?
+  id                      String    @id @default(cuid())
+  invoiceId               String
+  contractId              String?                        // NULL si es turismo interno
+  internalTourBookingId   String?                        // NULL si es contrato
+  type                    String    @default("OTHER")
+  amount                  Decimal   @db.Decimal(14, 2)
+  currency                String    @default("CRC")
+  reportedAt              DateTime  @default(now())
+  status                  String    @default("ABONO_REPORTADO")
+  bankReference           String?
+  payerName               String?
+  notes                   String?
   // Nuevos campos para procesamiento de comprobantes
-  originBank           String? // Banco desde donde se hizo el pago
-  destinationBank      String? // Banco destino (derivado de la cuenta)
-  destinationAccountId String? // Referencia a CompanyBankAccount
-  paymentCode          String? // Código único de pago (LUC-XXXXX)
-  receiptDate          DateTime? // Fecha del comprobante (puede diferir de reportedAt)
-  verifiedAt           DateTime?
-  verifiedByUserId     String?
-  verifiedByName       String?
-  rejectionReason      String?
-  createdByUserId      String
-  createdByName        String
-  createdAt            DateTime  @default(now())
-  updatedAt            DateTime  @updatedAt
+  originBank              String? // Banco desde donde se hizo el pago
+  destinationBank         String? // Banco destino (derivado de la cuenta)
+  destinationAccountId    String? // Referencia a CompanyBankAccount
+  paymentCode             String? // Código único de pago (LUC-XXXXX)
+  receiptDate             DateTime? // Fecha del comprobante (puede diferir de reportedAt)
+  verifiedAt              DateTime?
+  verifiedByUserId        String?
+  verifiedByName          String?
+  rejectionReason         String?
+  createdByUserId         String
+  createdByName           String
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
 
   // Multi-tenant
   tenantId String
   tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
-  invoice            BillingInvoice             @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
-  contract           Contract                   @relation(fields: [contractId], references: [id], onDelete: Restrict)
-  destinationAccount CompanyBankAccount?        @relation(fields: [destinationAccountId], references: [id], onDelete: Restrict)
+  invoice            BillingInvoice                @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  contract           Contract?                      @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  internalBooking    InternalTourBooking?           @relation(fields: [internalTourBookingId], references: [id], onDelete: Cascade)
+  destinationAccount CompanyBankAccount?            @relation(fields: [destinationAccountId], references: [id], onDelete: Restrict)
   attachments        BillingPaymentAttachment[]
   receipt            BillingReceipt?
   receiptImage       PaymentReceiptImage?
 
   @@index([invoiceId])
   @@index([contractId])
+  @@index([internalTourBookingId])
   @@index([destinationAccountId])
   @@index([paymentCode])
   @@index([status])
@@ -684,9 +708,10 @@ model TravelPackage {
   returnDate      DateTime
   capacity        Int // Cupo máximo
   occupiedSlots   Int      @default(0) // Personas actualmente asignadas
-  status          String   @default("OPEN") // OPEN | CLOSED | CANCELLED
+  status          String   @default("OPEN") // OPEN | CLOSED | CANCELLED | COMPLETED
   packagePrice    Decimal? @db.Decimal(14, 2) // Precio del paquete (manual por ahora, futuro: calculado)
   priceCurrency   String   @default("USD") // USD | CRC
+  minReservation  Decimal? @db.Decimal(14, 2) // Monto mínimo de reserva (opcional)
   createdByUserId String
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -780,4 +805,131 @@ model EmployeeDocument {
   @@index([documentType])
   @@index([uploadedAt])
   @@map("employee_documents")
+}
+
+// ========================================
+// INTERNAL TOURISM MODELS (Turismo Doméstico)
+// ========================================
+
+model InternalTrip {
+  id              String   @id @default(cuid())
+  tripCode        String   @unique              // "IT-2026-05"
+  name            String                        // "Viaje a Arenal"
+  destination     String                        // "La Fortuna, Arenal"
+  description     String?
+  
+  departureDate   DateTime
+  returnDate      DateTime
+  departureTime   String?                       // "08:00"
+  returnTime      String?                       // "18:00"
+  
+  capacity        Int
+  occupiedSlots   Int      @default(0)
+  
+  price           Decimal  @db.Decimal(12, 2)
+  currency        String                        // Moneda del viaje
+  minReservation  Decimal? @db.Decimal(12, 2)  // Monto de reserva mínima (opcional)
+  
+  transportType   TransportType                 // BUS | PRIVATE | WALKING | MIXED
+  itinerary       String                        // HTML o texto con actividades
+  
+  status          String   @default("OPEN")     // OPEN | CLOSED | CANCELLED | COMPLETED
+  
+  createdByUserId String
+  createdByName   String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  // Multi-tenant
+  tenantId        String
+  tenant          Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  // Relaciones
+  bookings        InternalTourBooking[]
+  contracts       Contract[]              // Reservas convertidas a contratos
+  
+  @@index([departureDate])
+  @@index([tenantId])
+  @@index([status])
+  @@index([tripCode])
+  @@map("internal_trips")
+}
+
+model InternalTourBooking {
+  id              String   @id @default(cuid())
+  bookingCode     String   @unique              // "IT-2026-05-001"
+  
+  // Trip reference
+  internalTripId  String
+  internalTrip    InternalTrip @relation(fields: [internalTripId], references: [id], onDelete: Restrict)
+  
+  // Client reference
+  clientId        String
+  client          Client @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  
+  // Booking details
+  participantCount Int
+  totalAmount     Decimal   @db.Decimal(12, 2)  // price * participantCount
+  currency        String    @default("CRC")
+  
+  // Payment status
+  paidAmount      Decimal   @db.Decimal(12, 2) @default(0)
+  pendingAmount   Decimal   @db.Decimal(12, 2) // totalAmount - paidAmount
+  status          String    @default("PENDING") // PENDING | PAID | CANCELLED
+  
+  // Special notes
+  notes           String?                       // "Cliente pide ventanilla trasera"
+  
+  // Audit
+  createdByUserId String
+  createdByName   String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  // Multi-tenant
+  tenantId        String
+  tenant          Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  // Relación con factura y pagos
+  invoice         InternalTourInvoice?
+  payments        BillingPayment[]             // Reutilizar tabla de pagos
+  
+  @@index([internalTripId])
+  @@index([clientId])
+  @@index([tenantId])
+  @@index([status])
+  @@unique([internalTripId, clientId, tenantId])  // No duplicar reservas
+  @@map("internal_tour_bookings")
+}
+
+model InternalTourInvoice {
+  id              String   @id @default(cuid())
+  
+  // Reference
+  bookingId       String   @unique
+  booking         InternalTourBooking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  
+  // Billing
+  invoiceNumber   String   @unique             // "IT-INV-2026-05-001"
+  totalAmount     Decimal  @db.Decimal(12, 2)
+  paidAmount      Decimal  @db.Decimal(12, 2) @default(0)
+  pendingAmount   Decimal  @db.Decimal(12, 2)
+  
+  // Dates
+  issuedAt        DateTime @default(now())
+  paymentDueDate  DateTime?
+  paidAt          DateTime?
+  
+  // Audit
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  // Multi-tenant
+  tenantId        String
+  tenant          Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  @@index([bookingId])
+  @@index([tenantId])
+  @@index([invoiceNumber])
+  @@map("internal_tour_invoices")
 }

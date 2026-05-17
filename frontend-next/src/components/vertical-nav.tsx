@@ -53,6 +53,7 @@ export function VerticalNav() {
   const [session, setSession] = useState<ReturnType<typeof getStoredSession>>(null);
   const [finanzasOpen, setFinanzasOpen] = useState(false);
   const [empleadosOpen, setEmpleadosOpen] = useState(false);
+  const [programarViajesOpen, setProgramarViajesOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
 
   // Fix hydration - only render on client
@@ -169,13 +170,18 @@ export function VerticalNav() {
         ]
       : []),
     
-    // Viajes Disponibles para Agentes/Ventas/Operaciones
+    // Viajes Internacionales para Agentes/Ventas/Operaciones
     ...(!isAdminOrContador && !isFacturacionCobros
       ? [
           {
             href: "/trips",
-            label: "Viajes Disponibles",
+            label: "Viajes Internacionales",
             icon: "✈️",
+          },
+          {
+            href: "/internal-trips-available",
+            label: "Viajes Internos",
+            icon: "🚌",
           },
         ]
       : []),
@@ -269,11 +275,30 @@ export function VerticalNav() {
             adminOnly: true,
           },
           {
-            href: "/admin/travel-packages",
-            label: "Viajes Programados",
+            label: "Programar Viajes",
             icon: "✈️",
             adminOnly: true,
-          },
+            items: [
+              {
+                href: "/admin/trips/new",
+                label: "Crear Viaje",
+                icon: "➕",
+                adminOnly: true,
+              },
+              {
+                href: "/admin/travel-packages",
+                label: "Viajes Internacionales",
+                icon: "🌍",
+                adminOnly: true,
+              },
+              {
+                href: "/admin/internal-trips",
+                label: "Viajes Internos",
+                icon: "🚌",
+                adminOnly: true,
+              },
+            ],
+          } as NavGroup,
         ]
       : []),
     
@@ -417,10 +442,17 @@ export function VerticalNav() {
               const isAnyActive = group.items.some(item => isActive(item.href));
               
               // Determinar qué estado usar según el grupo
-              const isOpen = group.label === "Finanzas" ? finanzasOpen : empleadosOpen;
+              const isOpen = group.label === "Finanzas" 
+                ? finanzasOpen 
+                : group.label === "Programar Viajes" 
+                  ? programarViajesOpen 
+                  : empleadosOpen;
+              
               const toggleOpen = group.label === "Finanzas" 
                 ? () => setFinanzasOpen(!finanzasOpen)
-                : () => setEmpleadosOpen(!empleadosOpen);
+                : group.label === "Programar Viajes"
+                  ? () => setProgramarViajesOpen(!programarViajesOpen)
+                  : () => setEmpleadosOpen(!empleadosOpen);
               
               return (
                 <div key={`group-${idx}`} className="vertical-nav-group">

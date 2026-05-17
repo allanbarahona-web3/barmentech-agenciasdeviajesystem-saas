@@ -1,0 +1,112 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+
+interface OperationModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+export function OperationModal({ isOpen, onClose }: OperationModalProps) {
+  const router = useRouter();
+  const [isLoading, setIsLoading] = useState(false);
+
+  const operations = [
+    {
+      id: 'contract',
+      title: 'Contrato de Viaje',
+      description: 'Crear contrato para viaje internacional',
+      icon: '📋',
+      href: '/contracts/new',
+      color: 'bg-blue-100 hover:bg-blue-200',
+    },
+    {
+      id: 'scheduled-trip',
+      title: 'Viaje Programado',
+      description: 'Gestionar viajes programados (futuro)',
+      icon: '📅',
+      href: '#',
+      color: 'bg-purple-100 hover:bg-purple-200',
+      disabled: true,
+    },
+    {
+      id: 'internal-trip',
+      title: 'Viaje Interno',
+      description: 'Crear y gestionar viajes domésticos',
+      icon: '🚌',
+      href: '/internal-trips',
+      color: 'bg-green-100 hover:bg-green-200',
+    },
+  ];
+
+  const handleSelect = async (href: string) => {
+    if (!href || href === '#') return;
+
+    setIsLoading(true);
+    try {
+      router.push(href);
+      onClose();
+    } catch (error) {
+      console.error('Error navigating:', error);
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>¿Qué deseas hacer?</DialogTitle>
+          <DialogDescription>
+            Selecciona la operación que deseas realizar
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="grid grid-cols-1 gap-3 py-4">
+          {operations.map((op) => (
+            <button
+              key={op.id}
+              onClick={() => handleSelect(op.href)}
+              disabled={op.disabled || isLoading}
+              className={`
+                p-4 rounded-lg text-left transition-all
+                ${op.disabled ? 'opacity-50 cursor-not-allowed' : `${op.color} cursor-pointer`}
+                ${!op.disabled && !isLoading ? 'active:scale-95' : ''}
+              `}
+            >
+              <div className="flex items-start gap-3">
+                <span className="text-2xl">{op.icon}</span>
+                <div className="flex-1">
+                  <h3 className="font-semibold text-sm text-gray-900">
+                    {op.title}
+                  </h3>
+                  <p className="text-xs text-gray-600 mt-1">{op.description}</p>
+                  {op.disabled && (
+                    <p className="text-xs text-gray-500 mt-2 italic">
+                      Próximamente
+                    </p>
+                  )}
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={onClose} disabled={isLoading}>
+            Cancelar
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}

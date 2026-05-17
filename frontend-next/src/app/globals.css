@@ -2794,13 +2794,24 @@ body:has(.vertical-nav) .app-shell {
 /* Desktop: 4 columnas */
 .travel-packages-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 20px;
+  width: 100%;
+}
+
+.internal-trips-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+  width: 100%;
 }
 
 /* Tablet grande: 3 columnas */
 @media (max-width: 1200px) {
   .travel-packages-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .internal-trips-grid {
     grid-template-columns: repeat(3, 1fr);
   }
 }
@@ -2810,11 +2821,17 @@ body:has(.vertical-nav) .app-shell {
   .travel-packages-grid {
     grid-template-columns: repeat(2, 1fr);
   }
+  .internal-trips-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
 /* Móvil: 1 columna */
 @media (max-width: 640px) {
   .travel-packages-grid {
+    grid-template-columns: 1fr;
+  }
+  .internal-trips-grid {
     grid-template-columns: 1fr;
   }
 }

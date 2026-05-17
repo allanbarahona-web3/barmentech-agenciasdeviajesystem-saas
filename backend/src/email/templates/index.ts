@@ -3,6 +3,9 @@
  */
 export * from './base.template';
 export * from './exchange-rate.template';
+export * from './booking-confirmation.template';
+export * from './payment-received.template';
+export * from './trip-cancelled.template';
 // Agregar más templates aquí según se vayan creando
 // export * from './auth.template';
 // export * from './billing.template';

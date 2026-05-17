@@ -29,18 +29,11 @@ export const resolveApiBase = (): string => {
     ? normalizeBase(window.localStorage.getItem("CONTRACTS_API_BASE"))
     : "";
 
-  const hostFallbackByDomain: Record<string, string> = {
-    "contratos.lucitour.com": "https://lucitourops-vww2w.ondigitalocean.app",
-    "www.contratos.lucitour.com": "https://lucitourops-vww2w.ondigitalocean.app",
-  };
-
-  const hostFallback = normalizeBase(hostFallbackByDomain[host] || "");
-  
   // En desarrollo con subdominios, preservar el subdominio en el API_BASE
   // Ejemplo: empresa.localhost:3000 → http://empresa.localhost:3001
   const localFallback = local 
     ? `http://${window.location.hostname}:3001` 
     : "";
 
-  return envBase || metaBase || localStorageOverride || hostFallback || localFallback;
+  return envBase || metaBase || localStorageOverride || localFallback;
 };

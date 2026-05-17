@@ -9,10 +9,10 @@ import { ConfigService } from "@nestjs/config";
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "crypto";
 import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { Resend } from "resend";
 import { PdfRenderService } from "./pdf-render.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { BillingService } from "../billing/billing.service";
+import { ContractsEmailsService } from "./contracts-emails.service";
 import { ArchiveContractDto } from "./dto/archive-contract.dto";
 
 import { SendContractEmailDto } from "./dto/send-contract-email.dto";
@@ -56,6 +56,7 @@ export class ContractsService {
     private readonly configService: ConfigService,
     private readonly pdfRenderService: PdfRenderService,
     private readonly billingService: BillingService,
+    private readonly contractsEmailsService: ContractsEmailsService,
   ) {}
 
   /**
@@ -629,172 +630,21 @@ export class ContractsService {
     pdfBuffer: Buffer,
     tenant?: ResolvedTenant | null,
   ) {
+    // Delegado a ContractsEmailsService (migrado a EmailService centralizado)
+    return this.contractsEmailsService.sendContractEmail(user, dto, pdfBuffer, tenant);
+
+    /* CÓDIGO ANTIGUO COMENTADO PARA ROLLBACK:
     const apiKey = this.configService.get<string>("RESEND_API_KEY", "").trim();
-    const fromEmail = this.configService
-      .get<string>("CONTRACTS_FROM_EMAIL", "")
-      .trim();
-
-    if (!apiKey || !fromEmail) {
-      throw new InternalServerErrorException(
-        "Falta configurar RESEND_API_KEY o CONTRACTS_FROM_EMAIL.",
-      );
-    }
-
+    const fromEmail = this.configService.get<string>("CONTRACTS_FROM_EMAIL", "").trim();
     const resend = new Resend(apiKey);
     const logoSrc = await this.loadCompanyLogoEmailSrc(tenant);
     const tenantName = tenant?.name || "Sistema de Viajes";
-    if (!pdfBuffer.length) {
-      throw new InternalServerErrorException("Adjunto PDF invalido o vacio.");
-    }
-
     const pdfBase64 = pdfBuffer.toString("base64");
-
     const subject = `📄 Contrato para Firma - ${dto.contractNumber} | ${tenantName}`;
-    const html = `
-<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Contrato para Firma - ${tenantName}</title>
-</head>
-<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f3f4f6; line-height: 1.6;">
-  <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #f3f4f6;">
-    <tr>
-      <td align="center" style="padding: 40px 20px;">
-        <table role="presentation" style="max-width: 600px; width: 100%; border-collapse: collapse; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
-          
-          <!-- Header -->
-          <tr>
-            <td style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px 30px; text-align: center;">
-              ${logoSrc ? `<img src="${logoSrc}" alt="${tenantName}" style="max-width: 180px; height: auto; margin-bottom: 16px;" />` : ''}
-              <h1 style="margin: 0; color: #ffffff; font-size: 32px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;">
-                ${tenantName}
-              </h1>
-              <p style="margin: 8px 0 0 0; color: #e9d5ff; font-size: 14px; font-weight: 500;">
-                Gesti\u00f3n profesional de viajes
-              </p>
-            </td>
-          </tr>
-
-          <!-- Badge -->
-          <tr>
-            <td style="padding: 30px 30px 0 30px; text-align: center;">
-              <div style="display: inline-block; background-color: #f59e0b; color: #ffffff; padding: 12px 24px; border-radius: 50px; font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">
-                📄 Documento Adjunto
-              </div>
-            </td>
-          </tr>
-
-          <!-- Main Content -->
-          <tr>
-            <td style="padding: 30px;">
-              <h2 style="margin: 0 0 20px 0; color: #1f2937; font-size: 24px; font-weight: 600;">
-                Hola ${dto.clientName},
-              </h2>
-              
-              <p style="margin: 0 0 20px 0; color: #4b5563; font-size: 16px; line-height: 1.6;">
-                Te enviamos tu contrato en formato PDF para que puedas revisarlo y firmarlo.
-              </p>
-
-              <!-- Contract Info Card -->
-              <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #f9fafb; border-radius: 8px; margin: 25px 0; border: 2px solid #e5e7eb;">
-                <tr>
-                  <td style="padding: 20px;">
-                    <p style="margin: 0 0 8px 0; color: #6b7280; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">
-                      Número de Contrato
-                    </p>
-                    <p style="margin: 0; color: #1f2937; font-size: 20px; font-weight: 700; font-family: 'Courier New', monospace;">
-                      ${dto.contractNumber}
-                    </p>
-                  </td>
-                </tr>
-              </table>
-
-              <p style="margin: 0 0 20px 0; color: #4b5563; font-size: 16px; line-height: 1.6;">
-                Encontrarás el contrato adjunto a este correo. Por favor, <strong>revísalo cuidadosamente</strong> antes de proceder con la firma digital.
-              </p>
-
-              <!-- Important Warning Box -->
-              <div style="background-color: #fef2f2; border-left: 4px solid #ef4444; padding: 16px; border-radius: 4px; margin: 25px 0;">
-                <p style="margin: 0; color: #991b1b; font-size: 14px; line-height: 1.5; font-weight: 600;">
-                  ⚠️ <strong>MUY IMPORTANTE:</strong> Tu firma debe ser idéntica a la que aparece en tu cédula de identidad o pasaporte. Firmas que no coincidan con la identificación no serán válidas.
-                </p>
-              </div>
-
-              <!-- Info Box -->
-              <div style="background-color: #eff6ff; border-left: 4px solid #3b82f6; padding: 16px; border-radius: 4px; margin: 25px 0;">
-                <p style="margin: 0; color: #1e40af; font-size: 14px; line-height: 1.5;">
-                  💡 <strong>Importante:</strong> Revisa todos los detalles del contrato. Si tienes alguna duda o corrección, por favor responde a este correo antes de firmar.
-                </p>
-              </div>
-
-              <p style="margin: 0 0 10px 0; color: #4b5563; font-size: 15px; line-height: 1.6;">
-                Estamos a tu disposición para cualquier consulta.
-              </p>
-            </td>
-          </tr>
-
-          <!-- Footer -->
-          <tr>
-            <td style="background-color: #f9fafb; padding: 30px; border-top: 2px solid #e5e7eb;">
-              <p style="margin: 0 0 8px 0; color: #1f2937; font-size: 15px; font-weight: 600;">
-                Atentamente,
-              </p>
-              <p style="margin: 0 0 20px 0; color: #667eea; font-size: 18px; font-weight: 700;">
-                Equipo ${tenantName}
-              </p>
-              
-              <div style="border-top: 1px solid #e5e7eb; padding-top: 20px; margin-top: 20px;">
-                <p style="margin: 0; color: #9ca3af; font-size: 12px; line-height: 1.5; text-align: center;">
-                  Si tienes dudas, responde a este correo.<br>
-                  Nuestro equipo te atenderá a la brevedad.
-                </p>
-              </div>
-            </td>
-          </tr>
-
-        </table>
-        
-        <!-- Bottom Spacer -->
-        <p style="margin: 20px 0 0 0; color: #9ca3af; font-size: 11px; text-align: center;">
-          © ${new Date().getFullYear()} ${tenantName}. Todos los derechos reservados.
-        </p>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>
-    `;
-
-    try {
-      const result = await resend.emails.send({
-        from: fromEmail,
-        to: [dto.toEmail],
-        subject,
-        html,
-        attachments: [
-          {
-            filename: dto.fileName,
-            content: pdfBase64,
-          },
-        ],
-      });
-
-      return {
-        ok: true,
-        emailId: result.data?.id || null,
-        sentTo: dto.toEmail,
-        contractNumber: dto.contractNumber,
-        sentBy: {
-          id: user.id,
-          email: user.email,
-          fullName: user.fullName,
-        },
-      };
-    } catch {
-      throw new InternalServerErrorException("No se pudo enviar el correo con el contrato adjunto.");
-    }
+    const html = `... (Ver templates/contract-pdf-attachment.template.ts para HTML completo) ...`;
+    await resend.emails.send({ from: fromEmail, to: [dto.toEmail], subject, html, attachments: [{ filename: dto.fileName, content: pdfBase64 }] });
+    return { ok: true, emailId: result.data?.id || null, sentTo: dto.toEmail, contractNumber: dto.contractNumber, sentBy: { id: user.id, email: user.email, fullName: user.fullName }};
+    FIN CÓDIGO ANTIGUO */
   }
 
   async sendContractSigningEmail(
@@ -802,171 +652,19 @@ export class ContractsService {
     dto: SendSigningEmailDto,
     tenant?: ResolvedTenant | null,
   ) {
+    // Delegado a ContractsEmailsService (migrado a EmailService centralizado)
+    return this.contractsEmailsService.sendContractSigningEmail(user, dto, tenant);
+
+    /* CÓDIGO ANTIGUO COMENTADO PARA ROLLBACK:
     const apiKey = this.configService.get<string>("RESEND_API_KEY", "").trim();
-    const fromEmail =
-      this.configService.get<string>("CONTRACTS_FROM_EMAIL", "").trim() ||
-      this.configService.get<string>("AUTH_FROM_EMAIL", "").trim();
-
-    if (!apiKey || !fromEmail) {
-      throw new InternalServerErrorException(
-        "Falta configurar RESEND_API_KEY o CONTRACTS_FROM_EMAIL.",
-      );
-    }
-
+    const fromEmail = this.configService.get<string>("CONTRACTS_FROM_EMAIL", "").trim() || this.configService.get<string>("AUTH_FROM_EMAIL", "").trim();
     const resend = new Resend(apiKey);
     const logoSrc = await this.loadCompanyLogoEmailSrc(tenant);
     const tenantName = tenant?.name || "Sistema de Viajes";
-    const html = `
-<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Firma tu Contrato - ${tenantName}</title>
-</head>
-<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f3f4f6; line-height: 1.6;">
-  <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #f3f4f6;">
-    <tr>
-      <td align="center" style="padding: 40px 20px;">
-        <table role="presentation" style="max-width: 600px; width: 100%; border-collapse: collapse; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
-          
-          <!-- Header -->
-          <tr>
-            <td style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px 30px; text-align: center;">
-              ${logoSrc ? `<img src="${logoSrc}" alt="${tenantName}" style="max-width: 180px; height: auto; margin-bottom: 16px;" />` : ''}
-              <h1 style="margin: 0; color: #ffffff; font-size: 32px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;">
-                ${tenantName}
-              </h1>
-              <p style="margin: 8px 0 0 0; color: #e9d5ff; font-size: 14px; font-weight: 500;">
-                Gestión profesional de viajes
-              </p>
-            </td>
-          </tr>
-
-          <!-- Badge -->
-          <tr>
-            <td style="padding: 30px 30px 0 30px; text-align: center;">
-              <div style="display: inline-block; background-color: #3b82f6; color: #ffffff; padding: 12px 24px; border-radius: 50px; font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">
-                ✍️ Firma Pendiente
-              </div>
-            </td>
-          </tr>
-
-          <!-- Main Content -->
-          <tr>
-            <td style="padding: 30px;">
-              <h2 style="margin: 0 0 20px 0; color: #1f2937; font-size: 24px; font-weight: 600;">
-                Hola ${dto.clientName},
-              </h2>
-              
-              <p style="margin: 0 0 20px 0; color: #4b5563; font-size: 16px; line-height: 1.6;">
-                Tu contrato está listo para ser firmado. Solo necesitamos tu firma digital para completar el proceso.
-              </p>
-
-              <!-- Contract Info Card -->
-              <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #f9fafb; border-radius: 8px; margin: 25px 0; border: 2px solid #e5e7eb;">
-                <tr>
-                  <td style="padding: 20px;">
-                    <p style="margin: 0 0 8px 0; color: #6b7280; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">
-                      Número de Contrato
-                    </p>
-                    <p style="margin: 0; color: #1f2937; font-size: 20px; font-weight: 700; font-family: 'Courier New', monospace;">
-                      ${dto.contractNumber}
-                    </p>
-                  </td>
-                </tr>
-              </table>
-
-              <p style="margin: 0 0 25px 0; color: #4b5563; font-size: 16px; line-height: 1.6;">
-                Haz clic en el botón de abajo para abrir el documento, revisarlo y firmar con tu dedo directamente en la pantalla.
-              </p>
-
-              <!-- Important Warning Box -->
-              <div style="background-color: #fef2f2; border-left: 4px solid #ef4444; padding: 16px; border-radius: 4px; margin: 25px 0;">
-                <p style="margin: 0; color: #991b1b; font-size: 14px; line-height: 1.5; font-weight: 600;">
-                  ⚠️ <strong>MUY IMPORTANTE:</strong> Tu firma debe ser idéntica a la que aparece en tu cédula de identidad o pasaporte. Firmas que no coincidan con tu documento de identificación no serán válidas.
-                </p>
-              </div>
-
-              <!-- CTA Button -->
-              <table role="presentation" style="width: 100%; border-collapse: collapse; margin: 30px 0;">
-                <tr>
-                  <td align="center">
-                    <a href="${dto.signingUrl}" style="display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #ffffff; padding: 18px 40px; border-radius: 8px; font-size: 18px; font-weight: 700; text-decoration: none; box-shadow: 0 4px 6px rgba(102, 126, 234, 0.4);">
-                      ✍️ Firmar Contrato Ahora
-                    </a>
-                  </td>
-                </tr>
-              </table>
-
-              <!-- Info Box -->
-              <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 16px; border-radius: 4px; margin: 25px 0;">
-                <p style="margin: 0; color: #92400e; font-size: 14px; line-height: 1.5;">
-                  ⚡ <strong>Proceso rápido:</strong> Solo toma 2 minutos. Lee el contrato, dibuja tu firma en pantalla y listo.
-                </p>
-              </div>
-
-              <p style="margin: 0; color: #6b7280; font-size: 14px; line-height: 1.5; text-align: center;">
-                Si el botón no funciona, copia y pega este enlace en tu navegador:<br>
-                <a href="${dto.signingUrl}" style="color: #667eea; word-break: break-all;">${dto.signingUrl}</a>
-              </p>
-            </td>
-          </tr>
-
-          <!-- Footer -->
-          <tr>
-            <td style="background-color: #f9fafb; padding: 30px; border-top: 2px solid #e5e7eb;">
-              <p style="margin: 0 0 8px 0; color: #1f2937; font-size: 15px; font-weight: 600;">
-                Atentamente,
-              </p>
-              <p style="margin: 0 0 20px 0; color: #667eea; font-size: 18px; font-weight: 700;">
-                Equipo ${tenantName}
-              </p>
-              
-              <div style="border-top: 1px solid #e5e7eb; padding-top: 20px; margin-top: 20px;">
-                <p style="margin: 0; color: #9ca3af; font-size: 12px; line-height: 1.5; text-align: center;">
-                  ¿Tienes dudas o necesitas ayuda? Responde a este correo.<br>
-                  Estamos aquí para asistirte.
-                </p>
-              </div>
-            </td>
-          </tr>
-
-        </table>
-        
-        <!-- Bottom Spacer -->
-        <p style="margin: 20px 0 0 0; color: #9ca3af; font-size: 11px; text-align: center;">
-          © ${new Date().getFullYear()} ${tenantName}. Todos los derechos reservados.
-        </p>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>
-    `;
-
-    try {
-      const result = await resend.emails.send({
-        from: fromEmail,
-        to: [dto.toEmail],
-        subject: `✍️ Firma tu Contrato - ${dto.contractNumber} | ${tenantName}`,
-        html,
-      });
-
-      return {
-        ok: true,
-        emailId: result.data?.id || null,
-        sentTo: dto.toEmail,
-        contractNumber: dto.contractNumber,
-        sentBy: {
-          id: user.id,
-          email: user.email,
-          fullName: user.fullName,
-        },
-      };
-    } catch {
-      throw new InternalServerErrorException("No se pudo enviar el correo de firma al cliente.");
-    }
+    const html = `... (Ver templates/contract-signing-link.template.ts para HTML completo con signingUrl=${dto.signingUrl}) ...`;
+    await resend.emails.send({ from: fromEmail, to: [dto.toEmail], subject: `✍️ Firma tu Contrato - ${dto.contractNumber} | ${tenantName}`, html });
+    return { ok: true, emailId: result.data?.id || null, sentTo: dto.toEmail, contractNumber: dto.contractNumber, sentBy: { id: user.id, email: user.email, fullName: user.fullName }};
+    FIN CÓDIGO ANTIGUO */
   }
 
   async resendSignedContractEmailToParties(
@@ -1028,149 +726,36 @@ export class ContractsService {
       throw new InternalServerErrorException("No se pudo leer el contrato firmado para reenviar.");
     }
 
-    const resend = new Resend(apiKey);
-    const logoSrc = await this.loadCompanyLogoEmailSrc(tenant);
-    const tenantName = tenant?.name || "Sistema de Viajes";
     const pdfBase64 = signedPdfBuffer.toString("base64");
     const fileName =
       String(contract.signedPdfFileName || "").trim() || `${String(contract.contractNumber || "contrato").trim()}-signed.pdf`;
 
+    // Delegado a ContractsEmailsService (migrado a EmailService centralizado)
+    const { sentTo, failedTo } = await this.contractsEmailsService.sendSignedContractToRecipients(
+      user,
+      contract.contractNumber,
+      fileName,
+      pdfBase64,
+      recipients,
+      tenant,
+    );
+
+    /* CÓDIGO ANTIGUO COMENTADO PARA ROLLBACK:
+    const resend = new Resend(apiKey);
+    const logoSrc = await this.loadCompanyLogoEmailSrc(tenant);
+    const tenantName = tenant?.name || "Sistema de Viajes";
     const sentTo: string[] = [];
     const failedTo: string[] = [];
-
     for (const recipient of recipients) {
-      const html = `
-<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Contrato Firmado - ${tenantName}</title>
-</head>
-<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f3f4f6; line-height: 1.6;">
-  <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #f3f4f6;">
-    <tr>
-      <td align="center" style="padding: 40px 20px;">
-        <table role="presentation" style="max-width: 600px; width: 100%; border-collapse: collapse; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
-          
-          <!-- Header -->
-          <tr>
-            <td style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 40px 30px; text-align: center;">
-              ${logoSrc ? `<img src="${logoSrc}" alt="${tenantName}" style="max-width: 180px; height: auto; margin-bottom: 16px;" />` : ''}
-              <h1 style="margin: 0; color: #ffffff; font-size: 32px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;">
-                ${tenantName}
-              </h1>
-              <p style="margin: 8px 0 0 0; color: #e9d5ff; font-size: 14px; font-weight: 500;">
-                Gestión profesional de viajes
-              </p>
-            </td>
-          </tr>
-
-          <!-- Success Badge -->
-          <tr>
-            <td style="padding: 30px 30px 0 30px; text-align: center;">
-              <div style="display: inline-block; background-color: #10b981; color: #ffffff; padding: 12px 24px; border-radius: 50px; font-size: 14px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">
-                ✓ Contrato Completado
-              </div>
-            </td>
-          </tr>
-
-          <!-- Main Content -->
-          <tr>
-            <td style="padding: 30px;">
-              <h2 style="margin: 0 0 20px 0; color: #1f2937; font-size: 24px; font-weight: 600;">
-                Hola ${recipient.name || ""},
-              </h2>
-              
-              <p style="margin: 0 0 20px 0; color: #4b5563; font-size: 16px; line-height: 1.6;">
-                ¡Excelentes noticias! Tu contrato ha sido completado y firmado exitosamente por todas las partes involucradas.
-              </p>
-
-              <!-- Contract Info Card -->
-              <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #f9fafb; border-radius: 8px; margin: 25px 0; border: 2px solid #e5e7eb;">
-                <tr>
-                  <td style="padding: 20px;">
-                    <p style="margin: 0 0 8px 0; color: #6b7280; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">
-                      Número de Contrato
-                    </p>
-                    <p style="margin: 0; color: #1f2937; font-size: 20px; font-weight: 700; font-family: 'Courier New', monospace;">
-                      ${contract.contractNumber}
-                    </p>
-                  </td>
-                </tr>
-              </table>
-
-              <p style="margin: 0 0 20px 0; color: #4b5563; font-size: 16px; line-height: 1.6;">
-                Adjunto a este correo encontrarás el <strong>documento firmado en formato PDF</strong>. Te recomendamos descargarlo y guardarlo para tus registros.
-              </p>
-
-              <!-- CTA Button -->
-              <table role="presentation" style="width: 100%; border-collapse: collapse; margin: 30px 0;">
-                <tr>
-                  <td align="center">
-                    <div style="background-color: #667eea; color: #ffffff; padding: 16px 32px; border-radius: 8px; font-size: 16px; font-weight: 600; text-decoration: none; display: inline-block;">
-                      📎 Documento adjunto al final de este correo
-                    </div>
-                  </td>
-                </tr>
-              </table>
-
-              <p style="margin: 0 0 10px 0; color: #4b5563; font-size: 15px; line-height: 1.6;">
-                Si tienes alguna pregunta o requieres asistencia adicional, no dudes en contactarnos.
-              </p>
-            </td>
-          </tr>
-
-          <!-- Footer -->
-          <tr>
-            <td style="background-color: #f9fafb; padding: 30px; border-top: 2px solid #e5e7eb;">
-              <p style="margin: 0 0 8px 0; color: #1f2937; font-size: 15px; font-weight: 600;">
-                Atentamente,
-              </p>
-              <p style="margin: 0 0 20px 0; color: #667eea; font-size: 18px; font-weight: 700;">
-                Equipo ${tenantName}
-              </p>
-              
-              <div style="border-top: 1px solid #e5e7eb; padding-top: 20px; margin-top: 20px;">
-                <p style="margin: 0; color: #9ca3af; font-size: 12px; line-height: 1.5; text-align: center;">
-                  Este es un correo automático, por favor no respondas a este mensaje.<br>
-                  Para soporte, contáctanos a través de nuestros canales oficiales.
-                </p>
-              </div>
-            </td>
-          </tr>
-
-        </table>
-        
-        <!-- Bottom Spacer -->
-        <p style="margin: 20px 0 0 0; color: #9ca3af; font-size: 11px; text-align: center;">
-          © ${new Date().getFullYear()} ${tenantName}. Todos los derechos reservados.
-        </p>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>
-      `;
-
+      const html = `... (Ver templates/contract-signed-confirmation.template.ts para HTML completo) ...`;
       try {
-        await resend.emails.send({
-          from: fromEmail,
-          to: [recipient.email],
-          subject: `✅ Contrato Firmado - ${contract.contractNumber} | ${tenantName}`,
-          html,
-          attachments: [
-            {
-              filename: fileName,
-              content: pdfBase64,
-            },
-          ],
-        });
+        await resend.emails.send({ from: fromEmail, to: [recipient.email], subject: `✅ Contrato Firmado - ${contract.contractNumber} | ${tenantName}`, html, attachments: [{ filename: fileName, content: pdfBase64 }] });
         sentTo.push(recipient.email);
       } catch {
         failedTo.push(recipient.email);
       }
     }
+    FIN CÓDIGO ANTIGUO */
 
     const existingDispatchLog = Array.isArray(payload?.emailDispatchLog)
       ? payload.emailDispatchLog.filter((item: any) => item && typeof item === "object")
@@ -1392,8 +977,14 @@ export class ContractsService {
     const emergencyContactPhone =
       String((payloadRecord as Record<string, unknown>).emergencyContactPhone || "").trim() || null;
 
+    // Upsert cliente con compound unique key (idNumber + tenantId)
     const client = await (this.prisma as any).client.upsert({
-      where: { idNumber: dto.clientIdNumber.trim() },
+      where: { 
+        idNumber_tenantId: {
+          idNumber: dto.clientIdNumber.trim(),
+          tenantId: user.tenantId,
+        }
+      },
       update: {
         fullName: dto.clientFullName.trim(),
         email: dto.clientEmail.trim().toLowerCase(),
@@ -1408,6 +999,7 @@ export class ContractsService {
         phone: clientPhone,
         emergencyContactName,
         emergencyContactPhone,
+        tenantId: user.tenantId,
       },
     });
 
@@ -1457,6 +1049,40 @@ export class ContractsService {
       signatureAnchors,
       signatureAnchor: signatureAnchors?.["client"] ?? null,
     };
+
+    // Calcular participantCount: titular + acompañantes válidos + menores válidos
+    // Solo cuentan quienes tengan nombre/ID completo (no pueden viajar sin identificación)
+    const holderCount = 1; // Titular siempre cuenta
+
+    const companions = Array.isArray(payloadRecord.companions) 
+      ? payloadRecord.companions 
+      : [];
+    const companionsWithId = companions.filter(
+      (c: any) => 
+        c && 
+        String(c.fullName || "").trim() && 
+        String(c.idNumber || "").trim()
+    );
+
+    const minors = Array.isArray(payloadRecord.minors) 
+      ? payloadRecord.minors 
+      : [];
+    const minorsWithId = minors.filter(
+      (m: any) => 
+        m && 
+        String(m.minorId || "").trim()
+    );
+
+    const participantCount = holderCount + companionsWithId.length + minorsWithId.length;
+
+    console.log('🔢 [participantCount] Cálculo de participantes:');
+    console.log(`  Titular: ${holderCount}`);
+    console.log(`  Acompañantes válidos: ${companionsWithId.length} de ${companions.length}`);
+    console.log(`  Menores válidos: ${minorsWithId.length} de ${minors.length}`);
+    console.log(`  TOTAL: ${participantCount} personas`);
+
+    // Obtener travelPackageId si viene del payload (contratos desde paquetes programados)
+    const travelPackageId = String(payloadRecord.travelPackageId || "").trim() || null;
 
     const uploadedDocuments: Array<{
       kind?: string;
@@ -1522,6 +1148,7 @@ export class ContractsService {
           contractNumber,
           paymentReference,
           clientId: client.id,
+          tenantId: user.tenantId,
           destination: dto.destination.trim(),
           status: CONTRACT_STATUS_PENDING_PAYMENT_RESERVE,
           generatedByUserId: user.id,
@@ -1536,7 +1163,9 @@ export class ContractsService {
           pdfMimeType: "application/pdf",
           pdfSize: pdfBuffer.length,
           htmlObjectKey: htmlKey,
-          source: contractSource, // Agregar el campo source
+          source: contractSource,
+          participantCount: participantCount, // Calcular desde companions + minors
+          travelPackageId: travelPackageId, // Link a paquete si aplica
           documents: {
             create: uploadedDocuments.map((doc) => ({
               kind: null,
@@ -1609,7 +1238,7 @@ export class ContractsService {
   }
 
   async saveContractDraft(
-    user: { id: string; email: string; fullName: string },
+    user: { id: string; email: string; fullName: string; tenantId: string },
     dto: {
       id?: string;
       contractNumber: string;
@@ -1715,6 +1344,7 @@ export class ContractsService {
           generatedByUserId: user.id,
           generatedByEmail: user.email,
           generatedByName: user.fullName,
+          tenantId: user.tenantId,
         },
       });
     }

@@ -58,6 +58,10 @@ export class AuthService {
     });
 
     if (!user) {
+      // 🔐 SECURITY LOG: Intento de login con email no existente
+      this.logger.warn(
+        `🚨 Login fallido - Usuario no encontrado: ${email} | Tenant: ${tenant.name} (${tenant.id})`,
+      );
       throw new UnauthorizedException("Credenciales invalidas");
     }
 
@@ -102,6 +106,10 @@ export class AuthService {
 
     const validPassword = await compare(dto.password, user.passwordHash);
     if (!validPassword) {
+      // 🔐 SECURITY LOG: Intento de login con contraseña incorrecta
+      this.logger.warn(
+        `🚨 Login fallido - Contraseña incorrecta: ${email} (${user.fullName}) | Tenant: ${tenant.name}`,
+      );
       throw new UnauthorizedException("Credenciales invalidas");
     }
 
@@ -124,6 +132,11 @@ export class AuthService {
       tenantId: user.tenantId,
       },
       { jwtid: tokenId },
+    );
+
+    // 🔐 SECURITY LOG: Login exitoso
+    this.logger.log(
+      `✅ Login exitoso: ${user.email} (${user.fullName}) | Rol: ${user.role} | Tenant: ${tenant.name} (${tenant.id})`,
     );
 
     return {
@@ -382,6 +395,26 @@ export class AuthService {
         updatedAt: true,
       },
     });
+
+    // 🔐 SECURITY LOG: Registrar cambios críticos de seguridad
+    if (typeof dto.role === "string" && dto.role !== targetUser.role) {
+      this.logger.warn(
+        `🔑 Cambio de rol: Usuario ${updated.email} (${updated.fullName}) | ${targetUser.role} → ${updated.role} | Modificado por admin ID: ${currentUserId}`,
+      );
+    }
+
+    if (typeof dto.isActive === "boolean" && dto.isActive !== targetUser.isActive) {
+      const accion = dto.isActive ? "ACTIVADO" : "SUSPENDIDO";
+      this.logger.warn(
+        `🚫 Usuario ${accion}: ${updated.email} (${updated.fullName}) | Modificado por admin ID: ${currentUserId}`,
+      );
+    }
+
+    if (typeof dto.email === "string" && dto.email !== updated.email) {
+      this.logger.warn(
+        `📧 Cambio de email: Usuario ${userId} | Email anterior → ${updated.email} | Modificado por admin ID: ${currentUserId}`,
+      );
+    }
 
     return updated;
   }
