@@ -1,12 +1,14 @@
 "use client";
 
-import { clearStoredToken, getStoredSession, getStoredToken } from "@/lib/auth-api";
+import { clearStoredToken, getStoredSession, getStoredToken, logout } from "@/lib/auth-api";
 import { getPendingApprovalsCount, type PendingCounts } from "@/lib/billing-api";
 import { getCurrentExchangeRate, type ExchangeRate } from "@/lib/exchange-rate-api";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { AttendanceWidget } from "./attendance-widget";
 import { CurrencyCalculator } from "./currency-calculator";
+import { LoadingModal } from "./loading-modal";
 import { SupportModal } from "./support-modal";
 
 type NavItem = {
@@ -28,22 +30,9 @@ type NavElement = NavItem | NavGroup;
 
 const isNavGroup = (item: NavElement): item is NavGroup => 'items' in item;
 
-const formatDuration = (seconds: number): string => {
-  const safe = Math.max(0, Math.floor(seconds));
-  const hh = Math.floor(safe / 3600)
-    .toString()
-    .padStart(2, "0");
-  const mm = Math.floor((safe % 3600) / 60)
-    .toString()
-    .padStart(2, "0");
-  const ss = (safe % 60).toString().padStart(2, "0");
-  return `${hh}:${mm}:${ss}`;
-};
-
 export function VerticalNav() {
   const router = useRouter();
   const pathname = usePathname();
-  const [tick, setTick] = useState(Date.now());
   const [showCalculator, setShowCalculator] = useState(false);
   const [showSupportModal, setShowSupportModal] = useState(false);
   const [pendingCounts, setPendingCounts] = useState<PendingCounts>({ pendingReceipts: 0, pendingCreditNotes: 0, contractsPendingSignature: 0 });
@@ -55,6 +44,8 @@ export function VerticalNav() {
   const [empleadosOpen, setEmpleadosOpen] = useState(false);
   const [programarViajesOpen, setProgramarViajesOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
+  const [logoutErrorModalOpen, setLogoutErrorModalOpen] = useState(false);
+  const [logoutErrorMessage, setLogoutErrorMessage] = useState("");
 
   // Fix hydration - only render on client
   useEffect(() => {
@@ -67,11 +58,6 @@ export function VerticalNav() {
     setSession(getStoredSession());
     setNavOpen(false); // Cerrar nav al cambiar de ruta (mobile)
   }, [pathname]);
-
-  useEffect(() => {
-    const timer = window.setInterval(() => setTick(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, []);
 
   useEffect(() => {
     if (!token) return;
@@ -135,10 +121,9 @@ export function VerticalNav() {
   const isFacturacionCobros = role === "FACTURACION_COBROS";
   const isVentas = role === "VENTAS";
   const isOperaciones = role === "OPERACIONES";
+  const isAgent = role === "AGENT";
   const isAdminOrContador = isAdmin || isContador;
-  const connectedSeconds = session.loginAt
-    ? Math.max(0, Math.floor((tick - new Date(session.loginAt).getTime()) / 1000))
-    : 0;
+  const needsAttendanceWidget = isAgent || isOperaciones || isVentas;
 
   const isActive = (href: string) => {
     if (href === "/") return pathname === "/";
@@ -162,6 +147,11 @@ export function VerticalNav() {
     // Migrar Contrato para Agentes
     ...(!isAdminOrContador && !isFacturacionCobros
       ? [
+          {
+            href: "/my-timesheet",
+            label: "Mi Timesheet",
+            icon: "📋",
+          },
           {
             href: "/contracts?mode=migration",
             label: "Migrar Contrato",
@@ -337,7 +327,7 @@ export function VerticalNav() {
                 adminOnly: true,
               },
               {
-                href: "/admin/timeclock",
+                href: "/admin/attendance",
                 label: "Control de Asistencia",
                 icon: "⏰",
                 adminOnly: true,
@@ -409,10 +399,7 @@ export function VerticalNav() {
               <div className="vertical-nav-user-role">{role}</div>
             </div>
           </div>
-          <div className="vertical-nav-session-time">
-            <span className="session-indicator"></span>
-            Sesión: {formatDuration(connectedSeconds)}
-          </div>
+          {needsAttendanceWidget ? <AttendanceWidget /> : null}
           {exchangeRate ? (
             <div className="vertical-nav-exchange-rate">
               <div className="exchange-rate-badge">
@@ -531,9 +518,16 @@ export function VerticalNav() {
           <button
             type="button"
             className="vertical-nav-item vertical-nav-action vertical-nav-logout"
-            onClick={() => {
-              clearStoredToken();
-              router.replace("/");
+            onClick={async () => {
+              try {
+                await logout();
+                clearStoredToken();
+                router.replace("/");
+              } catch (error) {
+                const message = error instanceof Error ? error.message : "Error al cerrar sesión";
+                setLogoutErrorMessage(message);
+                setLogoutErrorModalOpen(true);
+              }
             }}
           >
             <span className="vertical-nav-icon">🚪</span>
@@ -548,6 +542,13 @@ export function VerticalNav() {
         onClose={() => setShowSupportModal(false)}
         userName={session?.user?.fullName || ""}
         userEmail={session?.user?.email || ""}
+      />
+
+      <LoadingModal
+        isOpen={logoutErrorModalOpen}
+        state="error"
+        errorMessage={logoutErrorMessage || "No se pudo cerrar sesión."}
+        onClose={() => setLogoutErrorModalOpen(false)}
       />
     </>
   );

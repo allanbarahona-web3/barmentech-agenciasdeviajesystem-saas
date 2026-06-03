@@ -704,6 +704,41 @@ export class AuthService {
     return { ok: true, message: "Contraseña actualizada correctamente" };
   }
 
+  async logout(userId: string, tenantId?: string) {
+    // If user has no tenant or tenantId is not provided, allow logout
+    if (!tenantId) {
+      return { ok: true, message: "Sesión cerrada correctamente" };
+    }
+
+    // Check if user has an active attendance session (open entry) without OFF
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const openEntry = await this.prisma.attendanceEntry.findFirst({
+      where: {
+        tenantId,
+        userId,
+        date: today,
+        clockOut: null,
+      },
+      orderBy: { clockIn: 'desc' },
+      select: { type: true },
+    });
+
+    // If there is no active open entry, allow logout
+    if (!openEntry) {
+      return { ok: true, message: "Sesión cerrada correctamente" };
+    }
+
+    // If open entry is OFF, allow logout (defensive fallback)
+    if (openEntry.type === 'OFF') {
+      return { ok: true, message: "Sesión cerrada correctamente" };
+    }
+
+    // If last entry is not OFF, prevent logout
+    throw new BadRequestException('Debes marcar OFF antes de cerrar sesión');
+  }
+
   /**
    * Send welcome email with credentials to new user
    */

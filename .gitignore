@@ -19,3 +19,4 @@ backend/dist/
 
 # Markdown files
 *.md
+!README.md
