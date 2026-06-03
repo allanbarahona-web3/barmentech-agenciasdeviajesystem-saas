@@ -276,7 +276,7 @@ export default function AdminAttendancePage() {
           <tbody>
             {entries.map((entry) => (
               <tr key={entry.id} className="border-b border-gray-100 text-gray-800 hover:bg-gray-50 cursor-pointer" onClick={() => { setSelectedEntryId(entry.id); setSelectedEntry(entry); setIsCorrectionModalOpen(true); }}>
-                <td className="py-2 pr-3">{(entry as any).user?.fullName || entry.userId}</td>
+                <td className="py-2 pr-3">{entry.user?.fullName || '-'}</td>
                 <td className="py-2 pr-3 font-medium">{entry.type}</td>
                 <td className="py-2 pr-3">{new Date(entry.clockIn).toLocaleString()}</td>
                 <td className="py-2 pr-3">{entry.clockOut ? new Date(entry.clockOut).toLocaleString() : '-'}</td>
