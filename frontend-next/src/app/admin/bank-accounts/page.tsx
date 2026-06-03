@@ -4,7 +4,7 @@ export const dynamic = 'force-dynamic';
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getStoredSession, getHomeRouteForRole } from "@/lib/auth-api";
+import { getStoredSession, getHomeRouteForRole, getTenantConfigAdmin } from "@/lib/auth-api";
 import {
   getAllBankAccounts,
   createBankAccount,
@@ -14,8 +14,8 @@ import {
   type CompanyBankAccount,
   type CreateBankAccountInput,
 } from "@/lib/bank-accounts-api";
-import { ToastNotification, useToast } from "@/components/toast-notification";
 import { ConfirmModal } from "@/components/confirm-modal";
+import { LoadingModal } from "@/components/loading-modal";
 import { PageLoader } from "@/components/loading-spinner";
 
 export default function BankAccountsPage() {
@@ -27,7 +27,6 @@ export default function BankAccountsPage() {
   const [accounts, setAccounts] = useState<CompanyBankAccount[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [editingAccount, setEditingAccount] = useState<CompanyBankAccount | null>(null);
-  const { toasts, showSuccess, showError, dismissToast } = useToast();
 
   // Form state
   const [bankName, setBankName] = useState("");
@@ -35,9 +34,14 @@ export default function BankAccountsPage() {
   const [accountType, setAccountType] = useState<"CUENTA_CORRIENTE" | "CUENTA_AHORRO">("CUENTA_CORRIENTE");
   const [currency, setCurrency] = useState<"CRC" | "USD">("CRC");
   const [sinpeNumber, setSinpeNumber] = useState("");
-  const [accountHolderName, setAccountHolderName] = useState("VIAJES LUCITOURS TURISMO INTERNACIONAL S.A.");
-  const [companyName, setCompanyName] = useState("Viajes Alma Nova");
+  const [accountHolderName, setAccountHolderName] = useState("");
+  const [companyName, setCompanyName] = useState("");
   const [notes, setNotes] = useState("");
+  const [tenantNameFallback, setTenantNameFallback] = useState("la empresa");
+  const [tenantLegalNameFallback, setTenantLegalNameFallback] = useState("la razon social de la empresa");
+  const [showLoadingModal, setShowLoadingModal] = useState(false);
+  const [loadingModalState, setLoadingModalState] = useState<"loading" | "success" | "error">("loading");
+  const [loadingModalMessage, setLoadingModalMessage] = useState("");
 
   // Modal de confirmación
   const [confirmModal, setConfirmModal] = useState<{
@@ -45,6 +49,7 @@ export default function BankAccountsPage() {
     title: string;
     message: string;
     confirmText?: string;
+    cancelText?: string;
     variant?: "primary" | "danger" | "warning";
     onConfirm: () => void;
   }>({
@@ -59,7 +64,68 @@ export default function BankAccountsPage() {
   };
 
   const closeConfirm = () => {
-    setConfirmModal({ ...confirmModal, isOpen: false });
+    setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+  };
+
+  const closeLoadingModal = () => {
+    setShowLoadingModal(false);
+    setLoadingModalState("loading");
+    setLoadingModalMessage("");
+  };
+
+  const showLoadingState = (message: string) => {
+    setLoadingModalMessage(message);
+    setLoadingModalState("loading");
+    setShowLoadingModal(true);
+  };
+
+  const showLoadingSuccess = (message: string) => {
+    setLoadingModalMessage(message);
+    setLoadingModalState("success");
+    setShowLoadingModal(true);
+  };
+
+  const showWarningModal = (title: string, message: string) => {
+    showConfirm({
+      title,
+      message,
+      confirmText: "Entendido",
+      cancelText: "Cerrar",
+      variant: "warning",
+      onConfirm: () => closeConfirm(),
+    });
+  };
+
+  const extractErrorMessage = (error: unknown, fallback: string) => {
+    const rawMessage = String((error as any)?.message || '').trim();
+    if (!rawMessage) {
+      return fallback;
+    }
+
+    const cleanedMessage = rawMessage.replace(/^Error\s+\d+\s*:\s*/i, '').trim();
+    return cleanedMessage || fallback;
+  };
+
+  const handleAccountSaveError = (error: unknown) => {
+    const message = extractErrorMessage(error, "Error guardando cuenta");
+    const normalized = message.toLowerCase();
+    const isDuplicate =
+      normalized.includes("ya existe una cuenta bancaria") ||
+      normalized.includes("ya existe otra cuenta");
+
+    if (isDuplicate) {
+      showConfirm({
+        title: "⚠️ Cuenta Duplicada",
+        message,
+        confirmText: "Entendido",
+        cancelText: "Cerrar",
+        variant: "warning",
+        onConfirm: () => closeConfirm(),
+      });
+      return;
+    }
+
+    showWarningModal("Error guardando cuenta", message);
   };
 
   useEffect(() => {
@@ -74,17 +140,38 @@ export default function BankAccountsPage() {
       return;
     }
 
+    void loadTenantIdentity();
     loadAccounts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const loadTenantIdentity = async () => {
+    try {
+      const tenantConfig = await getTenantConfigAdmin();
+      const tenantName = String(tenantConfig?.name || "").trim();
+      const legalName = String(tenantConfig?.legalName || "").trim();
+
+      if (tenantName) {
+        setTenantNameFallback(tenantName);
+        setCompanyName((prev) => (String(prev || "").trim() ? prev : tenantName));
+      }
+
+      if (legalName) {
+        setTenantLegalNameFallback(legalName);
+        setAccountHolderName((prev) => (String(prev || "").trim() ? prev : legalName));
+      }
+    } catch {
+      // Keep generic fallbacks when tenant config is not available.
+    }
+  };
 
   const loadAccounts = async () => {
     try {
       setLoading(true);
       const data = await getAllBankAccounts();
       setAccounts(data);
-    } catch (err: any) {
-      showError(err.message || "Error cargando cuentas");
+    } catch (err: unknown) {
+      showWarningModal("Error al cargar cuentas", extractErrorMessage(err, "Error cargando cuentas"));
     } finally {
       setLoading(false);
     }
@@ -96,8 +183,8 @@ export default function BankAccountsPage() {
     setAccountType("CUENTA_CORRIENTE");
     setCurrency("CRC");
     setSinpeNumber("");
-    setAccountHolderName("VIAJES LUCITOURS TURISMO INTERNACIONAL S.A.");
-    setCompanyName("Viajes Alma Nova");
+    setAccountHolderName(tenantLegalNameFallback);
+    setCompanyName(tenantNameFallback);
     setNotes("");
     setEditingAccount(null);
     setShowForm(false);
@@ -111,7 +198,7 @@ export default function BankAccountsPage() {
     setCurrency(account.currency as any);
     setSinpeNumber(account.sinpeNumber || "");
     setAccountHolderName(account.accountHolderName);
-    setCompanyName(account.companyName || "Viajes Alma Nova");
+    setCompanyName(account.companyName || tenantNameFallback);
     setNotes(account.notes || "");
     setShowForm(true);
   };
@@ -120,12 +207,12 @@ export default function BankAccountsPage() {
     e.preventDefault();
 
     if (!bankName.trim()) {
-      showError("El nombre del banco es requerido");
+      showWarningModal("Campo requerido", "El nombre del banco es requerido");
       return;
     }
 
     if (!accountNumber.trim()) {
-      showError("El número de cuenta es requerido");
+      showWarningModal("Campo requerido", "El número de cuenta es requerido");
       return;
     }
 
@@ -169,17 +256,19 @@ export default function BankAccountsPage() {
 
     try {
       setSaving(true);
+      showLoadingState(editingAccount ? "Actualizando cuenta bancaria..." : "Creando cuenta bancaria...");
       if (editingAccount) {
         await updateBankAccount(editingAccount.id, input);
-        showSuccess("Cuenta actualizada exitosamente");
+        showLoadingSuccess("Cuenta actualizada exitosamente");
       } else {
         await createBankAccount(input);
-        showSuccess("Cuenta creada exitosamente");
+        showLoadingSuccess("Cuenta creada exitosamente");
       }
       await loadAccounts();
       resetForm();
-    } catch (err: any) {
-      showError(err.message || "Error guardando cuenta");
+    } catch (err: unknown) {
+      closeLoadingModal();
+      handleAccountSaveError(err);
     } finally {
       setSaving(false);
     }
@@ -187,11 +276,14 @@ export default function BankAccountsPage() {
 
   const handleToggleActive = async (account: CompanyBankAccount) => {
     try {
+      showLoadingState(account.isActive ? "Desactivando cuenta bancaria..." : "Activando cuenta bancaria...");
       await toggleBankAccountActive(account.id);
-      showSuccess(`Cuenta ${account.isActive ? "desactivada" : "activada"} exitosamente`);
+      showLoadingSuccess(`Cuenta ${account.isActive ? "desactivada" : "activada"} exitosamente`);
       await loadAccounts();
-    } catch (err: any) {
-      showError(err.message || "Error cambiando estado");
+    } catch (err: unknown) {
+      closeLoadingModal();
+      const message = extractErrorMessage(err, "Error cambiando estado");
+      showWarningModal("Error cambiando estado", message);
     }
   };
 
@@ -210,11 +302,14 @@ export default function BankAccountsPage() {
 
   const performDelete = async (account: CompanyBankAccount) => {
     try {
+      showLoadingState("Eliminando cuenta bancaria...");
       await deleteBankAccount(account.id);
-      showSuccess("Cuenta eliminada exitosamente");
+      showLoadingSuccess("Cuenta eliminada exitosamente");
       await loadAccounts();
-    } catch (err: any) {
-      showError(err.message || "Error eliminando cuenta");
+    } catch (err: unknown) {
+      closeLoadingModal();
+      const message = extractErrorMessage(err, "Error eliminando cuenta");
+      showWarningModal("Error eliminando cuenta", message);
     }
   };
 
@@ -224,15 +319,23 @@ export default function BankAccountsPage() {
 
   return (
     <>
-      <ToastNotification toasts={toasts} onDismiss={dismissToast} />
       <ConfirmModal
         isOpen={confirmModal.isOpen}
         title={confirmModal.title}
         message={confirmModal.message}
         confirmText={confirmModal.confirmText}
+        cancelText={confirmModal.cancelText}
         confirmVariant={confirmModal.variant}
         onConfirm={confirmModal.onConfirm}
         onCancel={closeConfirm}
+      />
+      <LoadingModal
+        isOpen={showLoadingModal}
+        state={loadingModalState}
+        loadingMessage={loadingModalMessage}
+        successMessage={loadingModalMessage}
+        errorMessage={loadingModalMessage}
+        onClose={closeLoadingModal}
       />
       <main className="app-shell">
         <div style={{ marginBottom: 30, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -338,7 +441,7 @@ export default function BankAccountsPage() {
                   type="text"
                   value={companyName}
                   onChange={(e) => setCompanyName(e.target.value)}
-                  placeholder="Viajes Alma Nova, Lucitours, etc."
+                  placeholder="Nombre comercial de tu empresa"
                   style={{ width: "100%", padding: "10px 12px", fontSize: "1rem" }}
                 />
               </div>
@@ -401,7 +504,7 @@ export default function BankAccountsPage() {
                   {accounts.map((account) => (
                     <tr key={account.id} style={{ opacity: account.isActive ? 1 : 0.5 }}>
                       <td style={{ fontWeight: 700, color: "#6366f1", fontSize: "0.95rem" }}>
-                        {account.companyName || "Viajes Alma Nova"}
+                        {account.companyName || tenantNameFallback}
                       </td>
                       <td style={{ fontWeight: "bold", fontSize: "0.95rem" }}>{account.bankName}</td>
                       <td style={{ fontFamily: "monospace", fontSize: "0.9rem", color: "#374151" }}>

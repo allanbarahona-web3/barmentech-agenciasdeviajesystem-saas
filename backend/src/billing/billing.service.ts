@@ -18,6 +18,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { EmailService } from "../email/email.service";
 import { TravelPackagesService } from "../travel-packages/travel-packages.service";
 import { InternalToursService } from "../internal-tourism/internal-tours.service";
+import { formatDateForClient, formatDateTimeForClient } from "../common/request-context";
 import { ApplyCreditNoteDto } from "./dto/apply-credit-note.dto";
 import { CreateCreditNoteDto } from "./dto/create-credit-note.dto";
 import { ListBillingContractsDto } from "./dto/list-billing-contracts.dto";
@@ -73,17 +74,11 @@ export class BillingService {
   }
 
   private formatDateTime(value: Date | string | null | undefined): string {
-    if (!value) return "-";
-    const date = value instanceof Date ? value : new Date(value);
-    if (Number.isNaN(date.getTime())) return "-";
-    return date.toLocaleString("es-CR");
+    return formatDateTimeForClient(value, "es-CR");
   }
 
   private formatDate(value: Date | string | null | undefined): string {
-    if (!value) return "-";
-    const date = value instanceof Date ? value : new Date(value);
-    if (Number.isNaN(date.getTime())) return "-";
-    return date.toLocaleDateString("es-CR");
+    return formatDateForClient(value, "es-CR");
   }
 
   private toShortText(value: unknown, max = 88): string {
@@ -124,12 +119,7 @@ export class BillingService {
 
     // Fallback: Buscar archivo local (solo para desarrollo sin .env configurado)
     const configuredPath = this.configService.get<string>("COMPANY_LOGO_PATH", "").trim();
-    const fileCandidates = [
-      configuredPath,
-      path.resolve(process.cwd(), "../frontend-next/public/assets/LOGO ALMANOVA.png"),
-      path.resolve(process.cwd(), "../../frontend-next/public/assets/LOGO ALMANOVA.png"),
-      path.resolve(process.cwd(), "frontend-next/public/assets/LOGO ALMANOVA.png"),
-    ].filter(Boolean);
+    const fileCandidates = [configuredPath].filter(Boolean);
 
     for (const candidate of fileCandidates) {
       try {
@@ -200,26 +190,48 @@ export class BillingService {
 
   private getCompanyProfile(contract: any) {
     const payload = contract?.payload && typeof contract.payload === "object" ? contract.payload : {};
+    const tenant = contract?.tenant && typeof contract.tenant === "object" ? contract.tenant : {};
+    const payloadTenantInfo =
+      (payload as any)?.tenantLegalInfo && typeof (payload as any).tenantLegalInfo === "object"
+        ? (payload as any).tenantLegalInfo
+        : {};
     const legalName =
+      String((tenant as any)?.legalName || "").trim() ||
+      String((payloadTenantInfo as any)?.legalName || "").trim() ||
       this.configService.get<string>("COMPANY_LEGAL_NAME", "").trim() ||
-      "VIAJES ALMA NOVA";
+      "RAZON SOCIAL NO CONFIGURADA";
     const commercialName =
+      String((tenant as any)?.name || "").trim() ||
+      String((payloadTenantInfo as any)?.name || "").trim() ||
       this.configService.get<string>("COMPANY_COMMERCIAL_NAME", "").trim() ||
-      "Viajes Alma Nova";
+      "Agencia de Viajes";
     const legalId =
+      String((tenant as any)?.legalId || "").trim() ||
+      String((payloadTenantInfo as any)?.legalId || "").trim() ||
       this.configService.get<string>("COMPANY_LEGAL_ID", "").trim() ||
-      "3-101-960028";
+      "NO CONFIGURADO";
     const companyEmail =
+      String((tenant as any)?.contactEmail || "").trim() ||
+      String((tenant as any)?.fromEmail || "").trim() ||
+      String((payloadTenantInfo as any)?.contactEmail || "").trim() ||
       this.configService.get<string>("COMPANY_BILLING_EMAIL", "").trim() ||
-      "contratos@viajesalmanova.com";
+      "sin-correo@empresa.local";
     const companyContactNumber =
+      String((tenant as any)?.contactWhatsApp || "").trim() ||
+      String((tenant as any)?.contactPhone || "").trim() ||
+      String((payloadTenantInfo as any)?.contactWhatsApp || "").trim() ||
+      String((payloadTenantInfo as any)?.contactPhone || "").trim() ||
       this.configService.get<string>("COMPANY_CONTACT_NUMBER", "").trim() ||
       this.configService.get<string>("COMPANY_CONTACT", "").trim() ||
       companyEmail;
     const companyPhones =
+      String((tenant as any)?.contactPhone || "").trim() ||
+      String((tenant as any)?.contactWhatsApp || "").trim() ||
+      String((payloadTenantInfo as any)?.contactPhone || "").trim() ||
+      String((payloadTenantInfo as any)?.contactWhatsApp || "").trim() ||
       this.configService.get<string>("COMPANY_PHONE_NUMBERS", "").trim() ||
       this.configService.get<string>("COMPANY_PHONES", "").trim() ||
-      "+50670067572";
+      "-";
 
     return {
       legalName,
@@ -590,6 +602,7 @@ export class BillingService {
       commercialName: string;
       legalId: string;
       companyEmail: string;
+      companyPhones: string;
     };
     clientName: string;
     paymentReference: string;
@@ -626,7 +639,7 @@ export class BillingService {
       },
       contactInfo: {
         email: params.company.companyEmail,
-        phone: "+506 7006-7572",
+        phone: params.company.companyPhones,
       },
     });
 
@@ -1903,7 +1916,28 @@ export class BillingService {
   private async ensureInvoicePdf(invoiceId: string) {
     const invoice = await (this.prisma as any).billingInvoice.findUnique({
       where: { id: invoiceId },
-      include: { client: true, contract: { include: { tenant: { select: { logoUrl: true, emailLogoUrl: true, fromEmail: true, replyToEmail: true } } } } },
+      include: {
+        client: true,
+        contract: {
+          include: {
+            tenant: {
+              select: {
+                subdomain: true,
+                logoUrl: true,
+                emailLogoUrl: true,
+                fromEmail: true,
+                replyToEmail: true,
+                name: true,
+                legalName: true,
+                legalId: true,
+                contactEmail: true,
+                contactPhone: true,
+                contactWhatsApp: true,
+              },
+            },
+          },
+        },
+      },
     });
     if (!invoice) {
       throw new NotFoundException("Factura no encontrada.");
@@ -2016,7 +2050,23 @@ export class BillingService {
       include: {
         invoice: { include: { client: true } },
         payment: true,
-        contract: { include: { tenant: { select: { logoUrl: true } } } },
+        contract: {
+          include: {
+            tenant: {
+              select: {
+                subdomain: true,
+                logoUrl: true,
+                name: true,
+                legalName: true,
+                legalId: true,
+                contactEmail: true,
+                contactPhone: true,
+                contactWhatsApp: true,
+                fromEmail: true,
+              },
+            },
+          },
+        },
       },
     });
 
@@ -2092,7 +2142,23 @@ export class BillingService {
       where: { id: creditNoteId },
       include: {
         invoice: { include: { client: true } },
-        contract: { include: { tenant: { select: { logoUrl: true } } } },
+        contract: {
+          include: {
+            tenant: {
+              select: {
+                subdomain: true,
+                logoUrl: true,
+                name: true,
+                legalName: true,
+                legalId: true,
+                contactEmail: true,
+                contactPhone: true,
+                contactWhatsApp: true,
+                fromEmail: true,
+              },
+            },
+          },
+        },
       },
     });
 
@@ -2177,7 +2243,23 @@ export class BillingService {
       where: { contractId },
       include: {
         client: true,
-        contract: { include: { tenant: { select: { logoUrl: true } } } },
+        contract: {
+          include: {
+            tenant: {
+              select: {
+                subdomain: true,
+                logoUrl: true,
+                name: true,
+                legalName: true,
+                legalId: true,
+                contactEmail: true,
+                contactPhone: true,
+                contactWhatsApp: true,
+                fromEmail: true,
+              },
+            },
+          },
+        },
         payments: { orderBy: { reportedAt: "asc" } },
         creditNotes: { orderBy: { issuedAt: "asc" } },
       },

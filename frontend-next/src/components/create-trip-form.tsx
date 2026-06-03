@@ -2,8 +2,8 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ToastNotification, useToast } from '@/components/toast-notification';
-import { PageLoader } from '@/components/loading-spinner';
+import { ConfirmModal } from '@/components/confirm-modal';
+import { LoadingModal } from '@/components/loading-modal';
 
 interface CreateTripFormProps {
   title: string;
@@ -25,9 +25,25 @@ export function CreateTripForm({
   showItinerary = false,
 }: CreateTripFormProps) {
   const router = useRouter();
-  const { toasts, showSuccess, showError, dismissToast } = useToast();
 
   const [saving, setSaving] = useState(false);
+  const [showLoadingModal, setShowLoadingModal] = useState(false);
+  const [loadingModalState, setLoadingModalState] = useState<'loading' | 'success' | 'error'>('loading');
+  const [loadingModalMessage, setLoadingModalMessage] = useState('');
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmText?: string;
+    cancelText?: string;
+    variant?: 'primary' | 'danger' | 'warning';
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
 
   // Form state
   const [name, setName] = useState('');
@@ -44,15 +60,58 @@ export function CreateTripForm({
   const [transportType, setTransportType] = useState<'AIR' | 'BUS' | 'PRIVATE' | 'CRUISE' | 'WALKING' | 'MIXED'>('AIR');
   const [itinerary, setItinerary] = useState('');
 
+  const showConfirm = (config: Omit<typeof confirmModal, 'isOpen'>) => {
+    setConfirmModal({ ...config, isOpen: true });
+  };
+
+  const closeConfirm = () => {
+    setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+  };
+
+  const closeLoadingModal = () => {
+    setShowLoadingModal(false);
+    setLoadingModalState('loading');
+    setLoadingModalMessage('');
+  };
+
+  const showLoadingState = (message: string) => {
+    setLoadingModalMessage(message);
+    setLoadingModalState('loading');
+    setShowLoadingModal(true);
+  };
+
+  const showLoadingSuccess = (message: string) => {
+    setLoadingModalMessage(message);
+    setLoadingModalState('success');
+    setShowLoadingModal(true);
+  };
+
+  const extractErrorMessage = (error: unknown, fallback: string) => {
+    const rawMessage = String((error as any)?.message || '').trim();
+    if (!rawMessage) {
+      return fallback;
+    }
+    return rawMessage.replace(/^Error\s+\d+\s*:\s*/i, '').trim() || fallback;
+  };
+
+  const showWarningModal = (titleText: string, message: string) => {
+    showConfirm({
+      title: titleText,
+      message,
+      confirmText: 'Entendido',
+      cancelText: 'Cerrar',
+      variant: 'warning',
+      onConfirm: () => closeConfirm(),
+    });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSaving(true);
 
     try {
       // Validaciones básicas
       if (!name.trim() || !destination.trim() || !departureDate || !returnDate || !capacity || !price) {
-        showError('Por favor completa todos los campos requeridos');
-        setSaving(false);
+        showWarningModal('Campos requeridos', 'Por favor completa todos los campos requeridos');
         return;
       }
 
@@ -62,28 +121,27 @@ export function CreateTripForm({
       today.setHours(0, 0, 0, 0);
 
       if (departureDateTime <= today) {
-        showError('La fecha de salida debe ser en el futuro');
-        setSaving(false);
+        showWarningModal('Fecha inválida', 'La fecha de salida debe ser en el futuro');
         return;
       }
 
       if (returnDateTime <= departureDateTime) {
-        showError('La fecha de regreso debe ser después de la salida');
-        setSaving(false);
+        showWarningModal('Fecha inválida', 'La fecha de regreso debe ser después de la salida');
         return;
       }
 
       if (parseInt(capacity) <= 0) {
-        showError('La capacidad debe ser mayor a 0');
-        setSaving(false);
+        showWarningModal('Capacidad inválida', 'La capacidad debe ser mayor a 0');
         return;
       }
 
       if (parseFloat(price) <= 0) {
-        showError('El precio debe ser mayor a 0');
-        setSaving(false);
+        showWarningModal('Precio inválido', 'El precio debe ser mayor a 0');
         return;
       }
+
+      setSaving(true);
+      showLoadingState('Creando viaje...');
 
       const data = {
         name: name.trim(),
@@ -102,20 +160,40 @@ export function CreateTripForm({
       };
 
       await onSubmit(data);
-      showSuccess('✅ Viaje creado exitosamente');
+      showLoadingSuccess('Viaje creado exitosamente');
 
       setTimeout(() => {
         router.push(redirectUrl);
       }, 1500);
     } catch (error) {
-      showError(`❌ Error: ${error instanceof Error ? error.message : 'Error desconocido'}`);
+      closeLoadingModal();
+      showWarningModal('Error al crear viaje', extractErrorMessage(error, 'Error desconocido'));
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <main className="app-shell" style={{ padding: '20px' }}>
+    <>
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        confirmText={confirmModal.confirmText}
+        cancelText={confirmModal.cancelText}
+        confirmVariant={confirmModal.variant}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={closeConfirm}
+      />
+      <LoadingModal
+        isOpen={showLoadingModal}
+        state={loadingModalState}
+        loadingMessage={loadingModalMessage}
+        successMessage={loadingModalMessage}
+        errorMessage={loadingModalMessage}
+        onClose={closeLoadingModal}
+      />
+      <main className="app-shell" style={{ padding: '20px' }}>
       <div style={{ maxWidth: 800, margin: '0 auto' }}>
         <div style={{ marginBottom: 30 }}>
           <button
@@ -519,8 +597,7 @@ export function CreateTripForm({
         </form>
       </div>
 
-      {/* Toasts */}
-      <ToastNotification toasts={toasts} onDismiss={dismissToast} />
     </main>
+    </>
   );
 }

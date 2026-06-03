@@ -23,7 +23,7 @@ export default function Home() {
   const [resetMessage, setResetMessage] = useState("");
   const [resetError, setResetError] = useState("");
   const [tenantLogoUrl, setTenantLogoUrl] = useState<string | null>(null);
-  const [tenantName, setTenantName] = useState<string>("Viajes Alma Nova");
+  const [tenantName, setTenantName] = useState<string>("Agencia de Viajes");
   const [primaryColor, setPrimaryColor] = useState<string>("#3B82F6"); // Azul por defecto
   const [accentColor, setAccentColor] = useState<string>("#8B5CF6"); // Morado por defecto
   
@@ -67,8 +67,8 @@ export default function Home() {
         }
         
         console.error("No se pudo cargar la configuración del tenant:", err);
-        // Usar logo por defecto si falla
-        setTenantLogoUrl("https://lucitouroperations.sfo3.digitaloceanspaces.com/contracts-assets/Almanova%20azul+dorado.webp");
+        // Mantener estado neutral sin logo cuando falla la carga de configuración.
+        setTenantLogoUrl(null);
       }
     })();
   }, [router]);
@@ -158,7 +158,7 @@ export default function Home() {
           }}
         />
       ) : (
-        <div className="w-full max-w-[410px] my-auto">
+        <div className="w-full max-w-102.5 my-auto">
           <div className="bg-white rounded-2xl shadow-xl p-5 md:p-8 login-card">
             {/* Logo */}
             <div className="flex justify-center mb-4 md:mb-8">
@@ -172,7 +172,7 @@ export default function Home() {
                   priority
                 />
               ) : (
-                <div className="w-[180px] h-[90px] bg-gray-200 animate-pulse rounded" />
+                <div className="w-45 h-22.5 bg-gray-200 animate-pulse rounded" />
               )}
             </div>
 

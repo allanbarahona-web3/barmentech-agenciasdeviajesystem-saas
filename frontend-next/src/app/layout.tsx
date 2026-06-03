@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Script from "next/script";
 import { VerticalNav } from "@/components/vertical-nav";
+import { TenantBrowserMetadata } from "@/components/tenant-browser-metadata";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -15,7 +16,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Contratos Alma Nova",
+  title: "Sistema de Contratos",
   description: "Sistema de gestion de contratos y cobros",
 };
 
@@ -35,6 +36,7 @@ export default function RootLayout({
         style={{ background: '#f5f5f7' }}
       >
         <Script src="/config.js" strategy="afterInteractive" />
+        <TenantBrowserMetadata />
         <VerticalNav />
         {children}
       </body>

@@ -85,13 +85,24 @@ export class ExchangeRateController {
     @Query("startDate") startDate: string,
     @Query("endDate") endDate: string,
     @Res() res: Response,
-    @Request() req: { user: { tenantId: string } },
+    @Request() req: { user: { tenantId: string }; clientTimeZone?: string; clientUtcOffsetMinutes?: number },
+    @Query("timeZone") timeZone?: string,
+    @Query("utcOffsetMinutes") utcOffsetMinutesRaw?: string,
   ) {
     if (!startDate || !endDate) {
       return res.status(HttpStatus.BAD_REQUEST).json({ error: "startDate and endDate are required" });
     }
 
-    const pdfBuffer = await this.exchangeRateService.generateHistoryPdf(req.user.tenantId, startDate, endDate);
+    const utcOffsetMinutesFromQuery = Number.parseInt(String(utcOffsetMinutesRaw || ""), 10);
+    const effectiveTimeZone = String(timeZone || req.clientTimeZone || "").trim() || undefined;
+    const effectiveUtcOffsetMinutes = Number.isFinite(utcOffsetMinutesFromQuery)
+      ? utcOffsetMinutesFromQuery
+      : req.clientUtcOffsetMinutes;
+
+    const pdfBuffer = await this.exchangeRateService.generateHistoryPdf(req.user.tenantId, startDate, endDate, {
+      timeZone: effectiveTimeZone,
+      utcOffsetMinutes: effectiveUtcOffsetMinutes,
+    });
     
     res.set({
       "Content-Type": "application/pdf",
@@ -109,7 +120,7 @@ export class ExchangeRateController {
   @Roles("ADMIN", "CONTADOR", "FACTURACION_COBROS")
   @UseGuards(RolesGuard)
   async emailHistory(
-    @Body() body: { startDate: string; endDate: string; email: string },
+    @Body() body: { startDate: string; endDate: string; email: string; timeZone?: string; utcOffsetMinutes?: number },
     @Request() req: any,
   ) {
     console.log("[ExchangeRate Controller] Email history request received:", {
@@ -119,7 +130,12 @@ export class ExchangeRateController {
       user: req.user?.fullName,
     });
 
-    const { startDate, endDate, email } = body;
+    const { startDate, endDate, email, timeZone, utcOffsetMinutes } = body;
+    const effectiveTimeZone = String(timeZone || req.clientTimeZone || "").trim() || undefined;
+    const effectiveUtcOffsetMinutes =
+      typeof utcOffsetMinutes === "number" && Number.isFinite(utcOffsetMinutes)
+        ? utcOffsetMinutes
+        : req.clientUtcOffsetMinutes;
 
     if (!startDate || !endDate || !email) {
       console.log("[ExchangeRate Controller] Missing required fields");
@@ -130,7 +146,10 @@ export class ExchangeRateController {
     const userName = String(user?.fullName || "Usuario");
 
     try {
-      await this.exchangeRateService.sendHistoryEmail(user.tenantId, startDate, endDate, email, userName);
+      await this.exchangeRateService.sendHistoryEmail(user.tenantId, startDate, endDate, email, userName, {
+        timeZone: effectiveTimeZone,
+        utcOffsetMinutes: effectiveUtcOffsetMinutes,
+      });
       console.log("[ExchangeRate Controller] Email sent successfully to:", email);
       return { success: true, message: "Historial enviado por correo exitosamente" };
     } catch (error: any) {

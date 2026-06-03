@@ -194,8 +194,15 @@ export class ExchangeRateService {
   /**
    * Generate PDF report of exchange rate history for a date range
    */
-  async generateHistoryPdf(tenantId: string, startDate: string, endDate: string): Promise<Buffer> {
+  async generateHistoryPdf(
+    tenantId: string,
+    startDate: string,
+    endDate: string,
+    options?: { timeZone?: string; utcOffsetMinutes?: number },
+  ): Promise<Buffer> {
     const rates = await this.getExchangeRateHistoryRange(tenantId, startDate, endDate);
+    const tenantConfig = await this.tenantService.getTenantConfig(tenantId);
+    const tenantName = String(tenantConfig?.name || "Agencia de Viajes").trim() || "Agencia de Viajes";
 
     const pdf = await PDFDocument.create();
     const font = await pdf.embedFont(StandardFonts.Helvetica);
@@ -222,7 +229,7 @@ export class ExchangeRateService {
     });
 
     y -= 25;
-    page.drawText("Viajes Alma Nova", {
+    page.drawText(tenantName, {
       x: 50,
       y,
       size: 12,
@@ -231,11 +238,22 @@ export class ExchangeRateService {
     });
 
     y -= 20;
-    const formatDateDisplay = (dateStr: string) => {
-      const date = new Date(dateStr);
-      const day = String(date.getDate()).padStart(2, '0');
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const year = date.getFullYear();
+    // Parse YYYY-MM-DD safely to avoid timezone shifts (17 becoming 16)
+    const formatDateDisplay = (value: string | Date) => {
+      const raw = String(value || "").trim();
+      const dateOnlyMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (dateOnlyMatch) {
+        return `${dateOnlyMatch[3]}/${dateOnlyMatch[2]}/${dateOnlyMatch[1]}`;
+      }
+
+      const parsed = value instanceof Date ? value : new Date(raw);
+      if (Number.isNaN(parsed.getTime())) {
+        return "-";
+      }
+
+      const day = String(parsed.getUTCDate()).padStart(2, "0");
+      const month = String(parsed.getUTCMonth() + 1).padStart(2, "0");
+      const year = parsed.getUTCFullYear();
       return `${day}/${month}/${year}`;
     };
 
@@ -258,7 +276,48 @@ export class ExchangeRateService {
 
     y -= 15;
     const now = new Date();
-    page.drawText(`Generado: ${formatDateDisplay(now.toISOString())} ${now.toLocaleTimeString('es-CR')}`, {
+    const formatGeneratedDateTime = (value: Date): string => {
+      const timeZone = String(options?.timeZone || "").trim();
+      const offsetMinutes = options?.utcOffsetMinutes;
+
+      if (timeZone) {
+        try {
+          const datePart = new Intl.DateTimeFormat("es-CR", {
+            timeZone,
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+          }).format(value);
+
+          const timePart = new Intl.DateTimeFormat("es-CR", {
+            timeZone,
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+            hour12: false,
+          }).format(value);
+
+          return `${datePart} ${timePart}`;
+        } catch {
+          // Fallback below when timezone name is invalid
+        }
+      }
+
+      if (typeof offsetMinutes === "number" && Number.isFinite(offsetMinutes)) {
+        const adjusted = new Date(value.getTime() - offsetMinutes * 60 * 1000);
+        const day = String(adjusted.getUTCDate()).padStart(2, "0");
+        const month = String(adjusted.getUTCMonth() + 1).padStart(2, "0");
+        const year = adjusted.getUTCFullYear();
+        const hh = String(adjusted.getUTCHours()).padStart(2, "0");
+        const mm = String(adjusted.getUTCMinutes()).padStart(2, "0");
+        const ss = String(adjusted.getUTCSeconds()).padStart(2, "0");
+        return `${day}/${month}/${year} ${hh}:${mm}:${ss}`;
+      }
+
+      return `${formatDateDisplay(value)} ${value.toLocaleTimeString("es-CR")}`;
+    };
+
+    page.drawText(`Generado: ${formatGeneratedDateTime(now)}`, {
       x: 50,
       y,
       size: 9,
@@ -357,7 +416,7 @@ export class ExchangeRateService {
 
     // Footer
     const lastPage = pdf.getPages()[pdf.getPageCount() - 1];
-    lastPage.drawText("Viajes Alma Nova - Sistema de Contratos", {
+    lastPage.drawText(`${tenantName} - Sistema de Contratos`, {
       x: 50,
       y: 50,
       size: 8,
@@ -379,12 +438,13 @@ export class ExchangeRateService {
     endDate: string,
     recipientEmail: string,
     userName: string,
+    options?: { timeZone?: string; utcOffsetMinutes?: number },
   ): Promise<void> {
     console.log("[ExchangeRate Service] Preparando envío de email a:", recipientEmail);
 
     // 1. Generar PDF
     console.log("[ExchangeRate Service] Generando PDF para rango:", { startDate, endDate });
-    const pdfBuffer = await this.generateHistoryPdf(tenantId, startDate, endDate);
+    const pdfBuffer = await this.generateHistoryPdf(tenantId, startDate, endDate, options);
     const rates = await this.getExchangeRateHistoryRange(tenantId, startDate, endDate);
     console.log("[ExchangeRate Service] PDF generado. Tamaño:", pdfBuffer.length, "bytes. Registros:", rates.length);
 
@@ -438,6 +498,15 @@ export class ExchangeRateService {
 
     // Get tenant config for email settings
     const tenantConfig = await this.tenantService.getTenantConfig(tenantId);
+    const tenantName = String(tenantConfig?.name || "Agencia de Viajes").trim() || "Agencia de Viajes";
+    const tenantEmail =
+      String(tenantConfig?.fromEmail || "").trim() ||
+      String(tenantConfig?.contactEmail || "").trim() ||
+      String(process.env.CONTRACTS_FROM_EMAIL || "onboarding@resend.dev");
+    const tenantPhone =
+      String(tenantConfig?.contactPhone || "").trim() ||
+      String(tenantConfig?.contactWhatsApp || "").trim() ||
+      "-";
 
     console.log("[ExchangeRate Service] Generating PDF for range:", { startDate, endDate });
     const pdfBuffer = await this.generateHistoryPdf(tenantId, startDate, endDate);
@@ -488,7 +557,7 @@ export class ExchangeRateService {
           <div class="container">
             <div class="header">
               <h1 style="margin: 0 0 10px 0; font-size: 24px;">📊 Historial de Tipos de Cambio</h1>
-              <p style="margin: 0; opacity: 0.9;">Viajes Alma Nova</p>
+              <p style="margin: 0; opacity: 0.9;">${tenantName}</p>
             </div>
             
             <div class="content">
@@ -515,8 +584,8 @@ export class ExchangeRateService {
             </div>
             
             <div class="footer">
-              <p style="margin: 0;">Viajes Alma Nova - Sistema de Contratos</p>
-              <p style="margin: 5px 0 0 0;">📧 viajes@almanova.cr | ☎️ +506 7006-7572</p>
+              <p style="margin: 0;">${tenantName} - Sistema de Contratos</p>
+              <p style="margin: 5px 0 0 0;">📧 ${tenantEmail} | ☎️ ${tenantPhone}</p>
             </div>
           </div>
         </body>

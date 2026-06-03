@@ -1740,36 +1740,105 @@ body {
   margin-top: 2px;
 }
 
-.vertical-nav-session-time {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.8rem;
-  color: var(--muted);
-  padding: 8px 12px;
-  background: rgba(59, 130, 246, 0.08);
-  border-radius: 8px;
-}
-
-.session-indicator {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #10b981;
-  animation: pulse 2s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.5;
-  }
-}
-
 .vertical-nav-exchange-rate {
   margin-top: 12px;
+}
+
+.attendance-widget-header {
+  margin-top: 10px;
+  padding: 10px 11px;
+  border: 1px solid #c7d2fe;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #eef2ff 0%, #f8fafc 100%);
+}
+
+.attendance-widget-header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.attendance-widget-header-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.attendance-widget-header-state strong {
+  font-size: 0.79rem;
+  color: var(--text);
+  line-height: 1.1;
+  white-space: nowrap;
+  letter-spacing: 0.02em;
+}
+
+.attendance-widget-header-clock {
+  font-size: 0.8rem;
+  color: #1e3a8a;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.attendance-widget-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  border: 1px solid rgba(15, 23, 42, 0.2);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.65);
+}
+
+.attendance-widget-dot.is-working {
+  background: #10b981;
+}
+
+.attendance-widget-dot.is-meeting {
+  background: #f59e0b;
+}
+
+.attendance-widget-dot.is-off {
+  background: #ef4444;
+}
+
+.attendance-widget-dot.is-break {
+  background: #9ca3af;
+}
+
+.attendance-widget-select {
+  width: 100%;
+  margin-top: 8px;
+  border: 1px solid #c7d2fe;
+  background: #ffffff;
+  border-radius: 8px;
+  height: 35px;
+  font-size: 0.79rem;
+  color: #1f2937;
+  padding: 0 10px;
+  outline: none;
+}
+
+.attendance-widget-select:focus {
+  border-color: #6366f1;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.14);
+}
+
+.attendance-widget-select:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.attendance-widget-status {
+  margin: 6px 0 0;
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+
+.attendance-widget-error-inline {
+  margin: 6px 0 0;
+  font-size: 0.72rem;
+  color: var(--danger);
 }
 
 .exchange-rate-badge {

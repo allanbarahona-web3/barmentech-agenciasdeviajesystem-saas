@@ -300,7 +300,7 @@ describe('InternalToursService', () => {
       const result = await service.getTripStats(mockTenantId, 'trip-123');
 
       expect(result).toBeDefined();
-      expect(result.tripCode).toBe('IT-202605');
+      expect(result.tripCode).toMatch(/^IT-[A-Z0-9]{6}$/);
       expect(result.totalParticipants).toBe(5); // 2 + 3 participants
       expect(result.occupancy).toBe(10); // 2 bookings / 20 capacity = 10%
       expect(result.totalIncome).toBeGreaterThanOrEqual(0);

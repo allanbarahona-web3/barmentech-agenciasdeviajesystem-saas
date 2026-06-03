@@ -13,8 +13,26 @@ import { ListBankAccountsDto } from './dto/list-bank-accounts.dto';
 @Injectable()
 export class CompanyBankAccountsService {
   private readonly logger = new Logger(CompanyBankAccountsService.name);
+  private static readonly DEFAULT_COMPANY_NAME = 'Empresa';
   
   constructor(private readonly prisma: PrismaService) {}
+
+  private normalizeAccountValue(value: string) {
+    return String(value || '')
+      .trim()
+      .toUpperCase()
+      .replace(/[\s\-]/g, '');
+  }
+
+  private async getTenantCompanyName(tenantId: string) {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { name: true },
+    });
+
+    const tenantName = String(tenant?.name || '').trim();
+    return tenantName || CompanyBankAccountsService.DEFAULT_COMPANY_NAME;
+  }
 
   async create(
     dto: CreateBankAccountDto,
@@ -22,23 +40,37 @@ export class CompanyBankAccountsService {
     userName: string,
     tenantId: string,
   ) {
-    // 🔒 SEGURIDAD: Verificar unicidad DENTRO del tenant (dos tenants pueden tener mismo número)
-    const existing = await this.prisma.companyBankAccount.findFirst({
-      where: { 
-        accountNumber: dto.accountNumber,
-        tenantId: tenantId,
-      },
+    const trimmedAccountNumber = String(dto.accountNumber || '').trim();
+    const normalizedInput = this.normalizeAccountValue(trimmedAccountNumber);
+    if (!normalizedInput) {
+      throw new BadRequestException('El número de cuenta es requerido');
+    }
+
+    const tenantAccounts = await this.prisma.companyBankAccount.findMany({
+      where: { tenantId },
+      select: { id: true, accountNumber: true },
     });
+
+    // 🔒 SEGURIDAD: Unicidad por tenant usando normalización (espacios/guiones/case-insensitive)
+    const existing = tenantAccounts.find(
+      (account) => this.normalizeAccountValue(account.accountNumber) === normalizedInput,
+    );
 
     if (existing) {
       throw new ConflictException(
-        `Ya existe una cuenta bancaria con el número: ${dto.accountNumber}`,
+        `Ya existe una cuenta bancaria con el número: ${trimmedAccountNumber}`,
       );
     }
+
+    const companyName =
+      String(dto.companyName || '').trim() ||
+      (await this.getTenantCompanyName(tenantId));
 
     return this.prisma.companyBankAccount.create({
       data: {
         ...dto,
+        accountNumber: trimmedAccountNumber,
+        companyName,
         isActive: dto.isActive ?? true,
         createdByUserId: userId,
         createdByName: userName,
@@ -102,35 +134,28 @@ export class CompanyBankAccountsService {
     return account;
   }
 
-  async findByAccountNumber(accountNumber: string) {
+  async findByAccountNumber(accountNumber: string, tenantId: string) {
     const original = String(accountNumber || '');
-    const normalized = original
-      .trim()
-      .toUpperCase()
-      .replace(/[\s\-]/g, ''); // Eliminar espacios y guiones
+    const normalized = this.normalizeAccountValue(original); // Eliminar espacios y guiones
     
-    this.logger.log(`🔎 findByAccountNumber: "${original}" → normalizado: "${normalized}"`);
+    this.logger.log(`🔎 findByAccountNumber [tenant=${tenantId}]: "${original}" → normalizado: "${normalized}"`);
     
     if (!normalized) {
       this.logger.warn('⚠️ Búsqueda vacía, retornando null');
       return null;
     }
 
-    // Buscar en todas las cuentas activas e inactivas
-    const allAccounts = await this.prisma.companyBankAccount.findMany();
+    // Buscar únicamente dentro del tenant actual
+    const allAccounts = await this.prisma.companyBankAccount.findMany({
+      where: { tenantId },
+    });
 
     this.logger.log(`📋 Total cuentas en DB: ${allAccounts.length}`);
 
     // Buscar con normalización (quitar espacios, guiones, mayúsculas)
     const found = allAccounts.find((acc) => {
-      const accNum = String(acc.accountNumber || '')
-        .trim()
-        .toUpperCase()
-        .replace(/[\s\-]/g, '');
-      const sinpeNum = String(acc.sinpeNumber || '')
-        .trim()
-        .toUpperCase()
-        .replace(/[\s\-]/g, '');
+      const accNum = this.normalizeAccountValue(acc.accountNumber);
+      const sinpeNum = this.normalizeAccountValue(acc.sinpeNumber || '');
       
       const matchAccNum = accNum === normalized;
       const matchSinpe = sinpeNum === normalized;
@@ -158,26 +183,45 @@ export class CompanyBankAccountsService {
     // Verificar que existe
     await this.findOne(id, tenantId);
 
-    // Si está cambiando el número de cuenta, verificar que no exista
-    if (dto.accountNumber) {
-      const existing = await this.prisma.companyBankAccount.findFirst({
+    const updateData: UpdateBankAccountDto = { ...dto };
+
+    if (dto.accountNumber !== undefined) {
+      const trimmedAccountNumber = String(dto.accountNumber || '').trim();
+      const normalizedInput = this.normalizeAccountValue(trimmedAccountNumber);
+      if (!normalizedInput) {
+        throw new BadRequestException('El número de cuenta es requerido');
+      }
+
+      const tenantAccounts = await this.prisma.companyBankAccount.findMany({
         where: {
-          accountNumber: dto.accountNumber,
-          tenantId: tenantId, // 🔒 SEGURIDAD: Validar dentro del tenant
+          tenantId,
           NOT: { id },
         },
+        select: { id: true, accountNumber: true },
       });
+
+      const existing = tenantAccounts.find(
+        (account) => this.normalizeAccountValue(account.accountNumber) === normalizedInput,
+      );
 
       if (existing) {
         throw new ConflictException(
-          `Ya existe otra cuenta con el número: ${dto.accountNumber}`,
+          `Ya existe otra cuenta con el número: ${trimmedAccountNumber}`,
         );
       }
+
+      updateData.accountNumber = trimmedAccountNumber;
+    }
+
+    if (dto.companyName !== undefined) {
+      updateData.companyName =
+        String(dto.companyName || '').trim() ||
+        (await this.getTenantCompanyName(tenantId));
     }
 
     return this.prisma.companyBankAccount.update({
       where: { id },
-      data: dto,
+      data: updateData,
     });
   }
 

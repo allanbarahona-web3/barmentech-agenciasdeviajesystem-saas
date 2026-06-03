@@ -123,7 +123,7 @@ export default function TenantConfigPage() {
                   type="text"
                   value={formData.legalName}
                   onChange={(e) => handleChange("legalName", e.target.value)}
-                  placeholder="VIAJES ALMA NOVA"
+                  placeholder="RAZON SOCIAL DE LA EMPRESA"
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>

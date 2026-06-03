@@ -13,8 +13,8 @@ import {
   type TravelPackage,
   type CreateTravelPackageInput,
 } from "@/lib/travel-packages-api";
-import { ToastNotification, useToast } from "@/components/toast-notification";
 import { ConfirmModal } from "@/components/confirm-modal";
+import { LoadingModal } from "@/components/loading-modal";
 import { PageLoader } from "@/components/loading-spinner";
 
 const formatDate = (dateString: string): string => {
@@ -63,7 +63,9 @@ export default function TravelPackagesPage() {
   const [showArchived, setShowArchived] = useState(false); // Toggle para mostrar archivo
   const [showForm, setShowForm] = useState(false);
   const [editingPackage, setEditingPackage] = useState<TravelPackage | null>(null);
-  const { toasts, showSuccess, showError, dismissToast } = useToast();
+  const [showLoadingModal, setShowLoadingModal] = useState(false);
+  const [loadingModalState, setLoadingModalState] = useState<"loading" | "success" | "error">("loading");
+  const [loadingModalMessage, setLoadingModalMessage] = useState("");
 
   // Form state
   const [name, setName] = useState("");
@@ -82,6 +84,7 @@ export default function TravelPackagesPage() {
     title: string;
     message: string;
     confirmText?: string;
+    cancelText?: string;
     variant?: "primary" | "danger" | "warning";
     onConfirm: () => void;
   }>({
@@ -96,7 +99,44 @@ export default function TravelPackagesPage() {
   };
 
   const closeConfirm = () => {
-    setConfirmModal({ ...confirmModal, isOpen: false });
+    setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+  };
+
+  const closeLoadingModal = () => {
+    setShowLoadingModal(false);
+    setLoadingModalState("loading");
+    setLoadingModalMessage("");
+  };
+
+  const showLoadingState = (message: string) => {
+    setLoadingModalMessage(message);
+    setLoadingModalState("loading");
+    setShowLoadingModal(true);
+  };
+
+  const showLoadingSuccess = (message: string) => {
+    setLoadingModalMessage(message);
+    setLoadingModalState("success");
+    setShowLoadingModal(true);
+  };
+
+  const extractErrorMessage = (error: unknown, fallback: string) => {
+    const rawMessage = String((error as any)?.message || "").trim();
+    if (!rawMessage) {
+      return fallback;
+    }
+    return rawMessage.replace(/^Error\s+\d+\s*:\s*/i, "").trim() || fallback;
+  };
+
+  const showWarningModal = (title: string, message: string) => {
+    showConfirm({
+      title,
+      message,
+      confirmText: "Entendido",
+      cancelText: "Cerrar",
+      variant: "warning",
+      onConfirm: () => closeConfirm(),
+    });
   };
 
   useEffect(() => {
@@ -123,8 +163,8 @@ export default function TravelPackagesPage() {
       setLoading(true);
       const data = await getAllTravelPackages();
       setPackages(data);
-    } catch (err: any) {
-      showError(err.message || "Error cargando viajes");
+    } catch (err: unknown) {
+      showWarningModal("Error cargando viajes", extractErrorMessage(err, "Error cargando viajes"));
     } finally {
       setLoading(false);
     }
@@ -169,25 +209,25 @@ export default function TravelPackagesPage() {
 
   const handleSubmit = async () => {
     if (!name.trim() || !destination.trim() || !departureDate || !returnDate || !capacity) {
-      showError("Por favor completa todos los campos obligatorios");
+      showWarningModal("Campos requeridos", "Por favor completa todos los campos obligatorios");
       return;
     }
 
     const capacityNum = parseInt(capacity, 10);
     if (isNaN(capacityNum) || capacityNum < 1) {
-      showError("La capacidad debe ser un número mayor a 0");
+      showWarningModal("Capacidad inválida", "La capacidad debe ser un número mayor a 0");
       return;
     }
 
     const priceNum = packagePrice.trim() ? parseFloat(packagePrice) : undefined;
     if (priceNum !== undefined && (isNaN(priceNum) || priceNum < 0)) {
-      showError("El precio debe ser un número válido");
+      showWarningModal("Precio inválido", "El precio debe ser un número válido");
       return;
     }
 
     const minResNum = minReservation.trim() ? parseFloat(minReservation) : undefined;
     if (minResNum !== undefined && (isNaN(minResNum) || minResNum < 0)) {
-      showError("El monto de reserva debe ser un número válido");
+      showWarningModal("Monto inválido", "El monto de reserva debe ser un número válido");
       return;
     }
 
@@ -205,17 +245,19 @@ export default function TravelPackagesPage() {
 
     try {
       setSaving(true);
+      showLoadingState(editingPackage ? "Actualizando viaje..." : "Creando viaje...");
       if (editingPackage) {
         await updateTravelPackage(editingPackage.id, data);
-        showSuccess("Viaje actualizado exitosamente");
+        showLoadingSuccess("Viaje actualizado exitosamente");
       } else {
         await createTravelPackage(data);
-        showSuccess("Viaje creado exitosamente");
+        showLoadingSuccess("Viaje creado exitosamente");
       }
       closeForm();
       await loadPackages();
-    } catch (err: any) {
-      showError(err.message || "Error al guardar el viaje");
+    } catch (err: unknown) {
+      closeLoadingModal();
+      showWarningModal("Error al guardar el viaje", extractErrorMessage(err, "Error al guardar el viaje"));
     } finally {
       setSaving(false);
     }
@@ -226,14 +268,17 @@ export default function TravelPackagesPage() {
       title: "Cancelar Viaje",
       message: `¿Estás seguro que deseas cancelar el viaje "${pkg.name}"? Esta acción no se puede deshacer.`,
       confirmText: "Sí, cancelar viaje",
+      cancelText: "No",
       variant: "danger",
       onConfirm: async () => {
         try {
+          showLoadingState("Cancelando viaje...");
           await deleteTravelPackage(pkg.id);
-          showSuccess("Viaje cancelado exitosamente");
+          showLoadingSuccess("Viaje cancelado exitosamente");
           await loadPackages();
-        } catch (err: any) {
-          showError(err.message || "Error al cancelar el viaje");
+        } catch (err: unknown) {
+          closeLoadingModal();
+          showWarningModal("Error al cancelar el viaje", extractErrorMessage(err, "Error al cancelar el viaje"));
         } finally {
           closeConfirm();
         }
@@ -247,15 +292,23 @@ export default function TravelPackagesPage() {
 
   return (
     <>
-      <ToastNotification toasts={toasts} onDismiss={dismissToast} />
       <ConfirmModal
         isOpen={confirmModal.isOpen}
         title={confirmModal.title}
         message={confirmModal.message}
         confirmText={confirmModal.confirmText}
+        cancelText={confirmModal.cancelText}
         confirmVariant={confirmModal.variant}
         onConfirm={confirmModal.onConfirm}
         onCancel={closeConfirm}
+      />
+      <LoadingModal
+        isOpen={showLoadingModal}
+        state={loadingModalState}
+        loadingMessage={loadingModalMessage}
+        successMessage={loadingModalMessage}
+        errorMessage={loadingModalMessage}
+        onClose={closeLoadingModal}
       />
 
       <main className="app-shell" style={{ padding: "20px" }}>

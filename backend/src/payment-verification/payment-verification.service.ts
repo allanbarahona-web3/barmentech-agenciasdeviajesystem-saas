@@ -281,6 +281,7 @@ export class PaymentVerificationService {
       
       detectedBankAccount = await this.bankAccountsService.findByAccountNumber(
         searchTerm,
+        tenantId,
       );
 
       if (!detectedBankAccount) {

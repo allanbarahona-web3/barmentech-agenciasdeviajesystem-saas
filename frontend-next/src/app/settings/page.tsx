@@ -860,7 +860,7 @@ export default function SettingsPage() {
                   value={legalName}
                   onChange={(e) => setLegalName(e.target.value)}
                   className="flex-1 px-3 py-2 border border-gray-300 rounded-md"
-                  placeholder="Ej: Viajes Alma Nova S.A. de C.V."
+                  placeholder="Ej: RAZON SOCIAL DE TU EMPRESA S.A."
                 />
                 {legalName && (
                   <button

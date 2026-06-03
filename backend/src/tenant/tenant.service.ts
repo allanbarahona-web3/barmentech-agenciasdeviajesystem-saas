@@ -61,7 +61,7 @@ export class TenantService {
    * Prioridad:
    * 1. customDomain (ej: system.viajesalmanova.com)
    * 2. subdomain (ej: almanova.app.com)
-   * 3. localhost:3001 → almanova (fallback para desarrollo)
+    * 3. localhost:3001 → tenant configurable (fallback para desarrollo)
    */
   async resolveTenant(host: string): Promise<ResolvedTenant> {
     this.logger.debug(`Resolviendo tenant para host: ${host}`);
@@ -98,11 +98,34 @@ export class TenantService {
 
     // 3. Fallback SOLO para localhost sin subdomain (desarrollo)
     if (cleanHost === 'localhost' || cleanHost === '127.0.0.1') {
+      const preferredSubdomain =
+        this.configService.get<string>('DEV_DEFAULT_TENANT_SUBDOMAIN', '').trim().toLowerCase() ||
+        this.configService.get<string>('DEFAULT_TENANT_SUBDOMAIN', '').trim().toLowerCase();
+
+      if (preferredSubdomain) {
+        this.logger.warn(
+          `⚠️  Localhost sin subdomain detectado, usando tenant por config: ${preferredSubdomain}`,
+        );
+        tenant = await this.prisma.tenant.findUnique({
+          where: { subdomain: preferredSubdomain },
+        });
+
+        if (tenant) {
+          return tenant;
+        }
+
+        this.logger.warn(
+          `⚠️  No existe tenant con subdomain '${preferredSubdomain}'. Se intentará usar el primer tenant activo.`,
+        );
+      }
+
+      // Fallback final: primer tenant activo en orden de creación
       this.logger.warn(
-        `⚠️  Localhost sin subdomain detectado, usando tenant por defecto: almanova`,
+        `⚠️  Localhost sin subdomain detectado, usando primer tenant activo disponible`,
       );
-      tenant = await this.prisma.tenant.findUnique({
-        where: { subdomain: 'almanova' },
+      tenant = await this.prisma.tenant.findFirst({
+        where: { isActive: true },
+        orderBy: { createdAt: 'asc' },
       });
 
       if (tenant) {

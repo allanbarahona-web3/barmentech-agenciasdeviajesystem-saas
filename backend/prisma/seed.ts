@@ -21,20 +21,18 @@ async function main() {
   console.log("🌱 Iniciando seed de base de datos...\n");
   console.log("🔑 Conectando como doadmin (con BYPASSRLS)...\n");
 
-  // Usar transacción para que SET LOCAL funcione correctamente
-  await prisma.$transaction(async (tx) => {
-    // 🔓 BYPASS RLS para crear tenants (operación de sistema)
-    console.log("🔓 Bypassando RLS para operaciones de seed...");
-    await tx.$executeRawUnsafe(`SET LOCAL row_security = off`);
+  // 🔓 BYPASS RLS para crear tenants (operación de sistema)
+  console.log("🔓 Bypassando RLS para operaciones de seed...");
+  await prisma.$executeRawUnsafe(`SET LOCAL row_security = off`);
 
     // ========================================
     // 1. CREAR TENANTS (Empresas)
     // ========================================
     
-    console.log("📦 Creando tenants...");
-    
-    // Tenant 1: Viajes Alma Nova (PRINCIPAL)
-    const almanovaTenant = await tx.tenant.upsert({
+  console.log("📦 Creando tenants...");
+  
+  // Tenant 1: Viajes Alma Nova (PRINCIPAL)
+  const almanovaTenant = await prisma.tenant.upsert({
     where: { name: "Viajes Alma Nova" },
     create: {
       name: "Viajes Alma Nova",
@@ -78,7 +76,7 @@ async function main() {
   console.log("✅ Tenant listo: Viajes Alma Nova (ALM)");
 
   // Tenant 2: Lucitours (FUTURO)
-  const lucitourTenant = await tx.tenant.upsert({
+  const lucitourTenant = await prisma.tenant.upsert({
     where: { name: "Lucitours" },
     create: {
       name: "Lucitours",
@@ -111,7 +109,7 @@ async function main() {
   const passwordHash = await hash(password, 10);
 
   // Admin para Alma Nova
-  await tx.user.upsert({
+  await prisma.user.upsert({
     where: { email: "admin@viajesalmanova.com" },
     create: {
       email: "admin@viajesalmanova.com",
@@ -126,7 +124,7 @@ async function main() {
   console.log(`✅ Admin listo: admin@viajesalmanova.com → Viajes Alma Nova`);
 
   // Admin para Lucitours
-  await tx.user.upsert({
+  await prisma.user.upsert({
     where: { email: "admin@lucitour.com" },
     create: {
       email: "admin@lucitour.com",
@@ -145,7 +143,7 @@ async function main() {
   // ========================================
   console.log("\n🔐 Creando Super Admin...");
   
-  await tx.user.upsert({
+  await prisma.user.upsert({
     where: { email: "superadmin@platform.com" },
     create: {
       email: "superadmin@platform.com",
@@ -168,8 +166,8 @@ async function main() {
   console.log("📊 Resumen del seed:");
   console.log("═══════════════════════════════════════");
   
-  const tenants = await tx.tenant.findMany();
-  const users = await tx.user.findMany({ include: { tenant: true } });
+  const tenants = await prisma.tenant.findMany();
+  const users = await prisma.user.findMany({ include: { tenant: true } });
   
   console.log(`\n🏢 Tenants creados: ${tenants.length}`);
   tenants.forEach((t) => console.log(`   - ${t.name}`));
@@ -184,7 +182,6 @@ async function main() {
   console.log(`   Alma Nova:    admin@viajesalmanova.com / ${password}`);
   console.log(`   Lucitours:    admin@lucitour.com / ${password}`);
   console.log("═══════════════════════════════════════\n");
-  }); // Cierre de transacción
 }
 
 main()

@@ -9,6 +9,7 @@ import {
 import { bootstrapBillingContract } from "@/lib/billing-api";
 import { getTenantLegalConfig, getTenantConfig, type TenantLegalConfig } from "@/lib/auth-api";
 import { getTravelPackageById } from "@/lib/travel-packages-api";
+import { getInternalTripById } from "@/lib/internal-trips-api";
 import { getAllBankAccounts } from "@/lib/bank-accounts-api";
 import { buildContractPdfHtml, type TenantLegalInfo, type BankAccountForContract } from "@/features/contracts-form/pdf-template";
 import {
@@ -83,12 +84,14 @@ type ContractsFormProps = {
   } | null;
   initialDraftId?: string | null;
   initialTravelPackageId?: string | null;
+  initialInternalTripId?: string | null;  // ← NUEVO: Para viajes internos
   mode?: string;
 };
 
-export function ContractsForm({ agent = null, initialDraftId = null, initialTravelPackageId = null, mode }: ContractsFormProps) {
+export function ContractsForm({ agent = null, initialDraftId = null, initialTravelPackageId = null, initialInternalTripId = null, mode }: ContractsFormProps) {
   const [state, setState] = useState(() => createInitialFormState(agent || undefined));
   const [status, setStatus] = useState("Listo para iniciar migracion del formulario.");
+  const [internalTripMeta, setInternalTripMeta] = useState<{ tripCode: string; name: string } | null>(null);
   const [busyNumber, setBusyNumber] = useState(false);
   const [savingDraft, setSavingDraft] = useState(false);
   const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
@@ -118,6 +121,7 @@ export function ContractsForm({ agent = null, initialDraftId = null, initialTrav
   const autoReservationStarted = useRef(false);
   const loadedDraftIdRef = useRef("");
   const loadedTravelPackageIdRef = useRef("");
+  const loadedInternalTripIdRef = useRef("");
   const todayIso = useMemo(() => getTodayIsoLocal(), []);
 
   // Determinar si los campos de viaje deben estar bloqueados
@@ -125,7 +129,8 @@ export function ContractsForm({ agent = null, initialDraftId = null, initialTrav
   // Si viene con travelPackageId, los campos de viaje están bloqueados
   const isMigrationMode = mode === "migration";
   const hasSelectedPackage = Boolean(initialTravelPackageId);
-  const travelFieldsLocked = !isMigrationMode || hasSelectedPackage;
+  const isInternalTrip = Boolean(initialInternalTripId);  // ← NUEVO: Detecta viajes internos
+  const travelFieldsLocked = !isMigrationMode || hasSelectedPackage || isInternalTrip;
 
   const rangeMessage = useMemo(() => getDateRangeValidityMessage(state), [state]);
   const itineraryMessage = useMemo(() => getItineraryValidityMessage(state), [state]);
@@ -281,51 +286,59 @@ export function ContractsForm({ agent = null, initialDraftId = null, initialTrav
       console.log("🔵 Paso 1: Preparando contrato...");
       setStatus("Preparando contrato...");
       
-      // Obtener información legal del tenant
-      console.log("🔵 Obteniendo configuración legal del tenant...");
-      const tenantLegalInfo: TenantLegalInfo = await getTenantLegalConfig();
-      console.log("✅ Configuración legal obtenida:", tenantLegalInfo.name);
+      // Variables para datos del contrato (solo internacionales)
+      let contractHtml = "";
       
-      // Obtener configuración de branding del tenant (logo y firma)
-      const tenantConfig = await getTenantConfig();
-      console.log("✅ Configuración de branding obtenida:", tenantConfig.name);
-      
-      // Validar que el tenant tenga logo y firma configurados
-      if (!tenantConfig.logoUrl) {
-        setStatus("Error: El logo de la empresa no está configurado. Por favor, configure el logo en la página de Ajustes.");
-        setSubmitting(false);
-        return;
-      }
-      if (!tenantConfig.signatureUrl) {
-        setStatus("Error: La firma del representante no está configurada. Por favor, configure la firma en la página de Ajustes.");
-        setSubmitting(false);
-        return;
-      }
-      
-      // Obtener cuentas bancarias activas
-      console.log("🔵 Obteniendo cuentas bancarias activas...");
-      const allBankAccounts = await getAllBankAccounts({ isActive: "true" });
-      const bankAccountsForContract: BankAccountForContract[] = allBankAccounts.map(acc => ({
-        bankName: acc.bankName,
-        accountNumber: acc.accountNumber,
-        accountType: acc.accountType,
-        currency: acc.currency,
-        sinpeNumber: acc.sinpeNumber || null,
-        accountHolderName: acc.accountHolderName,
-      }));
-      console.log("✅ Cuentas bancarias activas:", bankAccountsForContract.length);
-      
-      const logoSrc = tenantConfig.logoUrl;
-      const representativeSignSrc = tenantConfig.signatureUrl;
-      
-      console.log("✅ Assets configurados:", { logoSrc: "✓", signatureSrc: "✓" });
+      // SOLO VIAJES INTERNACIONALES: Obtener configuración y generar PDF
+      if (!isInternalTrip) {
+        // Obtener información legal del tenant
+        console.log("🔵 Obteniendo configuración legal del tenant...");
+        const tenantLegalInfo: TenantLegalInfo = await getTenantLegalConfig();
+        console.log("✅ Configuración legal obtenida:", tenantLegalInfo.name);
+        
+        // Obtener configuración de branding del tenant (logo y firma)
+        const tenantConfig = await getTenantConfig();
+        console.log("✅ Configuración de branding obtenida:", tenantConfig.name);
+        
+        // Validar que el tenant tenga logo y firma configurados
+        if (!tenantConfig.logoUrl) {
+          setStatus("Error: El logo de la empresa no está configurado. Por favor, configure el logo en la página de Ajustes.");
+          setSubmitting(false);
+          return;
+        }
+        if (!tenantConfig.signatureUrl) {
+          setStatus("Error: La firma del representante no está configurada. Por favor, configure la firma en la página de Ajustes.");
+          setSubmitting(false);
+          return;
+        }
+        
+        // Obtener cuentas bancarias activas
+        console.log("🔵 Obteniendo cuentas bancarias activas...");
+        const allBankAccounts = await getAllBankAccounts({ isActive: "true" });
+        const bankAccountsForContract: BankAccountForContract[] = allBankAccounts.map(acc => ({
+          bankName: acc.bankName,
+          accountNumber: acc.accountNumber,
+          accountType: acc.accountType,
+          currency: acc.currency,
+          sinpeNumber: acc.sinpeNumber || null,
+          accountHolderName: acc.accountHolderName,
+        }));
+        console.log("✅ Cuentas bancarias activas:", bankAccountsForContract.length);
+        
+        const logoSrc = tenantConfig.logoUrl;
+        const representativeSignSrc = tenantConfig.signatureUrl;
+        
+        console.log("✅ Assets configurados:", { logoSrc: "✓", signatureSrc: "✓" });
 
-      console.log("🔵 Paso 2: Construyendo HTML del contrato...");
-      const contractHtml = buildContractPdfHtml(state, {
-        logoSrc,
-        representativeSignSrc,
-      }, tenantLegalInfo, bankAccountsForContract);
-      console.log("✅ HTML construido, longitud:", contractHtml.length);
+        console.log("🔵 Paso 2: Construyendo HTML del contrato...");
+        contractHtml = buildContractPdfHtml(state, {
+          logoSrc,
+          representativeSignSrc,
+        }, tenantLegalInfo, bankAccountsForContract);
+        console.log("✅ HTML construido, longitud:", contractHtml.length);
+      } else {
+        console.log("⚠️ Viaje interno: Skip generación de PDF/HTML");
+      }
 
       console.log("🔵 Paso 3: Recolectando documentos...");
       const docs = collectDocumentsForArchive();
@@ -349,7 +362,7 @@ export function ContractsForm({ agent = null, initialDraftId = null, initialTrav
       console.log("====================================");
 
       console.log("🔵 Paso 5: Enviando al backend...");
-      setStatus("Guardando contrato en base de datos...");
+      setStatus(isInternalTrip ? "Guardando formulario en base de datos..." : "Guardando contrato en base de datos...");
       const archived = await archiveContract({
         draftId: activeDraftId || undefined,
         contractNumber: state.contractNumber,
@@ -363,7 +376,8 @@ export function ContractsForm({ agent = null, initialDraftId = null, initialTrav
         payloadJson,
         contractHtml,
         documents: docs,
-        source: isMigrationMode ? "MIGRATION" : "SCHEDULED_TRIP",
+        source: isInternalTrip ? "INTERNAL_TRIP" : (isMigrationMode ? "MIGRATION" : "SCHEDULED_TRIP"),
+        internalTripId: initialInternalTripId || undefined,
       });
       console.log("✅ Respuesta del backend recibida:", archived);
 
@@ -373,7 +387,7 @@ export function ContractsForm({ agent = null, initialDraftId = null, initialTrav
 
       // Inicializar el sistema de billing (crea factura + pago de reserva)
       console.log("🔵 Paso 6: Inicializando billing...");
-      setStatus("Creando pago de reserva...");
+      setStatus(isInternalTrip ? "Enviando formulario/comprobante para aprobación..." : "Creando pago de reserva...");
       try {
         await bootstrapBillingContract(archived.id);
         console.log("✅ Billing inicializado correctamente");
@@ -384,7 +398,11 @@ export function ContractsForm({ agent = null, initialDraftId = null, initialTrav
       }
 
       console.log("🔵 Paso 7: Reseteando formulario...");
-      await resetFormForNextContract("Contrato guardado correctamente. El pago de reserva quedará pendiente de aprobación del admin.");
+      await resetFormForNextContract(
+        isInternalTrip
+          ? "Formulario enviado correctamente. El comprobante de reserva quedará pendiente de aprobación del admin."
+          : "Contrato guardado correctamente. El pago de reserva quedará pendiente de aprobación del admin.",
+      );
       console.log("✅ Formulario reseteado");
     } catch (error) {
       console.error("❌ ERROR en runArchiveFlow:", error);
@@ -396,6 +414,11 @@ export function ContractsForm({ agent = null, initialDraftId = null, initialTrav
   };
 
   const runPreviewFlow = async () => {
+    if (isInternalTrip) {
+      setStatus("La vista previa no aplica para viajes internos.");
+      return;
+    }
+
     if (previewing || submitting) return;
 
     if (!state.contractNumber.trim()) {
@@ -661,6 +684,77 @@ export function ContractsForm({ agent = null, initialDraftId = null, initialTrav
       });
   }, [initialTravelPackageId, initialDraftId]);
 
+  // Cargar viaje interno si viene desde /internal-trips/[id]/book
+  useEffect(() => {
+    const tripId = String(initialInternalTripId || "").trim();
+    if (!tripId) {
+      loadedInternalTripIdRef.current = "";
+      setInternalTripMeta(null);
+      return;
+    }
+    // No cargar si ya se cargó este viaje interno
+    if (loadedInternalTripIdRef.current === tripId) {
+      return;
+    }
+    // No cargar si hay un borrador activo
+    if (String(initialDraftId || "").trim()) {
+      return;
+    }
+
+    loadedInternalTripIdRef.current = tripId;
+    setStatus("Cargando información del viaje interno...");
+
+    void getInternalTripById(tripId)
+      .then((trip) => {
+        setInternalTripMeta({
+          tripCode: String(trip.tripCode || "").trim(),
+          name: String(trip.name || "").trim(),
+        });
+
+        setState((prev) => {
+          const totalPrice = trip.price
+            ? String(typeof trip.price === "string" ? Number.parseFloat(trip.price).toFixed(2) : trip.price.toFixed(2))
+            : "";
+
+          const reservationPrice = trip.minReservation !== null && trip.minReservation !== undefined
+            ? String(
+                typeof trip.minReservation === "string"
+                  ? Number.parseFloat(trip.minReservation).toFixed(2)
+                  : trip.minReservation.toFixed(2),
+              )
+            : "";
+
+          const departure = String(trip.departureDate || "").split("T")[0] || prev.startDate;
+          const ret = String(trip.returnDate || "").split("T")[0] || prev.endDate;
+
+          const withDates = syncTourDates(
+            {
+              ...prev,
+              destination: trip.destination,
+              lodgingType: "N/A",
+              accommodationType: "N/A",
+              startDate: departure,
+              endDate: ret,
+              totalAmount: totalPrice,
+              reservationAmount: reservationPrice,
+            },
+            "start",
+            departure,
+          );
+
+          return applyMoneyDerivedValues(withDates);
+        });
+
+        setStatus(
+          `Viaje interno "${trip.name}" (${trip.tripCode}) cargado. Completa la información del cliente.`,
+        );
+      })
+      .catch((error) => {
+        setInternalTripMeta(null);
+        setStatus(error instanceof Error ? error.message : "No se pudo cargar el viaje interno.");
+      });
+  }, [initialInternalTripId, initialDraftId]);
+
   useEffect(() => {
     if (autoReservationStarted.current) {
       return;
@@ -678,7 +772,7 @@ export function ContractsForm({ agent = null, initialDraftId = null, initialTrav
   return (
     <section className="card contracts-card">
       <h1>
-        Formulario de Contrato - Etapa 2
+        {isInternalTrip ? "Formulario de Reserva Interna - Etapa 2" : "Formulario de Contrato - Etapa 2"}
         {isMigrationMode && (
           <span
             style={{
@@ -703,7 +797,11 @@ export function ContractsForm({ agent = null, initialDraftId = null, initialTrav
           ✓ Todos los campos son editables. Completa manualmente la información del contrato y viaje.
         </p>
       ) : (
-        <p>Migracion ampliada: contrato, cliente, acompanantes, menores, itinerario, equipaje y adjuntos.</p>
+        <p>
+          {isInternalTrip
+            ? "Formulario interno: cliente, acompañantes, menores y comprobantes para aprobación administrativa."
+            : "Migracion ampliada: contrato, cliente, acompanantes, menores, itinerario, equipaje y adjuntos."}
+        </p>
       )}
       <p className="agent-line">
         Elaborado por: <strong>{agent?.fullName || "Agente no identificado"}</strong>
@@ -727,6 +825,19 @@ export function ContractsForm({ agent = null, initialDraftId = null, initialTrav
             title={state.contractNumber || "Esperando asignación automática..."}
           />
         </label>
+
+        {isInternalTrip && (
+          <label>
+            Codigo viaje interno
+            <input
+              value={internalTripMeta?.tripCode || "Cargando..."}
+              readOnly
+              title={internalTripMeta?.name || "Viaje interno seleccionado"}
+              className="font-mono text-sm"
+              style={{ backgroundColor: "#f3f4f6" }}
+            />
+          </label>
+        )}
 
         <label>
           Fecha de emision
@@ -752,6 +863,7 @@ export function ContractsForm({ agent = null, initialDraftId = null, initialTrav
             disabled={travelFieldsLocked}
             style={travelFieldsLocked ? { backgroundColor: "#f3f4f6", cursor: "not-allowed" } : undefined}
           >
+            <option value="N/A">N/A</option>
             <option value="Hotel">Hotel</option>
             <option value="Hostel">Hostel</option>
             <option value="Airbnb">Airbnb</option>
@@ -766,6 +878,7 @@ export function ContractsForm({ agent = null, initialDraftId = null, initialTrav
             disabled={travelFieldsLocked}
             style={travelFieldsLocked ? { backgroundColor: "#f3f4f6", cursor: "not-allowed" } : undefined}
           >
+            <option value="N/A">N/A</option>
             <option value="Sencilla">Sencilla</option>
             <option value="Doble">Doble</option>
             <option value="Triple">Triple</option>
@@ -1025,22 +1138,25 @@ export function ContractsForm({ agent = null, initialDraftId = null, initialTrav
           />
         </label>
 
-        <label className={requiredDocumentLabelClass(Boolean(holderDocs.passport))}>
-          Pasaporte titular
-          <input
-            type="file"
-            accept=".pdf,.jpg,.jpeg,.png,.webp"
-            onChange={(event) => {
-              const file = event.target.files?.[0] || null;
-              updateFileInputState(event.target, !!file);
-              setHolderDocs((prev) => ({ ...prev, passport: file }));
-              setState((prev) => ({
-                ...prev,
-                passportDocumentName: file?.name || "",
-              }));
-            }}
-          />
-        </label>
+        {/* Pasaporte: SOLO para viajes internacionales */}
+        {!isInternalTrip && (
+          <label className={requiredDocumentLabelClass(Boolean(holderDocs.passport))}>
+            Pasaporte titular
+            <input
+              type="file"
+              accept=".pdf,.jpg,.jpeg,.png,.webp"
+              onChange={(event) => {
+                const file = event.target.files?.[0] || null;
+                updateFileInputState(event.target, !!file);
+                setHolderDocs((prev) => ({ ...prev, passport: file }));
+                setState((prev) => ({
+                  ...prev,
+                  passportDocumentName: file?.name || "",
+                }));
+              }}
+            />
+          </label>
+        )}
       </div>
       </div>
 
@@ -1238,6 +1354,8 @@ export function ContractsForm({ agent = null, initialDraftId = null, initialTrav
                     }}
                   />
                 </label>
+                {/* Pasaporte acompañante: SOLO internacional */}
+                {!isInternalTrip && (
                 <label className={requiredDocumentLabelClass(Boolean(companionDocs[companion.id]?.passport))}>
                   Pasaporte
                   <input
@@ -1258,6 +1376,7 @@ export function ContractsForm({ agent = null, initialDraftId = null, initialTrav
                     }}
                   />
                 </label>
+                )}
               </div>
             </article>
           ))}
@@ -1374,6 +1493,8 @@ export function ContractsForm({ agent = null, initialDraftId = null, initialTrav
                     ))}
                   </select>
                 </label>
+                {/* Pasaporte menor: SOLO internacional */}
+                {!isInternalTrip && (
                 <label className={requiredDocumentLabelClass(Boolean(minorDocs[minor.id]?.minorPassport))}>
                   Pasaporte menor
                   <input
@@ -1395,6 +1516,7 @@ export function ContractsForm({ agent = null, initialDraftId = null, initialTrav
                     }}
                   />
                 </label>
+                )}
                 <label className={requiredDocumentLabelClass(Boolean(minorDocs[minor.id]?.tutorIdFront))}>
                   Cedula tutor frente
                   <input
@@ -1437,6 +1559,8 @@ export function ContractsForm({ agent = null, initialDraftId = null, initialTrav
                     }}
                   />
                 </label>
+                {/* Pasaporte tutor: SOLO internacional */}
+                {!isInternalTrip && (
                 <label className={requiredDocumentLabelClass(Boolean(minorDocs[minor.id]?.tutorPassport))}>
                   Pasaporte tutor
                   <input
@@ -1458,12 +1582,15 @@ export function ContractsForm({ agent = null, initialDraftId = null, initialTrav
                     }}
                   />
                 </label>
+                )}
               </div>
             </article>
           ))}
         </div>
       </div>
 
+      {/* Itinerario: SOLO para viajes internacionales */}
+      {!isInternalTrip && (
       <div className="itinerary-box">
         <div className="itinerary-head">
           <h2>Itinerario</h2>
@@ -1535,7 +1662,10 @@ export function ContractsForm({ agent = null, initialDraftId = null, initialTrav
           })}
         </div>
       </div>
+      )}
 
+      {/* Equipaje: SOLO para viajes internacionales */}
+      {!isInternalTrip && (
       <div className="form-section-card">
         <h2 className="section-title">Equipaje</h2>
       <div className="contracts-grid">
@@ -1549,6 +1679,7 @@ export function ContractsForm({ agent = null, initialDraftId = null, initialTrav
         </label>
       </div>
       </div>
+      )}
 
       <div className="form-section-card">
         <h2 className="section-title">Adjuntos del Contrato</h2>
@@ -1610,19 +1741,21 @@ export function ContractsForm({ agent = null, initialDraftId = null, initialTrav
             void saveDraftFlow();
           }}
         >
-          {savingDraft ? "Guardando borrador..." : "Guardar borrador"}
+          {savingDraft ? "Guardando borrador..." : (isInternalTrip ? "Guardar formulario como borrador" : "Guardar borrador")}
         </button>
 
-        <button
-          type="button"
-          className="btn-secondary"
-          disabled={savingDraft || submitting || previewing || busyNumber || !state.contractNumber}
-          onClick={() => {
-            void runPreviewFlow();
-          }}
-        >
-          {previewing ? "Generando vista previa..." : "Vista previa"}
-        </button>
+        {!isInternalTrip && (
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={savingDraft || submitting || previewing || busyNumber || !state.contractNumber}
+            onClick={() => {
+              void runPreviewFlow();
+            }}
+          >
+            {previewing ? "Generando vista previa..." : "Vista previa"}
+          </button>
+        )}
 
         <button
           type="button"
@@ -1632,11 +1765,12 @@ export function ContractsForm({ agent = null, initialDraftId = null, initialTrav
             void runArchiveFlow();
           }}
         >
-          {submitting ? "Guardando..." : "Guardar contrato y reportar reserva"}
+          {submitting ? "Guardando..." : (isInternalTrip ? "Enviar formulario/comprobante" : "Guardar contrato y reportar reserva")}
         </button>
       </div>
 
-      {latestSigningLinks.length ? (
+      {/* Enlaces de Firma: SOLO para viajes internacionales */}
+      {!isInternalTrip && latestSigningLinks.length ? (
         <div className="itinerary-box">
           <div className="itinerary-head">
             <h2>Enlaces de firma</h2>
@@ -1729,27 +1863,29 @@ export function ContractsForm({ agent = null, initialDraftId = null, initialTrav
 
         </div>
 
-        <aside className="contracts-preview-panel">
-          <section className="contract-preview-wrap">
-            <div className="contract-preview-head">
-              <h2>Vista previa del contrato</h2>
-              <p>Formato de lectura tipo A4 para revisar y corregir sin salir del formulario.</p>
-            </div>
-            <div className="contract-preview-stage">
-              {previewHtml ? (
-                <iframe
-                  title="Vista previa del contrato"
-                  className="contract-preview-iframe"
-                  srcDoc={previewHtml}
-                />
-              ) : (
-                <div className="contract-preview-placeholder">
-                  Completa los datos y pulsa Vista previa para mostrar el contrato aqui.
-                </div>
-              )}
-            </div>
-          </section>
-        </aside>
+        {!isInternalTrip && (
+          <aside className="contracts-preview-panel">
+            <section className="contract-preview-wrap">
+              <div className="contract-preview-head">
+                <h2>Vista previa del contrato</h2>
+                <p>Formato de lectura tipo A4 para revisar y corregir sin salir del formulario.</p>
+              </div>
+              <div className="contract-preview-stage">
+                {previewHtml ? (
+                  <iframe
+                    title="Vista previa del contrato"
+                    className="contract-preview-iframe"
+                    srcDoc={previewHtml}
+                  />
+                ) : (
+                  <div className="contract-preview-placeholder">
+                    Completa los datos y pulsa Vista previa para mostrar el contrato aqui.
+                  </div>
+                )}
+              </div>
+            </section>
+          </aside>
+        )}
       </div>
     </section>
   );

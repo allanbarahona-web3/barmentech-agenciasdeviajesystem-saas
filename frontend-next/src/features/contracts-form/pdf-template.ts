@@ -559,7 +559,7 @@ html, body {
 
 <header class="doc-header">
   <img class="doc-header-logo"
-  src="${escapeAttr(assets.logoSrc || "/assets/LOGO ALMANOVA.png")}" 
+  src="${escapeAttr(assets.logoSrc || "")}" 
        alt="${esc(tenantName)}" />
   <div class="doc-header-text">
     <h1>${esc(tenantName)}</h1>
@@ -719,7 +719,7 @@ ${clause(
 )}
 
 ${clause(
-  "DECIMO QUINTO: DERECHOS Y OBLIGACIONES DE VIAJES ALMA NOVA.",
+  `DECIMO QUINTO: DERECHOS Y OBLIGACIONES DE ${String(tenantName || "LA AGENCIA").toUpperCase()}.`,
   `<p>${esc(tenantName)} se obliga, entre otros, a ejecutar el Tour contratado; contratar y pagar a proveedores del servicio; brindar acompanamiento contractual y soporte operativo; y gestionar check in cuando corresponda.</p>`,
 )}
 

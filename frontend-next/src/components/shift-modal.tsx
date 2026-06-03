@@ -5,9 +5,11 @@ import { useEffect } from "react";
 type ShiftModalProps = {
   isOpen: boolean;
   onStart: () => void;
+  isLoading?: boolean;
+  error?: string;
 };
 
-export function ShiftModal({ isOpen, onStart }: ShiftModalProps) {
+export function ShiftModal({ isOpen, onStart, isLoading = false, error }: ShiftModalProps) {
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = "hidden";
@@ -85,6 +87,7 @@ export function ShiftModal({ isOpen, onStart }: ShiftModalProps) {
 
         <button
           onClick={onStart}
+          disabled={isLoading}
           style={{
             width: "100%",
             padding: "16px 32px",
@@ -94,21 +97,36 @@ export function ShiftModal({ isOpen, onStart }: ShiftModalProps) {
             borderRadius: 12,
             fontSize: "1.1rem",
             fontWeight: 700,
-            cursor: "pointer",
+            cursor: isLoading ? "not-allowed" : "pointer",
+            opacity: isLoading ? 0.75 : 1,
             boxShadow: "0 4px 16px rgba(16, 185, 129, 0.4)",
             transition: "transform 0.2s, box-shadow 0.2s",
           }}
           onMouseEnter={(e) => {
+            if (isLoading) return;
             e.currentTarget.style.transform = "translateY(-2px)";
             e.currentTarget.style.boxShadow = "0 8px 24px rgba(16, 185, 129, 0.5)";
           }}
           onMouseLeave={(e) => {
+            if (isLoading) return;
             e.currentTarget.style.transform = "translateY(0)";
             e.currentTarget.style.boxShadow = "0 4px 16px rgba(16, 185, 129, 0.4)";
           }}
         >
-          🚀 Iniciar Shift
+          {isLoading ? "⏳ Marcando..." : "🚀 Iniciar Shift"}
         </button>
+
+        {error ? (
+          <p
+            style={{
+              margin: "12px 0 0 0",
+              fontSize: "0.9rem",
+              color: "#b91c1c",
+            }}
+          >
+            {error}
+          </p>
+        ) : null}
       </div>
     </div>
   );

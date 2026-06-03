@@ -8,7 +8,8 @@ import Link from 'next/link';
 import { getStoredToken } from '@/lib/auth-api';
 import { resolveApiBase } from '@/lib/runtime-config';
 import { PageLoader } from '@/components/loading-spinner';
-import { ToastNotification, useToast } from '@/components/toast-notification';
+import { ConfirmModal } from '@/components/confirm-modal';
+import { LoadingModal } from '@/components/loading-modal';
 
 interface InternalTrip {
   id: string;
@@ -38,7 +39,23 @@ export default function EditInternalTripPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [trip, setTrip] = useState<InternalTrip | null>(null);
-  const { toasts, showSuccess, showError, dismissToast } = useToast();
+  const [showLoadingModal, setShowLoadingModal] = useState(false);
+  const [loadingModalState, setLoadingModalState] = useState<'loading' | 'success' | 'error'>('loading');
+  const [loadingModalMessage, setLoadingModalMessage] = useState('');
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmText?: string;
+    cancelText?: string;
+    variant?: 'primary' | 'danger' | 'warning';
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
 
   // Form state
   const [name, setName] = useState('');
@@ -55,6 +72,51 @@ export default function EditInternalTripPage() {
   const [transportType, setTransportType] = useState('BUS');
   const [itinerary, setItinerary] = useState('');
   const [status, setStatus] = useState('OPEN');
+
+  const showConfirm = (config: Omit<typeof confirmModal, 'isOpen'>) => {
+    setConfirmModal({ ...config, isOpen: true });
+  };
+
+  const closeConfirm = () => {
+    setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+  };
+
+  const closeLoadingModal = () => {
+    setShowLoadingModal(false);
+    setLoadingModalState('loading');
+    setLoadingModalMessage('');
+  };
+
+  const showLoadingState = (message: string) => {
+    setLoadingModalMessage(message);
+    setLoadingModalState('loading');
+    setShowLoadingModal(true);
+  };
+
+  const showLoadingSuccess = (message: string) => {
+    setLoadingModalMessage(message);
+    setLoadingModalState('success');
+    setShowLoadingModal(true);
+  };
+
+  const extractErrorMessage = (error: unknown, fallback: string) => {
+    const rawMessage = String((error as any)?.message || '').trim();
+    if (!rawMessage) {
+      return fallback;
+    }
+    return rawMessage.replace(/^Error\s+\d+\s*:\s*/i, '').trim() || fallback;
+  };
+
+  const showWarningModal = (titleText: string, message: string) => {
+    showConfirm({
+      title: titleText,
+      message,
+      confirmText: 'Entendido',
+      cancelText: 'Cerrar',
+      variant: 'warning',
+      onConfirm: () => closeConfirm(),
+    });
+  };
 
   useEffect(() => {
     loadTrip();
@@ -93,10 +155,10 @@ export default function EditInternalTripPage() {
         setItinerary(data.itinerary || '');
         setStatus(data.status);
       } else {
-        showError(`Error al cargar el viaje: ${response.statusText}`);
+        showWarningModal('Error al cargar viaje', `Error al cargar el viaje: ${response.statusText}`);
       }
     } catch (err) {
-      showError(err instanceof Error ? err.message : 'Error loading trip');
+      showWarningModal('Error al cargar viaje', extractErrorMessage(err, 'Error loading trip'));
     } finally {
       setLoading(false);
     }
@@ -107,7 +169,7 @@ export default function EditInternalTripPage() {
 
     // Validations
     if (!name.trim() || !destination.trim() || !departureDate || !returnDate || !capacity || !price) {
-      showError('Por favor completa todos los campos requeridos');
+      showWarningModal('Campos requeridos', 'Por favor completa todos los campos requeridos');
       return;
     }
 
@@ -115,22 +177,23 @@ export default function EditInternalTripPage() {
     const returnDateTime = new Date(returnDate);
 
     if (returnDateTime <= departureDateTime) {
-      showError('La fecha de regreso debe ser después de la salida');
+      showWarningModal('Fecha inválida', 'La fecha de regreso debe ser después de la salida');
       return;
     }
 
     if (parseInt(capacity) <= 0) {
-      showError('La capacidad debe ser mayor a 0');
+      showWarningModal('Capacidad inválida', 'La capacidad debe ser mayor a 0');
       return;
     }
 
     if (parseFloat(price) <= 0) {
-      showError('El precio debe ser mayor a 0');
+      showWarningModal('Precio inválido', 'El precio debe ser mayor a 0');
       return;
     }
 
     try {
       setSaving(true);
+      showLoadingState('Actualizando viaje interno...');
       const token = getStoredToken();
       const apiBase = resolveApiBase();
 
@@ -161,15 +224,17 @@ export default function EditInternalTripPage() {
       });
 
       if (response.ok) {
-        showSuccess('Viaje actualizado exitosamente');
+        showLoadingSuccess('Viaje actualizado exitosamente');
         setTimeout(() => {
           router.push('/admin/internal-trips');
         }, 1000);
       } else {
-        showError(`Error: ${response.statusText}`);
+        closeLoadingModal();
+        showWarningModal('Error al actualizar viaje', `Error: ${response.statusText}`);
       }
     } catch (err) {
-      showError(err instanceof Error ? err.message : 'Error updating trip');
+      closeLoadingModal();
+      showWarningModal('Error al actualizar viaje', extractErrorMessage(err, 'Error updating trip'));
     } finally {
       setSaving(false);
     }
@@ -213,10 +278,27 @@ export default function EditInternalTripPage() {
   }
 
   return (
-    <main className="app-shell" style={{ padding: '20px' }}>
+    <>
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        confirmText={confirmModal.confirmText}
+        cancelText={confirmModal.cancelText}
+        confirmVariant={confirmModal.variant}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={closeConfirm}
+      />
+      <LoadingModal
+        isOpen={showLoadingModal}
+        state={loadingModalState}
+        loadingMessage={loadingModalMessage}
+        successMessage={loadingModalMessage}
+        errorMessage={loadingModalMessage}
+        onClose={closeLoadingModal}
+      />
+      <main className="app-shell" style={{ padding: '20px' }}>
       <div style={{ maxWidth: 800, margin: '0 auto' }}>
-        <ToastNotification toasts={toasts} onDismiss={dismissToast} />
-
         {/* Header */}
         <div style={{ marginBottom: 30 }}>
           <Link href="/admin/internal-trips">
@@ -426,5 +508,6 @@ export default function EditInternalTripPage() {
         </form>
       </div>
     </main>
+    </>
   );
 }

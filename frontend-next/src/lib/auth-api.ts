@@ -259,12 +259,38 @@ const authHeaders = (): HeadersInit => {
   };
 };
 
+const getClientTimeHeaders = (): HeadersInit => {
+  if (typeof window === "undefined") {
+    return {};
+  }
+
+  const timeZone = String(Intl.DateTimeFormat().resolvedOptions().timeZone || "").trim();
+  const utcOffsetMinutes = String(new Date().getTimezoneOffset());
+
+  return {
+    "x-client-timezone": timeZone,
+    "x-client-utc-offset-minutes": utcOffsetMinutes,
+  };
+};
+
 /**
  * Wrapper for authenticated fetch that automatically handles 401 responses
  * by clearing the session and redirecting to login.
  */
 export const authenticatedFetch = async (url: string, options: RequestInit): Promise<Response> => {
-  const response = await fetch(url, options);
+  const mergedHeaders = new Headers(options.headers || {});
+  const clientTimeHeaders = getClientTimeHeaders();
+
+  Object.entries(clientTimeHeaders).forEach(([key, value]) => {
+    if (typeof value === "string" && value.trim()) {
+      mergedHeaders.set(key, value);
+    }
+  });
+
+  const response = await fetch(url, {
+    ...options,
+    headers: mergedHeaders,
+  });
   
   // If unauthorized, clear session and redirect to login
   if (response.status === 401) {
@@ -463,6 +489,25 @@ export const changePassword = async (
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
     throw new Error(parseErrorMessage(payload, "No se pudo cambiar la contraseña."));
+  }
+
+  return payload as { ok: boolean; message: string };
+};
+
+export const logout = async (): Promise<{ ok: boolean; message: string }> => {
+  const apiBase = resolveApiBase();
+  if (!apiBase) {
+    throw new Error("No hay API configurada.");
+  }
+
+  const response = await authenticatedFetch(`${apiBase}/auth/logout`, {
+    method: "POST",
+    headers: authHeaders(),
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(parseErrorMessage(payload, "No se pudo cerrar sesión."));
   }
 
   return payload as { ok: boolean; message: string };

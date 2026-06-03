@@ -19,6 +19,7 @@ import {
   type TenantDetail,
 } from "@/lib/auth-api";
 import { LoadingModal } from "@/components/loading-modal";
+import { ConfirmModal } from "@/components/confirm-modal";
 
 export default function SuperAdminDashboard() {
   const router = useRouter();
@@ -34,6 +35,7 @@ export default function SuperAdminDashboard() {
   const [showActivateModal, setShowActivateModal] = useState(false);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [selectedTenant, setSelectedTenant] = useState<SuperAdminTenant | null>(null);
+  const [suspendReason, setSuspendReason] = useState("");
 
   useEffect(() => {
     const session = getStoredSession();
@@ -393,7 +395,12 @@ export default function SuperAdminDashboard() {
                         {tenant.isActive ? (
                           <button
                             onClick={() => {
+                              const reason = window.prompt("Ingresa la razón de suspensión:");
+                              if (!reason || !reason.trim()) {
+                                return;
+                              }
                               setSelectedTenant(tenant);
+                              setSuspendReason(reason.trim());
                               setShowSuspendModal(true);
                             }}
                             className="px-3 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors"
@@ -445,23 +452,36 @@ export default function SuperAdminDashboard() {
 
       {/* Suspend Confirmation Modal */}
       {showSuspendModal && selectedTenant && (
-        <SuspendConfirmModal
-          tenant={selectedTenant}
-          onConfirm={(reason) => {
+        <ConfirmModal
+          isOpen={showSuspendModal}
+          title="Suspender Tenant"
+          message={`Se suspendera ${selectedTenant.name}. Razon: ${suspendReason}`}
+          confirmText="Suspender"
+          cancelText="Cancelar"
+          confirmVariant="danger"
+          onConfirm={() => {
             setShowSuspendModal(false);
-            handleSuspendTenant(selectedTenant.id, reason);
+            void handleSuspendTenant(selectedTenant.id, suspendReason);
           }}
-          onCancel={() => setShowSuspendModal(false)}
+          onCancel={() => {
+            setShowSuspendModal(false);
+            setSuspendReason("");
+          }}
         />
       )}
 
       {/* Activate Confirmation Modal */}
       {showActivateModal && selectedTenant && (
-        <ActivateConfirmModal
-          tenant={selectedTenant}
+        <ConfirmModal
+          isOpen={showActivateModal}
+          title="Activar Tenant"
+          message={`Se activara ${selectedTenant.name} y recuperara acceso completo.`}
+          confirmText="Activar"
+          cancelText="Cancelar"
+          confirmVariant="primary"
           onConfirm={() => {
             setShowActivateModal(false);
-            handleActivateTenant(selectedTenant.id);
+            void handleActivateTenant(selectedTenant.id);
           }}
           onCancel={() => setShowActivateModal(false)}
         />
@@ -673,133 +693,6 @@ function CreateTenantModal({ onClose, onSuccess }: { onClose: () => void; onSucc
           onClose={() => setLoadingModalOpen(false)}
           autoCloseDelay={2000}
         />
-      </div>
-    </div>
-  );
-}
-
-function SuspendConfirmModal({
-  tenant,
-  onConfirm,
-  onCancel,
-}: {
-  tenant: SuperAdminTenant;
-  onConfirm: (reason: string) => void;
-  onCancel: () => void;
-}) {
-  const [reason, setReason] = useState("");
-
-  const handleConfirm = () => {
-    if (!reason.trim()) {
-      alert("Por favor ingresa una razón para la suspensión");
-      return;
-    }
-    onConfirm(reason);
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-2xl max-w-md w-full">
-        <div className="p-6">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="text-4xl">⚠️</div>
-            <div>
-              <h3 className="text-xl font-bold text-gray-900">Suspender Tenant</h3>
-              <p className="text-sm text-gray-600">Esta acción bloqueará el acceso</p>
-            </div>
-          </div>
-
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
-            <p className="text-sm font-medium text-red-900">{tenant.name}</p>
-            <p className="text-xs text-red-700">{tenant.subdomain}</p>
-          </div>
-
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Razón de suspensión *
-            </label>
-            <textarea
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
-              placeholder="Ej: Falta de pago, violación de términos, etc."
-              rows={3}
-              autoFocus
-            />
-          </div>
-
-          <div className="flex gap-3">
-            <button
-              onClick={onCancel}
-              className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-            >
-              Cancelar
-            </button>
-            <button
-              onClick={handleConfirm}
-              className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 transition-colors"
-            >
-              Suspender
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ActivateConfirmModal({
-  tenant,
-  onConfirm,
-  onCancel,
-}: {
-  tenant: SuperAdminTenant;
-  onConfirm: () => void;
-  onCancel: () => void;
-}) {
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-2xl max-w-md w-full">
-        <div className="p-6">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="text-4xl">✅</div>
-            <div>
-              <h3 className="text-xl font-bold text-gray-900">Activar Tenant</h3>
-              <p className="text-sm text-gray-600">Restaurar acceso completo</p>
-            </div>
-          </div>
-
-          <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
-            <p className="text-sm font-medium text-green-900">{tenant.name}</p>
-            <p className="text-xs text-green-700">{tenant.subdomain}</p>
-            {tenant.suspendReason && (
-              <div className="mt-2 pt-2 border-t border-green-200">
-                <p className="text-xs text-green-800">
-                  <span className="font-semibold">Razón de suspensión:</span> {tenant.suspendReason}
-                </p>
-              </div>
-            )}
-          </div>
-
-          <p className="text-sm text-gray-600 mb-4">
-            El tenant podrá acceder nuevamente al sistema y todos sus usuarios podrán iniciar sesión.
-          </p>
-
-          <div className="flex gap-3">
-            <button
-              onClick={onCancel}
-              className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-            >
-              Cancelar
-            </button>
-            <button
-              onClick={onConfirm}
-              className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 transition-colors"
-            >
-              Activar
-            </button>
-          </div>
-        </div>
       </div>
     </div>
   );

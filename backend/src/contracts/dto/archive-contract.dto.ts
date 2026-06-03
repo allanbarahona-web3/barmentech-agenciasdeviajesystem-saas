@@ -33,9 +33,9 @@ export class ArchiveContractDto {
   @IsNotEmpty()
   payloadJson!: string;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  contractHtml!: string;
+  contractHtml?: string; // Opcional para viajes internos (no requieren PDF)
 
   @IsOptional()
   @IsString()
@@ -55,5 +55,10 @@ export class ArchiveContractDto {
   @IsOptional()
   @IsString()
   @MaxLength(30)
-  source?: string; // SCHEDULED_TRIP | MIGRATION | CUSTOM_TRIP | QUOTE
+  source?: string; // SCHEDULED_TRIP | MIGRATION | CUSTOM_TRIP | QUOTE | INTERNAL_TRIP
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  internalTripId?: string; // Para viajes internos (sin contrato PDF)
 }

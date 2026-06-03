@@ -16,6 +16,7 @@ import { TenantModule } from "./tenant/tenant.module";
 import { SuperAdminModule } from "./super-admin/super-admin.module";
 import { EmailModule } from "./email/email.module";
 import { InternalTourismModule } from "./internal-tourism/internal-tourism.module";
+import { AttendanceModule } from "./attendance/attendance.module";
 import { TenantMiddleware } from "./tenant/tenant.middleware";
 import { RLSInterceptor } from "./common/interceptors/rls.interceptor";
 
@@ -45,6 +46,7 @@ import { RLSInterceptor } from "./common/interceptors/rls.interceptor";
     ExchangeRateModule,
     TravelPackagesModule,
     InternalTourismModule,
+    AttendanceModule,
   ],
   providers: [
     {

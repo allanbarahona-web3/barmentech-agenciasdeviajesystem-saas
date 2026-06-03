@@ -82,8 +82,8 @@ export default function EmailStatsPage() {
       const mockTenantStats: TenantEmailStats[] = [
         {
           tenantId: "cmot69nd7000111yyq5kk0drm",
-          tenantName: "Viajes Alma Nova",
-          subdomain: "almanova",
+          tenantName: "Tenant Demo A",
+          subdomain: "tenant-a",
           isActive: true,
           emailVerified: true,
           emailQuotaDaily: 1000,
@@ -93,13 +93,13 @@ export default function EmailStatsPage() {
           lastEmailResetDate: new Date().toISOString(),
           usagePercentageDaily: 4.5,
           usagePercentageMonthly: 3.0,
-          fromEmail: "noreply@viajesalmanova.com",
-          replyToEmail: "info@viajesalmanova.com",
+          fromEmail: "noreply@tenant-a.example",
+          replyToEmail: "info@tenant-a.example",
         },
         {
           tenantId: "cmot69nlo000211yy6d6gieqs",
-          tenantName: "Lucitours",
-          subdomain: "lucitours",
+          tenantName: "Tenant Demo B",
+          subdomain: "tenant-b",
           isActive: true,
           emailVerified: false,
           emailQuotaDaily: 1000,
@@ -219,7 +219,7 @@ export default function EmailStatsPage() {
         {/* 🚧 MVP Warning Badge */}
         <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-r-lg">
           <div className="flex items-start">
-            <div className="flex-shrink-0">
+            <div className="shrink-0">
               <svg className="h-5 w-5 text-yellow-400" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
               </svg>
@@ -243,7 +243,7 @@ export default function EmailStatsPage() {
       {/* Platform Stats Overview */}
       {platformStats && (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-6 border border-blue-200">
+          <div className="bg-linear-to-br from-blue-50 to-blue-100 rounded-xl p-6 border border-blue-200">
             <div className="text-blue-600 text-sm font-semibold mb-2">📨 Hoy</div>
             <div className="text-3xl font-bold text-blue-900">
               {platformStats.totalEmailsSentToday.toLocaleString()}
@@ -264,7 +264,7 @@ export default function EmailStatsPage() {
             </div>
           </div>
 
-          <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-6 border border-purple-200">
+          <div className="bg-linear-to-br from-purple-50 to-purple-100 rounded-xl p-6 border border-purple-200">
             <div className="text-purple-600 text-sm font-semibold mb-2">📅 Este Mes</div>
             <div className="text-3xl font-bold text-purple-900">
               {platformStats.totalEmailsSentMonth.toLocaleString()}
@@ -285,7 +285,7 @@ export default function EmailStatsPage() {
             </div>
           </div>
 
-          <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-6 border border-green-200">
+          <div className="bg-linear-to-br from-green-50 to-green-100 rounded-xl p-6 border border-green-200">
             <div className="text-green-600 text-sm font-semibold mb-2">✅ Tenants Activos</div>
             <div className="text-3xl font-bold text-green-900">
               {platformStats.activeTenantsWithEmail}
@@ -293,7 +293,7 @@ export default function EmailStatsPage() {
             <div className="text-sm text-green-600 mt-1">con email verificado</div>
           </div>
 
-          <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-xl p-6 border border-orange-200">
+          <div className="bg-linear-to-br from-orange-50 to-orange-100 rounded-xl p-6 border border-orange-200">
             <div className="text-orange-600 text-sm font-semibold mb-2">⚠️ Cerca de Límite</div>
             <div className="text-3xl font-bold text-orange-900">
               {platformStats.tenantsNearQuota}
@@ -305,7 +305,7 @@ export default function EmailStatsPage() {
 
       {/* Tenant Stats Table */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <div className="px-6 py-4 bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
+        <div className="px-6 py-4 bg-linear-to-r from-gray-50 to-gray-100 border-b border-gray-200">
           <h2 className="text-xl font-bold text-gray-900">📊 Estadísticas por Tenant</h2>
           <p className="text-sm text-gray-600 mt-1">
             Uso de cuotas de emails y configuración por tenant

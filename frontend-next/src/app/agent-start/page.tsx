@@ -5,6 +5,7 @@ export const dynamic = 'force-dynamic';
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getStoredSession } from "@/lib/auth-api";
+import { attendanceCheckIn } from "@/lib/attendance-api";
 import { ShiftModal } from "@/components/shift-modal";
 import { ActionMenuModal } from "@/components/action-menu-modal";
 import { PageLoader } from "@/components/loading-spinner";
@@ -14,6 +15,8 @@ export default function AgentStartPage() {
   const [mounted, setMounted] = useState(false);
   const [showShiftModal, setShowShiftModal] = useState(false);
   const [showMenuModal, setShowMenuModal] = useState(false);
+  const [startingShift, setStartingShift] = useState(false);
+  const [shiftError, setShiftError] = useState("");
 
   useEffect(() => {
     setMounted(true);
@@ -35,10 +38,19 @@ export default function AgentStartPage() {
     setTimeout(() => setShowShiftModal(true), 300);
   }, [router]);
 
-  const handleStartShift = () => {
-    setShowShiftModal(false);
-    // Pequeño delay para transición suave
-    setTimeout(() => setShowMenuModal(true), 200);
+  const handleStartShift = async () => {
+    setStartingShift(true);
+    setShiftError("");
+    try {
+      await attendanceCheckIn("WORKING");
+      setShowShiftModal(false);
+      // Pequeño delay para transición suave
+      setTimeout(() => setShowMenuModal(true), 200);
+    } catch (error) {
+      setShiftError(error instanceof Error ? error.message : "No se pudo iniciar el shift.");
+    } finally {
+      setStartingShift(false);
+    }
   };
 
   const handleSelectTrips = () => {
@@ -93,7 +105,12 @@ export default function AgentStartPage() {
       </main>
 
       {/* Modales */}
-      <ShiftModal isOpen={showShiftModal} onStart={handleStartShift} />
+      <ShiftModal
+        isOpen={showShiftModal}
+        onStart={() => void handleStartShift()}
+        isLoading={startingShift}
+        error={shiftError}
+      />
       
       <ActionMenuModal
         isOpen={showMenuModal}

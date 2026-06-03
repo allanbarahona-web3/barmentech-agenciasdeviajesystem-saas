@@ -642,7 +642,7 @@ model CompanyBankAccount {
   currency          String // "CRC", "USD"
   sinpeNumber       String? // Número SINPE móvil (opcional)
   accountHolderName String // Nombre del titular (Empresa)
-  companyName       String   @default("Viajes Alma Nova") // Nombre de la empresa (ej: "Viajes Alma Nova", "Lucitours")
+  companyName       String   @default("Empresa") // Nombre comercial de la empresa
   isActive          Boolean  @default(true)
   notes             String?
   createdByUserId   String

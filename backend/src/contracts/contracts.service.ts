@@ -929,7 +929,11 @@ export class ContractsService {
       size: number;
     }> = [],
   ) {
-    if (!dto.contractHtml?.trim()) {
+    // Detectar si es viaje interno (no requiere PDF)
+    const isInternalTrip = Boolean(dto.internalTripId?.trim());
+    
+    // Validar contractHtml solo si NO es viaje interno
+    if (!isInternalTrip && !dto.contractHtml?.trim()) {
       throw new BadRequestException("Se requiere contractHtml para generar el PDF del contrato.");
     }
 
@@ -1020,29 +1024,39 @@ export class ContractsService {
     // Generar código de pago único ANTES de renderizar el PDF
     const paymentReference = await this.generateUniquePaymentReference();
     
-    // Inyectar el código de pago en el HTML del contrato
-    const htmlWithPaymentRef = this.injectPaymentReferenceIntoHtml(
-      dto.contractHtml,
-      paymentReference
-    );
-    
-    const { pdfBuffer, signatureAnchors } =
-      await this.pdfRenderService.renderContractToBuffer(htmlWithPaymentRef);
+    // Variables para PDF (solo si no es viaje interno)
+    let pdfKey: string | null = null;
+    let htmlKey: string | null = null;
+    let pdfBuffer: Buffer | null = null;
+    let signatureAnchors: any = null;
 
-    const pdfKey = `${baseFolder}/contract.pdf`;
-    const htmlKey = `${baseFolder}/contract.html`;
+    // VIAJES INTERNACIONALES: Generar PDF + HTML
+    if (!isInternalTrip) {
+      // Inyectar el código de pago en el HTML del contrato
+      const htmlWithPaymentRef = this.injectPaymentReferenceIntoHtml(
+        dto.contractHtml!,
+        paymentReference
+      );
+      
+      const pdfResult = await this.pdfRenderService.renderContractToBuffer(htmlWithPaymentRef);
+      pdfBuffer = pdfResult.pdfBuffer;
+      signatureAnchors = pdfResult.signatureAnchors;
 
-    await this.uploadToSpaces({
-      objectKey: pdfKey,
-      contentType: "application/pdf",
-      body: pdfBuffer,
-    });
+      pdfKey = `${baseFolder}/contract.pdf`;
+      htmlKey = `${baseFolder}/contract.html`;
 
-    await this.uploadToSpaces({
-      objectKey: htmlKey,
-      contentType: "text/html; charset=utf-8",
-      body: Buffer.from(htmlWithPaymentRef, "utf-8"),
-    });
+      await this.uploadToSpaces({
+        objectKey: pdfKey,
+        contentType: "application/pdf",
+        body: pdfBuffer,
+      });
+
+      await this.uploadToSpaces({
+        objectKey: htmlKey,
+        contentType: "text/html; charset=utf-8",
+        body: Buffer.from(htmlWithPaymentRef, "utf-8"),
+      });
+    }
 
     const enrichedPayload = {
       ...payloadRecord,
@@ -1121,7 +1135,7 @@ export class ContractsService {
     // 🔍 DEBUG: Log de tamaños ANTES de insertar en base de datos
     // =================================================================
     console.log('====================================');
-    console.log('🔍 [archiveContract] INICIO - Verificando tamaños de campos');
+    console.log(`🔍 [archiveContract] ${isInternalTrip ? 'VIAJE INTERNO' : 'VIAJE INTERNACIONAL'} - Verificando tamaños de campos`);
     console.log('====================================');
     console.log(`contractNumber: "${contractNumber}" (${contractNumber.length} chars)`);
     console.log(`paymentReference: "${paymentReference}" (${paymentReference.length} chars)`);
@@ -1130,9 +1144,14 @@ export class ContractsService {
     console.log(`clientIdNumber: "${dto.clientIdNumber.trim()}" (${dto.clientIdNumber.trim().length} chars)`);
     console.log(`generatedByEmail: "${user.email}" (${user.email.length} chars)`);
     console.log(`generatedByName: "${user.fullName}" (${user.fullName.length} chars)`);
-    console.log(`pdfObjectKey: "${pdfKey}" (${pdfKey.length} chars)`);
-    console.log(`pdfFileName: "${contractNumber}.pdf" (${(contractNumber + '.pdf').length} chars)`);
-    console.log(`htmlObjectKey: "${htmlKey}" (${htmlKey.length} chars)`);
+    if (!isInternalTrip) {
+      console.log(`pdfObjectKey: "${pdfKey}" (${pdfKey?.length || 0} chars)`);
+      console.log(`pdfFileName: "${contractNumber}.pdf" (${(contractNumber + '.pdf').length} chars)`);
+      console.log(`htmlObjectKey: "${htmlKey}" (${htmlKey?.length || 0} chars)`);
+    } else {
+      console.log(`internalTripId: "${dto.internalTripId}" (${dto.internalTripId?.length || 0} chars)`);
+      console.log('⚠️ Viaje interno: Sin PDF ni HTML');
+    }
     console.log(`payload JSON: ${JSON.stringify(enrichedPayload).length} chars total`);
     console.log('====================================');
 
@@ -1140,7 +1159,7 @@ export class ContractsService {
     try {
       // Mapear el source del DTO al enum de Prisma
       const sourceValue = dto.source?.trim().toUpperCase() || 'SCHEDULED_TRIP';
-      const validSources = ['SCHEDULED_TRIP', 'MIGRATION', 'CUSTOM_TRIP', 'QUOTE'];
+      const validSources = ['SCHEDULED_TRIP', 'MIGRATION', 'CUSTOM_TRIP', 'QUOTE', 'INTERNAL_TRIP'];
       const contractSource = validSources.includes(sourceValue) ? sourceValue : 'SCHEDULED_TRIP';
 
       archived = await (this.prisma as any).contract.create({
@@ -1158,14 +1177,18 @@ export class ContractsService {
           startDate: this.toDateOrNull(dto.startDate),
           endDate: this.toDateOrNull(dto.endDate),
           payload: enrichedPayload as any,
-          pdfObjectKey: pdfKey,
-          pdfFileName: `${contractNumber}.pdf`,
-          pdfMimeType: "application/pdf",
-          pdfSize: pdfBuffer.length,
-          htmlObjectKey: htmlKey,
+          // Campos de PDF: SOLO para viajes internacionales
+          ...(isInternalTrip ? {} : {
+            pdfObjectKey: pdfKey,
+            pdfFileName: `${contractNumber}.pdf`,
+            pdfMimeType: "application/pdf",
+            pdfSize: pdfBuffer!.length,
+            htmlObjectKey: htmlKey,
+          }),
           source: contractSource,
-          participantCount: participantCount, // Calcular desde companions + minors
-          travelPackageId: travelPackageId, // Link a paquete si aplica
+          participantCount: participantCount,
+          travelPackageId: travelPackageId, // Para viajes internacionales programados
+          internalTripId: isInternalTrip ? dto.internalTripId : null, // Para viajes internos
           documents: {
             create: uploadedDocuments.map((doc) => ({
               kind: null,
@@ -1215,7 +1238,10 @@ export class ContractsService {
       throw error;
     }
 
-    const pdfUrl = await this.buildSignedObjectUrl(pdfKey, 900);
+    // Generar URL del PDF solo si NO es viaje interno
+    const pdfUrl = !isInternalTrip && pdfKey 
+      ? await this.buildSignedObjectUrl(pdfKey, 900)
+      : null;
 
     if (dto.draftId?.trim()) {
       await (this.prisma as any).contractDraft.deleteMany({
@@ -1934,6 +1960,9 @@ export class ContractsService {
           contractNumber: item.contractNumber,
           paymentReference: item.paymentReference || null,
           status: item.status || CONTRACT_STATUS_PENDING_SIGNATURE,
+          source: item.source || null,
+          travelPackageId: item.travelPackageId || null,
+          internalTripId: item.internalTripId || null,
           clientFullName: item.client?.fullName || "-",
           clientIdNumber: item.client?.idNumber || "-",
           clientEmail: item.client?.email || "-",
@@ -1953,6 +1982,9 @@ export class ContractsService {
       draftId: draft.id,
       contractNumber: draft.contractNumber,
       status: CONTRACT_STATUS_DRAFT,
+      source: draft.source || null,
+      travelPackageId: null,
+      internalTripId: null,
       clientFullName: draft.clientFullName || "-",
       clientIdNumber: draft.clientIdNumber || "-",
       clientEmail: draft.clientEmail || "-",

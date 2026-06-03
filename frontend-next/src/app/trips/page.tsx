@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getStoredSession, getHomeRouteForRole } from "@/lib/auth-api";
 import { getAllTravelPackages, type TravelPackage } from "@/lib/travel-packages-api";
+import { ConfirmModal } from "@/components/confirm-modal";
 import { PageLoader } from "@/components/loading-spinner";
 
 const formatDate = (dateString: string): string => {
@@ -48,7 +49,47 @@ export default function TripsPage() {
   const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [packages, setPackages] = useState<TravelPackage[]>([]);
-  const [error, setError] = useState("");
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmText?: string;
+    cancelText?: string;
+    variant?: "primary" | "danger" | "warning";
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: "",
+    message: "",
+    onConfirm: () => {},
+  });
+
+  const showConfirm = (config: Omit<typeof confirmModal, "isOpen">) => {
+    setConfirmModal({ ...config, isOpen: true });
+  };
+
+  const closeConfirm = () => {
+    setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+  };
+
+  const extractErrorMessage = (error: unknown, fallback: string) => {
+    const rawMessage = String((error as any)?.message || "").trim();
+    if (!rawMessage) {
+      return fallback;
+    }
+    return rawMessage.replace(/^Error\s+\d+\s*:\s*/i, "").trim() || fallback;
+  };
+
+  const showWarningModal = (title: string, message: string) => {
+    showConfirm({
+      title,
+      message,
+      confirmText: "Entendido",
+      cancelText: "Cerrar",
+      variant: "warning",
+      onConfirm: () => closeConfirm(),
+    });
+  };
 
   useEffect(() => {
     setMounted(true);
@@ -75,8 +116,8 @@ export default function TripsPage() {
       setLoading(true);
       const data = await getAllTravelPackages();
       setPackages(data);
-    } catch (err: any) {
-      setError(err.message || "Error cargando viajes");
+    } catch (err: unknown) {
+      showWarningModal("Error cargando viajes", extractErrorMessage(err, "Error cargando viajes"));
     } finally {
       setLoading(false);
     }
@@ -95,28 +136,24 @@ export default function TripsPage() {
   }
 
   return (
-    <main className="app-shell" style={{ padding: "20px" }}>
+    <>
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        confirmText={confirmModal.confirmText}
+        cancelText={confirmModal.cancelText}
+        confirmVariant={confirmModal.variant}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={closeConfirm}
+      />
+      <main className="app-shell" style={{ padding: "20px" }}>
       <div style={{ maxWidth: 1400, margin: "0 auto" }}>
         {/* Header */}
         <div style={{ marginBottom: 30 }}>
           <h1 style={{ marginBottom: 8, fontSize: "1.8rem", fontWeight: 600 }}>✈️ Viajes Disponibles</h1>
           <p style={{ color: "#6b7280", margin: 0 }}>Selecciona un viaje para crear un contrato</p>
         </div>
-
-        {error && (
-          <div
-            style={{
-              padding: "12px 16px",
-              background: "#fee2e2",
-              border: "1px solid #fca5a5",
-              borderRadius: 8,
-              color: "#991b1b",
-              marginBottom: 20,
-            }}
-          >
-            {error}
-          </div>
-        )}
 
         {/* Grid de tarjetas */}
         {packages.length === 0 ? (
@@ -308,5 +345,6 @@ export default function TripsPage() {
         )}
       </div>
     </main>
+    </>
   );
 }

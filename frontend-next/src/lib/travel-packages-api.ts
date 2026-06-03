@@ -143,13 +143,26 @@ export const createTravelPackage = async (data: CreateTravelPackageInput): Promi
   const apiBase = resolveApiBase();
   if (!apiBase) throw new Error("No hay API configurada");
 
+  // ⚠️ SANITIZAR: Solo enviar campos permitidos por el DTO
+  const payload = {
+    name: data.name,
+    destination: data.destination,
+    departureDate: data.departureDate,
+    returnDate: data.returnDate,
+    capacity: data.capacity,
+    ...(data.packagePrice !== undefined && { packagePrice: data.packagePrice }),
+    ...(data.minReservation !== undefined && { minReservation: data.minReservation }),
+    ...(data.priceCurrency && { priceCurrency: data.priceCurrency }),
+    ...(data.status && { status: data.status }),
+  };
+
   const response = await authenticatedFetch(`${apiBase}/travel-packages`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify(data),
+    body: JSON.stringify(payload),
   });
 
   if (!response.ok) {
@@ -170,13 +183,25 @@ export const updateTravelPackage = async (id: string, data: UpdateTravelPackageI
   const apiBase = resolveApiBase();
   if (!apiBase) throw new Error("No hay API configurada");
 
+  // ⚠️ SANITIZAR: Solo enviar campos permitidos por el DTO
+  const payload: any = {};
+  if (data.name !== undefined) payload.name = data.name;
+  if (data.destination !== undefined) payload.destination = data.destination;
+  if (data.departureDate !== undefined) payload.departureDate = data.departureDate;
+  if (data.returnDate !== undefined) payload.returnDate = data.returnDate;
+  if (data.capacity !== undefined) payload.capacity = data.capacity;
+  if (data.packagePrice !== undefined) payload.packagePrice = data.packagePrice;
+  if (data.minReservation !== undefined) payload.minReservation = data.minReservation;
+  if (data.priceCurrency !== undefined) payload.priceCurrency = data.priceCurrency;
+  if (data.status !== undefined) payload.status = data.status;
+
   const response = await authenticatedFetch(`${apiBase}/travel-packages/${id}`, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify(data),
+    body: JSON.stringify(payload),
   });
 
   if (!response.ok) {

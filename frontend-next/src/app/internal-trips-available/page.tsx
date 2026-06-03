@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getStoredSession, getStoredToken } from '@/lib/auth-api';
 import { resolveApiBase } from '@/lib/runtime-config';
+import { ConfirmModal } from '@/components/confirm-modal';
 import { PageLoader } from '@/components/loading-spinner';
 
 interface InternalTrip {
@@ -19,6 +20,7 @@ interface InternalTrip {
   occupiedSlots: number;
   price: number;
   currency: string;
+  minReservation: number | null;
   status: string;
   createdAt: string;
 }
@@ -63,7 +65,47 @@ export default function InternalTripsAvailablePage() {
   const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [trips, setTrips] = useState<InternalTrip[]>([]);
-  const [error, setError] = useState('');
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmText?: string;
+    cancelText?: string;
+    variant?: 'primary' | 'danger' | 'warning';
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
+
+  const showConfirm = (config: Omit<typeof confirmModal, 'isOpen'>) => {
+    setConfirmModal({ ...config, isOpen: true });
+  };
+
+  const closeConfirm = () => {
+    setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+  };
+
+  const extractErrorMessage = (error: unknown, fallback: string) => {
+    const rawMessage = String((error as any)?.message || '').trim();
+    if (!rawMessage) {
+      return fallback;
+    }
+    return rawMessage.replace(/^Error\s+\d+\s*:\s*/i, '').trim() || fallback;
+  };
+
+  const showWarningModal = (title: string, message: string) => {
+    showConfirm({
+      title,
+      message,
+      confirmText: 'Entendido',
+      cancelText: 'Cerrar',
+      variant: 'warning',
+      onConfirm: () => closeConfirm(),
+    });
+  };
 
   useEffect(() => {
     setMounted(true);
@@ -96,10 +138,10 @@ export default function InternalTripsAvailablePage() {
         const openTrips = data.filter((trip: InternalTrip) => trip.status === 'OPEN');
         setTrips(openTrips);
       } else {
-        setError(`Error: ${response.status} ${response.statusText}`);
+        showWarningModal('Error cargando viajes internos', `Error: ${response.status} ${response.statusText}`);
       }
-    } catch (err: any) {
-      setError(err.message || 'Error cargando viajes');
+    } catch (err: unknown) {
+      showWarningModal('Error cargando viajes internos', extractErrorMessage(err, 'Error cargando viajes'));
     } finally {
       setLoading(false);
     }
@@ -116,7 +158,18 @@ export default function InternalTripsAvailablePage() {
   }
 
   return (
-    <main className="app-shell" style={{ padding: '20px' }}>
+    <>
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        confirmText={confirmModal.confirmText}
+        cancelText={confirmModal.cancelText}
+        confirmVariant={confirmModal.variant}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={closeConfirm}
+      />
+      <main className="app-shell" style={{ padding: '20px' }}>
       <div style={{ maxWidth: 1400, margin: '0 auto' }}>
         {/* Header */}
         <div style={{ marginBottom: 30 }}>
@@ -127,23 +180,6 @@ export default function InternalTripsAvailablePage() {
             Explora y reserva nuestros viajes domésticos
           </p>
         </div>
-
-        {/* Error */}
-        {error && (
-          <div style={{ marginBottom: 20 }}>
-            <div
-              style={{
-                backgroundColor: '#fee2e2',
-                border: '1px solid #fecaca',
-                borderRadius: 8,
-                padding: 16,
-                color: '#991b1b',
-              }}
-            >
-              {error}
-            </div>
-          </div>
-        )}
 
         {/* Cards Grid */}
         {trips.length === 0 ? (
@@ -202,6 +238,23 @@ export default function InternalTripsAvailablePage() {
                 >
                   {/* Header */}
                   <div style={{ marginBottom: 12 }}>
+                    {/* Trip Code Badge */}
+                    <div style={{ marginBottom: 8 }}>
+                      <span
+                        style={{
+                          display: 'inline-block',
+                          backgroundColor: '#f3f4f6',
+                          color: '#374151',
+                          padding: '2px 8px',
+                          borderRadius: 4,
+                          fontSize: 11,
+                          fontWeight: 600,
+                          fontFamily: 'monospace',
+                        }}
+                      >
+                        {trip.tripCode}
+                      </span>
+                    </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
                       <div>
                         <h2 style={{ fontSize: 18, fontWeight: 700, color: '#111827', margin: 0 }}>
@@ -249,6 +302,17 @@ export default function InternalTripsAvailablePage() {
                     >
                       {formatPrice(trip.price, trip.currency)}
                     </p>
+                    {trip.minReservation && (
+                      <p
+                        style={{
+                          fontSize: 13,
+                          color: '#d97706',
+                          margin: '4px 0 0 0',
+                        }}
+                      >
+                        🔖 Reserva: {formatPrice(trip.minReservation, trip.currency)}
+                      </p>
+                    )}
                   </div>
 
                   {/* Occupancy Progress Bar */}
@@ -324,5 +388,6 @@ export default function InternalTripsAvailablePage() {
         )}
       </div>
     </main>
+    </>
   );
 }

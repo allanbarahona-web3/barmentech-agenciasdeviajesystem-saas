@@ -4,8 +4,8 @@ export const dynamic = 'force-dynamic';
 
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
-import { FormEvent, Suspense, useState } from "react";
-import { confirmPasswordReset } from "@/lib/auth-api";
+import { FormEvent, Suspense, useEffect, useState } from "react";
+import { confirmPasswordReset, getTenantConfig } from "@/lib/auth-api";
 
 function ResetPasswordForm() {
   const router = useRouter();
@@ -18,6 +18,20 @@ function ResetPasswordForm() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
+  const [tenantLogoUrl, setTenantLogoUrl] = useState<string | null>(null);
+  const [tenantName, setTenantName] = useState("Agencia de Viajes");
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const config = await getTenantConfig();
+        setTenantLogoUrl(String(config?.logoUrl || "").trim() || null);
+        setTenantName(String(config?.name || "").trim() || "Agencia de Viajes");
+      } catch {
+        // Keep neutral fallback when tenant config is unavailable.
+      }
+    })();
+  }, []);
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -106,14 +120,18 @@ function ResetPasswordForm() {
         <div className="bg-white rounded-2xl shadow-xl p-8">
           {/* Logo */}
           <div className="flex justify-center mb-8">
-            <Image
-              src="https://lucitouroperations.sfo3.digitaloceanspaces.com/contracts-assets/Almanova%20azul+dorado.webp"
-              alt="Viajes Alma Nova"
-              width={180}
-              height={90}
-              className="h-auto"
-              priority
-            />
+            {tenantLogoUrl ? (
+              <Image
+                src={tenantLogoUrl}
+                alt={tenantName}
+                width={180}
+                height={90}
+                className="h-auto"
+                priority
+              />
+            ) : (
+              <div className="w-45 h-22.5 bg-gray-200 animate-pulse rounded" />
+            )}
           </div>
 
           {/* Título */}

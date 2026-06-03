@@ -143,20 +143,6 @@ export class InternalToursService {
       orderBy: { departureDate: 'asc' },
     });
 
-    // Auto-marcar como COMPLETED si returnDate ya pasó
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    for (const trip of trips) {
-      if (trip.returnDate < today && trip.status !== 'COMPLETED' && trip.status !== 'CANCELLED') {
-        await this.prisma.internalTrip.update({
-          where: { id: trip.id },
-          data: { status: 'COMPLETED' },
-        });
-        trip.status = 'COMPLETED';
-      }
-    }
-
     return trips.map((trip) => ({
       ...trip,
       availableSlots: trip.capacity - trip.bookings.length,
@@ -207,15 +193,6 @@ export class InternalToursService {
       throw new NotFoundException('Viaje no encontrado');
     }
 
-    // No permitir ediciones de viajes cancelados o completados
-    if (trip.status === 'CANCELLED') {
-      throw new BadRequestException('No se puede editar un viaje cancelado');
-    }
-
-    if (trip.status === 'COMPLETED') {
-      throw new BadRequestException('No se puede editar un viaje que ya ocurrió');
-    }
-
     // No permitir cambios si hay reservas
     const hasBookings = await this.prisma.internalTourBooking.findFirst({
       where: { internalTripId: tripId },
@@ -236,8 +213,6 @@ export class InternalToursService {
     if (dto.returnTime) updateData.returnTime = dto.returnTime;
     if (dto.capacity) updateData.capacity = dto.capacity;
     if (dto.price) updateData.price = new Decimal(String(dto.price));
-    if (dto.currency) updateData.currency = dto.currency;
-    if (dto.minReservation !== undefined) updateData.minReservation = dto.minReservation ? new Decimal(String(dto.minReservation)) : null;
     if (dto.transportType) updateData.transportType = dto.transportType;
     if (dto.itinerary) updateData.itinerary = dto.itinerary;
     if (dto.status) updateData.status = dto.status;
@@ -362,16 +337,9 @@ export class InternalToursService {
   }
 
   /**
-   * Incrementar occupiedSlots cuando se confirme un pago de reserva
-   * @param tripId ID del viaje
-   * @param participantCount Número de participantes a agregar
-   * @param tenantId ID del tenant (validación de seguridad)
+   * Incrementar cupos ocupados del viaje
    */
-  async incrementOccupiedSlots(
-    tripId: string,
-    participantCount: number,
-    tenantId: string,
-  ) {
+  async incrementOccupiedSlots(tripId: string, count: number, tenantId: string) {
     const trip = await this.prisma.internalTrip.findFirst({
       where: { id: tripId, tenantId },
     });
@@ -380,41 +348,24 @@ export class InternalToursService {
       throw new NotFoundException('Viaje no encontrado');
     }
 
-    // Validar que hay cupo disponible
-    if (trip.occupiedSlots + participantCount > trip.capacity) {
+    // Validar que no exceda la capacidad
+    const newOccupied = trip.occupiedSlots + count;
+    if (newOccupied > trip.capacity) {
       throw new BadRequestException(
-        `No hay suficiente cupo. Disponible: ${
-          trip.capacity - trip.occupiedSlots
-        }, Solicitado: ${participantCount}`,
+        `No se pueden ocupar ${count} cupos. Capacidad: ${trip.capacity}, Ocupados: ${trip.occupiedSlots}`
       );
     }
 
-    const newOccupiedSlots = trip.occupiedSlots + participantCount;
-
-    // Cerrar automáticamente si se alcanza la capacidad
-    const newStatus =
-      newOccupiedSlots === trip.capacity ? 'CLOSED' : trip.status;
-
-    return await this.prisma.internalTrip.update({
+    await this.prisma.internalTrip.update({
       where: { id: tripId },
-      data: {
-        occupiedSlots: newOccupiedSlots,
-        ...(newStatus !== trip.status && { status: newStatus }),
-      },
+      data: { occupiedSlots: { increment: count } },
     });
   }
 
   /**
-   * Decrementar occupiedSlots cuando se cancele una reserva
-   * @param tripId ID del viaje
-   * @param participantCount Número de participantes a restar
-   * @param tenantId ID del tenant (validación de seguridad)
+   * Decrementar cupos ocupados del viaje
    */
-  async decrementOccupiedSlots(
-    tripId: string,
-    participantCount: number,
-    tenantId: string,
-  ) {
+  async decrementOccupiedSlots(tripId: string, count: number, tenantId: string) {
     const trip = await this.prisma.internalTrip.findFirst({
       where: { id: tripId, tenantId },
     });
@@ -423,20 +374,17 @@ export class InternalToursService {
       throw new NotFoundException('Viaje no encontrado');
     }
 
-    const newOccupiedSlots = Math.max(0, trip.occupiedSlots - participantCount);
+    // Validar que no sea negativo
+    const newOccupied = trip.occupiedSlots - count;
+    if (newOccupied < 0) {
+      throw new BadRequestException(
+        `No se pueden liberar ${count} cupos. Ocupados actuales: ${trip.occupiedSlots}`
+      );
+    }
 
-    // Re-abrir si había estado CLOSED por capacidad y ahora hay cupos
-    const newStatus =
-      newOccupiedSlots < trip.capacity && trip.status === 'CLOSED'
-        ? 'OPEN'
-        : trip.status;
-
-    return await this.prisma.internalTrip.update({
+    await this.prisma.internalTrip.update({
       where: { id: tripId },
-      data: {
-        occupiedSlots: newOccupiedSlots,
-        ...(newStatus !== trip.status && { status: newStatus }),
-      },
+      data: { occupiedSlots: { decrement: count } },
     });
   }
 }

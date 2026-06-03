@@ -27,7 +27,6 @@ interface InternalTrip {
 export default function AdminInternalTripsPage() {
   const router = useRouter();
   const [trips, setTrips] = useState<InternalTrip[]>([]);
-  const [showArchived, setShowArchived] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
@@ -57,7 +56,7 @@ export default function AdminInternalTripsPage() {
       setLoading(true);
       const currentToken = token || getStoredToken();
       const apiBase = resolveApiBase();
-      const response = await fetch(`${apiBase}/internal-trips`, {
+      const response = await fetch(`${apiBase}/internal-tourism/trips`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${currentToken}`,
@@ -98,27 +97,7 @@ export default function AdminInternalTripsPage() {
           </div>
         )}
 
-        {/* Toggle Mostrar Archivo */}
-        {trips.length > 0 && (
-          <div style={{ marginBottom: 20, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' }}>
-              <input
-                type="checkbox"
-                checked={showArchived}
-                onChange={(e) => setShowArchived(e.target.checked)}
-                style={{ width: 18, height: 18, cursor: 'pointer' }}
-              />
-              <span style={{ fontSize: '0.95rem', color: '#6b7280', fontWeight: 500 }}>
-                📦 Mostrar archivo (cancelados/finalizados)
-              </span>
-            </label>
-          </div>
-        )}
-
-        <InternalTripsList 
-          trips={showArchived ? trips.filter(t => t.status === 'CANCELLED' || t.status === 'COMPLETED') : trips.filter(t => t.status === 'OPEN' || t.status === 'CLOSED')} 
-          onTripsUpdated={() => loadTrips()} 
-        />
+        <InternalTripsList trips={trips} onTripsUpdated={() => loadTrips()} />
       </div>
     </main>
   );

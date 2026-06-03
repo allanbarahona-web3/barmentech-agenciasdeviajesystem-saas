@@ -156,6 +156,12 @@ export class AuthController {
     return this.authService.changePassword(req.user.id, dto.currentPassword, dto.newPassword);
   }
 
+  @UseGuards(JwtAuthGuard)
+  @Post("logout")
+  logout(@Req() req: { user: { id: string; tenantId?: string } }) {
+    return this.authService.logout(req.user.id, req.user.tenantId);
+  }
+
   /**
    * Endpoint público para obtener la configuración legal del tenant
    * (usado para construir contratos en frontend)

@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ToastNotification, useToast } from '@/components/toast-notification';
+import { ConfirmModal } from '@/components/confirm-modal';
+import { LoadingModal } from '@/components/loading-modal';
 
 interface CreateTripModalProps {
   title: string;
@@ -24,9 +25,25 @@ export function CreateTripModal({
   redirectUrl,
 }: CreateTripModalProps) {
   const router = useRouter();
-  const { toasts, showSuccess, showError, dismissToast } = useToast();
 
   const [saving, setSaving] = useState(false);
+  const [showLoadingModal, setShowLoadingModal] = useState(false);
+  const [loadingModalState, setLoadingModalState] = useState<'loading' | 'success' | 'error'>('loading');
+  const [loadingModalMessage, setLoadingModalMessage] = useState('');
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmText?: string;
+    cancelText?: string;
+    variant?: 'primary' | 'danger' | 'warning';
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
 
   // Form state
   const [name, setName] = useState('');
@@ -36,6 +53,7 @@ export function CreateTripModal({
   const [capacity, setCapacity] = useState('');
   const [price, setPrice] = useState('');
   const [minReservation, setMinReservation] = useState('');
+  const [currency, setCurrency] = useState<'USD' | 'CRC'>('USD');
   const [transportType, setTransportType] = useState<'BUS' | 'PRIVATE' | 'WALKING' | 'MIXED'>('BUS');
   const [status, setStatus] = useState<'OPEN' | 'CLOSED' | 'CANCELLED'>('OPEN');
 
@@ -45,15 +63,58 @@ export function CreateTripModal({
   const percentage = Math.round((capacityNum / maxCapacity) * 100);
   const progressColor = getProgressColor(percentage);
 
+  const showConfirm = (config: Omit<typeof confirmModal, 'isOpen'>) => {
+    setConfirmModal({ ...config, isOpen: true });
+  };
+
+  const closeConfirm = () => {
+    setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+  };
+
+  const closeLoadingModal = () => {
+    setShowLoadingModal(false);
+    setLoadingModalState('loading');
+    setLoadingModalMessage('');
+  };
+
+  const showLoadingState = (message: string) => {
+    setLoadingModalMessage(message);
+    setLoadingModalState('loading');
+    setShowLoadingModal(true);
+  };
+
+  const showLoadingSuccess = (message: string) => {
+    setLoadingModalMessage(message);
+    setLoadingModalState('success');
+    setShowLoadingModal(true);
+  };
+
+  const extractErrorMessage = (error: unknown, fallback: string) => {
+    const rawMessage = String((error as any)?.message || '').trim();
+    if (!rawMessage) {
+      return fallback;
+    }
+    return rawMessage.replace(/^Error\s+\d+\s*:\s*/i, '').trim() || fallback;
+  };
+
+  const showWarningModal = (titleText: string, message: string) => {
+    showConfirm({
+      title: titleText,
+      message,
+      confirmText: 'Entendido',
+      cancelText: 'Cerrar',
+      variant: 'warning',
+      onConfirm: () => closeConfirm(),
+    });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSaving(true);
 
     try {
       // Validaciones básicas
       if (!name.trim() || !destination.trim() || !departureDate || !returnDate || !capacity || !price) {
-        showError('Por favor completa todos los campos requeridos');
-        setSaving(false);
+        showWarningModal('Campos requeridos', 'Por favor completa todos los campos requeridos');
         return;
       }
 
@@ -63,67 +124,70 @@ export function CreateTripModal({
       today.setHours(0, 0, 0, 0);
 
       if (departureDateTime <= today) {
-        showError('La fecha de salida debe ser en el futuro');
-        setSaving(false);
+        showWarningModal('Fecha inválida', 'La fecha de salida debe ser en el futuro');
         return;
       }
 
       if (returnDateTime <= departureDateTime) {
-        showError('La fecha de regreso debe ser después de la salida');
-        setSaving(false);
+        showWarningModal('Fecha inválida', 'La fecha de regreso debe ser después de la salida');
         return;
       }
 
       if (parseInt(capacity) <= 0) {
-        showError('La capacidad debe ser mayor a 0');
-        setSaving(false);
+        showWarningModal('Capacidad inválida', 'La capacidad debe ser mayor a 0');
         return;
       }
 
       if (parseFloat(price) <= 0) {
-        showError('El precio debe ser mayor a 0');
-        setSaving(false);
+        showWarningModal('Precio inválido', 'El precio debe ser mayor a 0');
         return;
       }
 
       // Para viajes internacionales, monto mínimo es opcional
       if (tripType === 'international' && minReservation && parseFloat(minReservation) <= 0) {
-        showError('El monto de reserva mínima debe ser mayor a 0');
-        setSaving(false);
+        showWarningModal('Monto inválido', 'El monto de reserva mínima debe ser mayor a 0');
         return;
       }
 
-      const data: any = {
+      setSaving(true);
+      showLoadingState('Creando viaje...');
+
+      const baseData = {
         name: name.trim(),
         destination: destination.trim(),
         departureDate: departureDateTime.toISOString(),
         returnDate: returnDateTime.toISOString(),
         capacity: parseInt(capacity),
-        price: parseFloat(price),
-        currency: 'USD',
-        status: status,
-        description: `${tripType === 'internal' ? 'Viaje Interno' : 'Viaje Internacional'}: ${name.trim()}`,
-        itinerary: `Viaje a ${destination.trim()}`,
+        status,
       };
 
-      // Para viajes internos, agregar tipo de transporte
-      if (tripType === 'internal') {
-        data.transportType = transportType;
-      }
-
-      // Para ambos tipos, agregar monto de reserva mínima si está definido
-      if (minReservation) {
-        data.minReservation = parseFloat(minReservation);
-      }
+      const data: any =
+        tripType === 'internal'
+          ? {
+              ...baseData,
+              price: parseFloat(price),
+              currency,
+              description: `Viaje Interno: ${name.trim()}`,
+              itinerary: `Viaje a ${destination.trim()}`,
+              transportType,
+              ...(minReservation ? { minReservation: parseFloat(minReservation) } : {}),
+            }
+          : {
+              ...baseData,
+              packagePrice: parseFloat(price),
+              priceCurrency: currency,
+              ...(minReservation ? { minReservation: parseFloat(minReservation) } : {}),
+            };
 
       await onSubmit(data);
-      showSuccess('✅ Viaje creado exitosamente');
+      showLoadingSuccess('Viaje creado exitosamente');
 
       setTimeout(() => {
         router.push(redirectUrl);
       }, 1500);
     } catch (error) {
-      showError(`❌ Error: ${error instanceof Error ? error.message : 'Error desconocido'}`);
+      closeLoadingModal();
+      showWarningModal('Error al crear viaje', extractErrorMessage(error, 'Error desconocido'));
     } finally {
       setSaving(false);
     }
@@ -134,7 +198,26 @@ export function CreateTripModal({
   };
 
   return (
-    <div
+    <>
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        confirmText={confirmModal.confirmText}
+        cancelText={confirmModal.cancelText}
+        confirmVariant={confirmModal.variant}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={closeConfirm}
+      />
+      <LoadingModal
+        isOpen={showLoadingModal}
+        state={loadingModalState}
+        loadingMessage={loadingModalMessage}
+        successMessage={loadingModalMessage}
+        errorMessage={loadingModalMessage}
+        onClose={closeLoadingModal}
+      />
+      <div
       style={{
         position: 'fixed',
         top: 0,
@@ -154,17 +237,17 @@ export function CreateTripModal({
         style={{
           background: '#fff',
           borderRadius: 12,
-          padding: 30,
-          maxWidth: 500,
+          padding: 24,
+          maxWidth: 640,
           width: '100%',
-          maxHeight: '90vh',
-          overflowY: 'auto',
+          maxHeight: 'calc(100vh - 40px)',
+          overflowY: 'hidden',
           boxShadow: '0 20px 25px rgba(0, 0, 0, 0.15)',
         }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div style={{ marginBottom: 24, position: 'relative' }}>
+        <div style={{ marginBottom: 16, position: 'relative' }}>
           <h2 style={{ fontSize: 24, fontWeight: 700, color: '#111827', margin: '0 0 8px 0' }}>
             {title}
           </h2>
@@ -188,7 +271,7 @@ export function CreateTripModal({
 
         <form onSubmit={handleSubmit}>
           {/* Nombre */}
-          <div style={{ marginBottom: 16 }}>
+          <div style={{ marginBottom: 12 }}>
             <label style={{ fontSize: 13, fontWeight: 600, color: '#111827', display: 'block', marginBottom: 4 }}>
               Nombre del Viaje *
             </label>
@@ -210,7 +293,7 @@ export function CreateTripModal({
           </div>
 
           {/* Destino */}
-          <div style={{ marginBottom: 16 }}>
+          <div style={{ marginBottom: 12 }}>
             <label style={{ fontSize: 13, fontWeight: 600, color: '#111827', display: 'block', marginBottom: 4 }}>
               Destino *
             </label>
@@ -232,7 +315,7 @@ export function CreateTripModal({
           </div>
 
           {/* Fechas */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
             <div>
               <label style={{ fontSize: 13, fontWeight: 600, color: '#111827', display: 'block', marginBottom: 4 }}>
                 Salida *
@@ -274,7 +357,7 @@ export function CreateTripModal({
           </div>
 
           {/* Capacidad con barra visual */}
-          <div style={{ marginBottom: 16 }}>
+          <div style={{ marginBottom: 12 }}>
             <label style={{ fontSize: 13, fontWeight: 600, color: '#111827', display: 'block', marginBottom: 4 }}>
               Capacidad (personas) *
             </label>
@@ -329,34 +412,58 @@ export function CreateTripModal({
             </div>
           </div>
 
-          {/* Precio */}
-          <div style={{ marginBottom: 16 }}>
-            <label style={{ fontSize: 13, fontWeight: 600, color: '#111827', display: 'block', marginBottom: 4 }}>
-              Precio por Persona (USD) *
-            </label>
-            <input
-              type="number"
-              min="0.01"
-              step="0.01"
-              value={price}
-              onChange={(e) => setPrice(e.target.value)}
-              placeholder="ej: 150"
-              style={{
-                width: '100%',
-                padding: '8px 12px',
-                border: '1px solid #d1d5db',
-                borderRadius: 6,
-                fontSize: 13,
-                fontFamily: 'inherit',
-                boxSizing: 'border-box',
-              }}
-            />
+          {/* Precio + Moneda */}
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 10, marginBottom: 12 }}>
+            <div>
+              <label style={{ fontSize: 13, fontWeight: 600, color: '#111827', display: 'block', marginBottom: 4 }}>
+                Precio por Persona ({currency}) *
+              </label>
+              <input
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={price}
+                onChange={(e) => setPrice(e.target.value)}
+                placeholder="ej: 150"
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  border: '1px solid #d1d5db',
+                  borderRadius: 6,
+                  fontSize: 13,
+                  fontFamily: 'inherit',
+                  boxSizing: 'border-box',
+                }}
+              />
+            </div>
+
+            <div>
+              <label style={{ fontSize: 13, fontWeight: 600, color: '#111827', display: 'block', marginBottom: 4 }}>
+                Moneda
+              </label>
+              <select
+                value={currency}
+                onChange={(e) => setCurrency(e.target.value as 'USD' | 'CRC')}
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  border: '1px solid #d1d5db',
+                  borderRadius: 6,
+                  fontSize: 13,
+                  fontFamily: 'inherit',
+                  boxSizing: 'border-box',
+                }}
+              >
+                <option value="USD">USD ($)</option>
+                <option value="CRC">CRC (₡)</option>
+              </select>
+            </div>
           </div>
 
           {/* Monto de reserva mínima (para ambos tipos) */}
-          <div style={{ marginBottom: 16 }}>
+          <div style={{ marginBottom: 12 }}>
             <label style={{ fontSize: 13, fontWeight: 600, color: '#111827', display: 'block', marginBottom: 4 }}>
-              Monto de Reserva Mínima (USD)
+              Monto de Reserva Mínima ({currency})
             </label>
             <input
               type="number"
@@ -377,57 +484,14 @@ export function CreateTripModal({
             />
           </div>
 
-          {/* Estado del Viaje */}
-          <div style={{ marginBottom: 16 }}>
-            <label style={{ fontSize: 13, fontWeight: 600, color: '#111827', display: 'block', marginBottom: 8 }}>
-              Estado del Viaje
-            </label>
-            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                <input
-                  type="radio"
-                  name="status"
-                  value="OPEN"
-                  checked={status === 'OPEN'}
-                  onChange={(e) => setStatus(e.target.value as any)}
-                  style={{ cursor: 'pointer' }}
-                />
-                <span style={{ fontSize: '0.9rem' }}>✅ Activo</span>
-              </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                <input
-                  type="radio"
-                  name="status"
-                  value="CLOSED"
-                  checked={status === 'CLOSED'}
-                  onChange={(e) => setStatus(e.target.value as any)}
-                  style={{ cursor: 'pointer' }}
-                />
-                <span style={{ fontSize: '0.9rem' }}>⏸ Stand By</span>
-              </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                <input
-                  type="radio"
-                  name="status"
-                  value="CANCELLED"
-                  checked={status === 'CANCELLED'}
-                  onChange={(e) => setStatus(e.target.value as any)}
-                  style={{ cursor: 'pointer' }}
-                />
-                <span style={{ fontSize: '0.9rem' }}>❌ Inactivo</span>
-              </label>
-            </div>
-          </div>
-
-          {/* Tipo de transporte (solo para internos) */}
-          {tripType === 'internal' && (
-            <div style={{ marginBottom: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: tripType === 'internal' ? '1fr 1fr' : '1fr', gap: 10, marginBottom: 12 }}>
+            <div>
               <label style={{ fontSize: 13, fontWeight: 600, color: '#111827', display: 'block', marginBottom: 4 }}>
-                Tipo de Transporte
+                Estado del Viaje
               </label>
               <select
-                value={transportType}
-                onChange={(e) => setTransportType(e.target.value as any)}
+                value={status}
+                onChange={(e) => setStatus(e.target.value as 'OPEN' | 'CLOSED' | 'CANCELLED')}
                 style={{
                   width: '100%',
                   padding: '8px 12px',
@@ -438,16 +502,41 @@ export function CreateTripModal({
                   boxSizing: 'border-box',
                 }}
               >
-                <option value="BUS">🚌 Autobús</option>
-                <option value="PRIVATE">🚗 Privado</option>
-                <option value="WALKING">🚶 A Pie</option>
-                <option value="MIXED">🔄 Mixto</option>
+                <option value="OPEN">✅ Activo</option>
+                <option value="CLOSED">⏸ Stand By</option>
+                <option value="CANCELLED">❌ Inactivo</option>
               </select>
             </div>
-          )}
+
+            {tripType === 'internal' && (
+              <div>
+                <label style={{ fontSize: 13, fontWeight: 600, color: '#111827', display: 'block', marginBottom: 4 }}>
+                  Tipo de Transporte
+                </label>
+                <select
+                  value={transportType}
+                  onChange={(e) => setTransportType(e.target.value as any)}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    border: '1px solid #d1d5db',
+                    borderRadius: 6,
+                    fontSize: 13,
+                    fontFamily: 'inherit',
+                    boxSizing: 'border-box',
+                  }}
+                >
+                  <option value="BUS">🚌 Autobús</option>
+                  <option value="PRIVATE">🚗 Privado</option>
+                  <option value="WALKING">🚶 A Pie</option>
+                  <option value="MIXED">🔄 Mixto</option>
+                </select>
+              </div>
+            )}
+          </div>
 
           {/* Botones */}
-          <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end', marginTop: 20 }}>
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 14 }}>
             <button
               type="button"
               onClick={handleClose}
@@ -487,11 +576,7 @@ export function CreateTripModal({
         </form>
       </div>
 
-      {/* Toasts */}
-      <ToastNotification
-        toasts={toasts}
-        onDismiss={dismissToast}
-      />
     </div>
+    </>
   );
 }

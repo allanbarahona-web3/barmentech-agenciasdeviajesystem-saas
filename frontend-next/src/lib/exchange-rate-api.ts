@@ -149,13 +149,31 @@ export async function getExchangeRateHistoryRange(
  */
 export async function downloadExchangeRateHistoryPdf(
   startDate: string,
-  endDate: string
+  endDate: string,
+  options?: { timeZone?: string; utcOffsetMinutes?: number }
 ): Promise<Blob> {
   const token = getStoredToken();
   const base = await resolveApiBase();
+  const timeZone = String(options?.timeZone || "").trim();
+  const utcOffsetMinutes =
+    typeof options?.utcOffsetMinutes === "number" && Number.isFinite(options.utcOffsetMinutes)
+      ? String(options.utcOffsetMinutes)
+      : "";
+
+  const query = new URLSearchParams({
+    startDate,
+    endDate,
+  });
+
+  if (timeZone) {
+    query.set("timeZone", timeZone);
+  }
+  if (utcOffsetMinutes) {
+    query.set("utcOffsetMinutes", utcOffsetMinutes);
+  }
 
   const res = await authenticatedFetch(
-    `${base}/exchange-rate/export-pdf?startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}`,
+    `${base}/exchange-rate/export-pdf?${query.toString()}`,
     {
       method: "GET",
       headers: {
@@ -177,10 +195,28 @@ export async function downloadExchangeRateHistoryPdf(
 export async function emailExchangeRateHistory(
   startDate: string,
   endDate: string,
-  email: string
+  email: string,
+  options?: { timeZone?: string; utcOffsetMinutes?: number }
 ): Promise<{ success: boolean; message?: string; error?: string }> {
   const token = getStoredToken();
   const base = await resolveApiBase();
+
+  const payload: {
+    startDate: string;
+    endDate: string;
+    email: string;
+    timeZone?: string;
+    utcOffsetMinutes?: number;
+  } = { startDate, endDate, email };
+
+  const timeZone = String(options?.timeZone || "").trim();
+  if (timeZone) {
+    payload.timeZone = timeZone;
+  }
+
+  if (typeof options?.utcOffsetMinutes === "number" && Number.isFinite(options.utcOffsetMinutes)) {
+    payload.utcOffsetMinutes = options.utcOffsetMinutes;
+  }
 
   const res = await authenticatedFetch(`${base}/exchange-rate/email-history`, {
     method: "POST",
@@ -188,7 +224,7 @@ export async function emailExchangeRateHistory(
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ startDate, endDate, email }),
+    body: JSON.stringify(payload),
   });
 
   if (!res.ok) {

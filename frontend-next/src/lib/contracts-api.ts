@@ -7,6 +7,9 @@ export type HistoryContractItem = {
   draftId?: string | null;
   contractNumber: string;
   status: string;
+  source?: string | null;
+  travelPackageId?: string | null;
+  internalTripId?: string | null;
   clientFullName: string;
   clientIdNumber: string;
   clientEmail: string;
@@ -94,7 +97,8 @@ type ArchiveContractInput = {
   payloadJson: string;
   contractHtml: string;
   documents: File[];
-  source?: string; // SCHEDULED_TRIP | MIGRATION | CUSTOM_TRIP | QUOTE
+  source?: string; // SCHEDULED_TRIP | MIGRATION | CUSTOM_TRIP | QUOTE | INTERNAL_TRIP
+  internalTripId?: string; // Para viajes internos (sin contrato PDF)
 };
 
 type ArchiveContractResult = {
@@ -103,7 +107,7 @@ type ArchiveContractResult = {
   status: string;
   documentCount: number;
   createdAt: string;
-  pdfUrl: string;
+  pdfUrl: string | null; // Null para viajes internos
 };
 
 type SigningLinkResult = {

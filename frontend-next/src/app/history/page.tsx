@@ -13,7 +13,7 @@ import {
   sendSigningLinksForContract,
 } from "@/lib/contracts-api";
 import { ToastNotification, useToast } from "@/components/toast-notification";
-import { ConfirmationModal } from "@/components/confirmation-modal";
+import { ConfirmModal } from "@/components/confirm-modal";
 import { PageLoader } from "@/components/loading-spinner";
 import AttachmentViewer from "@/components/attachment-viewer";
 import Link from "next/link";
@@ -32,6 +32,28 @@ const formatDateTime = (value: string): string => {
     hour: "2-digit",
     minute: "2-digit",
   });
+};
+
+const resolveTripType = (item: HistoryContractItem): {
+  label: string;
+  bg: string;
+  color: string;
+} => {
+  const source = String(item.source || "").toUpperCase();
+
+  if (item.internalTripId || source === "INTERNAL_TRIP") {
+    return { label: "Interno", bg: "#dcfce7", color: "#166534" };
+  }
+
+  if (item.travelPackageId || source === "SCHEDULED_TRIP") {
+    return { label: "Internacional", bg: "#dbeafe", color: "#1d4ed8" };
+  }
+
+  if (item.kind === "DRAFT") {
+    return { label: "Borrador", bg: "#f3f4f6", color: "#374151" };
+  }
+
+  return { label: "Contrato", bg: "#e5e7eb", color: "#374151" };
 };
 
 export default function HistoryPage() {
@@ -441,6 +463,7 @@ export default function HistoryPage() {
                     <th>Correo</th>
                     <th>Telefono</th>
                     <th>Numero contrato</th>
+                    <th>Tipo</th>
                     <th>Estado</th>
                     <th>Acciones</th>
                   </tr>
@@ -448,6 +471,7 @@ export default function HistoryPage() {
                 <tbody>
                   {items.map((item) => {
                     const status = statusInfo(item.status);
+                    const tripType = resolveTripType(item);
                     const isSigned = String(item.status || "").toUpperCase() === STATUS_SIGNED;
                     const isDraft = String(item.status || "").toUpperCase() === "DRAFT";
                     const isResendDone = Boolean(item.signedContractResent);
@@ -461,6 +485,22 @@ export default function HistoryPage() {
                         <td>{item.clientEmail || "-"}</td>
                         <td>{item.clientPhone || "-"}</td>
                         <td>{item.contractNumber}</td>
+                        <td>
+                          <span
+                            style={{
+                              display: "inline-block",
+                              padding: "2px 10px",
+                              borderRadius: 999,
+                              fontSize: 12,
+                              fontWeight: 700,
+                              backgroundColor: tripType.bg,
+                              color: tripType.color,
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {tripType.label}
+                          </span>
+                        </td>
                         <td>
                           <span className={`contract-status ${status.className}`}>{status.label}</span>
                         </td>
@@ -635,7 +675,7 @@ export default function HistoryPage() {
         </section>
       ) : null}
 
-      <ConfirmationModal
+      <ConfirmModal
         isOpen={draftToDelete !== null}
         onCancel={closeDeleteDraftModal}
         onConfirm={() => void confirmDeleteDraft()}
@@ -645,10 +685,9 @@ export default function HistoryPage() {
             ? `Vas a eliminar el borrador ${draftToDelete.contractNumber}${draftToDelete.clientFullName && draftToDelete.clientFullName !== "-" ? ` de ${draftToDelete.clientFullName}` : ""}. Esta accion no se puede deshacer.`
             : ""
         }
-        confirmLabel="Eliminar borrador"
-        cancelLabel="Cancelar"
+        confirmText="Eliminar borrador"
+        cancelText="Cancelar"
         confirmVariant="danger"
-        isLoading={busyAction === "delete-draft:confirm"}
       />
 
       <ToastNotification toasts={toasts} onDismiss={dismissToast} />

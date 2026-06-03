@@ -3,8 +3,8 @@
 import { useState } from 'react';
 import { getStoredToken } from '@/lib/auth-api';
 import { resolveApiBase } from '@/lib/runtime-config';
-import { ToastNotification, useToast } from '@/components/toast-notification';
 import { ConfirmModal } from '@/components/confirm-modal';
+import { LoadingModal } from '@/components/loading-modal';
 
 interface InternalTrip {
   id: string;
@@ -69,9 +69,11 @@ const getStatusBadge = (status: string) => {
 };
 
 export function InternalTripsList({ trips, onTripsUpdated }: InternalTripsListProps) {
-  const { toasts, showSuccess, showError, dismissToast } = useToast();
   const [editingTrip, setEditingTrip] = useState<InternalTrip | null>(null);
   const [saving, setSaving] = useState(false);
+  const [showLoadingModal, setShowLoadingModal] = useState(false);
+  const [loadingModalState, setLoadingModalState] = useState<'loading' | 'success' | 'error'>('loading');
+  const [loadingModalMessage, setLoadingModalMessage] = useState('');
 
   const [formData, setFormData] = useState({
     name: '',
@@ -91,6 +93,7 @@ export function InternalTripsList({ trips, onTripsUpdated }: InternalTripsListPr
     title: string;
     message: string;
     confirmText?: string;
+    cancelText?: string;
     variant?: "primary" | "danger" | "warning";
     onConfirm: () => void;
   }>({
@@ -105,7 +108,44 @@ export function InternalTripsList({ trips, onTripsUpdated }: InternalTripsListPr
   };
 
   const closeConfirm = () => {
-    setConfirmModal({ ...confirmModal, isOpen: false });
+    setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+  };
+
+  const closeLoadingModal = () => {
+    setShowLoadingModal(false);
+    setLoadingModalState('loading');
+    setLoadingModalMessage('');
+  };
+
+  const showLoadingState = (message: string) => {
+    setLoadingModalMessage(message);
+    setLoadingModalState('loading');
+    setShowLoadingModal(true);
+  };
+
+  const showLoadingSuccess = (message: string) => {
+    setLoadingModalMessage(message);
+    setLoadingModalState('success');
+    setShowLoadingModal(true);
+  };
+
+  const extractErrorMessage = (error: unknown, fallback: string) => {
+    const rawMessage = String((error as any)?.message || '').trim();
+    if (!rawMessage) {
+      return fallback;
+    }
+    return rawMessage.replace(/^Error\s+\d+\s*:\s*/i, '').trim() || fallback;
+  };
+
+  const showWarningModal = (titleText: string, message: string) => {
+    showConfirm({
+      title: titleText,
+      message,
+      confirmText: 'Entendido',
+      cancelText: 'Cerrar',
+      variant: 'warning',
+      onConfirm: () => closeConfirm(),
+    });
   };
 
   const openEditForm = (trip: InternalTrip) => {
@@ -143,9 +183,11 @@ export function InternalTripsList({ trips, onTripsUpdated }: InternalTripsListPr
       title: "Cancelar Viaje",
       message: `¿Estás seguro que deseas cancelar el viaje "${trip.name}"? Esta acción no se puede deshacer.`,
       confirmText: "Sí, cancelar viaje",
+      cancelText: "No",
       variant: "danger",
       onConfirm: async () => {
         try {
+          showLoadingState('Cancelando viaje interno...');
           const token = getStoredToken();
           const apiBase = resolveApiBase();
 
@@ -159,16 +201,18 @@ export function InternalTripsList({ trips, onTripsUpdated }: InternalTripsListPr
           });
 
           if (response.ok) {
-            showSuccess('Viaje cancelado exitosamente');
+            showLoadingSuccess('Viaje cancelado exitosamente');
             if (onTripsUpdated) {
               onTripsUpdated();
             }
           } else {
             const error = await response.json();
-            showError(error.message || `Error: ${response.statusText}`);
+            closeLoadingModal();
+            showWarningModal('Error cancelando viaje', error.message || `Error: ${response.statusText}`);
           }
         } catch (err) {
-          showError(err instanceof Error ? err.message : 'Error cancelando viaje');
+          closeLoadingModal();
+          showWarningModal('Error cancelando viaje', extractErrorMessage(err, 'Error cancelando viaje'));
         } finally {
           closeConfirm();
         }
@@ -181,7 +225,7 @@ export function InternalTripsList({ trips, onTripsUpdated }: InternalTripsListPr
     if (!editingTrip) return;
 
     if (!formData.name.trim() || !formData.destination.trim()) {
-      showError('Por favor completa todos los campos requeridos');
+      showWarningModal('Campos requeridos', 'Por favor completa todos los campos requeridos');
       return;
     }
 
@@ -189,22 +233,23 @@ export function InternalTripsList({ trips, onTripsUpdated }: InternalTripsListPr
     const returnDateTime = new Date(formData.returnDate);
 
     if (returnDateTime <= departureDateTime) {
-      showError('La fecha de regreso debe ser después de la salida');
+      showWarningModal('Fecha inválida', 'La fecha de regreso debe ser después de la salida');
       return;
     }
 
     if (parseInt(formData.capacity) <= 0) {
-      showError('La capacidad debe ser mayor a 0');
+      showWarningModal('Capacidad inválida', 'La capacidad debe ser mayor a 0');
       return;
     }
 
     if (parseFloat(formData.price) <= 0) {
-      showError('El precio debe ser mayor a 0');
+      showWarningModal('Precio inválido', 'El precio debe ser mayor a 0');
       return;
     }
 
     try {
       setSaving(true);
+      showLoadingState('Actualizando viaje interno...');
       const token = getStoredToken();
       const apiBase = resolveApiBase();
 
@@ -230,16 +275,18 @@ export function InternalTripsList({ trips, onTripsUpdated }: InternalTripsListPr
       });
 
       if (response.ok) {
-        showSuccess('Viaje actualizado exitosamente');
+        showLoadingSuccess('Viaje actualizado exitosamente');
         closeEditForm();
         if (onTripsUpdated) {
           onTripsUpdated();
         }
       } else {
-        showError(`Error: ${response.statusText}`);
+        closeLoadingModal();
+        showWarningModal('Error actualizando viaje', `Error: ${response.statusText}`);
       }
     } catch (err) {
-      showError(err instanceof Error ? err.message : 'Error updating trip');
+      closeLoadingModal();
+      showWarningModal('Error actualizando viaje', extractErrorMessage(err, 'Error updating trip'));
     } finally {
       setSaving(false);
     }
@@ -263,15 +310,23 @@ export function InternalTripsList({ trips, onTripsUpdated }: InternalTripsListPr
 
   return (
     <>
-      <ToastNotification toasts={toasts} onDismiss={dismissToast} />
       <ConfirmModal
         isOpen={confirmModal.isOpen}
         title={confirmModal.title}
         message={confirmModal.message}
         confirmText={confirmModal.confirmText}
+        cancelText={confirmModal.cancelText}
         confirmVariant={confirmModal.variant}
         onConfirm={confirmModal.onConfirm}
         onCancel={closeConfirm}
+      />
+      <LoadingModal
+        isOpen={showLoadingModal}
+        state={loadingModalState}
+        loadingMessage={loadingModalMessage}
+        successMessage={loadingModalMessage}
+        errorMessage={loadingModalMessage}
+        onClose={closeLoadingModal}
       />
       
       <div className="internal-trips-grid" style={{ width: "100%" }}>

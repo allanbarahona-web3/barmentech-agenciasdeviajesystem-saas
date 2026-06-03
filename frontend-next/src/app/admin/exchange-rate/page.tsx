@@ -14,7 +14,8 @@ import {
   setExchangeRate,
   type ExchangeRate,
 } from "@/lib/exchange-rate-api";
-import { ToastNotification, useToast } from "@/components/toast-notification";
+import { ConfirmModal } from "@/components/confirm-modal";
+import { LoadingModal } from "@/components/loading-modal";
 import { PageLoader } from "@/components/loading-spinner";
 
 export default function AdminExchangeRatePage() {
@@ -27,7 +28,24 @@ export default function AdminExchangeRatePage() {
   const [saving, setSaving] = useState(false);
   const [currentRate, setCurrentRate] = useState<ExchangeRate | null>(null);
   const [history, setHistory] = useState<ExchangeRate[]>([]);
-  const { toasts, showSuccess, showError, dismissToast } = useToast();
+
+  const [showLoadingModal, setShowLoadingModal] = useState(false);
+  const [loadingModalState, setLoadingModalState] = useState<"loading" | "success" | "error">("loading");
+  const [loadingModalMessage, setLoadingModalMessage] = useState("");
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmText?: string;
+    cancelText?: string;
+    variant?: "primary" | "danger" | "warning";
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: "",
+    message: "",
+    onConfirm: () => {},
+  });
 
   const [date, setDate] = useState("");
   const [buyRate, setBuyRate] = useState("");
@@ -45,6 +63,51 @@ export default function AdminExchangeRatePage() {
   const [emailRecipient, setEmailRecipient] = useState("");
   const [sendingEmail, setSendingEmail] = useState(false);
   const emailInputRef = useRef<HTMLInputElement>(null);
+
+  const showConfirm = (config: Omit<typeof confirmModal, "isOpen">) => {
+    setConfirmModal({ ...config, isOpen: true });
+  };
+
+  const closeConfirm = () => {
+    setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+  };
+
+  const closeLoadingModal = () => {
+    setShowLoadingModal(false);
+    setLoadingModalState("loading");
+    setLoadingModalMessage("");
+  };
+
+  const showLoadingState = (message: string) => {
+    setLoadingModalMessage(message);
+    setLoadingModalState("loading");
+    setShowLoadingModal(true);
+  };
+
+  const showLoadingSuccess = (message: string) => {
+    setLoadingModalMessage(message);
+    setLoadingModalState("success");
+    setShowLoadingModal(true);
+  };
+
+  const extractErrorMessage = (error: unknown, fallback: string) => {
+    const rawMessage = String((error as any)?.message || "").trim();
+    if (!rawMessage) {
+      return fallback;
+    }
+    return rawMessage.replace(/^Error\s+\d+\s*:\s*/i, "").trim() || fallback;
+  };
+
+  const showWarningModal = (title: string, message: string) => {
+    showConfirm({
+      title,
+      message,
+      confirmText: "Entendido",
+      cancelText: "Cerrar",
+      variant: "warning",
+      onConfirm: () => closeConfirm(),
+    });
+  };
 
   useEffect(() => {
     if (!session?.user?.id) {
@@ -96,20 +159,6 @@ export default function AdminExchangeRatePage() {
     }
   }, [canEdit, filterStartDate, filterEndDate]);
 
-  // Auto-refresh for non-admin users every 30 seconds
-  useEffect(() => {
-    if (!canEdit && filterStartDate && filterEndDate) {
-      const interval = setInterval(() => {
-        // Only refresh if page is visible
-        if (document.visibilityState === 'visible') {
-          loadData(filterStartDate, filterEndDate);
-        }
-      }, 30000); // 30 seconds
-
-      return () => clearInterval(interval);
-    }
-  }, [canEdit, filterStartDate, filterEndDate]);
-
   // Auto-focus email input when modal opens
   useEffect(() => {
     if (showEmailModal && emailInputRef.current) {
@@ -138,8 +187,8 @@ export default function AdminExchangeRatePage() {
         setSellRate(current.sellRate.toString());
         setNotes(current.notes || "");
       }
-    } catch (err: any) {
-      showError(err.message || "Error cargando datos");
+    } catch (err: unknown) {
+      showWarningModal("Error cargando datos", extractErrorMessage(err, "Error cargando datos"));
     } finally {
       setLoading(false);
     }
@@ -152,27 +201,28 @@ export default function AdminExchangeRatePage() {
     const sell = parseFloat(sellRate);
 
     if (!date) {
-      showError("Debe seleccionar una fecha");
+      showWarningModal("Campo requerido", "Debe seleccionar una fecha");
       return;
     }
 
     if (isNaN(buy) || buy <= 0) {
-      showError("El tipo de cambio de compra debe ser mayor a 0");
+      showWarningModal("Dato inválido", "El tipo de cambio de compra debe ser mayor a 0");
       return;
     }
 
     if (isNaN(sell) || sell <= 0) {
-      showError("El tipo de cambio de venta debe ser mayor a 0");
+      showWarningModal("Dato inválido", "El tipo de cambio de venta debe ser mayor a 0");
       return;
     }
 
     if (sell < buy) {
-      showError("El tipo de cambio de venta debe ser mayor o igual al de compra");
+      showWarningModal("Dato inválido", "El tipo de cambio de venta debe ser mayor o igual al de compra");
       return;
     }
 
     try {
       setSaving(true);
+      showLoadingState("Guardando tipo de cambio...");
       await setExchangeRate({
         date,
         buyRate: buy,
@@ -180,17 +230,19 @@ export default function AdminExchangeRatePage() {
         notes: notes.trim() || undefined,
       });
 
-      showSuccess("Tipo de cambio guardado exitosamente");
+      showLoadingSuccess("Tipo de cambio guardado exitosamente");
       await loadData();
 
       // Reset form
-      const today = new Date().toISOString().split("T")[0];
+      const now = new Date();
+      const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
       setDate(today);
       setBuyRate("");
       setSellRate("");
       setNotes("");
-    } catch (err: any) {
-      showError(err.message || "Error guardando tipo de cambio");
+    } catch (err: unknown) {
+      closeLoadingModal();
+      showWarningModal("Error guardando tipo de cambio", extractErrorMessage(err, "Error guardando tipo de cambio"));
     } finally {
       setSaving(false);
     }
@@ -198,20 +250,23 @@ export default function AdminExchangeRatePage() {
 
   const handleFilter = async () => {
     if (!filterStartDate || !filterEndDate) {
-      showError("Debe seleccionar ambas fechas");
+      showWarningModal("Filtro incompleto", "Debe seleccionar ambas fechas");
       return;
     }
 
     if (filterStartDate > filterEndDate) {
-      showError("La fecha inicial debe ser menor o igual a la fecha final");
+      showWarningModal("Rango inválido", "La fecha inicial debe ser menor o igual a la fecha final");
       return;
     }
 
     setFiltering(true);
     try {
+      showLoadingState("Filtrando historial...");
       await loadData(filterStartDate, filterEndDate);
-    } catch (err: any) {
-      showError(err.message || "Error filtrando historial");
+      showLoadingSuccess("Historial filtrado exitosamente");
+    } catch (err: unknown) {
+      closeLoadingModal();
+      showWarningModal("Error filtrando historial", extractErrorMessage(err, "Error filtrando historial"));
     } finally {
       setFiltering(false);
     }
@@ -219,13 +274,20 @@ export default function AdminExchangeRatePage() {
 
   const handleExportPdf = async () => {
     if (!filterStartDate || !filterEndDate) {
-      showError("Debe seleccionar ambas fechas para exportar");
+      showWarningModal("Rango requerido", "Debe seleccionar ambas fechas para exportar");
       return;
     }
 
     setExporting(true);
     try {
-      const blob = await downloadExchangeRateHistoryPdf(filterStartDate, filterEndDate);
+      showLoadingState("Generando PDF del historial...");
+      const clientTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const clientUtcOffsetMinutes = new Date().getTimezoneOffset();
+
+      const blob = await downloadExchangeRateHistoryPdf(filterStartDate, filterEndDate, {
+        timeZone: clientTimeZone,
+        utcOffsetMinutes: clientUtcOffsetMinutes,
+      });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -234,9 +296,10 @@ export default function AdminExchangeRatePage() {
       a.click();
       window.URL.revokeObjectURL(url);
       document.body.removeChild(a);
-      showSuccess("PDF descargado exitosamente");
-    } catch (err: any) {
-      showError(err.message || "Error exportando PDF");
+      showLoadingSuccess("PDF descargado exitosamente");
+    } catch (err: unknown) {
+      closeLoadingModal();
+      showWarningModal("Error exportando PDF", extractErrorMessage(err, "Error exportando PDF"));
     } finally {
       setExporting(false);
     }
@@ -249,34 +312,31 @@ export default function AdminExchangeRatePage() {
 
   const handleSendEmail = async () => {
     if (!filterStartDate || !filterEndDate) {
-      showError("Debe seleccionar ambas fechas");
+      showWarningModal("Rango requerido", "Debe seleccionar ambas fechas");
       return;
     }
 
     if (!emailRecipient || !emailRecipient.includes("@")) {
-    
-
-  const formatTimestamp = (dateStr: string) => {
-    const date = new Date(dateStr);
-    const day = String(date.getDate()).padStart(2, '0');
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const year = date.getFullYear();
-    const hours = String(date.getHours()).padStart(2, '0');
-    const minutes = String(date.getMinutes()).padStart(2, '0');
-    const seconds = String(date.getSeconds()).padStart(2, '0');
-    return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
-  };  showError("Debe ingresar un correo válido");
+      showWarningModal("Correo inválido", "Debe ingresar un correo válido");
       return;
     }
 
     setSendingEmail(true);
     try {
-      await emailExchangeRateHistory(filterStartDate, filterEndDate, emailRecipient);
-      showSuccess("Historial enviado por correo exitosamente");
+      showLoadingState("Enviando historial por correo...");
+      const clientTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const clientUtcOffsetMinutes = new Date().getTimezoneOffset();
+
+      await emailExchangeRateHistory(filterStartDate, filterEndDate, emailRecipient, {
+        timeZone: clientTimeZone,
+        utcOffsetMinutes: clientUtcOffsetMinutes,
+      });
+      showLoadingSuccess("Historial enviado por correo exitosamente");
       setShowEmailModal(false);
       setEmailRecipient(""); // Limpiar campo para próximo envío
-    } catch (err: any) {
-      showError(err.message || "Error enviando correo");
+    } catch (err: unknown) {
+      closeLoadingModal();
+      showWarningModal("Error enviando correo", extractErrorMessage(err, "Error enviando correo"));
     } finally {
       setSendingEmail(false);
     }
@@ -304,7 +364,26 @@ export default function AdminExchangeRatePage() {
   }
 
   return (
-    <main className="app-shell">
+    <>
+      <ConfirmModal
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        confirmText={confirmModal.confirmText}
+        cancelText={confirmModal.cancelText}
+        confirmVariant={confirmModal.variant}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={closeConfirm}
+      />
+      <LoadingModal
+        isOpen={showLoadingModal}
+        state={loadingModalState}
+        loadingMessage={loadingModalMessage}
+        successMessage={loadingModalMessage}
+        errorMessage={loadingModalMessage}
+        onClose={closeLoadingModal}
+      />
+      <main className="app-shell">
       <div style={{ marginBottom: 30 }}>
         <h1 style={{ marginBottom: 8, fontSize: "1.8rem", fontWeight: 600 }}>💱 Tipo de Cambio USD/CRC</h1>
         <p style={{ color: "#6b7280", margin: 0 }}>Configura el tipo de cambio diario para conversiones de moneda</p>
@@ -665,7 +744,7 @@ export default function AdminExchangeRatePage() {
         </div>
       )}
 
-      <ToastNotification toasts={toasts} onDismiss={dismissToast} />
-    </main>
+      </main>
+    </>
   );
 }

@@ -2,10 +2,15 @@
 
 export const dynamic = 'force-dynamic';
 
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 export default function TimeclockPage() {
   const router = useRouter();
+
+  useEffect(() => {
+    router.replace('/admin/attendance');
+  }, [router]);
 
   return (
     <div className="container">
@@ -20,50 +25,13 @@ export default function TimeclockPage() {
       }}>
         <div style={{ fontSize: "64px", marginBottom: "20px" }}>⏰</div>
         <h1 style={{ fontSize: "32px", marginBottom: "16px", color: "#333" }}>
-          Control de Asistencia
+          Redirigiendo...
         </h1>
         <p style={{ fontSize: "18px", color: "#666", marginBottom: "12px" }}>
-          Próximamente...
+          Ahora esta sección vive en /admin/attendance
         </p>
-        <p style={{ fontSize: "14px", color: "#999", marginBottom: "32px" }}>
-          Sistema avanzado de marcaje de entrada/salida con geolocalización y verificación biométrica.
-        </p>
-        <div style={{
-          background: "#f8f9fa",
-          padding: "20px",
-          borderRadius: "8px",
-          marginBottom: "32px",
-          textAlign: "left"
-        }}>
-          <h3 style={{ fontSize: "16px", marginBottom: "12px", color: "#555" }}>
-            Funcionalidades Planificadas:
-          </h3>
-          <ul style={{ fontSize: "14px", color: "#666", lineHeight: "1.8" }}>
-            <li>📍 Marcaje con geolocalización GPS</li>
-            <li>📸 Verificación con selfie (prevenir fraude)</li>
-            <li>⏱️ Registro de horas trabajadas en tiempo real</li>
-            <li>📊 Cálculo automático de horas extras</li>
-            <li>📅 Gestión de turnos y horarios</li>
-            <li>🚨 Alertas de ausencias y tardanzas</li>
-            <li>💰 Integración directa con Planilla</li>
-            <li>📱 App móvil para marcaje remoto</li>
-          </ul>
-          <div style={{
-            marginTop: "16px",
-            padding: "12px",
-            background: "#fff3cd",
-            borderRadius: "6px",
-            fontSize: "13px",
-            color: "#856404"
-          }}>
-            <strong>📝 Nota:</strong> Ver especificación completa en{" "}
-            <code style={{ background: "#fff", padding: "2px 6px", borderRadius: "3px" }}>
-              TIMECLOCK-SYSTEM-SPEC.md
-            </code>
-          </div>
-        </div>
         <button
-          onClick={() => router.back()}
+          onClick={() => router.push('/admin/attendance')}
           style={{
             padding: "12px 24px",
             background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
@@ -77,7 +45,7 @@ export default function TimeclockPage() {
           onMouseEnter={(e) => e.currentTarget.style.transform = "scale(1.05)"}
           onMouseLeave={(e) => e.currentTarget.style.transform = "scale(1)"}
         >
-          ← Volver
+          Ir ahora
         </button>
       </div>
     </div>

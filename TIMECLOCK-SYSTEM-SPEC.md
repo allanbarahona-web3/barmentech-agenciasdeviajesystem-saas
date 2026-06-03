@@ -1,6 +1,6 @@
 # 🕒 Sistema de Planillas - Especificación Completa
 
-**Proyecto**: Viajes Alma Nova - Sistema de Control de Tiempo  
+**Proyecto**:  Sistema de Control de Tiempo  
 **Fecha**: 22 de Abril, 2026  
 **Versión**: 1.0 - MVP  
 

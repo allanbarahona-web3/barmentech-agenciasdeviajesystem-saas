@@ -4,6 +4,8 @@ import {
   NotFoundException,
   Logger,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
+import { randomBytes } from 'crypto';
 import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTravelPackageDto } from './dto/create-travel-package.dto';
@@ -15,34 +17,34 @@ export class TravelPackagesService {
 
   constructor(private prisma: PrismaService) {}
 
+  private generateAlphaNumeric(length = 6): string {
+    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    const bytes = randomBytes(length);
+    let out = '';
+    for (let i = 0; i < length; i += 1) {
+      out += alphabet[bytes[i] % alphabet.length];
+    }
+    return out;
+  }
+
   /**
-   * Genera un código único para el viaje basado en la fecha de salida.
-   * Formato: TP-YYYY-MM-XXX (ej: TP-2026-05-001)
+   * Genera código único para paquetes internacionales.
+   * Formato: TP-XXXXXX (alfanumérico, 6+ caracteres)
    */
-  private async generatePackageCode(departureDate: Date): Promise<string> {
-    const year = departureDate.getFullYear();
-    const month = String(departureDate.getMonth() + 1).padStart(2, '0');
+  private async generatePackageCode(): Promise<string> {
+    const maxLocalAttempts = 20;
+    for (let attempt = 1; attempt <= maxLocalAttempts; attempt += 1) {
+      const candidate = `TP-${this.generateAlphaNumeric(6)}`;
+      const exists = await this.prisma.travelPackage.findUnique({
+        where: { packageCode: candidate },
+        select: { id: true },
+      });
+      if (!exists) {
+        return candidate;
+      }
+    }
 
-    // Contar viajes existentes en ese mes
-    const startOfMonth = new Date(year, departureDate.getMonth(), 1);
-    const endOfMonth = new Date(year, departureDate.getMonth() + 1, 1);
-
-    const count = await this.prisma.travelPackage.count({
-      where: {
-        departureDate: {
-          gte: startOfMonth,
-          lt: endOfMonth,
-        },
-      },
-    });
-
-    const sequential = String(count + 1).padStart(3, '0');
-    const packageCode = `TP-${year}-${month}-${sequential}`;
-
-    // No es necesario validar unicidad aquí porque packageCode tiene @unique en schema
-    // y cada tenant genera códigos independientes por mes
-
-    return packageCode;
+    throw new BadRequestException('No se pudo generar un código único para el paquete. Intenta de nuevo.');
   }
 
   async create(dto: CreateTravelPackageDto, createdByUserId: string, tenantId: string) {
@@ -56,26 +58,53 @@ export class TravelPackagesService {
       );
     }
 
-    // Generar código automáticamente
-    const packageCode = await this.generatePackageCode(departure);
+    // Generar código con reintentos para manejar colisiones concurrentes (P2002)
+    let travelPackage: any = null;
+    const maxAttempts = 5;
 
-    const travelPackage = await this.prisma.travelPackage.create({
-      data: {
-        packageCode,
-        name: dto.name,
-        destination: dto.destination,
-        departureDate: departure,
-        returnDate: returnDate,
-        capacity: dto.capacity,
-        occupiedSlots: 0,
-        status: dto.status || 'OPEN',
-        packagePrice: dto.packagePrice,
-        priceCurrency: dto.priceCurrency || 'USD',
-        minReservation: dto.minReservation ? new Decimal(String(dto.minReservation)) : null,
-        createdByUserId,
-        tenantId,
-      },
-    });
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      const packageCode = await this.generatePackageCode();
+
+      try {
+        travelPackage = await this.prisma.travelPackage.create({
+          data: {
+            packageCode,
+            name: dto.name,
+            destination: dto.destination,
+            departureDate: departure,
+            returnDate: returnDate,
+            capacity: dto.capacity,
+            occupiedSlots: 0,
+            status: dto.status || 'OPEN',
+            packagePrice: dto.packagePrice,
+            priceCurrency: dto.priceCurrency || 'USD',
+            minReservation: dto.minReservation ? new Decimal(String(dto.minReservation)) : null,
+            createdByUserId,
+            tenantId,
+          },
+        });
+        break;
+      } catch (error) {
+        const isUniqueCodeCollision =
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2002' &&
+          Array.isArray(error.meta?.target) &&
+          error.meta.target.includes('packageCode');
+
+        if (isUniqueCodeCollision && attempt < maxAttempts) {
+          this.logger.warn(
+            `packageCode duplicado (${packageCode}) en intento ${attempt}/${maxAttempts}. Reintentando...`,
+          );
+          continue;
+        }
+
+        throw error;
+      }
+    }
+
+    if (!travelPackage) {
+      throw new BadRequestException('No se pudo generar un código único para el viaje. Intenta de nuevo.');
+    }
 
     this.logger.log(
       `Created travel package: ${travelPackage.packageCode} - ${travelPackage.name}`,

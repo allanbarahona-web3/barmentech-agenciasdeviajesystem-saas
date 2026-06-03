@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { getStoredSession, getStoredToken } from "@/lib/auth-api";
+import { getStoredSession, getStoredToken, getTenantConfig } from "@/lib/auth-api";
 import {
   approveAndSendBillingReceipt,
   bootstrapBillingContract,
@@ -163,6 +163,7 @@ function BillingContractAccountContent() {
   const [statusText, setStatusText] = useState("");
   const [criticalAlert, setCriticalAlert] = useState<{ title: string; message: string; details?: string } | null>(null);
   const [account, setAccount] = useState<BillingAccount | null>(null);
+  const [tenantDisplayName, setTenantDisplayName] = useState("la empresa");
 
   const [modalMode, setModalMode] = useState<BillingModalMode>("NONE");
 
@@ -224,12 +225,25 @@ function BillingContractAccountContent() {
     }
   };
 
+  const loadTenantDisplayName = async () => {
+    try {
+      const config = await getTenantConfig();
+      const tenantName = String(config?.name || "").trim();
+      if (tenantName) {
+        setTenantDisplayName(tenantName);
+      }
+    } catch {
+      // Keep fallback label when tenant config is unavailable.
+    }
+  };
+
   useEffect(() => {
     const token = getStoredToken();
     if (!token) {
       router.replace("/");
       return;
     }
+    void loadTenantDisplayName();
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router, contractId]);
@@ -548,7 +562,7 @@ function BillingContractAccountContent() {
                  errorMsg.toLowerCase().includes("cuenta destino inactiva")) {
         setCriticalAlert({
           title: "🚨 Pago Rechazado - Cuenta No Registrada",
-          message: "La cuenta destino no está registrada en el sistema de Viajes Alma Nova.",
+          message: `La cuenta destino no está registrada en el sistema de ${tenantDisplayName}.`,
           details: errorMsg
         });
       } else {
@@ -1633,7 +1647,7 @@ function BillingContractAccountContent() {
                         if (errorMsg.includes("cuenta destino no registrada") || errorMsg.includes("cuenta destino inactiva")) {
                           setCriticalAlert({
                             title: "🚨 Pago Rechazado - Cuenta No Registrada",
-                            message: "La cuenta destino detectada en el comprobante NO está registrada en el sistema de Viajes Alma Nova.",
+                            message: `La cuenta destino detectada en el comprobante NO está registrada en el sistema de ${tenantDisplayName}.`,
                             details: error
                           });
                         } else {
@@ -1958,7 +1972,7 @@ function BillingContractAccountContent() {
                   marginBottom: '0',
                   lineHeight: '1.6'
                 }}>
-                  <strong>🔒 Razón de seguridad:</strong> Solo se aceptan pagos a cuentas verificadas de Viajes Alma Nova para prevenir fraudes.
+                  <strong>🔒 Razón de seguridad:</strong> Solo se aceptan pagos a cuentas verificadas de {tenantDisplayName} para prevenir fraudes.
                 </p>
               </div>
 
