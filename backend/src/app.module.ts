@@ -25,7 +25,7 @@ import { RLSInterceptor } from "./common/interceptors/rls.interceptor";
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: [".env.local", ".env.development", ".env"],
+      envFilePath: [".env.local", ".env"],
     }),
     ThrottlerModule.forRoot([
       {
