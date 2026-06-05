@@ -2,6 +2,7 @@
   "name": "barmentech-agenciasdeviajesystem-saas-backend",
   "version": "1.0.0",
   "private": true,
+  "packageManager": "pnpm@10.14.0",
   "scripts": {
     "build": "nest build",
     "start": "nest start",
