@@ -314,7 +314,7 @@ export class AttendanceService {
         ...dateFilter,
       },
       include: {
-        user: {
+        User: {
           select: {
             id: true,
             fullName: true,
@@ -341,7 +341,7 @@ export class AttendanceService {
       },
       orderBy: { date: 'desc' },
       include: {
-        user: {
+        User: {
           select: {
             id: true,
             fullName: true,
@@ -440,7 +440,7 @@ export class AttendanceService {
         tenantId: user.role === 'SUPER_ADMIN' ? undefined : user.tenantId || undefined,
       },
       include: {
-        correctedBy: {
+        User: {
           select: {
             id: true,
             fullName: true,

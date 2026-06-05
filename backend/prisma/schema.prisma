@@ -62,10 +62,10 @@ model Tenant {
   exchangeRates               ExchangeRate[]
   travelPackages              TravelPackage[]
   users                       User[]
-  attendance_config           attendance_config?
-  attendance_corrections      attendance_corrections[]
-  attendance_daily_summaries  attendance_daily_summaries[]
-  attendance_entries          attendance_entries[]
+  attendance_config           AttendanceConfig?
+  attendance_corrections      AttendanceCorrection[]
+  attendance_daily_summaries  AttendanceDailySummary[]
+  attendance_entries          AttendanceEntry[]
   employeeDocuments           EmployeeDocument[]
   employees                   Employee[]
   internalBookings            InternalTourBooking[]
@@ -89,9 +89,9 @@ model User {
   tenantId                   String?
   role                       UserRole                     @default(AGENT)
   tenant                     Tenant?                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  attendance_corrections     attendance_corrections[]
-  attendance_daily_summaries attendance_daily_summaries[]
-  attendance_entries         attendance_entries[]
+  attendance_corrections     AttendanceCorrection[]
+  attendance_daily_summaries AttendanceDailySummary[]
+  attendance_entries         AttendanceEntry[]
   employee                   Employee?
   passwordResetTokens        PasswordResetToken[]
 
@@ -747,8 +747,8 @@ model InternalTourInvoice {
 }
 
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
-model attendance_config {
-  id                           String   @id
+model AttendanceConfig {
+  id                           String   @id @default(cuid())
   tenantId                     String   @unique
   requireAttendanceForAgente   Boolean  @default(true)
   requireAttendanceForOperador Boolean  @default(true)
@@ -764,15 +764,16 @@ model attendance_config {
   systemHours                  Json     @default("{\"timezone\": \"America/Costa_Rica\", \"systemEnd\": \"20:00\", \"systemStart\": \"08:00\"}")
   otEnabled                    Boolean  @default(false)
   createdAt                    DateTime @default(now())
-  updatedAt                    DateTime
+  updatedAt                    DateTime @updatedAt
   tenants                      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId])
+  @@map("attendance_config")
 }
 
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
-model attendance_corrections {
-  id                 String             @id
+model AttendanceCorrection {
+  id                 String          @id @default(cuid())
   correctedByUserId  String
   tenantId           String
   entryId            String
@@ -785,19 +786,20 @@ model attendance_corrections {
   afterClockIn       DateTime
   afterClockOut      DateTime?
   afterDuration      Int?
-  createdAt          DateTime           @default(now())
-  User               User               @relation(fields: [correctedByUserId], references: [id], onDelete: Cascade)
-  attendance_entries attendance_entries @relation(fields: [entryId], references: [id], onDelete: Cascade)
-  tenants            Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt          DateTime        @default(now())
+  User               User            @relation(fields: [correctedByUserId], references: [id], onDelete: Cascade)
+  attendance_entries AttendanceEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  tenants            Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([correctedByUserId])
   @@index([entryId])
   @@index([tenantId])
+  @@map("attendance_corrections")
 }
 
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
-model attendance_daily_summaries {
-  id              String   @id
+model AttendanceDailySummary {
+  id              String   @id @default(cuid())
   userId          String
   tenantId        String
   date            DateTime
@@ -816,18 +818,19 @@ model attendance_daily_summaries {
   isComplete      Boolean  @default(false)
   hasOT           Boolean  @default(false)
   createdAt       DateTime @default(now())
-  updatedAt       DateTime
+  updatedAt       DateTime @updatedAt
   tenants         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   User            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, userId, date])
   @@index([tenantId, userId, date])
   @@index([userId, date])
+  @@map("attendance_daily_summaries")
 }
 
 /// This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
-model attendance_entries {
-  id                     String                   @id
+model AttendanceEntry {
+  id                     String                 @id @default(cuid())
   userId                 String
   tenantId               String
   date                   DateTime
@@ -835,20 +838,21 @@ model attendance_entries {
   clockIn                DateTime
   clockOut               DateTime?
   duration               Int?
-  exceeded               Boolean                  @default(false)
+  exceeded               Boolean                @default(false)
   excessMinutes          Int?
-  isOT                   Boolean                  @default(false)
-  duringOT               Boolean                  @default(false)
-  createdAt              DateTime                 @default(now())
-  updatedAt              DateTime
-  attendance_corrections attendance_corrections[]
-  tenants                Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  User                   User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isOT                   Boolean                @default(false)
+  duringOT               Boolean                @default(false)
+  createdAt              DateTime               @default(now())
+  updatedAt              DateTime               @updatedAt
+  attendance_corrections AttendanceCorrection[]
+  tenants                Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  User                   User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, userId, date, type, clockIn])
   @@index([date])
   @@index([tenantId, userId, date])
   @@index([userId, date])
+  @@map("attendance_entries")
 }
 
 enum UserRole {
