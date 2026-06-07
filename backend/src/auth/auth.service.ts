@@ -46,6 +46,9 @@ export class AuthService {
   }
 
   async login(dto: LoginDto, tenant: ResolvedTenant) {
+    this.logger.warn(
+  `🔥 AUTH LOGIN INVOCADO: ${dto.email} | Tenant: ${tenant.name}`,
+);
     const honeypot = (dto.website || "").trim();
     if (honeypot) {
       throw new UnauthorizedException("Credenciales invalidas");
