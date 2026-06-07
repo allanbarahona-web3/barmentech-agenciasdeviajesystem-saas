@@ -61,7 +61,16 @@ console.log('====================');
       async () => {
         try {
           // Resolver tenant desde el dominio
+          this.logger.warn('====================');
+this.logger.warn(`PATH: ${req.originalUrl}`);
+this.logger.warn(`METHOD: ${req.method}`);
+this.logger.warn(`HOST: ${req.get('host')}`);
+this.logger.warn(`ORIGIN: ${req.get('origin') || 'N/A'}`);
+this.logger.warn(`REFERER: ${req.get('referer') || 'N/A'}`);
+this.logger.warn(`X-FORWARDED-HOST: ${req.get('x-forwarded-host') || 'N/A'}`);
+this.logger.warn(`HOST FINAL USADO: ${host}`);
           const tenant = await this.tenantService.resolveTenant(host);
+          
 
           // Validar si está suspendido (prioridad sobre isActive)
           if (tenant.suspendedAt) {
