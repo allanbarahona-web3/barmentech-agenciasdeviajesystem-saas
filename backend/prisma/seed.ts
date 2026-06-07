@@ -97,7 +97,31 @@ async function main() {
   });
   console.log("✅ Tenant listo: Lucitours (LUC)");
 
-  console.log("");
+  console.log(""); 
+
+  // Tenant 3: Platform DEV (Administración)
+const platformDevTenant = await prisma.tenant.upsert({
+  where: { name: "Platform DEV" },
+  create: {
+    name: "Platform DEV",
+    subdomain: "dev",
+    customDomain: "dev.viajes.system.barmentech.com",
+    contractPrefix: "DEV",
+    isActive: true,
+
+    logoUrl: null,
+    signatureUrl: null,
+    emailLogoUrl: null,
+
+    primaryColor: null,
+    secondaryColor: null,
+  },
+  update: {
+    customDomain: "dev.viajes.system.barmentech.com",
+  },
+});
+
+console.log("✅ Tenant listo: Platform DEV (DEV)");
 
   // ========================================
   // 2. CREAR USUARIOS ADMIN (UNO POR TENANT)

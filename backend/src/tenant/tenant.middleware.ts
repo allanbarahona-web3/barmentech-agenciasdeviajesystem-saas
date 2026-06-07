@@ -30,6 +30,11 @@ export class TenantMiddleware implements NestMiddleware {
      this.logger.warn(`HOST RECIBIDO: ${host}`);
   this.logger.warn(`ORIGIN: ${req.get('origin') || 'N/A'}`);
   this.logger.warn(`X-FORWARDED-HOST: ${req.get('x-forwarded-host') || 'N/A'}`);
+  console.log('====================');
+console.log('HOST:', host);
+console.log('ORIGIN:', req.get('origin'));
+console.log('XFH:', req.get('x-forwarded-host'));
+console.log('====================');
 
     const clientTimeZone = String(req.get('x-client-timezone') || '').trim();
     const clientUtcOffsetRaw = String(req.get('x-client-utc-offset-minutes') || '').trim();
