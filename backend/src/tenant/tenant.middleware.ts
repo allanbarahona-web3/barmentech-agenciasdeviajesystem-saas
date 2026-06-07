@@ -26,9 +26,13 @@ export class TenantMiddleware implements NestMiddleware {
   constructor(private tenantService: TenantService) {}
 
   async use(req: Request, res: Response, next: NextFunction) {
+const origin = req.get('origin');
 
-    const origin = req.get('origin');
-    const host = req.get('host') || 'localhost';
+const host = origin
+  ? new URL(origin).hostname
+  : (req.get('host') || 'localhost');
+    //const origin = req.get('origin');
+    //const host = req.get('host') || 'localhost';
      this.logger.warn(`HOST RECIBIDO: ${host}`);
   this.logger.warn(`ORIGIN: ${req.get('origin') || 'N/A'}`);
   this.logger.warn(`X-FORWARDED-HOST: ${req.get('x-forwarded-host') || 'N/A'}`);
