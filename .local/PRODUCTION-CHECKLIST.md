@@ -1,19 +1,7 @@
 # ✅ Checklist de Producción - MVP Lucitour
 
-**Fecha creación:** 30 de abril de 2026  
-**Última actualización:** 16 de mayo de 2026 (Seguridad reforzada)  
-**Estado actual:** ✅ **VIABLE** - Seguridad completada, listo para tests de producción
-
----
-
-## 🎉 **COMPLETADO HOY (16 mayo 2026)**
-
-### ✅ Seguridad Reforzada
-- ✅ **Dependencias actualizadas**: NestJS v11 + Next.js 16.2.6 (0 vulnerabilidades HIGH)
-- ✅ **Logging de seguridad**: Login fallido/exitoso, cambios de rol, suspensiones
-- ✅ **Rate limiting estricto**: 5 intentos/min login, 3/5min password reset
-- ✅ **Helmet activo**: Backend + Frontend con headers de seguridad
-- ✅ **OWASP Top 10**: 9/10 protegido (ver [SECURITY-AUDIT.md](SECURITY-AUDIT.md))
+**Fecha:** 30 de abril de 2026  
+**Estado actual:** ⚠️ VIABLE pero requiere ajustes críticos
 
 ---
 
@@ -233,39 +221,38 @@
 
 ### 10. **Seguridad Adicional**
 
-- [x] **HTTPS forzado**
+- [ ] **HTTPS forzado**
   - Frontend: Vercel lo hace automáticamente ✅
   - Backend: DigitalOcean App también ✅
   
-- [x] **Headers de seguridad**
+- [ ] **Headers de seguridad**
   ```typescript
-  // backend/src/main.ts línea 103
-  app.use(helmet()); // ✅ IMPLEMENTADO
+  // backend/src/main.ts
+  app.use(helmet()); // Agregar helmet
   ```
 
-- [x] **Validación de inputs más estricta**
+- [ ] **Validación de inputs más estricta**
   - class-validator ya instalado ✅
-  - DTOs tienen decoradores @IsString, @IsEmail, etc. ✅
+  - Revisar DTOs tienen decoradores @IsString, @IsEmail, etc.
 
-- [x] **Auditar dependencias**
+- [ ] **Auditar dependencias**
   ```bash
-  cd backend && pnpm audit  # ✅ 0 HIGH vulnerabilities
-  cd frontend-next && pnpm audit  # ✅ 2 LOW vulnerabilities (no críticas)
+  cd backend && npm audit
+  cd frontend-next && npm audit
   ```
 
-**Estado:** ✅ COMPLETADO (16 mayo 2026)
+**Impacto si no se hace:** 🔓 Vulnerabilidades explotables
 
 ---
 
-## 📋 Resumen de Prioridades ACTUALIZADO
+## 📋 Resumen de Prioridades
 
-### 🔴 **ANTES DE LANZAR (Próximos 1-2 días):**
-1. ⬜ Verificar backups de DB en DigitalOcean
-2. ⬜ Habilitar versioning en Spaces
-3. ⬜ Probar restauración de backup
-4. ⬜ Validar todas las variables de entorno en producción
-5. ⬜ Test end-to-end completo en ambiente de producción
-6. ⬜ Configurar monitoreo básico (Sentry gratis o logs)
+### 🔴 **ANTES DE LANZAR (Hoy - Mañana):**
+1. ✅ Verificar backups de DB
+2. ✅ Habilitar versioning en Spaces
+3. ✅ Probar restauración de backup
+4. ✅ Validar todas las variables de entorno en producción
+5. ✅ Test end-to-end completo en producción
 
 ### 🟡 **PRIMERA SEMANA:**
 6. Implementar soft-delete en Contract/Client

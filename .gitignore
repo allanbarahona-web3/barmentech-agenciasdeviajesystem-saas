@@ -16,7 +16,8 @@ backend/dist/
 # Logs
 *.log
 /tmp/
-
 # Markdown files
 *.md
 !README.md
+
+!.local/*.md
