@@ -15,6 +15,8 @@ import {
 } from './dto';
 import { AttendanceState } from './constants/attendance-state.constant';
 
+import { DateUtils } from '../common/utils/date.utils';
+
 interface AuthUser {
   id: string;
   fullName: string;
@@ -83,7 +85,7 @@ export class AttendanceService {
     }
 
     const now = new Date();
-    const date = this.startOfDay(now);
+    const date = DateUtils.getCostaRicaToday();
 
     await this.closeLastOpenEntry(user.id, user.tenantId, now);
 
@@ -134,7 +136,7 @@ export class AttendanceService {
       };
     }
 
-    const date = this.startOfDay(new Date());
+    const date = DateUtils.getCostaRicaToday();
 
     const [lastOpenEntry, hasOffEntry] = await Promise.all([
       this.prisma.attendanceEntry.findFirst({
@@ -190,7 +192,7 @@ export class AttendanceService {
       return { entries: [], summary: null };
     }
 
-    const date = this.startOfDay(new Date());
+    const date = DateUtils.getCostaRicaToday();
 
     const [entries, summary] = await Promise.all([
       this.prisma.attendanceEntry.findMany({
@@ -477,7 +479,7 @@ export class AttendanceService {
   }
 
   private async closeLastOpenEntry(userId: string, tenantId: string, now: Date) {
-    const date = this.startOfDay(now);
+    const date = DateUtils.getCostaRicaToday();
     const lastOpen = await this.prisma.attendanceEntry.findFirst({
       where: {
         userId,
