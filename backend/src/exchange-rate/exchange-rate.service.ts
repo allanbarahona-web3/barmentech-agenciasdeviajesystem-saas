@@ -1,9 +1,12 @@
+import { DateUtils } from "../common/utils/date.utils";
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { TenantService } from "../tenant/tenant.service";
 import { EmailService } from "../email/email.service";
 import { SetExchangeRateDto } from "./dto/set-exchange-rate.dto";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+
+
 
 @Injectable()
 export class ExchangeRateService {
@@ -28,9 +31,9 @@ export class ExchangeRateService {
       const [year, month, day] = date.split('-').map(Number);
       targetDate = new Date(year, month - 1, day);
     } else {
-      targetDate = new Date();
+      targetDate = DateUtils.getCostaRicaToday();
     }
-    targetDate.setHours(0, 0, 0, 0);
+    
 
     console.log("=================================");
 console.log("tenantId:", tenantId);
