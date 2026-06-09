@@ -32,6 +32,13 @@ export class ExchangeRateService {
     }
     targetDate.setHours(0, 0, 0, 0);
 
+    console.log("=================================");
+console.log("tenantId:", tenantId);
+console.log("serverNow:", new Date());
+console.log("targetDate:", targetDate);
+console.log("targetDateISO:", targetDate.toISOString());
+console.log("=================================");
+
     const rate = await (this.prisma as any).exchangeRate.findUnique({
       where: {
         date_tenantId: {
@@ -40,6 +47,7 @@ export class ExchangeRateService {
         },
       },
     });
+console.log("rateFound:", !!rate);
 
     if (!rate) {
       return null;
