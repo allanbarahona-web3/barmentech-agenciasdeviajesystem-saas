@@ -177,6 +177,28 @@ export const getAttendanceMySummary = async (startDate: string, endDate: string)
   return response.json();
 };
 
+export const getAttendanceMyEntries = async (startDate: string, endDate: string) => {
+  ensureSession();
+  const apiBase = resolveApiBase();
+  const params = new URLSearchParams({ startDate, endDate });
+
+  const response = await authenticatedFetch(
+    `${apiBase}/attendance/my-entries?${params.toString()}`,
+    {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${getStoredToken()}`,
+      },
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(await parseError(response, 'No se pudieron cargar los marcajes.'));
+  }
+
+  return response.json() as Promise<AttendanceEntry[]>;
+};
+
 export const getAttendanceAdminEntries = async (query: Record<string, string> = {}) => {
   ensureSession();
   const apiBase = resolveApiBase();

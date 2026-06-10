@@ -58,6 +58,15 @@ export class AttendanceController {
     return this.attendanceService.getMySummary(req.user, query);
   }
 
+  @Get('my-entries')
+@Roles('AGENT', 'OPERACIONES', 'VENTAS')
+async myEntries(
+  @Req() req: RequestWithUser,
+  @Query() query: PeriodFilterDto,
+) {
+  return this.attendanceService.getMyEntries(req.user, query);
+}
+
   @Get('admin/entries')
   @Roles('ADMIN', 'SUPER_ADMIN')
   async adminEntries(@Req() req: RequestWithUser, @Query() query: FilterEntriesDto) {

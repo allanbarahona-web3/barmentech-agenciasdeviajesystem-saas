@@ -256,9 +256,10 @@ export class AttendanceService {
       };
     }
 
-    const startDate = this.startOfDay(new Date(query.startDate));
-    const endDate = this.endOfDay(new Date(query.endDate));
+    const startDate = DateUtils.getCostaRicaStartOfDay(query.startDate);
+    const endDate = DateUtils.getCostaRicaEndOfDay(query.endDate);
 
+    
     const summaries = await this.prisma.attendanceDailySummary.findMany({
       where: {
         tenantId: user.tenantId,
@@ -293,18 +294,68 @@ export class AttendanceService {
     };
   }
 
+  async getMyEntries(user: AuthUser, query: PeriodFilterDto) {
+  if (!user.tenantId) {
+    return [];
+  }
+
+  const startDate = DateUtils.getCostaRicaStartOfDay(query.startDate);
+  const endDate = DateUtils.getCostaRicaEndOfDay(query.endDate);
+
+  const entries = await this.prisma.attendanceEntry.findMany({
+    where: {
+      tenantId: user.tenantId,
+      userId: user.id,
+      date: {
+        gte: startDate,
+        lte: endDate,
+      },
+    },
+    orderBy: {
+      clockIn: 'desc',
+    },
+  });
+
+  const correctionCounts = entries.length > 0
+    ? await this.prisma.attendanceCorrection.groupBy({
+        by: ['entryId'],
+        where: {
+          tenantId: user.tenantId,
+          entryId: { in: entries.map((entry) => entry.id) },
+        },
+        _count: { _all: true },
+      })
+    : [];
+
+  const countMap = new Map(
+    correctionCounts.map((item) => [item.entryId, item._count._all]),
+  );
+
+  return entries.map((entry) => ({
+    ...entry,
+    correctionCount: countMap.get(entry.id) || 0,
+    ...(entry.type === 'OFF' ? { duration: 0 } : {}),
+  }));
+}
   async getAdminEntries(user: AuthUser, query: FilterEntriesDto) {
-    const tenantScope = this.resolveAdminTenantScope(user, query.tenantId);
-    const dateFilter = query.date
-      ? { date: this.startOfDay(new Date(query.date)) }
-      : (query.startDate || query.endDate)
-      ? {
-          date: {
-            ...(query.startDate ? { gte: this.startOfDay(new Date(query.startDate)) } : {}),
-            ...(query.endDate ? { lte: this.endOfDay(new Date(query.endDate)) } : {}),
-          },
-        }
-      : {};
+  const tenantScope = this.resolveAdminTenantScope(user, query.tenantId);
+
+  const dateFilter = query.date
+    ? {
+        date: DateUtils.getCostaRicaStartOfDay(query.date),
+      }
+    : (query.startDate || query.endDate)
+    ? {
+        date: {
+          ...(query.startDate
+            ? { gte: DateUtils.getCostaRicaStartOfDay(query.startDate) }
+            : {}),
+          ...(query.endDate
+            ? { lte: DateUtils.getCostaRicaEndOfDay(query.endDate) }
+            : {}),
+        },
+      }
+    : {};
 
     return this.prisma.attendanceEntry.findMany({
       where: {
@@ -336,9 +387,10 @@ export class AttendanceService {
     return this.prisma.attendanceDailySummary.findMany({
       where: {
         ...tenantScope,
+
         date: {
-          gte: this.startOfDay(new Date(query.startDate)),
-          lte: this.endOfDay(new Date(query.endDate)),
+          gte: DateUtils.getCostaRicaStartOfDay(query.startDate),
+          lte: DateUtils.getCostaRicaEndOfDay(query.endDate),
         },
       },
       orderBy: { date: 'desc' },
@@ -369,8 +421,9 @@ export class AttendanceService {
       throw new BadRequestException('No se puede corregir una sesión activa. Finaliza el shift primero.');
     }
 
-    const todayStart = this.startOfDay(new Date());
-    const entryDayStart = this.startOfDay(existing.date);
+    const todayStart = DateUtils.getCostaRicaToday();
+    const entryDayStart = DateUtils.getCostaRicaStartOfDay(existing.date);
+
     if (entryDayStart.getTime() >= todayStart.getTime()) {
       throw new BadRequestException('Las correcciones manuales solo se permiten en días anteriores. Aplica al día siguiente.');
     }
@@ -466,18 +519,7 @@ export class AttendanceService {
     return { tenantId: user.tenantId };
   }
 
-  private startOfDay(date: Date) {
-    const d = new Date(date);
-    d.setHours(0, 0, 0, 0);
-    return d;
-  }
-
-  private endOfDay(date: Date) {
-    const d = new Date(date);
-    d.setHours(23, 59, 59, 999);
-    return d;
-  }
-
+  
   private async closeLastOpenEntry(userId: string, tenantId: string, now: Date) {
     const date = DateUtils.getCostaRicaToday();
     const lastOpen = await this.prisma.attendanceEntry.findFirst({

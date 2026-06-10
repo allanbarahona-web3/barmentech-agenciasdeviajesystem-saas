@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getStoredSession } from '@/lib/auth-api';
-import { getAttendanceMySummary, getAttendanceToday } from '@/lib/attendance-api';
+import { getAttendanceMySummary, getAttendanceMyEntries } from '@/lib/attendance-api';
 import { LoadingModal } from '@/components/loading-modal';
 import { CorrectionsModal } from '@/components/corrections-modal';
 
@@ -33,19 +33,19 @@ export default function MyTimesheetPage() {
   const [startDate, setStartDate] = useState(() => isoDate(new Date(new Date().setDate(new Date().getDate() - 7))));
   const [endDate, setEndDate] = useState(() => isoDate(new Date()));
   const [summary, setSummary] = useState<Awaited<ReturnType<typeof getAttendanceMySummary>> | null>(null);
-  const [today, setToday] = useState<Awaited<ReturnType<typeof getAttendanceToday>> | null>(null);
+ const [entries, setEntries] = useState<Awaited<ReturnType<typeof getAttendanceMyEntries>>>([]);
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
   const [isCorrectionsModalOpen, setIsCorrectionsModalOpen] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [summaryData, todayData] = await Promise.all([
-        getAttendanceMySummary(startDate, endDate),
-        getAttendanceToday(),
+  const [summaryData, entriesData] = await Promise.all([
+      getAttendanceMySummary(startDate, endDate),
+      getAttendanceMyEntries(startDate, endDate),
       ]);
       setSummary(summaryData);
-      setToday(todayData);
+      setEntries(entriesData);
     } catch (err) {
       setLoadingModalOpen(true);
       setLoadingModalState("error");
@@ -77,7 +77,7 @@ export default function MyTimesheetPage() {
     <main className="app-shell space-y-6">
       <section className="rounded-xl border border-gray-200 bg-white p-5">
         <h1 className="text-2xl font-bold text-gray-900">Mi Timesheet</h1>
-        <p className="text-sm text-gray-600 mt-1">Consulta tus acumulados por periodo y tus marcajes de hoy.</p>
+        <p className="text-sm text-gray-600 mt-1">Consulta tus acumulados y marcajes por período.</p>
       </section>
 
       <section className="rounded-xl border border-gray-200 bg-white p-5">
@@ -103,11 +103,15 @@ export default function MyTimesheetPage() {
       </section>
 
       <section className="rounded-xl border border-gray-200 bg-white p-5 overflow-x-auto">
-        <h2 className="text-lg font-semibold text-gray-900 mb-3">Marcajes de hoy</h2>
+        <h2 className="text-lg font-semibold text-gray-900 mb-3">Marcajes del periodo</h2>
+        <p className="text-sm text-gray-500 mb-3">
+          {startDate} → {endDate}
+        </p>
         {loading ? <p className="text-sm text-gray-600">Cargando...</p> : null}
         <table className="min-w-full text-sm">
           <thead>
             <tr className="border-b border-gray-200 text-left text-gray-600">
+              <th className="py-2 pr-3">Fecha</th>
               <th className="py-2 pr-3">Estado</th>
               <th className="py-2 pr-3">Inicio</th>
               <th className="py-2 pr-3">Fin</th>
@@ -116,8 +120,11 @@ export default function MyTimesheetPage() {
             </tr>
           </thead>
           <tbody>
-            {(today?.entries || []).map((entry) => (
+            {(entries || []).map((entry) => (
               <tr key={entry.id} className="border-b border-gray-100 text-gray-800">
+                <td className="py-2 pr-3">
+                  {new Date(entry.date).toLocaleDateString()}
+                </td>
                 <td className="py-2 pr-3 font-medium">{entry.type}</td>
                 <td className="py-2 pr-3">{new Date(entry.clockIn).toLocaleTimeString()}</td>
                 <td className="py-2 pr-3">{entry.clockOut ? new Date(entry.clockOut).toLocaleTimeString() : '-'}</td>

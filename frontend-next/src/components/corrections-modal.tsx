@@ -14,7 +14,7 @@ interface Correction {
   afterClockIn: string;
   afterClockOut: string | null;
   afterDuration: number | null;
-  correctedBy: {
+  User: {
     fullName: string;
     email: string;
   };
@@ -92,7 +92,7 @@ export function CorrectionsModal({ entryId, isOpen, onClose }: CorrectionsModalP
                   {/* Header */}
                   <div className="flex justify-between items-start">
                     <div>
-                      <p className="text-sm font-medium text-gray-900">Corregido por {correction.correctedBy.fullName}</p>
+                      <p className="text-sm font-medium text-gray-900">Corregido por {correction.User.fullName}</p>
                       <p className="text-xs text-gray-500">{formatDateTime(correction.createdAt)}</p>
                     </div>
                   </div>
