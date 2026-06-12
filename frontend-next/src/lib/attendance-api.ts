@@ -31,7 +31,7 @@ export type AttendanceEntry = {
   isOT: boolean;
   date: string;
   correctionCount?: number;
-  user?: {
+  User?: {
     id: string;
     fullName: string;
     email?: string;

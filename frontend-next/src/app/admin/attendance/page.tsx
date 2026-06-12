@@ -15,6 +15,7 @@ import {
 import { getEmployees, type Employee } from '@/lib/employees-api';
 import { LoadingModal } from '@/components/loading-modal';
 import { CorrectionEditModal } from '@/components/correction-edit-modal';
+import { CorrectionsModal } from '@/components/corrections-modal';
 
 const isoDate = (d: Date) => d.toISOString().slice(0, 10);
 
@@ -45,6 +46,8 @@ export default function AdminAttendancePage() {
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
   const [selectedEntry, setSelectedEntry] = useState<Awaited<ReturnType<typeof getAttendanceAdminEntries>>[number] | null>(null);
   const [isCorrectionModalOpen, setIsCorrectionModalOpen] = useState(false);
+  const [historyEntryId, setHistoryEntryId] = useState<string | null>(null);
+  const [isCorrectionsModalOpen, setIsCorrectionsModalOpen] = useState(false);  
   const [employees, setEmployees] = useState<Employee[]>([]);
   
   // Filter states
@@ -90,6 +93,9 @@ export default function AdminAttendancePage() {
       }
 
       const entriesData = await getAttendanceAdminEntries(params);
+
+      console.log(  'ADMIN ENTRY',  JSON.stringify(entriesData[0], null, 2)
+);
       
       setEntries(entriesData);
       setFilterOffset(offset);
@@ -271,6 +277,7 @@ export default function AdminAttendancePage() {
               <th className="py-2 pr-3">Fin</th>
               <th className="py-2 pr-3">Duración</th>
               <th className="py-2 pr-3">OT</th>
+              <th className="py-2 pr-3">Correcciones</th>
             </tr>
           </thead>
           <tbody>
@@ -282,6 +289,24 @@ export default function AdminAttendancePage() {
                 <td className="py-2 pr-3">{entry.clockOut ? new Date(entry.clockOut).toLocaleString() : '-'}</td>
                 <td className="py-2 pr-3">{formatDuration(entry.duration)}</td>
                 <td className="py-2 pr-3">{entry.isOT ? 'Sí' : 'No'}</td>
+                <td className="py-2 pr-3">
+                 {(entry.correctionCount || 0) > 0 ? (
+                   <button
+                     onClick={(e) => {
+                        e.stopPropagation();
+                        setHistoryEntryId(entry.id);
+                        setIsCorrectionsModalOpen(true);
+                       }}
+                       className="text-blue-600 hover:text-blue-800 text-xs font-medium"
+                     >
+                    
+                      📝 Corregido ({entry.correctionCount})
+                    </button>
+                   ) : (
+                     <span className="text-gray-400 text-xs">-</span>
+                   )}
+                </td>
+                
               </tr>
             ))}
           </tbody>
@@ -327,6 +352,14 @@ export default function AdminAttendancePage() {
         }}
         onSuccess={() => void load()}
       />
+      <CorrectionsModal
+  entryId={historyEntryId}
+  isOpen={isCorrectionsModalOpen}
+  onClose={() => {
+    setIsCorrectionsModalOpen(false);
+    setHistoryEntryId(null);
+  }}
+/>
     </main>
   );
 }

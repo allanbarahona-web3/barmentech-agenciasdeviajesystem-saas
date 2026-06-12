@@ -357,7 +357,7 @@ export class AttendanceService {
       }
     : {};
 
-    return this.prisma.attendanceEntry.findMany({
+    const entries = await this.prisma.attendanceEntry.findMany({
       where: {
         ...tenantScope,
         userId: query.userId,
@@ -379,6 +379,29 @@ export class AttendanceService {
       skip: query.offset || 0,
       take: query.limit || 50,
     });
+
+      const correctionCounts = entries.length > 0
+    ? await this.prisma.attendanceCorrection.groupBy({
+        by: ['entryId'],
+        where: {
+          entryId: { in: entries.map((entry) => entry.id) },
+          ...(user.role !== 'SUPER_ADMIN'
+            ? { tenantId: user.tenantId! }
+            : {}),
+        },
+        _count: { _all: true },
+      })
+    : [];
+
+  const countMap = new Map(
+    correctionCounts.map((item) => [item.entryId, item._count._all]),
+  );
+
+  return entries.map((entry) => ({
+    ...entry,
+    correctionCount: countMap.get(entry.id) || 0,
+  }));
+  
   }
 
   async getAdminSummaries(user: AuthUser, query: AdminSummaryQueryDto) {

@@ -107,7 +107,7 @@ export function CorrectionEditModal({ entryId, entry, isOpen, onClose, onSuccess
             <div className="p-6 space-y-4">
               {/* Display current values */}
               <div className="text-xs text-gray-500 bg-gray-50 p-2 rounded">
-                <div>Empleado: {entry.user?.fullName || entry.user?.id || '-'}</div>
+                <div>Empleado: {entry.User?.fullName || entry.User?.id || '-'}</div>
                 <div>Fecha: {new Date(entry.clockIn).toLocaleDateString()}</div>
               </div>
 
