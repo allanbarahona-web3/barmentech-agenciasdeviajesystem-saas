@@ -14,6 +14,20 @@ interface CorrectionEditModalProps {
   onSuccess: () => void;
 }
 
+const toDateTimeLocal = (dateString: string) => {
+  const date = new Date(dateString);
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  const seconds = String(date.getSeconds()).padStart(2, '0');
+
+  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
+  
+};
+
 export function CorrectionEditModal({ entryId, entry, isOpen, onClose, onSuccess }: CorrectionEditModalProps) {
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState({
@@ -29,10 +43,11 @@ export function CorrectionEditModal({ entryId, entry, isOpen, onClose, onSuccess
   useEffect(() => {
     if (!isOpen || !entryId || !entry) return;
 
+    
     setFormData({
       type: entry.type,
-      clockIn: entry.clockIn ? new Date(entry.clockIn).toISOString().slice(0, 16) : '',
-      clockOut: entry.clockOut ? new Date(entry.clockOut).toISOString().slice(0, 16) : '',
+      clockIn: entry.clockIn ? toDateTimeLocal(entry.clockIn) : '',
+      clockOut: entry.clockOut ? toDateTimeLocal(entry.clockOut) : '',
       reason: '',
     });
   }, [isOpen, entryId, entry]);
@@ -117,6 +132,7 @@ export function CorrectionEditModal({ entryId, entry, isOpen, onClose, onSuccess
                 <span className="text-sm font-medium text-gray-700 mb-1 block">Inicio</span>
                 <input
                   type="datetime-local"
+                  step="1"
                   value={formData.clockIn}
                   onChange={(e) => setFormData({ ...formData, clockIn: e.target.value })}
                   className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
@@ -128,6 +144,7 @@ export function CorrectionEditModal({ entryId, entry, isOpen, onClose, onSuccess
                 <span className="text-sm font-medium text-gray-700 mb-1 block">Fin</span>
                 <input
                   type="datetime-local"
+                  step="1"
                   value={formData.clockOut}
                   onChange={(e) => setFormData({ ...formData, clockOut: e.target.value })}
                   className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
