@@ -271,6 +271,42 @@ export class AuthService {
       },
     });
 
+    if (dto.employeeId) {
+      const employee = await this.prisma.employee.findUnique({
+        where: {
+          id: dto.employeeId,
+        },
+        select: {
+          id: true,
+          userId: true,
+          tenantId: true,
+          fullName: true,
+        },
+      });
+
+
+      if (!employee) {
+        throw new BadRequestException("Empleado no encontrado.");
+    }
+  
+     if (employee.tenantId !== adminTenantId) {
+      throw new BadRequestException( "El empleado no pertenece al tenant actual.");
+    }
+
+      if (employee.userId) {
+      throw new BadRequestException(
+      "El empleado ya está asociado a un usuario.");
+    }
+
+    await this.prisma.employee.update({
+      where: {
+        id: dto.employeeId,
+    },
+      data: {
+        userId: created.id,
+    },
+  });
+}
     // Obtener información del tenant para el email
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: adminTenantId },

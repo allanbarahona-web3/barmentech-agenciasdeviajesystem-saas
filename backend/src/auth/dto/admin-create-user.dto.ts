@@ -20,4 +20,9 @@ export class AdminCreateUserDto {
   @IsString()
   @IsIn(["AGENT", "ADMIN", "CONTADOR", "FACTURACION_COBROS", "VENTAS", "OPERACIONES", "agent", "admin", "contador", "facturacion_cobros", "ventas", "operaciones"])
   role?: string;
+
+  @IsOptional()
+  @IsString()
+  employeeId?: string;
+
 }

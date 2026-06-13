@@ -350,6 +350,7 @@ export const adminCreateUser = async (input: {
   fullName: string;
   password: string;
   role: "AGENT" | "ADMIN" | "CONTADOR" | "FACTURACION_COBROS" | "VENTAS" | "OPERACIONES";
+  employeeId?: string;
 }): Promise<AdminUserListItem> => {
   const apiBase = resolveApiBase();
   if (!apiBase) {

@@ -31,6 +31,8 @@ const roleLabel = (role: string) => {
 function AdminUsersContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+
+  const [employeeId, setEmployeeId] = useState<string | null>(null);
   
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -50,6 +52,12 @@ function AdminUsersContent() {
     if (searchParams.get('createFrom') === 'employee') {
       const name = searchParams.get('name');
       const emailParam = searchParams.get('email');
+      const employeeIdParam = searchParams.get('employeeId');
+
+      if (employeeIdParam) {  
+        setEmployeeId(employeeIdParam);
+      }
+
       if (name) setFullName(decodeURIComponent(name));
       if (emailParam) setEmail(decodeURIComponent(emailParam));
       
@@ -217,6 +225,7 @@ function AdminUsersContent() {
         fullName: trimmedFullName,
         password: trimmedPassword,
         role: newRole,
+        employeeId: employeeId || undefined,
       });
       
       // Add new user to the list immediately (at the top since it's newest)

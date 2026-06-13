@@ -1069,7 +1069,55 @@ export default function EmployeesPage() {
                 {success}
               </div>
             )}
+            
+{selectedEmployee.user && (
+  <div
+    style={{
+      background: '#eff6ff',
+      border: '1px solid #bfdbfe',
+      padding: '20px',
+      borderRadius: '8px',
+      marginBottom: '20px',
+    }}
+  >
+    <h3
+      style={{
+        fontSize: '16px',
+        fontWeight: '600',
+        marginBottom: '15px',
+        color: '#1e40af',
+      }}
+    >
+      👤 Usuario del Sistema
+    </h3>
 
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: '1fr 1fr',
+        gap: '15px',
+        fontSize: '14px',
+      }}
+    >
+      <div>
+        <strong>Email:</strong> {selectedEmployee.user.email}
+      </div>
+
+      <div>
+        <strong>Rol:</strong> {selectedEmployee.user.role}
+      </div>
+
+      <div>
+        <strong>Estado:</strong>{" "}
+        {selectedEmployee.user.isActive ? "✅ Activo" : "⛔ Suspendido"}
+      </div>
+
+      <div>
+        <strong>ID Usuario:</strong> {selectedEmployee.user.id}
+      </div>
+    </div>
+  </div>
+)}
             {/* Información Personal */}
             <div
               style={{
