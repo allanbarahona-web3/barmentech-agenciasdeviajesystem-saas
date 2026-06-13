@@ -8,7 +8,6 @@ import { getStoredSession } from '@/lib/auth-api';
 import {
   getAttendanceAdminConfig,
   getAttendanceAdminEntries,
-  getAttendanceAdminSummaries,
   updateAttendanceAdminConfig,
   AttendanceConfig,
 } from '@/lib/attendance-api';
@@ -18,6 +17,12 @@ import { CorrectionEditModal } from '@/components/correction-edit-modal';
 import { CorrectionsModal } from '@/components/corrections-modal';
 
 const isoDate = (d: Date) => d.toISOString().slice(0, 10);
+
+const getDefaultStartDate = () =>
+  isoDate(new Date(new Date().setDate(new Date().getDate() - 7)));
+
+const getDefaultEndDate = () =>
+  isoDate(new Date());
 
 const formatDuration = (seconds: number | null): string => {
   if (seconds === null || seconds === undefined) return '-';
@@ -41,8 +46,8 @@ export default function AdminAttendancePage() {
   const [loadingModalMessage, setLoadingModalMessage] = useState('');
   const [config, setConfig] = useState<AttendanceConfig | null>(null);
   const [entries, setEntries] = useState<Awaited<ReturnType<typeof getAttendanceAdminEntries>>>([]);
-  const [startDate, setStartDate] = useState(() => isoDate(new Date(new Date().setDate(new Date().getDate() - 7))));
-  const [endDate, setEndDate] = useState(() => isoDate(new Date()));
+  const [startDate, setStartDate] = useState(() => getDefaultStartDate());
+  const [endDate, setEndDate] = useState(() => getDefaultEndDate());
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
   const [selectedEntry, setSelectedEntry] = useState<Awaited<ReturnType<typeof getAttendanceAdminEntries>>[number] | null>(null);
   const [isCorrectionModalOpen, setIsCorrectionModalOpen] = useState(false);
@@ -56,6 +61,9 @@ export default function AdminAttendancePage() {
 
   const load = async () => {
     setLoading(true);
+    setLoadingModalOpen(true);
+    setLoadingModalState("loading");
+    setLoadingModalMessage("Recargando attendance...");
     try {
       const [configData, employeesData] = await Promise.all([
         getAttendanceAdminConfig(),
@@ -64,9 +72,10 @@ export default function AdminAttendancePage() {
       setConfig(configData);
       setEmployees(employeesData);
       setFilterOffset(0);
-      void loadEntries(0);
+      await loadEntries(0);
+      setLoadingModalState("success");
+      setLoadingModalMessage("Attendance actualizado.");
     } catch (err) {
-      setLoadingModalOpen(true);
       setLoadingModalState("error");
       setLoadingModalMessage(err instanceof Error ? err.message : 'No se pudo cargar attendance admin.');
     } finally {
@@ -74,29 +83,39 @@ export default function AdminAttendancePage() {
     }
   };
 
-  const loadEntries = async (offset: number = 0) => {
+  const loadEntries = async (
+    offset: number = 0,
+    overrides?: {
+      startDate?: string;
+      endDate?: string;
+      userId?: string;
+    }
+  ) => {
     try {
       const params: Record<string, string> = {
         limit: '50',
         offset: String(offset),
       };
 
-      // Reuse the global date range from the summaries section.
-      if (startDate) {
-        params.startDate = startDate;
+      const effectiveStartDate = overrides?.startDate ?? startDate;
+      const effectiveEndDate = overrides?.endDate ?? endDate;
+      const effectiveUserId = overrides?.userId ?? filterEmployeeId;
+
+      if (effectiveStartDate) {
+        params.startDate = effectiveStartDate;
       }
-      if (endDate) {
-        params.endDate = endDate;
+
+      if (effectiveEndDate) {
+        params.endDate = effectiveEndDate;
       }
-      if (filterEmployeeId) {
-        params.userId = filterEmployeeId;
+
+      if (effectiveUserId) {
+        params.userId = effectiveUserId;
       }
 
       const entriesData = await getAttendanceAdminEntries(params);
 
-      console.log(  'ADMIN ENTRY',  JSON.stringify(entriesData[0], null, 2)
-);
-      
+            
       setEntries(entriesData);
       setFilterOffset(offset);
     } catch (err) {
@@ -152,26 +171,6 @@ export default function AdminAttendancePage() {
     }
   };
 
-  const loadSummaries = async () => {
-    setLoadingModalOpen(true);
-    setLoadingModalState("loading");
-    setLoadingModalMessage("Cargando resúmenes...");
-    
-    try {
-      const summaries = await getAttendanceAdminSummaries(startDate, endDate);
-      if (summaries.length === 0) {
-        setLoadingModalMessage("No hay resúmenes para ese rango.");
-      } else {
-        setLoadingModalMessage(`Resúmenes cargados: ${summaries.length}`);
-      }
-      await loadEntries(0);
-      setLoadingModalState("success");
-    } catch (err) {
-      setLoadingModalState("error");
-      setLoadingModalMessage(err instanceof Error ? err.message : 'No se pudieron cargar resúmenes.');
-    }
-  };
-
   return (
     <main className="app-shell space-y-6">
       <section className="rounded-xl border border-gray-200 bg-white p-5">
@@ -211,22 +210,7 @@ export default function AdminAttendancePage() {
       </section>
 
       <section className="rounded-xl border border-gray-200 bg-white p-5">
-        <h2 className="text-lg font-semibold text-gray-900 mb-3">Resúmenes por rango</h2>
-        <div className="flex flex-wrap gap-3 items-end">
-          <div>
-            <label className="block text-sm text-gray-600 mb-1">Inicio</label>
-            <input type="date" className="border rounded-md px-3 py-2" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-          </div>
-          <div>
-            <label className="block text-sm text-gray-600 mb-1">Fin</label>
-            <input type="date" className="border rounded-md px-3 py-2" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
-          </div>
-          <button type="button" onClick={() => void loadSummaries()} className="rounded-md bg-gray-900 text-white px-4 py-2 text-sm font-medium">Consultar resúmenes</button>
-        </div>
-      </section>
-
-      <section className="rounded-xl border border-gray-200 bg-white p-5">
-        <h2 className="text-lg font-semibold text-gray-900 mb-3">Filtros de Marcajes</h2>
+        <h2 className="text-lg font-semibold text-gray-900 mb-3">Filtros</h2>
         <div className="flex flex-wrap gap-3 items-end">
           <div>
             <label className="block text-sm text-gray-600 mb-1">Empleado</label>
@@ -245,19 +229,58 @@ export default function AdminAttendancePage() {
                 ))}
             </select>
           </div>
+          <div>
+            <label className="block text-sm text-gray-600 mb-1">Fecha Inicio</label>
+            <input type="date" className="border rounded-md px-3 py-2" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+          </div>
+          <div>
+            <label className="block text-sm text-gray-600 mb-1">Fecha Fin</label>
+            <input type="date" className="border rounded-md px-3 py-2" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+          </div>
           <button
             type="button"
-            onClick={() => void loadEntries(0)}
+            onClick={async () => {
+              setLoadingModalOpen(true);
+              setLoadingModalState("loading");
+              setLoadingModalMessage("Buscando marcajes...");
+              try {
+                await loadEntries(0);
+                setLoadingModalState("success");
+                setLoadingModalMessage("Marcajes cargados correctamente.");
+              } catch (err) {
+                // Error already handled in loadEntries
+              }
+            }}
             className="rounded-md bg-gray-900 text-white px-4 py-2 text-sm font-medium"
           >
-            Aplicar Filtros
+            Buscar Fechas
           </button>
           <button
             type="button"
-            onClick={() => {
+            onClick={async () => {
+              const defaultStartDate = getDefaultStartDate();
+              const defaultEndDate = getDefaultEndDate();
+
+              setLoadingModalOpen(true);
+              setLoadingModalState("loading");
+              setLoadingModalMessage("Restableciendo filtros...");
+
               setFilterEmployeeId('');
+              setStartDate(defaultStartDate);
+              setEndDate(defaultEndDate);
               setFilterOffset(0);
-              void loadEntries(0);
+
+              try {
+                await loadEntries(0, {
+                  startDate: defaultStartDate,
+                  endDate: defaultEndDate,
+                  userId: '',
+                });
+                setLoadingModalState("success");
+                setLoadingModalMessage("Filtros restablecidos.");
+              } catch (err) {
+                // Error already handled in loadEntries
+              }
             }}
             className="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium"
           >
