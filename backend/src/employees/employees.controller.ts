@@ -21,6 +21,7 @@ import { EmployeesService } from './employees.service';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { UploadDocumentDto } from './dto/upload-document.dto';
+import { LinkUserDto } from './dto/link-user.dto';
 
 @Controller('employees')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -67,6 +68,16 @@ export class EmployeesController {
   getStats(@Req() req: { user: { tenantId: string } }) {
     return this.employeesService.getStats(req.user.tenantId);
   }
+  
+  @Get('available-users')
+  @Roles('ADMIN')
+  getAvailableUsers(
+    @Req() req: { user: { tenantId: string } },
+) {
+  return this.employeesService.getAvailableUsers(
+    req.user.tenantId,
+  );
+}
 
   @Get(':id')
   @Roles('ADMIN', 'CONTADOR')
@@ -83,7 +94,19 @@ export class EmployeesController {
   ) {
     return this.employeesService.update(req.user.tenantId, id, dto);
   }
-
+  @Post(':id/link-user')
+  @Roles('ADMIN')
+  linkUser(
+  @Req() req: { user: { tenantId: string } },
+  @Param('id') employeeId: string,
+  @Body() dto: LinkUserDto,
+) {
+  return this.employeesService.linkUser(
+    req.user.tenantId,
+    employeeId,
+    dto.userId,
+  );
+}
   @Post(':id/documents')
   @Roles('ADMIN')
   @UseInterceptors(FileInterceptor('file'))

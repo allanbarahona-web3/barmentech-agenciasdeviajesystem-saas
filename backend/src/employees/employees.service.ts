@@ -451,6 +451,91 @@ export class EmployeesService {
     return { url, fileName: document.fileName };
   }
 
+  async getAvailableUsers(tenantId: string) {
+  return this.prisma.user.findMany({
+    where: {
+      tenantId,
+      employee: null,
+    },
+    select: {
+      id: true,
+      fullName: true,
+      email: true,
+      role: true,
+      isActive: true,
+    },
+    orderBy: {
+      fullName: 'asc',
+    },
+  });
+}
+
+  async linkUser(
+  tenantId: string,
+  employeeId: string,
+  userId: string,
+) {
+  const employee = await this.prisma.employee.findFirst({
+    where: {
+      id: employeeId,
+      tenantId,
+    },
+  });
+
+  if (!employee) {
+    throw new NotFoundException('Empleado no encontrado');
+  }
+
+  if (employee.userId) {
+    throw new BadRequestException(
+      'El empleado ya tiene un usuario asociado.',
+    );
+  }
+
+  const user = await this.prisma.user.findUnique({
+    where: {
+      id: userId,
+    },
+    select: {
+      id: true,
+      tenantId: true,
+      employee: {
+        select: {
+          id: true,
+        },
+      },
+    },
+  });
+
+  if (!user) {
+    throw new NotFoundException('Usuario no encontrado');
+  }
+
+  if (user.tenantId !== tenantId) {
+    throw new BadRequestException(
+      'El usuario no pertenece al tenant actual.',
+    );
+  }
+
+  if (user.employee) {
+    throw new BadRequestException(
+      'Este usuario ya está asociado a otro empleado.',
+    );
+  }
+
+  return this.prisma.employee.update({
+    where: {
+      id: employeeId,
+    },
+    data: {
+      userId,
+    },
+    include: {
+      user: true,
+    },
+  });
+}
+
   async getStats(tenantId: string) {
     const [total, activos, suspendidos, inactivos] = await Promise.all([
       this.prisma.employee.count({ where: { tenantId } }),

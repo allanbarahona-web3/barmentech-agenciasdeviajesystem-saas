@@ -371,6 +371,62 @@ export const adminCreateUser = async (input: {
   return payload as AdminUserListItem;
 };
 
+export const getAvailableEmployeeUsers = async () => {
+  const apiBase = resolveApiBase();
+
+  if (!apiBase) {
+    throw new Error("No hay API configurada.");
+  }
+
+  const response = await authenticatedFetch(
+    `${apiBase}/employees/available-users`,
+    {
+      method: "GET",
+      headers: authHeaders(),
+    }
+  );
+
+  const payload = await response.json().catch(() => []);
+
+  if (!response.ok) {
+    throw new Error(
+      parseErrorMessage(payload, "No se pudo cargar usuarios.")
+    );
+  }
+
+  return payload;
+};
+
+export const linkEmployeeUser = async (
+  employeeId: string,
+  userId: string,
+) => {
+  const apiBase = resolveApiBase();
+
+  if (!apiBase) {
+    throw new Error("No hay API configurada.");
+  }
+
+  const response = await authenticatedFetch(
+    `${apiBase}/employees/${encodeURIComponent(employeeId)}/link-user`,
+    {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ userId }),
+    }
+  );
+
+  const payload = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(
+      parseErrorMessage(payload, "No se pudo vincular usuario.")
+    );
+  }
+
+  return payload;
+};
+
 export const adminUpdateUser = async (
   userId: string,
   input: Partial<{ fullName: string; email: string; role: "AGENT" | "ADMIN" | "CONTADOR" | "FACTURACION_COBROS" | "VENTAS" | "OPERACIONES"; isActive: boolean }>,

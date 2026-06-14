@@ -16,6 +16,8 @@ import {
   deleteEmployeeDocument,
   getEmployeeDocumentUrl,
   getEmployeeStats,
+  getAvailableEmployeeUsers,
+  linkEmployeeUser,
   calculateAge,
   DOCUMENT_TYPE_LABELS,
   type Employee,
@@ -24,6 +26,14 @@ import {
   type UpdateEmployeeDto,
   type EmployeeStats,
 } from '@/lib/employees-api';
+
+type AvailableUser = {
+  id: string;
+  fullName: string;
+  email: string;
+  role: string;
+  isActive: boolean;
+};
 
 type ModalMode = 'create' | 'edit' | 'view' | null;
 
@@ -47,7 +57,13 @@ export default function EmployeesPage() {
   const [modalMode, setModalMode] = useState<ModalMode>(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  
+  const [linkUserModalOpen, setLinkUserModalOpen] = useState(false);
+  const [availableUsers, setAvailableUsers] = useState<AvailableUser[]>([]);
+  const [selectedUserId, setSelectedUserId] = useState('');
+  const [linkingUser, setLinkingUser] = useState(false);
 
+  
   // LoadingModal states
   const [loadingModalOpen, setLoadingModalOpen] = useState(false);
   const [loadingModalState, setLoadingModalState] = useState<'loading' | 'success' | 'error'>('loading');
@@ -113,6 +129,15 @@ export default function EmployeesPage() {
       setLoading(false);
     }
   }
+
+  async function loadAvailableUsers() {
+    try {
+    const users = await getAvailableEmployeeUsers();
+    setAvailableUsers(users);
+  } catch (err: any) {
+    setError(err.message || 'Error al cargar usuarios');
+  }
+}
 
   async function handleOpenModal(mode: ModalMode, employeeId?: string) {
     setModalMode(mode);
@@ -1023,19 +1048,42 @@ export default function EmployeesPage() {
                   >
                     👤 Crear Usuario del Sistema
                   </button>
-                )}
-                <button
-                  onClick={handleCloseModal}
-                  style={{
-                    padding: '8px 16px',
-                    background: '#e5e7eb',
-                    border: 'none',
-                    borderRadius: '6px',
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                  }}
-                >
-                  Cerrar
+)}
+
+{!selectedEmployee.userId && (
+  <button
+    onClick={async () => {
+      await loadAvailableUsers();
+      setSelectedUserId('');
+      setLinkUserModalOpen(true);
+    }}
+    style={{
+      padding: '8px 16px',
+      background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
+      color: 'white',
+      border: 'none',
+      borderRadius: '6px',
+      cursor: 'pointer',
+      fontSize: '14px',
+      fontWeight: '500',
+    }}
+  >
+    🔗 Vincular Usuario Existente
+  </button>
+)}
+
+<button
+  onClick={handleCloseModal}
+  style={{
+    padding: '8px 16px',
+    background: '#e5e7eb',
+    border: 'none',
+    borderRadius: '6px',
+    cursor: 'pointer',
+    fontSize: '14px',
+  }}
+>
+                    Cerrar
                 </button>
               </div>
             </div>
@@ -1405,6 +1453,106 @@ export default function EmployeesPage() {
                   </div>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {linkUserModalOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 2000,
+          }}
+        >
+          <div
+            style={{
+              background: 'white',
+              padding: '24px',
+              borderRadius: '12px',
+              width: '500px',
+              maxWidth: '90vw',
+            }}
+          >
+            <h3 style={{ marginBottom: '20px' }}>
+              🔗 Vincular Usuario Existente
+            </h3>
+
+            <select
+              value={selectedUserId}
+              onChange={(e) => setSelectedUserId(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '10px',
+                marginBottom: '20px',
+              }}
+            >
+              <option value="">
+                Seleccione un usuario
+              </option>
+
+              {availableUsers.map((user) => (
+                <option key={user.id} value={user.id}>
+                  {user.fullName} - {user.email} ({user.role})
+                </option>
+              ))}
+            </select>
+
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'flex-end',
+                gap: '10px',
+              }}
+            >
+              <button
+                onClick={() => {
+                  setLinkUserModalOpen(false);
+                }}
+              >
+                Cancelar
+              </button>
+
+              <button
+  disabled={!selectedUserId || linkingUser}
+  onClick={async () => {
+    if (!selectedEmployee || !selectedUserId) {
+      return;
+    }
+
+    try {
+      setLinkingUser(true);
+
+      const updatedEmployee = await linkEmployeeUser(
+        selectedEmployee.id,
+        selectedUserId,
+      );
+
+      setSelectedEmployee(updatedEmployee);
+
+      setLinkUserModalOpen(false);
+      setSelectedUserId('');
+
+      setSuccess('Usuario vinculado correctamente.');
+
+      await loadData();
+    } catch (err: any) {
+      setError(err.message || 'Error al vincular usuario');
+    } finally {
+      setLinkingUser(false);
+    }
+  }}
+>
+  {linkingUser ? 'Vinculando...' : 'Vincular'}
+</button>
             </div>
           </div>
         </div>

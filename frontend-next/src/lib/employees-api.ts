@@ -241,6 +241,54 @@ export async function getEmployeeStats(): Promise<EmployeeStats> {
   return response.json();
 }
 
+
+export async function getAvailableEmployeeUsers() {
+  const apiBase = resolveApiBase();
+  const token = getStoredToken();
+
+  const response = await authenticatedFetch(
+    `${apiBase}/employees/available-users`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error('Error al cargar usuarios disponibles');
+  }
+
+  return response.json();
+}
+
+export async function linkEmployeeUser(
+  employeeId: string,
+  userId: string,
+) {
+  const apiBase = resolveApiBase();
+  const token = getStoredToken();
+
+  const response = await authenticatedFetch(
+    `${apiBase}/employees/${employeeId}/link-user`,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ userId }),
+    }
+  );
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.message || 'Error al vincular usuario');
+  }
+
+  return response.json();
+}
+
 /**
  * Calcula la edad de un empleado basado en su fecha de nacimiento
  */
