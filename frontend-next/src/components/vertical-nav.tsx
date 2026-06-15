@@ -1,6 +1,7 @@
 "use client";
 
 import { clearStoredToken, getStoredSession, getStoredToken, logout } from "@/lib/auth-api";
+import { getAttendanceStatus } from "@/lib/attendance-api";
 import { getPendingApprovalsCount, type PendingCounts } from "@/lib/billing-api";
 import { getCurrentExchangeRate, type ExchangeRate } from "@/lib/exchange-rate-api";
 import Link from "next/link";
@@ -518,11 +519,35 @@ export function VerticalNav() {
           <button
             type="button"
             className="vertical-nav-item vertical-nav-action vertical-nav-logout"
+
             onClick={async () => {
+
               try {
-                await logout();
-                clearStoredToken();
-                router.replace("/");
+
+                const requiresAttendance = ![
+                  "ADMIN",
+                  "CONTADOR",
+                ].includes(role);
+
+                if (requiresAttendance) {
+                  const attendance = await getAttendanceStatus();
+
+                if (
+                  attendance.currentState &&
+                  attendance.currentState !== "OFF"
+                ) {
+                  throw new Error(
+                    "Debe marcar OFF antes de cerrar sesión."
+                        );
+                    }
+                  }
+
+                  await logout();
+
+                  clearStoredToken();
+
+                  router.replace("/");
+
               } catch (error) {
                 const message = error instanceof Error ? error.message : "Error al cerrar sesión";
                 setLogoutErrorMessage(message);

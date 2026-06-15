@@ -43,8 +43,14 @@ export default function AgentStartPage() {
     setShiftError("");
     try {
       await attendanceCheckIn("WORKING");
+
+      window.dispatchEvent(
+        new CustomEvent("attendance-updated")
+      );
+
       setShowShiftModal(false);
-      // Pequeño delay para transición suave
+
+           // Pequeño delay para transición suave
       setTimeout(() => setShowMenuModal(true), 200);
     } catch (error) {
       setShiftError(error instanceof Error ? error.message : "No se pudo iniciar el shift.");

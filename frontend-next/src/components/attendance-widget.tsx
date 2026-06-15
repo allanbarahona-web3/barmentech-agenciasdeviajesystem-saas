@@ -77,9 +77,30 @@ export function AttendanceWidget() {
     };
 
     void loadStatus();
-    const refresh = window.setInterval(() => void loadStatus(), 30000);
-    return () => window.clearInterval(refresh);
-  }, []);
+
+const refresh = window.setInterval(
+  () => void loadStatus(),
+  30000,
+);
+
+const handleAttendanceUpdated = () => {
+  void loadStatus();
+};
+
+window.addEventListener(
+  "attendance-updated",
+  handleAttendanceUpdated,
+);
+
+return () => {
+  window.clearInterval(refresh);
+
+  window.removeEventListener(
+    "attendance-updated",
+    handleAttendanceUpdated,
+  );
+};
+}, []);
 
   const currentState = status?.currentState ?? null;
   const isRestrictedState = currentState ? RESTRICTED_STATES.has(currentState) : false;
