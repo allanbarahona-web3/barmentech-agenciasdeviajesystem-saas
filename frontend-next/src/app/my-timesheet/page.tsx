@@ -11,6 +11,17 @@ import { CorrectionsModal } from '@/components/corrections-modal';
 
 const isoDate = (d: Date) => d.toISOString().slice(0, 10);
 
+const getDefaultDateRange = () => {
+  const end = new Date();
+  const start = new Date();
+  start.setDate(end.getDate() - 7);
+
+  return {
+    startDate: isoDate(start),
+    endDate: isoDate(end),
+  };
+};
+
 const formatDuration = (seconds: number | null): string => {
   if (seconds === null || seconds === undefined) return '-';
   const safe = Math.max(0, Math.floor(seconds));
@@ -30,30 +41,42 @@ export default function MyTimesheetPage() {
   const [loadingModalOpen, setLoadingModalOpen] = useState(false);
   const [loadingModalState, setLoadingModalState] = useState<"loading" | "success" | "error">("loading");
   const [loadingModalMessage, setLoadingModalMessage] = useState('');
-  const [startDate, setStartDate] = useState(() => isoDate(new Date(new Date().setDate(new Date().getDate() - 7))));
-  const [endDate, setEndDate] = useState(() => isoDate(new Date()));
+  const [dateRange, setDateRange] = useState(() => getDefaultDateRange());
+  const [appliedDateRange, setAppliedDateRange] = useState(() => getDefaultDateRange());
   const [summary, setSummary] = useState<Awaited<ReturnType<typeof getAttendanceMySummary>> | null>(null);
- const [entries, setEntries] = useState<Awaited<ReturnType<typeof getAttendanceMyEntries>>>([]);
+  const [entries, setEntries] = useState<Awaited<ReturnType<typeof getAttendanceMyEntries>>>([]);
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
   const [isCorrectionsModalOpen, setIsCorrectionsModalOpen] = useState(false);
 
   const load = useCallback(async () => {
-    setLoading(true);
-    try {
-  const [summaryData, entriesData] = await Promise.all([
-      getAttendanceMySummary(startDate, endDate),
-      getAttendanceMyEntries(startDate, endDate),
-      ]);
-      setSummary(summaryData);
-      setEntries(entriesData);
-    } catch (err) {
-      setLoadingModalOpen(true);
-      setLoadingModalState("error");
-      setLoadingModalMessage(err instanceof Error ? err.message : 'No se pudo cargar el timesheet.');
-    } finally {
-      setLoading(false);
-    }
-  }, [startDate, endDate]);
+  setLoading(true);
+
+  try {
+    const [summaryData, entriesData] = await Promise.all([
+      getAttendanceMySummary(
+        appliedDateRange.startDate,
+        appliedDateRange.endDate,
+      ),
+      getAttendanceMyEntries(
+        appliedDateRange.startDate,
+        appliedDateRange.endDate,
+      ),
+    ]);
+
+    setSummary(summaryData);
+    setEntries(entriesData);
+  } catch (err) {
+    setLoadingModalOpen(true);
+    setLoadingModalState("error");
+    setLoadingModalMessage(
+      err instanceof Error
+        ? err.message
+        : "No se pudo cargar el timesheet.",
+    );
+  } finally {
+    setLoading(false);
+  }
+}, [appliedDateRange]);
 
   useEffect(() => {
     const session = getStoredSession();
@@ -84,15 +107,39 @@ export default function MyTimesheetPage() {
         <div className="flex flex-wrap gap-3 items-end">
           <div>
             <label className="block text-sm text-gray-600 mb-1">Inicio</label>
-            <input type="date" className="border rounded-md px-3 py-2" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+            <input type="date" className="border rounded-md px-3 py-2" value={dateRange.startDate} onChange={(e) => setDateRange({ ...dateRange, startDate: e.target.value })} />
           </div>
           <div>
             <label className="block text-sm text-gray-600 mb-1">Fin</label>
-            <input type="date" className="border rounded-md px-3 py-2" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+            <input type="date" className="border rounded-md px-3 py-2" value={dateRange.endDate} onChange={(e) => setDateRange({ ...dateRange, endDate: e.target.value })} />
           </div>
-          <button type="button" onClick={() => void load()} className="rounded-md bg-gray-900 text-white px-4 py-2 text-sm font-medium">Actualizar</button>
-        </div>
-      </section>
+          <button
+  type="button"
+  onClick={() => {
+    setAppliedDateRange(dateRange);
+  }}
+  className="rounded-md bg-gray-900 text-white px-4 py-2 text-sm font-medium"
+>
+  🔍 Buscar
+</button>
+
+<button
+  type="button"
+  onClick={() => {
+    const defaults = getDefaultDateRange();
+
+    setDateRange(defaults);
+    setAppliedDateRange(defaults);
+  }}
+  className="rounded-md bg-gray-200 text-gray-700 px-4 py-2 text-sm font-medium"
+>
+  🧹 Limpiar
+</button>
+
+</div>
+
+</section>
+      
 
       <section className="rounded-xl border border-gray-200 bg-white p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 text-sm">
         <div className="rounded-lg bg-gray-50 p-3"><div className="text-gray-500">Horas pagadas</div><div className="font-semibold text-gray-900">{summary?.totalPaidHours ?? 0}</div></div>
@@ -105,7 +152,7 @@ export default function MyTimesheetPage() {
       <section className="rounded-xl border border-gray-200 bg-white p-5 overflow-x-auto">
         <h2 className="text-lg font-semibold text-gray-900 mb-3">Marcajes del periodo</h2>
         <p className="text-sm text-gray-500 mb-3">
-          {startDate} → {endDate}
+          {appliedDateRange.startDate} → {appliedDateRange.endDate}
         </p>
         {loading ? <p className="text-sm text-gray-600">Cargando...</p> : null}
         <table className="min-w-full text-sm">
