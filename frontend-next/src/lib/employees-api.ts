@@ -12,6 +12,7 @@ export interface Employee {
   phone?: string | null;
   address?: string | null;
   hireDate: Date | string;
+  employmentType: EmploymentType;
   position: string;
   department?: string | null;
   monthlySalary: number;
@@ -45,6 +46,12 @@ export interface EmployeeDocument {
   uploadedAt: Date | string;
 }
 
+export type EmploymentType =
+  | 'FULL_TIME'
+  | 'PART_TIME'
+  | 'TEMPORARY'
+  | 'CONTRACTOR';
+
 export interface CreateEmployeeDto {
   fullName: string;
   documentId: string;
@@ -53,6 +60,7 @@ export interface CreateEmployeeDto {
   phone?: string;
   address?: string;
   hireDate: string;
+  employmentType: EmploymentType;
   position: string;
   department?: string;
   monthlySalary: number;
@@ -69,6 +77,7 @@ export interface UpdateEmployeeDto {
   hireDate?: string;
   position?: string;
   department?: string;
+  employmentType?: EmploymentType;
   monthlySalary?: number;
   status?: 'ACTIVO' | 'SUSPENDIDO' | 'INACTIVO';
   terminationDate?: string;

@@ -1,5 +1,5 @@
 import { IsString, IsEmail, IsOptional, IsDateString, IsEnum, IsNumber, Min } from 'class-validator';
-import { EmployeeStatus } from '@prisma/client';
+import { EmployeeStatus, EmploymentType } from '@prisma/client';
 
 export class UpdateEmployeeDto {
   @IsOptional()
@@ -29,6 +29,10 @@ export class UpdateEmployeeDto {
   @IsOptional()
   @IsDateString()
   hireDate?: string;
+
+  @IsOptional()
+  @IsEnum(EmploymentType)
+  employmentType?: EmploymentType;
 
   @IsOptional()
   @IsString()

@@ -219,6 +219,7 @@ export class EmployeesService {
         phone: dto.phone,
         address: dto.address,
         hireDate: new Date(dto.hireDate),
+        employmentType: dto.employmentType,
         position: dto.position,
         department: dto.department,
         monthlySalary: dto.monthlySalary,
@@ -327,6 +328,7 @@ export class EmployeesService {
     if (dto.phone !== undefined) data.phone = dto.phone;
     if (dto.address !== undefined) data.address = dto.address;
     if (dto.hireDate) data.hireDate = new Date(dto.hireDate);
+    if (dto.employmentType) data.employmentType = dto.employmentType;
     if (dto.position) data.position = dto.position;
     if (dto.department !== undefined) data.department = dto.department;
     if (dto.status) data.status = dto.status;

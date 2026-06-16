@@ -88,6 +88,7 @@ export default function EmployeesPage() {
     phone: '',
     address: '',
     hireDate: '',
+    employmentType: 'FULL_TIME',
     position: '',
     department: '',
     monthlySalary: 0,
@@ -159,6 +160,7 @@ export default function EmployeesPage() {
             phone: emp.phone || '',
             address: emp.address || '',
             hireDate: new Date(emp.hireDate).toISOString().split('T')[0],
+            employmentType: emp.employmentType,
             position: emp.position,
             department: emp.department || '',
             monthlySalary: Number(emp.monthlySalary),
@@ -178,6 +180,7 @@ export default function EmployeesPage() {
         phone: '',
         address: '',
         hireDate: '',
+        employmentType: 'FULL_TIME',
         position: '',
         department: '',
         monthlySalary: 0,
@@ -215,6 +218,7 @@ export default function EmployeesPage() {
         if (formData.phone !== undefined) updateData.phone = formData.phone;
         if (formData.address !== undefined) updateData.address = formData.address;
         if (formData.hireDate) updateData.hireDate = formData.hireDate;
+        if (formData.employmentType) updateData.employmentType = formData.employmentType;
         if (formData.position) updateData.position = formData.position;
         if (formData.department !== undefined) updateData.department = formData.department;
         if (formData.monthlySalary) updateData.monthlySalary = formData.monthlySalary;
@@ -850,6 +854,41 @@ export default function EmployeesPage() {
                     />
                   </div>
                 </div>
+                
+                      <div>
+  <label
+    style={{
+      display: 'block',
+      marginBottom: '5px',
+      fontSize: '14px',
+      fontWeight: '500',
+    }}
+  >
+    Tipo de Empleado *
+  </label>
+
+  <select
+    value={formData.employmentType}
+    onChange={(e) =>
+      setFormData({
+        ...formData,
+        employmentType: e.target.value as any,
+      })
+    }
+    style={{
+      width: '100%',
+      padding: '10px',
+      border: '1px solid #d1d5db',
+      borderRadius: '6px',
+      fontSize: '14px',
+    }}
+  >
+    <option value="FULL_TIME">Tiempo Completo</option>
+    <option value="PART_TIME">Medio Tiempo</option>
+    <option value="TEMPORARY">Temporal</option>
+    <option value="CONTRACTOR">Servicios Profesionales</option>
+  </select>
+</div>
 
                 <div>
                   <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500' }}>Dirección</label>
@@ -867,9 +906,11 @@ export default function EmployeesPage() {
                     }}
                   />
                 </div>
-
+                    
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
                   <div>
+
+                    
                     <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500' }}>
                       Posición *
                     </label>
@@ -1222,6 +1263,17 @@ export default function EmployeesPage() {
                 <div>
                   <strong>Posición:</strong> {selectedEmployee.position}
                 </div>
+
+                <div>
+  <strong>Tipo de Empleado:</strong>{' '}
+  {selectedEmployee.employmentType === 'FULL_TIME'
+    ? 'Tiempo Completo'
+    : selectedEmployee.employmentType === 'PART_TIME'
+    ? 'Medio Tiempo'
+    : selectedEmployee.employmentType === 'TEMPORARY'
+    ? 'Temporal'
+    : 'Servicios Profesionales'}
+</div>
                 {selectedEmployee.department && (
                   <div>
                     <strong>Departamento:</strong> {selectedEmployee.department}
