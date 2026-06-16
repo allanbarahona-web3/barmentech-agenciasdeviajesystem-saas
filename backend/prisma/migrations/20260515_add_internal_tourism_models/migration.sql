@@ -124,7 +124,7 @@ ALTER TABLE "internal_trips" ADD CONSTRAINT "internal_trips_tenantId_fkey" FOREI
 ALTER TABLE "internal_tour_bookings" ADD CONSTRAINT "internal_tour_bookings_internalTripId_fkey" FOREIGN KEY ("internalTripId") REFERENCES "internal_trips"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "internal_tour_bookings" ADD CONSTRAINT "internal_tour_bookings_clientId_fkey" FOREIGN KEY ("clientId") REFERENCES "clients"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "internal_tour_bookings" ADD CONSTRAINT "internal_tour_bookings_clientId_fkey" FOREIGN KEY ("clientId") REFERENCES "Client"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "internal_tour_bookings" ADD CONSTRAINT "internal_tour_bookings_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "tenants"("id") ON DELETE CASCADE ON UPDATE CASCADE;
