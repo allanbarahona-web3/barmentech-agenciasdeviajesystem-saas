@@ -1,0 +1,2 @@
+ALTER TABLE "BillingInvoice"
+ADD COLUMN IF NOT EXISTS "paymentDueDate" TIMESTAMP(3);
