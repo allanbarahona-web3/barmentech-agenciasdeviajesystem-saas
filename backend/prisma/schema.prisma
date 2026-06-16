@@ -8,14 +8,14 @@ datasource db {
 }
 
 model Tenant {
-  id                          String                       @id @default(cuid())
-  name                        String                       @unique
-  subdomain                   String?                      @unique
-  contractPrefix              String                       @unique
-  isActive                    Boolean                      @default(true)
-  createdAt                   DateTime                     @default(now())
-  updatedAt                   DateTime                     @updatedAt
-  customDomain                String?                      @unique
+  id                          String                   @id @default(cuid())
+  name                        String                   @unique
+  subdomain                   String?                  @unique
+  contractPrefix              String                   @unique
+  isActive                    Boolean                  @default(true)
+  createdAt                   DateTime                 @default(now())
+  updatedAt                   DateTime                 @updatedAt
+  customDomain                String?                  @unique
   emailLogoUrl                String?
   logoUrl                     String?
   primaryColor                String?
@@ -30,23 +30,23 @@ model Tenant {
   representativePowers        String?
   representativeTitle         String?
   planExpiresAt               DateTime?
-  planType                    String?                      @default("FREE")
+  planType                    String?                  @default("FREE")
   suspendReason               String?
   suspendedAt                 DateTime?
-  businessAddress             String?                      @map("business_address")
-  contactEmail                String?                      @map("contact_email")
-  contactPhone                String?                      @map("contact_phone")
-  contactWhatsApp             String?                      @map("contact_whatsapp")
-  emailVerified               Boolean                      @default(false)
-  emailQuotaDaily             Int                          @default(1000) @map("email_quota_daily")
-  emailQuotaMonthly           Int                          @default(30000) @map("email_quota_monthly")
-  emailsSentMonth             Int                          @default(0) @map("emails_sent_month")
-  emailsSentToday             Int                          @default(0) @map("emails_sent_today")
+  businessAddress             String?                  @map("business_address")
+  contactEmail                String?                  @map("contact_email")
+  contactPhone                String?                  @map("contact_phone")
+  contactWhatsApp             String?                  @map("contact_whatsapp")
+  emailVerified               Boolean                  @default(false)
+  emailQuotaDaily             Int                      @default(1000) @map("email_quota_daily")
+  emailQuotaMonthly           Int                      @default(30000) @map("email_quota_monthly")
+  emailsSentMonth             Int                      @default(0) @map("emails_sent_month")
+  emailsSentToday             Int                      @default(0) @map("emails_sent_today")
   fromEmail                   String?
-  lastEmailResetDate          DateTime?                    @map("last_email_reset_date")
-  preferredCurrency           String                       @default("CRC") @map("preferred_currency")
+  lastEmailResetDate          DateTime?                @map("last_email_reset_date")
+  preferredCurrency           String                   @default("CRC") @map("preferred_currency")
   replyToEmail                String?
-  websiteUrl                  String?                      @map("website_url")
+  websiteUrl                  String?                  @map("website_url")
   billingAuditLogs            BillingAuditLog[]
   billingClientBalances       BillingClientBalance[]
   billingCreditNotes          BillingCreditNote[]
@@ -76,19 +76,19 @@ model Tenant {
 }
 
 model User {
-  id                         String                       @id @default(cuid())
-  email                      String                       @unique
+  id                         String                   @id @default(cuid())
+  email                      String                   @unique
   fullName                   String
   passwordHash               String
-  isActive                   Boolean                      @default(true)
-  createdAt                  DateTime                     @default(now())
-  updatedAt                  DateTime                     @updatedAt
+  isActive                   Boolean                  @default(true)
+  createdAt                  DateTime                 @default(now())
+  updatedAt                  DateTime                 @updatedAt
   activeJti                  String?
   activeAt                   DateTime?
-  mustChangePassword         Boolean                      @default(false)
+  mustChangePassword         Boolean                  @default(false)
   tenantId                   String?
-  role                       UserRole                     @default(AGENT)
-  tenant                     Tenant?                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  role                       UserRole                 @default(AGENT)
+  tenant                     Tenant?                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   attendance_corrections     AttendanceCorrection[]
   attendance_daily_summaries AttendanceDailySummary[]
   attendance_entries         AttendanceEntry[]
@@ -610,6 +610,7 @@ model Employee {
   phone           String?
   address         String?
   hireDate        DateTime
+  employmentType  EmploymentType     @default(FULL_TIME)
   position        String
   department      String?
   monthlySalary   Decimal            @db.Decimal(12, 2)
@@ -869,6 +870,13 @@ enum EmployeeStatus {
   ACTIVO
   SUSPENDIDO
   INACTIVO
+}
+
+enum EmploymentType {
+  FULL_TIME
+  PART_TIME
+  TEMPORARY
+  CONTRACTOR
 }
 
 enum EmployeeDocumentType {
