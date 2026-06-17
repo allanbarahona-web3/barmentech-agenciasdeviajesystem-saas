@@ -870,6 +870,7 @@ enum EmployeeStatus {
   ACTIVO
   SUSPENDIDO
   INACTIVO
+  TERMINADO
 }
 
 enum EmploymentType {

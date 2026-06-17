@@ -315,9 +315,20 @@ export class EmployeesService {
     id: string,
     dto: UpdateEmployeeDto,
   ) {
+
     await this.findOne(tenantId, id);
 
+     if (
+      dto.status === EmployeeStatus.TERMINADO &&
+      !dto.terminationDate
+    ) {
+      throw new BadRequestException(
+          'Termination date is required when employee is terminated',
+      );
+    }
+
     const data: any = {};
+   
 
     if (dto.fullName) data.fullName = dto.fullName;
     if (dto.documentId) data.documentId = dto.documentId;
@@ -332,7 +343,12 @@ export class EmployeesService {
     if (dto.position) data.position = dto.position;
     if (dto.department !== undefined) data.department = dto.department;
     if (dto.status) data.status = dto.status;
-    if (dto.terminationDate) data.terminationDate = new Date(dto.terminationDate);
+    if (dto.terminationDate !== undefined) {
+  data.terminationDate = dto.terminationDate
+    ? new Date(dto.terminationDate)
+    : null;
+
+    }
 
     // Recalcular salario diario si cambia el mensual
     if (dto.monthlySalary !== undefined) {

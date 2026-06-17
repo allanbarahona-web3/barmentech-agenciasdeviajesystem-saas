@@ -93,6 +93,7 @@ export default function EmployeesPage() {
     department: '',
     monthlySalary: 0,
     status: 'ACTIVO',
+    terminationDate: '',
   });
 
   // Document upload
@@ -149,6 +150,7 @@ export default function EmployeesPage() {
       try {
         const emp = await getEmployee(employeeId);
         setSelectedEmployee(emp);
+
         if (mode === 'edit') {
           setFormData({
             fullName: emp.fullName,
@@ -165,8 +167,12 @@ export default function EmployeesPage() {
             department: emp.department || '',
             monthlySalary: Number(emp.monthlySalary),
             status: emp.status,
+            terminationDate: emp.terminationDate
+            ? new Date(emp.terminationDate).toISOString().split('T')[0]
+            : '',
           });
         }
+
       } catch (err: any) {
         setError(err.message);
       }
@@ -185,6 +191,7 @@ export default function EmployeesPage() {
         department: '',
         monthlySalary: 0,
         status: 'ACTIVO',
+        terminationDate: '',
       });
     }
   }
@@ -223,6 +230,9 @@ export default function EmployeesPage() {
         if (formData.department !== undefined) updateData.department = formData.department;
         if (formData.monthlySalary) updateData.monthlySalary = formData.monthlySalary;
         if (formData.status) updateData.status = formData.status;
+        if (formData.terminationDate !== undefined) {
+          updateData.terminationDate = formData.terminationDate;
+        }
 
         await updateEmployee(selectedEmployee.id, updateData);
         setLoadingModalState('success');
@@ -490,8 +500,10 @@ export default function EmployeesPage() {
               <option value="ACTIVO">Activo</option>
               <option value="SUSPENDIDO">Suspendido</option>
               <option value="INACTIVO">Inactivo</option>
+              <option value="TERMINADO">Terminado</option>
             </select>
           </div>
+
           <div>
             <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500' }}>Buscar</label>
             <input
@@ -974,6 +986,7 @@ export default function EmployeesPage() {
                       Salario en colones costarricenses
                     </span>
                   </div>
+
                   <div>
                     <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500' }}>Estado</label>
                     <select
@@ -990,8 +1003,35 @@ export default function EmployeesPage() {
                       <option value="ACTIVO">Activo</option>
                       <option value="SUSPENDIDO">Suspendido</option>
                       <option value="INACTIVO">Inactivo</option>
+                      <option value="TERMINADO">Terminado</option>
                     </select>
                   </div>
+                      {formData.status === 'TERMINADO' && (
+ 
+                <div>
+                    <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500', }} > Fecha de Terminación </label>
+
+                    <input
+                     type="date"
+                      value={formData.terminationDate || ''}
+                       onChange={(e) =>
+                   setFormData({
+                   ...formData,
+                         terminationDate: e.target.value,
+                   })
+                   }
+                  
+                   style={{
+                    width: '100%',
+                    padding: '10px',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '6px',
+                    fontSize: '14px',
+                  }}
+                   />
+               </div>
+                )}
+
                 </div>
               </div>
 
