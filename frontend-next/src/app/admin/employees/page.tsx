@@ -230,9 +230,9 @@ export default function EmployeesPage() {
         if (formData.department !== undefined) updateData.department = formData.department;
         if (formData.monthlySalary) updateData.monthlySalary = formData.monthlySalary;
         if (formData.status) updateData.status = formData.status;
-        if (formData.terminationDate !== undefined) {
+        if (formData.terminationDate) {
           updateData.terminationDate = formData.terminationDate;
-        }
+        } 
 
         await updateEmployee(selectedEmployee.id, updateData);
         setLoadingModalState('success');
@@ -1348,6 +1348,15 @@ export default function EmployeesPage() {
                     {selectedEmployee.status}
                   </span>
                 </div>
+
+
+                {selectedEmployee.terminationDate && (
+                <div>
+                <strong>Fecha de Terminación:</strong>{' '}
+                  {new Date(selectedEmployee.terminationDate).toLocaleDateString('es-CR')}
+              </div>
+          )}
+
                 <div>
                   <strong>Salario Mensual:</strong> ₡{Number(selectedEmployee.monthlySalary).toLocaleString('es-CR')}
                 </div>

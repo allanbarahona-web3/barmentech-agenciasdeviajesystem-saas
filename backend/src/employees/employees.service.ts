@@ -323,7 +323,7 @@ export class EmployeesService {
       !dto.terminationDate
     ) {
       throw new BadRequestException(
-          'Termination date is required when employee is terminated',
+          'Debe seleccionar una fecha de terminación',
       );
     }
 

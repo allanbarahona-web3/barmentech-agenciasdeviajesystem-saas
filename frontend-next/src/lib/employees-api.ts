@@ -64,7 +64,8 @@ export interface CreateEmployeeDto {
   position: string;
   department?: string;
   monthlySalary: number;
-  status?: 'ACTIVO' | 'SUSPENDIDO' | 'INACTIVO';
+  status?: 'ACTIVO' | 'SUSPENDIDO' | 'INACTIVO' | 'TERMINADO';
+   terminationDate?: string;
 }
 
 export interface UpdateEmployeeDto {
@@ -79,7 +80,7 @@ export interface UpdateEmployeeDto {
   department?: string;
   employmentType?: EmploymentType;
   monthlySalary?: number;
-  status?: 'ACTIVO' | 'SUSPENDIDO' | 'INACTIVO';
+  status?: 'ACTIVO' | 'SUSPENDIDO' | 'INACTIVO' | 'TERMINADO';
   terminationDate?: string;
 }
 
