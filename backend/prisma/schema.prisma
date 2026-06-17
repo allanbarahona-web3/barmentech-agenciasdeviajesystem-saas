@@ -71,6 +71,10 @@ model Tenant {
   internalBookings            InternalTourBooking[]
   internalInvoices            InternalTourInvoice[]
   internalTrips               InternalTrip[]
+  payrollConfig               PayrollConfig?
+  payrollPeriods              PayrollPeriod[]
+  payrollAdjustments          PayrollAdjustment[]
+  payrollRuns                 PayrollRun[]
 
   @@map("tenants")
 }
@@ -601,30 +605,32 @@ model TravelPackage {
 }
 
 model Employee {
-  id              String             @id @default(cuid())
-  tenantId        String
-  fullName        String
-  documentId      String
-  dateOfBirth     DateTime?
-  email           String
-  phone           String?
-  address         String?
-  hireDate        DateTime
-  employmentType  EmploymentType     @default(FULL_TIME)
-  position        String
-  department      String?
-  monthlySalary   Decimal            @db.Decimal(12, 2)
-  dailySalary     Decimal            @db.Decimal(12, 2)
-  status          EmployeeStatus     @default(ACTIVO)
-  terminationDate DateTime?
-  userId          String?            @unique
-  createdByUserId String
-  createdByName   String
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
-  documents       EmployeeDocument[]
-  tenant          Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  user            User?              @relation(fields: [userId], references: [id])
+  id                 String              @id @default(cuid())
+  tenantId           String
+  fullName           String
+  documentId         String
+  dateOfBirth        DateTime?
+  email              String
+  phone              String?
+  address            String?
+  hireDate           DateTime
+  employmentType     EmploymentType      @default(FULL_TIME)
+  position           String
+  department         String?
+  monthlySalary      Decimal             @db.Decimal(12, 2)
+  dailySalary        Decimal             @db.Decimal(12, 2)
+  status             EmployeeStatus      @default(ACTIVO)
+  terminationDate    DateTime?
+  userId             String?             @unique
+  createdByUserId    String
+  createdByName      String
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  documents          EmployeeDocument[]
+  tenant             Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user               User?               @relation(fields: [userId], references: [id])
+  payrollAdjustments PayrollAdjustment[]
+  payrollRuns        PayrollRun[]
 
   @@unique([tenantId, documentId])
   @@index([tenantId])
@@ -906,4 +912,135 @@ enum ContractSource {
   CUSTOM_TRIP
   QUOTE
   INTERNAL_TRIP
+}
+
+enum PayrollFrequency {
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+}
+
+enum PayrollPeriodStatus {
+  DRAFT
+  CALCULATED
+  PAID
+  CANCELLED
+}
+
+enum PayrollAdjustmentType {
+  BONUS
+  COMMISSION
+  OTHER_EARNING
+  EMBARGO
+  VOUCHER
+  OTHER_DEDUCTION
+}
+
+enum PayrollRunStatus {
+  CALCULATED
+  PAID
+  CANCELLED
+}
+
+model PayrollConfig {
+  id               String           @id @default(cuid())
+  tenantId         String           @unique
+  frequency        PayrollFrequency @default(BIWEEKLY)
+  otMultiplier     Decimal          @default(1.5) @db.Decimal(5, 2)
+  employeeCCSSRate Decimal          @db.Decimal(5, 2)
+  employerCCSSRate Decimal          @db.Decimal(5, 2)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("payroll_config")
+}
+
+model PayrollPeriod {
+  id          String              @id @default(cuid())
+  tenantId    String
+  name        String
+  startDate   DateTime
+  endDate     DateTime
+  paymentDate DateTime
+  status      PayrollPeriodStatus @default(DRAFT)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  tenant      Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  adjustments PayrollAdjustment[]
+  runs        PayrollRun[]
+
+  @@index([tenantId])
+  @@index([status])
+  @@index([startDate, endDate])
+  @@map("payroll_periods")
+}
+
+model PayrollAdjustment {
+  id              String                @id @default(cuid())
+  tenantId        String
+  employeeId      String
+  payrollPeriodId String
+  type            PayrollAdjustmentType
+  amount          Decimal               @db.Decimal(12, 2)
+  notes           String?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employee      Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  payrollPeriod PayrollPeriod @relation(fields: [payrollPeriodId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([employeeId])
+  @@index([payrollPeriodId])
+  @@map("payroll_adjustments")
+}
+
+model PayrollRun {
+  id              String @id @default(cuid())
+  tenantId        String
+  employeeId      String
+  payrollPeriodId String
+
+  baseSalary Decimal @db.Decimal(12, 2)
+
+  otMinutes Int     @default(0)
+  otAmount  Decimal @default(0) @db.Decimal(12, 2)
+
+  attendanceDeductionMinutes Int     @default(0)
+  attendanceDeductionAmount  Decimal @default(0) @db.Decimal(12, 2)
+
+  earningsAmount Decimal @default(0) @db.Decimal(12, 2)
+  grossAmount    Decimal @default(0) @db.Decimal(12, 2)
+
+  ccssAmount       Decimal @default(0) @db.Decimal(12, 2)
+  deductionsAmount Decimal @default(0) @db.Decimal(12, 2)
+
+  netAmount Decimal @default(0) @db.Decimal(12, 2)
+
+  status PayrollRunStatus @default(CALCULATED)
+
+  calculatedAt DateTime?
+  paidAt       DateTime?
+
+  approvedByUserId String?
+  approvedAt       DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employee      Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  payrollPeriod PayrollPeriod @relation(fields: [payrollPeriodId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, payrollPeriodId])
+  @@index([tenantId])
+  @@index([employeeId])
+  @@index([payrollPeriodId])
+  @@index([status])
+  @@map("payroll_runs")
 }
