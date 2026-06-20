@@ -1848,18 +1848,20 @@ export class BillingService {
   }
 
   private async logAudit(input: {
-    entityType: string;
-    entityId: string;
-    action: string;
-    actorUserId: string;
-    actorName: string;
-    beforeJson?: unknown;
-    afterJson?: unknown;
-    sourceIp?: string | null;
-    userAgent?: string | null;
+  tenantId: string;
+  entityType: string;
+  entityId: string;
+  action: string;
+  actorUserId: string;
+  actorName: string;
+  beforeJson?: unknown;
+  afterJson?: unknown;
+  sourceIp?: string | null;
+  userAgent?: string | null;
   }) {
     await (this.prisma as any).billingAuditLog.create({
       data: {
+        tenantId: input.tenantId,
         entityType: input.entityType,
         entityId: input.entityId,
         action: input.action,
@@ -2492,6 +2494,7 @@ export class BillingService {
     });
 
     await this.logAudit({
+      tenantId: contract.tenantId,
       entityType: "INVOICE",
       entityId: invoice.id,
       action: "AUTO_SEND_TO_TITULAR",
@@ -2617,6 +2620,7 @@ export class BillingService {
 
     await this.logAudit({
       entityType: "CREDIT_NOTE",
+      tenantId: creditNote.tenantId,
       entityId: creditNote.id,
       action: "SEND_EMAIL",
       actorUserId: user.id,
@@ -2727,6 +2731,7 @@ export class BillingService {
     });
 
     await this.logAudit({
+      tenantId: invoice.tenantId,
       entityType: "INVOICE",
       entityId: invoice.id,
       action: "SEND_ACCOUNT_STATEMENT",
@@ -2811,6 +2816,7 @@ export class BillingService {
     });
 
     await this.logAudit({
+      tenantId: contract.tenantId,
       entityType: "INVOICE",
       entityId: invoice.id,
       action: "CREATE",
@@ -2864,6 +2870,7 @@ export class BillingService {
       });
 
       await this.logAudit({
+        tenantId: contract.tenantId,
         entityType: "PAYMENT",
         entityId: payment.id,
         action: "REPORT",
@@ -2879,6 +2886,7 @@ export class BillingService {
       });
 
       await this.logAudit({
+        tenantId: contract.tenantId,
         entityType: "RECEIPT",
         entityId: receipt.id,
         action: "CREATE_PENDING",
@@ -3914,6 +3922,7 @@ export class BillingService {
     await this.recalcInvoiceAmounts(invoice.id);
 
     await this.logAudit({
+      tenantId: invoice.tenantId,
       entityType: "PAYMENT",
       entityId: payment.id,
       action: "REPORT",
@@ -3930,6 +3939,7 @@ export class BillingService {
     });
 
     await this.logAudit({
+      tenantId: invoice.tenantId,
       entityType: "RECEIPT",
       entityId: receipt.id,
       action: "CREATE_PENDING",
@@ -3964,6 +3974,7 @@ export class BillingService {
   ) {
     const payment = await (this.prisma as any).billingPayment.findUnique({
       where: { id: paymentId },
+      include: { invoice: true },
     });
 
     if (!payment) {
@@ -3982,6 +3993,7 @@ export class BillingService {
     await this.recalcInvoiceAmounts(updated.invoiceId);
 
     await this.logAudit({
+      tenantId: payment.invoice.tenantId,
       entityType: "PAYMENT",
       entityId: paymentId,
       action: "REVIEW",
@@ -4037,6 +4049,7 @@ export class BillingService {
     await this.recalcInvoiceAmounts(updated.invoiceId);
 
     await this.logAudit({
+      tenantId: payment.invoice.tenantId,
       entityType: "PAYMENT",
       entityId: paymentId,
       action: "VERIFY",
@@ -4185,7 +4198,7 @@ export class BillingService {
 
     const payment = await (this.prisma as any).billingPayment.findUnique({
       where: { id: paymentId },
-      include: { receipt: true },
+      include: { receipt: true, invoice: true },
     });
 
     if (!payment) {
@@ -4214,6 +4227,7 @@ export class BillingService {
       });
 
       await this.logAudit({
+        tenantId: payment.invoice.tenantId,
         entityType: "RECEIPT",
         entityId: payment.receipt.id,
         action: "VOID",
@@ -4229,6 +4243,7 @@ export class BillingService {
     await this.recalcInvoiceAmounts(updated.invoiceId);
 
     await this.logAudit({
+      tenantId: payment.invoice.tenantId,
       entityType: "PAYMENT",
       entityId: paymentId,
       action: "REJECT",
@@ -4368,6 +4383,7 @@ export class BillingService {
     await this.ensureCreditNotePdf(creditNote.id);
 
     await this.logAudit({
+      tenantId: creditNote.tenantId,
       entityType: "CREDIT_NOTE",
       entityId: creditNote.id,
       action: "CREATE",
@@ -4524,6 +4540,7 @@ export class BillingService {
     const updatedInvoice = await this.recalcInvoiceAmounts(creditNote.invoiceId);
 
     await this.logAudit({
+      tenantId: creditNote.tenantId,
       entityType: "CREDIT_NOTE",
       entityId: creditNote.id,
       action: "APPROVE_AND_APPLY",
@@ -4542,6 +4559,7 @@ export class BillingService {
 
     if (updatedInvoice) {
       await this.logAudit({
+        tenantId: creditNote.tenantId,
         entityType: "INVOICE",
         entityId: updatedInvoice.id,
         action: "UPDATE_TOTAL_BY_CREDIT_NOTE",
@@ -4580,6 +4598,7 @@ export class BillingService {
 
     const creditNote = await (this.prisma as any).billingCreditNote.findUnique({
       where: { id: creditNoteId },
+      select: { id: true, status: true, tenantId: true },
     });
 
     if (!creditNote) {
@@ -4598,6 +4617,7 @@ export class BillingService {
     });
 
     await this.logAudit({
+      tenantId: creditNote.tenantId,
       entityType: "CREDIT_NOTE",
       entityId: creditNoteId,
       action: "REJECT",
@@ -4729,6 +4749,7 @@ export class BillingService {
     });
 
     await this.logAudit({
+      tenantId: receipt.invoice.tenantId,
       entityType: "RECEIPT",
       entityId: receiptId,
       action: isFirstApproval ? "APPROVE_SEND" : "RESEND_EMAIL",

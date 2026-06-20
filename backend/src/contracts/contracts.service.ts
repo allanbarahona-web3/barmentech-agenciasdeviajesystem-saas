@@ -870,7 +870,7 @@ export class ContractsService {
   ) {
     const contract = await (this.prisma as any).contract.findUnique({
       where: { id: contractId },
-      include: { client: true },
+      include: { client: true, tenant: true },
     });
 
     if (!contract) {
@@ -882,6 +882,11 @@ export class ContractsService {
       throw new BadRequestException(
         "El contrato no esta listo para enviar a firma. El pago de reserva debe estar aprobado primero.",
       );
+    }
+
+    const tenant = contract.tenant || null;
+    if (!tenant) {
+      throw new InternalServerErrorException("Tenant no encontrado para enviar email.");
     }
 
     // Generate signing links (1 day TTL)
@@ -897,12 +902,18 @@ export class ContractsService {
           clientName: target.signerName || "Firmante",
           contractNumber: contract.contractNumber,
           signingUrl: target.signingUrl,
-        });
+        }, tenant);
         sent += 1;
-      } catch {
-        // Log but continue sending to others
-        this.logger.warn(`[sendSigningLinksForContract] Could not send email to ${target.signerEmail}`);
-      }
+      } catch (error) {
+  console.error(
+    "[sendSigningLinksForContract]",
+    error,
+  );
+
+  this.logger.warn(
+    `[sendSigningLinksForContract] Could not send email to ${target.signerEmail}`
+  );
+}
     }
 
     // Mark as signing sent
@@ -1461,6 +1472,8 @@ export class ContractsService {
     if (!contract) {
       throw new NotFoundException("Contrato no encontrado.");
     }
+
+    
 
     if (contract.status === CONTRACT_STATUS_SIGNED && contract.signedPdfObjectKey) {
       throw new BadRequestException("Este contrato ya fue marcado como firmado.");
