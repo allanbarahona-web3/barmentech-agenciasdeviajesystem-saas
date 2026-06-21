@@ -453,13 +453,19 @@ export class ContractsService {
   }
 
   private getPublicAppBaseUrl(tenant?: ResolvedTenant | null) {
+    // PRIMERO: Revisar override explícito (para testing local)
+    const explicit = this.configService.get<string>("PUBLIC_APP_BASE_URL", "").trim();
+    if (explicit) {
+      return explicit.replace(/\/+$/, "");
+    }
+
+    // SEGUNDO: Si hay tenant con subdomain, construir URL específica (producción)
     const baseDomain = this.configService.get<string>("FRONTEND_BASE_DOMAIN", "").trim();
-    
-    // Si hay tenant con subdomain, construir URL específica
     if (tenant?.subdomain && baseDomain) {
       // Obtener prefijo de ambiente (dev, staging, prod) desde FRONTEND_URL
       const frontendUrl = this.configService.get<string>("FRONTEND_URL", "").trim();
-      const match = frontendUrl.match(/^https?:\/\/([^.]+)\./);      const envPrefix = match ? match[1] : "";
+      const match = frontendUrl.match(/^https?:\/\/([^.]+)\./);
+      const envPrefix = match ? match[1] : "";
       
       // Construir: almanova.dev.viajes.system.barmentech.com
       if (envPrefix && envPrefix !== tenant.subdomain) {
@@ -470,11 +476,7 @@ export class ContractsService {
       return `https://${tenant.subdomain}.${baseDomain}`;
     }
 
-    // Fallback existente
-    const explicit = this.configService.get<string>("PUBLIC_APP_BASE_URL", "").trim();
-    if (explicit) {
-      return explicit.replace(/\/+$/, "");
-    }
+    // TERCERO: Otros fallbacks
 
     const allowedOrigin = this.configService.get<string>("ALLOWED_ORIGIN", "").trim();
     const origins = allowedOrigin
@@ -685,6 +687,132 @@ export class ContractsService {
     FIN CÓDIGO ANTIGUO */
   }
 
+  /**
+   * 🚀 Envío automático de contrato firmado a todas las partes
+   * Se ejecuta cuando el contrato cambia a estado SIGNED (última firma completada)
+   * Envía el PDF firmado a titular + acompañantes
+   */
+  private async autoSendSignedContractToAllParties(
+    contractId: string,
+    actorContext: { userId: string; email: string; fullName: string },
+  ): Promise<{ ok: boolean; sentCount: number; failedCount: number; sentTo: string[]; failedTo: string[] }> {
+    const contract = await (this.prisma as any).contract.findUnique({
+      where: { id: contractId },
+      include: {
+        client: true,
+        tenant: true,
+      },
+    });
+
+    if (!contract) {
+      throw new NotFoundException("Contrato no encontrado.");
+    }
+
+    if (String(contract.status || "").toUpperCase() !== CONTRACT_STATUS_SIGNED || !contract.signedPdfObjectKey) {
+      throw new BadRequestException("El contrato aun no esta firmado por todas las partes.");
+    }
+
+    const tenant = contract.tenant || null;
+    if (!tenant) {
+      throw new InternalServerErrorException("Tenant no encontrado para enviar email.");
+    }
+
+    const payload = this.getPayloadRecord(contract.payload);
+    const participants = this.getSigningParticipants(contract);
+    const seenEmails = new Set<string>();
+    const recipients: Array<{ email: string; name: string; role: SigningRole }> = [];
+
+    // Agregar titular y acompañantes
+    participants.forEach((participant) => {
+      const normalizedEmail = String(participant.email || "").trim().toLowerCase();
+      if (!normalizedEmail || seenEmails.has(normalizedEmail)) {
+        return;
+      }
+
+      seenEmails.add(normalizedEmail);
+      recipients.push({
+        email: normalizedEmail,
+        name: participant.name,
+        role: participant.role,
+      });
+    });
+
+    // TODO: Agregar email de backup de empresa cuando se defina el campo
+    // if (tenant.contractsBackupEmail) {
+    //   const backupEmail = String(tenant.contractsBackupEmail).trim().toLowerCase();
+    //   if (backupEmail && !seenEmails.has(backupEmail)) {
+    //     seenEmails.add(backupEmail);
+    //     recipients.push({
+    //       email: backupEmail,
+    //       name: tenant.name || "Empresa",
+    //       role: "BACKUP" as SigningRole,
+    //     });
+    //   }
+    // }
+
+    if (!recipients.length) {
+      this.logger.warn(`[auto-send-signed] No hay destinatarios para contractId=${contractId}`);
+      return { ok: false, sentCount: 0, failedCount: 0, sentTo: [], failedTo: [] };
+    }
+
+    const signedPdfBuffer = await this.downloadObjectBuffer(contract.signedPdfObjectKey);
+    if (!signedPdfBuffer.length) {
+      throw new InternalServerErrorException("No se pudo leer el contrato firmado.");
+    }
+
+    const pdfBase64 = signedPdfBuffer.toString("base64");
+    const fileName =
+      String(contract.signedPdfFileName || "").trim() || `${String(contract.contractNumber || "contrato").trim()}-signed.pdf`;
+
+    // Enviar emails usando el servicio centralizado
+    const { sentTo, failedTo } = await this.contractsEmailsService.sendSignedContractToRecipients(
+      { id: actorContext.userId, email: actorContext.email, fullName: actorContext.fullName },
+      contract.contractNumber,
+      fileName,
+      pdfBase64,
+      recipients,
+      tenant,
+    );
+
+    // Registrar en emailDispatchLog
+    const existingDispatchLog = Array.isArray(payload?.emailDispatchLog)
+      ? payload.emailDispatchLog.filter((item: any) => item && typeof item === "object")
+      : [];
+    const dispatchLogEntry = {
+      type: "SIGNED_AUTO_SEND",
+      createdAt: new Date().toISOString(),
+      contractId: contract.id,
+      contractNumber: contract.contractNumber,
+      requestedBy: actorContext,
+      sentCount: sentTo.length,
+      failedCount: failedTo.length,
+      sentTo,
+      failedTo,
+    };
+
+    await (this.prisma as any).contract.update({
+      where: { id: contract.id },
+      data: {
+        payload: {
+          ...payload,
+          emailDispatchLog: [...existingDispatchLog, dispatchLogEntry],
+        },
+      },
+    });
+
+    this.logger.log(
+      `[auto-send-signed] Contrato firmado enviado automáticamente: ${contract.contractNumber} (${sentTo.length} enviados, ${failedTo.length} fallidos)`,
+    );
+
+    return {
+      ok: true,
+      sentCount: sentTo.length,
+      failedCount: failedTo.length,
+      sentTo,
+      failedTo,
+    };
+  }
+
   async resendSignedContractEmailToParties(
     user: { id: string; email: string; fullName: string },
     contractId: string,
@@ -716,28 +844,18 @@ export class ContractsService {
       );
     }
 
-    const payload = this.getPayloadRecord(contract.payload);
-    const participants = this.getSigningParticipants(contract);
-    const seenEmails = new Set<string>();
-    const recipients: Array<{ email: string; name: string; role: SigningRole }> = [];
-
-    participants.forEach((participant) => {
-      const normalizedEmail = String(participant.email || "").trim().toLowerCase();
-      if (!normalizedEmail || seenEmails.has(normalizedEmail)) {
-        return;
-      }
-
-      seenEmails.add(normalizedEmail);
-      recipients.push({
-        email: normalizedEmail,
-        name: participant.name,
-        role: participant.role,
-      });
-    });
-
-    if (!recipients.length) {
-      throw new BadRequestException("No hay correos de titular o acompanantes para reenviar el contrato firmado.");
+    // Reenvío manual: solo se envía al titular (cliente principal del contrato)
+    if (!contract.client?.email) {
+      throw new BadRequestException("El contrato no tiene un email de titular para reenviar.");
     }
+
+    const recipients: Array<{ email: string; name: string; role: SigningRole }> = [{
+      email: contract.client.email.trim().toLowerCase(),
+      name: contract.client.fullName || "Cliente",
+      role: "CLIENT" as SigningRole,
+    }];
+
+    const payload = this.getPayloadRecord(contract.payload);
 
     const signedPdfBuffer = await this.downloadObjectBuffer(contract.signedPdfObjectKey);
     if (!signedPdfBuffer.length) {
@@ -1705,6 +1823,21 @@ export class ContractsService {
           error: message,
         };
       }
+
+      // 🚀 Envío automático del contrato firmado a todas las partes
+      try {
+        await this.autoSendSignedContractToAllParties(contract.id, {
+          userId: String(contract.generatedByUserId || "system"),
+          email: String(contract.generatedByEmail || "system@local"),
+          fullName: String(contract.generatedByName || "Sistema"),
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Fallo el envio automatico del contrato firmado.";
+        this.logger.error(
+          `[auto-send-signed] No se pudo enviar automaticamente contractId=${contract.id}: ${message}`,
+        );
+        // No fallar el proceso principal de firma
+      }
     }
 
     return {
@@ -1979,7 +2112,9 @@ export class ContractsService {
           : [];
         const signedResendEntries = emailDispatchLog.filter(
           (entry: any) =>
-            String(entry?.type || "").toUpperCase() === "SIGNED_RESEND_MANUAL" && Number(entry?.sentCount || 0) > 0,
+            (String(entry?.type || "").toUpperCase() === "SIGNED_RESEND_MANUAL" ||
+             String(entry?.type || "").toUpperCase() === "SIGNED_AUTO_SEND") &&
+            Number(entry?.sentCount || 0) > 0,
         );
         const lastSignedResendEntry = signedResendEntries.length
           ? signedResendEntries[signedResendEntries.length - 1]

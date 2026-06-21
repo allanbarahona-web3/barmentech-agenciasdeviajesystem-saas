@@ -57,6 +57,15 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+
+  async rewrites() {
+    return [
+      {
+        source: '/sign-contract',
+        destination: '/sign-contract.html',
+      },
+    ];
+  },
 };
 
 export default nextConfig;

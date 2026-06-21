@@ -474,7 +474,6 @@ export default function HistoryPage() {
                     const tripType = resolveTripType(item);
                     const isSigned = String(item.status || "").toUpperCase() === STATUS_SIGNED;
                     const isDraft = String(item.status || "").toUpperCase() === "DRAFT";
-                    const isResendDone = Boolean(item.signedContractResent);
                     return (
                       <tr key={item.id}>
                         <td>
@@ -543,18 +542,11 @@ export default function HistoryPage() {
                             {isSigned ? (
                               <button
                                 type="button"
-                                className={isResendDone 
-                                  ? "rounded-xl px-4 py-3 bg-linear-to-b from-green-500 to-green-700 text-white font-bold shadow-lg shadow-green-500/25 transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed" 
-                                  : "rounded-xl px-4 py-2.5 bg-white text-blue-900 border border-blue-200 font-semibold transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-none"
-                                }
+                                className="rounded-xl px-4 py-2.5 bg-white text-blue-900 border border-blue-200 font-semibold transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-none"
                                 onClick={() => void onResendSigned(item.id)}
-                                disabled={busyAction === `resend:${item.id}` || isResendDone}
+                                disabled={busyAction === `resend:${item.id}`}
                               >
-                                {busyAction === `resend:${item.id}`
-                                  ? "Enviando..."
-                                  : isResendDone
-                                    ? "Contrato firmado enviado"
-                                    : "Reenviar firmado"}
+                                {busyAction === `resend:${item.id}` ? "Enviando..." : "Reenviar firmado"}
                               </button>
                             ) : null}
                             {item.status === "PENDING_SIGNATURE" ? (

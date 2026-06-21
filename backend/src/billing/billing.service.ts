@@ -2400,7 +2400,7 @@ export class BillingService {
       include: {
         client: true,
         billingInvoice: true,
-        tenant: { select: { logoUrl: true, emailLogoUrl: true, fromEmail: true, replyToEmail: true } },
+        tenant: true,
       },
     });
 

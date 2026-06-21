@@ -34,6 +34,7 @@ type ViewerAttachment = {
 
 export default function PendingPaymentsPage() {
   const router = useRouter();
+  const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<BillingAdminReportData | null>(null);
   const [actionBusy, setActionBusy] = useState("");
@@ -48,10 +49,6 @@ export default function PendingPaymentsPage() {
   const [loadingModalState, setLoadingModalState] = useState<"loading" | "success" | "error">("loading");
   const [loadingModalMessage, setLoadingModalMessage] = useState("");
   const [loadingModalSuccessMsg, setLoadingModalSuccessMsg] = useState("");
-
-  const session = getStoredSession();
-  const role = String(session?.user?.role || "").toUpperCase();
-  const isAuthorized = ["ADMIN", "FACTURACION_COBROS"].includes(role);
 
   const load = async () => {
     setLoading(true);
@@ -69,14 +66,21 @@ export default function PendingPaymentsPage() {
   };
 
   useEffect(() => {
+    setMounted(true);
+    
     const token = getStoredToken();
+    const session = getStoredSession();
+    const role = String(session?.user?.role || "").toUpperCase();
+    const isAuthorized = ["ADMIN", "FACTURACION_COBROS"].includes(role);
+    
     if (!token || !isAuthorized) {
       router.replace("/");
       return;
     }
+    
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router, isAuthorized]);
+  }, [router]);
 
   const onVerify = async (paymentId: string) => {
     setActionBusy(`verify:${paymentId}`);
@@ -135,8 +139,16 @@ export default function PendingPaymentsPage() {
     }
   };
 
-  if (!isAuthorized) {
-    return null;
+  // Mostrar loader hasta que el componente esté montado en el cliente
+  if (!mounted) {
+    return (
+      <main className="app-shell">
+        <section className="card contracts-card">
+          <h1>💰 Pagos Pendientes de Verificación</h1>
+          <p className="m-0 text-[#4b6790] text-sm">Cargando...</p>
+        </section>
+      </main>
+    );
   }
 
   const pendingPayments = data?.payments.filter((p) => ["ABONO_REPORTADO", "ABONO_EN_REVISION"].includes(p.status)) || [];
