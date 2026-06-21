@@ -452,7 +452,25 @@ export class ContractsService {
     return payload.signatureAnchor || null;
   }
 
-  private getPublicAppBaseUrl() {
+  private getPublicAppBaseUrl(tenant?: ResolvedTenant | null) {
+    const baseDomain = this.configService.get<string>("FRONTEND_BASE_DOMAIN", "").trim();
+    
+    // Si hay tenant con subdomain, construir URL específica
+    if (tenant?.subdomain && baseDomain) {
+      // Obtener prefijo de ambiente (dev, staging, prod) desde FRONTEND_URL
+      const frontendUrl = this.configService.get<string>("FRONTEND_URL", "").trim();
+      const match = frontendUrl.match(/^https?:\/\/([^.]+)\./);      const envPrefix = match ? match[1] : "";
+      
+      // Construir: almanova.dev.viajes.system.barmentech.com
+      if (envPrefix && envPrefix !== tenant.subdomain) {
+        return `https://${tenant.subdomain}.${envPrefix}.${baseDomain}`;
+      }
+      
+      // Sin prefijo: almanova.viajes.system.barmentech.com
+      return `https://${tenant.subdomain}.${baseDomain}`;
+    }
+
+    // Fallback existente
     const explicit = this.configService.get<string>("PUBLIC_APP_BASE_URL", "").trim();
     if (explicit) {
       return explicit.replace(/\/+$/, "");
@@ -820,6 +838,7 @@ export class ContractsService {
       where: { id: contractId },
       include: {
         client: true,
+        tenant: true,
       },
     });
 
@@ -833,7 +852,7 @@ export class ContractsService {
 
     const safeTtlMinutes = Math.min(Math.max(Number(ttlMinutes) || 0, 15), 60 * 24 * 7);
     const expiresAt = new Date(Date.now() + safeTtlMinutes * 60 * 1000);
-    const baseUrl = this.getPublicAppBaseUrl();
+    const baseUrl = this.getPublicAppBaseUrl(contract.tenant);
     const participants = this.getSigningParticipants(contract);
 
     const signingLinks = participants.map((participant) => {
@@ -847,7 +866,7 @@ export class ContractsService {
         signerRole: participant.role,
         signerName: participant.name,
         signerEmail: participant.email,
-        signingUrl: `${baseUrl}/sign-contract.html?token=${encodeURIComponent(token)}`,
+        signingUrl: `${baseUrl}/sign-contract?token=${encodeURIComponent(token)}`,
       };
     });
 

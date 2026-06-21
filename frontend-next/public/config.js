@@ -35,7 +35,18 @@
     ? `http://${hostname}:3001`
     : "";
   
-  const apiBase = runtimeApiBase || localStorageOverride || hostFallback || localFallback;
+  // Fallback automático para subdominios en producción
+  // Ejemplo: almanova.dev.viajes.system.barmentech.com → api.dev.viajes.system.barmentech.com
+  const productionFallback = !isLocalHost && hostname.includes('.')
+    ? (() => {
+        const parts = hostname.split('.');
+        // Reemplazar primer segmento (tenant) con 'api'
+        parts[0] = 'api';
+        return `https://${parts.join('.')}`;
+      })()
+    : "";
+  
+  const apiBase = runtimeApiBase || localStorageOverride || hostFallback || localFallback || productionFallback;
 
   window.APP_CONFIG = {
     ...(window.APP_CONFIG || {}),
