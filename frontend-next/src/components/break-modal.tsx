@@ -145,17 +145,13 @@ export function BreakModal({
           Tiempo transcurrido
         </p>
 
-        <p
-          style={{
-            margin: "14px 0 0 0",
-            fontSize: "1.3rem",
-            color: "#475569",
-            lineHeight: 1.65,
-          }}
-        >
-          <strong>{currentState ?? "BREAK"}</strong>. Cuando regreses, presiona el botón para volver a
-          WORKING.
-        </p>
+        <p className="text-center text-3xl font-extrabold text-slate-800">
+  {currentState ?? "BREAK"}
+</p>
+
+<p className="mt-3 text-center text-[1.15rem] leading-7 text-slate-600">
+  Cuando regreses, presiona el botón para volver a <strong>WORKING</strong>.
+</p>
 
         {blockedMessage ? (
           <p
