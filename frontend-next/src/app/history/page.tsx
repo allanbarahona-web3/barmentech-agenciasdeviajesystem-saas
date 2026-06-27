@@ -203,7 +203,7 @@ export default function HistoryPage() {
       return { label: "Pago de reserva en revisi\u00f3n", className: "status-pending" };
     }
     if (normalized === "PENDING_SIGNATURE") {
-      return { label: "Listo para enviar a firmar", className: "status-ready" };
+      return { label: "Listo enviar a firmar", className: "status-ready" };
     }
     if (normalized === "SIGNING_SENT") {
       return { label: "Firmantes notificados", className: "status-sent" };
