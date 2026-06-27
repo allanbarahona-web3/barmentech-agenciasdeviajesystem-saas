@@ -591,7 +591,7 @@ export default function HistoryPage() {
                 <div dangerouslySetInnerHTML={{ __html: viewerHtml }} />
               ) : (
                 Object.entries(groupedDocuments).map(([group, docs]) => (
-                  <section key={group} className="doc-person-group">
+                       <section key={group} className="doc-person-group">
                     <h4>{group}</h4>
                     <div className="doc-grid">
                       {docs.map((doc, docIndex) => {

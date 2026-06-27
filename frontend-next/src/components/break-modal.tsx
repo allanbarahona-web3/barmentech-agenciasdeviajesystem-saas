@@ -148,12 +148,12 @@ export function BreakModal({
         <p
           style={{
             margin: "14px 0 0 0",
-            fontSize: "0.96rem",
+            fontSize: "1.3rem",
             color: "#475569",
             lineHeight: 1.65,
           }}
         >
-          Tu estado actual es <strong>{currentState ?? "BREAK"}</strong>. Cuando regreses, presiona el botón para volver a
+          <strong>{currentState ?? "BREAK"}</strong>. Cuando regreses, presiona el botón para volver a
           WORKING.
         </p>
 
