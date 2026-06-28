@@ -121,7 +121,7 @@ export class ContractsEmailsService {
         templateData: {
           clientName: dto.clientName,
           contractNumber: dto.contractNumber,
-          signingUrl: dto.signingUrl, // ⚠️ CRÍTICO: Abre sign-contract.html viewer
+          signingUrl: dto.signingUrl, // ⚠️ CRÍTICO: Enlace público para la firma del contrato.
           tenantName: tenant.name,
         },
         triggeredBy: {

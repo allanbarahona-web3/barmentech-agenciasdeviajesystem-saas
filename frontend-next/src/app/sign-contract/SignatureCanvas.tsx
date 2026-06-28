@@ -1,5 +1,5 @@
 // Componente de Canvas de firma
-// Reutiliza lógica exacta de sign-contract.v3.js
+// Componente reutilizable para captura de firma en canvas.
 
 "use client";
 

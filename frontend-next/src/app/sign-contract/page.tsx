@@ -1,5 +1,5 @@
 // Página pública de firma de contratos
-// Reutiliza flujo de sign-contract.html + sign-contract.v3.js
+// Implementación pública de firma de contratos (Next.js App Router).
 
 "use client";
 

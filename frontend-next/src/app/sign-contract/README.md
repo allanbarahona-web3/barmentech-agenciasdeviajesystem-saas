@@ -1,154 +1,266 @@
-# Página Pública de Firma - Nueva Implementación Next.js
+# Página Pública de Firma de Contratos
 
-## Sprint 2 - Implementación Completada
+## Estado
 
-Esta es la nueva implementación de la página pública de firma de contratos utilizando Next.js.
+**Completado ✅**
 
-## Archivos Creados
+La página pública de firma de contratos utiliza exclusivamente **Next.js App Router**.
+
+Toda la implementación anterior basada en HTML fue eliminada durante el proceso de refactorización, dejando una única implementación para el flujo público de firma.
+
+---
+
+# Arquitectura
 
 ```
 src/app/sign-contract/
-├── layout.tsx              # Layout sin navegación (página pública)
-├── page.tsx                # Componente principal con todos los estados
-├── SignatureCanvas.tsx     # Componente del canvas de firma
-└── styles.css              # Estilos reutilizados de sign-contract.v3.css
+├── layout.tsx
+├── page.tsx
+├── SignatureCanvas.tsx
+└── styles.css
 
 src/lib/
-└── public-signing-api.ts   # Cliente API para los 3 endpoints públicos
+└── public-signing-api.ts
 ```
 
-## Funcionalidad Implementada
+---
 
-✅ **Estado Loading** - Carga inicial del contrato  
-✅ **Estado Error** - Manejo de errores con variantes (token inválido, expirado, etc.)  
-✅ **Estado Read** - Visualización del contrato en iframe  
-✅ **Estado Sign** - Canvas de firma con eventos touch/pointer  
-✅ **Estado Success** - Confirmación de firma exitosa  
-✅ **Canvas de firma** - Reutiliza algoritmo exacto de sign-contract.v3.js  
-✅ **Integración API** - Consume los 3 endpoints existentes  
-✅ **Configuración** - Usa `runtime-config.ts` y `resolveApiBase()`  
+# Funcionalidad
 
-## Lógica Reutilizada
+La página implementa el flujo completo de firma pública:
 
-Del archivo `public/sign-contract.v3.js`:
+* Carga de sesión de firma mediante token.
+* Visualización del contrato.
+* Marcado del contrato como leído.
+* Captura de firma mediante canvas.
+* Envío de la firma al backend.
+* Confirmación de firma.
+* Manejo de errores y expiración de enlaces.
 
-- ✅ Algoritmo `findInkBounds` (recorte automático de firma)
-- ✅ Sistema de eventos pointer (down, move, up, leave, cancel)
-- ✅ Exportación a PNG base64
-- ✅ Validaciones de firma vacía
-- ✅ Flujo completo de estados
-- ✅ Manejo de errores
+---
 
-## Testing Local
+# Estados de la Página
 
-### 1. Configurar Variable de Entorno
+* Loading
+* Error
+* Read
+* Sign
+* Success
 
-Asegúrate de tener en `.env.local`:
+Toda la navegación entre estados es administrada mediante React State.
 
-```bash
+---
+
+# Canvas de Firma
+
+El componente `SignatureCanvas.tsx` implementa:
+
+* Pointer Events (mouse + touch)
+* Limpieza del canvas
+* Detección de firma vacía
+* Recorte automático de la firma (`findInkBounds`)
+* Exportación PNG Base64
+
+El algoritmo fue preservado durante el refactor para mantener exactamente el mismo comportamiento de la implementación original.
+
+---
+
+# Comunicación con Backend
+
+La página consume únicamente los endpoints públicos existentes:
+
+```
+GET
+/contracts/public/signing-session
+
+POST
+/contracts/public/mark-viewed
+
+POST
+/contracts/public/finalize-signature
+```
+
+No fue necesario modificar el backend.
+
+---
+
+# Configuración
+
+Toda la resolución del backend utiliza exclusivamente:
+
+```
+runtime-config.ts
+```
+
+mediante:
+
+```
+resolveApiBase()
+```
+
+No existen mecanismos alternativos de configuración.
+
+---
+
+# Flujo de Firma
+
+```
+Usuario abre enlace
+
+        │
+
+        ▼
+
+Obtiene sesión de firma
+
+        │
+
+        ▼
+
+Visualiza contrato
+
+        │
+
+        ▼
+
+Marca contrato como leído
+
+        │
+
+        ▼
+
+Firma en canvas
+
+        │
+
+        ▼
+
+Envía firma
+
+        │
+
+        ▼
+
+Backend registra firma
+
+        │
+
+        ▼
+
+Generación de PDF
+
+        │
+
+        ▼
+
+Correos automáticos
+
+        │
+
+        ▼
+
+Confirmación al usuario
+```
+
+---
+
+# Testing Local
+
+Configurar:
+
+```
 NEXT_PUBLIC_API_BASE=http://localhost:3001
 ```
 
-O para subdominios:
-```bash
-NEXT_PUBLIC_API_BASE=http://almanova.localhost:3001
-```
-
-### 2. Iniciar Servidor de Desarrollo
+Levantar frontend:
 
 ```bash
 cd frontend-next
 pnpm dev
 ```
 
-### 3. Obtener un Token de Prueba
-
-**Opción A:** Genera un contrato desde el dashboard y copia el enlace de firma del correo.
-
-**Opción B:** Obtén un token directamente desde la base de datos (desarrollo).
-
-### 4. Abrir la Página
+Abrir:
 
 ```
-http://localhost:3000/sign-contract?token=PASTE_TOKEN_HERE
+http://localhost:3000/sign-contract?token=TOKEN
 ```
-
-## Flujo Completo
-
-```
-1. Usuario abre URL con token
-   ↓
-2. GET /contracts/public/signing-session
-   ↓
-3. Muestra contrato en iframe
-   ↓
-4. Usuario presiona "Firmar contrato"
-   ↓
-5. POST /contracts/public/mark-viewed (non-blocking)
-   ↓
-6. Muestra canvas de firma
-   ↓
-7. Usuario dibuja firma
-   ↓
-8. Usuario presiona "Enviar firma"
-   ↓
-9. POST /contracts/public/finalize-signature
-   ↓
-10. Muestra confirmación de éxito
-```
-
-## Diferencias con Implementación HTML
-
-| Aspecto | HTML Original | Nueva Implementación Next.js |
-|---------|---------------|------------------------------|
-| Configuración | `config.js` (fallido) | `runtime-config.ts` (funcional) |
-| Routing | `/sign-contract.html` | `/sign-contract` |
-| Framework | Vanilla JS | React + Next.js |
-| Estados | Manipulación DOM directa | React state management |
-| Canvas | Eventos globales | Eventos React |
-| Estilos | CSS global | CSS importado en ruta |
-
-## Ventajas de la Nueva Implementación
-
-✅ Reutiliza `runtime-config.ts` (única fuente de verdad)  
-✅ No depende de `window.__APP_ENV__` (que nunca existió)  
-✅ TypeScript con tipos seguros  
-✅ Mejor mantenibilidad  
-✅ Misma UX/UI  
-✅ No requiere cambios en backend  
-
-## Problemas Conocidos
-
-Ninguno detectado todavía. Requiere testing con tokens reales.
-
-## Pendientes para Sprint 3
-
-- [ ] Testing con tokens reales en todos los estados
-- [ ] Validación en móviles (iOS Safari, Android Chrome)
-- [ ] Testing responsive en diferentes tamaños
-- [ ] Validación de canvas en dispositivos touch
-- [ ] Performance testing (bundle size, tiempo de carga)
-- [ ] Actualizar backend para generar URLs a `/sign-contract` en lugar de `.html`
-- [ ] Deprecación gradual de archivos HTML legacy
-
-## Restricciones Cumplidas
-
-✅ **NO se modificó Backend** - Solo consumo de endpoints existentes  
-✅ **NO se modificó Prisma** - Base de datos intacta  
-✅ **NO se modificaron endpoints** - Mismos contratos de API  
-✅ **NO se eliminó HTML** - Ambas implementaciones conviven  
-✅ **Estructura simple** - Sin sobre-arquitecturizar  
-
-## Notas Técnicas
-
-- Canvas usa Pointer Events (compatibilidad touch + mouse)
-- Algoritmo de recorte es pixel-perfect del original
-- Estados UI mapean exactamente a los del HTML
-- Errores se categorizan para mostrar mensajes específicos
-- Layout sin navegación vertical (página completamente pública)
 
 ---
 
-**Implementado en:** Sprint 2  
-**Fecha:** 27 de junio de 2026  
-**Estado:** Funcional - Pendiente testing con tokens reales
+# Validaciones Realizadas
+
+## Local
+
+* Build de producción
+* Lectura del contrato
+* Canvas de firma
+* Registro de firma
+* Generación de PDF
+* Correo final
+* Bloqueo de segunda firma
+
+## DEV
+
+Validado con contratos reales:
+
+* Crear contrato
+* Aprobar pago
+* Enviar correo
+* Abrir enlace
+* Leer contrato
+* Firmar
+* Generación de PDF
+* Envío de correos
+* Flujo con múltiples firmantes
+
+---
+
+# Arquitectura Final
+
+La implementación pública de firma utiliza únicamente:
+
+```
+/sign-contract
+        │
+        ▼
+Next.js App Router
+        │
+        ▼
+public-signing-api.ts
+        │
+        ▼
+runtime-config.ts
+```
+
+---
+
+# Deuda Técnica Eliminada
+
+El proceso de refactor eliminó completamente:
+
+* `public/sign-contract.html`
+* `public/sign-contract.v3.js`
+* `public/sign-contract.v3.css`
+* `public/config.js`
+* `window.__APP_ENV__`
+* `next.config.ts` rewrite hacia `sign-contract.html`
+
+No existe código duplicado ni múltiples implementaciones para la página pública de firma.
+
+---
+
+# Restricciones Cumplidas
+
+* No se modificó el backend.
+* No se modificó Prisma.
+* No se modificó la API pública.
+* No se modificó la base de datos.
+* Se mantuvo el comportamiento funcional del flujo original.
+
+---
+
+# Estado Final
+
+**Implementación finalizada.**
+
+La página pública de firma utiliza una única implementación basada en Next.js App Router y una única estrategia de resolución del backend mediante `runtime-config.ts`.
