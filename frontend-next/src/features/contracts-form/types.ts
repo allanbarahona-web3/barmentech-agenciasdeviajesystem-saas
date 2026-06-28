@@ -51,6 +51,7 @@ export type ContractFormState = {
   contractNumber: string;
   issuedAt: string;
   destination: string;
+  travelPackageId?: string | null;
   startDate: string;
   endDate: string;
   accommodationType: string;
@@ -85,4 +86,4 @@ export type ContractFormState = {
   contractDocumentsNames: string[];
   generatedByAgentName: string;
   generatedByAgentEmail: string;
-};
+ };

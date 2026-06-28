@@ -12,6 +12,8 @@ import { getTravelPackageById } from "@/lib/travel-packages-api";
 import { getInternalTripById } from "@/lib/internal-trips-api";
 import { getAllBankAccounts } from "@/lib/bank-accounts-api";
 import { buildContractPdfHtml, type TenantLegalInfo, type BankAccountForContract } from "@/features/contracts-form/pdf-template";
+import { calculateParticipants } from "@/features/contracts-form/capacity-validation";
+import { ConfirmModal } from "@/components/confirm-modal";
 import {
   addCompanion,
   addCustomItineraryItem,
@@ -118,6 +120,14 @@ export function ContractsForm({ agent = null, initialDraftId = null, initialTrav
       tutorPassport: File | null;
     }>
   >({});
+  const [showCapacityModal, setShowCapacityModal] = useState(false);
+  const [capacityError, setCapacityError] = useState<{
+    participantCount: number;
+    availableSlots: number;
+    packageName: string;
+    occupiedSlots: number;
+    capacity: number;
+  } | null>(null);
   const autoReservationStarted = useRef(false);
   const loadedDraftIdRef = useRef("");
   const loadedTravelPackageIdRef = useRef("");
@@ -253,6 +263,28 @@ export function ContractsForm({ agent = null, initialDraftId = null, initialTrav
     return docs;
   };
 
+  /**
+   * Helper para mostrar el modal de capacidad insuficiente.
+   * Encapsula la lógica de setCapacityError, setShowCapacityModal y setStatus.
+   */
+  const showCapacityExceededModal = (
+    participantCount: number,
+    availableSlots: number,
+    packageName: string,
+    capacity: number,
+    occupiedSlots: number
+  ) => {
+    setCapacityError({
+      participantCount,
+      availableSlots,
+      packageName,
+      capacity,
+      occupiedSlots,
+    });
+    setShowCapacityModal(true);
+    setStatus("⚠️ No hay capacidad suficiente. Ver modal.");
+  };
+
   const runArchiveFlow = async () => {
     console.log("🔵 [runArchiveFlow] INICIO");
     if (submitting) {
@@ -277,6 +309,67 @@ export function ContractsForm({ agent = null, initialDraftId = null, initialTrav
       console.log("❌ Hay errores de validación en fechas/itinerario");
       setStatus("Corrige las validaciones de fechas/itinerario antes de guardar.");
       return;
+    }
+    console.log("====================================");
+console.log("🔍 DEBUG CAPACIDAD");
+console.log("activeDraftId:", activeDraftId);
+console.log("initialTravelPackageId:", initialTravelPackageId);
+console.log("initialInternalTripId:", initialInternalTripId);
+console.log("isInternalTrip:", isInternalTrip);
+console.log("participantCount:", calculateParticipants(state));
+console.log("====================================");
+
+    // ✅ VALIDACIÓN PREVENTIVA DE CAPACIDAD (Capa 1 - Frontend)
+    // Valida viajes internacionales
+    if (initialTravelPackageId && !isInternalTrip) {
+      try {
+        console.log("🔵 Validando capacidad del viaje internacional...");
+        const travelPackage = await getTravelPackageById(initialTravelPackageId);
+        const participantCount = calculateParticipants(state);
+        const availableSlots = travelPackage.capacity - travelPackage.occupiedSlots;
+
+        if (participantCount > availableSlots) {
+          console.log(`⚠️ Capacidad insuficiente: ${participantCount} solicitados, ${availableSlots} disponibles`);
+          showCapacityExceededModal(
+            participantCount,
+            availableSlots,
+            travelPackage.name,
+            travelPackage.capacity,
+            travelPackage.occupiedSlots
+          );
+          return; // ← Detener flujo
+        }
+        console.log(`✅ Capacidad OK: ${participantCount} solicitados, ${availableSlots} disponibles`);
+      } catch (error) {
+        console.warn("[runArchiveFlow] Capacidad check falló, delegando al backend:", error);
+        // Continuar: el backend lo validará en Capa 2 y 3
+      }
+    }
+
+    // Valida viajes internos
+    if (initialInternalTripId && isInternalTrip) {
+      try {
+        console.log("🔵 Validando capacidad del viaje interno...");
+        const internalTrip = await getInternalTripById(initialInternalTripId);
+        const participantCount = calculateParticipants(state);
+        const availableSlots = internalTrip.capacity - internalTrip.occupiedSlots;
+
+        if (participantCount > availableSlots) {
+          console.log(`⚠️ Capacidad insuficiente: ${participantCount} solicitados, ${availableSlots} disponibles`);
+          showCapacityExceededModal(
+            participantCount,
+            availableSlots,
+            internalTrip.name,
+            internalTrip.capacity,
+            internalTrip.occupiedSlots
+          );
+          return; // ← Detener flujo
+        }
+        console.log(`✅ Capacidad OK: ${participantCount} solicitados, ${availableSlots} disponibles`);
+      } catch (error) {
+        console.warn("[runArchiveFlow] Capacidad check falló, delegando al backend:", error);
+        // Continuar: el backend lo validará en Capa 2 y 3
+      }
     }
 
     console.log("✅ Validaciones pasadas, iniciando submit");
@@ -406,6 +499,7 @@ export function ContractsForm({ agent = null, initialDraftId = null, initialTrav
       console.log("✅ Formulario reseteado");
     } catch (error) {
       console.error("❌ ERROR en runArchiveFlow:", error);
+      
       setStatus(error instanceof Error ? error.message : "No se pudo completar el guardado del contrato.");
     } finally {
       setSubmitting(false);
@@ -668,6 +762,7 @@ export function ContractsForm({ agent = null, initialDraftId = null, initialTrav
           // Primero sincronizar las fechas del tour para actualizar paymentDueDate
           const withDates = syncTourDates({
             ...prev,
+            travelPackageId: packageId,
             destination: travelPackage.destination,
             startDate: travelPackage.departureDate.split('T')[0],
             endDate: travelPackage.returnDate.split('T')[0],
@@ -1862,6 +1957,27 @@ export function ContractsForm({ agent = null, initialDraftId = null, initialTrav
       <p className="status-line">{status}</p>
 
         </div>
+
+        {/* Modal de Capacidad Insuficiente */}
+        {showCapacityModal && capacityError && (
+          <ConfirmModal
+            isOpen={showCapacityModal}
+            title="⚠️ CAPACIDAD INSUFICIENTE"
+            message={`Este contrato supera la capacidad disponible del viaje. El viaje "${capacityError.packageName}" no tiene capacidad suficiente.\n\n📦 Viaje: ${capacityError.packageName}\n👥 Solicitados: ${capacityError.participantCount} personas\n✓ Disponibles: ${capacityError.availableSlots} cupos\n(Ocupados: ${capacityError.occupiedSlots} / ${capacityError.capacity})\n\nOpciones:\n1. Guardar como borrador \n2. Contactar con el administrador`}
+            confirmText="Guardar como borrador"
+            cancelText="Cerrar"
+            confirmVariant="warning"
+            onConfirm={() => {
+              setShowCapacityModal(false);
+              void saveDraftFlow();
+            }}
+            onCancel={() => {
+              setShowCapacityModal(false);
+              setCapacityError(null);
+              setStatus("⚠️ Contacta al administrador para revisar opciones de capacidad.");
+            }}
+          />
+        )}
 
         {!isInternalTrip && (
           <aside className="contracts-preview-panel">

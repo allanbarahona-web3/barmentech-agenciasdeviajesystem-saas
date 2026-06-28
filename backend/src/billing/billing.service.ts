@@ -46,6 +46,78 @@ export class BillingService {
   ) {}
 
   /**
+   * Valida que existe capacidad disponible para el número de participantes solicitados.
+   * NO modifica occupiedSlots, solo valida y lanza excepción si no hay capacidad.
+   * 
+   * @param travelPackageId - ID del paquete de viaje internacional (opcional)
+   * @param internalTripId - ID del viaje interno (opcional)
+   * @param participantCount - Número de participantes que requieren cupos
+   * @param context - Nombre del método que llama (para logs)
+   * @throws NotFoundException si el viaje no existe
+   * @throws BadRequestException si no hay capacidad suficiente
+   */
+  async validateTripCapacity(
+    travelPackageId: string | null,
+    internalTripId: string | null,
+    participantCount: number,
+    context: string,
+  ): Promise<void> {
+    // Validar viajes internacionales
+    if (travelPackageId) {
+      const travelPackage = await (this.prisma as any).travelPackage.findUnique({
+        where: { id: travelPackageId },
+        select: { capacity: true, occupiedSlots: true, name: true },
+      });
+
+      if (!travelPackage) {
+        throw new NotFoundException(`Paquete de viaje ${travelPackageId} no encontrado.`);
+      }
+
+      const availableSlots = travelPackage.capacity - travelPackage.occupiedSlots;
+
+      if (participantCount > availableSlots) {
+        this.logger.warn(
+          `[${context}] ⚠️ Capacidad insuficiente: "${travelPackage.name}" tiene ${availableSlots} cupos disponibles, se solicitan ${participantCount}`
+        );
+        throw new BadRequestException(
+          `Capacidad insuficiente. El viaje "${travelPackage.name}" solo tiene ${availableSlots} cupos disponibles de ${travelPackage.capacity} totales. No se puede procesar la solicitud para ${participantCount} personas.`
+        );
+      }
+
+      this.logger.log(
+        `[${context}] ✅ Validación de capacidad OK: ${participantCount} cupos solicitados, ${availableSlots} disponibles en "${travelPackage.name}"`
+      );
+    }
+
+    // Validar viajes internos
+    if (internalTripId) {
+      const internalTrip = await (this.prisma as any).internalTrip.findUnique({
+        where: { id: internalTripId },
+        select: { capacity: true, occupiedSlots: true, name: true },
+      });
+
+      if (!internalTrip) {
+        throw new NotFoundException(`Viaje interno ${internalTripId} no encontrado.`);
+      }
+
+      const availableSlots = internalTrip.capacity - internalTrip.occupiedSlots;
+
+      if (participantCount > availableSlots) {
+        this.logger.warn(
+          `[${context}] ⚠️ Capacidad insuficiente: "${internalTrip.name}" tiene ${availableSlots} cupos disponibles, se solicitan ${participantCount}`
+        );
+        throw new BadRequestException(
+          `Capacidad insuficiente. El viaje "${internalTrip.name}" solo tiene ${availableSlots} cupos disponibles de ${internalTrip.capacity} totales. No se puede procesar la solicitud para ${participantCount} personas.`
+        );
+      }
+
+      this.logger.log(
+        `[${context}] ✅ Validación de capacidad OK: ${participantCount} cupos solicitados, ${availableSlots} disponibles en "${internalTrip.name}"`
+      );
+    }
+  }
+
+  /**
    * Obtiene el tenant desde el contractId para poder acceder a sus assets
    */
   private async getTenantFromContract(contractId: string) {
@@ -1875,8 +1947,10 @@ export class BillingService {
     });
   }
 
-  private async recalcInvoiceAmounts(invoiceId: string) {
-    const invoice = await (this.prisma as any).billingInvoice.findUnique({
+  private async recalcInvoiceAmounts(invoiceId: string, tx?: any) {
+    const prismaClient = tx || (this.prisma as any);
+    
+    const invoice = await prismaClient.billingInvoice.findUnique({
       where: { id: invoiceId },
       include: { payments: true },
     });
@@ -1903,7 +1977,7 @@ export class BillingService {
           ? "FACTURA_PARCIAL"
           : "FACTURA_EMITIDA";
 
-    return (this.prisma as any).billingInvoice.update({
+    return prismaClient.billingInvoice.update({
       where: { id: invoiceId },
       data: {
         verifiedAmount: this.toDecimalString(verifiedAmount),
@@ -2790,6 +2864,16 @@ export class BillingService {
         invoiceNumber: existing.invoiceNumber,
       };
     }
+
+    // ✅ VALIDACIÓN DE CAPACIDAD PREVENTIVA (Capa 2)
+    // Rechaza reservas imposibles antes de que lleguen al admin
+    const participantCount = contract.participantCount || 1;
+    await this.validateTripCapacity(
+      contract.travelPackageId,
+      contract.internalTripId,
+      participantCount,
+      'bootstrapContractBilling'
+    );
 
     const payload = contract.payload && typeof contract.payload === "object" ? contract.payload : {};
     const totalAmount = this.toNumber((payload as any)?.totalAmount, 0);
@@ -4014,7 +4098,8 @@ export class BillingService {
     sourceIp?: string | null,
     userAgent?: string | null,
   ) {
-    const payment = await (this.prisma as any).billingPayment.findUnique({
+    // Primer fetch: obtener datos para email/audit (fuera de transacción)
+    const paymentSnapshot = await (this.prisma as any).billingPayment.findUnique({
       where: { id: paymentId },
       include: { 
         receipt: true,
@@ -4026,159 +4111,298 @@ export class BillingService {
       },
     });
 
-    if (!payment) {
+    if (!paymentSnapshot) {
       throw new NotFoundException("Abono no encontrado.");
     }
 
-    if (!["ABONO_REPORTADO", "ABONO_EN_REVISION"].includes(String(payment.status || ""))) {
-      throw new BadRequestException("Solo se pueden verificar abonos reportados o en revision.");
+    const now = new Date();
+    let updated: any;
+    let invoiceIdToRecalc: string;
+
+    // ✅ TRANSACCIÓN ATÓMICA: Garantiza consistencia de datos y previene race conditions
+    try {
+      await (this.prisma as any).$transaction(async (tx: any) => {
+        // 1. Re-fetch payment con lock implícito (READ COMMITTED + row lock)
+        const payment = await tx.billingPayment.findUnique({
+          where: { id: paymentId },
+          include: {
+            invoice: {
+              include: {
+                contract: {
+                  select: {
+                    id: true,
+                    status: true,
+                    travelPackageId: true,
+                    internalTripId: true,
+                    participantCount: true,
+                    tenantId: true,
+                  },
+                },
+              },
+            },
+          },
+        });
+
+        if (!payment) {
+          throw new NotFoundException("Abono no encontrado.");
+        }
+
+        // 2. Validar que el pago esté en estado correcto
+        if (!["ABONO_REPORTADO", "ABONO_EN_REVISION"].includes(String(payment.status || ""))) {
+          throw new BadRequestException("Solo se pueden verificar abonos reportados o en revision.");
+        }
+
+        // 3. ✅ VALIDACIÓN DE CAPACIDAD (previene sobreventa)
+        const contract = payment.invoice?.contract;
+        if (
+          String(payment.type || "") === "RESERVATION" &&
+          contract &&
+          ["PENDING_PAYMENT_RESERVE", "RESERVE_IN_REVIEW"].includes(String(contract.status || ""))
+        ) {
+          const participantCount = contract.participantCount || 1;
+
+          // Validar viajes internacionales
+          if (contract.travelPackageId) {
+            const travelPackage = await tx.travelPackage.findUnique({
+              where: { id: contract.travelPackageId },
+              select: { capacity: true, occupiedSlots: true, name: true },
+            });
+
+            if (!travelPackage) {
+              throw new NotFoundException(`Paquete de viaje ${contract.travelPackageId} no encontrado.`);
+            }
+
+            const availableSlots = travelPackage.capacity - travelPackage.occupiedSlots;
+            if (participantCount > availableSlots) {
+              this.logger.warn(
+                `[verifyPayment] ⚠️ Capacidad insuficiente: ${travelPackage.name} tiene ${availableSlots} cupos disponibles, se solicitan ${participantCount}`
+              );
+              throw new BadRequestException(
+                `Capacidad insuficiente. El viaje "${travelPackage.name}" solo tiene ${availableSlots} cupos disponibles de ${travelPackage.capacity} totales. Se solicitan ${participantCount} cupos.`
+              );
+            }
+
+            this.logger.log(
+              `[verifyPayment] ✅ Validación de capacidad OK: ${participantCount} cupos disponibles de ${availableSlots} en "${travelPackage.name}"`
+            );
+          }
+
+          // Validar viajes internos
+          if (contract.internalTripId) {
+            const internalTrip = await tx.internalTrip.findUnique({
+              where: { id: contract.internalTripId },
+              select: { capacity: true, occupiedSlots: true, name: true },
+            });
+
+            if (!internalTrip) {
+              throw new NotFoundException(`Viaje interno ${contract.internalTripId} no encontrado.`);
+            }
+
+            const availableSlots = internalTrip.capacity - internalTrip.occupiedSlots;
+            if (participantCount > availableSlots) {
+              this.logger.warn(
+                `[verifyPayment] ⚠️ Capacidad insuficiente: ${internalTrip.name} tiene ${availableSlots} cupos disponibles, se solicitan ${participantCount}`
+              );
+              throw new BadRequestException(
+                `Capacidad insuficiente. El viaje "${internalTrip.name}" solo tiene ${availableSlots} cupos disponibles de ${internalTrip.capacity} totales. Se solicitan ${participantCount} cupos.`
+              );
+            }
+
+            this.logger.log(
+              `[verifyPayment] ✅ Validación de capacidad OK: ${participantCount} cupos disponibles de ${availableSlots} en "${internalTrip.name}"`
+            );
+          }
+        }
+
+        // 4. Actualizar payment a ABONO_VERIFICADO
+        updated = await tx.billingPayment.update({
+          where: { id: paymentId },
+          data: {
+            status: "ABONO_VERIFICADO",
+            verifiedAt: now,
+            verifiedByUserId: user.id,
+            verifiedByName: user.fullName,
+            rejectionReason: null,
+          },
+        });
+
+        invoiceIdToRecalc = updated.invoiceId;
+
+        // 5. Recalcular montos del invoice
+        await this.recalcInvoiceAmounts(updated.invoiceId, tx);
+
+        // 6. Si es pago de reserva, actualizar contrato y incrementar occupiedSlots
+        if (
+          String(payment.type || "") === "RESERVATION" &&
+          contract &&
+          ["PENDING_PAYMENT_RESERVE", "RESERVE_IN_REVIEW"].includes(String(contract.status || ""))
+        ) {
+          // 6a. Actualizar status del contrato
+          await tx.contract.update({
+            where: { id: contract.id },
+            data: { status: "PENDING_SIGNATURE" },
+          });
+
+          this.logger.log(
+            `[verifyPayment] ✅ Contrato ${contract.id} habilitado para firma tras pago de reserva aprobado.`
+          );
+
+          const participantCount = contract.participantCount || 1;
+
+          // 6b. Incrementar occupiedSlots del paquete de viaje internacional
+          if (contract.travelPackageId) {
+            await tx.travelPackage.update({
+              where: { id: contract.travelPackageId },
+              data: {
+                occupiedSlots: { increment: participantCount },
+              },
+            });
+
+            this.logger.log(
+              `[verifyPayment] ✅ Incrementados ${participantCount} cupos en paquete ${contract.travelPackageId}`
+            );
+          }
+
+          // 6c. Incrementar occupiedSlots del viaje interno
+          if (contract.internalTripId) {
+            await tx.internalTrip.update({
+              where: { id: contract.internalTripId },
+              data: {
+                occupiedSlots: { increment: participantCount },
+              },
+            });
+
+            this.logger.log(
+              `[verifyPayment] ✅ Incrementados ${participantCount} cupos en viaje interno ${contract.internalTripId}`
+            );
+          }
+        }
+
+        // 7. Si es pago de viaje interno (booking), incrementar cuando esté completamente pagado
+        if (String(payment.type || "") === "INTERNAL_TOUR" && payment.internalTourBookingId) {
+          const booking = await tx.internalTourBooking.findUnique({
+            where: { id: payment.internalTourBookingId },
+            select: {
+              id: true,
+              internalTripId: true,
+              participantCount: true,
+              totalAmount: true,
+              paidAmount: true,
+              status: true,
+              tenantId: true,
+            },
+          });
+
+          if (booking) {
+            // Recalcular monto pagado sumando este pago recién aprobado
+            const newPaidAmount = this.toNumber(booking.paidAmount) + this.toNumber(payment.amount);
+            const totalAmount = this.toNumber(booking.totalAmount);
+
+            // Si ahora está completamente pagado y antes no lo estaba, validar e incrementar
+            if (newPaidAmount >= totalAmount && booking.status !== "PAID") {
+              // Validar capacidad antes de incrementar
+              const internalTrip = await tx.internalTrip.findUnique({
+                where: { id: booking.internalTripId },
+                select: { capacity: true, occupiedSlots: true, name: true },
+              });
+
+              if (!internalTrip) {
+                throw new NotFoundException(`Viaje interno ${booking.internalTripId} no encontrado.`);
+              }
+
+              const participantCount = booking.participantCount || 1;
+              const availableSlots = internalTrip.capacity - internalTrip.occupiedSlots;
+
+              if (participantCount > availableSlots) {
+                this.logger.warn(
+                  `[verifyPayment] ⚠️ Capacidad insuficiente para booking: ${internalTrip.name} tiene ${availableSlots} cupos, se solicitan ${participantCount}`
+                );
+                throw new BadRequestException(
+                  `Capacidad insuficiente. El viaje "${internalTrip.name}" solo tiene ${availableSlots} cupos disponibles de ${internalTrip.capacity} totales. Se solicitan ${participantCount} cupos.`
+                );
+              }
+
+              // Incrementar occupiedSlots
+              await tx.internalTrip.update({
+                where: { id: booking.internalTripId },
+                data: {
+                  occupiedSlots: { increment: participantCount },
+                },
+              });
+
+              this.logger.log(
+                `[verifyPayment] ✅ Incrementados ${participantCount} cupos en viaje interno ${booking.internalTripId} (booking completamente pagado)`
+              );
+            }
+          }
+        }
+      });
+
+      this.logger.log(
+        `[verifyPayment] ✅ Transacción completada exitosamente para payment ${paymentId}`
+      );
+    } catch (transactionError) {
+      this.logger.error(
+        `[verifyPayment] ❌ Transacción fallida: ${transactionError instanceof Error ? transactionError.message : String(transactionError)}`
+      );
+      // Re-lanzar el error para que el caller lo maneje
+      throw transactionError;
     }
 
-    const now = new Date();
-    const updated = await (this.prisma as any).billingPayment.update({
-      where: { id: paymentId },
-      data: {
-        status: "ABONO_VERIFICADO",
-        verifiedAt: now,
-        verifiedByUserId: user.id,
-        verifiedByName: user.fullName,
-        rejectionReason: null,
-      },
-    });
+    // ✅ OPERACIONES IDEMPOTENTES (fuera de transacción)
+    // Si fallan, no revierten la aprobación del pago
 
-    await this.recalcInvoiceAmounts(updated.invoiceId);
+    // 8. Log de auditoría (idempotente)
+    try {
+      await this.logAudit({
+        tenantId: paymentSnapshot.invoice.tenantId,
+        entityType: "PAYMENT",
+        entityId: paymentId,
+        action: "VERIFY",
+        actorUserId: user.id,
+        actorName: user.fullName,
+        beforeJson: { status: paymentSnapshot.status },
+        afterJson: {
+          status: updated.status,
+          verifiedAt: updated.verifiedAt,
+          verifiedByUserId: updated.verifiedByUserId,
+        },
+        sourceIp,
+        userAgent,
+      });
+    } catch (auditError) {
+      this.logger.error(
+        `[verifyPayment] ⚠️ No se pudo registrar auditoría: ${auditError instanceof Error ? auditError.message : String(auditError)}`
+      );
+      // No revertir si falla el audit log
+    }
 
-    await this.logAudit({
-      tenantId: payment.invoice.tenantId,
-      entityType: "PAYMENT",
-      entityId: paymentId,
-      action: "VERIFY",
-      actorUserId: user.id,
-      actorName: user.fullName,
-      beforeJson: { status: payment.status },
-      afterJson: {
-        status: updated.status,
-        verifiedAt: updated.verifiedAt,
-        verifiedByUserId: updated.verifiedByUserId,
-      },
-      sourceIp,
-      userAgent,
-    });
-
-    // Envío automático del recibo al cliente
-    if (payment.receipt && payment.invoice?.client?.email) {
+    // 9. Envío automático del recibo al cliente (idempotente)
+    if (paymentSnapshot.receipt && paymentSnapshot.invoice?.client?.email) {
       try {
-        const clientEmail = String(payment.invoice.client.email).trim();
+        const clientEmail = String(paymentSnapshot.invoice.client.email).trim();
         this.logger.log(`[verifyPayment] Enviando recibo automático al cliente: ${clientEmail}`);
-        
+
         await this.approveAndSendReceipt(
           { ...user, role: "ADMIN" }, // Forzar rol ADMIN para permitir el primer envío
-          payment.receipt.id,
+          paymentSnapshot.receipt.id,
           clientEmail,
           undefined,
           sourceIp,
           userAgent,
         );
-        
+
         this.logger.log(`[verifyPayment] ✅ Recibo enviado automáticamente a ${clientEmail}`);
       } catch (emailError) {
         // No revertir la aprobación si falla el email, solo registrar el error
         this.logger.error(
-          `[verifyPayment] ⚠️ No se pudo enviar el recibo automáticamente: ${emailError instanceof Error ? emailError.message : String(emailError)}`,
+          `[verifyPayment] ⚠️ No se pudo enviar el recibo automáticamente: ${emailError instanceof Error ? emailError.message : String(emailError)}`
         );
       }
     } else {
       this.logger.warn(
-        `[verifyPayment] ⚠️ No se pudo enviar recibo: receiptId=${payment.receipt?.id || "N/A"}, clientEmail=${payment.invoice?.client?.email || "N/A"}`,
+        `[verifyPayment] ⚠️ No se pudo enviar recibo: receiptId=${paymentSnapshot.receipt?.id || "N/A"}, clientEmail=${paymentSnapshot.invoice?.client?.email || "N/A"}`
       );
-    }
-
-    // Si el pago aprobado es la reserva inicial, habilitar el contrato para firma
-    if (String(payment.type || "") === "RESERVATION" && payment.invoice?.contractId) {
-      try {
-        const contract = await (this.prisma as any).contract.findUnique({
-          where: { id: payment.invoice.contractId },
-          select: { 
-            id: true, 
-            status: true, 
-            travelPackageId: true, 
-            participantCount: true,
-            tenantId: true 
-          },
-        });
-
-        if (contract && ["PENDING_PAYMENT_RESERVE", "RESERVE_IN_REVIEW"].includes(String(contract.status || ""))) {
-          await (this.prisma as any).contract.update({
-            where: { id: contract.id },
-            data: { status: "PENDING_SIGNATURE" },
-          });
-          this.logger.log(`[verifyPayment] ✅ Contrato ${contract.id} habilitado para firma tras pago de reserva aprobado.`);
-
-          // Incrementar occupiedSlots del paquete de viaje
-          if (contract.travelPackageId) {
-            try {
-              await this.travelPackagesService.incrementOccupiedSlots(
-                contract.travelPackageId,
-                contract.participantCount || 1,
-                contract.tenantId,
-              );
-              this.logger.log(
-                `[verifyPayment] ✅ Incrementados ${contract.participantCount || 1} cupos en paquete ${contract.travelPackageId}`
-              );
-            } catch (incrementError) {
-              this.logger.error(
-                `[verifyPayment] ⚠️ No se pudo incrementar occupiedSlots: ${incrementError instanceof Error ? incrementError.message : String(incrementError)}`
-              );
-              // No revertir la aprobación si falla el incremento
-            }
-          }
-        }
-      } catch (contractUpdateError) {
-        this.logger.error(
-          `[verifyPayment] ⚠️ No se pudo actualizar el status del contrato: ${contractUpdateError instanceof Error ? contractUpdateError.message : String(contractUpdateError)}`,
-        );
-      }
-    }
-
-    // Si el pago es para un viaje interno, incrementar occupiedSlots cuando se pague completamente
-    if (String(payment.type || "") === "INTERNAL_TOUR" && payment.internalTourBookingId) {
-      try {
-        const booking = await (this.prisma as any).internalTourBooking.findUnique({
-          where: { id: payment.internalTourBookingId },
-          select: {
-            id: true,
-            internalTripId: true,
-            participantCount: true,
-            totalAmount: true,
-            paidAmount: true,
-            status: true,
-            tenantId: true,
-          },
-        });
-
-        if (booking) {
-          // Recalcular monto pagado sumando este pago recién aprobado
-          const newPaidAmount = this.toNumber(booking.paidAmount) + this.toNumber(payment.amount);
-          const totalAmount = this.toNumber(booking.totalAmount);
-
-          // Si ahora está completamente pagado y antes no lo estaba, incrementar occupiedSlots
-          if (newPaidAmount >= totalAmount && booking.status !== 'PAID') {
-            await this.internalToursService.incrementOccupiedSlots(
-              booking.internalTripId,
-              booking.participantCount || 1,
-              booking.tenantId,
-            );
-            this.logger.log(
-              `[verifyPayment] ✅ Incrementados ${booking.participantCount || 1} cupos en viaje interno ${booking.internalTripId}`
-            );
-          }
-        }
-      } catch (internalTripError) {
-        this.logger.error(
-          `[verifyPayment] ⚠️ No se pudo incrementar occupiedSlots del viaje interno: ${internalTripError instanceof Error ? internalTripError.message : String(internalTripError)}`
-        );
-        // No revertir la aprobación si falla el incremento
-      }
     }
 
     return { ok: true, paymentId: updated.id, status: updated.status };

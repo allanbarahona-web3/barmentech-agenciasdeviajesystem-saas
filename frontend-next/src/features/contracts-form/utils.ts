@@ -101,6 +101,7 @@ export const createInitialFormState = (agent?: { fullName?: string; email?: stri
     contractNumber: "",
     issuedAt: today,
     destination: "",
+    travelPackageId: null,
     startDate: today,
     endDate: today,
     accommodationType: "Doble",

@@ -1246,6 +1246,15 @@ export class ContractsService {
     // Obtener travelPackageId si viene del payload (contratos desde paquetes programados)
     const travelPackageId = String(payloadRecord.travelPackageId || "").trim() || null;
 
+    // ✅ VALIDACIÓN DE CAPACIDAD (Capa 2 - Backend)
+    // Valida ANTES de crear el contrato para evitar reservas imposibles
+    await this.billingService.validateTripCapacity(
+      travelPackageId,
+      isInternalTrip ? (dto.internalTripId || null) : null,
+      participantCount,
+      'archiveContract'
+    );
+
     const uploadedDocuments: Array<{
       kind?: string;
       originalFileName: string;
