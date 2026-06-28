@@ -34,6 +34,9 @@ const isNavGroup = (item: NavElement): item is NavGroup => 'items' in item;
 export function VerticalNav() {
   const router = useRouter();
   const pathname = usePathname();
+  const isPublicPage =
+  pathname.startsWith("/sign-contract") ||
+  pathname.startsWith("/reset-password");
   const [showCalculator, setShowCalculator] = useState(false);
   const [showSupportModal, setShowSupportModal] = useState(false);
   const [pendingCounts, setPendingCounts] = useState<PendingCounts>({ pendingReceipts: 0, pendingCreditNotes: 0, contractsPendingSignature: 0 });
@@ -106,9 +109,14 @@ export function VerticalNav() {
     return null;
   }
 
-  if (!token || !session?.user?.id || pathname === "/") {
-    return null;
-  }
+  if (
+  isPublicPage ||
+  !token ||
+  !session?.user?.id ||
+  pathname === "/"
+) {
+  return null;
+}
 
   const role = String(session.user.role || "AGENT").toUpperCase();
   

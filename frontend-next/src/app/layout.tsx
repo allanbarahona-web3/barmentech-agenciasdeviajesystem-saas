@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import Script from "next/script";
 import { VerticalNav } from "@/components/vertical-nav";
 import { TenantBrowserMetadata } from "@/components/tenant-browser-metadata";
 import "./globals.css";
@@ -35,7 +34,7 @@ export default function RootLayout({
         suppressHydrationWarning
         style={{ background: '#f5f5f7' }}
       >
-        <Script src="/config.js" strategy="afterInteractive" />
+        
         <TenantBrowserMetadata />
         <VerticalNav />
         {children}
