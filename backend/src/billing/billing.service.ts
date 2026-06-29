@@ -4251,16 +4251,38 @@ export class BillingService {
 
           // 6b. Incrementar occupiedSlots del paquete de viaje internacional
           if (contract.travelPackageId) {
-            await tx.travelPackage.update({
-              where: { id: contract.travelPackageId },
-              data: {
-                occupiedSlots: { increment: participantCount },
-              },
-            });
 
-            this.logger.log(
-              `[verifyPayment] ✅ Incrementados ${participantCount} cupos en paquete ${contract.travelPackageId}`
-            );
+            const travelPackage = await tx.travelPackage.update({
+  where: { id: contract.travelPackageId },
+  data: {
+    occupiedSlots: { increment: participantCount },
+  },
+  select: {
+    occupiedSlots: true,
+    capacity: true,
+    status: true,
+  },
+});
+
+if (
+  travelPackage.occupiedSlots >= travelPackage.capacity &&
+  travelPackage.status !== "CLOSED"
+) {
+  await tx.travelPackage.update({
+    where: { id: contract.travelPackageId },
+    data: {
+      status: "CLOSED",
+    },
+  });
+
+  this.logger.log(
+    `[verifyPayment] 🔒 Paquete ${contract.travelPackageId} cerrado automáticamente por capacidad completa.`
+  );
+}
+
+this.logger.log(
+  `[verifyPayment] ✅ Incrementados ${participantCount} cupos en paquete ${contract.travelPackageId}`
+);
           }
 
           // 6c. Incrementar occupiedSlots del viaje interno
