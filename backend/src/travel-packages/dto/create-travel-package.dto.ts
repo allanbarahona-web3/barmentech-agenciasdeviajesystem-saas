@@ -35,6 +35,12 @@ export class CreateTravelPackageDto {
   status?: string = 'OPEN';
 
   @IsOptional()
+  @IsEnum(['INTERNATIONAL', 'MIGRATION'], {
+    message: 'travelType must be INTERNATIONAL or MIGRATION',
+  })
+  travelType?: string = 'INTERNATIONAL';
+
+  @IsOptional()
   @IsNumber()
   @Min(0)
   minReservation?: number; // Monto de reserva mínima (opcional)

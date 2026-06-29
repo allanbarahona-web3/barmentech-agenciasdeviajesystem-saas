@@ -13,7 +13,7 @@ import { PageLoader } from '@/components/loading-spinner';
 function CreateTripContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const tripType = searchParams.get('type') as 'internal' | 'external' | null;
+  const tripType = searchParams.get('type') as 'internal' | 'external' | 'migration' | null;
 
   const [mounted, setMounted] = useState(false);
 
@@ -67,7 +67,7 @@ function CreateTripContent() {
             </p>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 20 }}>
             {/* Viaje Externo */}
             <button
               onClick={() => router.push('/admin/trips/new?type=external')}
@@ -131,6 +131,38 @@ function CreateTripContent() {
                 Tours nacionales y viajes domésticos
               </p>
             </button>
+
+            {/* Viaje de Migración */}
+            <button
+              onClick={() => router.push('/admin/trips/new?type=migration')}
+              style={{
+                border: '2px solid #e5e7eb',
+                borderRadius: 12,
+                padding: 30,
+                background: '#fff',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                textAlign: 'center',
+              }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLButtonElement).style.borderColor = '#3b82f6';
+                (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 10px 25px rgba(59, 130, 246, 0.1)';
+                (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-2px)';
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLButtonElement).style.borderColor = '#e5e7eb';
+                (e.currentTarget as HTMLButtonElement).style.boxShadow = 'none';
+                (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(0)';
+              }}
+            >
+              <div style={{ fontSize: 48, marginBottom: 12 }}>🛂</div>
+              <h2 style={{ fontSize: 20, fontWeight: 700, color: '#111827', margin: '0 0 8px 0' }}>
+                Viaje de Migración
+              </h2>
+              <p style={{ color: '#6b7280', fontSize: 14, margin: 0 }}>
+                Gestión de contratos migratorios
+              </p>
+            </button>
           </div>
         </div>
       </main>
@@ -158,6 +190,19 @@ function CreateTripContent() {
           await createTravelPackage(data);
         }}
         redirectUrl="/admin/travel-packages"
+      />
+    );
+  }
+
+  if (tripType === 'migration') {
+    return (
+      <CreateTripModal
+        title="Crear Viaje de Migración"
+        tripType="migration"
+        onSubmit={async (data) => {
+          await createTravelPackage({ ...data, travelType: 'MIGRATION' });
+        }}
+        redirectUrl="/admin/migration-trips"
       />
     );
   }

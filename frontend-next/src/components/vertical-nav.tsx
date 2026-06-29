@@ -296,6 +296,12 @@ export function VerticalNav() {
                 icon: "🚌",
                 adminOnly: true,
               },
+              {
+                href: "/admin/migration-trips",
+                label: "Viajes de Migración",
+                icon: "🛂",
+                adminOnly: true,
+              },
             ],
           } as NavGroup,
         ]

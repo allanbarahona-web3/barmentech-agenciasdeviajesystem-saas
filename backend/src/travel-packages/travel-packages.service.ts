@@ -4,7 +4,7 @@ import {
   NotFoundException,
   Logger,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, TravelPackageType } from '@prisma/client';
 import { randomBytes } from 'crypto';
 import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../prisma/prisma.service';
@@ -78,6 +78,7 @@ export class TravelPackagesService {
             status: dto.status || 'OPEN',
             packagePrice: dto.packagePrice,
             priceCurrency: dto.priceCurrency || 'USD',
+            travelType: (dto.travelType || 'INTERNATIONAL') as TravelPackageType,
             minReservation: dto.minReservation ? new Decimal(String(dto.minReservation)) : null,
             createdByUserId,
             tenantId,
@@ -113,9 +114,12 @@ export class TravelPackagesService {
     return travelPackage;
   }
 
-  async findAll(tenantId: string) {
+  async findAll(tenantId: string, travelType?: string) {
     const packages = await this.prisma.travelPackage.findMany({
-      where: { tenantId }, // 🔒 SEGURIDAD: Filtrar por tenant
+      where: { 
+        tenantId, // 🔒 SEGURIDAD: Filtrar por tenant
+        ...(travelType && { travelType: travelType as TravelPackageType }), // Filtrar por travelType si se proporciona
+      },
       orderBy: { departureDate: 'asc' },
     });
 
@@ -136,11 +140,12 @@ export class TravelPackagesService {
     return packages;
   }
 
-  async findAvailable(tenantId: string) {
+  async findAvailable(tenantId: string, travelType?: string) {
     return await this.prisma.travelPackage.findMany({
       where: {
         tenantId, // 🔒 SEGURIDAD: Filtrar por tenant
         status: 'OPEN',
+        ...(travelType && { travelType: travelType as TravelPackageType }), // Filtrar por travelType si se proporciona
       },
       orderBy: { departureDate: 'asc' },
     });
@@ -227,6 +232,7 @@ export class TravelPackagesService {
         ...(dto.packagePrice !== undefined && { packagePrice: dto.packagePrice }),
         ...(dto.priceCurrency && { priceCurrency: dto.priceCurrency }),
         ...(dto.minReservation !== undefined && { minReservation: dto.minReservation ? new Decimal(String(dto.minReservation)) : null }),
+        ...(dto.travelType && { travelType: dto.travelType as TravelPackageType }),
         ...(newStatus && { status: newStatus }),
       },
     });

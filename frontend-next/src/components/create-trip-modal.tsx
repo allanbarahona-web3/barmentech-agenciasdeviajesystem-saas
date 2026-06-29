@@ -7,7 +7,7 @@ import { LoadingModal } from '@/components/loading-modal';
 
 interface CreateTripModalProps {
   title: string;
-  tripType: 'internal' | 'international';
+  tripType: 'internal' | 'international' | 'migration';
   onSubmit: (data: any) => Promise<void>;
   redirectUrl: string;
 }

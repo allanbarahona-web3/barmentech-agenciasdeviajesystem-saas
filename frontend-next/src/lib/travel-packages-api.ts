@@ -11,6 +11,7 @@ export type TravelPackage = {
   capacity: number;
   occupiedSlots: number;
   status: "OPEN" | "CLOSED" | "CANCELLED" | "COMPLETED";
+  travelType: "INTERNATIONAL" | "MIGRATION";
   packagePrice: number | string | null; // Decimal comes as string from API
   minReservation?: number | string | null; // Monto de reserva mínima
   priceCurrency: string;
@@ -28,6 +29,7 @@ export type CreateTravelPackageInput = {
   packagePrice?: number;
   minReservation?: number;
   priceCurrency?: "USD" | "CRC";
+  travelType?: "INTERNATIONAL" | "MIGRATION";
   status?: "OPEN" | "CLOSED" | "CANCELLED" | "COMPLETED";
 };
 
@@ -35,15 +37,21 @@ export type UpdateTravelPackageInput = Partial<CreateTravelPackageInput>;
 
 /**
  * Obtener todos los viajes (ADMIN)
+ * @param travelType - Filtrar por tipo de viaje (opcional)
  */
-export const getAllTravelPackages = async (): Promise<TravelPackage[]> => {
+export const getAllTravelPackages = async (travelType?: "INTERNATIONAL" | "MIGRATION"): Promise<TravelPackage[]> => {
   const token = getStoredToken();
   if (!token) throw new Error("No autenticado");
 
   const apiBase = resolveApiBase();
   if (!apiBase) throw new Error("No hay API configurada");
 
-  const response = await authenticatedFetch(`${apiBase}/travel-packages`, {
+  const url = new URL(`${apiBase}/travel-packages`);
+  if (travelType) {
+    url.searchParams.append("travelType", travelType);
+  }
+
+  const response = await authenticatedFetch(url.toString(), {
     method: "GET",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -60,15 +68,21 @@ export const getAllTravelPackages = async (): Promise<TravelPackage[]> => {
 
 /**
  * Obtener viajes disponibles (AGENT, OPERATIONS)
+ * @param travelType - Filtrar por tipo de viaje (opcional)
  */
-export const getAvailableTravelPackages = async (): Promise<TravelPackage[]> => {
+export const getAvailableTravelPackages = async (travelType?: "INTERNATIONAL" | "MIGRATION"): Promise<TravelPackage[]> => {
   const token = getStoredToken();
   if (!token) throw new Error("No autenticado");
 
   const apiBase = resolveApiBase();
   if (!apiBase) throw new Error("No hay API configurada");
 
-  const response = await authenticatedFetch(`${apiBase}/travel-packages/available`, {
+  const url = new URL(`${apiBase}/travel-packages/available`);
+  if (travelType) {
+    url.searchParams.append("travelType", travelType);
+  }
+
+  const response = await authenticatedFetch(url.toString(), {
     method: "GET",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -153,6 +167,7 @@ export const createTravelPackage = async (data: CreateTravelPackageInput): Promi
     ...(data.packagePrice !== undefined && { packagePrice: data.packagePrice }),
     ...(data.minReservation !== undefined && { minReservation: data.minReservation }),
     ...(data.priceCurrency && { priceCurrency: data.priceCurrency }),
+    ...(data.travelType && { travelType: data.travelType }),
     ...(data.status && { status: data.status }),
   };
 
@@ -193,6 +208,7 @@ export const updateTravelPackage = async (id: string, data: UpdateTravelPackageI
   if (data.packagePrice !== undefined) payload.packagePrice = data.packagePrice;
   if (data.minReservation !== undefined) payload.minReservation = data.minReservation;
   if (data.priceCurrency !== undefined) payload.priceCurrency = data.priceCurrency;
+  if (data.travelType !== undefined) payload.travelType = data.travelType;
   if (data.status !== undefined) payload.status = data.status;
 
   const response = await authenticatedFetch(`${apiBase}/travel-packages/${id}`, {

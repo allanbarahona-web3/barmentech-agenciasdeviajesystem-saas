@@ -43,4 +43,10 @@ export class UpdateTravelPackageDto {
     message: 'status must be OPEN, CLOSED, or CANCELLED',
   })
   status?: string;
+
+  @IsOptional()
+  @IsEnum(['INTERNATIONAL', 'MIGRATION'], {
+    message: 'travelType must be INTERNATIONAL or MIGRATION',
+  })
+  travelType?: string;
 }

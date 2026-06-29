@@ -6,6 +6,7 @@ import {
   Delete,
   Body,
   Param,
+  Query,
   UseGuards,
   Request,
 } from '@nestjs/common';
@@ -30,14 +31,20 @@ export class TravelPackagesController {
 
   @Get()
   @Roles(UserRole.ADMIN, UserRole.AGENT, UserRole.OPERACIONES)
-  findAll(@Request() req: any) {
-    return this.travelPackagesService.findAll(req.user.tenantId);
+  findAll(
+    @Query('travelType') travelType: string | undefined,
+    @Request() req: any,
+  ) {
+    return this.travelPackagesService.findAll(req.user.tenantId, travelType);
   }
 
   @Get('available')
   @Roles(UserRole.AGENT, UserRole.OPERACIONES)
-  findAvailable(@Request() req: any) {
-    return this.travelPackagesService.findAvailable(req.user.tenantId);
+  findAvailable(
+    @Query('travelType') travelType: string | undefined,
+    @Request() req: any,
+  ) {
+    return this.travelPackagesService.findAvailable(req.user.tenantId, travelType);
   }
 
   @Get('code/:packageCode')
