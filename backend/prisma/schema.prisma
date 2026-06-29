@@ -586,6 +586,7 @@ model TravelPackage {
   capacity        Int
   occupiedSlots   Int        @default(0)
   status          String     @default("OPEN")
+  travelType TravelPackageType @default(INTERNATIONAL)
   packagePrice    Decimal?   @db.Decimal(14, 2)
   priceCurrency   String     @default("USD")
   createdByUserId String
@@ -602,6 +603,7 @@ model TravelPackage {
   @@index([createdAt])
   @@index([packageCode])
   @@index([tenantId])
+  @@index([tenantId, travelType])
 }
 
 model Employee {
@@ -913,6 +915,12 @@ enum ContractSource {
   QUOTE
   INTERNAL_TRIP
 }
+
+enum TravelPackageType {
+  INTERNATIONAL
+  MIGRATION
+}
+
 
 enum PayrollFrequency {
   WEEKLY
