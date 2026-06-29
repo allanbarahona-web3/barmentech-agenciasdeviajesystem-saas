@@ -3,9 +3,9 @@
 export const dynamic = 'force-dynamic';
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { getStoredSession, getHomeRouteForRole } from "@/lib/auth-api";
-import { getAllTravelPackages, type TravelPackage } from "@/lib/travel-packages-api";
+import { getAvailableTravelPackages, type TravelPackage } from "@/lib/travel-packages-api";
 import { ConfirmModal } from "@/components/confirm-modal";
 import { PageLoader } from "@/components/loading-spinner";
 
@@ -46,6 +46,8 @@ const getStatusBadge = (status: string) => {
 
 export default function TripsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const travelType = searchParams.get("travelType") as "INTERNATIONAL" | "MIGRATION" | null;
   const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [packages, setPackages] = useState<TravelPackage[]>([]);
@@ -109,12 +111,12 @@ export default function TripsPage() {
 
     loadPackages();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [travelType]);
 
   const loadPackages = async () => {
     try {
       setLoading(true);
-      const data = await getAllTravelPackages();
+      const data = await getAvailableTravelPackages(travelType || undefined);
       setPackages(data);
     } catch (err: unknown) {
       showWarningModal("Error cargando viajes", extractErrorMessage(err, "Error cargando viajes"));
@@ -151,8 +153,14 @@ export default function TripsPage() {
       <div style={{ maxWidth: 1400, margin: "0 auto" }}>
         {/* Header */}
         <div style={{ marginBottom: 30 }}>
-          <h1 style={{ marginBottom: 8, fontSize: "1.8rem", fontWeight: 600 }}>✈️ Viajes Disponibles</h1>
-          <p style={{ color: "#6b7280", margin: 0 }}>Selecciona un viaje para crear un contrato</p>
+          <h1 style={{ marginBottom: 8, fontSize: "1.8rem", fontWeight: 600 }}>
+            {travelType === "MIGRATION" ? "📄 Contratos de Migración" : "✈️ Viajes Internacionales"}
+          </h1>
+          <p style={{ color: "#6b7280", margin: 0 }}>
+            {travelType === "MIGRATION" 
+              ? "Selecciona un paquete de migración para crear el contrato" 
+              : "Selecciona un viaje para crear un contrato"}
+          </p>
         </div>
 
         {/* Grid de tarjetas */}

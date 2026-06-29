@@ -61,14 +61,14 @@ export default function AgentStartPage() {
 
   const handleSelectTrips = () => {
     setShowMenuModal(false);
-    // Redirigir a la página de viajes
-    setTimeout(() => router.push("/trips"), 100);
+    // Redirigir a la página de viajes internacionales
+    setTimeout(() => router.push("/trips?travelType=INTERNATIONAL"), 100);
   };
 
   const handleSelectMigration = () => {
     setShowMenuModal(false);
-    // Redirigir al formulario de contrato en modo migración
-    setTimeout(() => router.push("/contracts?mode=migration"), 100);
+    // Redirigir a la página de paquetes de migración
+    setTimeout(() => router.push("/trips?travelType=MIGRATION"), 100);
   };
 
   const handleSelectInternalTrips = () => {

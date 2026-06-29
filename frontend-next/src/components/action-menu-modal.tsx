@@ -144,9 +144,9 @@ export function ActionMenuModal({ isOpen, onSelectTrips, onSelectMigration, onSe
           >
             <span style={{ fontSize: "2rem" }}>📄</span>
             <div>
-              <div style={{ fontWeight: 700 }}>Migrar Contrato</div>
+              <div style={{ fontWeight: 700 }}>Contratos de Migración</div>
               <div style={{ fontSize: "0.85rem", opacity: 0.9, marginTop: 4 }}>
-                Crear contrato manual sin viaje asociado
+                Ver paquetes de migración programados
               </div>
             </div>
           </button>

@@ -1,0 +1,6 @@
+            id             | packageCode |       name       |   destination    | travelType | status |    departureDate    |     returnDate      | departureDate_date | returnDate_date |        createdAt        |        updatedAt        
+---------------------------+-------------+------------------+------------------+------------+--------+---------------------+---------------------+--------------------+-----------------+-------------------------+-------------------------
+ cmqz9qv7m00054ufkqdgbzulo | TP-YUH526   | Migracion  Admin | Migracion  Admin | MIGRATION  | OPEN   | 2026-07-02 00:00:00 | 2026-07-04 00:00:00 | 2026-07-02         | 2026-07-04      | 2026-06-29 13:43:57.058 | 2026-06-29 13:43:57.058
+ cmqyuv8710005145lgu7zpa7y | TP-PDK3HJ   | Migracioon 1     | asdad            | MIGRATION  | OPEN   | 2026-07-17 00:00:00 | 2026-08-06 00:00:00 | 2026-07-17         | 2026-08-06      | 2026-06-29 06:47:26.27  | 2026-06-29 13:48:46.104
+(2 rows)
+

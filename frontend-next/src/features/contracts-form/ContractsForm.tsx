@@ -8,7 +8,7 @@ import {
 } from "@/lib/contracts-api";
 import { bootstrapBillingContract } from "@/lib/billing-api";
 import { getTenantLegalConfig, getTenantConfig, type TenantLegalConfig } from "@/lib/auth-api";
-import { getTravelPackageById } from "@/lib/travel-packages-api";
+import { getTravelPackageById, type TravelPackage } from "@/lib/travel-packages-api";
 import { getInternalTripById } from "@/lib/internal-trips-api";
 import { getAllBankAccounts } from "@/lib/bank-accounts-api";
 import { buildContractPdfHtml, type TenantLegalInfo, type BankAccountForContract } from "@/features/contracts-form/pdf-template";
@@ -23,6 +23,7 @@ import {
   getDateRangeValidityMessage,
   getItineraryValidityMessage,
   getTodayIsoLocal,
+  toLocalDateIso,
   normalizeMoneyInputValue,
   removeCompanion,
   removeCustomItineraryItem,
@@ -94,6 +95,7 @@ export function ContractsForm({ agent = null, initialDraftId = null, initialTrav
   const [state, setState] = useState(() => createInitialFormState(agent || undefined));
   const [status, setStatus] = useState("Listo para iniciar migracion del formulario.");
   const [internalTripMeta, setInternalTripMeta] = useState<{ tripCode: string; name: string } | null>(null);
+  const [loadedTravelPackage, setLoadedTravelPackage] = useState<TravelPackage | null>(null);
   const [busyNumber, setBusyNumber] = useState(false);
   const [savingDraft, setSavingDraft] = useState(false);
   const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
@@ -135,12 +137,13 @@ export function ContractsForm({ agent = null, initialDraftId = null, initialTrav
   const todayIso = useMemo(() => getTodayIsoLocal(), []);
 
   // Determinar si los campos de viaje deben estar bloqueados
-  // Solo están desbloqueados en modo "migration"
-  // Si viene con travelPackageId, los campos de viaje están bloqueados
-  const isMigrationMode = mode === "migration";
+  // Solo están desbloqueados en modo "migration" manual (sin paquete asociado)
+  // Si viene con travelPackageId, SOLO se bloquean: Destino, Fecha inicio, Fecha fin
+  const isMigrationMode = mode === "migration" || loadedTravelPackage?.travelType === "MIGRATION";
   const hasSelectedPackage = Boolean(initialTravelPackageId);
   const isInternalTrip = Boolean(initialInternalTripId);  // ← NUEVO: Detecta viajes internos
-  const travelFieldsLocked = !isMigrationMode || hasSelectedPackage || isInternalTrip;
+  // SOLO bloquear campos clave del paquete (destino y fechas), resto editable
+  const packageFieldsLocked = hasSelectedPackage || isInternalTrip;
 
   const rangeMessage = useMemo(() => getDateRangeValidityMessage(state), [state]);
   const itineraryMessage = useMemo(() => getItineraryValidityMessage(state), [state]);
@@ -751,6 +754,9 @@ console.log("====================================");
 
     void getTravelPackageById(packageId)
       .then((travelPackage) => {
+        // Almacenar el paquete cargado para detectar el tipo
+        setLoadedTravelPackage(travelPackage);
+        
         // Pre-llenar el formulario con los datos del paquete
         setState((prev) => {
           const price = travelPackage.packagePrice
@@ -759,15 +765,24 @@ console.log("====================================");
                 : travelPackage.packagePrice.toFixed(2))
             : "";
 
+          const reservationPrice = travelPackage.minReservation !== null && travelPackage.minReservation !== undefined
+            ? String(
+                typeof travelPackage.minReservation === "string"
+                  ? parseFloat(travelPackage.minReservation).toFixed(2)
+                  : travelPackage.minReservation.toFixed(2),
+              )
+            : "";
+
           // Primero sincronizar las fechas del tour para actualizar paymentDueDate
           const withDates = syncTourDates({
             ...prev,
             travelPackageId: packageId,
             destination: travelPackage.destination,
-            startDate: travelPackage.departureDate.split('T')[0],
-            endDate: travelPackage.returnDate.split('T')[0],
+            startDate: toLocalDateIso(travelPackage.departureDate),
+            endDate: toLocalDateIso(travelPackage.returnDate),
             totalAmount: price,
-          }, "start", travelPackage.departureDate.split('T')[0]);
+            reservationAmount: reservationPrice,
+          }, "start", toLocalDateIso(travelPackage.departureDate));
 
           // Luego aplicar los cálculos monetarios derivados
           return applyMoneyDerivedValues(withDates);
@@ -819,8 +834,8 @@ console.log("====================================");
               )
             : "";
 
-          const departure = String(trip.departureDate || "").split("T")[0] || prev.startDate;
-          const ret = String(trip.returnDate || "").split("T")[0] || prev.endDate;
+          const departure = toLocalDateIso(trip.departureDate || "") || prev.startDate;
+          const ret = toLocalDateIso(trip.returnDate || "") || prev.endDate;
 
           const withDates = syncTourDates(
             {
@@ -945,8 +960,8 @@ console.log("====================================");
             value={state.destination}
             onChange={(event) => setState((prev) => ({ ...prev, destination: event.target.value }))}
             placeholder="Ej. España"
-            readOnly={travelFieldsLocked}
-            style={travelFieldsLocked ? { backgroundColor: "#f3f4f6", cursor: "not-allowed" } : undefined}
+            readOnly={packageFieldsLocked}
+            style={packageFieldsLocked ? { backgroundColor: "#f3f4f6", cursor: "not-allowed" } : undefined}
           />
         </label>
 
@@ -955,8 +970,6 @@ console.log("====================================");
           <select
             value={state.lodgingType}
             onChange={(event) => setState((prev) => ({ ...prev, lodgingType: event.target.value }))}
-            disabled={travelFieldsLocked}
-            style={travelFieldsLocked ? { backgroundColor: "#f3f4f6", cursor: "not-allowed" } : undefined}
           >
             <option value="N/A">N/A</option>
             <option value="Hotel">Hotel</option>
@@ -970,8 +983,6 @@ console.log("====================================");
           <select
             value={state.accommodationType}
             onChange={(event) => setState((prev) => ({ ...prev, accommodationType: event.target.value }))}
-            disabled={travelFieldsLocked}
-            style={travelFieldsLocked ? { backgroundColor: "#f3f4f6", cursor: "not-allowed" } : undefined}
           >
             <option value="N/A">N/A</option>
             <option value="Sencilla">Sencilla</option>
@@ -992,8 +1003,8 @@ console.log("====================================");
               const safe = selected && selected < todayIso ? todayIso : selected;
               setState((prev) => applyMoneyDerivedValues(syncTourDates(prev, "start", safe)));
             }}
-            disabled={travelFieldsLocked}
-            style={travelFieldsLocked ? { backgroundColor: "#f3f4f6", cursor: "not-allowed" } : undefined}
+            readOnly={packageFieldsLocked}
+            style={packageFieldsLocked ? { backgroundColor: "#f3f4f6", cursor: "not-allowed" } : undefined}
           />
         </label>
 
@@ -1006,8 +1017,8 @@ console.log("====================================");
             onChange={(event) =>
               setState((prev) => applyMoneyDerivedValues(syncTourDates(prev, "end", event.target.value)))
             }
-            disabled={travelFieldsLocked}
-            style={travelFieldsLocked ? { backgroundColor: "#f3f4f6", cursor: "not-allowed" } : undefined}
+            readOnly={packageFieldsLocked}
+            style={packageFieldsLocked ? { backgroundColor: "#f3f4f6", cursor: "not-allowed" } : undefined}
           />
         </label>
 

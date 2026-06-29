@@ -162,8 +162,8 @@ export function VerticalNav() {
             icon: "📋",
           },
           {
-            href: "/contracts?mode=migration",
-            label: "Migrar Contrato",
+            href: "/trips?travelType=MIGRATION",
+            label: "Contratos de Migración",
             icon: "📄",
           },
         ]
@@ -173,7 +173,7 @@ export function VerticalNav() {
     ...(!isAdminOrContador && !isFacturacionCobros
       ? [
           {
-            href: "/trips",
+            href: "/trips?travelType=INTERNATIONAL",
             label: "Viajes Internacionales",
             icon: "✈️",
           },
