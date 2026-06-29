@@ -19,6 +19,7 @@ import { SendContractEmailDto } from "./dto/send-contract-email.dto";
 import { SendSigningEmailDto } from "./dto/send-signing-email.dto";
 import { SearchContractsDto } from "./dto/search-contracts.dto";
 import { ResolvedTenant } from "../tenant/tenant.service";
+import { getPublicAppBaseUrl } from "../common/utils/tenant-url.util";
 
 const CONTRACT_STATUS_PENDING_PAYMENT_RESERVE = "PENDING_PAYMENT_RESERVE";
 const CONTRACT_STATUS_RESERVE_IN_REVIEW = "RESERVE_IN_REVIEW";
@@ -452,49 +453,7 @@ export class ContractsService {
     return payload.signatureAnchor || null;
   }
 
-  private getPublicAppBaseUrl(tenant?: ResolvedTenant | null) {
-    // PRIMERO: Revisar override explícito (para testing local)
-    const explicit = this.configService.get<string>("PUBLIC_APP_BASE_URL", "").trim();
-    if (explicit) {
-      return explicit.replace(/\/+$/, "");
-    }
 
-    // SEGUNDO: Si hay tenant con subdomain, construir URL específica (producción)
-    const baseDomain = this.configService.get<string>("FRONTEND_BASE_DOMAIN", "").trim();
-    if (tenant?.subdomain && baseDomain) {
-      // Obtener prefijo de ambiente (dev, staging, prod) desde FRONTEND_URL
-      const frontendUrl = this.configService.get<string>("FRONTEND_URL", "").trim();
-      const match = frontendUrl.match(/^https?:\/\/([^.]+)\./);
-      const envPrefix = match ? match[1] : "";
-      
-      // Construir: almanova.dev.viajes.system.barmentech.com
-      if (envPrefix && envPrefix !== tenant.subdomain) {
-        return `https://${tenant.subdomain}.${envPrefix}.${baseDomain}`;
-      }
-      
-      // Sin prefijo: almanova.viajes.system.barmentech.com
-      return `https://${tenant.subdomain}.${baseDomain}`;
-    }
-
-    // TERCERO: Otros fallbacks
-
-    const allowedOrigin = this.configService.get<string>("ALLOWED_ORIGIN", "").trim();
-    const origins = allowedOrigin
-      .split(",")
-      .map((item) => item.trim())
-      .filter((item) => item.startsWith("http://") || item.startsWith("https://"));
-
-    const preferredOrigin =
-      origins.find((item) => item.startsWith("https://") && !/localhost|127\.0\.0\.1/i.test(item)) ||
-      origins.find((item) => !/localhost|127\.0\.0\.1/i.test(item)) ||
-      origins[0];
-
-    if (preferredOrigin) {
-      return preferredOrigin.replace(/\/+$/, "");
-    }
-
-    throw new InternalServerErrorException("No se pudo resolver PUBLIC_APP_BASE_URL para generar links de firma.");
-  }
 
   private async uploadToSpaces(params: {
     objectKey: string;
@@ -970,7 +929,7 @@ export class ContractsService {
 
     const safeTtlMinutes = Math.min(Math.max(Number(ttlMinutes) || 0, 15), 60 * 24 * 7);
     const expiresAt = new Date(Date.now() + safeTtlMinutes * 60 * 1000);
-    const baseUrl = this.getPublicAppBaseUrl(contract.tenant);
+    const baseUrl = getPublicAppBaseUrl(this.configService, contract.tenant);
     const participants = this.getSigningParticipants(contract);
 
     const signingLinks = participants.map((participant) => {

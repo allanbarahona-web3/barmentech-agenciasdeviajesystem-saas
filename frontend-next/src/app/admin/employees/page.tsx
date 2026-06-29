@@ -212,10 +212,23 @@ export default function EmployeesPage() {
     setLoadingModalMessage(modalMode === 'create' ? 'Creando empleado...' : 'Guardando cambios...');
 
     try {
+
       if (modalMode === 'create') {
-        await createEmployee(formData);
-        setLoadingModalState('success');
-        setLoadingModalMessage('✅ Empleado creado exitosamente');
+      const createData: CreateEmployeeDto = {
+        ...formData,
+      };
+
+      if (!createData.terminationDate) {
+       delete createData.terminationDate;
+      }
+
+      await createEmployee(createData);
+
+      setLoadingModalState('success');
+      setLoadingModalMessage('✅ Empleado creado exitosamente');
+
+
+
       } else if (modalMode === 'edit' && selectedEmployee) {
         const updateData: UpdateEmployeeDto = {};
         if (formData.fullName) updateData.fullName = formData.fullName;

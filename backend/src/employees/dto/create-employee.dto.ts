@@ -43,4 +43,8 @@ export class CreateEmployeeDto {
   @IsOptional()
   @IsEnum(EmployeeStatus)
   status?: EmployeeStatus;
+
+  @IsOptional()
+  @IsDateString()
+  terminationDate?: string;
 }

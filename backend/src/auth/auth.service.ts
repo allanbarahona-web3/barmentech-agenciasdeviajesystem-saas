@@ -14,6 +14,7 @@ import { ConfirmPasswordResetDto } from "./dto/confirm-password-reset.dto";
 import { AdminResetPasswordDto } from "./dto/admin-reset-password.dto";
 import { ResolvedTenant } from "../tenant/tenant.service";
 import { UserRole } from "@prisma/client";
+import { getPublicAppBaseUrl } from "../common/utils/tenant-url.util";
 
 type JwtSessionPayload = {
   sub: string;
@@ -795,14 +796,8 @@ export class AuthService {
       throw new InternalServerErrorException("Tenant no encontrado para enviar email de bienvenida.");
     }
 
-    const baseDomain = this.configService.get<string>("FRONTEND_BASE_DOMAIN", "").trim();
-
-    // Construir URL de login del tenant
-    const loginUrl = tenant.customDomain
-      ? `https://${tenant.customDomain}`
-      : tenant.subdomain
-      ? `https://${tenant.subdomain}.${baseDomain}`
-      : baseDomain;
+    // Construir URL de login del tenant usando la utilidad compartida
+    const loginUrl = getPublicAppBaseUrl(this.configService, tenant);
 
     // Mapear rol a español
     const roleLabels: Record<string, string> = {
@@ -849,8 +844,9 @@ export class AuthService {
       throw new InternalServerErrorException("Tenant no encontrado para enviar email de reset de contraseña.");
     }
 
-    const frontendUrl = this.configService.get<string>("FRONTEND_URL", "").trim();
-    const resetLink = `${frontendUrl}/reset-password?token=${token}`;
+    // Construir URL de reset usando la utilidad compartida
+    const baseUrl = getPublicAppBaseUrl(this.configService, tenant);
+    const resetLink = `${baseUrl}/reset-password?token=${token}`;
     const expirationMinutes = 5; // Tokens expiran en 5 minutos
 
     // Enviar email usando el servicio centralizado
