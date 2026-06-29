@@ -4287,16 +4287,38 @@ this.logger.log(
 
           // 6c. Incrementar occupiedSlots del viaje interno
           if (contract.internalTripId) {
-            await tx.internalTrip.update({
-              where: { id: contract.internalTripId },
-              data: {
-                occupiedSlots: { increment: participantCount },
-              },
-            });
 
-            this.logger.log(
-              `[verifyPayment] ✅ Incrementados ${participantCount} cupos en viaje interno ${contract.internalTripId}`
-            );
+            const internalTrip = await tx.internalTrip.update({
+  where: { id: contract.internalTripId },
+  data: {
+    occupiedSlots: { increment: participantCount },
+  },
+  select: {
+    occupiedSlots: true,
+    capacity: true,
+    status: true,
+  },
+});
+
+if (
+  internalTrip.occupiedSlots >= internalTrip.capacity &&
+  internalTrip.status !== "CLOSED"
+) {
+  await tx.internalTrip.update({
+    where: { id: contract.internalTripId },
+    data: {
+      status: "CLOSED",
+    },
+  });
+
+  this.logger.log(
+    `[verifyPayment] 🔒 Viaje interno ${contract.internalTripId} cerrado automáticamente por capacidad completa.`
+  );
+}
+
+this.logger.log(
+  `[verifyPayment] ✅ Incrementados ${participantCount} cupos en viaje interno ${contract.internalTripId}`
+);
           }
         }
 
@@ -4345,16 +4367,37 @@ this.logger.log(
               }
 
               // Incrementar occupiedSlots
-              await tx.internalTrip.update({
-                where: { id: booking.internalTripId },
-                data: {
-                  occupiedSlots: { increment: participantCount },
-                },
-              });
+              const internalTripUpdated = await tx.internalTrip.update({
+  where: { id: booking.internalTripId },
+  data: {
+    occupiedSlots: { increment: participantCount },
+  },
+  select: {
+    occupiedSlots: true,
+    capacity: true,
+    status: true,
+  },
+});
 
-              this.logger.log(
-                `[verifyPayment] ✅ Incrementados ${participantCount} cupos en viaje interno ${booking.internalTripId} (booking completamente pagado)`
-              );
+if (
+  internalTripUpdated.occupiedSlots >= internalTripUpdated.capacity &&
+  internalTripUpdated.status !== "CLOSED"
+) {
+  await tx.internalTrip.update({
+    where: { id: booking.internalTripId },
+    data: {
+      status: "CLOSED",
+    },
+  });
+
+  this.logger.log(
+    `[verifyPayment] 🔒 Viaje interno ${booking.internalTripId} cerrado automáticamente por capacidad completa.`
+  );
+}
+
+this.logger.log(
+  `[verifyPayment] ✅ Incrementados ${participantCount} cupos en viaje interno ${booking.internalTripId} (booking completamente pagado)`
+);
             }
           }
         }
