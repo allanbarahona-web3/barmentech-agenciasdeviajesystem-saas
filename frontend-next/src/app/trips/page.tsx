@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getStoredSession, getHomeRouteForRole } from "@/lib/auth-api";
 import { getAvailableTravelPackages, type TravelPackage } from "@/lib/travel-packages-api";
@@ -44,7 +44,7 @@ const getStatusBadge = (status: string) => {
   }
 };
 
-export default function TripsPage() {
+function TripsPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const travelType = searchParams.get("travelType") as "INTERNATIONAL" | "MIGRATION" | null;
@@ -354,5 +354,13 @@ export default function TripsPage() {
       </div>
     </main>
     </>
+  );
+}
+
+export default function TripsPage() {
+  return (
+    <Suspense fallback={<PageLoader />}>
+      <TripsPageContent />
+    </Suspense>
   );
 }
