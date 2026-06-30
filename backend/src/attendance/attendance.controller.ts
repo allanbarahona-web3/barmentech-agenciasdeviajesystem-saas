@@ -5,6 +5,11 @@ import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { AttendanceService } from './attendance.service';
 import {
+  ATTENDANCE_OPERATIONAL_ROLES,
+  ATTENDANCE_ADMIN_ROLES,
+  ATTENDANCE_ALL_ROLES,
+} from './constants/attendance-roles.constant';
+import {
   AdminSummaryQueryDto,
   CheckInDto,
   ConfigAttendanceDto,
@@ -29,37 +34,37 @@ export class AttendanceController {
   constructor(private readonly attendanceService: AttendanceService) {}
 
   @Post('check-in')
-  @Roles('AGENT', 'OPERACIONES', 'VENTAS')
+  @Roles(...ATTENDANCE_OPERATIONAL_ROLES)
   async checkIn(@Req() req: RequestWithUser, @Body() dto: CheckInDto) {
     return this.attendanceService.checkIn(req.user, dto);
   }
 
   @Post('check-out')
-  @Roles('AGENT', 'OPERACIONES', 'VENTAS')
+  @Roles(...ATTENDANCE_OPERATIONAL_ROLES)
   async checkOut(@Req() req: RequestWithUser) {
     return this.attendanceService.checkIn(req.user, { state: 'OFF' });
   }
 
   @Get('status')
-  @Roles('AGENT', 'OPERACIONES', 'VENTAS')
+  @Roles(...ATTENDANCE_OPERATIONAL_ROLES)
   async status(@Req() req: RequestWithUser) {
     return this.attendanceService.getStatus(req.user);
   }
 
   @Get('today')
-  @Roles('AGENT', 'OPERACIONES', 'VENTAS')
+  @Roles(...ATTENDANCE_OPERATIONAL_ROLES)
   async today(@Req() req: RequestWithUser) {
     return this.attendanceService.getToday(req.user);
   }
 
   @Get('my-summary')
-  @Roles('AGENT', 'OPERACIONES', 'VENTAS')
+  @Roles(...ATTENDANCE_OPERATIONAL_ROLES)
   async mySummary(@Req() req: RequestWithUser, @Query() query: PeriodFilterDto) {
     return this.attendanceService.getMySummary(req.user, query);
   }
 
   @Get('my-entries')
-@Roles('AGENT', 'OPERACIONES', 'VENTAS')
+@Roles(...ATTENDANCE_OPERATIONAL_ROLES)
 async myEntries(
   @Req() req: RequestWithUser,
   @Query() query: PeriodFilterDto,
@@ -68,19 +73,19 @@ async myEntries(
 }
 
   @Get('admin/entries')
-  @Roles('ADMIN', 'SUPER_ADMIN')
+  @Roles(...ATTENDANCE_ADMIN_ROLES)
   async adminEntries(@Req() req: RequestWithUser, @Query() query: FilterEntriesDto) {
     return this.attendanceService.getAdminEntries(req.user, query);
   }
 
   @Get('admin/config')
-  @Roles('ADMIN', 'SUPER_ADMIN')
+  @Roles(...ATTENDANCE_ADMIN_ROLES)
   async adminConfig(@Req() req: RequestWithUser, @Query('tenantId') tenantId?: string) {
     return this.attendanceService.getAdminConfig(req.user, tenantId);
   }
 
   @Patch('admin/config')
-  @Roles('ADMIN', 'SUPER_ADMIN')
+  @Roles(...ATTENDANCE_ADMIN_ROLES)
   async updateAdminConfig(
     @Req() req: RequestWithUser,
     @Body() dto: ConfigAttendanceDto,
@@ -90,13 +95,13 @@ async myEntries(
   }
 
   @Get('admin/summaries')
-  @Roles('ADMIN', 'SUPER_ADMIN')
+  @Roles(...ATTENDANCE_ADMIN_ROLES)
   async adminSummaries(@Req() req: RequestWithUser, @Query() query: AdminSummaryQueryDto) {
     return this.attendanceService.getAdminSummaries(req.user, query);
   }
 
   @Patch('admin/corrections/:entryId')
-  @Roles('ADMIN', 'SUPER_ADMIN')
+  @Roles(...ATTENDANCE_ADMIN_ROLES)
   async correctEntry(
     @Req() req: RequestWithUser,
     @Param('entryId') entryId: string,
@@ -106,7 +111,7 @@ async myEntries(
   }
 
   @Get(':entryId/corrections')
-  @Roles('AGENT', 'OPERACIONES', 'VENTAS', 'ADMIN', 'SUPER_ADMIN')
+  @Roles(...ATTENDANCE_ALL_ROLES)
   async getEntryCorrections(
     @Req() req: RequestWithUser,
     @Param('entryId') entryId: string,

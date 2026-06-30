@@ -5,6 +5,7 @@ export const dynamic = 'force-dynamic';
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getStoredSession } from "@/lib/auth-api";
+import { usesAttendance } from "@/lib/attendance-permissions";
 import { attendanceCheckIn } from "@/lib/attendance-api";
 import { ShiftModal } from "@/components/shift-modal";
 import { ActionMenuModal } from "@/components/action-menu-modal";
@@ -28,8 +29,8 @@ export default function AgentStartPage() {
     }
 
     const role = String(session.user.role || "").toUpperCase();
-    // Solo agentes deberían ver esta página
-    if (!["AGENT", "AGENTE", "OPERATIONS", "OPERACIONES", "VENTAS"].includes(role)) {
+    // Solo roles operacionales de attendance deberían ver esta página
+    if (!usesAttendance(role)) {
       router.replace("/contracts");
       return;
     }
@@ -50,8 +51,17 @@ export default function AgentStartPage() {
 
       setShowShiftModal(false);
 
-           // Pequeño delay para transición suave
-      setTimeout(() => setShowMenuModal(true), 200);
+      // Check user role to determine next action
+      const session = getStoredSession();
+      const role = String(session?.user?.role || "").toUpperCase();
+
+      if (role === "FACTURACION_COBROS") {
+        // For billing/finance role, redirect directly to billing area
+        setTimeout(() => router.push("/billing"), 200);
+      } else {
+        // For commercial/operational roles (AGENT, OPERACIONES, VENTAS), show action menu
+        setTimeout(() => setShowMenuModal(true), 200);
+      }
     } catch (error) {
       setShiftError(error instanceof Error ? error.message : "No se pudo iniciar el shift.");
     } finally {

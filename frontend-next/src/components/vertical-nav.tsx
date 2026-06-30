@@ -2,6 +2,7 @@
 
 import { clearStoredToken, getStoredSession, getStoredToken, logout } from "@/lib/auth-api";
 import { getAttendanceStatus } from "@/lib/attendance-api";
+import { usesAttendance } from "@/lib/attendance-permissions";
 import { getPendingApprovalsCount, type PendingCounts } from "@/lib/billing-api";
 import { getCurrentExchangeRate, type ExchangeRate } from "@/lib/exchange-rate-api";
 import Link from "next/link";
@@ -127,12 +128,13 @@ export function VerticalNav() {
 
   const isAdmin = role === "ADMIN";
   const isContador = role === "CONTADOR";
-  const isFacturacionCobros = role === "FACTURACION_COBROS";
-  const isVentas = role === "VENTAS";
-  const isOperaciones = role === "OPERACIONES";
-  const isAgent = role === "AGENT";
   const isAdminOrContador = isAdmin || isContador;
-  const needsAttendanceWidget = isAgent || isOperaciones || isVentas;
+  
+  // Attendance functionality - determines who uses the Attendance system
+  const needsAttendanceWidget = usesAttendance(role);
+  
+  // Business module access - separate from Attendance participation
+  const hasOperationalAccess = ["AGENT", "OPERACIONES", "VENTAS"].includes(role);
 
   const isActive = (href: string) => {
     if (href === "/") return pathname === "/";
@@ -141,7 +143,7 @@ export function VerticalNav() {
   };
 
   const navElements: NavElement[] = [
-    // Dashboard para Admin/Contador (NO Facturacion)
+    // Dashboard para Admin/Contador (NO roles operacionales)
     ...(isAdminOrContador
       ? [
           {
@@ -153,14 +155,20 @@ export function VerticalNav() {
         ]
       : []),
     
-    // Migrar Contrato para Agentes
-    ...(!isAdminOrContador && !isFacturacionCobros
+    // My Timesheet - para roles que usan Attendance
+    ...(needsAttendanceWidget
       ? [
           {
             href: "/my-timesheet",
             label: "Mi Timesheet",
             icon: "📋",
           },
+        ]
+      : []),
+    
+    // Contratos de Migración - solo para roles operacionales (AGENT, OPERACIONES, VENTAS)
+    ...(hasOperationalAccess
+      ? [
           {
             href: "/trips?travelType=MIGRATION",
             label: "Contratos de Migración",
@@ -169,8 +177,8 @@ export function VerticalNav() {
         ]
       : []),
     
-    // Viajes Internacionales para Agentes/Ventas/Operaciones
-    ...(!isAdminOrContador && !isFacturacionCobros
+    // Viajes - solo para roles operacionales (AGENT, OPERACIONES, VENTAS)
+    ...(hasOperationalAccess
       ? [
           {
             href: "/trips?travelType=INTERNATIONAL",
@@ -186,7 +194,7 @@ export function VerticalNav() {
       : []),
     
     // 💰 Menú Finanzas (Admin/Contador/Facturacion)
-    ...(isAdminOrContador || isFacturacionCobros
+    ...(isAdminOrContador || role === "FACTURACION_COBROS"
       ? [
           {
             label: "Finanzas",
@@ -253,7 +261,7 @@ export function VerticalNav() {
       : []),
     
     // Tipo de Cambio (Admin/Contador/Facturacion)
-    ...(isAdmin || isContador || isFacturacionCobros
+    ...(isAdmin || isContador || role === "FACTURACION_COBROS"
       ? [
           {
             href: "/admin/exchange-rate",
@@ -353,7 +361,7 @@ export function VerticalNav() {
       : []),
     
     // Historial (todos EXCEPTO Facturacion) — badge de "listos para firmar" SOLO para agentes
-    ...(!isFacturacionCobros
+    ...(role !== "FACTURACION_COBROS"
       ? [
           {
             href: "/history",
@@ -538,12 +546,8 @@ export function VerticalNav() {
 
               try {
 
-                const requiresAttendance = ![
-                  "ADMIN",
-                  "CONTADOR",
-                ].includes(role);
-
-                if (requiresAttendance) {
+                // Attendance validation - roles that participate in attendance must mark OFF
+                if (needsAttendanceWidget) {
                   const attendance = await getAttendanceStatus();
 
                 if (

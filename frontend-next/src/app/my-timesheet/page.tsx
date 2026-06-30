@@ -5,6 +5,7 @@ export const dynamic = 'force-dynamic';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getStoredSession } from '@/lib/auth-api';
+import { canViewTimesheet } from '@/lib/attendance-permissions';
 import { getAttendanceMySummary, getAttendanceMyEntries } from '@/lib/attendance-api';
 import { LoadingModal } from '@/components/loading-modal';
 import { CorrectionsModal } from '@/components/corrections-modal';
@@ -86,7 +87,7 @@ export default function MyTimesheetPage() {
     }
 
     const role = String(session.user.role || '').toUpperCase();
-    if (!['AGENT', 'OPERACIONES', 'VENTAS'].includes(role)) {
+    if (!canViewTimesheet(role)) {
       router.replace('/contracts');
       return;
     }

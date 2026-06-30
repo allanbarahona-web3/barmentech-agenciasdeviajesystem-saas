@@ -14,6 +14,7 @@ import {
   PeriodFilterDto,
 } from './dto';
 import { AttendanceState } from './constants/attendance-state.constant';
+import { ATTENDANCE_OPERATIONAL_ROLES } from './constants/attendance-roles.constant';
 
 import { DateUtils } from '../common/utils/date.utils';
 
@@ -80,7 +81,7 @@ export class AttendanceService {
       throw new BadRequestException('SUPER_ADMIN no registra asistencia.');
     }
 
-    if (!['AGENT', 'OPERACIONES', 'VENTAS'].includes(user.role)) {
+    if (!ATTENDANCE_OPERATIONAL_ROLES.includes(user.role as any)) {
       throw new BadRequestException('Este rol no requiere asistencia.');
     }
 
