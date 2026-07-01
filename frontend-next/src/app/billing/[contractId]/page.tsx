@@ -1056,6 +1056,23 @@ function BillingContractAccountContent() {
                     </div>
                   </article>
                 ) : null}
+                {account.invoice.travel && account.invoice.travel.name ? (
+                  <article className="billing-kpi" style={{ background: '#e0f2fe', border: '2px solid #0284c7', borderRadius: '8px', padding: '12px' }}>
+                    <span style={{ color: '#0c4a6e', fontWeight: 600, textTransform: 'uppercase', fontSize: '11px', letterSpacing: '0.5px' }}>
+                      ✈️ Viaje
+                    </span>
+                    <div style={{ marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <strong style={{ fontSize: '15px', color: '#0c4a6e', lineHeight: '1.3' }}>
+                        {account.invoice.travel.name}
+                      </strong>
+                      {account.invoice.travel.departureDate && account.invoice.travel.returnDate ? (
+                        <span style={{ fontSize: '13px', color: '#075985', fontWeight: 500 }}>
+                          {formatDate(account.invoice.travel.departureDate)} → {formatDate(account.invoice.travel.returnDate)}
+                        </span>
+                      ) : null}
+                    </div>
+                  </article>
+                ) : null}
               </div>
             </section>
 

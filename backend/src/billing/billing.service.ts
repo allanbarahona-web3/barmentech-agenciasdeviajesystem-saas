@@ -3426,6 +3426,24 @@ export class BillingService {
           invoice: {
             include: {
               client: true,
+              contract: {
+                include: {
+                  travelPackage: {
+                    select: {
+                      name: true,
+                      departureDate: true,
+                      returnDate: true,
+                    },
+                  },
+                  internalTrip: {
+                    select: {
+                      name: true,
+                      departureDate: true,
+                      returnDate: true,
+                    },
+                  },
+                },
+              },
             },
           },
           attachments: {
@@ -3540,6 +3558,17 @@ export class BillingService {
           }))
         );
 
+        // Normalize travel information from either TravelPackage or InternalTrip
+        const travelPackage = item.invoice?.contract?.travelPackage;
+        const internalTrip = item.invoice?.contract?.internalTrip;
+        const travel = travelPackage || internalTrip
+          ? {
+              name: travelPackage?.name || internalTrip?.name || null,
+              departureDate: travelPackage?.departureDate || internalTrip?.departureDate || null,
+              returnDate: travelPackage?.returnDate || internalTrip?.returnDate || null,
+            }
+          : null;
+
         return {
           id: item.id,
           invoiceId: item.invoiceId,
@@ -3568,6 +3597,7 @@ export class BillingService {
             idNumber: item.invoice?.client?.idNumber || "-",
             email: item.invoice?.client?.email || "-",
           },
+          travel,
         };
       })),
       overdueAlerts: overdueInvoices.slice(0, 200).map((item: any) => ({
@@ -3599,6 +3629,20 @@ export class BillingService {
         contract: {
           include: {
             documents: true,
+            travelPackage: {
+              select: {
+                name: true,
+                departureDate: true,
+                returnDate: true,
+              },
+            },
+            internalTrip: {
+              select: {
+                name: true,
+                departureDate: true,
+                returnDate: true,
+              },
+            },
           },
         },
         creditNotes: {
@@ -3629,6 +3673,17 @@ export class BillingService {
     const overdueDays = this.computeOverdueDays(invoice.paymentDueDate);
     const invoiceBalance = this.toNumber(invoice.balanceAmount);
     const effectiveInvoiceStatus = overdueDays > 0 && invoiceBalance > 0 ? "FACTURA_VENCIDA" : invoice.status;
+
+    // Normalize travel information from either TravelPackage or InternalTrip
+    const travelPackage = invoice.contract?.travelPackage;
+    const internalTrip = invoice.contract?.internalTrip;
+    const travel = travelPackage || internalTrip
+      ? {
+          name: travelPackage?.name || internalTrip?.name || null,
+          departureDate: travelPackage?.departureDate || internalTrip?.departureDate || null,
+          returnDate: travelPackage?.returnDate || internalTrip?.returnDate || null,
+        }
+      : null;
 
     const payments = await Promise.all(
       (invoice.payments || []).map(async (payment: any) => {
@@ -3704,7 +3759,7 @@ export class BillingService {
         isOverdue: overdueDays > 0,
         overdueDays,
         hasPdf: Boolean(invoice.objectKeyPdf),
-        source: invoice.contract?.source || null, // Agregar source del contrato
+        source: invoice.contract?.source || null,
         amounts: {
           grossInvoiced: grossInvoicedAmount,
           creditNotesApplied: creditNotesAppliedAmount,
@@ -3714,6 +3769,7 @@ export class BillingService {
           balance: this.toNumber(invoice.balanceAmount),
           currency: invoice.currency,
         },
+        travel,
       },
       client: {
         id: invoice.client?.id,

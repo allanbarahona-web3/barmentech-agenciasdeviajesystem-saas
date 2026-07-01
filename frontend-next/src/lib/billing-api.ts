@@ -57,6 +57,11 @@ export type BillingAccount = {
       balance: number;
       currency: string;
     };
+    travel?: {
+      name: string | null;
+      departureDate: string | null;
+      returnDate: string | null;
+    } | null;
   };
   client: {
     id: string;
@@ -244,6 +249,11 @@ export type BillingAdminReportData = {
       idNumber: string;
       email: string;
     };
+    travel?: {
+      name: string | null;
+      departureDate: string | null;
+      returnDate: string | null;
+    } | null;
   }>;
   overdueAlerts?: Array<{
     invoiceId: string;

@@ -32,6 +32,15 @@ type ViewerAttachment = {
   mimeType: string;
 };
 
+const formatDate = (value: string): string => {
+  try {
+    const date = new Date(value);
+    return date.toLocaleDateString("es-CR", { year: "numeric", month: "short", day: "numeric" });
+  } catch {
+    return "-";
+  }
+};
+
 export default function PendingPaymentsPage() {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
@@ -195,8 +204,24 @@ export default function PendingPaymentsPage() {
                       <div className="history-col-muted">{payment.client.email}</div>
                     </td>
                     <td>
-                      <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                         <strong style={{ fontSize: "0.95rem" }}>{payment.invoice.contractNumber}</strong>
+                        
+                        {payment.travel && payment.travel.name ? (
+                          <div style={{ fontSize: "0.85rem", color: "#4b6790", lineHeight: "1.4" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                              <span>✈️</span>
+                              <span style={{ fontWeight: 500 }}>{payment.travel.name}</span>
+                            </div>
+                            {payment.travel.departureDate && payment.travel.returnDate ? (
+                              <div style={{ display: "flex", alignItems: "center", gap: "4px", marginTop: "2px" }}>
+                                <span>📅</span>
+                                <span>{formatDate(payment.travel.departureDate)} → {formatDate(payment.travel.returnDate)}</span>
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
+                        
                         <span style={{ fontSize: "0.85rem", color: "#666" }}>
                           {payment.type === "RESERVATION" ? "🔖 Reserva" : payment.type === "INSTALLMENT" ? "💰 Cuota" : payment.type}
                         </span>
