@@ -176,7 +176,7 @@ export const buildContractPdfHtml = (
              alt="Firma de Karen Campos" />
       </div>
       <p class="sig-name">${esc(repName)}</p>
-      <p>Cedula: ${esc(repId)}</p>
+      <p>Cédula: ${esc(repId)}</p>
       <p>Representante legal de ${esc(tenantName)}</p>
       <p>Fecha: ${v(signatureDate)}</p>
     </div>`;
@@ -188,16 +188,16 @@ export const buildContractPdfHtml = (
             const adult = getResponsibleAdultIdentity(state, minor.travelingWith);
             return `
           <section class="annex-page">
-            <h2>ANEXO DE AUTORIZACION PARA VIAJE DE MENOR DE EDAD ${index + 1}</h2>
-            <p><strong>Numero de anexo:</strong> ANX-MEN-${esc(state.contractNumber)}-${String(index + 1).padStart(2, "0")}</p>
-            <p><strong>Contrato Numero:</strong> ${esc(state.contractNumber)}</p>
-            <p>Este anexo complementa el CONTRATO GENERAL DE VIAJE TURISTICO N. ${esc(state.contractNumber)} y documenta la autorizacion del tutor/patria potestad para el menor indicado.</p>
+            <h2>ANEXO DE AUTORIZACIÓN PARA VIAJE DE MENOR DE EDAD ${index + 1}</h2>
+            <p><strong>Número de anexo:</strong> ANX-MEN-${esc(state.contractNumber)}-${String(index + 1).padStart(2, "0")}</p>
+            <p><strong>Contrato Número:</strong> ${esc(state.contractNumber)}</p>
+            <p>Este anexo complementa el CONTRATO GENERAL DE VIAJE TURÍSTICO N. ${esc(state.contractNumber)} y documenta la autorización del tutor/patria potestad para el menor indicado.</p>
 
             <section class="annex-clause">
               <p><strong>PRIMERO: DATOS DEL MENOR</strong></p>
               <ul>
                 <li>Menor: ${esc(minor.minorName)}</li>
-                <li>Identificacion: ${esc(minor.minorId)}</li>
+                <li>Identificación: ${esc(minor.minorId)}</li>
                 <li>Destino del Tour: ${esc(state.destination)}</li>
                 <li>Fechas del Tour: ${formatDate(state.startDate)} a ${formatDate(state.endDate)}</li>
               </ul>
@@ -207,28 +207,28 @@ export const buildContractPdfHtml = (
               <p><strong>SEGUNDO: DATOS DE QUIEN EJERCE PATRIA POTESTAD / TUTOR LEGAL</strong></p>
               <ul>
                 <li>Nombre completo: ${esc(minor.tutorName)}</li>
-                <li>Identificacion: ${esc(minor.tutorIdType || "ID")} ${esc(minor.tutorId)}</li>
-                <li>Telefono de contacto: -</li>
+                <li>Identificación: ${esc(minor.tutorIdType || "ID")} ${esc(minor.tutorId)}</li>
+                <li>Teléfono de contacto: -</li>
               </ul>
             </section>
 
             <section class="annex-clause">
-              <p><strong>TERCERO: ADULTO RESPONSABLE QUE ACOMPANA AL MENOR</strong></p>
+              <p><strong>TERCERO: ADULTO RESPONSABLE QUE ACOMPAÑA AL MENOR</strong>
               <ul>
                 <li>Nombre completo: ${esc(minor.travelingWith)}</li>
-                <li>Identificacion: ${esc(adult.idType)} ${esc(adult.idNumber)}</li>
-                <li>Telefono de contacto: -</li>
+                <li>Identificación: ${esc(adult.idType)} ${esc(adult.idNumber)}</li>
+                <li>Teléfono de contacto: -</li>
               </ul>
             </section>
 
             <section class="annex-clause">
-              <p><strong>CUARTO: DECLARACION DE AUTORIZACION</strong></p>
-              <p>La persona firmante, en su condicion de tutor legal y/o quien ejerce la patria potestad, declara bajo fe de juramento que cuenta con facultades legales suficientes para autorizar el viaje del menor e identifica expresamente a ${esc(minor.travelingWith)} como el adulto responsable que acompanara al menor durante el viaje. Asimismo, exonera a ${esc(tenantName)} de responsabilidad por informacion inexacta o documentacion insuficiente aportada por el representante.</p>
+              <p><strong>CUARTO: DECLARACIÓN DE AUTORIZACIÓN</strong></p>
+              <p>La persona firmante, en su condición de tutor legal y/o quien ejerce la patria potestad, declara bajo fe de juramento que cuenta con facultades legales suficientes para autorizar el viaje del menor e identifica expresamente a ${esc(minor.travelingWith)} como el adulto responsable que acompañará al menor durante el viaje. Asimismo, exonera a ${esc(tenantName)} de responsabilidad por información inexacta o documentación insuficiente aportada por el representante.</p>
             </section>
 
             <section class="annex-clause">
               <p><strong>QUINTO: DOCUMENTO DE RESPALDO</strong></p>
-              <p>Este anexo debe estar acompanado por el permiso notarial, judicial o documento equivalente exigido por la normativa migratoria aplicable.</p>
+              <p>Este anexo debe estar acompañado por el permiso notarial, judicial o documento equivalente exigido por la normativa migratoria aplicable.</p>
             </section>
 
             <section class="annex-sigs">
@@ -240,12 +240,12 @@ export const buildContractPdfHtml = (
               </div>
               <div class="annex-sig-col">
                 <p class="annex-sig-line">______________________________</p>
-                <p><strong>2) Adulto autorizado que acompana al menor</strong></p>
+                <p><strong>2) Adulto autorizado que acompaña al menor</strong></p>
                 <p>${esc(minor.travelingWith)}</p>
                 <p>${esc(adult.idType)}: ${esc(adult.idNumber)}</p>
               </div>
             </section>
-            <p><strong>Fecha de emision:</strong> ${formatDate(state.issuedAt)}</p>
+            <p><strong>Fecha de emisión:</strong> ${formatDate(state.issuedAt)}</p>
           </section>`;
           })
           .join("")
@@ -564,7 +564,7 @@ html, body {
   <div class="doc-header-text">
     <h1>${esc(tenantName)}</h1>
     <p class="doc-meta">
-      ${legalId !== "___" ? `Cedula juridica: <strong>${esc(legalId)}</strong> &nbsp;|&nbsp;` : ""}
+      ${legalId !== "___" ? `Cédula jurídica: <strong>${esc(legalId)}</strong> &nbsp;|&nbsp;` : ""}
       ${contactEmail !== "N/A" ? `<strong>${esc(contactEmail)}</strong> &nbsp;|&nbsp;` : ""}
       ${contactPhone !== "N/A" ? `Tel. <strong>${esc(contactPhone)}</strong>` : ""}<br />
       Contrato N.° <strong>${esc(state.contractNumber)}</strong> &nbsp;|&nbsp;
@@ -574,10 +574,10 @@ html, body {
   </div>
 </header>
 
-<h2 class="contract-title">Contrato General de Viaje Turistico a ${esc(contractDestinationUpper)}</h2>
+<h2 class="contract-title">Contrato General de Viaje Turístico a ${esc(contractDestinationUpper)}</h2>
 
 <table class="contract-meta">
-  <tr><td>Numero de contrato:</td><td><strong>${esc(state.contractNumber)}</strong></td></tr>
+  <tr><td>Número de contrato:</td><td><strong>${esc(state.contractNumber)}</strong></td></tr>
   <tr><td>Destino:</td><td><strong>${esc(state.destination)}</strong></td></tr>
   <tr><td>Fechas del Tour:</td><td><strong>${esc(formatDate(state.startDate))}</strong> al <strong>${esc(formatDate(state.endDate))}</strong></td></tr>
   <tr><td>Emitido el:</td><td><strong>${esc(formatDate(state.issuedAt || new Date().toISOString().slice(0, 10)))}</strong></td></tr>
@@ -586,35 +586,35 @@ html, body {
 <h3 class="section-heading">Partes</h3>
 
 <section class="clause">
-  <p>(a) <strong>${esc(repName)}</strong>, mayor, <strong>${esc(repMaritalStatus)}</strong>, <strong>${esc(repTitle)}</strong>, portadora de la cedula de identidad numero <strong>${esc(repId)}</strong>, vecina de <strong>${esc(repAddress)}</strong>, en condicion de representante legal, con facultades de <strong>${esc(repPowers)}</strong> de <strong>${esc(legalName)}</strong>, cedula juridica numero <strong>${esc(legalId)}</strong>, en adelante denominada <strong>"${esc(tenantName)}"</strong>; y</p>
+  <p>(a) <strong>${esc(repName)}</strong>, mayor, <strong>${esc(repMaritalStatus)}</strong>, <strong>${esc(repTitle)}</strong>, portadora de la cédula de identidad número <strong>${esc(repId)}</strong>, vecina de <strong>${esc(repAddress)}</strong>, en condición de representante legal, con facultades de <strong>${esc(repPowers)}</strong> de <strong>${esc(legalName)}</strong>, cédula jurídica número <strong>${esc(legalId)}</strong>, en adelante denominada <strong>"${esc(tenantName)}"</strong>; y</p>
 </section>
 
 <section class="clause">
-  <p>(b) ${v(state.clientFullName)}, mayor de edad, ${v(state.civilStatus)}, ${v(state.profession)}, portador de ${v(state.clientIdType)} numero ${v(state.clientIdNumber)}, vecino de ${v(state.clientAddress)}, correo electronico ${v(state.clientEmail)}, telefono ${v(state.clientPhone)}, contacto de emergencia ${v(state.emergencyContactName)}, telefono de emergencia ${v(state.emergencyContactPhone)}, en adelante denominado como el <strong>"Cliente"</strong>.</p>
+  <p>(b) ${v(state.clientFullName)}, mayor de edad, ${v(state.civilStatus)}, ${v(state.profession)}, portador de ${v(state.clientIdType)} número ${v(state.clientIdNumber)}, vecino de ${v(state.clientAddress)}, correo electrónico ${v(state.clientEmail)}, teléfono ${v(state.clientPhone)}, contacto de emergencia ${v(state.emergencyContactName)}, teléfono de emergencia ${v(state.emergencyContactPhone)}, en adelante denominado como el <strong>"Cliente"</strong>.</p>
 </section>
 
 ${companionsIntro}
 ${minorsIntro}
 
 <section class="clause">
-  <p>Haciendo mencion a los comparecientes en conjunto, denominados como las <strong>"Partes"</strong>, hemos convenido en celebrar el presente <strong>CONTRATO GENERAL DE VIAJE TURISTICO</strong>, el cual se regira por las siguientes clausulas:</p>
+  <p>Haciendo mención a los comparecientes en conjunto, denominados como las <strong>"Partes"</strong>, hemos convenido en celebrar el presente <strong>CONTRATO GENERAL DE VIAJE TURÍSTICO</strong>, el cual se regirá por las siguientes cláusulas:</p>
 </section>
 
 <h3 class="section-heading">Clausulas</h3>
 
 ${clause(
   "PRIMERO: OBJETO.",
-  `<p>El presente Contrato sera el documento base para regular las clausulas y condiciones referentes a la contratacion del paquete turistico internacional acordado entre las Partes.</p>`,
+  `<p>El presente Contrato será el documento base para regular las cláusulas y condiciones referentes a la contratación del paquete turístico internacional acordado entre las Partes.</p>`,
 )}
 
 ${clause(
   "SEGUNDO: DESTINO.",
-  `<p>El pais a visitar por parte del Cliente es ${v(state.destination)}, y manifiesta expresamente que dicho destino fue elegido y reservado de forma voluntaria para la realizacion del Tour.</p>`,
+  `<p>El (los) destino(s) a visitar por parte del Cliente es (son) ${v(state.destination)}, y manifiesta expresamente que dicho(s) destino(s) fue(ron) elegido(s) y reservado(s) de forma voluntaria para la realización del Tour.</p>`,
 )}
 
 ${clause(
   "TERCERO: FECHAS DEL TOUR Y PLAZO.",
-  `<p>Las fechas de ejecucion del Tour seran del ${v(formatDate(state.startDate))} al ${v(formatDate(state.endDate))}, mismas que se entenderan como plazo del presente Contrato.</p>`,
+  `<p>Las fechas de ejecución del Tour serán del ${v(formatDate(state.startDate))} al ${v(formatDate(state.endDate))}, mismas que se entenderán como plazo del presente Contrato.</p>`,
 )}
 
 ${clause(
@@ -624,8 +624,8 @@ ${clause(
     <li>Pago inicial (reserva): USD ${v(formatMoney(state.reservationAmount))}</li>
     <li>Saldo pendiente: USD ${v(formatMoney(state.balanceAmount))}</li>
     <li>Saldo dividido en ${v(state.installmentCount)} cuota(s) ${state.paymentFrequency === "QUINCENAL" ? "quincenal(es)" : "mensual(es)"} de USD ${v(formatMoney(state.monthlyInstallmentAmount))}</li>
-    <li>Ultima cuota ajustada: USD ${v(formatMoney(state.lastInstallmentAmount))}</li>
-    <li>Fecha limite de pago total: ${v(formatDate(state.paymentDueDate))}</li>
+    <li>Última cuota ajustada: USD ${v(formatMoney(state.lastInstallmentAmount))}</li>
+    <li>Fecha límite de pago total: ${v(formatDate(state.paymentDueDate))}</li>
   </ul>
   <p>Los medios de pago para realizar los pagos son los siguientes:</p>
   <ul>
@@ -635,7 +635,7 @@ ${clause(
         parts.push(`<li>Cuenta bancaria ${account.accountType === "CUENTA_CORRIENTE" ? "corriente" : "ahorro"} (${account.currency}): ${esc(account.accountNumber)} - ${esc(account.bankName)}.</li>`);
       }
       if (account.sinpeNumber) {
-        parts.push(`<li>Sinpe Movil: ${esc(account.sinpeNumber)} - ${esc(account.bankName)}.</li>`);
+        parts.push(`<li>Sinpe Móvil: ${esc(account.sinpeNumber)} - ${esc(account.bankName)}.</li>`);
       }
       return parts.join('');
     }).join('') : `<li>Consultar con ${esc(tenantName)} las cuentas bancarias activas para realizar pagos.</li>`}
@@ -644,146 +644,158 @@ ${clause(
 )}
 
 ${clause(
-  "QUINTO: DEPOSITO DE RESERVA.",
-  `<p>La cuota de reserva inicial se utiliza como deposito minimo para reservar y garantizar el espacio del Cliente en el Tour y los operadores turisticos, por lo que dicho deposito no sera transferible, reutilizable ni reembolsable.</p>
-  <p>En caso de incumplimiento en pagos, ${esc(tenantName)} podra notificar una fecha limite para poner al dia los montos. De mantenerse el incumplimiento, ${esc(tenantName)} podra excluir al Cliente del Tour y los dineros recibidos al momento no seran reembolsables.</p>`,
+  "QUINTO: DEPÓSITO DE RESERVA E INCUMPLIMIENTO DE PAGOS.",
+  `<p>La cuota de reserva inicial se utiliza como depósito mínimo para reservar y garantizar el espacio del Cliente en el Tour y los operadores turísticos, por lo que dicho depósito no será transferible, reutilizable ni reembolsable.</p>
+  <p>En caso de incumplimiento en el pago de cualquier cuota, plazo o monto acordado en el presente Contrato, ${esc(tenantName)} podrá notificar al Cliente una fecha límite adicional para poner al día la totalidad de los montos vencidos. Esta notificación podrá realizarse a través de correo electrónico, llamada telefónica, mensaje de texto o cualquier medio de comunicación acordado.</p>
+  <p>De mantenerse el incumplimiento después de la fecha límite notificada, ${esc(tenantName)} podrá, sin obligación previa de aviso adicional, proceder a excluir al Cliente del Tour contratado y cancelar la reserva y todos los servicios asociados.</p>
+  <p>En caso de exclusión por incumplimiento de pago, la totalidad de los dineros recibidos por ${esc(tenantName)} al momento del incumplimiento no serán reembolsables bajo ningún concepto. El Cliente reconoce y acepta que estos fondos compensarán a la Agencia por los costos administrativos, gastos operativos, y los perjuicios causados por la cancelación tardía.</p>
+  <p>El Cliente es responsable de cumplir oportunamente con todas las obligaciones de pago conforme al calendario de pagos establecido. Cualquier atraso en el cumplimiento de las obligaciones económicas constituye incumplimiento contractual.</p>`,
 )}
 
 ${clause(
   "SEXTO: ALOJAMIENTOS Y HOSPEDAJES.",
-  `<p>Como parte del Tour, el Cliente sera alojado en establecimientos tipo hostel, hotel u otros similares, conforme a la logistica del viaje, disponibilidad y condiciones operativas del proveedor.</p>
-  <p>Como referencia de preferencia del Cliente, se registra tipo de hospedaje ${v(state.lodgingType)} y acomodacion solicitada ${v(state.accommodationType)}. Esta preferencia no constituye garantia absoluta y estara sujeta a disponibilidad y criterios operativos del Tour.</p>
-  <p>La asignacion final de habitaciones y tipo de acomodacion sera determinada por ${esc(tenantName)} segun criterios operativos, pudiendo incluir habitaciones individuales, dobles, multiples o compartidas.</p>
-  <p>El Cliente reconoce y acepta expresamente que la acomodacion podra implicar el uso de habitaciones compartidas con otros participantes del Tour, ya sean conocidos o no, asi como el uso de banos privados o compartidos, segun disponibilidad del hospedaje.</p>
-  <p>${esc(tenantName)} podra modificar el hospedaje originalmente previsto, incluyendo cambios de establecimiento, categoria o tipo de habitacion, siempre que se mantengan condiciones razonables de servicio dentro del Tour contratado.</p>
-  <p>Todo lo anterior estara sujeto a disponibilidad, necesidades operativas del Tour, asi como a casos fortuitos o de fuerza mayor.</p>`,
+  `<p>Como parte del Tour, el Cliente será alojado en establecimientos tipo hostel, hotel u otros similares, conforme a la logística del viaje, disponibilidad y condiciones operativas del proveedor.</p>
+  <p>Como referencia de preferencia del Cliente, se registra tipo de hospedaje ${v(state.lodgingType)} y acomodación solicitada ${v(state.accommodationType)}. Esta preferencia no constituye garantía absoluta y estará sujeta a disponibilidad y criterios operativos del Tour.</p>
+  <p>La asignación final de habitaciones y tipo de acomodación será determinada por ${esc(tenantName)} según criterios operativos, pudiendo incluir habitaciones individuales, dobles, múltiples o compartidas.</p>
+  <p>El Cliente reconoce y acepta expresamente que la acomodación podrá implicar el uso de habitaciones compartidas con otros participantes del Tour, ya sean conocidos o no, así como el uso de baños privados o compartidos, según disponibilidad del hospedaje.</p>
+  <p>${esc(tenantName)} podrá modificar el hospedaje originalmente previsto, incluyendo cambios de establecimiento, categoría o tipo de habitación, siempre que se mantengan condiciones razonables de servicio dentro del Tour contratado.</p>
+  <p>Todo lo anterior estará sujeto a disponibilidad, necesidades operativas del Tour, así como a casos fortuitos o de fuerza mayor.</p>`,
 )}
 
 ${clause(
-  "SEPTIMO: CHECK IN Y ASIGNACION DE ASIENTOS.",
-  `<p>${esc(tenantName)} realizara el check in segun apertura de aerolinea. La asignacion de asientos la realiza la aerolinea de forma aleatoria.</p>
-  <p>Equipaje permitido: ${v(state.luggageClause)}</p>`,
+  "SÉPTIMO: CHECK IN Y ASIGNACIÓN DE ASIENTOS.",
+  `<p>${esc(tenantName)} será el responsable de realizar el "Check In" de los Clientes según apertura de la aerolínea previo al vuelo.</p>
+  <p>La asignación de asientos la realiza la aerolínea de forma aleatoria al momento en que se realiza el "Check In", ${esc(tenantName)} no garantiza que los Clientes y sus acompañantes puedan contar con asientos juntos o cercanos.</p>
+  <p>En caso de que los Clientes tengan la intención de solicitar su asiento junto a sus acompañantes, deberá solicitarlo con al menos 15 días hábiles a ${esc(tenantName)}, lo cual generará un costo adicional al precio del Tour, sin embargo, ${esc(tenantName)} no se hace responsable en caso de que por disponibilidad de asientos del avión no sea posible.</p>
+  <p>Los Clientes tienen derecho a un equipaje personal de máximo 10 kilos de peso, a saber, una mochila de espalda; (No confundir con la maleta Carry-On), en caso de que el equipaje de los Clientes exceda el peso indicado, los Clientes correrán con los pagos de eventuales multas. (A excepción de este paquete que incluye Carry-On).</p>
+  <p>Los Clientes exoneran a ${esc(tenantName)} de toda responsabilidad sobre la asignación de asientos, o bien, la disponibilidad de asientos en caso de que sea interés de los Clientes la compra del espacio junto a sus acompañantes, ya que, dependerá meramente por parte de la aerolínea.</p>`,
 )}
 
 ${clause(
   "OCTAVO: SEGURO DE VIAJE.",
-  `<p>${esc(tenantName)} podra colaborar con la adquisicion de seguro de viaje mediante agencia aliada Assist Card, siendo opcional para el Cliente.</p>
-  <p>El Cliente acepta que, en caso de no contratar seguro con ${esc(tenantName)} o bien no contar con un seguro viajero propio durante el Tour en este mismo acto, exonera a ${esc(tenantName)} de toda responsabilidad por cualquier accidente, enfermedad, gasto medico, muerte o repatriacion.</p>
-  <p>Asimismo, el Cliente declara que exime a ${esc(tenantName)}, en este mismo acto y en la medida permitida por ley, de responsabilidad por gastos medicos, hospitalarios, emergencias, cancelaciones, retrasos, perdida de equipaje u otras contingencias cubribles por el seguro de viaje.</p>`,
+  `<p>${esc(tenantName)} podrá colaborar con la adquisición de seguro de viaje mediante proveedores asegurados aliados, siendo opcional para el Cliente.</p>
+  <p>El Cliente acepta que, en caso de no contratar seguro con ${esc(tenantName)} o bien no contar con un seguro viajero propio durante el Tour en este mismo acto, exonera a ${esc(tenantName)} de toda responsabilidad por cualquier accidente, enfermedad, gasto médico, muerte o repatriación.</p>
+  <p>Asimismo, el Cliente declara que exime a ${esc(tenantName)}, en este mismo acto y en la medida permitida por ley, de responsabilidad por gastos médicos, hospitalarios, emergencias, cancelaciones, retrasos, pérdida de equipaje u otras contingencias cubribles por el seguro de viaje.</p>`,
 )}
 
 ${clause(
-  "NOVENO: PERSONAL DE ACOMPANAMIENTO.",
-  `<p>Dependiendo del Tour, ${esc(tenantName)} podra asignar personal de acompanamiento desde Costa Rica.</p>
-  <p>El Cliente debe presentarse con al menos 3 horas de anticipacion al aeropuerto y con toda la documentacion requerida para viajar. ${esc(tenantName)} no sera responsable por llegada tardia, documentos vencidos o documentacion incompleta del Cliente.</p>`,
+  "NOVENO: PERSONAL DE ACOMPAÑAMIENTO.",
+  `<p>Dependiendo del Tour, ${esc(tenantName)} podrá asignar personal de acompañamiento desde Costa Rica.</p>
+  <p>El Cliente debe presentarse con al menos 3 horas de anticipación al aeropuerto y con toda la documentación requerida para viajar. ${esc(tenantName)} no será responsable por llegada tardía, documentos vencidos o documentación incompleta del Cliente.</p>`,
 )}
 
 ${clause(
-  "DECIMO: FICHA DE ACTIVIDADES E ITINERARIO.",
+  "DÉCIMO: FICHA DE ACTIVIDADES E ITINERARIO.",
   `${itineraryHtml}
-  <p>${esc(tenantName)} podra modificar itinerario, ruta, hospedajes u orden del Tour cuando sea necesario para seguridad, resguardo y ejecucion efectiva del servicio.</p>`,
+  <p>${esc(tenantName)} podrá modificar itinerario, ruta, hospedajes u orden del Tour cuando sea necesario para seguridad, resguardo y ejecución efectiva del servicio.</p>`,
 )}
 
 ${clause(
-  "DECIMO PRIMERO: TRANSPORTES.",
-  `<p>${esc(tenantName)} brindara, por medio de terceros contratados, transportes relacionados con el Tour (vehiculo privado, microbus, colectivo o transporte publico). Todo transporte fuera de itinerario corre por cuenta del Cliente.</p>`,
+  "DÉCIMO PRIMERO: TRANSPORTES.",
+  `<p>Conforme a lo especificado en el paquete contratado, ${esc(tenantName)} podrá brindar, por medio de terceros contratados, transportes relacionados con el Tour (vehículo privado, micrObús, colectivo o transporte público). En caso de que los transportes internos estén incluidos en el paquete, estos formarán parte del Tour contratado. En caso de que los transportes no estén incluidos, el Cliente deberá asumir los costos de traslados que requiera durante el Tour.</p>
+  <p>Todo transporte fuera del itinerario establecido o adicional a lo contratado corre por cuenta del Cliente.</p>`,
 )}
 
 ${clause(
-  "DECIMO SEGUNDO: ALIMENTACION.",
-  `<p>El Tour no incluye alimentacion, salvo indicacion expresa en la publicacion del tour o bien que el hospedaje indique que se incluye el desayuno con el hospedaje; por lo tanto, el Cliente debe asumir sus costos de alimentacion durante el tour.</p>`,
+  "DÉCIMO SEGUNDO: ALIMENTACIÓN.",
+  `<p>Las Partes acuerdan que el servicio de Tour no incluye alimentación salvo que expresamente sea indicado, por lo cual, los Clientes se harán responsables de asumir el costo de su alimentación durante el Tour, con la excepción del desayuno si eventualmente el hospedaje lo incluye, caso contrario, los Clientes deberán asumir también dicho gasto.</p>`,
 )}
 
 ${clause(
-  "DECIMO TERCERO: CANCELACIONES, REEMBOLSOS, CREDITOS Y FUERZA MAYOR.",
-  `<p><strong>13.1 Politica de Reembolsos y Plazos de Devolucion.</strong> En caso de que proceda un reembolso total o parcial por cualquier concepto relacionado con los servicios contratados, el Cliente acepta y reconoce que ${esc(tenantName)} dispondra de un plazo minimo de tres (3) meses y maximo de seis (6) meses calendario para efectuar dicha devolucion. El plazo comenzara a computarse a partir de la fecha en que ${esc(tenantName)} confirme formalmente la procedencia del reembolso.</p>
-  <p>El Cliente acepta que este plazo responde a la operativa del sector turistico, incluyendo procesos de recuperacion de fondos con terceros proveedores como aerolineas, hoteles, operadores y servicios internacionales, los cuales no dependen directamente de ${esc(tenantName)}. El Cliente renuncia expresamente a cualquier reclamacion adicional, intereses, indemnizacion o penalizacion relacionada con el tiempo de espera dentro del plazo establecido.</p>
-  <p><strong>13.2 Politica de Creditos a Favor (Voucher).</strong> Como alternativa al reembolso, ${esc(tenantName)} podra ofrecer al Cliente un credito a favor (voucher) equivalente al monto pagado, utilizable en futuros viajes, servicios o experiencias ofrecidas por la agencia. Este credito tendra una vigencia de hasta doce (12) meses y sera transferible previa autorizacion de ${esc(tenantName)}. La aceptacion del credito por parte del Cliente implica la renuncia al reembolso en dinero.</p>
-  <p><strong>13.3 Responsabilidad frente a Terceros Proveedores.</strong> ${esc(tenantName)} actua como intermediario entre el Cliente y terceros proveedores (incluyendo, pero no limitado a, aerolineas, hoteles, operadores turisticos y transportistas). Por lo tanto, ${esc(tenantName)} no sera responsable por cancelaciones, retrasos, modificaciones, perdidas o incumplimientos atribuibles a dichos proveedores. Cualquier gestion de reembolso estara sujeta a las politicas y tiempos de respuesta de estos terceros.</p>
-  <p><strong>13.4 Cancelaciones por Parte del Cliente.</strong> En caso de cancelacion voluntaria por parte del Cliente, los montos pagados podran estar sujetos a penalidades, cargos administrativos y condiciones de los proveedores. Si la cancelacion se realiza con menos de veintidos (22) dias calendario de antelacion a la fecha de inicio del viaje, aplicara una penalidad equivalente al diez por ciento (10%) del valor total del contrato. ${esc(tenantName)} no garantiza reembolsos en estos casos, pudiendo ofrecer unicamente creditos a favor segun la evaluacion del caso.</p>
-  <p><strong>13.5 Fuerza Mayor.</strong> ${esc(tenantName)} no sera responsable por la imposibilidad total o parcial de prestar los servicios contratados cuando esto se deba a causas de fuerza mayor, incluyendo pero no limitado a: pandemias, conflictos politicos, desastres naturales, restricciones gubernamentales, huelgas, cancelaciones masivas o cualquier evento fuera del control razonable de la agencia. En estos casos, ${esc(tenantName)} podra reprogramar el servicio o emitir un credito a favor, sin obligacion inmediata de reembolso.</p>
-  <p><strong>13.6 Aceptacion de Condiciones.</strong> Al contratar los servicios, el Cliente declara haber leido, entendido y aceptado todas las condiciones de esta clausula, incluyendo tiempos de reembolso, politicas de credito y limitaciones de responsabilidad.</p>`,
+  "DÉCIMO TERCERO: CANCELACIONES, REEMBOLSOS, CRÉDITOS Y FUERZA MAYOR.",
+  `<p><strong>13.1 Política de Reembolsos y Plazos de Devolución.</strong> En caso de que proceda un reembolso total o parcial por cualquier concepto relacionado con los servicios contratados, el Cliente acepta y reconoce que ${esc(tenantName)} dispondrá de un plazo mínimo de tres (3) meses y máximo de seis (6) meses calendario para efectuar dicha devolución. El plazo comenzará a computarse a partir de la fecha en que ${esc(tenantName)} confirme formalmente la procedencia del reembolso.</p>
+  <p>El Cliente acepta que este plazo responde a la operativa del sector turístico, incluyendo procesos de recuperación de fondos con terceros proveedores como aerolíneas, hoteles, operadores y servicios internacionales, los cuales no dependen directamente de ${esc(tenantName)}. El Cliente renuncia expresamente a cualquier reclamación adicional, intereses, indemnización o penalización relacionada con el tiempo de espera dentro del plazo establecido.</p>
+  <p><strong>13.2 Política de Créditos a Favor (Voucher).</strong> Como alternativa al reembolso, ${esc(tenantName)} podrá ofrecer al Cliente un crédito a favor (voucher) equivalente al monto pagado, utilizable en futuros viajes, servicios o experiencias ofrecidas por la agencia. Este crédito tendrá una vigencia de hasta doce (12) meses y será transferible previa autorización de ${esc(tenantName)}. La aceptación del crédito por parte del Cliente implica la renuncia al reembolso en dinero.</p>
+  <p><strong>13.3 Responsabilidad frente a Terceros Proveedores.</strong> ${esc(tenantName)} actúa como intermediario entre el Cliente y terceros proveedores (incluyendo, pero no limitado a, aerolíneas, hoteles, operadores turísticos y transportistas). Por lo tanto, ${esc(tenantName)} no será responsable por cancelaciones, retrasos, modificaciones, pérdidas o incumplimientos atribuibles a dichos proveedores. Cualquier gestión de reembolso estará sujeta a las políticas y tiempos de respuesta de estos terceros.</p>
+  <p><strong>13.4 Cancelaciones por Parte del Cliente.</strong> En caso de cancelación voluntaria por parte del Cliente, los montos pagados podrán estar sujetos a penalidades, cargos administrativos y condiciones de los proveedores. Si la cancelación se realiza con menos de veintidós (22) días calendario de antelación a la fecha de inicio del viaje, aplicará una penalidad equivalente al diez por ciento (10%) del valor total del contrato. ${esc(tenantName)} no garantiza reembolsos en estos casos, pudiendo ofrecer únicamente créditos a favor según la evaluación del caso.</p>
+  <p><strong>13.5 Fuerza Mayor.</strong> ${esc(tenantName)} no será responsable por la imposibilidad total o parcial de prestar los servicios contratados cuando esto se deba a causas de fuerza mayor, incluyendo pero no limitado a: pandemias, conflictos políticos, desastres naturales, restricciones gubernamentales, huelgas, cancelaciones masivas o cualquier evento fuera del control razonable de la agencia. En estos casos, ${esc(tenantName)} podrá reprogramar el servicio o emitir un crédito a favor, sin obligación inmediata de reembolso.</p>
+  <p><strong>13.6 Aceptación de Condiciones.</strong> Al contratar los servicios, el Cliente declara haber leído, entendido y aceptado todas las condiciones de esta cláusula, incluyendo tiempos de reembolso, políticas de crédito y limitaciones de responsabilidad.</p>`,
 )}
 
 ${clause(
-  "DECIMO CUARTO: DERECHOS Y OBLIGACIONES DEL CLIENTE.",
-  `<p>El Cliente se obliga, entre otros, a pagar montos economicos segun contrato; brindar documentacion veraz y vigente; respetar horarios, itinerarios y normas de proveedores; resguardar pertenencias personales; asumir gastos no incluidos; y gestionar correctamente documentacion de menor(es), cuando aplique.</p>`,
+  "DÉCIMO CUARTO: DERECHOS Y OBLIGACIONES DEL CLIENTE.",
+  `<p>El Cliente se obliga, entre otros, a pagar montos económicos según contrato; brindar documentación veraz y vigente; respetar horarios, itinerarios y normas de proveedores; resguardar pertenencias personales; asumir gastos no incluidos; y gestionar correctamente documentación de menor(es), cuando aplique.</p>`,
 )}
 
 ${clause(
-  "DECIMO CUARTO BIS: CONDUCTA Y NORMAS DEL CLIENTE.",
+  "DÉCIMO CUARTO BIS: CONDUCTA Y NORMAS DEL CLIENTE.",
   `<p>El Cliente se compromete a mantener una conducta respetuosa, adecuada y alineada con las normas de convivencia durante todo el desarrollo del tour, tanto con el personal de la Agencia como con otros participantes, proveedores y terceros.</p>
-  <p>Queda estrictamente prohibido cualquier comportamiento que implique agresion verbal o fisica, discriminacion, acoso, consumo excesivo de sustancias que afecten la convivencia, incumplimiento de normas locales o cualquier accion que ponga en riesgo la operacion del tour o la experiencia del grupo.</p>
+  <p>Queda estrictamente prohibido cualquier comportamiento que implique agresión verbal o física, discriminación, acoso, consumo excesivo de sustancias que afecten la convivencia, incumplimiento de normas locales o cualquier acción que ponga en riesgo la operación del tour o la experiencia del grupo.</p>
   <p>${esc(tenantName)} se reserva el derecho de excluir, sin derecho a reembolso alguno, a cualquier Cliente cuya conducta sea considerada inapropiada, riesgosa o perjudicial para el desarrollo del tour o la experiencia de terceros.</p>
-  <p>Asimismo, cualquier gasto adicional derivado de dicha exclusion sera asumido en su totalidad por el Cliente.</p>`,
+  <p>Asimismo, cualquier gasto adicional derivado de dicha exclusión será asumido en su totalidad por el Cliente.</p>`,
 )}
 
 ${clause(
-  `DECIMO QUINTO: DERECHOS Y OBLIGACIONES DE ${String(tenantName || "LA AGENCIA").toUpperCase()}.`,
-  `<p>${esc(tenantName)} se obliga, entre otros, a ejecutar el Tour contratado; contratar y pagar a proveedores del servicio; brindar acompanamiento contractual y soporte operativo; y gestionar check in cuando corresponda.</p>`,
+  `DÉCIMO QUINTO: DERECHOS Y OBLIGACIONES DE ${String(tenantName || "LA AGENCIA").toUpperCase()}.`,
+  `<p>${esc(tenantName)} se obliga, entre otros, a ejecutar el Tour contratado; contratar y pagar a proveedores del servicio; brindar acompañamiento contractual y soporte operativo; y gestionar check in cuando corresponda.</p>`,
 )}
 
 ${clause(
-  "DECIMO SEXTO: EXONERACION Y LIMITACION DE RESPONSABILIDAD.",
-  `<p>El Cliente reconoce y acepta que la participacion en el tour implica riesgos inherentes propios de los viajes nacionales e internacionales, incluyendo, pero no limitado a, condiciones climaticas adversas, retrasos, cancelaciones, accidentes, enfermedades, situaciones politicas, sociales o sanitarias, y cualquier otro evento fuera del control razonable de la Agencia.</p>
-  <p>En consecuencia, el Cliente exonera expresa e irrevocablemente a ${esc(tenantName)} de toda responsabilidad por danos, perdidas, lesiones, gastos medicos, retrasos, modificaciones de itinerario, perdida de equipaje, o cualquier otra contingencia que pueda surgir durante el desarrollo del tour, cuando estos no sean atribuibles directamente a dolo o culpa grave comprobada de la Agencia.</p>
-  <p>Asimismo, el Cliente acepta que la Agencia no garantiza resultados subjetivos del viaje, tales como satisfaccion personal, experiencias individuales, condiciones climaticas especificas, calidad percibida de servicios de terceros, ni expectativas personales no estipuladas expresamente en el presente contrato.</p>
-  <p>La responsabilidad total de la Agencia, en cualquier caso comprobado, se limitara exclusivamente al monto efectivamente pagado por el Cliente por los servicios contratados.</p>`,
+  "DÉCIMO SEXTO: EXONERACIÓN Y LIMITACIÓN DE RESPONSABILIDAD.",
+  `<p>El Cliente reconoce y acepta que la participación en el tour implica riesgos inherentes propios de los viajes nacionales e internacionales, incluyendo, pero no limitado a, condiciones climáticas adversas, retrasos, cancelaciones, accidentes, enfermedades, situaciones políticas, sociales o sanitarias, y cualquier otro evento fuera del control razonable de la Agencia.</p>
+  <p>En consecuencia, el Cliente exonera expresa e irrevocablemente a ${esc(tenantName)} de toda responsabilidad por daños, pérdidas, lesiones, gastos médicos, retrasos, modificaciones de itinerario, pérdida de equipaje, o cualquier otra contingencia que pueda surgir durante el desarrollo del tour, cuando estos no sean atribuibles directamente a dolo o culpa grave comprobada de la Agencia.</p>
+  <p>Asimismo, el Cliente acepta que la Agencia no garantiza resultados subjetivos del viaje, tales como satisfacción personal, experiencias individuales, condiciones climáticas específicas, calidad percibida de servicios de terceros, ni expectativas personales no estipuladas expresamente en el presente contrato.</p>
+  <p>La responsabilidad total de la Agencia, en cualquier caso comprobado, se limitará exclusivamente al monto efectivamente pagado por el Cliente por los servicios contratados.</p>`,
 )}
 
 ${clause(
-  "DECIMO SEPTIMO: INTERMEDIACION Y RESPONSABILIDAD DE TERCEROS.",
-  `<p>El Cliente reconoce que ${esc(tenantName)} actua exclusivamente como intermediario entre el Cliente y los distintos proveedores de servicios turisticos, incluyendo, pero no limitado a, aerolineas, hoteles, operadores turisticos, empresas de transporte y otros prestadores.</p>
-  <p>En consecuencia, la Agencia no sera responsable por actos, omisiones, incumplimientos, retrasos, cancelaciones, sobreventas, cambios de itinerario, perdidas, danos o cualquier otra situacion atribuible a dichos proveedores.</p>
-  <p>El Cliente acepta que cualquier reclamacion derivada de servicios prestados por terceros debera dirigirse directamente contra el proveedor correspondiente, conforme a sus propias politicas, terminos y condiciones.</p>`,
+  "DÉCIMO SÉPTIMO: INTERMEDIACIÓN Y RESPONSABILIDAD DE TERCEROS.",
+  `<p>El Cliente reconoce que ${esc(tenantName)} actúa exclusivamente como intermediario entre el Cliente y los distintos proveedores de servicios turísticos, incluyendo, pero no limitado a, aerolíneas, hoteles, operadores turísticos, empresas de transporte y otros prestadores.</p>
+  <p>En consecuencia, la Agencia no será responsable por actos, omisiones, incumplimientos, retrasos, cancelaciones, sobreventas, cambios de itinerario, pérdidas, daños o cualquier otra situación atribuible a dichos proveedores.</p>
+  <p>El Cliente acepta que cualquier reclamación derivada de servicios prestados por terceros deberá dirigirse directamente contra el proveedor correspondiente, conforme a sus propias políticas, términos y condiciones.</p>`,
 )}
 
 ${clause(
-  "DECIMO OCTAVO: EMISION DE TIQUETES AEREOS.",
-  `<p>El Cliente reconoce y acepta que la emision de los tiquetes aereos forma parte de la gestion operativa del Tour, la cual sera realizada por ${esc(tenantName)} conforme a criterios de disponibilidad, condiciones de mercado y coordinacion con proveedores.</p>
-  <p>En ese sentido, la emision de los tiquetes aereos no necesariamente se realizara de forma inmediata al momento del pago de la reserva, pagos parciales o incluso la cancelacion total del Tour, pudiendo efectuarse en cualquier momento hasta un plazo maximo de cuarenta y ocho (48) horas previas al inicio del viaje.</p>
-  <p>El Cliente entiende y acepta que la confirmacion de su espacio dentro del Tour es independiente del momento de emision de los tiquetes aereos, y que estos podran ser adquiridos en una fecha posterior segun condiciones operativas y comerciales.</p>
-  <p>${esc(tenantName)} garantiza la prestacion del servicio de transporte aereo conforme a lo contratado, por lo que el Cliente renuncia a cualquier reclamo relacionado exclusivamente con el momento de emision de los tiquetes, siempre que los mismos sean entregados dentro del plazo indicado y el servicio sea efectivamente brindado.</p>`,
+  "DÉCIMO OCTAVO: EMISIÓN DE TIQUETES AÉREOS.",
+  `<p>El Cliente reconoce y acepta que la emisión de los tiquetes aéreos forma parte de la gestión operativa del Tour, la cual será realizada por ${esc(tenantName)} conforme a criterios de disponibilidad, condiciones de mercado y coordinación con proveedores.</p>
+  <p>En ese sentido, la emisión de los tiquetes aéreos no necesariamente se realizará de forma inmediata al momento del pago de la reserva, pagos parciales o incluso la cancelación total del Tour, pudiendo efectuarse en cualquier momento hasta un plazo máximo de cuarenta y ocho (48) horas previas al inicio del viaje.</p>
+  <p>El Cliente entiende y acepta que la confirmación de su espacio dentro del Tour es independiente del momento de emisión de los tiquetes aéreos, y que estos podrán ser adquiridos en una fecha posterior según condiciones operativas y comerciales.</p>
+  <p>${esc(tenantName)} garantiza la prestación del servicio de transporte aéreo conforme a lo contratado, por lo que el Cliente renuncia a cualquier reclamación relacionada exclusivamente con el momento de emisión de los tiquetes, siempre que los mismos sean entregados dentro del plazo indicado y el servicio sea efectivamente brindado.</p>
+  <p>La condición migratoria es responsabilidad de cada pasajero. Cualquier trámite relacionado con vacunas, documentación de salud o requisitos migratorios debe ser verificado y cumplido por el Cliente conforme a los requisitos del país destino.</p>
+  <p>La solicitud y pago de visas para extranjeros que deseen viajar es un trámite personal en el cual ${esc(tenantName)} puede brindar asistencia, pero no asume ninguna responsabilidad a menos que esté descrito expresamente en el itinerario del Tour contratado.</p>`,
 )}
 
 ${clause(
-  "DECIMO NOVENO: MODIFICACIONES AL CONTRATO.",
-  `<p>Toda modificacion debera formalizarse por escrito mediante adenda firmada por las Partes.</p>`,
+  "DÉCIMO NOVENO: MODIFICACIONES AL CONTRATO.",
+  `<p>Toda modificación deberá formalizarse por escrito mediante adenda firmada por las Partes.</p>`,
 )}
 
 ${clause(
-  "VIGESIMO: RESOLUCION ALTERNA DE CONFLICTOS Y LEY APLICABLE.",
-  `<p>Este Contrato se regira por la legislacion de la Republica de Costa Rica. Cualquier controversia intentara resolverse primero por via conciliatoria antes de acudir a la via judicial.</p>`,
+  "VIGÉSIMO: RESOLUCIÓN ALTERNA DE CONFLICTOS Y LEY APLICABLE.",
+  `<p>Este Contrato se regirá por la legislación de la República de Costa Rica. Cualquier controversia intentará resolverse primero por vía conciliatoria antes de acudir a la vía judicial.</p>`,
 )}
 
 ${clause(
-  "VIGESIMO PRIMERO: CONFIDENCIALIDAD.",
-  `<p>Toda informacion comercial, operativa y documental conocida con ocasion del Contrato sera tratada como confidencial durante su vigencia y por un ano adicional a su terminacion.</p>`,
+  "VIGÉSIMO PRIMERO: CONFIDENCIALIDAD.",
+  `<p>Las Partes se comprometen a tratar como confidencial toda información comercial, operativa, personal y documental conocida con ocasión del Contrato, incluyendo pero no limitado a: datos personales, datos de pago, preferencias de viaje, itinerarios, precios especiales, condiciones negociadas y cualquier otra información compartida durante la vigencia del Contrato.</p>
+  <p>Esta obligación de confidencialidad permanecerá vigente durante toda la duración del Contrato y se mantendrá por un período mínimo de un (1) año adicional a su terminación.</p>
+  <p>Las excepciones a esta obligación serán: (a) información requerida por ley o autoridad competente; (b) información necesaria para que terceros proveedores del Tour cumplan sus obligaciones; (c) información ya pública o conocida; y (d) información compartida con consentimiento expreso de las Partes.</p>
+  <p>El incumplimiento de esta cláusula podrá dar lugar a acciones legales y resarcimiento de daños.</p>`,
 )}
 
 ${clause(
-  "VIGESIMO SEGUNDO: NOTIFICACIONES Y COMUNICACIONES.",
+  "VIGÉSIMO SEGUNDO: NOTIFICACIONES Y COMUNICACIONES.",
   `<ul>
     <li><strong>${esc(tenantName)}:</strong> ${contactEmail !== "N/A" ? `<strong>${esc(contactEmail)}</strong>` : "___"}${contactWhatsApp !== "N/A" ? ` y WhatsApp <strong>${esc(contactWhatsApp)}</strong>` : ""}.</li>
-    <li><strong>Cliente:</strong> Direccion ${v(state.clientAddress)}, correo ${v(state.clientEmail)} y telefono ${v(state.clientPhone)}.</li>
+    <li><strong>Cliente:</strong> Dirección ${v(state.clientAddress)}, correo ${v(state.clientEmail)} y teléfono ${v(state.clientPhone)}.</li>
   </ul>`,
 )}
 
 ${clause(
-  "VIGESIMO TERCERO: INTEGRIDAD CONTRACTUAL.",
+  "VIGÉSIMO TERCERO: INTEGRIDAD CONTRACTUAL.",
   `<p>Las Partes aceptan que este Contrato y sus anexos constituyen el acuerdo total entre ellas respecto del Tour contratado.</p>`,
 )}
 
 ${clause(
-  "VIGESIMO CUARTO: AUTORIZACION DE USO DE IMAGEN.",
-  `<p>El Cliente autoriza de forma expresa, voluntaria y gratuita a ${esc(tenantName)} para captar, reproducir, publicar y utilizar su imagen, voz y/o apariencia en fotografias, videos o cualquier material audiovisual generado durante el desarrollo del tour.</p>
-  <p>Dicho material podra ser utilizado con fines comerciales, publicitarios y promocionales en redes sociales, sitios web, campanas de marketing y cualquier otro medio de difusion de la Agencia, sin limitacion territorial ni temporal.</p>
-  <p>El Cliente renuncia a cualquier compensacion economica derivada del uso de su imagen en los terminos aqui establecidos.</p>
-  <p>En caso de no estar de acuerdo, el Cliente debera manifestarlo por escrito previo al inicio del tour.</p>`,
+  "VIGÉSIMO CUARTO: AUTORIZACIÓN DE USO DE IMAGEN.",
+  `<p>El Cliente autoriza de forma expresa, voluntaria y gratuita a ${esc(tenantName)} para captar, reproducir, publicar y utilizar su imagen, voz y/o apariencia en fotografías, videos o cualquier material audiovisual generado durante el desarrollo del tour.</p>
+  <p>Dicho material podrá ser utilizado con fines comerciales, publicitarios y promocionales en redes sociales, sitios web, campañas de marketing y cualquier otro medio de difusión de la Agencia, sin limitación territorial ni temporal.</p>
+  <p>El Cliente renuncia a cualquier compensación económica derivada del uso de su imagen en los términos aquí establecidos.</p>
+  <p>En caso de no estar de acuerdo, el Cliente deberá manifestarlo por escrito previo al inicio del tour.</p>`,
 )}
 
 <section class="clause">
-  <p>En fe de lo anterior, las Partes declaran haber leido y comprendido integralmente el presente Contrato, aceptandolo en todas sus clausulas.</p>
+  <p>En fe de lo anterior, las Partes declaran haber leído y comprendido integralmente el presente Contrato, aceptándolo en todas sus cláusulas.</p>
 </section>
 
 <section class="sig-page">

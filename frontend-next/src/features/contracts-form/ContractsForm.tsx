@@ -972,7 +972,8 @@ console.log("====================================");
             onChange={(event) => setState((prev) => ({ ...prev, lodgingType: event.target.value }))}
           >
             <option value="N/A">N/A</option>
-            <option value="Hotel">Hotel</option>
+            <option value="Hotel con Desayunos">Hotel con Desayunos</option>
+            <option value="Hotel sin Desayunos">Hotel sin Desayunos</option>
             <option value="Hostel">Hostel</option>
             <option value="Airbnb">Airbnb</option>
           </select>
