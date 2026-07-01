@@ -56,7 +56,7 @@ export default function AdminInternalTripsPage() {
       setLoading(true);
       const currentToken = token || getStoredToken();
       const apiBase = resolveApiBase();
-      const response = await fetch(`${apiBase}/internal-tourism/trips`, {
+      const response = await fetch(`${apiBase}/internal-trips`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${currentToken}`,
