@@ -25,6 +25,46 @@ export interface GetCustomersParams {
   search?: string;
 }
 
+export interface CustomerInfo {
+  id: string;
+  fullName: string;
+  idNumber: string;
+  email: string;
+  phone: string | null;
+  emergencyContactName: string | null;
+  emergencyContactPhone: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CustomerContractItem {
+  id: string;
+  contractNumber: string;
+  destination: string;
+  status: string;
+  source: string;
+  participantCount: number;
+  createdAt: string;
+}
+
+export interface CustomerFinancialSummary {
+  totalInvoices: number;
+  totalReceipts: number;
+  totalPayments: number;
+}
+
+export interface CustomerStatistics {
+  totalContracts: number;
+  totalTravels: number;
+}
+
+export interface CustomerProfile {
+  customer: CustomerInfo;
+  contracts: CustomerContractItem[];
+  financialSummary: CustomerFinancialSummary;
+  statistics: CustomerStatistics;
+}
+
 // API Functions
 export async function getCustomers(
   params?: GetCustomersParams
@@ -52,6 +92,28 @@ export async function getCustomers(
     const errorText = await response.text();
     throw new Error(
       errorText || `Error al obtener clientes: ${response.status}`
+    );
+  }
+
+  return response.json();
+}
+
+export async function getCustomerProfile(id: string): Promise<CustomerProfile> {
+  const apiBase = resolveApiBase();
+  const token = getStoredToken();
+
+  const response = await authenticatedFetch(`${apiBase}/customers/${id}`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(
+      errorText || `Error al cargar perfil del cliente: ${response.status}`
     );
   }
 
