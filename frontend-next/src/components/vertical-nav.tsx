@@ -242,6 +242,17 @@ export function VerticalNav() {
           },
         ]),
     
+    // Clientes (Admin/Agent/Facturacion)
+    ...(isAdmin || role === "AGENT" || role === "FACTURACION_COBROS"
+      ? [
+          {
+            href: "/admin/customers",
+            label: "Clientes",
+            icon: "👥",
+          },
+        ]
+      : []),
+    
     // Sección de Administración (SOLO Admin/Contador, NO Facturacion)
     ...(isAdminOrContador
       ? [
