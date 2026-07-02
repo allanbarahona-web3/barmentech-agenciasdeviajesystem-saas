@@ -13,6 +13,7 @@ import { PdfRenderService } from "./pdf-render.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { BillingService } from "../billing/billing.service";
 import { ContractsEmailsService } from "./contracts-emails.service";
+import { CustomersService } from "../customers/customers.service";
 import { ArchiveContractDto } from "./dto/archive-contract.dto";
 
 import { SendContractEmailDto } from "./dto/send-contract-email.dto";
@@ -58,6 +59,7 @@ export class ContractsService {
     private readonly pdfRenderService: PdfRenderService,
     private readonly billingService: BillingService,
     private readonly contractsEmailsService: ContractsEmailsService,
+    private readonly customersService: CustomersService,
   ) {}
 
   /**
@@ -1082,36 +1084,16 @@ export class ContractsService {
       payload && typeof payload === "object" && !Array.isArray(payload)
         ? (payload as Record<string, unknown>)
         : {};
-    const clientPhone = String((payloadRecord as Record<string, unknown>).clientPhone || "").trim() || null;
-    const emergencyContactName =
-      String((payloadRecord as Record<string, unknown>).emergencyContactName || "").trim() || null;
-    const emergencyContactPhone =
-      String((payloadRecord as Record<string, unknown>).emergencyContactPhone || "").trim() || null;
 
-    // Upsert cliente con compound unique key (idNumber + tenantId)
-    const client = await (this.prisma as any).client.upsert({
-      where: { 
-        idNumber_tenantId: {
-          idNumber: dto.clientIdNumber.trim(),
-          tenantId: user.tenantId,
-        }
-      },
-      update: {
-        fullName: dto.clientFullName.trim(),
-        email: dto.clientEmail.trim().toLowerCase(),
-        phone: clientPhone,
-        emergencyContactName,
-        emergencyContactPhone,
-      },
-      create: {
-        fullName: dto.clientFullName.trim(),
-        idNumber: dto.clientIdNumber.trim(),
-        email: dto.clientEmail.trim().toLowerCase(),
-        phone: clientPhone,
-        emergencyContactName,
-        emergencyContactPhone,
-        tenantId: user.tenantId,
-      },
+    // Delegate customer management to CustomersService
+    const client = await this.customersService.upsertClient({
+      fullName: dto.clientFullName,
+      idNumber: dto.clientIdNumber,
+      email: dto.clientEmail,
+      phone: (payloadRecord as Record<string, unknown>).clientPhone as string | null,
+      emergencyContactName: (payloadRecord as Record<string, unknown>).emergencyContactName as string | null,
+      emergencyContactPhone: (payloadRecord as Record<string, unknown>).emergencyContactPhone as string | null,
+      tenantId: user.tenantId,
     });
 
     // Obtener tenant para organizar archivos
