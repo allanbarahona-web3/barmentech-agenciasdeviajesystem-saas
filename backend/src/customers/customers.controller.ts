@@ -1,24 +1,46 @@
-import { Controller } from "@nestjs/common";
+import { Controller, Get, Query, Req, UseGuards } from "@nestjs/common";
 import { CustomersService } from "./customers.service";
+import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { RolesGuard } from "../auth/roles.guard";
+import { Roles } from "../auth/roles.decorator";
+import { ListCustomersDto } from "./dto/list-customers.dto";
+import { CustomerListResponseDto } from "./dto/customer-list-response.dto";
+import { CUSTOMER_ACCESS_ROLES } from "./constants/customer-roles.constant";
 
 /**
  * CustomersController
  * 
  * Purpose:
- * - Establish module structure
- * - Future: Expose customer operations via REST
- * 
- * Currently empty - no endpoints implemented in Sprint 1.
- * Future sprints will add customer CRUD operations here.
+ * - Expose customer operations via REST
+ * - Enforce authentication and authorization
+ * - Delegate business logic to CustomersService
  */
 @Controller("customers")
 export class CustomersController {
   constructor(private readonly customersService: CustomersService) {}
 
-  // Future endpoints will be added here:
-  // - POST /customers/upsert
-  // - GET /customers/:id
-  // - GET /customers/search
-  // - PUT /customers/:id
-  // - DELETE /customers/:id
+  /**
+   * GET /customers
+   * 
+   * List customers with pagination and search.
+   * Protected endpoint - requires customer access roles (ADMIN, AGENT, FACTURACION_COBROS).
+   * Enforces tenant isolation automatically via user's tenantId.
+   * 
+   * Query parameters:
+   * - page: Page number (default: 1)
+   * - pageSize: Items per page (default: 20, max: 100)
+   * - search: Search term (searches fullName, idNumber, email)
+   */
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(...CUSTOMER_ACCESS_ROLES)
+  @Get()
+  listCustomers(
+    @Req()
+    req: {
+      user: { id: string; email: string; fullName: string; tenantId: string };
+    },
+    @Query() query: ListCustomersDto
+  ): Promise<CustomerListResponseDto> {
+    return this.customersService.listCustomers(req.user.tenantId, query);
+  }
 }

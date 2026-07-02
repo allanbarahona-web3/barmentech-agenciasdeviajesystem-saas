@@ -1,7 +1,10 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
-import { Client } from "@prisma/client";
+import { Client, Prisma } from "@prisma/client";
 import { CreateOrUpdateClientDto } from "./dto/create-or-update-client.dto";
+import { ListCustomersDto } from "./dto/list-customers.dto";
+import { CustomerListResponseDto } from "./dto/customer-list-response.dto";
+import { CustomerListItemDto } from "./dto/customer-list-item.dto";
 
 /**
  * CustomersService
@@ -11,6 +14,7 @@ import { CreateOrUpdateClientDto } from "./dto/create-or-update-client.dto";
  * - Customer validation
  * - Customer creation
  * - Customer update (upsert)
+ * - Customer listing and search
  * 
  * ContractsService delegates all customer management to this service.
  */
@@ -103,6 +107,98 @@ export class CustomersService {
     }
 
     return registeredClients;
+  }
+
+  /**
+   * List customers with pagination and search
+   * 
+   * Business Rules:
+   * - Enforces tenant isolation
+   * - Search is case-insensitive across fullName, idNumber, email
+   * - Returns paginated results
+   * 
+   * @param tenantId Tenant ID for isolation
+   * @param dto Query parameters (page, pageSize, search)
+   * @returns Paginated customer list
+   */
+  async listCustomers(
+    tenantId: string,
+    dto: ListCustomersDto
+  ): Promise<CustomerListResponseDto> {
+    const page = dto.page || 1;
+    const pageSize = dto.pageSize || 20;
+    const skip = (page - 1) * pageSize;
+
+    // Build where clause with tenant isolation
+    const where: Prisma.ClientWhereInput = {
+      tenantId: tenantId,
+    };
+
+    // Add search filter if provided
+    if (dto.search && dto.search.trim()) {
+      const searchTerm = dto.search.trim();
+      where.OR = [
+        {
+          fullName: {
+            contains: searchTerm,
+            mode: "insensitive",
+          },
+        },
+        {
+          idNumber: {
+            contains: searchTerm,
+            mode: "insensitive",
+          },
+        },
+        {
+          email: {
+            contains: searchTerm,
+            mode: "insensitive",
+          },
+        },
+      ];
+    }
+
+    // Execute query with pagination
+    const [customers, total] = await Promise.all([
+      this.prisma.client.findMany({
+        where,
+        select: {
+          id: true,
+          fullName: true,
+          idNumber: true,
+          email: true,
+          phone: true,
+          createdAt: true,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+        skip,
+        take: pageSize,
+      }),
+      this.prisma.client.count({ where }),
+    ]);
+
+    // Map to DTOs
+    const customerDtos: CustomerListItemDto[] = customers.map((c) => ({
+      id: c.id,
+      fullName: c.fullName,
+      idNumber: c.idNumber,
+      email: c.email,
+      phone: c.phone,
+      createdAt: c.createdAt,
+    }));
+
+    const totalPages = Math.ceil(total / pageSize);
+
+    return {
+      customers: customerDtos,
+      total,
+      page,
+      pageSize,
+      totalPages,
+    };
   }
 
   /**
