@@ -10,6 +10,7 @@ import { CustomerInfoDto } from "./dto/customer-info.dto";
 import { CustomerContractItemDto } from "./dto/customer-contract-item.dto";
 import { CustomerFinancialSummaryDto } from "./dto/customer-financial-summary.dto";
 import { CustomerStatisticsDto } from "./dto/customer-statistics.dto";
+import { UpdateCustomerDto } from "./dto/update-customer.dto";
 
 /**
  * CustomersService
@@ -336,6 +337,77 @@ export class CustomersService {
       financialSummary,
       statistics,
     };
+  }
+
+  /**
+   * Update customer information
+   * 
+   * Business Rules:
+   * - Enforces tenant isolation
+   * - Only updates provided fields (partial update)
+   * - Returns 404 if customer not found in tenant
+   * - Normalizes all data before saving
+   * - Returns complete profile after update
+   * 
+   * @param tenantId Tenant ID for isolation
+   * @param customerId Customer ID
+   * @param dto Update data (partial)
+   * @returns Complete customer profile after update
+   */
+  async updateCustomer(
+    tenantId: string,
+    customerId: string,
+    dto: UpdateCustomerDto
+  ): Promise<CustomerProfileDto> {
+    // Verify customer exists with tenant isolation
+    const existingCustomer = await this.prisma.client.findFirst({
+      where: {
+        id: customerId,
+        tenantId: tenantId,
+      },
+    });
+
+    if (!existingCustomer) {
+      throw new NotFoundException(
+        `Customer not found or does not belong to the current tenant.`
+      );
+    }
+
+    // Build update data with normalization (only for provided fields)
+    const updateData: Prisma.ClientUpdateInput = {};
+
+    if (dto.fullName !== undefined) {
+      updateData.fullName = String(dto.fullName || "").trim();
+    }
+
+    if (dto.email !== undefined) {
+      updateData.email = String(dto.email || "").trim().toLowerCase();
+    }
+
+    if (dto.phone !== undefined) {
+      updateData.phone = String(dto.phone || "").trim() || null;
+    }
+
+    if (dto.emergencyContactName !== undefined) {
+      updateData.emergencyContactName =
+        String(dto.emergencyContactName || "").trim() || null;
+    }
+
+    if (dto.emergencyContactPhone !== undefined) {
+      updateData.emergencyContactPhone =
+        String(dto.emergencyContactPhone || "").trim() || null;
+    }
+
+    // Update customer
+    await this.prisma.client.update({
+      where: {
+        id: customerId,
+      },
+      data: updateData,
+    });
+
+    // Return complete profile using existing aggregation method
+    return this.getCustomerProfile(tenantId, customerId);
   }
 
   /**

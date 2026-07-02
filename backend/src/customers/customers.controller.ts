@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Query, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Query, Req, UseGuards } from "@nestjs/common";
 import { CustomersService } from "./customers.service";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../auth/roles.guard";
@@ -6,6 +6,7 @@ import { Roles } from "../auth/roles.decorator";
 import { ListCustomersDto } from "./dto/list-customers.dto";
 import { CustomerListResponseDto } from "./dto/customer-list-response.dto";
 import { CustomerProfileDto } from "./dto/customer-profile.dto";
+import { UpdateCustomerDto } from "./dto/update-customer.dto";
 import { CUSTOMER_ACCESS_ROLES } from "./constants/customer-roles.constant";
 
 /**
@@ -70,5 +71,37 @@ export class CustomersController {
     @Param("id") customerId: string
   ): Promise<CustomerProfileDto> {
     return this.customersService.getCustomerProfile(req.user.tenantId, customerId);
+  }
+
+  /**
+   * PATCH /customers/:id
+   * 
+   * Update customer information.
+   * Protected endpoint - requires customer access roles (ADMIN, AGENT, FACTURACION_COBROS).
+   * Enforces tenant isolation automatically via user's tenantId.
+   * Returns 404 if customer not found in tenant.
+   * Supports partial updates - only provided fields are updated.
+   * 
+   * Editable fields:
+   * - fullName
+   * - email
+   * - phone
+   * - emergencyContactName
+   * - emergencyContactPhone
+   * 
+   * Returns complete customer profile after update.
+   */
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(...CUSTOMER_ACCESS_ROLES)
+  @Patch(":id")
+  updateCustomer(
+    @Req()
+    req: {
+      user: { id: string; email: string; fullName: string; tenantId: string };
+    },
+    @Param("id") customerId: string,
+    @Body() dto: UpdateCustomerDto
+  ): Promise<CustomerProfileDto> {
+    return this.customersService.updateCustomer(req.user.tenantId, customerId, dto);
   }
 }
