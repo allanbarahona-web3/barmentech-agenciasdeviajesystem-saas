@@ -649,7 +649,8 @@ ${clause(
   <p>En caso de incumplimiento en el pago de cualquier cuota, plazo o monto acordado en el presente Contrato, ${esc(tenantName)} podrá notificar al Cliente una fecha límite adicional para poner al día la totalidad de los montos vencidos. Esta notificación podrá realizarse a través de correo electrónico, llamada telefónica, mensaje de texto o cualquier medio de comunicación acordado.</p>
   <p>De mantenerse el incumplimiento después de la fecha límite notificada, ${esc(tenantName)} podrá, sin obligación previa de aviso adicional, proceder a excluir al Cliente del Tour contratado y cancelar la reserva y todos los servicios asociados.</p>
   <p>En caso de exclusión por incumplimiento de pago, la totalidad de los dineros recibidos por ${esc(tenantName)} al momento del incumplimiento no serán reembolsables bajo ningún concepto. El Cliente reconoce y acepta que estos fondos compensarán a la Agencia por los costos administrativos, gastos operativos, y los perjuicios causados por la cancelación tardía.</p>
-  <p>El Cliente es responsable de cumplir oportunamente con todas las obligaciones de pago conforme al calendario de pagos establecido. Cualquier atraso en el cumplimiento de las obligaciones económicas constituye incumplimiento contractual.</p>`,
+  <p>El Cliente es responsable de cumplir oportunamente con todas las obligaciones de pago conforme al calendario de pagos establecido. Cualquier atraso en el cumplimiento de las obligaciones económicas constituye incumplimiento contractual.</p>
+  <p>Se aplicará una penalidad del 10% sobre el precio del paquete por cada día de atraso.</p>`,
 )}
 
 ${clause(
