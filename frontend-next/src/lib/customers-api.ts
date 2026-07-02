@@ -65,6 +65,14 @@ export interface CustomerProfile {
   statistics: CustomerStatistics;
 }
 
+export interface UpdateCustomerDto {
+  fullName?: string;
+  email?: string;
+  phone?: string;
+  emergencyContactName?: string;
+  emergencyContactPhone?: string;
+}
+
 // API Functions
 export async function getCustomers(
   params?: GetCustomersParams
@@ -114,6 +122,32 @@ export async function getCustomerProfile(id: string): Promise<CustomerProfile> {
     const errorText = await response.text();
     throw new Error(
       errorText || `Error al cargar perfil del cliente: ${response.status}`
+    );
+  }
+
+  return response.json();
+}
+
+export async function updateCustomer(
+  id: string,
+  data: UpdateCustomerDto
+): Promise<CustomerProfile> {
+  const apiBase = resolveApiBase();
+  const token = getStoredToken();
+
+  const response = await authenticatedFetch(`${apiBase}/customers/${id}`, {
+    method: 'PATCH',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(
+      errorText || `Error al actualizar cliente: ${response.status}`
     );
   }
 

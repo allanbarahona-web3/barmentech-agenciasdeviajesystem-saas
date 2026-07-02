@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic';
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { LoadingModal } from '@/components/loading-modal';
-import { getCustomerProfile, type CustomerProfile } from '@/lib/customers-api';
+import { getCustomerProfile, updateCustomer, type CustomerProfile, type UpdateCustomerDto } from '@/lib/customers-api';
 
 export default function CustomerProfilePage() {
   const router = useRouter();
@@ -18,6 +18,16 @@ export default function CustomerProfilePage() {
   const [loadingModalState, setLoadingModalState] = useState<'loading' | 'success' | 'error'>('loading');
   const [loadingModalMessage, setLoadingModalMessage] = useState('');
   const [is404Error, setIs404Error] = useState(false);
+
+  // Edit mode state
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [editForm, setEditForm] = useState({
+    fullName: '',
+    email: '',
+    phone: '',
+    emergencyContactName: '',
+    emergencyContactPhone: '',
+  });
 
   useEffect(() => {
     loadProfile();
@@ -65,6 +75,51 @@ export default function CustomerProfilePage() {
       hour: '2-digit',
       minute: '2-digit',
     });
+  }
+
+  function handleEnterEditMode() {
+    if (!profile) return;
+    setEditForm({
+      fullName: profile.customer.fullName,
+      email: profile.customer.email,
+      phone: profile.customer.phone || '',
+      emergencyContactName: profile.customer.emergencyContactName || '',
+      emergencyContactPhone: profile.customer.emergencyContactPhone || '',
+    });
+    setIsEditMode(true);
+  }
+
+  function handleCancelEdit() {
+    setIsEditMode(false);
+  }
+
+  async function handleSaveEdit() {
+    if (!profile) return;
+
+    try {
+      setLoadingModalOpen(true);
+      setLoadingModalState('loading');
+      setLoadingModalMessage('Guardando cambios...');
+
+      const updateData: UpdateCustomerDto = {
+        fullName: editForm.fullName.trim() || undefined,
+        email: editForm.email.trim() || undefined,
+        phone: editForm.phone.trim() || undefined,
+        emergencyContactName: editForm.emergencyContactName.trim() || undefined,
+        emergencyContactPhone: editForm.emergencyContactPhone.trim() || undefined,
+      };
+
+      const updatedProfile = await updateCustomer(customerId, updateData);
+      setProfile(updatedProfile);
+      setIsEditMode(false);
+
+      setLoadingModalState('success');
+      setLoadingModalMessage('✅ Cliente actualizado exitosamente');
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Error al actualizar cliente';
+      setLoadingModalState('error');
+      setLoadingModalMessage(errorMessage);
+    }
   }
 
   function getStatusBadgeStyle(status: string) {
@@ -159,31 +214,97 @@ export default function CustomerProfilePage() {
             <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#1f2937' }}>
               📋 Información del Cliente
             </h2>
-            <button
-              disabled
-              style={{
-                padding: '6px 14px',
-                background: '#e5e7eb',
-                color: '#9ca3af',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: 'not-allowed',
-                fontSize: '13px',
-                fontWeight: '500',
-              }}
-            >
-              ✏️ Editar
-            </button>
+            {!isEditMode ? (
+              <button
+                onClick={handleEnterEditMode}
+                style={{
+                  padding: '6px 14px',
+                  background: '#667eea',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  fontWeight: '500',
+                  transition: 'all 0.2s',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = '#5568d3')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = '#667eea')}
+              >
+                ✏️ Editar
+              </button>
+            ) : (
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  onClick={handleCancelEdit}
+                  style={{
+                    padding: '6px 14px',
+                    background: '#e5e7eb',
+                    color: '#4b5563',
+                    border: 'none',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontSize: '13px',
+                    fontWeight: '500',
+                    transition: 'all 0.2s',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = '#d1d5db')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = '#e5e7eb')}
+                >
+                  ✖️ Cancelar
+                </button>
+                <button
+                  onClick={handleSaveEdit}
+                  style={{
+                    padding: '6px 14px',
+                    background: '#10b981',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontSize: '13px',
+                    fontWeight: '500',
+                    transition: 'all 0.2s',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = '#059669')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = '#10b981')}
+                >
+                  💾 Guardar
+                </button>
+              </div>
+            )}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            {/* Full Name - Editable */}
             <div>
               <div style={{ fontSize: '12px', fontWeight: '600', color: '#6b7280', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                 Nombre Completo
               </div>
-              <div style={{ fontSize: '15px', color: '#1f2937', fontWeight: '500' }}>
-                {customer.fullName}
-              </div>
+              {isEditMode ? (
+                <input
+                  type="text"
+                  value={editForm.fullName}
+                  onChange={(e) => setEditForm({ ...editForm, fullName: e.target.value })}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    border: '2px solid #e5e7eb',
+                    borderRadius: '6px',
+                    fontSize: '15px',
+                    color: '#1f2937',
+                    fontWeight: '500',
+                    transition: 'border-color 0.2s',
+                  }}
+                  onFocus={(e) => (e.currentTarget.style.borderColor = '#667eea')}
+                  onBlur={(e) => (e.currentTarget.style.borderColor = '#e5e7eb')}
+                />
+              ) : (
+                <div style={{ fontSize: '15px', color: '#1f2937', fontWeight: '500' }}>
+                  {customer.fullName}
+                </div>
+              )}
             </div>
+            {/* ID Number - Read Only */}
             <div>
               <div style={{ fontSize: '12px', fontWeight: '600', color: '#6b7280', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                 Cédula/ID
@@ -192,35 +313,116 @@ export default function CustomerProfilePage() {
                 {customer.idNumber}
               </div>
             </div>
+            {/* Email - Editable */}
             <div>
               <div style={{ fontSize: '12px', fontWeight: '600', color: '#6b7280', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                 Email
               </div>
-              <div style={{ fontSize: '15px', color: '#1f2937' }}>
-                {customer.email}
-              </div>
+              {isEditMode ? (
+                <input
+                  type="email"
+                  value={editForm.email}
+                  onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    border: '2px solid #e5e7eb',
+                    borderRadius: '6px',
+                    fontSize: '15px',
+                    color: '#1f2937',
+                    transition: 'border-color 0.2s',
+                  }}
+                  onFocus={(e) => (e.currentTarget.style.borderColor = '#667eea')}
+                  onBlur={(e) => (e.currentTarget.style.borderColor = '#e5e7eb')}
+                />
+              ) : (
+                <div style={{ fontSize: '15px', color: '#1f2937' }}>
+                  {customer.email}
+                </div>
+              )}
             </div>
+            {/* Phone - Editable */}
             <div>
               <div style={{ fontSize: '12px', fontWeight: '600', color: '#6b7280', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                 Teléfono
               </div>
-              <div style={{ fontSize: '15px', color: '#1f2937' }}>
-                {customer.phone || '-'}
-              </div>
+              {isEditMode ? (
+                <input
+                  type="text"
+                  value={editForm.phone}
+                  onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    border: '2px solid #e5e7eb',
+                    borderRadius: '6px',
+                    fontSize: '15px',
+                    color: '#1f2937',
+                    transition: 'border-color 0.2s',
+                  }}
+                  onFocus={(e) => (e.currentTarget.style.borderColor = '#667eea')}
+                  onBlur={(e) => (e.currentTarget.style.borderColor = '#e5e7eb')}
+                />
+              ) : (
+                <div style={{ fontSize: '15px', color: '#1f2937' }}>
+                  {customer.phone || '-'}
+                </div>
+              )}
             </div>
+            {/* Emergency Contact - Editable */}
             <div>
               <div style={{ fontSize: '12px', fontWeight: '600', color: '#6b7280', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                 Contacto de Emergencia
               </div>
-              <div style={{ fontSize: '15px', color: '#1f2937' }}>
-                {customer.emergencyContactName || '-'}
-                {customer.emergencyContactName && customer.emergencyContactPhone && (
-                  <span style={{ color: '#6b7280', marginLeft: '8px' }}>
-                    ({customer.emergencyContactPhone})
-                  </span>
-                )}
-              </div>
+              {isEditMode ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <input
+                    type="text"
+                    placeholder="Nombre"
+                    value={editForm.emergencyContactName}
+                    onChange={(e) => setEditForm({ ...editForm, emergencyContactName: e.target.value })}
+                    style={{
+                      width: '100%',
+                      padding: '8px 12px',
+                      border: '2px solid #e5e7eb',
+                      borderRadius: '6px',
+                      fontSize: '15px',
+                      color: '#1f2937',
+                      transition: 'border-color 0.2s',
+                    }}
+                    onFocus={(e) => (e.currentTarget.style.borderColor = '#667eea')}
+                    onBlur={(e) => (e.currentTarget.style.borderColor = '#e5e7eb')}
+                  />
+                  <input
+                    type="text"
+                    placeholder="Teléfono"
+                    value={editForm.emergencyContactPhone}
+                    onChange={(e) => setEditForm({ ...editForm, emergencyContactPhone: e.target.value })}
+                    style={{
+                      width: '100%',
+                      padding: '8px 12px',
+                      border: '2px solid #e5e7eb',
+                      borderRadius: '6px',
+                      fontSize: '15px',
+                      color: '#1f2937',
+                      transition: 'border-color 0.2s',
+                    }}
+                    onFocus={(e) => (e.currentTarget.style.borderColor = '#667eea')}
+                    onBlur={(e) => (e.currentTarget.style.borderColor = '#e5e7eb')}
+                  />
+                </div>
+              ) : (
+                <div style={{ fontSize: '15px', color: '#1f2937' }}>
+                  {customer.emergencyContactName || '-'}
+                  {customer.emergencyContactName && customer.emergencyContactPhone && (
+                    <span style={{ color: '#6b7280', marginLeft: '8px' }}>
+                      ({customer.emergencyContactPhone})
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
+            {/* Created At - Read Only */}
             <div>
               <div style={{ fontSize: '12px', fontWeight: '600', color: '#6b7280', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                 Cliente Desde
