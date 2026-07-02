@@ -4866,20 +4866,28 @@ this.logger.log(
 
       const existingBalance = await tx.billingClientBalance.findUnique({
         where: { clientId: creditNote.invoice.clientId },
-      });
+      });const nextCredit = this.toNumber(existingBalance?.availableCreditAmount, 0) + creditAmount;
 
-      const nextCredit = this.toNumber(existingBalance?.availableCreditAmount, 0) + creditAmount;
-      await tx.billingClientBalance.upsert({
-        where: { clientId: creditNote.invoice.clientId },
-        create: {
-          clientId: creditNote.invoice.clientId,
-          availableCreditAmount: this.toDecimalString(nextCredit),
-          currency: creditNote.invoice.currency,
-        },
-        update: {
-          availableCreditAmount: this.toDecimalString(nextCredit),
-        },
-      });
+await tx.billingClientBalance.upsert({
+  where: { clientId: creditNote.invoice.clientId },
+  create: {
+    client: {
+      connect: {
+        id: creditNote.invoice.clientId,
+      },
+    },
+    tenant: {
+      connect: {
+        id: creditNote.tenantId,
+      },
+    },
+    availableCreditAmount: this.toDecimalString(nextCredit),
+    currency: creditNote.invoice.currency,
+  },
+  update: {
+    availableCreditAmount: this.toDecimalString(nextCredit),
+  },
+});
     });
 
     const updatedInvoice = await this.recalcInvoiceAmounts(creditNote.invoiceId);
