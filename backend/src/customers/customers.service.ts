@@ -1,10 +1,15 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { Client, Prisma } from "@prisma/client";
 import { CreateOrUpdateClientDto } from "./dto/create-or-update-client.dto";
 import { ListCustomersDto } from "./dto/list-customers.dto";
 import { CustomerListResponseDto } from "./dto/customer-list-response.dto";
 import { CustomerListItemDto } from "./dto/customer-list-item.dto";
+import { CustomerProfileDto } from "./dto/customer-profile.dto";
+import { CustomerInfoDto } from "./dto/customer-info.dto";
+import { CustomerContractItemDto } from "./dto/customer-contract-item.dto";
+import { CustomerFinancialSummaryDto } from "./dto/customer-financial-summary.dto";
+import { CustomerStatisticsDto } from "./dto/customer-statistics.dto";
 
 /**
  * CustomersService
@@ -198,6 +203,138 @@ export class CustomersService {
       page,
       pageSize,
       totalPages,
+    };
+  }
+
+  /**
+   * Get complete customer profile with aggregated data
+   * 
+   * Business Rules:
+   * - Enforces tenant isolation
+   * - Returns 404 if customer not found in tenant
+   * - Aggregates data from multiple modules
+   * 
+   * @param tenantId Tenant ID for isolation
+   * @param customerId Customer ID
+   * @returns Complete customer profile
+   */
+  async getCustomerProfile(
+    tenantId: string,
+    customerId: string
+  ): Promise<CustomerProfileDto> {
+    // Fetch customer with tenant isolation
+    const customer = await this.prisma.client.findFirst({
+      where: {
+        id: customerId,
+        tenantId: tenantId,
+      },
+      select: {
+        id: true,
+        fullName: true,
+        idNumber: true,
+        email: true,
+        phone: true,
+        emergencyContactName: true,
+        emergencyContactPhone: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    if (!customer) {
+      throw new NotFoundException(
+        `Customer not found or does not belong to the current tenant.`
+      );
+    }
+
+    // Fetch contracts (lightweight)
+    const contracts = await this.prisma.contract.findMany({
+      where: {
+        clientId: customerId,
+        tenantId: tenantId,
+      },
+      select: {
+        id: true,
+        contractNumber: true,
+        destination: true,
+        status: true,
+        source: true,
+        participantCount: true,
+        createdAt: true,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    // Get contract IDs for financial queries
+    const contractIds = contracts.map((c) => c.id);
+
+    // Fetch financial summary and statistics in parallel
+    const [totalInvoices, totalReceipts, totalPayments] = await Promise.all([
+      this.prisma.billingInvoice.count({
+        where: {
+          clientId: customerId,
+          tenantId: tenantId,
+        },
+      }),
+      contractIds.length > 0
+        ? this.prisma.billingReceipt.count({
+            where: {
+              contractId: { in: contractIds },
+              tenantId: tenantId,
+            },
+          })
+        : 0,
+      contractIds.length > 0
+        ? this.prisma.billingPayment.count({
+            where: {
+              contractId: { in: contractIds },
+              tenantId: tenantId,
+            },
+          })
+        : 0,
+    ]);
+
+    // Map to DTOs
+    const customerInfo: CustomerInfoDto = {
+      id: customer.id,
+      fullName: customer.fullName,
+      idNumber: customer.idNumber,
+      email: customer.email,
+      phone: customer.phone,
+      emergencyContactName: customer.emergencyContactName,
+      emergencyContactPhone: customer.emergencyContactPhone,
+      createdAt: customer.createdAt,
+      updatedAt: customer.updatedAt,
+    };
+
+    const contractDtos: CustomerContractItemDto[] = contracts.map((c) => ({
+      id: c.id,
+      contractNumber: c.contractNumber,
+      destination: c.destination,
+      status: c.status,
+      source: c.source,
+      participantCount: c.participantCount,
+      createdAt: c.createdAt,
+    }));
+
+    const financialSummary: CustomerFinancialSummaryDto = {
+      totalInvoices,
+      totalReceipts,
+      totalPayments,
+    };
+
+    const statistics: CustomerStatisticsDto = {
+      totalContracts: contracts.length,
+      totalTravels: contracts.length, // At this stage, calculated from contracts
+    };
+
+    return {
+      customer: customerInfo,
+      contracts: contractDtos,
+      financialSummary,
+      statistics,
     };
   }
 
