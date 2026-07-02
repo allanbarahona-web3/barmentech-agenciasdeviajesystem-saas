@@ -64,6 +64,48 @@ export class CustomersService {
   }
 
   /**
+   * Registers adult companions as Client records
+   * 
+   * Business Rules:
+   * - Only registers companions with valid fullName and idNumber
+   * - Skips companions without required identification
+   * - Reuses upsertClient() for each companion
+   * 
+   * @param companions Array of companion objects from contract payload
+   * @param tenantId Tenant ID for multi-tenant isolation
+   * @returns Array of registered Client records
+   */
+  async registerCompanionsAsClients(
+    companions: any[],
+    tenantId: string
+  ): Promise<Client[]> {
+    // Filter for companions with valid identification
+    const validCompanions = companions.filter(
+      (c) =>
+        c &&
+        String(c.fullName || "").trim() &&
+        String(c.idNumber || "").trim()
+    );
+
+    // Register each companion using upsertClient
+    const registeredClients: Client[] = [];
+    for (const companion of validCompanions) {
+      const client = await this.upsertClient({
+        fullName: companion.fullName,
+        idNumber: companion.idNumber,
+        email: companion.email,
+        phone: companion.phone,
+        emergencyContactName: companion.emergencyContactName,
+        emergencyContactPhone: companion.emergencyContactPhone,
+        tenantId: tenantId,
+      });
+      registeredClients.push(client);
+    }
+
+    return registeredClients;
+  }
+
+  /**
    * Normalizes all customer fields
    * 
    * Normalization rules (CENTRALIZED HERE):

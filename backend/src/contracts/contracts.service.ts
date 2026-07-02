@@ -1096,6 +1096,12 @@ export class ContractsService {
       tenantId: user.tenantId,
     });
 
+    // Register adult companions as clients
+    await this.customersService.registerCompanionsAsClients(
+      Array.isArray(payloadRecord.companions) ? payloadRecord.companions : [],
+      user.tenantId
+    );
+
     // Obtener tenant para organizar archivos
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: user.tenantId },
