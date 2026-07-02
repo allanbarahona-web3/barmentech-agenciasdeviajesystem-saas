@@ -114,7 +114,7 @@ export const buildContractPdfHtml = (
         <ul>${state.minors
           .map(
             (minor) =>
-              `<li>${v(minor.minorName)}, documento de menor número ${v(minor.minorId)}, en calidad de representado por ${v(minor.tutorName)}.</li>`,
+              `<li><strong>Menor:</strong> ${v(minor.minorName)}, documento de identidad número ${v(minor.minorId)}. <strong>Tutor legal que autoriza:</strong> ${v(minor.tutorName)}, ${v(minor.tutorIdType)} número ${v(minor.tutorId)}. <strong>Acompañante responsable en el viaje:</strong> ${v(minor.travelingWith)}.</li>`,
           )
           .join("")}</ul>
         <p>La autorización y consentimiento de representación de menor de edad se incorpora como anexo obligatorio de este Contrato.</p>
@@ -665,10 +665,11 @@ ${clause(
 ${clause(
   "SÉPTIMO: CHECK IN Y ASIGNACIÓN DE ASIENTOS.",
   `<p>${esc(tenantName)} será el responsable de realizar el "Check In" de los Clientes según apertura de la aerolínea previo al vuelo.</p>
-  <p>La asignación de asientos la realiza la aerolínea de forma aleatoria al momento en que se realiza el "Check In", ${esc(tenantName)} no garantiza que los Clientes y sus acompañantes puedan contar con asientos juntos o cercanos.</p>
+  <p>La asignación de asientos la realiza la aerolínea de forma aleatoria al momento en que se realiza el "Check-in", ${esc(tenantName)} no garantiza que los Clientes y sus acompañantes puedan contar con asientos juntos o cercanos. Además no se garantiza que un menor de edad pueda sentarse junto a su acompañante, ya que es decisión de la aerolínea.</p>
   <p>En caso de que los Clientes tengan la intención de solicitar su asiento junto a sus acompañantes, deberá solicitarlo con al menos 15 días hábiles a ${esc(tenantName)}, lo cual generará un costo adicional al precio del Tour, sin embargo, ${esc(tenantName)} no se hace responsable en caso de que por disponibilidad de asientos del avión no sea posible.</p>
-  <p>Los Clientes tienen derecho a un equipaje personal de máximo 10 kilos de peso, a saber, una mochila de espalda; (No confundir con la maleta Carry-On), en caso de que el equipaje de los Clientes exceda el peso indicado, los Clientes correrán con los pagos de eventuales multas. (A excepción de este paquete que incluye Carry-On).</p>
-  <p>Los Clientes exoneran a ${esc(tenantName)} de toda responsabilidad sobre la asignación de asientos, o bien, la disponibilidad de asientos en caso de que sea interés de los Clientes la compra del espacio junto a sus acompañantes, ya que, dependerá meramente por parte de la aerolínea.</p>`,
+  <p>Los Clientes exoneran a ${esc(tenantName)} de toda responsabilidad sobre la asignación de asientos, o bien, la disponibilidad de asientos en caso de que sea interés de los Clientes la compra del espacio junto a sus acompañantes, ya que, dependerá meramente por parte de la aerolínea.</p>
+  <p><strong>Equipaje permitido:</strong> ${v(state.luggageClause)}</p>
+  <p>Cualquier equipaje diferente al que se permite en el paquete tiene costos adicionales.</p>`,
 )}
 
 ${clause(
@@ -679,9 +680,10 @@ ${clause(
 )}
 
 ${clause(
-  "NOVENO: PERSONAL DE ACOMPAÑAMIENTO.",
-  `<p>Dependiendo del Tour, ${esc(tenantName)} podrá asignar personal de acompañamiento desde Costa Rica.</p>
-  <p>El Cliente debe presentarse con al menos 3 horas de anticipación al aeropuerto y con toda la documentación requerida para viajar. ${esc(tenantName)} no será responsable por llegada tardía, documentos vencidos o documentación incompleta del Cliente.</p>`,
+  "NOVENO: PERSONAL DE ACOMPAÑAMIENTO Y REQUISITOS DE VIAJE.",
+  `<p><strong>9.1 Personal de acompañamiento.</strong> El Cliente reconoce y acepta que ${esc(tenantName)} no garantiza acompañamiento desde Costa Rica en todos sus viajes. La asignación de un coordinador o representante dependerá del destino, la logística, la cantidad de pasajeros y los criterios operativos de la agencia. En aquellos casos en que no exista acompañamiento desde Costa Rica, el grupo podrá ser recibido y asistido en destino por colaboradores de ${esc(tenantName)} o por operadores y guías locales previamente designados para la ejecución del itinerario.</p>
+  <p><strong>9.2 Presentación en el aeropuerto y documentación.</strong> El Cliente deberá presentarse en el aeropuerto con un mínimo de tres (3) horas de anticipación y portar toda la documentación requerida para viajar, incluyendo pasaporte vigente, visas, permisos migratorios, vacunas obligatorias (como la fiebre amarilla, cuando corresponda) y cualquier otro requisito exigido por las autoridades competentes o la aerolínea.</p>
+  <p>${esc(tenantName)} no será responsable por pérdidas de vuelos, denegación de embarque o imposibilidad de viajar derivadas de la llegada tardía del Cliente, documentación vencida, incompleta o el incumplimiento de los requisitos migratorios o sanitarios exigidos por el país de origen, tránsito o destino.</p>`,
 )}
 
 ${clause(
@@ -692,7 +694,7 @@ ${clause(
 
 ${clause(
   "DÉCIMO PRIMERO: TRANSPORTES.",
-  `<p>Conforme a lo especificado en el paquete contratado, ${esc(tenantName)} podrá brindar, por medio de terceros contratados, transportes relacionados con el Tour (vehículo privado, micrObús, colectivo o transporte público). En caso de que los transportes internos estén incluidos en el paquete, estos formarán parte del Tour contratado. En caso de que los transportes no estén incluidos, el Cliente deberá asumir los costos de traslados que requiera durante el Tour.</p>
+  `<p>Conforme a lo especificado en el paquete contratado, ${esc(tenantName)} podrá brindar, por medio de terceros contratados, transportes relacionados con el Tour (vehículo privado, microbús, colectivo o transporte público). En caso de que los transportes internos estén incluidos en el paquete, estos formarán parte del Tour contratado. En caso de que los transportes no estén incluidos, el Cliente deberá asumir los costos de traslados que requiera durante el Tour.</p>
   <p>Todo transporte fuera del itinerario establecido o adicional a lo contratado corre por cuenta del Cliente.</p>`,
 )}
 
@@ -702,14 +704,32 @@ ${clause(
 )}
 
 ${clause(
-  "DÉCIMO TERCERO: CANCELACIONES, REEMBOLSOS, CRÉDITOS Y FUERZA MAYOR.",
-  `<p><strong>13.1 Política de Reembolsos y Plazos de Devolución.</strong> En caso de que proceda un reembolso total o parcial por cualquier concepto relacionado con los servicios contratados, el Cliente acepta y reconoce que ${esc(tenantName)} dispondrá de un plazo mínimo de tres (3) meses y máximo de seis (6) meses calendario para efectuar dicha devolución. El plazo comenzará a computarse a partir de la fecha en que ${esc(tenantName)} confirme formalmente la procedencia del reembolso.</p>
-  <p>El Cliente acepta que este plazo responde a la operativa del sector turístico, incluyendo procesos de recuperación de fondos con terceros proveedores como aerolíneas, hoteles, operadores y servicios internacionales, los cuales no dependen directamente de ${esc(tenantName)}. El Cliente renuncia expresamente a cualquier reclamación adicional, intereses, indemnización o penalización relacionada con el tiempo de espera dentro del plazo establecido.</p>
-  <p><strong>13.2 Política de Créditos a Favor (Voucher).</strong> Como alternativa al reembolso, ${esc(tenantName)} podrá ofrecer al Cliente un crédito a favor (voucher) equivalente al monto pagado, utilizable en futuros viajes, servicios o experiencias ofrecidas por la agencia. Este crédito tendrá una vigencia de hasta doce (12) meses y será transferible previa autorización de ${esc(tenantName)}. La aceptación del crédito por parte del Cliente implica la renuncia al reembolso en dinero.</p>
-  <p><strong>13.3 Responsabilidad frente a Terceros Proveedores.</strong> ${esc(tenantName)} actúa como intermediario entre el Cliente y terceros proveedores (incluyendo, pero no limitado a, aerolíneas, hoteles, operadores turísticos y transportistas). Por lo tanto, ${esc(tenantName)} no será responsable por cancelaciones, retrasos, modificaciones, pérdidas o incumplimientos atribuibles a dichos proveedores. Cualquier gestión de reembolso estará sujeta a las políticas y tiempos de respuesta de estos terceros.</p>
-  <p><strong>13.4 Cancelaciones por Parte del Cliente.</strong> En caso de cancelación voluntaria por parte del Cliente, los montos pagados podrán estar sujetos a penalidades, cargos administrativos y condiciones de los proveedores. Si la cancelación se realiza con menos de veintidós (22) días calendario de antelación a la fecha de inicio del viaje, aplicará una penalidad equivalente al diez por ciento (10%) del valor total del contrato. ${esc(tenantName)} no garantiza reembolsos en estos casos, pudiendo ofrecer únicamente créditos a favor según la evaluación del caso.</p>
-  <p><strong>13.5 Fuerza Mayor.</strong> ${esc(tenantName)} no será responsable por la imposibilidad total o parcial de prestar los servicios contratados cuando esto se deba a causas de fuerza mayor, incluyendo pero no limitado a: pandemias, conflictos políticos, desastres naturales, restricciones gubernamentales, huelgas, cancelaciones masivas o cualquier evento fuera del control razonable de la agencia. En estos casos, ${esc(tenantName)} podrá reprogramar el servicio o emitir un crédito a favor, sin obligación inmediata de reembolso.</p>
-  <p><strong>13.6 Aceptación de Condiciones.</strong> Al contratar los servicios, el Cliente declara haber leído, entendido y aceptado todas las condiciones de esta cláusula, incluyendo tiempos de reembolso, políticas de crédito y limitaciones de responsabilidad.</p>`,
+  "DÉCIMO TERCERO: CANCELACIONES, REEMBOLSOS, CRÉDITOS A FAVOR Y FUERZA MAYOR.",
+  `<p><strong>13.1 Políticas generales de cancelación y devolución.</strong> El Cliente declara conocer y aceptar que los servicios turísticos contratados por medio de ${esc(tenantName)} involucran la participación de terceros proveedores, tales como aerolíneas, hoteles, operadores turísticos, transportistas y demás prestadores de servicios, por lo que cualquier modificación, cancelación, devolución o crédito estará sujeto a las condiciones, políticas y penalidades establecidas por dichos proveedores.</p>
+  <p>Los abonos realizados para la reserva del viaje son personales, intransferibles y no reembolsables, salvo en los casos y condiciones expresamente establecidos en la presente cláusula. Asimismo, dichos montos no podrán ser trasladados a otra reserva o pasajero sin autorización previa de ${esc(tenantName)}.</p>
+  <p>Independientemente de la causa de cancelación, ${esc(tenantName)} podrá retener los gastos administrativos, financieros, bancarios, operativos y de gestión efectivamente incurridos hasta la fecha de la cancelación.</p>
+  <p><strong>13.2 Cancelación por enfermedad o fallecimiento.</strong> En caso de cancelación por enfermedad fortuita debidamente justificada mediante documentación médica emitida por la Caja Costarricense del Seguro Social (CCSS), o por fallecimiento del Cliente o de un familiar en primer grado de consanguinidad, ${esc(tenantName)} realizará las gestiones correspondientes ante los proveedores para solicitar la devolución de los montos aplicables.</p>
+  <p>El Cliente acepta que cualquier devolución dependerá de las políticas, condiciones y penalidades establecidas por los proveedores involucrados, pudiendo existir retenciones o cargos aplicables.</p>
+  <p><strong>13.3 Cancelación por imposibilidad de prestación del servicio por parte del operador.</strong> En caso de que algún operador o proveedor no pueda brindar el servicio contratado, ${esc(tenantName)} realizará las gestiones necesarias para buscar alternativas que permitan la continuidad del viaje.</p>
+  <p>Si no fuese posible ejecutar el servicio, se solicitará a los proveedores correspondientes el reintegro de los montos aplicables, entendiendo el Cliente que cualquier devolución estará sujeta a las políticas, tiempos de respuesta y penalidades establecidas por dichos proveedores.</p>
+  <p><strong>13.4 Cancelación por fuerza mayor o caso fortuito.</strong> Se consideran causas de fuerza mayor o caso fortuito, entre otras, situaciones como fenómenos naturales, incendios, huracanes, terremotos, pandemias, conflictos políticos, guerras, actos terroristas, huelgas, manifestaciones, disturbios civiles, restricciones migratorias, restricciones gubernamentales, cierre de aeropuertos o fronteras, cancelaciones de vuelos, sobreventa de asientos, cambios de horarios o fechas de vuelos, fallas operativas o tecnológicas de proveedores, cancelación de eventos o cualquier otra circunstancia ajena al control de ${esc(tenantName)} que impida realizar o continuar con el viaje.</p>
+  <p>Ante estas situaciones, ${esc(tenantName)} gestionará las alternativas disponibles, incluyendo reprogramaciones, créditos a favor o solicitudes de devolución ante los proveedores correspondientes, según aplique.</p>
+  <p><strong>13.5 Cancelación voluntaria por parte del Cliente.</strong> En caso de que el Cliente decida cancelar voluntariamente el viaje por motivos personales o cualquier causa distinta a las contempladas en esta cláusula, dicha solicitud quedará sujeta a evaluación de ${esc(tenantName)}, considerando la fecha de cancelación, montos abonados y condiciones aplicables con los proveedores involucrados.</p>
+  <p>La existencia y monto de cualquier devolución estarán sujetos a la recuperación efectiva de fondos por parte de ${esc(tenantName)} ante los proveedores correspondientes, así como a las penalidades, gastos administrativos y cargos aplicables en cada caso.</p>
+  <p>Los porcentajes de devolución aplicables serán los siguientes:</p>
+  <ul>
+    <li>Cancelaciones realizadas con una anticipación de tres (3) a seis (6) meses antes de la fecha de salida: podrá aplicar una devolución de hasta un 50% del monto abonado.</li>
+    <li>Cancelaciones realizadas con una anticipación de uno (1) a tres (3) meses antes de la fecha de salida: podrá aplicar una devolución de hasta un 30% del monto abonado.</li>
+    <li>Cancelaciones realizadas con un mes (1) o menos de anticipación a la fecha de salida: no aplicará devolución alguna sobre los montos abonados.</li>
+  </ul>
+  <p>El Cliente reconoce que, por la naturaleza de los servicios turísticos, pueden existir compromisos adquiridos previamente con proveedores, por lo que las devoluciones estarán sujetas a las condiciones y penalidades aplicables.</p>
+  <p><strong>13.6 Plazo de devolución.</strong> En los casos donde proceda una devolución total o parcial, ${esc(tenantName)} contará con un plazo mínimo de tres (3) meses y máximo de seis (6) meses calendario para realizar el reintegro correspondiente.</p>
+  <p>Dicho plazo iniciará a partir de la confirmación formal de ${esc(tenantName)} sobre la procedencia de la devolución y estará sujeto a los procesos administrativos de recuperación de fondos con terceros proveedores, incluyendo aerolíneas, hoteles, operadores turísticos y demás servicios involucrados.</p>
+  <p>El Cliente acepta que ${esc(tenantName)} no será responsable por atrasos derivados de procesos externos o tiempos de respuesta de dichos proveedores.</p>
+  <p><strong>13.7 Créditos a favor.</strong> Como alternativa a cualquier devolución, ${esc(tenantName)} podrá ofrecer al Cliente un crédito a favor aplicable a futuros viajes o servicios comercializados por la agencia, cuando las condiciones comerciales, operativas o las políticas de los proveedores así lo permitan.</p>
+  <p>Las condiciones de uso, vigencia, transferibilidad y aplicación de dicho crédito serán informadas al Cliente al momento de su emisión.</p>
+  <p><strong>13.8 Responsabilidad frente a terceros proveedores.</strong> El Cliente reconoce que ${esc(tenantName)} actúa como intermediario entre el Cliente y los diferentes proveedores turísticos. Por lo tanto, la agencia no será responsable por cancelaciones, retrasos, cambios, restricciones o incumplimientos atribuibles directamente a dichos proveedores.</p>
+  <p><strong>13.9 Aceptación de condiciones.</strong> Mediante la firma del presente contrato, el Cliente declara haber leído, comprendido y aceptado las condiciones establecidas en esta cláusula, incluyendo políticas de cancelación, porcentajes de devolución, plazos, créditos a favor y limitaciones de responsabilidad.</p>`,
 )}
 
 ${clause(
