@@ -10,16 +10,19 @@ import {
   superAdminGetAllTenants,
   superAdminGetPlatformStats,
   superAdminCreateTenant,
+  superAdminUpdateTenant,
   superAdminUpdateTenantStatus,
   superAdminGetTenantById,
   superAdminVerifyTenantEmail,
   type SuperAdminTenant,
   type PlatformStats,
   type CreateTenantDto,
+  type UpdateTenantDto,
   type TenantDetail,
 } from "@/lib/auth-api";
 import { LoadingModal } from "@/components/loading-modal";
 import { ConfirmModal } from "@/components/confirm-modal";
+import { TenantForm } from "@/features/super-admin/TenantForm";
 
 export default function SuperAdminDashboard() {
   const router = useRouter();
@@ -34,6 +37,7 @@ export default function SuperAdminDashboard() {
   const [showSuspendModal, setShowSuspendModal] = useState(false);
   const [showActivateModal, setShowActivateModal] = useState(false);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [selectedTenant, setSelectedTenant] = useState<SuperAdminTenant | null>(null);
   const [suspendReason, setSuspendReason] = useState("");
 
@@ -392,6 +396,15 @@ export default function SuperAdminDashboard() {
                         >
                           👁️ Ver
                         </button>
+                        <button
+                          onClick={() => {
+                            setSelectedTenant(tenant);
+                            setShowEditModal(true);
+                          }}
+                          className="px-3 py-1 bg-purple-100 text-purple-700 rounded hover:bg-purple-200 transition-colors"
+                        >
+                          ✏️ Editar
+                        </button>
                         {tenant.isActive ? (
                           <button
                             onClick={() => {
@@ -494,34 +507,40 @@ export default function SuperAdminDashboard() {
           onClose={() => setShowDetailsModal(false)}
         />
       )}
+
+      {/* Edit Tenant Modal */}
+      {showEditModal && selectedTenant && (
+        <EditTenantModal
+          tenant={selectedTenant}
+          onClose={() => {
+            setShowEditModal(false);
+            setSelectedTenant(null);
+          }}
+          onSuccess={() => {
+            setShowEditModal(false);
+            setSelectedTenant(null);
+            loadData();
+          }}
+        />
+      )}
     </div>
   );
 }
 
 function CreateTenantModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
-  const [formData, setFormData] = useState<CreateTenantDto>({
-    name: "",
-    subdomain: "",
-    customDomain: "",
-    contractPrefix: "",
-    adminEmail: "",
-    adminFullName: "",
-    adminPassword: "",
-  });
   const [loadingModalOpen, setLoadingModalOpen] = useState(false);
   const [loadingModalState, setLoadingModalState] = useState<"loading" | "success" | "error">("loading");
   const [loadingModalMessage, setLoadingModalMessage] = useState("");
-  const [error, setError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (data: CreateTenantDto) => {
+    setIsSubmitting(true);
     setLoadingModalOpen(true);
     setLoadingModalState("loading");
     setLoadingModalMessage("Creando tenant...");
-    setError("");
 
     try {
-      await superAdminCreateTenant(formData);
+      await superAdminCreateTenant(data);
       setLoadingModalState("success");
       setLoadingModalMessage("¡Tenant creado exitosamente!");
       setTimeout(() => {
@@ -531,6 +550,7 @@ function CreateTenantModal({ onClose, onSuccess }: { onClose: () => void; onSucc
     } catch (err) {
       setLoadingModalState("error");
       setLoadingModalMessage(err instanceof Error ? err.message : "Error al crear tenant");
+      setIsSubmitting(false);
     }
   };
 
@@ -541,148 +561,90 @@ function CreateTenantModal({ onClose, onSuccess }: { onClose: () => void; onSucc
           <h2 className="text-2xl font-bold text-gray-900">🏢 Crear Nuevo Tenant</h2>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          {error && (
-            <div className="p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg">
-              {error}
-            </div>
-          )}
+        <div className="p-6">
+          <TenantForm
+            mode="create"
+            onSubmit={handleSubmit}
+            onCancel={onClose}
+            isLoading={isSubmitting}
+          />
+        </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Nombre del Tenant *
-              </label>
-              <input
-                type="text"
-                required
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                placeholder="Viajes Ejemplo"
-              />
-            </div>
+        <LoadingModal
+          isOpen={loadingModalOpen}
+          state={loadingModalState}
+          loadingMessage={loadingModalMessage}
+          successMessage={loadingModalMessage}
+          errorMessage={loadingModalMessage}
+          onClose={() => setLoadingModalOpen(false)}
+          autoCloseDelay={2000}
+        />
+      </div>
+    </div>
+  );
+}
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Prefijo de Contrato *
-              </label>
-              <input
-                type="text"
-                required
-                value={formData.contractPrefix}
-                onChange={(e) => setFormData({ ...formData, contractPrefix: e.target.value.toUpperCase() })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                placeholder="EJE"
-                maxLength={3}
-              />
-            </div>
-          </div>
+function EditTenantModal({ 
+  tenant, 
+  onClose, 
+  onSuccess 
+}: { 
+  tenant: SuperAdminTenant; 
+  onClose: () => void; 
+  onSuccess: () => void;
+}) {
+  const [loadingModalOpen, setLoadingModalOpen] = useState(false);
+  const [loadingModalState, setLoadingModalState] = useState<"loading" | "success" | "error">("loading");
+  const [loadingModalMessage, setLoadingModalMessage] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Subdominio * <span className="text-xs text-gray-500">(solo palabra corta)</span>
-              </label>
-              <input
-                type="text"
-                required
-                value={formData.subdomain}
-                onChange={(e) => setFormData({ ...formData, subdomain: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '') })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                placeholder="empresa"
-                pattern="[a-z0-9-]+"
-                title="Solo letras minúsculas, números y guiones"
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                Ejemplo: <span className="font-mono text-purple-600">empresa</span> → empresa.tudominio.com
-              </p>
-            </div>
+  const initialData: UpdateTenantDto = {
+    name: tenant.name,
+    subdomain: tenant.subdomain || "",
+    customDomain: tenant.customDomain || "",
+    contractPrefix: tenant.contractPrefix,
+  };
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Dominio Personalizado <span className="text-xs text-gray-500">(opcional, dominio completo)</span>
-              </label>
-              <input
-                type="text"
-                value={formData.customDomain}
-                onChange={(e) => setFormData({ ...formData, customDomain: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                placeholder="empresa.pruebas.com"
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                Si tiene dominio propio con DNS configurado
-              </p>
-            </div>
-          </div>
+  const handleSubmit = async (data: UpdateTenantDto) => {
+    setIsSubmitting(true);
+    setLoadingModalOpen(true);
+    setLoadingModalState("loading");
+    setLoadingModalMessage("Actualizando tenant...");
 
-          <div className="border-t border-gray-200 pt-4 mt-4">
-            <h3 className="text-lg font-semibold text-gray-900 mb-3">Admin Inicial</h3>
-            
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Nombre del Admin *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={formData.adminFullName}
-                  onChange={(e) => setFormData({ ...formData, adminFullName: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  placeholder="Juan Pérez"
-                />
-              </div>
+    try {
+      await superAdminUpdateTenant(tenant.id, data);
+      setLoadingModalState("success");
+      setLoadingModalMessage("¡Tenant actualizado exitosamente!");
+      setTimeout(() => {
+        setLoadingModalOpen(false);
+        onSuccess();
+      }, 2000);
+    } catch (err) {
+      setLoadingModalState("error");
+      setLoadingModalMessage(err instanceof Error ? err.message : "Error al actualizar tenant");
+      setIsSubmitting(false);
+    }
+  };
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Email del Admin *
-                </label>
-                <input
-                  type="email"
-                  required
-                  value={formData.adminEmail}
-                  onChange={(e) => setFormData({ ...formData, adminEmail: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  placeholder="admin@ejemplo.com"
-                />
-              </div>
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="p-6 border-b border-gray-200">
+          <h2 className="text-2xl font-bold text-gray-900">✏️ Editar Tenant</h2>
+          <p className="text-sm text-gray-600 mt-1">
+            Editando: <span className="font-semibold">{tenant.name}</span>
+          </p>
+        </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Contraseña del Admin *
-                </label>
-                <input
-                  type="password"
-                  required
-                  value={formData.adminPassword}
-                  onChange={(e) => setFormData({ ...formData, adminPassword: e.target.value })}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  placeholder="Mínimo 8 caracteres"
-                  minLength={8}
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="flex gap-3 pt-4 border-t border-gray-200">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={loadingModalOpen}
-              className="flex-1 px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              disabled={loadingModalOpen}
-              className="flex-1 px-6 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg font-semibold hover:from-purple-700 hover:to-indigo-700 transition-all disabled:opacity-50"
-            >
-              Crear Tenant
-            </button>
-          </div>
-        </form>
+        <div className="p-6">
+          <TenantForm
+            mode="edit"
+            initialData={initialData}
+            onSubmit={handleSubmit}
+            onCancel={onClose}
+            isLoading={isSubmitting}
+          />
+        </div>
 
         <LoadingModal
           isOpen={loadingModalOpen}

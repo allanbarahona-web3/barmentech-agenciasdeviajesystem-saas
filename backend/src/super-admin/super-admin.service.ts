@@ -6,7 +6,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { CreateTenantDto, UpdateTenantStatusDto, TenantStatusAction } from './dto';
+import { CreateTenantDto, UpdateTenantStatusDto, TenantStatusAction, UpdateTenantDto } from './dto';
 import { hash } from 'bcryptjs';
 import { UserRole } from '@prisma/client';
 
@@ -249,6 +249,120 @@ export class SuperAdminService {
           fullName: result.admin.fullName,
         },
       };
+    } finally {
+      // Re-habilitar RLS después de la operación
+      await this.prisma.enableRLS();
+    }
+  }
+
+  /**
+   * ✏️ Actualizar información de provisioning de un tenant
+   * Solo super admins pueden editar tenants
+   * Solo se permiten cambios en: name, subdomain, contractPrefix, customDomain
+   */
+  async updateTenant(tenantId: string, dto: UpdateTenantDto) {
+    this.logger.log(`✏️ Super admin: actualizando tenant ${tenantId}`);
+
+    // Bypass RLS para operar cross-tenant
+    await this.prisma.bypassRLS();
+
+    try {
+      // Verificar que el tenant existe
+      const existingTenant = await this.prisma.tenant.findUnique({
+        where: { id: tenantId },
+      });
+
+      if (!existingTenant) {
+        throw new NotFoundException(`Tenant con ID ${tenantId} no encontrado`);
+      }
+
+      // Validar que el subdomain no esté en uso por otro tenant
+      if (dto.subdomain !== existingTenant.subdomain) {
+        const subdomainInUse = await this.prisma.tenant.findFirst({
+          where: {
+            subdomain: dto.subdomain,
+            id: { not: tenantId },
+          },
+        });
+
+        if (subdomainInUse) {
+          throw new ConflictException(`El subdomain "${dto.subdomain}" ya está en uso`);
+        }
+      }
+
+      // Validar que el contractPrefix no esté en uso por otro tenant
+      if (dto.contractPrefix !== existingTenant.contractPrefix) {
+        const prefixInUse = await this.prisma.tenant.findFirst({
+          where: {
+            contractPrefix: dto.contractPrefix,
+            id: { not: tenantId },
+          },
+        });
+
+        if (prefixInUse) {
+          throw new ConflictException(
+            `El contractPrefix "${dto.contractPrefix}" ya está en uso`,
+          );
+        }
+      }
+
+      // Normalizar customDomain
+      let normalizedCustomDomain: string | null = null;
+      if (dto.customDomain && dto.customDomain.trim()) {
+        normalizedCustomDomain = dto.customDomain
+          .trim()
+          .toLowerCase()
+          .replace(/^https?:\/\//, '')
+          .replace(/\/$/, '');
+
+        // Validar que el customDomain no esté en uso por otro tenant
+        if (normalizedCustomDomain !== existingTenant.customDomain) {
+          const domainInUse = await this.prisma.tenant.findFirst({
+            where: {
+              customDomain: normalizedCustomDomain,
+              id: { not: tenantId },
+            },
+          });
+
+          if (domainInUse) {
+            throw new ConflictException(
+              `El dominio personalizado "${normalizedCustomDomain}" ya está en uso`,
+            );
+          }
+        }
+      }
+
+      // Actualizar el tenant
+      const updated = await this.prisma.tenant.update({
+        where: { id: tenantId },
+        data: {
+          name: dto.name,
+          subdomain: dto.subdomain,
+          contractPrefix: dto.contractPrefix,
+          customDomain: normalizedCustomDomain,
+        },
+        select: {
+          id: true,
+          name: true,
+          subdomain: true,
+          customDomain: true,
+          contractPrefix: true,
+          isActive: true,
+          suspendedAt: true,
+          suspendReason: true,
+          planType: true,
+          planExpiresAt: true,
+          fromEmail: true,
+          replyToEmail: true,
+          emailVerified: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+
+      this.logger.log(`✅ Tenant "${updated.name}" actualizado exitosamente`);
+
+      return updated;
     } finally {
       // Re-habilitar RLS después de la operación
       await this.prisma.enableRLS();
