@@ -758,6 +758,13 @@ export type CreateTenantDto = {
   adminPassword: string;
 };
 
+export type UpdateTenantDto = {
+  name: string;
+  subdomain: string;
+  customDomain?: string;
+  contractPrefix: string;
+};
+
 export type UpdateTenantStatusDto = {
   action: "ACTIVATE" | "SUSPEND";
   reason?: string;
@@ -813,6 +820,28 @@ export const superAdminCreateTenant = async (dto: CreateTenantDto): Promise<{ me
   const payload = await response.json();
   if (!response.ok) {
     throw new Error(payload?.message || "Error al crear tenant");
+  }
+
+  return payload;
+};
+
+/**
+ * Actualizar información de provisioning de un tenant (solo SUPER_ADMIN)
+ */
+export const superAdminUpdateTenant = async (
+  tenantId: string,
+  dto: UpdateTenantDto,
+): Promise<SuperAdminTenant> => {
+  const apiBase = resolveApiBase();
+  const response = await authenticatedFetch(`${apiBase}/super-admin/tenants/${tenantId}`, {
+    method: "PATCH",
+    headers: authHeaders(),
+    body: JSON.stringify(dto),
+  });
+
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(payload?.message || "Error al actualizar tenant");
   }
 
   return payload;

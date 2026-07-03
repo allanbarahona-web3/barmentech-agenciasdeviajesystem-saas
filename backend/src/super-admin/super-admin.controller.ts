@@ -10,7 +10,7 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { SuperAdminService } from './super-admin.service';
-import { CreateTenantDto, UpdateTenantStatusDto } from './dto';
+import { CreateTenantDto, UpdateTenantStatusDto, UpdateTenantDto } from './dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
@@ -65,6 +65,18 @@ export class SuperAdminController {
   @HttpCode(HttpStatus.CREATED)
   async createTenant(@Body() dto: CreateTenantDto) {
     return this.superAdminService.createTenant(dto);
+  }
+
+  /**
+   * ✏️ PATCH /super-admin/tenants/:id
+   * Editar información de provisioning de un tenant
+   */
+  @Patch('tenants/:id')
+  async updateTenant(
+    @Param('id') tenantId: string,
+    @Body() dto: UpdateTenantDto,
+  ) {
+    return this.superAdminService.updateTenant(tenantId, dto);
   }
 
   /**
