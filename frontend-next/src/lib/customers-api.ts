@@ -48,6 +48,22 @@ export interface CustomerContractItem {
 }
 
 export interface CustomerFinancialSummary {
+  // Monetary amounts
+  totalContractedAmount: number;
+  totalInvoicedAmount: number;
+  totalPaidAmount: number;
+  outstandingBalance: number;
+  availableCredit: number;
+
+  // Last payment info
+  lastPaymentDate: string | null;
+  lastPaymentAmount: number | null;
+
+  // Last contract info
+  lastContractDate: string | null;
+  lastContractNumber: string | null;
+
+  // Record counts (kept for backward compatibility)
   totalInvoices: number;
   totalReceipts: number;
   totalPayments: number;
@@ -71,6 +87,22 @@ export interface UpdateCustomerDto {
   phone?: string;
   emergencyContactName?: string;
   emergencyContactPhone?: string;
+}
+
+export interface ValidateCustomerIdentityRequest {
+  idNumber: string;
+  fullName: string;
+}
+
+export interface CustomerIdentityValidationResult {
+  valid: boolean;
+  message: string;
+  existingCustomer?: {
+    id: string;
+    fullName: string;
+    idNumber: string;
+    email: string;
+  };
 }
 
 // API Functions
@@ -148,6 +180,31 @@ export async function updateCustomer(
     const errorText = await response.text();
     throw new Error(
       errorText || `Error al actualizar cliente: ${response.status}`
+    );
+  }
+
+  return response.json();
+}
+
+export async function validateCustomerIdentity(
+  data: ValidateCustomerIdentityRequest
+): Promise<CustomerIdentityValidationResult> {
+  const apiBase = resolveApiBase();
+  const token = getStoredToken();
+
+  const response = await authenticatedFetch(`${apiBase}/customers/validate-identity`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(
+      errorText || `Error al validar identidad del cliente: ${response.status}`
     );
   }
 

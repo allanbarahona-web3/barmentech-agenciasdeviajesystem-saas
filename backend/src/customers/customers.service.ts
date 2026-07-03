@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { Injectable, NotFoundException, ConflictException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { Client, Prisma } from "@prisma/client";
 import { CreateOrUpdateClientDto } from "./dto/create-or-update-client.dto";
@@ -11,6 +11,8 @@ import { CustomerContractItemDto } from "./dto/customer-contract-item.dto";
 import { CustomerFinancialSummaryDto } from "./dto/customer-financial-summary.dto";
 import { CustomerStatisticsDto } from "./dto/customer-statistics.dto";
 import { UpdateCustomerDto } from "./dto/update-customer.dto";
+import { ValidateCustomerIdentityDto } from "./dto/validate-customer-identity.dto";
+import { CustomerIdentityValidationResultDto } from "./dto/customer-identity-validation-result.dto";
 
 /**
  * CustomersService
@@ -34,32 +36,69 @@ export class CustomersService {
    * Responsibilities:
    * 1. Normalize ALL fields (trim, toLowerCase, null conversion)
    * 2. Ensure multi-tenant isolation
-   * 3. Execute upsert using compound unique key
-   * 4. Return created/updated customer
+   * 3. Validate identity before updating existing records
+   * 4. Execute create or update with identity protection
+   * 5. Return created/updated customer
+   * 
+   * Business Rules:
+   * - A Client is uniquely identified by [tenantId, idNumber]
+   * - Identity fields (fullName, idNumber) cannot be silently overwritten
+   * - If idNumber exists but fullName doesn't match, reject the operation
+   * - Only mutable fields (email, phone, emergency contacts) can be updated
    * 
    * @param dto Customer data (possibly not normalized)
    * @returns Created or updated customer (Client type from Prisma)
+   * @throws ConflictException if identity mismatch is detected
    */
   async upsertClient(dto: CreateOrUpdateClientDto): Promise<Client> {
     // Step 1: Normalize all fields
     const normalized = this.normalizeClientData(dto);
 
-    // Step 2: Execute upsert (fully typed, no 'any')
-    const client = await this.prisma.client.upsert({
+    // Step 2: Check if client already exists
+    const existingClient = await this.prisma.client.findUnique({
       where: {
         idNumber_tenantId: {
           idNumber: normalized.idNumber,
           tenantId: normalized.tenantId,
         },
       },
-      update: {
-        fullName: normalized.fullName,
-        email: normalized.email,
-        phone: normalized.phone,
-        emergencyContactName: normalized.emergencyContactName,
-        emergencyContactPhone: normalized.emergencyContactPhone,
-      },
-      create: {
+    });
+
+    // Step 3: If client exists, validate identity
+    if (existingClient) {
+      const existingNameNormalized = this.normalizeNameForComparison(
+        existingClient.fullName
+      );
+      const newNameNormalized = this.normalizeNameForComparison(
+        normalized.fullName
+      );
+
+      // Identity conflict: same idNumber but different person
+      if (existingNameNormalized !== newNameNormalized) {
+        throw new ConflictException(
+          `Ya existe un cliente con este número de identificación pero la información de identidad no coincide. Cliente existente: "${existingClient.fullName}". Información proporcionada: "${normalized.fullName}".`
+        );
+      }
+
+      // Identity matches - update only mutable fields
+      const updatedClient = await this.prisma.client.update({
+        where: {
+          id: existingClient.id,
+        },
+        data: {
+          email: normalized.email,
+          phone: normalized.phone,
+          emergencyContactName: normalized.emergencyContactName,
+          emergencyContactPhone: normalized.emergencyContactPhone,
+        },
+      });
+
+      return updatedClient;
+    }
+
+    // Step 4: No existing client - create new record
+    const client = await this.prisma.client.create({
+      data: {
         fullName: normalized.fullName,
         idNumber: normalized.idNumber,
         email: normalized.email,
@@ -248,7 +287,7 @@ export class CustomersService {
       );
     }
 
-    // Fetch contracts (lightweight)
+    // Fetch contracts with payload to extract totalAmount
     const contracts = await this.prisma.contract.findMany({
       where: {
         clientId: customerId,
@@ -262,6 +301,7 @@ export class CustomersService {
         source: true,
         participantCount: true,
         createdAt: true,
+        payload: true,
       },
       orderBy: {
         createdAt: "desc",
@@ -271,8 +311,67 @@ export class CustomersService {
     // Get contract IDs for financial queries
     const contractIds = contracts.map((c) => c.id);
 
-    // Fetch financial summary and statistics in parallel
-    const [totalInvoices, totalReceipts, totalPayments] = await Promise.all([
+    // Fetch financial data in parallel
+    const [
+      invoices,
+      verifiedPayments,
+      lastPayment,
+      clientBalance,
+      totalInvoicesCount,
+      totalReceiptsCount,
+      totalPaymentsCount,
+    ] = await Promise.all([
+      // Get all invoices for this client
+      this.prisma.billingInvoice.findMany({
+        where: {
+          clientId: customerId,
+          tenantId: tenantId,
+        },
+        select: {
+          totalAmount: true,
+          balanceAmount: true,
+        },
+      }),
+      // Get all verified payments for this client's contracts
+      contractIds.length > 0
+        ? this.prisma.billingPayment.findMany({
+            where: {
+              contractId: { in: contractIds },
+              tenantId: tenantId,
+              status: "ABONO_VERIFICADO",
+            },
+            select: {
+              amount: true,
+            },
+          })
+        : [],
+      // Get last payment
+      contractIds.length > 0
+        ? this.prisma.billingPayment.findFirst({
+            where: {
+              contractId: { in: contractIds },
+              tenantId: tenantId,
+              status: "ABONO_VERIFICADO",
+            },
+            select: {
+              amount: true,
+              verifiedAt: true,
+            },
+            orderBy: {
+              verifiedAt: "desc",
+            },
+          })
+        : null,
+      // Get client balance for available credit
+      this.prisma.billingClientBalance.findUnique({
+        where: {
+          clientId: customerId,
+        },
+        select: {
+          availableCreditAmount: true,
+        },
+      }),
+      // Counts for backward compatibility
       this.prisma.billingInvoice.count({
         where: {
           clientId: customerId,
@@ -296,6 +395,31 @@ export class CustomersService {
           })
         : 0,
     ]);
+
+    // Calculate financial summary from aggregated data
+    const totalContractedAmount = contracts.reduce((sum, contract) => {
+      const payload = contract.payload as any;
+      const amount = payload?.totalAmount
+        ? parseFloat(String(payload.totalAmount))
+        : 0;
+      return sum + amount;
+    }, 0);
+
+    const totalInvoicedAmount = invoices.reduce((sum, invoice) => {
+      return sum + parseFloat(String(invoice.totalAmount));
+    }, 0);
+
+    const totalPaidAmount = verifiedPayments.reduce((sum, payment) => {
+      return sum + parseFloat(String(payment.amount));
+    }, 0);
+
+    const outstandingBalance = invoices.reduce((sum, invoice) => {
+      return sum + parseFloat(String(invoice.balanceAmount));
+    }, 0);
+
+    const availableCredit = clientBalance
+      ? parseFloat(String(clientBalance.availableCreditAmount))
+      : 0;
 
     // Map to DTOs
     const customerInfo: CustomerInfoDto = {
@@ -321,9 +445,22 @@ export class CustomersService {
     }));
 
     const financialSummary: CustomerFinancialSummaryDto = {
-      totalInvoices,
-      totalReceipts,
-      totalPayments,
+      totalContractedAmount,
+      totalInvoicedAmount,
+      totalPaidAmount,
+      outstandingBalance,
+      availableCredit,
+      lastPaymentDate: lastPayment?.verifiedAt?.toISOString() || null,
+      lastPaymentAmount: lastPayment
+        ? parseFloat(String(lastPayment.amount))
+        : null,
+      lastContractDate:
+        contracts.length > 0 ? contracts[0].createdAt.toISOString() : null,
+      lastContractNumber:
+        contracts.length > 0 ? contracts[0].contractNumber : null,
+      totalInvoices: totalInvoicesCount,
+      totalReceipts: totalReceiptsCount,
+      totalPayments: totalPaymentsCount,
     };
 
     const statistics: CustomerStatisticsDto = {
@@ -411,6 +548,97 @@ export class CustomersService {
   }
 
   /**
+   * Validate customer identity before contract creation
+   * 
+   * Purpose:
+   * - Early validation to prevent identity conflicts
+   * - Provides immediate feedback in the contract form
+   * - Prevents users from completing entire form only to discover conflict
+   * 
+   * Business Rules:
+   * - If idNumber doesn't exist: valid (new customer)
+   * - If idNumber exists AND name matches: valid (existing customer, can reuse)
+   * - If idNumber exists BUT name doesn't match: invalid (identity conflict)
+   * 
+   * @param tenantId Tenant identifier for isolation
+   * @param dto Validation request with idNumber and fullName
+   * @returns Validation result with status and message
+   */
+  async validateCustomerIdentity(
+    tenantId: string,
+    dto: ValidateCustomerIdentityDto
+  ): Promise<CustomerIdentityValidationResultDto> {
+    // Normalize inputs
+    const normalizedIdNumber = String(dto.idNumber || "").trim();
+    const normalizedFullName = String(dto.fullName || "").trim();
+
+    if (!normalizedIdNumber || !normalizedFullName) {
+      return {
+        valid: false,
+        message: "El número de identificación y el nombre completo son requeridos",
+      };
+    }
+
+    // Check if customer exists with this idNumber
+    const existingCustomer = await this.prisma.client.findUnique({
+      where: {
+        idNumber_tenantId: {
+          idNumber: normalizedIdNumber,
+          tenantId: tenantId,
+        },
+      },
+      select: {
+        id: true,
+        fullName: true,
+        idNumber: true,
+        email: true,
+      },
+    });
+
+    // Case 1: No existing customer - valid
+    if (!existingCustomer) {
+      return {
+        valid: true,
+        message: "Número de identificación disponible",
+      };
+    }
+
+    // Case 2 & 3: Customer exists - compare names
+    const existingNameNormalized = this.normalizeNameForComparison(
+      existingCustomer.fullName
+    );
+    const providedNameNormalized = this.normalizeNameForComparison(
+      normalizedFullName
+    );
+
+    if (existingNameNormalized === providedNameNormalized) {
+      // Case 2: Names match - valid (will reuse existing customer)
+      return {
+        valid: true,
+        message: "Cliente existente - la información coincide",
+        existingCustomer: {
+          id: existingCustomer.id,
+          fullName: existingCustomer.fullName,
+          idNumber: existingCustomer.idNumber,
+          email: existingCustomer.email,
+        },
+      };
+    }
+
+    // Case 3: Names don't match - invalid (identity conflict)
+    return {
+      valid: false,
+      message: `Ya existe un cliente registrado con ese número de identificación pero con un nombre diferente. Cliente existente: "${existingCustomer.fullName}". Nombre ingresado: "${dto.fullName}". Por favor, verifique la información antes de continuar.`,
+      existingCustomer: {
+        id: existingCustomer.id,
+        fullName: existingCustomer.fullName,
+        idNumber: existingCustomer.idNumber,
+        email: existingCustomer.email,
+      },
+    };
+  }
+
+  /**
    * Normalizes all customer fields
    * 
    * Normalization rules (CENTRALIZED HERE):
@@ -425,6 +653,29 @@ export class CustomersService {
    * @param dto DTO possibly not normalized
    * @returns Fully normalized DTO
    */
+  /**
+   * Normalizes a name for identity comparison
+   * 
+   * Normalization includes:
+   * - Trim whitespace
+   * - Convert to lowercase
+   * - Collapse multiple spaces into single space
+   * 
+   * Examples:
+   * - "  Juan   Perez  " -> "juan perez"
+   * - "MARIA LOPEZ" -> "maria lopez"
+   * - "John  Smith" -> "john smith"
+   * 
+   * @param name The name to normalize
+   * @returns Normalized name for comparison
+   */
+  private normalizeNameForComparison(name: string): string {
+    return String(name || "")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, " ");
+  }
+
   private normalizeClientData(
     dto: CreateOrUpdateClientDto
   ): CreateOrUpdateClientDto {

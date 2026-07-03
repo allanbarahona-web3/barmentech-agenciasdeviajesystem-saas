@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Query, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from "@nestjs/common";
 import { CustomersService } from "./customers.service";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../auth/roles.guard";
@@ -7,6 +7,8 @@ import { ListCustomersDto } from "./dto/list-customers.dto";
 import { CustomerListResponseDto } from "./dto/customer-list-response.dto";
 import { CustomerProfileDto } from "./dto/customer-profile.dto";
 import { UpdateCustomerDto } from "./dto/update-customer.dto";
+import { ValidateCustomerIdentityDto } from "./dto/validate-customer-identity.dto";
+import { CustomerIdentityValidationResultDto } from "./dto/customer-identity-validation-result.dto";
 import { CUSTOMER_ACCESS_ROLES } from "./constants/customer-roles.constant";
 
 /**
@@ -104,4 +106,36 @@ export class CustomersController {
   ): Promise<CustomerProfileDto> {
     return this.customersService.updateCustomer(req.user.tenantId, customerId, dto);
   }
+
+  /**
+   * POST /customers/validate-identity
+   * 
+   * Validate customer identity before contract creation.
+   * Protected endpoint - requires customer access roles (ADMIN, AGENT, FACTURACION_COBROS).
+   * Enforces tenant isolation automatically via user's tenantId.
+   * 
+   * Purpose:
+   * - Early validation to prevent identity conflicts in contract form
+   * - Checks if idNumber exists and whether fullName matches
+   * - Provides immediate UX feedback without completing entire form
+   * 
+   * Returns:
+   * - valid: true - Identity is valid (no conflict or matches existing)
+   * - valid: false - Identity conflict detected
+   * - message: User-friendly Spanish message
+   * - existingCustomer: Optional data about existing customer
+   */
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(...CUSTOMER_ACCESS_ROLES)
+  @Post("validate-identity")
+  validateCustomerIdentity(
+    @Req()
+    req: {
+      user: { id: string; email: string; fullName: string; tenantId: string };
+    },
+    @Body() dto: ValidateCustomerIdentityDto
+  ): Promise<CustomerIdentityValidationResultDto> {
+    return this.customersService.validateCustomerIdentity(req.user.tenantId, dto);
+  }
 }
+
