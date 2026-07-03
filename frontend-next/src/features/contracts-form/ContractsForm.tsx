@@ -11,6 +11,7 @@ import { getTenantLegalConfig, getTenantConfig, type TenantLegalConfig } from "@
 import { getTravelPackageById, type TravelPackage } from "@/lib/travel-packages-api";
 import { getInternalTripById } from "@/lib/internal-trips-api";
 import { getAllBankAccounts } from "@/lib/bank-accounts-api";
+import { validateCustomerIdentity } from "@/lib/customers-api";
 import { buildContractPdfHtml, type TenantLegalInfo, type BankAccountForContract } from "@/features/contracts-form/pdf-template";
 import { calculateParticipants } from "@/features/contracts-form/capacity-validation";
 import { ConfirmModal } from "@/components/confirm-modal";
@@ -123,6 +124,10 @@ export function ContractsForm({ agent = null, initialDraftId = null, initialTrav
     }>
   >({});
   const [showCapacityModal, setShowCapacityModal] = useState(false);
+  const [showValidationErrorModal, setShowValidationErrorModal] = useState(false);
+  const [validationErrorMessage, setValidationErrorMessage] = useState("");
+  const [showIdentityConflictModal, setShowIdentityConflictModal] = useState(false);
+  const [identityConflictMessage, setIdentityConflictMessage] = useState("");
   const [capacityError, setCapacityError] = useState<{
     participantCount: number;
     availableSlots: number;
@@ -286,6 +291,44 @@ export function ContractsForm({ agent = null, initialDraftId = null, initialTrav
     });
     setShowCapacityModal(true);
     setStatus("⚠️ No hay capacidad suficiente. Ver modal.");
+  };
+
+  /**
+   * Validate customer identity when ID number is entered
+   * 
+   * Purpose:
+   * - Early validation to prevent identity conflicts
+   * - Provides immediate feedback before form completion
+   * - Improves UX by catching conflicts early
+   * 
+   * Triggered on onBlur of clientIdNumber field
+   */
+  const handleValidateCustomerIdentity = async () => {
+    const idNumber = state.clientIdNumber.trim();
+    const fullName = state.clientFullName.trim();
+
+    // Skip validation if either field is empty
+    if (!idNumber || !fullName) {
+      return;
+    }
+
+    try {
+      const result = await validateCustomerIdentity({
+        idNumber,
+        fullName,
+      });
+
+      if (!result.valid) {
+        // Identity conflict detected - show modal immediately
+        setIdentityConflictMessage(result.message);
+        setShowIdentityConflictModal(true);
+      }
+      // If valid, do nothing - continue normally
+    } catch (error) {
+      // Network or unexpected errors - don't block the user
+      console.error("Error validating customer identity:", error);
+      // Optionally show a subtle warning but don't block
+    }
   };
 
   const runArchiveFlow = async () => {
@@ -503,7 +546,24 @@ console.log("====================================");
     } catch (error) {
       console.error("❌ ERROR en runArchiveFlow:", error);
       
-      setStatus(error instanceof Error ? error.message : "No se pudo completar el guardado del contrato.");
+      // Business validation errors should be displayed in modal
+      const errorMessage = error instanceof Error ? error.message : "No se pudo completar el guardado del contrato.";
+      
+      // Check if this is a business validation error (e.g., identity mismatch)
+      const isBusinessValidationError = 
+        errorMessage.includes("already exists with this identification") ||
+        errorMessage.includes("identity information does not match") ||
+        errorMessage.includes("Ya existe un cliente con este número de identificación") ||
+        errorMessage.includes("información de identidad no coincide");
+      
+      if (isBusinessValidationError) {
+        // Show validation error in modal, keep user on page
+        setValidationErrorMessage(errorMessage);
+        setShowValidationErrorModal(true);
+      } else {
+        // Unexpected errors continue to show in status
+        setStatus(errorMessage);
+      }
     } finally {
       setSubmitting(false);
       console.log("🔵 [runArchiveFlow] FIN");
@@ -1127,6 +1187,7 @@ console.log("====================================");
           <input
             value={state.clientIdNumber}
             onChange={(event) => setState((prev) => ({ ...prev, clientIdNumber: event.target.value }))}
+            onBlur={handleValidateCustomerIdentity}
           />
         </label>
 
@@ -1987,6 +2048,46 @@ console.log("====================================");
               setShowCapacityModal(false);
               setCapacityError(null);
               setStatus("⚠️ Contacta al administrador para revisar opciones de capacidad.");
+            }}
+          />
+        )}
+
+        {/* Modal de Error de Validación */}
+        {showValidationErrorModal && (
+          <ConfirmModal
+            isOpen={showValidationErrorModal}
+            title="Error de Validación"
+            message={validationErrorMessage}
+            confirmText="Entendido"
+            cancelText="Cerrar"
+            confirmVariant="primary"
+            onConfirm={() => {
+              setShowValidationErrorModal(false);
+              setValidationErrorMessage("");
+            }}
+            onCancel={() => {
+              setShowValidationErrorModal(false);
+              setValidationErrorMessage("");
+            }}
+          />
+        )}
+
+        {/* Modal de Conflicto de Identidad */}
+        {showIdentityConflictModal && (
+          <ConfirmModal
+            isOpen={showIdentityConflictModal}
+            title="Cliente Existente"
+            message={identityConflictMessage}
+            confirmText="Entendido"
+            cancelText=""
+            confirmVariant="warning"
+            onConfirm={() => {
+              setShowIdentityConflictModal(false);
+              setIdentityConflictMessage("");
+            }}
+            onCancel={() => {
+              setShowIdentityConflictModal(false);
+              setIdentityConflictMessage("");
             }}
           />
         )}

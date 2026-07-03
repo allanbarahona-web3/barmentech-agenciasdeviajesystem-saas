@@ -122,6 +122,15 @@ export default function CustomerProfilePage() {
     }
   }
 
+  function formatCurrency(amount: number): string {
+    return new Intl.NumberFormat('es-CR', {
+      style: 'currency',
+      currency: 'CRC',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount);
+  }
+
   function getStatusBadgeStyle(status: string) {
     const statusUpper = status.toUpperCase();
     switch (statusUpper) {
@@ -489,11 +498,11 @@ export default function CustomerProfilePage() {
             💰 Resumen Financiero
           </h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {/* Total Contracted */}
             <div
               style={{
                 padding: '16px',
-                background: '#f0fdf4',
-                border: '2px solid #86efac',
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
                 borderRadius: '10px',
                 display: 'flex',
                 justifyContent: 'space-between',
@@ -501,15 +510,17 @@ export default function CustomerProfilePage() {
               }}
             >
               <div>
-                <div style={{ fontSize: '13px', color: '#166534', fontWeight: '600', marginBottom: '4px' }}>
-                  Total Facturas
+                <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.9)', fontWeight: '600', marginBottom: '4px' }}>
+                  Total Contratado
                 </div>
-                <div style={{ fontSize: '28px', fontWeight: 'bold', color: '#15803d' }}>
-                  {financialSummary.totalInvoices}
+                <div style={{ fontSize: '28px', fontWeight: 'bold', color: 'white' }}>
+                  {formatCurrency(financialSummary.totalContractedAmount)}
                 </div>
               </div>
-              <div style={{ fontSize: '32px' }}>🧾</div>
+              <div style={{ fontSize: '32px' }}>📝</div>
             </div>
+
+            {/* Total Invoiced */}
             <div
               style={{
                 padding: '16px',
@@ -523,14 +534,62 @@ export default function CustomerProfilePage() {
             >
               <div>
                 <div style={{ fontSize: '13px', color: '#1e40af', fontWeight: '600', marginBottom: '4px' }}>
-                  Total Recibos
+                  Total Facturado
                 </div>
                 <div style={{ fontSize: '28px', fontWeight: 'bold', color: '#1e3a8a' }}>
-                  {financialSummary.totalReceipts}
+                  {formatCurrency(financialSummary.totalInvoicedAmount)}
                 </div>
               </div>
-              <div style={{ fontSize: '32px' }}>📄</div>
+              <div style={{ fontSize: '32px' }}>🧾</div>
             </div>
+
+            {/* Total Paid */}
+            <div
+              style={{
+                padding: '16px',
+                background: '#f0fdf4',
+                border: '2px solid #86efac',
+                borderRadius: '10px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}
+            >
+              <div>
+                <div style={{ fontSize: '13px', color: '#166534', fontWeight: '600', marginBottom: '4px' }}>
+                  Total Pagado
+                </div>
+                <div style={{ fontSize: '28px', fontWeight: 'bold', color: '#15803d' }}>
+                  {formatCurrency(financialSummary.totalPaidAmount)}
+                </div>
+              </div>
+              <div style={{ fontSize: '32px' }}>💳</div>
+            </div>
+
+            {/* Outstanding Balance */}
+            <div
+              style={{
+                padding: '16px',
+                background: financialSummary.outstandingBalance > 0 ? '#fef3c7' : '#f0fdf4',
+                border: `2px solid ${financialSummary.outstandingBalance > 0 ? '#fcd34d' : '#86efac'}`,
+                borderRadius: '10px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}
+            >
+              <div>
+                <div style={{ fontSize: '13px', color: financialSummary.outstandingBalance > 0 ? '#92400e' : '#166534', fontWeight: '600', marginBottom: '4px' }}>
+                  Saldo Pendiente
+                </div>
+                <div style={{ fontSize: '28px', fontWeight: 'bold', color: financialSummary.outstandingBalance > 0 ? '#b45309' : '#15803d' }}>
+                  {formatCurrency(financialSummary.outstandingBalance)}
+                </div>
+              </div>
+              <div style={{ fontSize: '32px' }}>{financialSummary.outstandingBalance > 0 ? '⚠️' : '✅'}</div>
+            </div>
+
+            {/* Available Credit */}
             <div
               style={{
                 padding: '16px',
@@ -544,14 +603,58 @@ export default function CustomerProfilePage() {
             >
               <div>
                 <div style={{ fontSize: '13px', color: '#92400e', fontWeight: '600', marginBottom: '4px' }}>
-                  Total Pagos
+                  Crédito Disponible
                 </div>
                 <div style={{ fontSize: '28px', fontWeight: 'bold', color: '#b45309' }}>
-                  {financialSummary.totalPayments}
+                  {formatCurrency(financialSummary.availableCredit)}
                 </div>
               </div>
-              <div style={{ fontSize: '32px' }}>💳</div>
+              <div style={{ fontSize: '32px' }}>🏦</div>
             </div>
+
+            {/* Last Payment */}
+            {financialSummary.lastPaymentDate && (
+              <div
+                style={{
+                  padding: '14px',
+                  background: '#f9fafb',
+                  borderRadius: '8px',
+                  border: '1px solid #e5e7eb',
+                }}
+              >
+                <div style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600', marginBottom: '4px' }}>
+                  Último Pago
+                </div>
+                <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#1f2937' }}>
+                  {formatCurrency(financialSummary.lastPaymentAmount || 0)}
+                </div>
+                <div style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>
+                  {formatDate(financialSummary.lastPaymentDate)}
+                </div>
+              </div>
+            )}
+
+            {/* Last Contract */}
+            {financialSummary.lastContractDate && (
+              <div
+                style={{
+                  padding: '14px',
+                  background: '#f9fafb',
+                  borderRadius: '8px',
+                  border: '1px solid #e5e7eb',
+                }}
+              >
+                <div style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600', marginBottom: '4px' }}>
+                  Último Contrato
+                </div>
+                <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#1f2937' }}>
+                  {financialSummary.lastContractNumber}
+                </div>
+                <div style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>
+                  {formatDate(financialSummary.lastContractDate)}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
