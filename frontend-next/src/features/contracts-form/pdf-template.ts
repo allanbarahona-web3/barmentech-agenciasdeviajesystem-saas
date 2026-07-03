@@ -396,6 +396,8 @@ html, body {
   break-before: page;
   page-break-inside: avoid;
   break-inside: avoid;
+  page-break-after: always;
+  break-after: page;
   padding-top: 10pt;
 }
 
@@ -600,7 +602,7 @@ ${minorsIntro}
   <p>Haciendo mención a los comparecientes en conjunto, denominados como las <strong>"Partes"</strong>, hemos convenido en celebrar el presente <strong>CONTRATO GENERAL DE VIAJE TURÍSTICO</strong>, el cual se regirá por las siguientes cláusulas:</p>
 </section>
 
-<h3 class="section-heading">Clausulas</h3>
+<h3 class="section-heading">Cláusulas</h3>
 
 ${clause(
   "PRIMERO: OBJETO.",

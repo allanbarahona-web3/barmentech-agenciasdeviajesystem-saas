@@ -1174,9 +1174,9 @@ console.log("====================================");
           Tipo ID
           <select
             value={state.clientIdType}
-            onChange={(event) => setState((prev) => ({ ...prev, clientIdType: event.target.value as "Cedula" | "Pasaporte" | "DIMEX" }))}
+            onChange={(event) => setState((prev) => ({ ...prev, clientIdType: event.target.value as "Cédula" | "Pasaporte" | "DIMEX" }))}
           >
-            <option value="Cedula">Cedula</option>
+            <option value="Cédula">Cédula</option>
             <option value="Pasaporte">Pasaporte</option>
             <option value="DIMEX">DIMEX</option>
           </select>
@@ -1273,7 +1273,7 @@ console.log("====================================");
         </label>
 
         <label className={requiredDocumentLabelClass(Boolean(holderDocs.idFront))}>
-          Cedula titular (frente)
+          Cédula titular (frente)
           <input
             type="file"
             accept=".pdf,.jpg,.jpeg,.png,.webp"
@@ -1290,7 +1290,7 @@ console.log("====================================");
         </label>
 
         <label className={requiredDocumentLabelClass(Boolean(holderDocs.idBack))}>
-          Cedula titular (reverso)
+          Cédula titular (reverso)
           <input
             type="file"
             accept=".pdf,.jpg,.jpeg,.png,.webp"
@@ -1380,7 +1380,7 @@ console.log("====================================");
                       setState((prev) => updateCompanion(prev, companion.id, "idType", event.target.value))
                     }
                   >
-                    <option value="Cedula">Cedula</option>
+                    <option value="Cédula">Cédula</option>
                     <option value="Pasaporte">Pasaporte</option>
                     <option value="DIMEX">DIMEX</option>
                   </select>
@@ -1483,7 +1483,7 @@ console.log("====================================");
                   </select>
                 </label>
                 <label className={requiredDocumentLabelClass(Boolean(companionDocs[companion.id]?.idFront))}>
-                  Cedula frente
+                  Cédula frente
                   <input
                     type="file"
                     accept=".pdf,.jpg,.jpeg,.png,.webp"
@@ -1503,7 +1503,7 @@ console.log("====================================");
                   />
                 </label>
                 <label className={requiredDocumentLabelClass(Boolean(companionDocs[companion.id]?.idBack))}>
-                  Cedula reverso
+                  Cédula reverso
                   <input
                     type="file"
                     accept=".pdf,.jpg,.jpeg,.png,.webp"
@@ -1633,7 +1633,7 @@ console.log("====================================");
                     value={minor.tutorIdType}
                     onChange={(event) => setState((prev) => updateMinor(prev, minor.id, "tutorIdType", event.target.value))}
                   >
-                    <option value="Cedula">Cedula</option>
+                    <option value="Cédula">Cédula</option>
                     <option value="Pasaporte">Pasaporte</option>
                     <option value="DIMEX">DIMEX</option>
                   </select>
