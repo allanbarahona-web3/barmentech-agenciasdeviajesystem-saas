@@ -5,18 +5,17 @@ import type { CreateTenantDto, UpdateTenantDto } from "@/lib/auth-api";
 
 type TenantFormMode = "create" | "edit";
 
-type TenantFormData = CreateTenantDto | UpdateTenantDto;
+type TenantFormData<T extends TenantFormMode> = T extends "create" ? CreateTenantDto : UpdateTenantDto;
 
-interface TenantFormProps {
-  mode: TenantFormMode;
-  initialData?: UpdateTenantDto;
-  onSubmit: (data: TenantFormData) => Promise<void>;
+type TenantFormProps<T extends TenantFormMode = TenantFormMode> = {
+  mode: T;
+  onSubmit: (data: TenantFormData<T>) => Promise<void>;
   onCancel: () => void;
   isLoading?: boolean;
-}
+} & (T extends "edit" ? { initialData: UpdateTenantDto } : { initialData?: never });
 
-export function TenantForm({ mode, initialData, onSubmit, onCancel, isLoading = false }: TenantFormProps) {
-  const [formData, setFormData] = useState<TenantFormData>(() => {
+export function TenantForm<T extends TenantFormMode>({ mode, initialData, onSubmit, onCancel, isLoading = false }: TenantFormProps<T>) {
+  const [formData, setFormData] = useState<CreateTenantDto | UpdateTenantDto>(() => {
     if (mode === "edit" && initialData) {
       return initialData;
     }
@@ -39,7 +38,7 @@ export function TenantForm({ mode, initialData, onSubmit, onCancel, isLoading = 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await onSubmit(formData);
+    await onSubmit(formData as TenantFormData<T>);
   };
 
   const isCreateMode = mode === "create";

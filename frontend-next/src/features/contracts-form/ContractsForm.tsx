@@ -36,7 +36,7 @@ import {
   updateMinor,
 } from "@/features/contracts-form/utils";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ContractFormState } from "@/features/contracts-form/types";
+import type { ContractFormState, IdType } from "@/features/contracts-form/types";
 
 const NATIONALITY_OPTIONS = [
   "Costa Rica",
@@ -1174,9 +1174,9 @@ console.log("====================================");
           Tipo ID
           <select
             value={state.clientIdType}
-            onChange={(event) => setState((prev) => ({ ...prev, clientIdType: event.target.value as "Cédula" | "Pasaporte" | "DIMEX" }))}
+            onChange={(event) => setState((prev) => ({ ...prev, clientIdType: event.target.value as IdType }))}
           >
-            <option value="Cédula">Cédula</option>
+            <option value="Cedula">Cédula</option>
             <option value="Pasaporte">Pasaporte</option>
             <option value="DIMEX">DIMEX</option>
           </select>
