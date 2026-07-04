@@ -15,6 +15,7 @@ import { BillingService } from "../billing/billing.service";
 import { ContractsEmailsService } from "./contracts-emails.service";
 import { CustomersService } from "../customers/customers.service";
 import { DocumentSigningService } from "../documents/document-signing.service";
+import { DocumentSigningAuditService } from "../documents/document-signing-audit.service";
 import { ArchiveContractDto } from "./dto/archive-contract.dto";
 
 import { SendContractEmailDto } from "./dto/send-contract-email.dto";
@@ -61,6 +62,7 @@ export class ContractsService {
     private readonly contractsEmailsService: ContractsEmailsService,
     private readonly customersService: CustomersService,
     private readonly documentSigningService: DocumentSigningService,
+    private readonly documentSigningAuditService: DocumentSigningAuditService,
   ) {}
 
   /**
@@ -1509,12 +1511,7 @@ export class ContractsService {
 
     // Guard 2: DB-level atomic replay check — unique constraint on tokenHash
     // prevents two concurrent requests from both succeeding
-    const tokenAlreadyUsed = await (this.prisma as any).contractUsedToken.findUnique({
-      where: { tokenHash },
-    });
-    if (tokenAlreadyUsed) {
-      throw new BadRequestException("Este enlace de firma ya fue utilizado.");
-    }
+    await this.documentSigningAuditService.ensureTokenNotUsed(tokenHash);
 
     const keyRoot = String(contract.pdfObjectKey || "").replace(/\/contract\.pdf$/i, "");
     
@@ -1608,33 +1605,31 @@ export class ContractsService {
     const allCompleted = requiredSignerKeys.every((key) => completedKeys.has(key));
 
     // Atomic DB write: mark token spent + record evidence + update contract
+    const auditOps = this.documentSigningAuditService.buildAuditOperations(
+      {
+        documentId: contract.id,
+        tokenHash,
+        signerKey: signer.key,
+        usedAt: now,
+      },
+      {
+        documentId: contract.id,
+        signerKey: signer.key,
+        signerRole: signer.role,
+        signerName,
+        signedAt: now,
+        signedClientIp: signedClientIp || null,
+        signedUserAgent: signedUserAgent || null,
+        signaturePngKey: sigPngKey,
+        signedPdfKey: signedObjectKey,
+        signedPdfBytes: signedPdfBuffer.length,
+        signedPdfSha256: signedPdfHash,
+        tokenHash,
+      },
+    );
+
     const [, , updated] = await (this.prisma as any).$transaction([
-      // Spend the token — unique constraint aborts the transaction on duplicate
-      (this.prisma as any).contractUsedToken.create({
-        data: {
-          contractId: contract.id,
-          tokenHash,
-          signerKey: signer.key,
-          usedAt: now,
-        },
-      }),
-      // Immutable audit row
-      (this.prisma as any).contractSignatureEvent.create({
-        data: {
-          contractId: contract.id,
-          signerKey: signer.key,
-          signerRole: signer.role,
-          signerName,
-          signedAt: now,
-          signedClientIp: signedClientIp || null,
-          signedUserAgent: signedUserAgent || null,
-          signaturePngKey: sigPngKey,
-          signedPdfKey: signedObjectKey,
-          signedPdfBytes: signedPdfBuffer.length,
-          signedPdfSha256: signedPdfHash,
-          tokenHash,
-        },
-      }),
+      ...auditOps,
       // Update contract record
       (this.prisma as any).contract.update({
         where: { id: contract.id },
