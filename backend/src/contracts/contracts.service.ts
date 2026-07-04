@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { createHash, createHmac, randomBytes, timingSafeEqual } from "crypto";
+import { createHash, randomBytes } from "crypto";
 import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { PdfRenderService } from "./pdf-render.service";
@@ -14,6 +14,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { BillingService } from "../billing/billing.service";
 import { ContractsEmailsService } from "./contracts-emails.service";
 import { CustomersService } from "../customers/customers.service";
+import { DocumentSigningService } from "../documents/document-signing.service";
 import { ArchiveContractDto } from "./dto/archive-contract.dto";
 
 import { SendContractEmailDto } from "./dto/send-contract-email.dto";
@@ -28,7 +29,6 @@ const CONTRACT_STATUS_PENDING_SIGNATURE = "PENDING_SIGNATURE";
 const CONTRACT_STATUS_VIEWED = "VIEWED";
 const CONTRACT_STATUS_SIGNED = "SIGNED";
 const CONTRACT_STATUS_DRAFT = "DRAFT";
-const SIGNING_TOKEN_VERSION = 1;
 
 type SigningRole = "CLIENTE" | "ACOMPANANTE";
 
@@ -60,6 +60,7 @@ export class ContractsService {
     private readonly billingService: BillingService,
     private readonly contractsEmailsService: ContractsEmailsService,
     private readonly customersService: CustomersService,
+    private readonly documentSigningService: DocumentSigningService,
   ) {}
 
   /**
@@ -300,30 +301,12 @@ export class ContractsService {
     return Number.isNaN(date.getTime()) ? null : date;
   }
 
-  private toBase64Url(value: string) {
-    return Buffer.from(value, "utf8").toString("base64url");
-  }
-
-  private fromBase64Url(value: string) {
-    return Buffer.from(value, "base64url").toString("utf8");
-  }
-
   private getSigningSecret() {
-    const explicitSecret = this.configService.get<string>("SIGNING_LINK_SECRET", "").trim();
-    if (explicitSecret) {
-      return explicitSecret;
-    }
-
-    const jwtSecret = this.configService.get<string>("JWT_SECRET", "").trim();
-    if (jwtSecret) {
-      return jwtSecret;
-    }
-
-    throw new InternalServerErrorException("Falta configurar SIGNING_LINK_SECRET o JWT_SECRET.");
+    return this.documentSigningService.getSigningSecret();
   }
 
   private signPayload(payloadB64: string) {
-    return createHmac("sha256", this.getSigningSecret()).update(payloadB64).digest("base64url");
+    return this.documentSigningService.signPayload(payloadB64);
   }
 
   private buildSigningToken(
@@ -331,83 +314,29 @@ export class ContractsService {
     expiresAt: Date,
     signer?: { key: string; role: SigningRole; name: string },
   ) {
-    const payload = {
-      v: SIGNING_TOKEN_VERSION,
-      contractId,
-      exp: expiresAt.toISOString(),
-      signerKey: signer?.key || "client",
-      signerRole: signer?.role || "CLIENTE",
-      signerName: signer?.name || "",
-    };
-
-    const payloadB64 = this.toBase64Url(JSON.stringify(payload));
-    const signature = this.signPayload(payloadB64);
-    return `${payloadB64}.${signature}`;
+    return this.documentSigningService.buildSigningToken({
+      documentId: contractId,
+      expiresAt,
+      signerKey: signer?.key,
+      signerRole: signer?.role,
+      signerName: signer?.name,
+    });
   }
 
   private parseSigningToken(token: string, callerIp?: string | null) {
-    const normalized = String(token || "").trim();
-    // Log using only first 12 chars of token — enough to correlate without leaking full HMAC
-    const tokenHint = normalized.slice(0, 12) + "…";
-    const ipHint = callerIp || "unknown";
-
-    const [payloadB64, signature] = normalized.split(".");
-    if (!payloadB64 || !signature) {
-      this.logger.warn(`[signing] Malformed token structure ip=${ipHint} hint=${tokenHint}`);
-      throw new BadRequestException("Token de firma invalido.");
-    }
-
-    const expected = this.signPayload(payloadB64);
-    const providedBuf = Buffer.from(signature, "utf8");
-    const expectedBuf = Buffer.from(expected, "utf8");
-
-    if (providedBuf.length !== expectedBuf.length || !timingSafeEqual(providedBuf, expectedBuf)) {
-      this.logger.warn(`[signing] HMAC mismatch ip=${ipHint} hint=${tokenHint}`);
-      throw new BadRequestException("Token de firma invalido.");
-    }
-
-    let payload: {
-      v: number;
-      contractId: string;
-      exp: string;
-      signerKey?: string;
-      signerRole?: string;
-      signerName?: string;
-    };
-    try {
-      payload = JSON.parse(this.fromBase64Url(payloadB64));
-    } catch {
-      this.logger.warn(`[signing] Payload decode error ip=${ipHint} hint=${tokenHint}`);
-      throw new BadRequestException("Token de firma invalido.");
-    }
-
-    if (payload.v !== SIGNING_TOKEN_VERSION || !payload.contractId || !payload.exp) {
-      this.logger.warn(`[signing] Invalid payload shape ip=${ipHint} hint=${tokenHint}`);
-      throw new BadRequestException("Token de firma invalido.");
-    }
-
-    const expDate = new Date(payload.exp);
-    if (Number.isNaN(expDate.getTime()) || expDate.getTime() <= Date.now()) {
-      this.logger.warn(`[signing] Expired token ip=${ipHint} contractId=${payload.contractId} hint=${tokenHint}`);
-      throw new BadRequestException("El enlace de firma expiro.");
-    }
-
+    const parsed = this.documentSigningService.parseSigningToken(token, callerIp);
+    // Map generic documentId back to contractId for backward compatibility
     return {
-      contractId: payload.contractId,
-      expiresAt: expDate,
-      signerKey: String(payload.signerKey || "client").trim() || "client",
-      signerRole: String(payload.signerRole || "CLIENTE").trim().toUpperCase() === "ACOMPANANTE"
-        ? "ACOMPANANTE"
-        : "CLIENTE",
-      signerName: String(payload.signerName || "").trim(),
+      contractId: parsed.documentId,
+      expiresAt: parsed.expiresAt,
+      signerKey: parsed.signerKey,
+      signerRole: parsed.signerRole.toUpperCase() === "ACOMPANANTE" ? "ACOMPANANTE" : "CLIENTE",
+      signerName: parsed.signerName,
     };
   }
 
   private getPayloadRecord(payload: unknown) {
-    if (payload && typeof payload === "object" && !Array.isArray(payload)) {
-      return payload as Record<string, any>;
-    }
-    return {} as Record<string, any>;
+    return this.documentSigningService.getPayloadRecord(payload);
   }
 
   private getSigningParticipants(contract: any): SigningParticipant[] {
@@ -441,18 +370,7 @@ export class ContractsService {
   }
 
   private getSignatureAnchorForSigner(payload: Record<string, any>, signerKey: string) {
-    const allAnchors =
-      payload.signatureAnchors &&
-      typeof payload.signatureAnchors === "object" &&
-      !Array.isArray(payload.signatureAnchors)
-        ? (payload.signatureAnchors as Record<string, any>)
-        : null;
-
-    if (allAnchors && allAnchors[signerKey]) {
-      return allAnchors[signerKey];
-    }
-
-    return payload.signatureAnchor || null;
+    return this.documentSigningService.getSignatureAnchorForSigner(payload, signerKey);
   }
 
 
@@ -1555,7 +1473,7 @@ export class ContractsService {
     }
 
     // SHA-256 of the raw token — stored in ContractUsedToken for atomic replay guard
-    const tokenHash = createHash("sha256").update(token).digest("hex");
+    const tokenHash = this.documentSigningService.generateTokenHash(token);
 
     const contract = await (this.prisma as any).contract.findUnique({
       where: { id: parsed.contractId },
