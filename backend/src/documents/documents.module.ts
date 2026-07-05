@@ -6,6 +6,7 @@ import { DocumentPdfService } from "./document-pdf.service";
 import { DocumentSigningService } from "./document-signing.service";
 import { DocumentSigningAuditService } from "./document-signing-audit.service";
 import { DocumentSignatureFinalizationService } from "./document-signature-finalization.service";
+import { DocumentDeliveryService } from "./document-delivery.service";
 
 /**
  * DocumentsModule
@@ -22,6 +23,7 @@ import { DocumentSignatureFinalizationService } from "./document-signature-final
  * - DocumentSigningService: Extracted signing token logic from ContractsModule
  * - DocumentSigningAuditService: Extracted signing audit logic from ContractsModule
  * - DocumentSignatureFinalizationService: Extracted signature finalization logic from ContractsModule
+ * - DocumentDeliveryService: Extracted signed document delivery logic from ContractsModule
  * - DocumentsService: Empty foundation ready for additional extractions
  * 
  * Capabilities:
@@ -30,6 +32,7 @@ import { DocumentSignatureFinalizationService } from "./document-signature-final
  * - Document signing tokens (generation, validation, HMAC security)
  * - Document signing audit (token replay prevention, signature event recording)
  * - Document signature finalization (PDF generation, hash calculation, image processing)
+ * - Document delivery (recipient resolution, signed document distribution)
  * 
  * Future Capabilities (to be extracted incrementally):
  * - Document generation from templates
@@ -45,6 +48,7 @@ import { DocumentSignatureFinalizationService } from "./document-signature-final
     DocumentSigningService,
     DocumentSigningAuditService,
     DocumentSignatureFinalizationService,
+    DocumentDeliveryService,
   ],
   exports: [
     DocumentsService,
@@ -53,6 +57,7 @@ import { DocumentSignatureFinalizationService } from "./document-signature-final
     DocumentSigningService,
     DocumentSigningAuditService,
     DocumentSignatureFinalizationService,
+    DocumentDeliveryService,
   ],
 })
 export class DocumentsModule {}

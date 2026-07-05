@@ -17,6 +17,7 @@ import { CustomersService } from "../customers/customers.service";
 import { DocumentSigningService } from "../documents/document-signing.service";
 import { DocumentSigningAuditService } from "../documents/document-signing-audit.service";
 import { DocumentSignatureFinalizationService } from "../documents/document-signature-finalization.service";
+import { DocumentDeliveryService } from "../documents/document-delivery.service";
 import { ArchiveContractDto } from "./dto/archive-contract.dto";
 
 import { SendContractEmailDto } from "./dto/send-contract-email.dto";
@@ -65,6 +66,7 @@ export class ContractsService {
     private readonly documentSigningService: DocumentSigningService,
     private readonly documentSigningAuditService: DocumentSigningAuditService,
     private readonly documentSignatureFinalizationService: DocumentSignatureFinalizationService,
+    private readonly documentDeliveryService: DocumentDeliveryService,
   ) {}
 
   /**
@@ -602,76 +604,38 @@ export class ContractsService {
 
     const payload = this.getPayloadRecord(contract.payload);
     const participants = this.getSigningParticipants(contract);
-    const seenEmails = new Set<string>();
-    const recipients: Array<{ email: string; name: string; role: SigningRole }> = [];
 
-    // Agregar titular y acompañantes
-    participants.forEach((participant) => {
-      const normalizedEmail = String(participant.email || "").trim().toLowerCase();
-      if (!normalizedEmail || seenEmails.has(normalizedEmail)) {
-        return;
-      }
-
-      seenEmails.add(normalizedEmail);
-      recipients.push({
-        email: normalizedEmail,
-        name: participant.name,
-        role: participant.role,
-      });
-    });
-
-    // TODO: Agregar email de backup de empresa cuando se defina el campo
-    // if (tenant.contractsBackupEmail) {
-    //   const backupEmail = String(tenant.contractsBackupEmail).trim().toLowerCase();
-    //   if (backupEmail && !seenEmails.has(backupEmail)) {
-    //     seenEmails.add(backupEmail);
-    //     recipients.push({
-    //       email: backupEmail,
-    //       name: tenant.name || "Empresa",
-    //       role: "BACKUP" as SigningRole,
-    //     });
-    //   }
-    // }
-
-    if (!recipients.length) {
-      this.logger.warn(`[auto-send-signed] No hay destinatarios para contractId=${contractId}`);
-      return { ok: false, sentCount: 0, failedCount: 0, sentTo: [], failedTo: [] };
-    }
-
+    // Download signed PDF buffer (storage infrastructure responsibility)
     const signedPdfBuffer = await this.downloadObjectBuffer(contract.signedPdfObjectKey);
     if (!signedPdfBuffer.length) {
       throw new InternalServerErrorException("No se pudo leer el contrato firmado.");
     }
 
-    const pdfBase64 = signedPdfBuffer.toString("base64");
-    const fileName =
-      String(contract.signedPdfFileName || "").trim() || `${String(contract.contractNumber || "contrato").trim()}-signed.pdf`;
-
-    // Enviar emails usando el servicio centralizado
-    const { sentTo, failedTo } = await this.contractsEmailsService.sendSignedContractToRecipients(
-      { id: actorContext.userId, email: actorContext.email, fullName: actorContext.fullName },
-      contract.contractNumber,
-      fileName,
-      pdfBase64,
-      recipients,
+    // Delegate delivery to DocumentDeliveryService
+    const deliveryResult = await this.documentDeliveryService.deliverSignedDocument({
+      contractId: contract.id,
+      contractNumber: contract.contractNumber,
+      signedPdfBuffer,
+      signedPdfFileName: contract.signedPdfFileName,
+      signingParticipants: participants,
+      actorContext,
       tenant,
-    );
+    });
 
-    // Registrar en emailDispatchLog
+    // Build dispatch log entry
+    const dispatchLogEntry = this.documentDeliveryService.buildDispatchLogEntry({
+      type: "SIGNED_AUTO_SEND",
+      contractId: contract.id,
+      contractNumber: contract.contractNumber,
+      actorContext,
+      sentTo: deliveryResult.sentTo,
+      failedTo: deliveryResult.failedTo,
+    });
+
+    // Persist dispatch log to contract payload
     const existingDispatchLog = Array.isArray(payload?.emailDispatchLog)
       ? payload.emailDispatchLog.filter((item: any) => item && typeof item === "object")
       : [];
-    const dispatchLogEntry = {
-      type: "SIGNED_AUTO_SEND",
-      createdAt: new Date().toISOString(),
-      contractId: contract.id,
-      contractNumber: contract.contractNumber,
-      requestedBy: actorContext,
-      sentCount: sentTo.length,
-      failedCount: failedTo.length,
-      sentTo,
-      failedTo,
-    };
 
     await (this.prisma as any).contract.update({
       where: { id: contract.id },
@@ -684,16 +648,10 @@ export class ContractsService {
     });
 
     this.logger.log(
-      `[auto-send-signed] Contrato firmado enviado automáticamente: ${contract.contractNumber} (${sentTo.length} enviados, ${failedTo.length} fallidos)`,
+      `[auto-send-signed] Contrato firmado enviado automáticamente: ${contract.contractNumber} (${deliveryResult.sentTo.length} enviados, ${deliveryResult.failedTo.length} fallidos)`,
     );
 
-    return {
-      ok: true,
-      sentCount: sentTo.length,
-      failedCount: failedTo.length,
-      sentTo,
-      failedTo,
-    };
+    return deliveryResult;
   }
 
   async resendSignedContractEmailToParties(
