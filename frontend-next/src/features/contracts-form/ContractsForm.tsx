@@ -475,7 +475,7 @@ console.log("====================================");
           logoSrc,
           representativeSignSrc,
         }, tenantLegalInfo, bankAccountsForContract);
-        contractHtml = documentPackage.contractHtml;
+        contractHtml = documentPackage.documents[0].html;
         console.log("✅ HTML construido, longitud:", contractHtml.length);
       } else {
         console.log("⚠️ Viaje interno: Skip generación de PDF/HTML");
@@ -632,7 +632,7 @@ console.log("====================================");
         representativeSignSrc,
       }, tenantLegalInfo, bankAccountsForContract);
 
-      setPreviewHtml(documentPackage.contractHtml);
+      setPreviewHtml(documentPackage.documents[0].html);
       setStatus("Vista previa actualizada abajo del formulario.");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "No se pudo generar la vista previa del contrato.");

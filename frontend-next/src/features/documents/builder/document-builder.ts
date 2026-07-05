@@ -6,14 +6,38 @@ import {
 } from "@/features/contracts-form/pdf-template";
 
 /**
+ * Document types supported by the Document Framework.
+ */
+export enum DocumentType {
+  CONTRACT = "CONTRACT",
+  MINOR_ANNEX = "MINOR_ANNEX",
+  LIABILITY_WAIVER = "LIABILITY_WAIVER",
+}
+
+/**
+ * A generated document within a document package.
+ */
+export interface GeneratedDocument {
+  /** Unique identifier for this document instance */
+  id: string;
+  /** Type of document */
+  type: DocumentType;
+  /** Human-readable title */
+  title: string;
+  /** Generated HTML content */
+  html: string;
+  /** Whether this document is required for the package */
+  required: boolean;
+}
+
+/**
  * Document package returned by the Document Builder.
  * 
- * Contains all generated HTML documents for the contract package.
+ * Contains a collection of generated documents for the contract package.
  */
 export interface DocumentPackage {
-  contractHtml: string;
-  minorAnnexHtml: string | null;
-  liabilityWaiverHtml: string | null;
+  /** Collection of generated documents */
+  documents: GeneratedDocument[];
 }
 
 /**
@@ -21,14 +45,14 @@ export interface DocumentPackage {
  * 
  * This is the public API for the Document Framework.
  * 
- * Currently delegates to the existing contract renderer.
+ * Currently generates only the main contract document.
  * Future versions will conditionally generate multiple documents based on business rules.
  * 
  * @param state - Contract form state
  * @param assets - Logo and signature images
  * @param tenantLegalInfo - Tenant legal configuration
  * @param bankAccounts - Bank accounts for payment information
- * @returns Document package with all generated HTML documents
+ * @returns Document package with collection of generated documents
  */
 export function buildDocumentPackage(
   state: ContractFormState,
@@ -36,7 +60,7 @@ export function buildDocumentPackage(
   tenantLegalInfo: TenantLegalInfo | null,
   bankAccounts: BankAccountForContract[] = [],
 ): DocumentPackage {
-  // Currently, the builder simply delegates to the existing contract renderer
+  // Generate the main contract document
   // The contract HTML already includes minor annexes via buildMinorAnnexHtml()
   const contractHtml = buildContractPdfHtml(
     state,
@@ -45,9 +69,18 @@ export function buildDocumentPackage(
     bankAccounts,
   );
 
+  // Return a generic document package
+  // For now, only the CONTRACT document is included
+  // Future stories will add conditional documents (Minor Annex, Liability Waiver, etc.)
   return {
-    contractHtml,
-    minorAnnexHtml: null,
-    liabilityWaiverHtml: null,
+    documents: [
+      {
+        id: `contract-${state.contractNumber}`,
+        type: DocumentType.CONTRACT,
+        title: "Travel Contract",
+        html: contractHtml,
+        required: true,
+      },
+    ],
   };
 }
