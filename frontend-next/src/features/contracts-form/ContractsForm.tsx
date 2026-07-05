@@ -12,7 +12,8 @@ import { getTravelPackageById, type TravelPackage } from "@/lib/travel-packages-
 import { getInternalTripById } from "@/lib/internal-trips-api";
 import { getAllBankAccounts } from "@/lib/bank-accounts-api";
 import { validateCustomerIdentity } from "@/lib/customers-api";
-import { buildContractPdfHtml, type TenantLegalInfo, type BankAccountForContract } from "@/features/contracts-form/pdf-template";
+import { type TenantLegalInfo, type BankAccountForContract } from "@/features/contracts-form/pdf-template";
+import { buildDocumentPackage } from "@/features/documents/builder/document-builder";
 import { calculateParticipants } from "@/features/contracts-form/capacity-validation";
 import { ConfirmModal } from "@/components/confirm-modal";
 import {
@@ -470,10 +471,11 @@ console.log("====================================");
         console.log("✅ Assets configurados:", { logoSrc: "✓", signatureSrc: "✓" });
 
         console.log("🔵 Paso 2: Construyendo HTML del contrato...");
-        contractHtml = buildContractPdfHtml(state, {
+        const documentPackage = buildDocumentPackage(state, {
           logoSrc,
           representativeSignSrc,
         }, tenantLegalInfo, bankAccountsForContract);
+        contractHtml = documentPackage.contractHtml;
         console.log("✅ HTML construido, longitud:", contractHtml.length);
       } else {
         console.log("⚠️ Viaje interno: Skip generación de PDF/HTML");
@@ -625,12 +627,12 @@ console.log("====================================");
       const logoSrc = tenantConfig.logoUrl;
       const representativeSignSrc = tenantConfig.signatureUrl;
 
-      const contractHtml = buildContractPdfHtml(state, {
+      const documentPackage = buildDocumentPackage(state, {
         logoSrc,
         representativeSignSrc,
       }, tenantLegalInfo, bankAccountsForContract);
 
-      setPreviewHtml(contractHtml);
+      setPreviewHtml(documentPackage.contractHtml);
       setStatus("Vista previa actualizada abajo del formulario.");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "No se pudo generar la vista previa del contrato.");
