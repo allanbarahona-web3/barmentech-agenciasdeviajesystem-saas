@@ -16,6 +16,7 @@ import { ContractsEmailsService } from "./contracts-emails.service";
 import { CustomersService } from "../customers/customers.service";
 import { DocumentSigningService } from "../documents/document-signing.service";
 import { DocumentSigningAuditService } from "../documents/document-signing-audit.service";
+import { DocumentSignatureFinalizationService } from "../documents/document-signature-finalization.service";
 import { ArchiveContractDto } from "./dto/archive-contract.dto";
 
 import { SendContractEmailDto } from "./dto/send-contract-email.dto";
@@ -63,6 +64,7 @@ export class ContractsService {
     private readonly customersService: CustomersService,
     private readonly documentSigningService: DocumentSigningService,
     private readonly documentSigningAuditService: DocumentSigningAuditService,
+    private readonly documentSignatureFinalizationService: DocumentSignatureFinalizationService,
   ) {}
 
   /**
@@ -1529,13 +1531,7 @@ export class ContractsService {
     
     const baseFolder = keyRoot || fallbackKeyRoot;
 
-    const pngBuffer = Buffer.from(signatureImageBase64.trim(), "base64");
-
-    const normalizedSignature = signatureImageBase64.trim();
-    const signatureDataUrl = normalizedSignature.startsWith("data:")
-      ? normalizedSignature
-      : `data:image/png;base64,${normalizedSignature}`;
-
+    // Extract existing signature images from payload
     const existingSignatureImages =
       payload.signatureImagesBySigner &&
       typeof payload.signatureImagesBySigner === "object" &&
@@ -1543,44 +1539,35 @@ export class ContractsService {
         ? (payload.signatureImagesBySigner as Record<string, string>)
         : {};
 
-    const nextSignatureImagesBySigner: Record<string, string> = {
-      ...existingSignatureImages,
-      [signer.key]: signatureDataUrl,
-    };
-
+    // Download contract HTML source
     if (!contract.htmlObjectKey) {
       throw new InternalServerErrorException("El contrato no tiene HTML fuente para regenerar PDF firmado.");
     }
     const contractHtmlBuffer = await this.downloadObjectBuffer(contract.htmlObjectKey);
     const contractHtml = contractHtmlBuffer.toString("utf8");
-    const signedPdfBuffer = await this.pdfRenderService.renderSignedContractToBuffer(
+
+    // Generate all signature finalization artifacts
+    const finalizationResult = await this.documentSignatureFinalizationService.finalizeSignature({
       contractHtml,
-      nextSignatureImagesBySigner,
-    );
+      signatureImageBase64,
+      signerKey: signer.key,
+      existingSignatureImages,
+    });
 
-    // SHA-256 of the final signed PDF bytes
-    const signedPdfHash = createHash("sha256").update(signedPdfBuffer).digest("hex");
-
+    // Upload signed PDF
     const signedObjectKey = `${baseFolder}/signed/contract-signed.pdf`;
     await this.uploadToSpaces({
       objectKey: signedObjectKey,
       contentType: "application/pdf",
-      body: signedPdfBuffer,
+      body: finalizationResult.signedPdfBuffer,
     });
 
-    // Convertir firma PNG a WebP
-    const processedSignature = await this.convertImageToWebP({
-      buffer: pngBuffer,
-      mimetype: "image/png",
-      originalname: `${this.sanitizeSegment(signer.key)}.png`,
-      size: pngBuffer.length,
-    });
-
-    const sigPngKey = `${baseFolder}/signatures/${processedSignature.originalname}`;
+    // Upload signature image
+    const sigPngKey = `${baseFolder}/signatures/${finalizationResult.signatureImageFilename}`;
     await this.uploadToSpaces({
       objectKey: sigPngKey,
-      contentType: processedSignature.mimetype,
-      body: processedSignature.buffer,
+      contentType: finalizationResult.signatureImageMimeType,
+      body: finalizationResult.signatureImageBuffer,
     });
 
     const now = new Date();
@@ -1622,8 +1609,8 @@ export class ContractsService {
         signedUserAgent: signedUserAgent || null,
         signaturePngKey: sigPngKey,
         signedPdfKey: signedObjectKey,
-        signedPdfBytes: signedPdfBuffer.length,
-        signedPdfSha256: signedPdfHash,
+        signedPdfBytes: finalizationResult.signedPdfBuffer.length,
+        signedPdfSha256: finalizationResult.signedPdfHash,
         tokenHash,
       },
     );
@@ -1638,7 +1625,7 @@ export class ContractsService {
           signedPdfObjectKey: signedObjectKey,
           signedPdfFileName: `${contract.contractNumber}-signed.pdf`,
           signedPdfMimeType: "application/pdf",
-          signedPdfSize: signedPdfBuffer.length,
+          signedPdfSize: finalizationResult.signedPdfBuffer.length,
           signaturePngObjectKey: sigPngKey,
           signedByName: signerName,
           signedAt: now,
@@ -1648,7 +1635,7 @@ export class ContractsService {
             ...payload,
             requiredSignerKeys,
             signedParticipants: nextSignedParticipants,
-            signatureImagesBySigner: nextSignatureImagesBySigner,
+            signatureImagesBySigner: finalizationResult.nextSignatureImages,
           },
         },
       }),
@@ -1656,7 +1643,7 @@ export class ContractsService {
 
     this.logger.log(
       `[signing] Signature recorded contractId=${contract.id} signerKey=${signer.key} ` +
-      `allCompleted=${allCompleted} ip=${signedClientIp || "unknown"} sha256=${signedPdfHash.slice(0, 16)}…`,
+      `allCompleted=${allCompleted} ip=${signedClientIp || "unknown"} sha256=${finalizationResult.signedPdfHash.slice(0, 16)}…`,
     );
 
     let billingInvoiceAutoEmail: {

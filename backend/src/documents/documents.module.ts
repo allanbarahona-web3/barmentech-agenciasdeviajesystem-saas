@@ -5,6 +5,7 @@ import { DocumentEmailsService } from "./document-emails.service";
 import { DocumentPdfService } from "./document-pdf.service";
 import { DocumentSigningService } from "./document-signing.service";
 import { DocumentSigningAuditService } from "./document-signing-audit.service";
+import { DocumentSignatureFinalizationService } from "./document-signature-finalization.service";
 
 /**
  * DocumentsModule
@@ -20,6 +21,7 @@ import { DocumentSigningAuditService } from "./document-signing-audit.service";
  * - DocumentPdfService: Extracted PDF rendering logic from ContractsModule
  * - DocumentSigningService: Extracted signing token logic from ContractsModule
  * - DocumentSigningAuditService: Extracted signing audit logic from ContractsModule
+ * - DocumentSignatureFinalizationService: Extracted signature finalization logic from ContractsModule
  * - DocumentsService: Empty foundation ready for additional extractions
  * 
  * Capabilities:
@@ -27,6 +29,7 @@ import { DocumentSigningAuditService } from "./document-signing-audit.service";
  * - Document PDF rendering (unsigned with signature anchors, signed with images)
  * - Document signing tokens (generation, validation, HMAC security)
  * - Document signing audit (token replay prevention, signature event recording)
+ * - Document signature finalization (PDF generation, hash calculation, image processing)
  * 
  * Future Capabilities (to be extracted incrementally):
  * - Document generation from templates
@@ -41,6 +44,7 @@ import { DocumentSigningAuditService } from "./document-signing-audit.service";
     DocumentPdfService,
     DocumentSigningService,
     DocumentSigningAuditService,
+    DocumentSignatureFinalizationService,
   ],
   exports: [
     DocumentsService,
@@ -48,6 +52,7 @@ import { DocumentSigningAuditService } from "./document-signing-audit.service";
     DocumentPdfService,
     DocumentSigningService,
     DocumentSigningAuditService,
+    DocumentSignatureFinalizationService,
   ],
 })
 export class DocumentsModule {}
