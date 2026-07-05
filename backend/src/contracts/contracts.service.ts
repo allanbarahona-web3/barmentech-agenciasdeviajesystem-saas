@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { createHash, randomBytes } from "crypto";
+import { randomBytes } from "crypto";
 import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { PdfRenderService } from "./pdf-render.service";
@@ -68,19 +68,6 @@ export class ContractsService {
     private readonly documentSignatureFinalizationService: DocumentSignatureFinalizationService,
     private readonly documentDeliveryService: DocumentDeliveryService,
   ) {}
-
-  /**
-   * Load company logo for email templates (returns URL or base64 data URI)
-   */
-  private async loadCompanyLogoEmailSrc(tenant?: { emailLogoUrl: string | null; logoUrl: string | null } | null): Promise<string | null> {
-    // Prioridad 1: Usar emailLogoUrl del tenant, si no está, usar logoUrl del tenant
-    const configuredUrl = tenant?.emailLogoUrl || tenant?.logoUrl || this.configService.get<string>("COMPANY_LOGO_EMAIL_URL", "").trim();
-    if (configuredUrl) {
-      return configuredUrl;
-    }
-    // Fallback: could load and convert to base64, but URL is preferred
-    return null;
-  }
 
   private pad(value: number, size = 2) {
     return String(value).padStart(size, "0");
@@ -305,14 +292,6 @@ export class ContractsService {
     }
     const date = new Date(value);
     return Number.isNaN(date.getTime()) ? null : date;
-  }
-
-  private getSigningSecret() {
-    return this.documentSigningService.getSigningSecret();
-  }
-
-  private signPayload(payloadB64: string) {
-    return this.documentSigningService.signPayload(payloadB64);
   }
 
   private buildSigningToken(
@@ -1699,29 +1678,6 @@ export class ContractsService {
     });
 
     return { ok: true, status: updated.status };
-  }
-
-  private async embedSignatureInPdf(
-    pdfBuffer: Buffer,
-    pngBuffer: Buffer,
-    anchor: { pageIndex: number; box: { x: number; y: number; width: number; height: number } } | null,
-  ): Promise<Buffer> {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { PDFDocument } = require("pdf-lib") as typeof import("pdf-lib");
-    const pdfDoc = await PDFDocument.load(pdfBuffer);
-    const pages = pdfDoc.getPages();
-    const pageIndex = anchor?.pageIndex ?? pages.length - 1;
-    const targetPage = pages[Math.min(pageIndex, pages.length - 1)];
-    const pngImage = await pdfDoc.embedPng(pngBuffer);
-    const { width: imgW, height: imgH } = pngImage.size();
-    const box = anchor?.box ?? { x: 42, y: 50, width: 150, height: 60 };
-    const scale = Math.min(box.width / imgW, box.height / imgH);
-    const drawWidth = imgW * scale;
-    const drawHeight = imgH * scale;
-    const drawX = box.x + (box.width - drawWidth) / 2;
-    const drawY = box.y + (box.height - drawHeight) / 2;
-    targetPage.drawImage(pngImage, { x: drawX, y: drawY, width: drawWidth, height: drawHeight });
-    return Buffer.from(await pdfDoc.save());
   }
 
   async getPublicSigningSession(token: string, callerIp?: string | null) {
