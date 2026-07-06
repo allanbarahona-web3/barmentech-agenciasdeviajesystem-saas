@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { ContractsForm } from "@/features/contracts-form/ContractsForm";
+import { ContractsWizard } from "@/features/contracts-form/wizard/ContractsWizard";
 import { getStoredToken, type AuthSession } from "@/lib/auth-api";
 import { AUTH_SESSION_KEY } from "@/lib/runtime-config";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -102,7 +102,7 @@ function ContractsPageContent() {
 
   return (
     <main className="app-shell">
-      <ContractsForm 
+      <ContractsWizard 
         agent={session?.user || null} 
         initialDraftId={draftId || null}
         initialTravelPackageId={travelPackageId || null}
