@@ -2,6 +2,7 @@
 
 import { ContractsForm } from "@/features/contracts-form/ContractsForm";
 import { useState, useRef, useMemo, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { contractsStepRegistry } from "@/features/contracts-form/wizard/registry";
 import { 
   getFirstStep, 
@@ -65,12 +66,23 @@ export function ContractsWizard({
   initialInternalTripId = null, 
   mode 
 }: ContractsWizardProps) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  
   // ==================== STATE ====================
   const [state, setState] = useState(() => createInitialFormState(agent || undefined));
   const [status, setStatus] = useState("Listo para iniciar migracion del formulario.");
   
   // ==================== NAVIGATION STATE ====================
-  const [currentStepId, setCurrentStepId] = useState(() => getFirstStep(contractsStepRegistry).id);
+  // Initialize from URL or fallback to first step
+  const [currentStepId, setCurrentStepId] = useState(() => {
+    const urlStep = searchParams.get('step');
+    if (urlStep) {
+      const stepExists = contractsStepRegistry.find(s => s.id === urlStep);
+      if (stepExists) return urlStep;
+    }
+    return getFirstStep(contractsStepRegistry).id;
+  });
   const [internalTripMeta, setInternalTripMeta] = useState<{ tripCode: string; name: string } | null>(null);
   const [loadedTravelPackage, setLoadedTravelPackage] = useState<TravelPackage | null>(null);
   const [busyNumber, setBusyNumber] = useState(false);
@@ -117,6 +129,35 @@ export function ContractsWizard({
   const loadedDraftIdRef = useRef("");
   const loadedTravelPackageIdRef = useRef("");
   const loadedInternalTripIdRef = useRef("");
+
+  // ==================== URL SYNCHRONIZATION ====================
+  // Sync currentStepId to URL query parameter
+  useEffect(() => {
+    const currentParams = new URLSearchParams(searchParams.toString());
+    const urlStep = currentParams.get('step');
+    
+    // Only update URL if step actually changed
+    if (urlStep !== currentStepId) {
+      currentParams.set('step', currentStepId);
+      router.replace(`?${currentParams.toString()}`, { scroll: false });
+    }
+  }, [currentStepId, router, searchParams]);
+
+  // Restore step from URL on browser navigation (back/forward)
+  useEffect(() => {
+    const urlStep = searchParams.get('step');
+    if (urlStep && urlStep !== currentStepId) {
+      // Validate step exists in registry
+      const stepExists = contractsStepRegistry.find(s => s.id === urlStep);
+      if (stepExists) {
+        setCurrentStepId(urlStep);
+      } else {
+        // Invalid step in URL - fallback to first visible step
+        const firstStep = getFirstStep(contractsStepRegistry);
+        setCurrentStepId(firstStep.id);
+      }
+    }
+  }, [searchParams, currentStepId]);
 
   // ==================== COMPUTED VALUES ====================
   const todayIso = useMemo(() => getTodayIsoLocal(), []);
