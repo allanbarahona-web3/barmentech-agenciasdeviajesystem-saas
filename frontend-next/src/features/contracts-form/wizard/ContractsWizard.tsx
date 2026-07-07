@@ -144,6 +144,12 @@ export function ContractsWizard({
   // ==================== NAVIGATION COMPUTED VALUES ====================
   const navigationEnabled = useMemo(() => canGoNext(contractsStepRegistry, currentStepId), [currentStepId]);
   const canNavigatePrevious = useMemo(() => canGoPrevious(contractsStepRegistry, currentStepId), [currentStepId]);
+  
+  // ==================== PROGRESS COMPUTED VALUES ====================
+  const currentStep = useMemo(() => contractsStepRegistry.find(s => s.id === currentStepId), [currentStepId]);
+  const currentStepNumber = currentStep?.order ?? 1;
+  const totalSteps = contractsStepRegistry.length;
+  const completedSteps = currentStepNumber - 1;
 
   // ==================== NAVIGATION HANDLERS ====================
   const handleNext = () => {
@@ -986,6 +992,9 @@ console.log("====================================");
       onPrevious={handlePrevious}
       canGoNext={navigationEnabled}
       canGoPrevious={canNavigatePrevious}
+      currentStepNumber={currentStepNumber}
+      totalSteps={totalSteps}
+      completedSteps={completedSteps}
     />
   );
 }

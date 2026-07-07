@@ -197,6 +197,11 @@ type ContractsFormProps = {
   onPrevious: () => void;
   canGoNext: boolean;
   canGoPrevious: boolean;
+  
+  // Progress props from wizard
+  currentStepNumber: number;
+  totalSteps: number;
+  completedSteps: number;
 };
 
 export function ContractsForm(props: ContractsFormProps) {
@@ -277,6 +282,9 @@ export function ContractsForm(props: ContractsFormProps) {
     onPrevious,
     canGoNext,
     canGoPrevious,
+    currentStepNumber,
+    totalSteps,
+    completedSteps,
   } = props;
 
   const requiredDocumentLabelClass = (hasAttachment: boolean) =>
@@ -350,6 +358,20 @@ export function ContractsForm(props: ContractsFormProps) {
 
       <div className="contracts-workspace">
         <div className="contracts-editor">
+
+      {/* Wizard Progress Indicator */}
+      <div className="mb-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
+        <div className="flex items-center justify-between text-sm">
+          <span className="font-medium text-gray-700">Paso {currentStepNumber} de {totalSteps}</span>
+          <span className="text-gray-500">{completedSteps} completados</span>
+        </div>
+        <div className="mt-2 h-2 bg-gray-200 rounded-full overflow-hidden">
+          <div 
+            className="h-full bg-blue-600 transition-all duration-300" 
+            style={{ width: `${(completedSteps / totalSteps) * 100}%` }}
+          />
+        </div>
+      </div>
 
       {/* Dynamic Step Rendering - Registry-Driven Navigation */}
       {(() => {
