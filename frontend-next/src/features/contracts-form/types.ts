@@ -80,6 +80,9 @@ export type ContractFormState = {
   minors: Minor[];
   itinerary: ItineraryItem[];
   luggageClause: string;
+  insurance: {
+    purchased: boolean;
+  };
   idFrontDocumentName: string;
   idBackDocumentName: string;
   passportDocumentName: string;

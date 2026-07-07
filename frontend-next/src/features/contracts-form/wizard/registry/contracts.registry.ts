@@ -7,6 +7,7 @@ import { CompanionsStep, type CompanionsStepProps } from '../steps/companions/Co
 import { MinorsStep, type MinorsStepProps } from '../steps/minors/MinorsStep';
 import { ItineraryStep, type ItineraryStepProps } from '../steps/itinerary/ItineraryStep';
 import { DocumentsStep, type DocumentsStepProps } from '../steps/documents/DocumentsStep';
+import { InsuranceStep, type InsuranceStepProps } from '../steps/insurance/InsuranceStep';
 import { SummaryStep, type SummaryStepProps } from '../steps/summary/SummaryStep';
 
 /**
@@ -160,7 +161,28 @@ const documentsStep: WizardStepDefinition<DocumentsStepProps> = {
 };
 
 /**
- * Step 7: Summary and Submission
+ * Step 7: Insurance Decision
+ * 
+ * Captures the traveler's decision regarding travel insurance:
+ * - Simple yes/no choice
+ * - Stored as part of contract payload
+ * - No document generation (future story)
+ * - No waiver generation (future story)
+ * 
+ * Always visible and required
+ */
+const insuranceStep: WizardStepDefinition<InsuranceStepProps> = {
+  id: 'insurance',
+  title: 'Seguro',
+  order: 7,
+  component: InsuranceStep,
+  validate: () => true, // Future: Add validation logic
+  isVisible: () => true, // Always visible
+  isOptional: () => false, // Always required
+};
+
+/**
+ * Step 8: Summary and Submission
  * 
  * Final review and submission:
  * - Contract summary display
@@ -174,7 +196,7 @@ const documentsStep: WizardStepDefinition<DocumentsStepProps> = {
 const summaryStep: WizardStepDefinition<SummaryStepProps> = {
   id: 'summary',
   title: 'Resumen',
-  order: 7,
+  order: 8,
   component: SummaryStep,
   validate: () => true, // Future: Add validation logic
   isVisible: () => true, // Always visible
@@ -214,6 +236,7 @@ export const contractsStepRegistry: WizardStepRegistry = [
   minorsStep,
   itineraryStep,
   documentsStep,
+  insuranceStep,
   summaryStep,
 ];
 

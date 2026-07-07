@@ -164,6 +164,9 @@ export const createInitialFormState = (agent?: { fullName?: string; email?: stri
       { id: "closing", kind: "closing", date: today, detail: "" },
     ],
     luggageClause: "1 maleta de mano y 1 articulo personal.",
+    insurance: {
+      purchased: false,
+    },
     idFrontDocumentName: "",
     idBackDocumentName: "",
     passportDocumentName: "",

@@ -26,6 +26,7 @@ import { CompanionsStep } from "@/features/contracts-form/wizard/steps/companion
 import { MinorsStep } from "@/features/contracts-form/wizard/steps/minors/MinorsStep";
 import { ItineraryStep } from "@/features/contracts-form/wizard/steps/itinerary/ItineraryStep";
 import { DocumentsStep } from "@/features/contracts-form/wizard/steps/documents/DocumentsStep";
+import { InsuranceStep } from "@/features/contracts-form/wizard/steps/insurance/InsuranceStep";
 import { SummaryStep } from "@/features/contracts-form/wizard/steps/summary/SummaryStep";
 import { contractsStepRegistry } from "@/features/contracts-form/wizard/registry";
 import { getStepById } from "@/features/contracts-form/wizard/navigation/navigation-helpers";
@@ -456,6 +457,12 @@ export function ContractsForm(props: ContractsFormProps) {
               supportDocs={supportDocs}
               setSupportDocs={setSupportDocs}
               updateFileInputState={updateFileInputState}
+            />
+          ),
+          insurance: (
+            <InsuranceStep
+              state={state}
+              setState={setState}
             />
           ),
           summary: (
