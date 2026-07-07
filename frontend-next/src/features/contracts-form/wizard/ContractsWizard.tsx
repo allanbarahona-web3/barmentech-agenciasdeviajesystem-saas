@@ -157,7 +157,7 @@ export function ContractsWizard({
         setCurrentStepId(firstStep.id);
       }
     }
-  }, [searchParams, currentStepId]);
+  }, [searchParams]);
 
   // ==================== COMPUTED VALUES ====================
   const todayIso = useMemo(() => getTodayIsoLocal(), []);
@@ -211,9 +211,12 @@ export function ContractsWizard({
     () => visibleSteps.find(s => s.id === currentStepId),
     [visibleSteps, currentStepId]
   );
-  const currentStepNumber = currentStep?.order ?? 1;
+  
+  // Calculate progress based on visible steps only
+  const currentStepIndex = visibleSteps.findIndex(s => s.id === currentStepId);
+  const currentStepNumber = currentStepIndex >= 0 ? currentStepIndex + 1 : 1;
   const totalSteps = visibleSteps.length;
-  const completedSteps = Math.max(0, visibleSteps.findIndex(s => s.id === currentStepId));
+  const completedSteps = Math.max(0, currentStepIndex);
 
   // ==================== NAVIGATION HANDLERS ====================
   const validateCurrentStep = (): boolean => {

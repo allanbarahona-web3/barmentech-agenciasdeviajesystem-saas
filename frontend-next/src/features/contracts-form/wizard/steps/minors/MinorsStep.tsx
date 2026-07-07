@@ -46,37 +46,17 @@ export function MinorsStep({
     <div className="itinerary-box">
       <div className="itinerary-head">
         <h2>Menores</h2>
-        <div className="inline-actions">
-          <label className="check-inline">
-            <input
-              type="checkbox"
-              checked={state.hasMinorCompanion}
-              onChange={(event) => {
-                const enabled = event.target.checked;
-                setState((prev) => ({
-                  ...prev,
-                  hasMinorCompanion: enabled,
-                  minors: enabled ? (prev.minors.length ? prev.minors : prev.minors) : [],
-                }));
-              }}
-            />
-            Viajan menores
-          </label>
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={() => setState((prev) => addMinor(prev))}
-            disabled={!state.hasMinorCompanion}
-          >
-            + Agregar menor
-          </button>
-        </div>
+        <button
+          type="button"
+          className="btn-secondary"
+          onClick={() => setState((prev) => addMinor(prev))}
+        >
+          + Agregar menor
+        </button>
       </div>
 
-      {!state.hasMinorCompanion ? <p className="m-0 text-[#4b6790] text-sm">Marca la casilla si hay menores en el viaje.</p> : null}
-
       <div className="itinerary-list">
-        {state.hasMinorCompanion && state.minors.length === 0 ? <p className="m-0 text-[#4b6790] text-sm">Aun no hay menores.</p> : null}
+        {state.minors.length === 0 ? <p className="m-0 text-[#4b6790] text-sm">Aun no hay menores.</p> : null}
         {state.minors.map((minor, index) => (
           <article key={minor.id} className="subcard">
             <div className="itinerary-head">
@@ -160,6 +140,7 @@ export function MinorsStep({
                 <input
                   type="file"
                   accept=".pdf,.jpg,.jpeg,.png,.webp"
+                  key={minorDocs[minor.id]?.minorPassport ? minorDocs[minor.id].minorPassport!.name : `empty-${minor.id}-minorPassport`}
                   onChange={(event) => {
                     const file = event.target.files?.[0] || null;
                     updateFileInputState(event.target, !!file);
@@ -175,6 +156,9 @@ export function MinorsStep({
                     setState((prev) => updateMinor(prev, minor.id, "minorPassportDocumentName", file?.name || ""));
                   }}
                 />
+                {minorDocs[minor.id]?.minorPassport && (
+                  <small style={{ color: '#1a8a4e', fontWeight: 600 }}>✓ {minorDocs[minor.id].minorPassport!.name}</small>
+                )}
               </label>
               )}
               <label className={requiredDocumentLabelClass(Boolean(minorDocs[minor.id]?.tutorIdFront))}>
@@ -182,6 +166,7 @@ export function MinorsStep({
                 <input
                   type="file"
                   accept=".pdf,.jpg,.jpeg,.png,.webp"
+                  key={minorDocs[minor.id]?.tutorIdFront ? minorDocs[minor.id].tutorIdFront!.name : `empty-${minor.id}-tutorIdFront`}
                   onChange={(event) => {
                     const file = event.target.files?.[0] || null;
                     updateFileInputState(event.target, !!file);
@@ -197,12 +182,16 @@ export function MinorsStep({
                     setState((prev) => updateMinor(prev, minor.id, "tutorIdFrontDocumentName", file?.name || ""));
                   }}
                 />
+                {minorDocs[minor.id]?.tutorIdFront && (
+                  <small style={{ color: '#1a8a4e', fontWeight: 600 }}>✓ {minorDocs[minor.id].tutorIdFront!.name}</small>
+                )}
               </label>
               <label className={requiredDocumentLabelClass(Boolean(minorDocs[minor.id]?.tutorIdBack))}>
                 Cedula tutor reverso
                 <input
                   type="file"
                   accept=".pdf,.jpg,.jpeg,.png,.webp"
+                  key={minorDocs[minor.id]?.tutorIdBack ? minorDocs[minor.id].tutorIdBack!.name : `empty-${minor.id}-tutorIdBack`}
                   onChange={(event) => {
                     const file = event.target.files?.[0] || null;
                     updateFileInputState(event.target, !!file);
@@ -218,6 +207,9 @@ export function MinorsStep({
                     setState((prev) => updateMinor(prev, minor.id, "tutorIdBackDocumentName", file?.name || ""));
                   }}
                 />
+                {minorDocs[minor.id]?.tutorIdBack && (
+                  <small style={{ color: '#1a8a4e', fontWeight: 600 }}>✓ {minorDocs[minor.id].tutorIdBack!.name}</small>
+                )}
               </label>
               {/* Pasaporte tutor: SOLO internacional */}
               {!isInternalTrip && (
@@ -226,6 +218,7 @@ export function MinorsStep({
                 <input
                   type="file"
                   accept=".pdf,.jpg,.jpeg,.png,.webp"
+                  key={minorDocs[minor.id]?.tutorPassport ? minorDocs[minor.id].tutorPassport!.name : `empty-${minor.id}-tutorPassport`}
                   onChange={(event) => {
                     const file = event.target.files?.[0] || null;
                     updateFileInputState(event.target, !!file);
@@ -241,6 +234,9 @@ export function MinorsStep({
                     setState((prev) => updateMinor(prev, minor.id, "tutorPassportDocumentName", file?.name || ""));
                   }}
                 />
+                {minorDocs[minor.id]?.tutorPassport && (
+                  <small style={{ color: '#1a8a4e', fontWeight: 600 }}>✓ {minorDocs[minor.id].tutorPassport!.name}</small>
+                )}
               </label>
               )}
             </div>

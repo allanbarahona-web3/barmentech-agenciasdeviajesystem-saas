@@ -199,6 +199,7 @@ export function CompanionsStep({
                 <input
                   type="file"
                   accept=".pdf,.jpg,.jpeg,.png,.webp"
+                  key={companionDocs[companion.id]?.idFront ? companionDocs[companion.id].idFront!.name : `empty-${companion.id}-idFront`}
                   onChange={(event) => {
                     const file = event.target.files?.[0] || null;
                     updateFileInputState(event.target, !!file);
@@ -213,12 +214,16 @@ export function CompanionsStep({
                     setState((prev) => updateCompanion(prev, companion.id, "idFrontDocumentName", file?.name || ""));
                   }}
                 />
+                {companionDocs[companion.id]?.idFront && (
+                  <small style={{ color: '#1a8a4e', fontWeight: 600 }}>✓ {companionDocs[companion.id].idFront!.name}</small>
+                )}
               </label>
               <label className={requiredDocumentLabelClass(Boolean(companionDocs[companion.id]?.idBack))}>
                 Cédula reverso
                 <input
                   type="file"
                   accept=".pdf,.jpg,.jpeg,.png,.webp"
+                  key={companionDocs[companion.id]?.idBack ? companionDocs[companion.id].idBack!.name : `empty-${companion.id}-idBack`}
                   onChange={(event) => {
                     const file = event.target.files?.[0] || null;
                     updateFileInputState(event.target, !!file);
@@ -233,6 +238,9 @@ export function CompanionsStep({
                     setState((prev) => updateCompanion(prev, companion.id, "idBackDocumentName", file?.name || ""));
                   }}
                 />
+                {companionDocs[companion.id]?.idBack && (
+                  <small style={{ color: '#1a8a4e', fontWeight: 600 }}>✓ {companionDocs[companion.id].idBack!.name}</small>
+                )}
               </label>
               {/* Pasaporte acompañante: SOLO internacional */}
               {!isInternalTrip && (
@@ -241,6 +249,7 @@ export function CompanionsStep({
                 <input
                   type="file"
                   accept=".pdf,.jpg,.jpeg,.png,.webp"
+                  key={companionDocs[companion.id]?.passport ? companionDocs[companion.id].passport!.name : `empty-${companion.id}-passport`}
                   onChange={(event) => {
                     const file = event.target.files?.[0] || null;
                     updateFileInputState(event.target, !!file);
@@ -255,11 +264,39 @@ export function CompanionsStep({
                     setState((prev) => updateCompanion(prev, companion.id, "passportDocumentName", file?.name || ""));
                   }}
                 />
+                {companionDocs[companion.id]?.passport && (
+                  <small style={{ color: '#1a8a4e', fontWeight: 600 }}>✓ {companionDocs[companion.id].passport!.name}</small>
+                )}
               </label>
               )}
             </div>
           </article>
         ))}
+      </div>
+
+      {/* Minor Traveler Activation - Restored from previous implementation */}
+      <div style={{ marginTop: '24px', padding: '16px', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+        <label className="check-inline" style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={state.hasMinorCompanion}
+            onChange={(event) => {
+              const enabled = event.target.checked;
+              setState((prev) => ({
+                ...prev,
+                hasMinorCompanion: enabled,
+                minors: enabled ? prev.minors : [],
+              }));
+            }}
+            style={{ cursor: 'pointer' }}
+          />
+          <span style={{ fontWeight: 600, color: '#1e293b' }}>¿Viajan menores de edad en este viaje?</span>
+        </label>
+        {state.hasMinorCompanion && (
+          <p style={{ marginTop: '8px', marginBottom: 0, fontSize: '0.875rem', color: '#64748b' }}>
+            Los datos de los menores se capturarán en el siguiente paso.
+          </p>
+        )}
       </div>
     </div>
   );

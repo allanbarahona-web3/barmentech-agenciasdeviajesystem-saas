@@ -163,6 +163,7 @@ export function HolderStep({
           <input
             type="file"
             accept=".pdf,.jpg,.jpeg,.png,.webp"
+            key={holderDocs.idFront ? holderDocs.idFront.name : 'empty-idFront'}
             onChange={(event) => {
               const file = event.target.files?.[0] || null;
               updateFileInputState(event.target, !!file);
@@ -173,6 +174,9 @@ export function HolderStep({
               }));
             }}
           />
+          {holderDocs.idFront && (
+            <small style={{ color: '#1a8a4e', fontWeight: 600 }}>✓ {holderDocs.idFront.name}</small>
+          )}
         </label>
 
         <label className={requiredDocumentLabelClass(Boolean(holderDocs.idBack))}>
@@ -180,6 +184,7 @@ export function HolderStep({
           <input
             type="file"
             accept=".pdf,.jpg,.jpeg,.png,.webp"
+            key={holderDocs.idBack ? holderDocs.idBack.name : 'empty-idBack'}
             onChange={(event) => {
               const file = event.target.files?.[0] || null;
               updateFileInputState(event.target, !!file);
@@ -190,6 +195,9 @@ export function HolderStep({
               }));
             }}
           />
+          {holderDocs.idBack && (
+            <small style={{ color: '#1a8a4e', fontWeight: 600 }}>✓ {holderDocs.idBack.name}</small>
+          )}
         </label>
 
         {/* Pasaporte: SOLO para viajes internacionales */}
@@ -199,6 +207,7 @@ export function HolderStep({
             <input
               type="file"
               accept=".pdf,.jpg,.jpeg,.png,.webp"
+              key={holderDocs.passport ? holderDocs.passport.name : 'empty-passport'}
               onChange={(event) => {
                 const file = event.target.files?.[0] || null;
                 updateFileInputState(event.target, !!file);
@@ -209,6 +218,9 @@ export function HolderStep({
                 }));
               }}
             />
+            {holderDocs.passport && (
+              <small style={{ color: '#1a8a4e', fontWeight: 600 }}>✓ {holderDocs.passport.name}</small>
+            )}
           </label>
         )}
       </div>

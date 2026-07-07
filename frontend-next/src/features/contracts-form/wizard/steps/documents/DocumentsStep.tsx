@@ -28,6 +28,7 @@ export function DocumentsStep({
           <input
             type="file"
             accept=".pdf,.jpg,.jpeg,.png,.webp"
+            key={reservationProof ? reservationProof.name : 'empty-reservationProof'}
             onChange={(event) => {
               const file = event.target.files?.[0] || null;
               updateFileInputState(event.target, !!file);
@@ -48,6 +49,7 @@ export function DocumentsStep({
             type="file"
             accept=".pdf,.jpg,.jpeg,.png,.webp"
             multiple
+            key={supportDocs.length > 0 ? supportDocs.map(f => f.name).join(',') : 'empty-supportDocs'}
             onChange={(event) => {
               const files = Array.from(event.target.files || []);
               updateFileInputState(event.target, files.length > 0);
