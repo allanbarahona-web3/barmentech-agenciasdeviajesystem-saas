@@ -10,6 +10,7 @@ import {
   canGoNext,
   canGoPrevious
 } from "@/features/contracts-form/wizard/navigation/navigation-helpers";
+import { validateStep } from "@/features/contracts-form/wizard/validation/step-validation";
 import { 
   createInitialFormState, 
   getTodayIsoLocal, 
@@ -153,59 +154,19 @@ export function ContractsWizard({
 
   // ==================== NAVIGATION HANDLERS ====================
   const validateCurrentStep = (): boolean => {
-    // Step-specific validation guards
-    switch (currentStepId) {
-      case 'travel':
-        // Reuse existing date range validation
-        if (rangeMessage) {
-          setStatus(`Error: ${rangeMessage}`);
-          return false;
-        }
-        // Check required travel fields
-        if (!state.contractNumber) {
-          setStatus("Error: Número de contrato requerido");
-          return false;
-        }
-        if (!state.startDate || !state.endDate) {
-          setStatus("Error: Fechas de viaje requeridas");
-          return false;
-        }
-        if (!state.destination) {
-          setStatus("Error: Destino requerido");
-          return false;
-        }
-        break;
+    // Execute step validation through the validation engine
+    const result = validateStep(currentStepId, {
+      state,
+      rangeMessage,
+      itineraryMessage,
+      isInternalTrip,
+    });
 
-      case 'holder':
-        // Check required holder fields
-        if (!state.clientFullName.trim()) {
-          setStatus("Error: Nombre del cliente requerido");
-          return false;
-        }
-        if (!state.clientIdNumber.trim()) {
-          setStatus("Error: Número de identificación requerido");
-          return false;
-        }
-        if (!state.clientEmail.trim()) {
-          setStatus("Error: Correo del cliente requerido");
-          return false;
-        }
-        break;
-
-      case 'itinerary':
-        // Reuse existing itinerary validation (international trips only)
-        if (!isInternalTrip && itineraryMessage) {
-          setStatus(`Error: ${itineraryMessage}`);
-          return false;
-        }
-        break;
-
-      // Other steps: companions, minors, documents, summary - no blocking validation
-      default:
-        break;
+    if (!result.valid && result.errorMessage) {
+      setStatus(result.errorMessage);
     }
-    
-    return true;
+
+    return result.valid;
   };
 
   const handleNext = () => {
