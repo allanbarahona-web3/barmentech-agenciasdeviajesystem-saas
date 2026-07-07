@@ -2,6 +2,14 @@
 
 import { ContractsForm } from "@/features/contracts-form/ContractsForm";
 import { useState, useRef, useMemo, useEffect } from "react";
+import { contractsStepRegistry } from "@/features/contracts-form/wizard/registry";
+import { 
+  getFirstStep, 
+  getNextStep, 
+  getPreviousStep,
+  canGoNext,
+  canGoPrevious
+} from "@/features/contracts-form/wizard/navigation/navigation-helpers";
 import { 
   createInitialFormState, 
   getTodayIsoLocal, 
@@ -58,6 +66,9 @@ export function ContractsWizard({
   // ==================== STATE ====================
   const [state, setState] = useState(() => createInitialFormState(agent || undefined));
   const [status, setStatus] = useState("Listo para iniciar migracion del formulario.");
+  
+  // ==================== NAVIGATION STATE ====================
+  const [currentStepId, setCurrentStepId] = useState(() => getFirstStep(contractsStepRegistry).id);
   const [internalTripMeta, setInternalTripMeta] = useState<{ tripCode: string; name: string } | null>(null);
   const [loadedTravelPackage, setLoadedTravelPackage] = useState<TravelPackage | null>(null);
   const [busyNumber, setBusyNumber] = useState(false);
@@ -129,6 +140,27 @@ export function ContractsWizard({
     () => latestSigningLinks.filter((item) => String(item.signerKey || "").toLowerCase() !== "client"),
     [latestSigningLinks],
   );
+
+  // ==================== NAVIGATION COMPUTED VALUES ====================
+  const navigationEnabled = useMemo(() => canGoNext(contractsStepRegistry, currentStepId), [currentStepId]);
+  const canNavigatePrevious = useMemo(() => canGoPrevious(contractsStepRegistry, currentStepId), [currentStepId]);
+
+  // ==================== NAVIGATION HANDLERS ====================
+  const handleNext = () => {
+    const nextStep = getNextStep(contractsStepRegistry, currentStepId);
+    if (nextStep) {
+      setCurrentStepId(nextStep.id);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  const handlePrevious = () => {
+    const previousStep = getPreviousStep(contractsStepRegistry, currentStepId);
+    if (previousStep) {
+      setCurrentStepId(previousStep.id);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
 
   // ==================== HANDLERS ====================
   const reserveNumber = async ({ silent = false }: { silent?: boolean } = {}) => {
@@ -949,6 +981,11 @@ console.log("====================================");
       runPreviewFlow={runPreviewFlow}
       runArchiveFlow={runArchiveFlow}
       collectDocumentsForArchive={collectDocumentsForArchive}
+      currentStepId={currentStepId}
+      onNext={handleNext}
+      onPrevious={handlePrevious}
+      canGoNext={navigationEnabled}
+      canGoPrevious={canNavigatePrevious}
     />
   );
 }
