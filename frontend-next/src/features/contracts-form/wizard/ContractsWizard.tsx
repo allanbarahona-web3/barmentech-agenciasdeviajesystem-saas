@@ -8,7 +8,8 @@ import {
   getNextStep, 
   getPreviousStep,
   canGoNext,
-  canGoPrevious
+  canGoPrevious,
+  getVisibleSteps
 } from "@/features/contracts-form/wizard/navigation/navigation-helpers";
 import { validateStep } from "@/features/contracts-form/wizard/validation/step-validation";
 import { 
@@ -143,14 +144,35 @@ export function ContractsWizard({
   );
 
   // ==================== NAVIGATION COMPUTED VALUES ====================
-  const navigationEnabled = useMemo(() => canGoNext(contractsStepRegistry, currentStepId), [currentStepId]);
-  const canNavigatePrevious = useMemo(() => canGoPrevious(contractsStepRegistry, currentStepId), [currentStepId]);
+  // Create step context for visibility evaluation
+  const stepContext = useMemo(() => ({
+    state,
+    setState,
+    isInternalTrip,
+    // Add other props as needed for step visibility
+  }), [state, isInternalTrip]);
+
+  const navigationEnabled = useMemo(
+    () => canGoNext(contractsStepRegistry, currentStepId, stepContext as any),
+    [currentStepId, stepContext]
+  );
+  const canNavigatePrevious = useMemo(
+    () => canGoPrevious(contractsStepRegistry, currentStepId, stepContext as any),
+    [currentStepId, stepContext]
+  );
   
   // ==================== PROGRESS COMPUTED VALUES ====================
-  const currentStep = useMemo(() => contractsStepRegistry.find(s => s.id === currentStepId), [currentStepId]);
+  const visibleSteps = useMemo(
+    () => getVisibleSteps(contractsStepRegistry, stepContext as any),
+    [stepContext]
+  );
+  const currentStep = useMemo(
+    () => visibleSteps.find(s => s.id === currentStepId),
+    [visibleSteps, currentStepId]
+  );
   const currentStepNumber = currentStep?.order ?? 1;
-  const totalSteps = contractsStepRegistry.length;
-  const completedSteps = currentStepNumber - 1;
+  const totalSteps = visibleSteps.length;
+  const completedSteps = Math.max(0, visibleSteps.findIndex(s => s.id === currentStepId));
 
   // ==================== NAVIGATION HANDLERS ====================
   const validateCurrentStep = (): boolean => {
@@ -174,7 +196,7 @@ export function ContractsWizard({
       return;
     }
     
-    const nextStep = getNextStep(contractsStepRegistry, currentStepId);
+    const nextStep = getNextStep(contractsStepRegistry, currentStepId, stepContext as any);
     if (nextStep) {
       setCurrentStepId(nextStep.id);
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -182,7 +204,7 @@ export function ContractsWizard({
   };
 
   const handlePrevious = () => {
-    const previousStep = getPreviousStep(contractsStepRegistry, currentStepId);
+    const previousStep = getPreviousStep(contractsStepRegistry, currentStepId, stepContext as any);
     if (previousStep) {
       setCurrentStepId(previousStep.id);
       window.scrollTo({ top: 0, behavior: 'smooth' });

@@ -108,16 +108,16 @@ const companionsStep: WizardStepDefinition<CompanionsStepProps> = {
  * - Responsible adult assignments
  * - Document uploads per minor
  * 
- * Future: Could be conditional (visible only if minors exist)
+ * Conditional visibility: Only shown when hasMinorCompanion is true
  */
 const minorsStep: WizardStepDefinition<MinorsStepProps> = {
   id: 'minors',
   title: 'Menores',
   order: 4,
   component: MinorsStep,
-  validate: () => true, // Future: Add validation logic
-  isVisible: () => true, // Future: Conditional visibility based on minor count
-  isOptional: () => false, // Future: Could be optional if no minors
+  validate: () => true,
+  isVisible: (props) => props.state.hasMinorCompanion, // Conditional: only show if minors are traveling
+  isOptional: () => false,
 };
 
 /**

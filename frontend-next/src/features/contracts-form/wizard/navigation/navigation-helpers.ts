@@ -9,16 +9,42 @@ import type { WizardStepRegistry, WizardStepDefinition } from '../registry/types
  * 
  * All navigation decisions are driven by the registry order property.
  * No hardcoded step knowledge exists in these helpers.
+ * 
+ * Conditional Visibility Support:
+ * Navigation helpers now support filtering steps by visibility.
+ * When context is provided, only visible steps are considered for navigation.
  */
+
+/**
+ * Filter registry to only visible steps
+ * 
+ * @param registry - The wizard step registry
+ * @param context - Props/context to evaluate visibility
+ * @returns Array of visible steps
+ */
+export function getVisibleSteps<T = any>(
+  registry: WizardStepRegistry<T>,
+  context: T
+): WizardStepRegistry<T> {
+  return registry.filter(step => {
+    if (!step.isVisible) return true;
+    return step.isVisible(context);
+  });
+}
 
 /**
  * Get the first step in the registry
  * 
  * @param registry - The wizard step registry
+ * @param context - Optional context to filter by visibility
  * @returns The first step definition
  */
-export function getFirstStep(registry: WizardStepRegistry): WizardStepDefinition {
-  const sorted = [...registry].sort((a, b) => a.order - b.order);
+export function getFirstStep<T = any>(
+  registry: WizardStepRegistry<T>,
+  context?: T
+): WizardStepDefinition<T> {
+  const steps = context ? getVisibleSteps(registry, context) : registry;
+  const sorted = [...steps].sort((a, b) => a.order - b.order);
   return sorted[0];
 }
 
@@ -26,10 +52,15 @@ export function getFirstStep(registry: WizardStepRegistry): WizardStepDefinition
  * Get the last step in the registry
  * 
  * @param registry - The wizard step registry
+ * @param context - Optional context to filter by visibility
  * @returns The last step definition
  */
-export function getLastStep(registry: WizardStepRegistry): WizardStepDefinition {
-  const sorted = [...registry].sort((a, b) => a.order - b.order);
+export function getLastStep<T = any>(
+  registry: WizardStepRegistry<T>,
+  context?: T
+): WizardStepDefinition<T> {
+  const steps = context ? getVisibleSteps(registry, context) : registry;
+  const sorted = [...steps].sort((a, b) => a.order - b.order);
   return sorted[sorted.length - 1];
 }
 
@@ -38,16 +69,19 @@ export function getLastStep(registry: WizardStepRegistry): WizardStepDefinition 
  * 
  * @param registry - The wizard step registry
  * @param currentStepId - The current step ID
+ * @param context - Optional context to filter by visibility
  * @returns The next step definition, or null if at the last step
  */
-export function getNextStep(
-  registry: WizardStepRegistry,
-  currentStepId: string
-): WizardStepDefinition | null {
-  const currentStep = registry.find(step => step.id === currentStepId);
+export function getNextStep<T = any>(
+  registry: WizardStepRegistry<T>,
+  currentStepId: string,
+  context?: T
+): WizardStepDefinition<T> | null {
+  const steps = context ? getVisibleSteps(registry, context) : registry;
+  const currentStep = steps.find(step => step.id === currentStepId);
   if (!currentStep) return null;
 
-  const sorted = [...registry].sort((a, b) => a.order - b.order);
+  const sorted = [...steps].sort((a, b) => a.order - b.order);
   const currentIndex = sorted.findIndex(step => step.id === currentStepId);
   
   if (currentIndex === -1 || currentIndex === sorted.length - 1) {
@@ -62,16 +96,19 @@ export function getNextStep(
  * 
  * @param registry - The wizard step registry
  * @param currentStepId - The current step ID
+ * @param context - Optional context to filter by visibility
  * @returns The previous step definition, or null if at the first step
  */
-export function getPreviousStep(
-  registry: WizardStepRegistry,
-  currentStepId: string
-): WizardStepDefinition | null {
-  const currentStep = registry.find(step => step.id === currentStepId);
+export function getPreviousStep<T = any>(
+  registry: WizardStepRegistry<T>,
+  currentStepId: string,
+  context?: T
+): WizardStepDefinition<T> | null {
+  const steps = context ? getVisibleSteps(registry, context) : registry;
+  const currentStep = steps.find(step => step.id === currentStepId);
   if (!currentStep) return null;
 
-  const sorted = [...registry].sort((a, b) => a.order - b.order);
+  const sorted = [...steps].sort((a, b) => a.order - b.order);
   const currentIndex = sorted.findIndex(step => step.id === currentStepId);
   
   if (currentIndex === -1 || currentIndex === 0) {
@@ -86,13 +123,15 @@ export function getPreviousStep(
  * 
  * @param registry - The wizard step registry
  * @param currentStepId - The current step ID
+ * @param context - Optional context to filter by visibility
  * @returns true if next navigation is possible, false otherwise
  */
-export function canGoNext(
-  registry: WizardStepRegistry,
-  currentStepId: string
+export function canGoNext<T = any>(
+  registry: WizardStepRegistry<T>,
+  currentStepId: string,
+  context?: T
 ): boolean {
-  return getNextStep(registry, currentStepId) !== null;
+  return getNextStep(registry, currentStepId, context) !== null;
 }
 
 /**
@@ -100,13 +139,15 @@ export function canGoNext(
  * 
  * @param registry - The wizard step registry
  * @param currentStepId - The current step ID
+ * @param context - Optional context to filter by visibility
  * @returns true if previous navigation is possible, false otherwise
  */
-export function canGoPrevious(
-  registry: WizardStepRegistry,
-  currentStepId: string
+export function canGoPrevious<T = any>(
+  registry: WizardStepRegistry<T>,
+  currentStepId: string,
+  context?: T
 ): boolean {
-  return getPreviousStep(registry, currentStepId) !== null;
+  return getPreviousStep(registry, currentStepId, context) !== null;
 }
 
 /**
