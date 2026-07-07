@@ -123,7 +123,6 @@ type ContractsFormProps = {
       minorPassport: File | null;
       tutorIdFront: File | null;
       tutorIdBack: File | null;
-      tutorPassport: File | null;
     }
   >;
   setMinorDocs: React.Dispatch<
@@ -134,7 +133,6 @@ type ContractsFormProps = {
           minorPassport: File | null;
           tutorIdFront: File | null;
           tutorIdBack: File | null;
-          tutorPassport: File | null;
         }
       >
     >

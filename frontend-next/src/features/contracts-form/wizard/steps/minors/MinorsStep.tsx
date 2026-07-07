@@ -11,7 +11,6 @@ export interface MinorsStepProps {
       minorPassport: File | null;
       tutorIdFront: File | null;
       tutorIdBack: File | null;
-      tutorPassport: File | null;
     }
   >;
   setMinorDocs: React.Dispatch<
@@ -22,7 +21,6 @@ export interface MinorsStepProps {
           minorPassport: File | null;
           tutorIdFront: File | null;
           tutorIdBack: File | null;
-          tutorPassport: File | null;
         }
       >
     >
@@ -150,7 +148,6 @@ export function MinorsStep({
                         minorPassport: file,
                         tutorIdFront: prev[minor.id]?.tutorIdFront || null,
                         tutorIdBack: prev[minor.id]?.tutorIdBack || null,
-                        tutorPassport: prev[minor.id]?.tutorPassport || null,
                       },
                     }));
                     setState((prev) => updateMinor(prev, minor.id, "minorPassportDocumentName", file?.name || ""));
@@ -176,7 +173,6 @@ export function MinorsStep({
                         minorPassport: prev[minor.id]?.minorPassport || null,
                         tutorIdFront: file,
                         tutorIdBack: prev[minor.id]?.tutorIdBack || null,
-                        tutorPassport: prev[minor.id]?.tutorPassport || null,
                       },
                     }));
                     setState((prev) => updateMinor(prev, minor.id, "tutorIdFrontDocumentName", file?.name || ""));
@@ -201,7 +197,6 @@ export function MinorsStep({
                         minorPassport: prev[minor.id]?.minorPassport || null,
                         tutorIdFront: prev[minor.id]?.tutorIdFront || null,
                         tutorIdBack: file,
-                        tutorPassport: prev[minor.id]?.tutorPassport || null,
                       },
                     }));
                     setState((prev) => updateMinor(prev, minor.id, "tutorIdBackDocumentName", file?.name || ""));
@@ -211,34 +206,6 @@ export function MinorsStep({
                   <small style={{ color: '#1a8a4e', fontWeight: 600 }}>✓ {minorDocs[minor.id].tutorIdBack!.name}</small>
                 )}
               </label>
-              {/* Pasaporte tutor: SOLO internacional */}
-              {!isInternalTrip && (
-              <label className={requiredDocumentLabelClass(Boolean(minorDocs[minor.id]?.tutorPassport))}>
-                Pasaporte tutor
-                <input
-                  type="file"
-                  accept=".pdf,.jpg,.jpeg,.png,.webp"
-                  key={minorDocs[minor.id]?.tutorPassport ? minorDocs[minor.id].tutorPassport!.name : `empty-${minor.id}-tutorPassport`}
-                  onChange={(event) => {
-                    const file = event.target.files?.[0] || null;
-                    updateFileInputState(event.target, !!file);
-                    setMinorDocs((prev) => ({
-                      ...prev,
-                      [minor.id]: {
-                        minorPassport: prev[minor.id]?.minorPassport || null,
-                        tutorIdFront: prev[minor.id]?.tutorIdFront || null,
-                        tutorIdBack: prev[minor.id]?.tutorIdBack || null,
-                        tutorPassport: file,
-                      },
-                    }));
-                    setState((prev) => updateMinor(prev, minor.id, "tutorPassportDocumentName", file?.name || ""));
-                  }}
-                />
-                {minorDocs[minor.id]?.tutorPassport && (
-                  <small style={{ color: '#1a8a4e', fontWeight: 600 }}>✓ {minorDocs[minor.id].tutorPassport!.name}</small>
-                )}
-              </label>
-              )}
             </div>
           </article>
         ))}

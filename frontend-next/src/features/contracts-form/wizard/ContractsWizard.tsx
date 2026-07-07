@@ -108,7 +108,6 @@ export function ContractsWizard({
       minorPassport: File | null;
       tutorIdFront: File | null;
       tutorIdBack: File | null;
-      tutorPassport: File | null;
     }>
   >({});
   const [showCapacityModal, setShowCapacityModal] = useState(false);
@@ -520,7 +519,6 @@ export function ContractsWizard({
       if (files.minorPassport) docs.push(cloneWithPrefix(files.minorPassport, `menor${idx}-pasaporte`));
       if (files.tutorIdFront) docs.push(cloneWithPrefix(files.tutorIdFront, `menor${idx}-tutor-cedula-frente`));
       if (files.tutorIdBack) docs.push(cloneWithPrefix(files.tutorIdBack, `menor${idx}-tutor-cedula-reverso`));
-      if (files.tutorPassport) docs.push(cloneWithPrefix(files.tutorPassport, `menor${idx}-tutor-pasaporte`));
     });
 
     supportDocs.forEach((file, index) => {
