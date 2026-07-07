@@ -185,6 +185,7 @@ type ContractsFormProps = {
   
   // Handlers from wizard
   saveDraftFlow: () => Promise<void>;
+  saveStepDraft: () => Promise<void>;
   handleValidateCustomerIdentity: () => Promise<void>;
   copySigningUrl: (signingUrl: string, signerKey: string) => Promise<void>;
   runPreviewFlow: () => Promise<void>;
@@ -272,6 +273,7 @@ export function ContractsForm(props: ContractsFormProps) {
     clientSigningLinks,
     companionSigningLinks,
     saveDraftFlow,
+    saveStepDraft,
     handleValidateCustomerIdentity,
     copySigningUrl,
     runPreviewFlow,
@@ -363,7 +365,18 @@ export function ContractsForm(props: ContractsFormProps) {
       <div className="mb-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
         <div className="flex items-center justify-between text-sm">
           <span className="font-medium text-gray-700">Paso {currentStepNumber} de {totalSteps}</span>
-          <span className="text-gray-500">{completedSteps} completados</span>
+          <div className="flex items-center gap-2">
+            <span className="text-gray-500">{completedSteps} completados</span>
+            <button
+              type="button"
+              className="text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={() => void saveStepDraft()}
+              disabled={savingDraft || submitting || previewing || busyNumber || !state.contractNumber}
+              title="Guardar borrador y continuar editando"
+            >
+              {savingDraft ? "Guardando..." : "Guardar"}
+            </button>
+          </div>
         </div>
         <div className="mt-2 h-2 bg-gray-200 rounded-full overflow-hidden">
           <div 

@@ -583,6 +583,38 @@ export function ContractsWizard({
   };
 
   /**
+   * Save draft and remain on current step
+   */
+  const saveStepDraft = async () => {
+    if (savingDraft || submitting || previewing || busyNumber) return;
+    if (!state.contractNumber.trim()) {
+      setStatus("No hay numero de contrato reservado para guardar el borrador.");
+      return;
+    }
+
+    setSavingDraft(true);
+    try {
+      const saved = await saveContractDraft({
+        id: activeDraftId || undefined,
+        contractNumber: state.contractNumber,
+        clientFullName: state.clientFullName || undefined,
+        clientIdNumber: state.clientIdNumber || undefined,
+        clientEmail: state.clientEmail || undefined,
+        clientPhone: state.clientPhone || undefined,
+        destination: state.destination || undefined,
+        payloadJson: JSON.stringify(state),
+      });
+
+      setActiveDraftId(saved.id);
+      setStatus(`Borrador guardado correctamente (${saved.contractNumber}).`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "No se pudo guardar el borrador.");
+    } finally {
+      setSavingDraft(false);
+    }
+  };
+
+  /**
    * Validates customer identity against existing contracts.
    * 
    * **Purpose:**
@@ -1025,6 +1057,7 @@ console.log("====================================");
       clientSigningLinks={clientSigningLinks}
       companionSigningLinks={companionSigningLinks}
       saveDraftFlow={saveDraftFlow}
+      saveStepDraft={saveStepDraft}
       handleValidateCustomerIdentity={handleValidateCustomerIdentity}
       copySigningUrl={copySigningUrl}
       runPreviewFlow={runPreviewFlow}
