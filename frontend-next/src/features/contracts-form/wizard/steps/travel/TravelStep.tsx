@@ -106,6 +106,15 @@ export function TravelStep({
           </select>
         </label>
 
+        <label className="col-span-full">
+          Equipaje permitido
+          <input
+            value={state.luggageClause}
+            onChange={(event) => setState((prev) => ({ ...prev, luggageClause: event.target.value }))}
+            placeholder="Ej. 1 maleta de mano y 1 articulo personal"
+          />
+        </label>
+
         <label>
           Fecha inicio tour
           <input
