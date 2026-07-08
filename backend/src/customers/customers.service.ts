@@ -14,6 +14,7 @@ import { CustomerStatisticsDto } from "./dto/customer-statistics.dto";
 import { UpdateCustomerDto } from "./dto/update-customer.dto";
 import { ValidateCustomerIdentityDto } from "./dto/validate-customer-identity.dto";
 import { CustomerIdentityValidationResultDto } from "./dto/customer-identity-validation-result.dto";
+import { CustomerDocumentsService } from "./documents/customer-documents.service";
 
 /**
  * CustomersService
@@ -29,7 +30,10 @@ import { CustomerIdentityValidationResultDto } from "./dto/customer-identity-val
  */
 @Injectable()
 export class CustomersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly customerDocumentsService: CustomerDocumentsService,
+  ) {}
 
   /**
    * Creates or updates a customer based on compound key [idNumber, tenantId]
@@ -345,7 +349,7 @@ export class CustomersService {
     // Get contract IDs for financial queries
     const contractIds = contracts.map((c) => c.id);
 
-    // Fetch financial data in parallel
+    // Fetch financial data and documents in parallel
     const [
       invoices,
       verifiedPayments,
@@ -354,6 +358,7 @@ export class CustomersService {
       totalInvoicesCount,
       totalReceiptsCount,
       totalPaymentsCount,
+      customerDocuments,
     ] = await Promise.all([
       // Get all invoices for this client
       this.prisma.billingInvoice.findMany({
@@ -428,6 +433,8 @@ export class CustomersService {
             },
           })
         : 0,
+      // Get customer documents via CustomerDocumentsService
+      this.customerDocumentsService.listCustomerDocuments(tenantId, customerId),
     ]);
 
     // Calculate financial summary from aggregated data
@@ -439,15 +446,15 @@ export class CustomersService {
       return sum + amount;
     }, 0);
 
-    const totalInvoicedAmount = invoices.reduce((sum, invoice) => {
+    const totalInvoicedAmount = invoices.reduce((sum: number, invoice: any) => {
       return sum + parseFloat(String(invoice.totalAmount));
     }, 0);
 
-    const totalPaidAmount = verifiedPayments.reduce((sum, payment) => {
+    const totalPaidAmount = verifiedPayments.reduce((sum: number, payment: any) => {
       return sum + parseFloat(String(payment.amount));
     }, 0);
 
-    const outstandingBalance = invoices.reduce((sum, invoice) => {
+    const outstandingBalance = invoices.reduce((sum: number, invoice: any) => {
       return sum + parseFloat(String(invoice.balanceAmount));
     }, 0);
 
@@ -500,6 +507,7 @@ export class CustomersService {
     const statistics: CustomerStatisticsDto = {
       totalContracts: contracts.length,
       totalTravels: contracts.length, // At this stage, calculated from contracts
+      totalDocuments: customerDocuments.length,
     };
 
     return {
@@ -722,5 +730,22 @@ export class CustomersService {
       emergencyContactPhone: String(dto.emergencyContactPhone || "").trim() || null,
       tenantId: String(dto.tenantId || "").trim(),
     };
+  }
+
+  /**
+   * Get customer documents
+   * Delegates to CustomerDocumentsService
+   */
+  async getCustomerDocuments(tenantId: string, customerId: string) {
+    return this.customerDocumentsService.listCustomerDocuments(tenantId, customerId);
+  }
+
+  /**
+   * Get customer documents count
+   * Delegates to CustomerDocumentsService
+   */
+  async getCustomerDocumentsCount(tenantId: string, customerId: string): Promise<number> {
+    const documents = await this.customerDocumentsService.listCustomerDocuments(tenantId, customerId);
+    return documents.length;
   }
 }
