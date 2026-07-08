@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { LoadingModal } from '@/components/loading-modal';
 import { getCustomerProfile, updateCustomer, type CustomerProfile, type UpdateCustomerDto } from '@/lib/customers-api';
+import { CustomerForm } from '@/features/customers/components';
 
 export default function CustomerProfilePage() {
   const router = useRouter();
@@ -91,6 +92,10 @@ export default function CustomerProfilePage() {
 
   function handleCancelEdit() {
     setIsEditMode(false);
+  }
+
+  function handleEditFormChange(updates: Partial<typeof editForm>) {
+    setEditForm((prev) => ({ ...prev, ...updates }));
   }
 
   async function handleSaveEdit() {
@@ -218,230 +223,15 @@ export default function CustomerProfilePage() {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px', marginBottom: '30px' }}>
         {/* Section 1: Customer Information */}
-        <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', padding: '24px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-            <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#1f2937' }}>
-              📋 Información del Cliente
-            </h2>
-            {!isEditMode ? (
-              <button
-                onClick={handleEnterEditMode}
-                style={{
-                  padding: '6px 14px',
-                  background: '#667eea',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                  fontSize: '13px',
-                  fontWeight: '500',
-                  transition: 'all 0.2s',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = '#5568d3')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = '#667eea')}
-              >
-                ✏️ Editar
-              </button>
-            ) : (
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button
-                  onClick={handleCancelEdit}
-                  style={{
-                    padding: '6px 14px',
-                    background: '#e5e7eb',
-                    color: '#4b5563',
-                    border: 'none',
-                    borderRadius: '6px',
-                    cursor: 'pointer',
-                    fontSize: '13px',
-                    fontWeight: '500',
-                    transition: 'all 0.2s',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = '#d1d5db')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = '#e5e7eb')}
-                >
-                  ✖️ Cancelar
-                </button>
-                <button
-                  onClick={handleSaveEdit}
-                  style={{
-                    padding: '6px 14px',
-                    background: '#10b981',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '6px',
-                    cursor: 'pointer',
-                    fontSize: '13px',
-                    fontWeight: '500',
-                    transition: 'all 0.2s',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = '#059669')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = '#10b981')}
-                >
-                  💾 Guardar
-                </button>
-              </div>
-            )}
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            {/* Full Name - Editable */}
-            <div>
-              <div style={{ fontSize: '12px', fontWeight: '600', color: '#6b7280', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                Nombre Completo
-              </div>
-              {isEditMode ? (
-                <input
-                  type="text"
-                  value={editForm.fullName}
-                  onChange={(e) => setEditForm({ ...editForm, fullName: e.target.value })}
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    border: '2px solid #e5e7eb',
-                    borderRadius: '6px',
-                    fontSize: '15px',
-                    color: '#1f2937',
-                    fontWeight: '500',
-                    transition: 'border-color 0.2s',
-                  }}
-                  onFocus={(e) => (e.currentTarget.style.borderColor = '#667eea')}
-                  onBlur={(e) => (e.currentTarget.style.borderColor = '#e5e7eb')}
-                />
-              ) : (
-                <div style={{ fontSize: '15px', color: '#1f2937', fontWeight: '500' }}>
-                  {customer.fullName}
-                </div>
-              )}
-            </div>
-            {/* ID Number - Read Only */}
-            <div>
-              <div style={{ fontSize: '12px', fontWeight: '600', color: '#6b7280', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                Cédula/ID
-              </div>
-              <div style={{ fontSize: '15px', color: '#1f2937', fontWeight: '500' }}>
-                {customer.idNumber}
-              </div>
-            </div>
-            {/* Email - Editable */}
-            <div>
-              <div style={{ fontSize: '12px', fontWeight: '600', color: '#6b7280', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                Email
-              </div>
-              {isEditMode ? (
-                <input
-                  type="email"
-                  value={editForm.email}
-                  onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    border: '2px solid #e5e7eb',
-                    borderRadius: '6px',
-                    fontSize: '15px',
-                    color: '#1f2937',
-                    transition: 'border-color 0.2s',
-                  }}
-                  onFocus={(e) => (e.currentTarget.style.borderColor = '#667eea')}
-                  onBlur={(e) => (e.currentTarget.style.borderColor = '#e5e7eb')}
-                />
-              ) : (
-                <div style={{ fontSize: '15px', color: '#1f2937' }}>
-                  {customer.email}
-                </div>
-              )}
-            </div>
-            {/* Phone - Editable */}
-            <div>
-              <div style={{ fontSize: '12px', fontWeight: '600', color: '#6b7280', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                Teléfono
-              </div>
-              {isEditMode ? (
-                <input
-                  type="text"
-                  value={editForm.phone}
-                  onChange={(e) => setEditForm({ ...editForm, phone: e.target.value })}
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    border: '2px solid #e5e7eb',
-                    borderRadius: '6px',
-                    fontSize: '15px',
-                    color: '#1f2937',
-                    transition: 'border-color 0.2s',
-                  }}
-                  onFocus={(e) => (e.currentTarget.style.borderColor = '#667eea')}
-                  onBlur={(e) => (e.currentTarget.style.borderColor = '#e5e7eb')}
-                />
-              ) : (
-                <div style={{ fontSize: '15px', color: '#1f2937' }}>
-                  {customer.phone || '-'}
-                </div>
-              )}
-            </div>
-            {/* Emergency Contact - Editable */}
-            <div>
-              <div style={{ fontSize: '12px', fontWeight: '600', color: '#6b7280', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                Contacto de Emergencia
-              </div>
-              {isEditMode ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  <input
-                    type="text"
-                    placeholder="Nombre"
-                    value={editForm.emergencyContactName}
-                    onChange={(e) => setEditForm({ ...editForm, emergencyContactName: e.target.value })}
-                    style={{
-                      width: '100%',
-                      padding: '8px 12px',
-                      border: '2px solid #e5e7eb',
-                      borderRadius: '6px',
-                      fontSize: '15px',
-                      color: '#1f2937',
-                      transition: 'border-color 0.2s',
-                    }}
-                    onFocus={(e) => (e.currentTarget.style.borderColor = '#667eea')}
-                    onBlur={(e) => (e.currentTarget.style.borderColor = '#e5e7eb')}
-                  />
-                  <input
-                    type="text"
-                    placeholder="Teléfono"
-                    value={editForm.emergencyContactPhone}
-                    onChange={(e) => setEditForm({ ...editForm, emergencyContactPhone: e.target.value })}
-                    style={{
-                      width: '100%',
-                      padding: '8px 12px',
-                      border: '2px solid #e5e7eb',
-                      borderRadius: '6px',
-                      fontSize: '15px',
-                      color: '#1f2937',
-                      transition: 'border-color 0.2s',
-                    }}
-                    onFocus={(e) => (e.currentTarget.style.borderColor = '#667eea')}
-                    onBlur={(e) => (e.currentTarget.style.borderColor = '#e5e7eb')}
-                  />
-                </div>
-              ) : (
-                <div style={{ fontSize: '15px', color: '#1f2937' }}>
-                  {customer.emergencyContactName || '-'}
-                  {customer.emergencyContactName && customer.emergencyContactPhone && (
-                    <span style={{ color: '#6b7280', marginLeft: '8px' }}>
-                      ({customer.emergencyContactPhone})
-                    </span>
-                  )}
-                </div>
-              )}
-            </div>
-            {/* Created At - Read Only */}
-            <div>
-              <div style={{ fontSize: '12px', fontWeight: '600', color: '#6b7280', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                Cliente Desde
-              </div>
-              <div style={{ fontSize: '15px', color: '#1f2937' }}>
-                {formatDate(customer.createdAt)}
-              </div>
-            </div>
-          </div>
-        </div>
+        <CustomerForm
+          customer={customer}
+          isEditMode={isEditMode}
+          editForm={editForm}
+          onEditFormChange={handleEditFormChange}
+          onEnterEditMode={handleEnterEditMode}
+          onCancelEdit={handleCancelEdit}
+          onSaveEdit={handleSaveEdit}
+        />
 
         {/* Section 2: Statistics */}
         <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', padding: '24px' }}>
