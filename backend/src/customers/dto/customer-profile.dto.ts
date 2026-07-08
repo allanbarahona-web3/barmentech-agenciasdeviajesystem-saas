@@ -7,11 +7,13 @@ import { CustomerStatisticsDto } from "./customer-statistics.dto";
  * CustomerProfileDto
  * 
  * Complete customer profile aggregation response.
- * Combines customer data, contracts, financial summary, and statistics.
+ * Combines customer data, contracts, financial summary, statistics, documents, and notes.
  */
 export class CustomerProfileDto {
   customer!: CustomerInfoDto;
   contracts!: CustomerContractItemDto[];
   financialSummary!: CustomerFinancialSummaryDto;
   statistics!: CustomerStatisticsDto;
+  documents!: any[];
+  notes!: any[];
 }

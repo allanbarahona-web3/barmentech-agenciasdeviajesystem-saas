@@ -15,6 +15,7 @@ import { UpdateCustomerDto } from "./dto/update-customer.dto";
 import { ValidateCustomerIdentityDto } from "./dto/validate-customer-identity.dto";
 import { CustomerIdentityValidationResultDto } from "./dto/customer-identity-validation-result.dto";
 import { CustomerDocumentsService } from "./documents/customer-documents.service";
+import { CustomerNotesService } from "./notes/customer-notes.service";
 
 /**
  * CustomersService
@@ -33,6 +34,7 @@ export class CustomersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly customerDocumentsService: CustomerDocumentsService,
+    private readonly customerNotesService: CustomerNotesService,
   ) {}
 
   /**
@@ -316,6 +318,28 @@ export class CustomersService {
         emergencyContactPhone: true,
         createdAt: true,
         updatedAt: true,
+        dateOfBirth: true,
+        nationality: true,
+        occupation: true,
+        address: true,
+        city: true,
+        country: true,
+        postalCode: true,
+        secondaryEmail: true,
+        secondaryPhone: true,
+        emergencyContactRelationship: true,
+        emergencyContactEmail: true,
+        leadSource: true,
+        customerStatus: true,
+        assignedToUserId: true,
+        lastContactDate: true,
+        nextFollowUpDate: true,
+        preferredLanguage: true,
+        tags: true,
+        bloodType: true,
+        allergies: true,
+        medicalConditions: true,
+        medications: true,
       },
     });
 
@@ -349,7 +373,7 @@ export class CustomersService {
     // Get contract IDs for financial queries
     const contractIds = contracts.map((c) => c.id);
 
-    // Fetch financial data and documents in parallel
+    // Fetch financial data, documents, and notes in parallel
     const [
       invoices,
       verifiedPayments,
@@ -359,6 +383,7 @@ export class CustomersService {
       totalReceiptsCount,
       totalPaymentsCount,
       customerDocuments,
+      customerNotes,
     ] = await Promise.all([
       // Get all invoices for this client
       this.prisma.billingInvoice.findMany({
@@ -435,6 +460,8 @@ export class CustomersService {
         : 0,
       // Get customer documents via CustomerDocumentsService
       this.customerDocumentsService.listCustomerDocuments(tenantId, customerId),
+      // Get customer notes via CustomerNotesService
+      this.customerNotesService.listCustomerNotes(tenantId, customerId),
     ]);
 
     // Calculate financial summary from aggregated data
@@ -473,6 +500,28 @@ export class CustomersService {
       emergencyContactPhone: customer.emergencyContactPhone,
       createdAt: customer.createdAt,
       updatedAt: customer.updatedAt,
+      dateOfBirth: customer.dateOfBirth,
+      nationality: customer.nationality,
+      occupation: customer.occupation,
+      address: customer.address,
+      city: customer.city,
+      country: customer.country,
+      postalCode: customer.postalCode,
+      secondaryEmail: customer.secondaryEmail,
+      secondaryPhone: customer.secondaryPhone,
+      emergencyContactRelationship: customer.emergencyContactRelationship,
+      emergencyContactEmail: customer.emergencyContactEmail,
+      leadSource: customer.leadSource,
+      customerStatus: customer.customerStatus,
+      assignedToUserId: customer.assignedToUserId,
+      lastContactDate: customer.lastContactDate,
+      nextFollowUpDate: customer.nextFollowUpDate,
+      preferredLanguage: customer.preferredLanguage,
+      tags: customer.tags,
+      bloodType: customer.bloodType,
+      allergies: customer.allergies,
+      medicalConditions: customer.medicalConditions,
+      medications: customer.medications,
     };
 
     const contractDtos: CustomerContractItemDto[] = contracts.map((c) => ({
@@ -508,6 +557,7 @@ export class CustomersService {
       totalContracts: contracts.length,
       totalTravels: contracts.length, // At this stage, calculated from contracts
       totalDocuments: customerDocuments.length,
+      totalNotes: customerNotes.length,
     };
 
     return {
@@ -515,6 +565,8 @@ export class CustomersService {
       contracts: contractDtos,
       financialSummary,
       statistics,
+      documents: customerDocuments,
+      notes: customerNotes,
     };
   }
 

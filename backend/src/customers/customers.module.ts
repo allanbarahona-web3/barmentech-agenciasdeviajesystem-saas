@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { CustomersService } from "./customers.service";
 import { CustomersController } from "./customers.controller";
 import { CustomerDocumentsService } from "./documents/customer-documents.service";
+import { CustomerNotesService } from "./notes/customer-notes.service";
 import { StorageModule } from "../storage/storage.module";
 
 /**
@@ -20,7 +21,7 @@ import { StorageModule } from "../storage/storage.module";
 @Module({
   imports: [StorageModule],
   controllers: [CustomersController],
-  providers: [CustomersService, CustomerDocumentsService],
-  exports: [CustomersService, CustomerDocumentsService], // Export for other modules
+  providers: [CustomersService, CustomerDocumentsService, CustomerNotesService],
+  exports: [CustomersService, CustomerDocumentsService, CustomerNotesService], // Export for other modules
 })
 export class CustomersModule {}
