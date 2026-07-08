@@ -58,6 +58,7 @@ export type ContractFormState = {
   endDate: string;
   accommodationType: string;
   lodgingType: string;
+  selectedCustomerId?: string | null;
   clientFullName: string;
   clientIdType: IdType;
   clientIdNumber: string;
