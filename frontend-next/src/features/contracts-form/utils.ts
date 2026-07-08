@@ -65,9 +65,11 @@ const createMinor = (): Minor => ({
   id: `minor-${Date.now()}-${Math.random().toString(16).slice(2, 7)}`,
   minorName: "",
   minorId: "",
+  travelsWithParent: false,
   tutorName: "",
   tutorIdType: "Cedula",
   tutorId: "",
+  tutorEmail: "",
   travelingWith: "",
   minorIdFrontDocumentName: "",
   minorIdBackDocumentName: "",
@@ -415,7 +417,19 @@ export const updateMinor = (
   id: string,
   field: keyof Minor,
   value: string,
-): ContractFormState => ({
-  ...state,
-  minors: state.minors.map((item) => (item.id === id ? { ...item, [field]: value } : item)),
-});
+): ContractFormState => {
+  // Handle boolean conversion for travelsWithParent field
+  if (field === "travelsWithParent") {
+    return {
+      ...state,
+      minors: state.minors.map((item) => 
+        item.id === id ? { ...item, [field]: value === "true" } : item
+      ),
+    };
+  }
+  
+  return {
+    ...state,
+    minors: state.minors.map((item) => (item.id === id ? { ...item, [field]: value } : item)),
+  };
+};

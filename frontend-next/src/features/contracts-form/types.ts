@@ -28,9 +28,11 @@ export type Minor = {
   id: string;
   minorName: string;
   minorId: string;
+  travelsWithParent: boolean;
   tutorName: string;
   tutorIdType: IdType;
   tutorId: string;
+  tutorEmail: string;
   travelingWith: string;
   minorIdFrontDocumentName: string;
   minorIdBackDocumentName: string;
