@@ -2,8 +2,9 @@
 
 import { useState } from 'react';
 import type { ContractFormState } from "@/features/contracts-form/types";
-import { getCustomers, type CustomerListItem, type CustomerInfo } from '@/lib/customers-api';
+import { getCustomers, getCustomerProfile, updateCustomer, type CustomerListItem, type CustomerInfo } from '@/lib/customers-api';
 import { CustomerCreateModal } from '@/features/customers/components/CustomerCreateModal';
+import { CustomerEditModal } from '@/features/customers/components/CustomerEditModal';
 
 export interface CustomerLookupStepProps {
   state: ContractFormState;
@@ -27,6 +28,8 @@ export function CustomerLookupStep({
   const [hasSearched, setHasSearched] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [customerToEdit, setCustomerToEdit] = useState<CustomerInfo | null>(null);
 
   async function handleSearch() {
     if (!searchQuery.trim()) {
@@ -86,6 +89,66 @@ export function CustomerLookupStep({
 
     // Close modal
     setIsCreateModalOpen(false);
+  }
+
+  async function handleEditCustomer() {
+    if (!selectedCustomer) return;
+
+    try {
+      // Fetch full customer profile to get all fields including emergency contacts
+      const profile = await getCustomerProfile(selectedCustomer.id);
+      setCustomerToEdit(profile.customer);
+      setIsEditModalOpen(true);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Error al cargar cliente';
+      setError(errorMessage);
+    }
+  }
+
+  async function handleSaveCustomer(formData: {
+    fullName: string;
+    email: string;
+    phone: string;
+    emergencyContactName: string;
+    emergencyContactPhone: string;
+  }) {
+    if (!selectedCustomer) return;
+
+    try {
+      // Update customer via API
+      const updatedProfile = await updateCustomer(selectedCustomer.id, formData);
+      const updatedCustomer = updatedProfile.customer;
+
+      // Update search results with new data
+      setSearchResults((prev) =>
+        prev.map((c) =>
+          c.id === updatedCustomer.id
+            ? {
+                ...c,
+                fullName: updatedCustomer.fullName,
+                email: updatedCustomer.email,
+                phone: updatedCustomer.phone,
+              }
+            : c
+        )
+      );
+
+      // Directly update holder fields with the updated customer data
+      setState((prev) => ({
+        ...prev,
+        clientFullName: updatedCustomer.fullName,
+        clientIdNumber: updatedCustomer.idNumber,
+        clientEmail: updatedCustomer.email,
+        clientPhone: updatedCustomer.phone || '',
+        emergencyContactName: updatedCustomer.emergencyContactName || '',
+        emergencyContactPhone: updatedCustomer.emergencyContactPhone || '',
+      }));
+
+      setIsEditModalOpen(false);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Error al actualizar cliente';
+      throw new Error(errorMessage);
+    }
   }
 
   const selectedCustomer = searchResults.find(c => c.id === state.selectedCustomerId);
@@ -181,28 +244,52 @@ export function CustomerLookupStep({
                   Cliente Seleccionado
                 </h3>
               </div>
-              <button
-                onClick={handleClearSelection}
-                style={{
-                  padding: '4px 12px',
-                  background: 'transparent',
-                  color: '#166534',
-                  border: '1px solid #86efac',
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                  fontSize: '12px',
-                  fontWeight: '500',
-                  transition: 'all 0.2s',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = '#dcfce7';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'transparent';
-                }}
-              >
-                Cambiar
-              </button>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  onClick={handleEditCustomer}
+                  style={{
+                    padding: '4px 12px',
+                    background: 'transparent',
+                    color: '#166534',
+                    border: '1px solid #86efac',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontSize: '12px',
+                    fontWeight: '500',
+                    transition: 'all 0.2s',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = '#dcfce7';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'transparent';
+                  }}
+                >
+                  ✏️ Editar
+                </button>
+                <button
+                  onClick={handleClearSelection}
+                  style={{
+                    padding: '4px 12px',
+                    background: 'transparent',
+                    color: '#166534',
+                    border: '1px solid #86efac',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontSize: '12px',
+                    fontWeight: '500',
+                    transition: 'all 0.2s',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = '#dcfce7';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'transparent';
+                  }}
+                >
+                  Cambiar
+                </button>
+              </div>
             </div>
             <div style={{ display: 'grid', gap: '8px' }}>
               <div style={{ fontSize: '14px', color: '#15803d' }}>
@@ -394,6 +481,16 @@ export function CustomerLookupStep({
         onClose={() => setIsCreateModalOpen(false)}
         onCustomerCreated={handleCustomerCreated}
       />
+
+      {/* Customer Edit Modal */}
+      {customerToEdit && (
+        <CustomerEditModal
+          isOpen={isEditModalOpen}
+          customer={customerToEdit}
+          onClose={() => setIsEditModalOpen(false)}
+          onSave={handleSaveCustomer}
+        />
+      )}
     </div>
   );
 }
