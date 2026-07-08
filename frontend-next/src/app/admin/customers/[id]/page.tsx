@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { LoadingModal } from '@/components/loading-modal';
 import { getCustomerProfile, updateCustomer, type CustomerProfile, type UpdateCustomerDto } from '@/lib/customers-api';
-import { CustomerForm } from '@/features/customers/components';
+import { CustomerForm, CustomerEditModal } from '@/features/customers/components';
 
 export default function CustomerProfilePage() {
   const router = useRouter();
@@ -20,15 +20,8 @@ export default function CustomerProfilePage() {
   const [loadingModalMessage, setLoadingModalMessage] = useState('');
   const [is404Error, setIs404Error] = useState(false);
 
-  // Edit mode state
-  const [isEditMode, setIsEditMode] = useState(false);
-  const [editForm, setEditForm] = useState({
-    fullName: '',
-    email: '',
-    phone: '',
-    emergencyContactName: '',
-    emergencyContactPhone: '',
-  });
+  // Edit modal state
+  const [editModalOpen, setEditModalOpen] = useState(false);
 
   useEffect(() => {
     loadProfile();
@@ -79,26 +72,16 @@ export default function CustomerProfilePage() {
   }
 
   function handleEnterEditMode() {
-    if (!profile) return;
-    setEditForm({
-      fullName: profile.customer.fullName,
-      email: profile.customer.email,
-      phone: profile.customer.phone || '',
-      emergencyContactName: profile.customer.emergencyContactName || '',
-      emergencyContactPhone: profile.customer.emergencyContactPhone || '',
-    });
-    setIsEditMode(true);
+    setEditModalOpen(true);
   }
 
-  function handleCancelEdit() {
-    setIsEditMode(false);
-  }
-
-  function handleEditFormChange(updates: Partial<typeof editForm>) {
-    setEditForm((prev) => ({ ...prev, ...updates }));
-  }
-
-  async function handleSaveEdit() {
+  async function handleSaveEdit(formData: {
+    fullName: string;
+    email: string;
+    phone: string;
+    emergencyContactName: string;
+    emergencyContactPhone: string;
+  }) {
     if (!profile) return;
 
     try {
@@ -107,16 +90,16 @@ export default function CustomerProfilePage() {
       setLoadingModalMessage('Guardando cambios...');
 
       const updateData: UpdateCustomerDto = {
-        fullName: editForm.fullName.trim() || undefined,
-        email: editForm.email.trim() || undefined,
-        phone: editForm.phone.trim() || undefined,
-        emergencyContactName: editForm.emergencyContactName.trim() || undefined,
-        emergencyContactPhone: editForm.emergencyContactPhone.trim() || undefined,
+        fullName: formData.fullName.trim() || undefined,
+        email: formData.email.trim() || undefined,
+        phone: formData.phone.trim() || undefined,
+        emergencyContactName: formData.emergencyContactName.trim() || undefined,
+        emergencyContactPhone: formData.emergencyContactPhone.trim() || undefined,
       };
 
       const updatedProfile = await updateCustomer(customerId, updateData);
       setProfile(updatedProfile);
-      setIsEditMode(false);
+      setEditModalOpen(false);
 
       setLoadingModalState('success');
       setLoadingModalMessage('✅ Cliente actualizado exitosamente');
@@ -225,12 +208,18 @@ export default function CustomerProfilePage() {
         {/* Section 1: Customer Information */}
         <CustomerForm
           customer={customer}
-          isEditMode={isEditMode}
-          editForm={editForm}
-          onEditFormChange={handleEditFormChange}
+          isEditMode={false}
+          editForm={{
+            fullName: '',
+            email: '',
+            phone: '',
+            emergencyContactName: '',
+            emergencyContactPhone: '',
+          }}
+          onEditFormChange={() => {}}
           onEnterEditMode={handleEnterEditMode}
-          onCancelEdit={handleCancelEdit}
-          onSaveEdit={handleSaveEdit}
+          onCancelEdit={() => {}}
+          onSaveEdit={() => {}}
         />
 
         {/* Section 2: Statistics */}
@@ -538,6 +527,13 @@ export default function CustomerProfilePage() {
           </div>
         )}
       </div>
+
+      <CustomerEditModal
+        isOpen={editModalOpen}
+        customer={customer}
+        onClose={() => setEditModalOpen(false)}
+        onSave={handleSaveEdit}
+      />
 
       <LoadingModal
         isOpen={loadingModalOpen}
