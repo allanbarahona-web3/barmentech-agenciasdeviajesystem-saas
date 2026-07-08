@@ -6,10 +6,12 @@ import { Roles } from "../auth/roles.decorator";
 import { ListCustomersDto } from "./dto/list-customers.dto";
 import { CustomerListResponseDto } from "./dto/customer-list-response.dto";
 import { CustomerProfileDto } from "./dto/customer-profile.dto";
+import { CreateCustomerDto } from "./dto/create-customer.dto";
 import { UpdateCustomerDto } from "./dto/update-customer.dto";
 import { ValidateCustomerIdentityDto } from "./dto/validate-customer-identity.dto";
 import { CustomerIdentityValidationResultDto } from "./dto/customer-identity-validation-result.dto";
 import { CUSTOMER_ACCESS_ROLES } from "./constants/customer-roles.constant";
+import { Client } from "@prisma/client";
 
 /**
  * CustomersController
@@ -73,6 +75,44 @@ export class CustomersController {
     @Param("id") customerId: string
   ): Promise<CustomerProfileDto> {
     return this.customersService.getCustomerProfile(req.user.tenantId, customerId);
+  }
+
+  /**
+   * POST /customers
+   * 
+   * Create a new customer.
+   * Protected endpoint - requires customer access roles (ADMIN, AGENT, FACTURACION_COBROS).
+   * Enforces tenant isolation automatically via user's tenantId.
+   * 
+   * Business Rules:
+   * - Reuses existing identity validation logic from upsertClient
+   * - If customer with same idNumber exists and identity matches, updates mutable fields
+   * - If customer with same idNumber exists but identity conflicts, returns 409 Conflict
+   * - Creates new customer if idNumber doesn't exist
+   * 
+   * Required fields:
+   * - fullName
+   * - idNumber
+   * - email
+   * 
+   * Optional fields:
+   * - phone
+   * - emergencyContactName
+   * - emergencyContactPhone
+   * 
+   * Returns the created or updated customer record.
+   */
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(...CUSTOMER_ACCESS_ROLES)
+  @Post()
+  createCustomer(
+    @Req()
+    req: {
+      user: { id: string; email: string; fullName: string; tenantId: string };
+    },
+    @Body() dto: CreateCustomerDto
+  ): Promise<Client> {
+    return this.customersService.createCustomer(req.user.tenantId, dto);
   }
 
   /**

@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, ConflictException } from "@nestjs/common
 import { PrismaService } from "../prisma/prisma.service";
 import { Client, Prisma } from "@prisma/client";
 import { CreateOrUpdateClientDto } from "./dto/create-or-update-client.dto";
+import { CreateCustomerDto } from "./dto/create-customer.dto";
 import { ListCustomersDto } from "./dto/list-customers.dto";
 import { CustomerListResponseDto } from "./dto/customer-list-response.dto";
 import { CustomerListItemDto } from "./dto/customer-list-item.dto";
@@ -110,6 +111,39 @@ export class CustomersService {
     });
 
     return client;
+  }
+
+  /**
+   * Creates a new customer with identity validation
+   * 
+   * Responsibilities:
+   * 1. Normalize all fields using existing normalization logic
+   * 2. Validate that idNumber doesn't exist in tenant
+   * 3. If exists, validate identity match and update mutable fields
+   * 4. If identity conflict, reject with ConflictException
+   * 5. Return created or updated customer
+   * 
+   * Business Rules:
+   * - Reuses upsertClient() logic for consistency
+   * - Same identity validation and conflict handling
+   * - Enforces tenant isolation
+   * 
+   * @param tenantId Tenant ID from authenticated user
+   * @param dto Customer data
+   * @returns Created or updated customer (Client type from Prisma)
+   * @throws ConflictException if identity mismatch is detected
+   */
+  async createCustomer(
+    tenantId: string,
+    dto: CreateCustomerDto
+  ): Promise<Client> {
+    // Reuse upsertClient with tenant injection
+    const clientDto: CreateOrUpdateClientDto = {
+      ...dto,
+      tenantId: tenantId,
+    };
+
+    return this.upsertClient(clientDto);
   }
 
   /**

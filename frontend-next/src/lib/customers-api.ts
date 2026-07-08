@@ -89,6 +89,15 @@ export interface UpdateCustomerDto {
   emergencyContactPhone?: string;
 }
 
+export interface CreateCustomerDto {
+  fullName: string;
+  idNumber: string;
+  email: string;
+  phone?: string;
+  emergencyContactName?: string;
+  emergencyContactPhone?: string;
+}
+
 export interface ValidateCustomerIdentityRequest {
   idNumber: string;
   fullName: string;
@@ -154,6 +163,31 @@ export async function getCustomerProfile(id: string): Promise<CustomerProfile> {
     const errorText = await response.text();
     throw new Error(
       errorText || `Error al cargar perfil del cliente: ${response.status}`
+    );
+  }
+
+  return response.json();
+}
+
+export async function createCustomer(
+  data: CreateCustomerDto
+): Promise<CustomerInfo> {
+  const apiBase = resolveApiBase();
+  const token = getStoredToken();
+
+  const response = await authenticatedFetch(`${apiBase}/customers`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(data),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(
+      errorText || `Error al crear cliente: ${response.status}`
     );
   }
 
