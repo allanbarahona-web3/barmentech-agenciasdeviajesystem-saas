@@ -13,6 +13,12 @@ export interface TravelStepProps {
   onMoneyBlur: (field: "totalAmount" | "reservationAmount") => void;
 }
 
+const LUGGAGE_OPTIONS = [
+  "Mochila Personal",
+  "Carrion 10kg",
+  "Equipaje Documentado",
+];
+
 /**
  * TravelStep - Contract Travel Information Section
  * 
@@ -33,6 +39,19 @@ export function TravelStep({
   onMoneyChange,
   onMoneyBlur,
 }: TravelStepProps) {
+  // Determinar si el valor actual es una opción predefinida o "Otros"
+  const isCustomLuggage = !LUGGAGE_OPTIONS.includes(state.luggageClause);
+  const luggageSelection = isCustomLuggage ? "Otros" : state.luggageClause;
+
+  const handleLuggageChange = (value: string) => {
+    if (value === "Otros") {
+      // Cuando seleccionan "Otros", limpiar el campo para que escriban
+      setState((prev) => ({ ...prev, luggageClause: "" }));
+    } else {
+      // Opción predefinida
+      setState((prev) => ({ ...prev, luggageClause: value }));
+    }
+  };
   return (
     <div className="form-section-card">
       <h2 className="section-title">Datos del Contrato</h2>
@@ -106,14 +125,30 @@ export function TravelStep({
           </select>
         </label>
 
-        <label className="col-span-full">
+        <label>
           Equipaje permitido
-          <input
-            value={state.luggageClause}
-            onChange={(event) => setState((prev) => ({ ...prev, luggageClause: event.target.value }))}
-            placeholder="Ej. 1 maleta de mano y 1 articulo personal"
-          />
+          <select
+            value={luggageSelection}
+            onChange={(event) => handleLuggageChange(event.target.value)}
+          >
+            <option value="">Seleccionar...</option>
+            <option value="Mochila Personal">Mochila Personal</option>
+            <option value="Carrion 10kg">Carrion 10kg</option>
+            <option value="Equipaje Documentado">Equipaje Documentado</option>
+            <option value="Otros">Otros</option>
+          </select>
         </label>
+
+        {luggageSelection === "Otros" && (
+          <label>
+            Especificar equipaje
+            <input
+              value={state.luggageClause}
+              onChange={(event) => setState((prev) => ({ ...prev, luggageClause: event.target.value }))}
+              placeholder="Ej. 1 maleta de mano y 1 articulo personal"
+            />
+          </label>
+        )}
 
         <label>
           Fecha inicio tour

@@ -163,9 +163,11 @@ export const createInitialFormState = (agent?: { fullName?: string; email?: stri
       { id: "opening", kind: "opening", date: today, detail: "" },
       { id: "closing", kind: "closing", date: today, detail: "" },
     ],
-    luggageClause: "1 maleta de mano y 1 articulo personal.",
+    luggageClause: "Mochila Personal",
     insurance: {
-      purchased: false,
+      holder: false,
+      companions: {},
+      minors: {},
     },
     idFrontDocumentName: "",
     idBackDocumentName: "",
@@ -334,20 +336,39 @@ export const getItineraryValidityMessage = (state: ContractFormState): string =>
   return "";
 };
 
-export const addCompanion = (state: ContractFormState): ContractFormState => ({
-  ...state,
-  companions: [...state.companions, createCompanion()],
-});
+export const addCompanion = (state: ContractFormState): ContractFormState => {
+  const newCompanion = createCompanion();
+  return {
+    ...state,
+    companions: [...state.companions, newCompanion],
+    insurance: {
+      ...state.insurance,
+      companions: {
+        ...state.insurance.companions,
+        [newCompanion.id]: false,
+      },
+    },
+  };
+};
 
-export const removeCompanion = (state: ContractFormState, id: string): ContractFormState => ({
-  ...state,
-  companions: state.companions.filter((item) => item.id !== id),
-  minors: state.minors.map((minor) =>
-    minor.travelingWith === state.companions.find((item) => item.id === id)?.fullName
-      ? { ...minor, travelingWith: "" }
-      : minor,
-  ),
-});
+export const removeCompanion = (state: ContractFormState, id: string): ContractFormState => {
+  const newCompanions = { ...state.insurance.companions };
+  delete newCompanions[id];
+  
+  return {
+    ...state,
+    companions: state.companions.filter((item) => item.id !== id),
+    minors: state.minors.map((minor) =>
+      minor.travelingWith === state.companions.find((item) => item.id === id)?.fullName
+        ? { ...minor, travelingWith: "" }
+        : minor,
+    ),
+    insurance: {
+      ...state.insurance,
+      companions: newCompanions,
+    },
+  };
+};
 
 export const updateCompanion = (
   state: ContractFormState,
@@ -359,16 +380,35 @@ export const updateCompanion = (
   companions: state.companions.map((item) => (item.id === id ? { ...item, [field]: value } : item)),
 });
 
-export const addMinor = (state: ContractFormState): ContractFormState => ({
-  ...state,
-  hasMinorCompanion: true,
-  minors: [...state.minors, createMinor()],
-});
+export const addMinor = (state: ContractFormState): ContractFormState => {
+  const newMinor = createMinor();
+  return {
+    ...state,
+    hasMinorCompanion: true,
+    minors: [...state.minors, newMinor],
+    insurance: {
+      ...state.insurance,
+      minors: {
+        ...state.insurance.minors,
+        [newMinor.id]: false,
+      },
+    },
+  };
+};
 
-export const removeMinor = (state: ContractFormState, id: string): ContractFormState => ({
-  ...state,
-  minors: state.minors.filter((item) => item.id !== id),
-});
+export const removeMinor = (state: ContractFormState, id: string): ContractFormState => {
+  const newMinors = { ...state.insurance.minors };
+  delete newMinors[id];
+  
+  return {
+    ...state,
+    minors: state.minors.filter((item) => item.id !== id),
+    insurance: {
+      ...state.insurance,
+      minors: newMinors,
+    },
+  };
+};
 
 export const updateMinor = (
   state: ContractFormState,

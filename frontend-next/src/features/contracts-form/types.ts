@@ -81,7 +81,9 @@ export type ContractFormState = {
   itinerary: ItineraryItem[];
   luggageClause: string;
   insurance: {
-    purchased: boolean;
+    holder: boolean;
+    companions: Record<string, boolean>;
+    minors: Record<string, boolean>;
   };
   idFrontDocumentName: string;
   idBackDocumentName: string;
