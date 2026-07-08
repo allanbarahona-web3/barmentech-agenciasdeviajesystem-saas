@@ -28,7 +28,7 @@ import { getContractDraft, reserveNextContractNumber, saveContractDraft, archive
 import { bootstrapBillingContract } from "@/lib/billing-api";
 import { getTravelPackageById } from "@/lib/travel-packages-api";
 import { getInternalTripById } from "@/lib/internal-trips-api";
-import { validateCustomerIdentity } from "@/lib/customers-api";
+import { validateCustomerIdentity, getCustomerProfile } from "@/lib/customers-api";
 import { getTenantLegalConfig, getTenantConfig, type TenantLegalConfig } from "@/lib/auth-api";
 import { getAllBankAccounts } from "@/lib/bank-accounts-api";
 import { type TenantLegalInfo, type BankAccountForContract } from "@/features/contracts-form/pdf-template";
@@ -157,6 +157,46 @@ export function ContractsWizard({
       }
     }
   }, [searchParams]);
+
+  // ==================== CUSTOMER PREFILL ====================
+  // Prefill holder fields when a customer is selected in Customer Lookup
+  useEffect(() => {
+    if (!state.selectedCustomerId) {
+      return;
+    }
+
+    let isCancelled = false;
+
+    async function prefillCustomerData() {
+      try {
+        const profile = await getCustomerProfile(state.selectedCustomerId!);
+        const customer = profile.customer;
+
+        if (isCancelled) return;
+
+        // Prefill holder fields with customer data
+        // Only prefill if fields are empty to avoid overwriting manual edits
+        setState((prev) => ({
+          ...prev,
+          clientFullName: prev.clientFullName || customer.fullName,
+          clientIdNumber: prev.clientIdNumber || customer.idNumber,
+          clientEmail: prev.clientEmail || customer.email,
+          clientPhone: prev.clientPhone || customer.phone || '',
+          emergencyContactName: prev.emergencyContactName || customer.emergencyContactName || '',
+          emergencyContactPhone: prev.emergencyContactPhone || customer.emergencyContactPhone || '',
+        }));
+      } catch (err) {
+        console.error('Error fetching customer for prefill:', err);
+        // Silent fail - user can still manually enter data
+      }
+    }
+
+    prefillCustomerData();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [state.selectedCustomerId]);
 
   // ==================== COMPUTED VALUES ====================
   const todayIso = useMemo(() => getTodayIsoLocal(), []);
