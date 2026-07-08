@@ -21,6 +21,7 @@ import {
 } from "@/features/contracts-form/utils";
 import type { ContractFormState, IdType } from "@/features/contracts-form/types";
 import { TravelStep } from "@/features/contracts-form/wizard/steps/travel/TravelStep";
+import { CustomerLookupStep } from "@/features/contracts-form/wizard/steps/CustomerLookupStep";
 import { HolderStep } from "@/features/contracts-form/wizard/steps/holder/HolderStep";
 import { CompanionsStep } from "@/features/contracts-form/wizard/steps/companions/CompanionsStep";
 import { MinorsStep } from "@/features/contracts-form/wizard/steps/minors/MinorsStep";
@@ -400,6 +401,12 @@ export function ContractsForm(props: ContractsFormProps) {
               rangeMessage={rangeMessage}
               onMoneyChange={onMoneyChange}
               onMoneyBlur={onMoneyBlur}
+            />
+          ),
+          'customer-lookup': (
+            <CustomerLookupStep
+              state={state}
+              setState={setState}
             />
           ),
           holder: (

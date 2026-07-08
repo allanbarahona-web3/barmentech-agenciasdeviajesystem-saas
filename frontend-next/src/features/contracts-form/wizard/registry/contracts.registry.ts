@@ -2,6 +2,7 @@ import type { WizardStepDefinition, WizardStepRegistry } from './types';
 
 // Step Components
 import { TravelStep, type TravelStepProps } from '../steps/travel/TravelStep';
+import { CustomerLookupStep, type CustomerLookupStepProps } from '../steps/CustomerLookupStep';
 import { HolderStep, type HolderStepProps } from '../steps/holder/HolderStep';
 import { CompanionsStep, type CompanionsStepProps } from '../steps/companions/CompanionsStep';
 import { MinorsStep, type MinorsStepProps } from '../steps/minors/MinorsStep';
@@ -59,7 +60,28 @@ const travelStep: WizardStepDefinition<TravelStepProps> = {
 };
 
 /**
- * Step 2: Holder Information
+ * Step 2: Customer Lookup
+ * 
+ * Searches for existing customers or creates new ones:
+ * - Customer search by name/ID
+ * - Create new customer
+ * - Pre-fill holder information from selected customer
+ * - Skip if creating customer for first time
+ * 
+ * Structural placeholder - functionality to be implemented in next story.
+ */
+const customerLookupStep: WizardStepDefinition<CustomerLookupStepProps> = {
+  id: 'customer-lookup',
+  title: 'Buscar Cliente',
+  order: 2,
+  component: CustomerLookupStep,
+  validate: () => true, // Future: Add validation logic
+  isVisible: () => true, // Always visible
+  isOptional: () => false, // Always required
+};
+
+/**
+ * Step 3: Holder Information
  * 
  * Captures customer/contract holder details:
  * - Personal information (name, ID, email, phone, address)
@@ -71,7 +93,7 @@ const travelStep: WizardStepDefinition<TravelStepProps> = {
 const holderStep: WizardStepDefinition<HolderStepProps> = {
   id: 'holder',
   title: 'Titular',
-  order: 2,
+  order: 3,
   component: HolderStep,
   validate: () => true, // Future: Add validation logic
   isVisible: () => true, // Always visible
@@ -79,7 +101,7 @@ const holderStep: WizardStepDefinition<HolderStepProps> = {
 };
 
 /**
- * Step 3: Companions Information
+ * Step 4: Companions Information
  * 
  * Captures adult companion details:
  * - Dynamic list of companions
@@ -92,7 +114,7 @@ const holderStep: WizardStepDefinition<HolderStepProps> = {
 const companionsStep: WizardStepDefinition<CompanionsStepProps> = {
   id: 'companions',
   title: 'Acompañantes',
-  order: 3,
+  order: 4,
   component: CompanionsStep,
   validate: () => true, // Future: Add validation logic
   isVisible: () => true, // Future: Conditional visibility based on companion count
@@ -100,7 +122,7 @@ const companionsStep: WizardStepDefinition<CompanionsStepProps> = {
 };
 
 /**
- * Step 4: Minors Information
+ * Step 5: Minors Information
  * 
  * Captures minor (under 18) companion details:
  * - Dynamic list of minors
@@ -114,7 +136,7 @@ const companionsStep: WizardStepDefinition<CompanionsStepProps> = {
 const minorsStep: WizardStepDefinition<MinorsStepProps> = {
   id: 'minors',
   title: 'Menores',
-  order: 4,
+  order: 5,
   component: MinorsStep,
   validate: () => true,
   isVisible: (props) => props.state.hasMinorCompanion, // Conditional: only show if minors are traveling
@@ -122,7 +144,7 @@ const minorsStep: WizardStepDefinition<MinorsStepProps> = {
 };
 
 /**
- * Step 5: Itinerary Information
+ * Step 6: Itinerary Information
  * 
  * Captures trip itinerary details:
  * - Package itinerary (if from scheduled trip)
@@ -133,7 +155,7 @@ const minorsStep: WizardStepDefinition<MinorsStepProps> = {
 const itineraryStep: WizardStepDefinition<ItineraryStepProps> = {
   id: 'itinerary',
   title: 'Itinerario',
-  order: 5,
+  order: 6,
   component: ItineraryStep,
   validate: () => true, // Future: Add validation logic
   isVisible: () => true, // Always visible
@@ -141,7 +163,7 @@ const itineraryStep: WizardStepDefinition<ItineraryStepProps> = {
 };
 
 /**
- * Step 6: Documents Upload
+ * Step 7: Documents Upload
  * 
  * Captures supporting documentation:
  * - Reservation proof (for internal trips)
@@ -153,7 +175,7 @@ const itineraryStep: WizardStepDefinition<ItineraryStepProps> = {
 const documentsStep: WizardStepDefinition<DocumentsStepProps> = {
   id: 'documents',
   title: 'Documentos',
-  order: 6,
+  order: 7,
   component: DocumentsStep,
   validate: () => true, // Future: Add validation logic
   isVisible: () => true, // Always visible
@@ -161,7 +183,7 @@ const documentsStep: WizardStepDefinition<DocumentsStepProps> = {
 };
 
 /**
- * Step 7: Insurance Decision
+ * Step 8: Insurance Decision
  * 
  * Captures the traveler's decision regarding travel insurance:
  * - Simple yes/no choice
@@ -174,7 +196,7 @@ const documentsStep: WizardStepDefinition<DocumentsStepProps> = {
 const insuranceStep: WizardStepDefinition<InsuranceStepProps> = {
   id: 'insurance',
   title: 'Seguro',
-  order: 7,
+  order: 8,
   component: InsuranceStep,
   validate: () => true, // Future: Add validation logic
   isVisible: () => true, // Always visible
@@ -182,7 +204,7 @@ const insuranceStep: WizardStepDefinition<InsuranceStepProps> = {
 };
 
 /**
- * Step 8: Summary and Submission
+ * Step 9: Summary and Submission
  * 
  * Final review and submission:
  * - Contract summary display
@@ -196,7 +218,7 @@ const insuranceStep: WizardStepDefinition<InsuranceStepProps> = {
 const summaryStep: WizardStepDefinition<SummaryStepProps> = {
   id: 'summary',
   title: 'Resumen',
-  order: 8,
+  order: 9,
   component: SummaryStep,
   validate: () => true, // Future: Add validation logic
   isVisible: () => true, // Always visible
@@ -231,6 +253,7 @@ const summaryStep: WizardStepDefinition<SummaryStepProps> = {
  */
 export const contractsStepRegistry: WizardStepRegistry = [
   travelStep,
+  customerLookupStep,
   holderStep,
   companionsStep,
   minorsStep,
