@@ -300,3 +300,31 @@ export async function validateCustomerIdentity(
 
   return response.json();
 }
+
+export async function getCustomerDocumentDownloadUrl(
+  customerId: string,
+  documentId: string
+): Promise<{ url: string; fileName: string; mimeType: string; size: number }> {
+  const apiBase = resolveApiBase();
+  const token = getStoredToken();
+
+  const response = await authenticatedFetch(
+    `${apiBase}/customers/${customerId}/documents/${documentId}/url`,
+    {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    }
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(
+      errorText || `Error al obtener URL de descarga: ${response.status}`
+    );
+  }
+
+  return response.json();
+}

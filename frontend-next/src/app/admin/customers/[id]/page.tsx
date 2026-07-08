@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic';
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { LoadingModal } from '@/components/loading-modal';
-import { getCustomerProfile, updateCustomer, type CustomerProfile, type UpdateCustomerDto } from '@/lib/customers-api';
+import { getCustomerProfile, updateCustomer, getCustomerDocumentDownloadUrl, type CustomerProfile, type UpdateCustomerDto } from '@/lib/customers-api';
 import { CustomerForm, CustomerEditModal } from '@/features/customers/components';
 
 export default function CustomerProfilePage() {
@@ -137,6 +137,36 @@ export default function CustomerProfilePage() {
     }
   }
 
+  function getCategoryLabel(category: string): string {
+    const labels: Record<string, string> = {
+      ID_FRONT: 'Cédula (Frente)',
+      ID_BACK: 'Cédula (Reverso)',
+      PASSPORT: 'Pasaporte',
+      PROFILE_PHOTO: 'Foto de Perfil',
+      OTHER: 'Otro',
+    };
+    return labels[category] || category;
+  }
+
+  async function handleDownloadDocument(documentId: string) {
+    try {
+      setLoadingModalOpen(true);
+      setLoadingModalState('loading');
+      setLoadingModalMessage('Generando URL de descarga...');
+
+      const result = await getCustomerDocumentDownloadUrl(customerId, documentId);
+      
+      // Open download URL in new tab
+      window.open(result.url, '_blank');
+      
+      setLoadingModalOpen(false);
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Error al descargar documento';
+      setLoadingModalState('error');
+      setLoadingModalMessage(errorMessage);
+    }
+  }
+
   if (loading || !profile) {
     return (
       <>
@@ -159,7 +189,7 @@ export default function CustomerProfilePage() {
     );
   }
 
-  const { customer, contracts, financialSummary, statistics } = profile;
+  const { customer, contracts, financialSummary, statistics, documents } = profile;
 
   return (
     <main className="app-shell">
@@ -673,6 +703,101 @@ export default function CustomerProfilePage() {
           </div>
         </div>
       )}
+
+      {/* Customer Documents Section */}
+      <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', overflow: 'hidden', marginBottom: '30px' }}>
+        <div style={{ padding: '20px 24px', borderBottom: '2px solid #e5e7eb' }}>
+          <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#1f2937' }}>
+            📎 Documentos ({documents.length})
+          </h2>
+        </div>
+
+        {documents.length === 0 ? (
+          <div style={{ padding: '60px 20px', textAlign: 'center' }}>
+            <div style={{ fontSize: '64px', marginBottom: '16px' }}>📄</div>
+            <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#4b5563', marginBottom: '8px' }}>
+              No hay documentos
+            </h3>
+            <p style={{ color: '#9ca3af', fontSize: '14px' }}>
+              Este cliente aún no tiene documentos adjuntos
+            </p>
+          </div>
+        ) : (
+          <div style={{ padding: '20px' }}>
+            <div style={{ display: 'grid', gap: '16px' }}>
+              {documents.map((doc) => (
+                <div
+                  key={doc.id}
+                  style={{
+                    padding: '16px',
+                    border: '2px solid #e5e7eb',
+                    borderRadius: '10px',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    transition: 'all 0.2s',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = '#667eea';
+                    e.currentTarget.style.boxShadow = '0 2px 8px rgba(102,126,234,0.1)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = '#e5e7eb';
+                    e.currentTarget.style.boxShadow = 'none';
+                  }}
+                >
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                      <span
+                        style={{
+                          padding: '4px 12px',
+                          background: '#eff6ff',
+                          color: '#1e40af',
+                          borderRadius: '6px',
+                          fontSize: '12px',
+                          fontWeight: '600',
+                        }}
+                      >
+                        {getCategoryLabel(doc.category)}
+                      </span>
+                      <span style={{ fontSize: '12px', color: '#9ca3af' }}>
+                        {formatDate(doc.createdAt)}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '14px', fontWeight: '500', color: '#1f2937', marginBottom: '4px' }}>
+                      {doc.originalFileName}
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#6b7280' }}>
+                      {doc.mimeType} • {(doc.size / 1024).toFixed(2)} KB
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleDownloadDocument(doc.id)}
+                    style={{
+                      padding: '8px 16px',
+                      background: '#667eea',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                      fontWeight: '500',
+                      transition: 'all 0.2s',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = '#5568d3')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = '#667eea')}
+                  >
+                    📥 Descargar
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Section 5: Contracts */}
       <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', overflow: 'hidden', marginBottom: '30px' }}>
