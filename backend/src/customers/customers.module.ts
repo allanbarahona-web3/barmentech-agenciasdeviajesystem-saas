@@ -1,6 +1,8 @@
 import { Module } from "@nestjs/common";
 import { CustomersService } from "./customers.service";
 import { CustomersController } from "./customers.controller";
+import { CustomerDocumentsService } from "./documents/customer-documents.service";
+import { StorageModule } from "../storage/storage.module";
 
 /**
  * CustomersModule
@@ -16,8 +18,9 @@ import { CustomersController } from "./customers.controller";
  * - CustomersService available in ContractsService via DI
  */
 @Module({
+  imports: [StorageModule],
   controllers: [CustomersController],
-  providers: [CustomersService],
-  exports: [CustomersService], // Export for ContractsModule
+  providers: [CustomersService, CustomerDocumentsService],
+  exports: [CustomersService, CustomerDocumentsService], // Export for other modules
 })
 export class CustomersModule {}
