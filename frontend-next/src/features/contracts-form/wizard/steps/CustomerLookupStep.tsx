@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import type { ContractFormState } from "@/features/contracts-form/types";
-import { getCustomers, type CustomerListItem } from '@/lib/customers-api';
+import { getCustomers, type CustomerListItem, type CustomerInfo } from '@/lib/customers-api';
+import { CustomerCreateModal } from '@/features/customers/components/CustomerCreateModal';
 
 export interface CustomerLookupStepProps {
   state: ContractFormState;
@@ -25,6 +26,7 @@ export function CustomerLookupStep({
   const [searchResults, setSearchResults] = useState<CustomerListItem[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
   async function handleSearch() {
     if (!searchQuery.trim()) {
@@ -60,6 +62,30 @@ export function CustomerLookupStep({
       ...prev,
       selectedCustomerId: null,
     }));
+  }
+
+  function handleCustomerCreated(customer: CustomerInfo) {
+    // Convert CustomerInfo to CustomerListItem format
+    const newCustomerListItem: CustomerListItem = {
+      id: customer.id,
+      fullName: customer.fullName,
+      idNumber: customer.idNumber,
+      email: customer.email,
+      phone: customer.phone,
+      createdAt: customer.createdAt,
+    };
+
+    // Add to search results
+    setSearchResults((prev) => [newCustomerListItem, ...prev]);
+
+    // Select the new customer
+    setState((prev) => ({
+      ...prev,
+      selectedCustomerId: customer.id,
+    }));
+
+    // Close modal
+    setIsCreateModalOpen(false);
   }
 
   const selectedCustomer = searchResults.find(c => c.id === state.selectedCustomerId);
@@ -288,10 +314,28 @@ export function CustomerLookupStep({
             >
               No se encontró ningún cliente
             </h3>
-            <p style={{ color: '#b45309', fontSize: '14px', maxWidth: '500px', margin: '0 auto' }}>
+            <p style={{ color: '#b45309', fontSize: '14px', maxWidth: '500px', margin: '0 auto 16px' }}>
               No existe un cliente con el número de identificación "{searchQuery}".
-              Puede continuar al siguiente paso para registrar un nuevo cliente.
             </p>
+            <button
+              onClick={() => setIsCreateModalOpen(true)}
+              style={{
+                padding: '12px 24px',
+                background: '#10b981',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontSize: '15px',
+                fontWeight: '600',
+                transition: 'all 0.2s',
+                marginTop: '8px',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = '#059669')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = '#10b981')}
+            >
+              ➕ Crear Nuevo Cliente
+            </button>
           </div>
         )}
 
@@ -317,13 +361,39 @@ export function CustomerLookupStep({
             >
               Buscar Cliente Existente
             </h3>
-            <p style={{ color: '#6b7280', fontSize: '14px', maxWidth: '500px', margin: '0 auto' }}>
+            <p style={{ color: '#6b7280', fontSize: '14px', maxWidth: '500px', margin: '0 auto 16px' }}>
               Ingrese el número de identificación del cliente para buscar en la base de datos.
               Si el cliente ya existe, puede seleccionarlo para continuar.
             </p>
+            <button
+              onClick={() => setIsCreateModalOpen(true)}
+              style={{
+                padding: '12px 24px',
+                background: '#667eea',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontSize: '15px',
+                fontWeight: '600',
+                transition: 'all 0.2s',
+                marginTop: '8px',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = '#5568d3')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = '#667eea')}
+            >
+              ➕ Crear Nuevo Cliente
+            </button>
           </div>
         )}
       </div>
+
+      {/* Customer Create Modal */}
+      <CustomerCreateModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        onCustomerCreated={handleCustomerCreated}
+      />
     </div>
   );
 }

@@ -174,16 +174,15 @@ export function ContractsWizard({
 
         if (isCancelled) return;
 
-        // Prefill holder fields with customer data
-        // Only prefill if fields are empty to avoid overwriting manual edits
+        // Replace holder fields with selected customer data
         setState((prev) => ({
           ...prev,
-          clientFullName: prev.clientFullName || customer.fullName,
-          clientIdNumber: prev.clientIdNumber || customer.idNumber,
-          clientEmail: prev.clientEmail || customer.email,
-          clientPhone: prev.clientPhone || customer.phone || '',
-          emergencyContactName: prev.emergencyContactName || customer.emergencyContactName || '',
-          emergencyContactPhone: prev.emergencyContactPhone || customer.emergencyContactPhone || '',
+          clientFullName: customer.fullName,
+          clientIdNumber: customer.idNumber,
+          clientEmail: customer.email,
+          clientPhone: customer.phone || '',
+          emergencyContactName: customer.emergencyContactName || '',
+          emergencyContactPhone: customer.emergencyContactPhone || '',
         }));
       } catch (err) {
         console.error('Error fetching customer for prefill:', err);
