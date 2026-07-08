@@ -25,6 +25,36 @@ export interface GetCustomersParams {
   search?: string;
 }
 
+export type CustomerDocumentCategory = 
+  | 'ID_FRONT'
+  | 'ID_BACK'
+  | 'PASSPORT'
+  | 'PROFILE_PHOTO'
+  | 'OTHER';
+
+export interface CustomerDocument {
+  id: string;
+  customerId: string;
+  tenantId: string;
+  category: CustomerDocumentCategory;
+  originalFileName: string;
+  objectKey: string;
+  mimeType: string;
+  size: number;
+  createdAt: string;
+}
+
+export interface CustomerNote {
+  id: string;
+  customerId: string;
+  tenantId: string;
+  note: string;
+  createdByUserId: string;
+  createdByName: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface CustomerInfo {
   id: string;
   fullName: string;
@@ -35,6 +65,28 @@ export interface CustomerInfo {
   emergencyContactPhone: string | null;
   createdAt: string;
   updatedAt: string;
+  dateOfBirth: string | null;
+  nationality: string | null;
+  occupation: string | null;
+  address: string | null;
+  city: string | null;
+  country: string | null;
+  postalCode: string | null;
+  secondaryEmail: string | null;
+  secondaryPhone: string | null;
+  emergencyContactRelationship: string | null;
+  emergencyContactEmail: string | null;
+  leadSource: string | null;
+  customerStatus: string;
+  assignedToUserId: string | null;
+  lastContactDate: string | null;
+  nextFollowUpDate: string | null;
+  preferredLanguage: string | null;
+  tags: string | null;
+  bloodType: string | null;
+  allergies: string | null;
+  medicalConditions: string | null;
+  medications: string | null;
 }
 
 export interface CustomerContractItem {
@@ -72,6 +124,8 @@ export interface CustomerFinancialSummary {
 export interface CustomerStatistics {
   totalContracts: number;
   totalTravels: number;
+  totalDocuments: number;
+  totalNotes: number;
 }
 
 export interface CustomerProfile {
@@ -79,6 +133,8 @@ export interface CustomerProfile {
   contracts: CustomerContractItem[];
   financialSummary: CustomerFinancialSummary;
   statistics: CustomerStatistics;
+  documents: CustomerDocument[];
+  notes: CustomerNote[];
 }
 
 export interface UpdateCustomerDto {
