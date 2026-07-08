@@ -268,6 +268,46 @@ export default function CustomerProfilePage() {
               </div>
               <div style={{ fontSize: '40px' }}>✈️</div>
             </div>
+            <div
+              style={{
+                padding: '16px',
+                background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+                borderRadius: '10px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}
+            >
+              <div>
+                <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.9)', fontWeight: '500', marginBottom: '4px' }}>
+                  Documentos
+                </div>
+                <div style={{ fontSize: '32px', fontWeight: 'bold', color: 'white' }}>
+                  {statistics.totalDocuments}
+                </div>
+              </div>
+              <div style={{ fontSize: '40px' }}>📎</div>
+            </div>
+            <div
+              style={{
+                padding: '16px',
+                background: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
+                borderRadius: '10px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}
+            >
+              <div>
+                <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.9)', fontWeight: '500', marginBottom: '4px' }}>
+                  Notas
+                </div>
+                <div style={{ fontSize: '32px', fontWeight: 'bold', color: 'white' }}>
+                  {statistics.totalNotes}
+                </div>
+              </div>
+              <div style={{ fontSize: '40px' }}>📝</div>
+            </div>
           </div>
         </div>
 
@@ -438,7 +478,203 @@ export default function CustomerProfilePage() {
         </div>
       </div>
 
-      {/* Section 4: Contracts */}
+      {/* Section 4: Additional Profile Information */}
+      {(customer.dateOfBirth || customer.nationality || customer.occupation || customer.address || 
+        customer.city || customer.country || customer.postalCode || customer.secondaryEmail || 
+        customer.secondaryPhone || customer.emergencyContactRelationship || customer.emergencyContactEmail || 
+        customer.leadSource || customer.lastContactDate || customer.nextFollowUpDate || 
+        customer.preferredLanguage || customer.tags || customer.bloodType || customer.allergies || 
+        customer.medicalConditions || customer.medications) && (
+        <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', padding: '24px', marginBottom: '30px' }}>
+          <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#1f2937', marginBottom: '20px' }}>
+            👤 Información Adicional del Perfil
+          </h2>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
+            {/* Personal Information */}
+            {(customer.dateOfBirth || customer.nationality || customer.occupation || customer.preferredLanguage || customer.bloodType) && (
+              <div>
+                <h3 style={{ fontSize: '14px', fontWeight: '600', color: '#6b7280', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  Información Personal
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {customer.dateOfBirth && (
+                    <div>
+                      <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '2px' }}>Fecha de Nacimiento</div>
+                      <div style={{ fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>{formatDate(customer.dateOfBirth)}</div>
+                    </div>
+                  )}
+                  {customer.nationality && (
+                    <div>
+                      <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '2px' }}>Nacionalidad</div>
+                      <div style={{ fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>{customer.nationality}</div>
+                    </div>
+                  )}
+                  {customer.occupation && (
+                    <div>
+                      <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '2px' }}>Ocupación</div>
+                      <div style={{ fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>{customer.occupation}</div>
+                    </div>
+                  )}
+                  {customer.preferredLanguage && (
+                    <div>
+                      <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '2px' }}>Idioma Preferido</div>
+                      <div style={{ fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>{customer.preferredLanguage}</div>
+                    </div>
+                  )}
+                  {customer.bloodType && (
+                    <div>
+                      <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '2px' }}>Tipo de Sangre</div>
+                      <div style={{ fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>{customer.bloodType}</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Contact Information */}
+            {(customer.address || customer.city || customer.country || customer.postalCode || customer.secondaryEmail || customer.secondaryPhone) && (
+              <div>
+                <h3 style={{ fontSize: '14px', fontWeight: '600', color: '#6b7280', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  Información de Contacto
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {customer.address && (
+                    <div>
+                      <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '2px' }}>Dirección</div>
+                      <div style={{ fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>{customer.address}</div>
+                    </div>
+                  )}
+                  {customer.city && (
+                    <div>
+                      <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '2px' }}>Ciudad</div>
+                      <div style={{ fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>{customer.city}</div>
+                    </div>
+                  )}
+                  {customer.country && (
+                    <div>
+                      <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '2px' }}>País</div>
+                      <div style={{ fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>{customer.country}</div>
+                    </div>
+                  )}
+                  {customer.postalCode && (
+                    <div>
+                      <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '2px' }}>Código Postal</div>
+                      <div style={{ fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>{customer.postalCode}</div>
+                    </div>
+                  )}
+                  {customer.secondaryEmail && (
+                    <div>
+                      <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '2px' }}>Email Secundario</div>
+                      <div style={{ fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>{customer.secondaryEmail}</div>
+                    </div>
+                  )}
+                  {customer.secondaryPhone && (
+                    <div>
+                      <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '2px' }}>Teléfono Secundario</div>
+                      <div style={{ fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>{customer.secondaryPhone}</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Emergency Contact Additional */}
+            {(customer.emergencyContactRelationship || customer.emergencyContactEmail) && (
+              <div>
+                <h3 style={{ fontSize: '14px', fontWeight: '600', color: '#6b7280', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  Contacto de Emergencia
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {customer.emergencyContactRelationship && (
+                    <div>
+                      <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '2px' }}>Relación</div>
+                      <div style={{ fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>{customer.emergencyContactRelationship}</div>
+                    </div>
+                  )}
+                  {customer.emergencyContactEmail && (
+                    <div>
+                      <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '2px' }}>Email</div>
+                      <div style={{ fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>{customer.emergencyContactEmail}</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* CRM Information */}
+            {(customer.leadSource || customer.customerStatus || customer.lastContactDate || customer.nextFollowUpDate || customer.tags) && (
+              <div>
+                <h3 style={{ fontSize: '14px', fontWeight: '600', color: '#6b7280', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  Información CRM
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {customer.leadSource && (
+                    <div>
+                      <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '2px' }}>Fuente de Lead</div>
+                      <div style={{ fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>{customer.leadSource}</div>
+                    </div>
+                  )}
+                  {customer.customerStatus && (
+                    <div>
+                      <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '2px' }}>Estado del Cliente</div>
+                      <div style={{ fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>{customer.customerStatus}</div>
+                    </div>
+                  )}
+                  {customer.lastContactDate && (
+                    <div>
+                      <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '2px' }}>Último Contacto</div>
+                      <div style={{ fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>{formatDate(customer.lastContactDate)}</div>
+                    </div>
+                  )}
+                  {customer.nextFollowUpDate && (
+                    <div>
+                      <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '2px' }}>Próximo Seguimiento</div>
+                      <div style={{ fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>{formatDate(customer.nextFollowUpDate)}</div>
+                    </div>
+                  )}
+                  {customer.tags && (
+                    <div>
+                      <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '2px' }}>Etiquetas</div>
+                      <div style={{ fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>{customer.tags}</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Medical Information */}
+            {(customer.allergies || customer.medicalConditions || customer.medications) && (
+              <div>
+                <h3 style={{ fontSize: '14px', fontWeight: '600', color: '#6b7280', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  Información Médica
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {customer.allergies && (
+                    <div>
+                      <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '2px' }}>Alergias</div>
+                      <div style={{ fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>{customer.allergies}</div>
+                    </div>
+                  )}
+                  {customer.medicalConditions && (
+                    <div>
+                      <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '2px' }}>Condiciones Médicas</div>
+                      <div style={{ fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>{customer.medicalConditions}</div>
+                    </div>
+                  )}
+                  {customer.medications && (
+                    <div>
+                      <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '2px' }}>Medicamentos</div>
+                      <div style={{ fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>{customer.medications}</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Section 5: Contracts */}
       <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', overflow: 'hidden', marginBottom: '30px' }}>
         <div style={{ padding: '20px 24px', borderBottom: '2px solid #e5e7eb' }}>
           <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#1f2937' }}>
