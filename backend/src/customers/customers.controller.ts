@@ -1,5 +1,7 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UploadedFile, UseGuards, UseInterceptors } from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 import { CustomersService } from "./customers.service";
+import { CustomerDocumentsService } from "./documents/customer-documents.service";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../auth/roles.guard";
 import { Roles } from "../auth/roles.decorator";
@@ -10,6 +12,7 @@ import { CreateCustomerDto } from "./dto/create-customer.dto";
 import { UpdateCustomerDto } from "./dto/update-customer.dto";
 import { ValidateCustomerIdentityDto } from "./dto/validate-customer-identity.dto";
 import { CustomerIdentityValidationResultDto } from "./dto/customer-identity-validation-result.dto";
+import { UploadCustomerDocumentDto } from "./dto/upload-customer-document.dto";
 import { CUSTOMER_ACCESS_ROLES } from "./constants/customer-roles.constant";
 import { Client } from "@prisma/client";
 
@@ -23,7 +26,10 @@ import { Client } from "@prisma/client";
  */
 @Controller("customers")
 export class CustomersController {
-  constructor(private readonly customersService: CustomersService) {}
+  constructor(
+    private readonly customersService: CustomersService,
+    private readonly customerDocumentsService: CustomerDocumentsService,
+  ) {}
 
   /**
    * GET /customers
@@ -176,6 +182,113 @@ export class CustomersController {
     @Body() dto: ValidateCustomerIdentityDto
   ): Promise<CustomerIdentityValidationResultDto> {
     return this.customersService.validateCustomerIdentity(req.user.tenantId, dto);
+  }
+
+  /**
+   * POST /customers/:id/documents
+   * 
+   * Upload a document for a customer.
+   */
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(...CUSTOMER_ACCESS_ROLES)
+  @Post(":id/documents")
+  @UseInterceptors(FileInterceptor("file"))
+  uploadDocument(
+    @Req() req: { user: { tenantId: string } },
+    @Param("id") customerId: string,
+    @Body() dto: UploadCustomerDocumentDto,
+    @UploadedFile()
+    file: {
+      buffer: Buffer;
+      mimetype: string;
+      originalname: string;
+      size: number;
+    },
+  ) {
+    return this.customerDocumentsService.uploadCustomerDocument(
+      req.user.tenantId,
+      customerId,
+      dto.category,
+      file,
+    );
+  }
+
+  /**
+   * GET /customers/:id/documents
+   * 
+   * List all documents for a customer.
+   */
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(...CUSTOMER_ACCESS_ROLES)
+  @Get(":id/documents")
+  listDocuments(
+    @Req() req: { user: { tenantId: string } },
+    @Param("id") customerId: string,
+  ) {
+    return this.customerDocumentsService.listCustomerDocuments(
+      req.user.tenantId,
+      customerId,
+    );
+  }
+
+  /**
+   * GET /customers/:customerId/documents/:documentId
+   * 
+   * Get document metadata.
+   */
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(...CUSTOMER_ACCESS_ROLES)
+  @Get(":customerId/documents/:documentId")
+  getDocument(
+    @Req() req: { user: { tenantId: string } },
+    @Param("customerId") customerId: string,
+    @Param("documentId") documentId: string,
+  ) {
+    return this.customerDocumentsService.getCustomerDocument(
+      req.user.tenantId,
+      customerId,
+      documentId,
+    );
+  }
+
+  /**
+   * GET /customers/:customerId/documents/:documentId/url
+   * 
+   * Generate signed download URL for a document.
+   */
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(...CUSTOMER_ACCESS_ROLES)
+  @Get(":customerId/documents/:documentId/url")
+  getDocumentUrl(
+    @Req() req: { user: { tenantId: string } },
+    @Param("customerId") customerId: string,
+    @Param("documentId") documentId: string,
+  ) {
+    return this.customerDocumentsService.generateDownloadUrl(
+      req.user.tenantId,
+      customerId,
+      documentId,
+    );
+  }
+
+  /**
+   * DELETE /customers/:customerId/documents/:documentId
+   * 
+   * Delete a customer document.
+   */
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(...CUSTOMER_ACCESS_ROLES)
+  @Delete(":customerId/documents/:documentId")
+  deleteDocument(
+    @Req() req: { user: { tenantId: string } },
+    @Param("customerId") customerId: string,
+    @Param("documentId") documentId: string,
+  ) {
+    return this.customerDocumentsService.deleteCustomerDocument(
+      req.user.tenantId,
+      customerId,
+      documentId,
+    );
   }
 }
 
