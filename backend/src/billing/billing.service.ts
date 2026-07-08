@@ -7,14 +7,13 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { Resend } from "resend";
 import * as sharp from "sharp";
 import * as path from "path";
 import { readFile } from "fs/promises";
 import { PrismaService } from "../prisma/prisma.service";
+import { StorageService } from "../storage/storage.service";
 import { EmailService } from "../email/email.service";
 import { TravelPackagesService } from "../travel-packages/travel-packages.service";
 import { InternalToursService } from "../internal-tourism/internal-tours.service";
@@ -27,7 +26,6 @@ import { ReportPaymentDto } from "./dto/report-payment.dto";
 @Injectable()
 export class BillingService {
   private readonly logger = new Logger(BillingService.name);
-  private s3Client: S3Client | null = null;
   private readonly maxAttachmentCount = 10;
   private readonly maxAttachmentSizeBytes = 6 * 1024 * 1024;
   private readonly allowedAttachmentMimeTypes = new Set([
@@ -43,6 +41,7 @@ export class BillingService {
     private readonly emailService: EmailService,
     private readonly travelPackagesService: TravelPackagesService,
     private readonly internalToursService: InternalToursService,
+    private readonly storageService: StorageService,
   ) {}
 
   /**
@@ -1799,58 +1798,7 @@ export class BillingService {
       }));
   }
 
-  private getSpacesConfig() {
-    const region = this.configService.get<string>("DO_SPACES_REGION", "").trim();
-    const endpoint = this.configService.get<string>("DO_SPACES_ENDPOINT", "").trim();
-    const bucket = this.configService.get<string>("DO_SPACES_BUCKET", "").trim();
-    const key = this.configService.get<string>("DO_SPACES_KEY", "").trim();
-    const secret = this.configService.get<string>("DO_SPACES_SECRET", "").trim();
 
-    if (!region || !endpoint || !bucket || !key || !secret) {
-      throw new InternalServerErrorException(
-        "Faltan variables DO_SPACES_REGION, DO_SPACES_ENDPOINT, DO_SPACES_BUCKET, DO_SPACES_KEY o DO_SPACES_SECRET.",
-      );
-    }
-
-    return { region, endpoint, bucket, key, secret };
-  }
-
-  private getSpacesClient() {
-    if (this.s3Client) {
-      return this.s3Client;
-    }
-
-    const cfg = this.getSpacesConfig();
-    this.s3Client = new S3Client({
-      region: cfg.region,
-      endpoint: cfg.endpoint,
-      forcePathStyle: false,
-      credentials: {
-        accessKeyId: cfg.key,
-        secretAccessKey: cfg.secret,
-      },
-    });
-
-    return this.s3Client;
-  }
-
-  private async uploadToSpaces(params: {
-    objectKey: string;
-    contentType: string;
-    body: Buffer;
-  }) {
-    const cfg = this.getSpacesConfig();
-    const client = this.getSpacesClient();
-
-    await client.send(
-      new PutObjectCommand({
-        Bucket: cfg.bucket,
-        Key: params.objectKey,
-        Body: params.body,
-        ContentType: params.contentType,
-      }),
-    );
-  }
 
   private async convertImageToWebP(params: {
     buffer: Buffer;
@@ -1905,18 +1853,16 @@ export class BillingService {
     return params;
   }
 
-  private async buildSignedObjectUrl(objectKey: string, expiresInSeconds = 900) {
-    const cfg = this.getSpacesConfig();
-    const client = this.getSpacesClient();
+  private async uploadToSpaces(params: {
+    objectKey: string;
+    contentType: string;
+    body: Buffer;
+  }) {
+    await this.storageService.uploadObject(params);
+  }
 
-    return getSignedUrl(
-      client,
-      new GetObjectCommand({
-        Bucket: cfg.bucket,
-        Key: objectKey,
-      }),
-      { expiresIn: expiresInSeconds },
-    );
+  private async buildSignedObjectUrl(objectKey: string, expiresInSeconds = 900) {
+    return this.storageService.generateSignedUrl(objectKey, expiresInSeconds);
   }
 
   private async logAudit(input: {
@@ -4644,23 +4590,7 @@ this.logger.log(
 
     // Descargar archivo de S3
     try {
-      const cfg = this.getSpacesConfig();
-      const client = this.getSpacesClient();
-      
-      const command = new GetObjectCommand({
-        Bucket: cfg.bucket,
-        Key: attachment.objectKey,
-      });
-
-      const response = await client.send(command);
-      const stream = response.Body as any;
-      const chunks: Buffer[] = [];
-
-      for await (const chunk of stream) {
-        chunks.push(chunk);
-      }
-
-      const buffer = Buffer.concat(chunks);
+      const buffer = await this.storageService.downloadObject(attachment.objectKey);
 
       return {
         buffer,

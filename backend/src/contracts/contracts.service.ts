@@ -7,10 +7,9 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { randomBytes } from "crypto";
-import { S3Client, PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { PdfRenderService } from "./pdf-render.service";
 import { PrismaService } from "../prisma/prisma.service";
+import { StorageService } from "../storage/storage.service";
 import { BillingService } from "../billing/billing.service";
 import { ContractsEmailsService } from "./contracts-emails.service";
 import { CustomersService } from "../customers/customers.service";
@@ -45,7 +44,6 @@ type SigningParticipant = {
 @Injectable()
 export class ContractsService {
   private readonly logger = new Logger(ContractsService.name);
-  private s3Client: S3Client | null = null;
   private readonly maxDocumentCount = 20;
   private readonly maxDocumentSizeBytes = 5 * 1024 * 1024;
   private readonly maxDocumentTotalBytes = 25 * 1024 * 1024;
@@ -67,6 +65,7 @@ export class ContractsService {
     private readonly documentSigningAuditService: DocumentSigningAuditService,
     private readonly documentSignatureFinalizationService: DocumentSignatureFinalizationService,
     private readonly documentDeliveryService: DocumentDeliveryService,
+    private readonly storageService: StorageService,
   ) {}
 
   private pad(value: number, size = 2) {
@@ -201,52 +200,6 @@ export class ContractsService {
       .replace(/'/g, '&#39;');
   }
 
-  private getSpacesConfig() {
-    const region = this.configService.get<string>("DO_SPACES_REGION", "").trim();
-    const endpoint = this.configService.get<string>("DO_SPACES_ENDPOINT", "").trim();
-    const bucket = this.configService.get<string>("DO_SPACES_BUCKET", "").trim();
-    const key = this.configService.get<string>("DO_SPACES_KEY", "").trim();
-    const secret = this.configService.get<string>("DO_SPACES_SECRET", "").trim();
-
-    if (!region || !endpoint || !bucket || !key || !secret) {
-      throw new InternalServerErrorException(
-        "Faltan variables DO_SPACES_REGION, DO_SPACES_ENDPOINT, DO_SPACES_BUCKET, DO_SPACES_KEY o DO_SPACES_SECRET.",
-      );
-    }
-
-    return {
-      region,
-      endpoint,
-      bucket,
-      key,
-      secret,
-    };
-  }
-
-  private getSpacesClient() {
-    if (this.s3Client) {
-      return this.s3Client;
-    }
-
-    const cfg = this.getSpacesConfig();
-    this.s3Client = new S3Client({
-      region: cfg.region,
-      endpoint: cfg.endpoint,
-      forcePathStyle: false,
-      credentials: {
-        accessKeyId: cfg.key,
-        secretAccessKey: cfg.secret,
-      },
-    });
-
-    return this.s3Client;
-  }
-
-  /**
-   * Construye la ruta base para un tenant en Spaces
-   * Formato: {ambiente}-agencias-saas/{subdomain}/
-   * Ejemplo: "dev-agencias-saas/almanova/" o "production-agencias-saas/lucitours/"
-   */
   private getTenantBasePath(tenantSubdomain: string): string {
     const appEnv = this.configService.get<string>("APP_ENV", "dev").trim();
     return `${appEnv}/${tenantSubdomain}/`;
@@ -268,7 +221,7 @@ export class ContractsService {
    * Ejemplo: https://agencia-viajes-saas.sfo3.cdn.digitaloceanspaces.com/dev-agencias-saas/almanova/logos/logo.png
    */
   private getTenantAssetUrl(tenantSubdomain: string, category: string, assetFilename: string): string {
-    const cfg = this.getSpacesConfig();
+    const cfg = this.storageService.getConfig();
     const objectKey = this.getSpacesObjectKey(tenantSubdomain, category, assetFilename);
     // Usar CDN endpoint para mejor performance
     return `https://${cfg.bucket}.${cfg.region}.cdn.digitaloceanspaces.com/${objectKey}`;
@@ -365,17 +318,7 @@ export class ContractsService {
     contentType: string;
     body: Buffer;
   }) {
-    const cfg = this.getSpacesConfig();
-    const client = this.getSpacesClient();
-
-    await client.send(
-      new PutObjectCommand({
-        Bucket: cfg.bucket,
-        Key: params.objectKey,
-        Body: params.body,
-        ContentType: params.contentType,
-      }),
-    );
+    await this.storageService.uploadObject(params);
   }
 
   private async convertImageToWebP(params: {
@@ -432,36 +375,11 @@ export class ContractsService {
   }
 
   private async buildSignedObjectUrl(objectKey: string, expiresInSeconds = 900) {
-    const cfg = this.getSpacesConfig();
-    const client = this.getSpacesClient();
-
-    return getSignedUrl(
-      client,
-      new GetObjectCommand({
-        Bucket: cfg.bucket,
-        Key: objectKey,
-      }),
-      { expiresIn: expiresInSeconds },
-    );
+    return this.storageService.generateSignedUrl(objectKey, expiresInSeconds);
   }
 
   private async downloadObjectBuffer(objectKey: string) {
-    const cfg = this.getSpacesConfig();
-    const client = this.getSpacesClient();
-    const response = await client.send(
-      new GetObjectCommand({
-        Bucket: cfg.bucket,
-        Key: objectKey,
-      }),
-    );
-
-    const body = response.Body as { transformToByteArray?: () => Promise<Uint8Array> } | undefined;
-    if (!body?.transformToByteArray) {
-      throw new InternalServerErrorException("No se pudo leer el archivo de contrato.");
-    }
-
-    const bytes = await body.transformToByteArray();
-    return Buffer.from(bytes);
+    return this.storageService.downloadObject(objectKey);
   }
 
   async reserveNextNumber(

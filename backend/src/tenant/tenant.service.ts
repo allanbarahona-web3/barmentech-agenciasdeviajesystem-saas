@@ -1,7 +1,7 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { PrismaService } from '../prisma/prisma.service';
+import { StorageService } from '../storage/storage.service';
 import { UpdateTenantConfigDto } from './dto/update-tenant-config.dto';
 import * as sharp from 'sharp';
 
@@ -42,7 +42,6 @@ export interface ResolvedTenant {
 @Injectable()
 export class TenantService {
   private readonly logger = new Logger(TenantService.name);
-  private s3Client: S3Client | null = null;
   private readonly allowedImageMimeTypes = new Set([
     'image/jpeg',
     'image/png',
@@ -54,6 +53,7 @@ export class TenantService {
   constructor(
     private prisma: PrismaService,
     private configService: ConfigService,
+    private readonly storageService: StorageService,
   ) {}
 
   /**
@@ -419,7 +419,7 @@ export class TenantService {
     ]);
 
     // Construir URLs públicas con CDN
-    const cfg = this.getSpacesConfig();
+    const cfg = this.storageService.getConfig();
     const webpUrl = `https://${cfg.bucket}.${cfg.region}.cdn.digitaloceanspaces.com/${webpObjectKey}`;
     const emailUrl = `https://${cfg.bucket}.${cfg.region}.cdn.digitaloceanspaces.com/${emailObjectKey}`;
 
@@ -538,60 +538,16 @@ export class TenantService {
 
   // Helpers privados
 
-  private getSpacesConfig() {
-    return {
-      endpoint: this.configService.get<string>('DO_SPACES_ENDPOINT', ''),
-      region: this.configService.get<string>('DO_SPACES_REGION', 'us-east-1'),
-      accessKeyId: this.configService.get<string>('DO_SPACES_KEY', ''),
-      secretAccessKey: this.configService.get<string>('DO_SPACES_SECRET', ''),
-      bucket: this.configService.get<string>('DO_SPACES_BUCKET', ''),
-    };
-  }
-
-  private getSpacesClient(): S3Client {
-    if (!this.s3Client) {
-      const cfg = this.getSpacesConfig();
-      this.s3Client = new S3Client({
-        endpoint: cfg.endpoint,
-        region: cfg.region,
-        credentials: {
-          accessKeyId: cfg.accessKeyId,
-          secretAccessKey: cfg.secretAccessKey,
-        },
-      });
-    }
-    return this.s3Client;
-  }
-
   private async uploadToSpaces(params: {
     objectKey: string;
     contentType: string;
     body: Buffer;
   }): Promise<void> {
-    const cfg = this.getSpacesConfig();
-    const client = this.getSpacesClient();
-
-    const command = new PutObjectCommand({
-      Bucket: cfg.bucket,
-      Key: params.objectKey,
-      Body: params.body,
-      ContentType: params.contentType,
-      ACL: 'public-read',
-    });
-
-    await client.send(command);
+    await this.storageService.uploadObject(params);
   }
 
   private async deleteFromSpaces(objectKey: string): Promise<void> {
-    const cfg = this.getSpacesConfig();
-    const client = this.getSpacesClient();
-
-    const command = new DeleteObjectCommand({
-      Bucket: cfg.bucket,
-      Key: objectKey,
-    });
-
-    await client.send(command);
+    await this.storageService.deleteObject(objectKey);
   }
 
   private async convertImageToWebP(params: {

@@ -1,8 +1,7 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { PrismaService } from '../prisma/prisma.service';
+import { StorageService } from '../storage/storage.service';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { UploadDocumentDto } from './dto/upload-document.dto';
@@ -12,7 +11,6 @@ import { Decimal } from '@prisma/client/runtime/library';
 @Injectable()
 export class EmployeesService {
   private readonly logger = new Logger(EmployeesService.name);
-  private s3Client: S3Client | null = null;
   private readonly maxDocumentSizeBytes = 10 * 1024 * 1024; // 10MB
   private readonly allowedMimeTypes = new Set([
     'application/pdf',
@@ -24,43 +22,10 @@ export class EmployeesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
+    private readonly storageService: StorageService,
   ) {}
 
-  private getSpacesConfig() {
-    const region = this.configService.get<string>('DO_SPACES_REGION', '').trim();
-    const endpoint = this.configService.get<string>('DO_SPACES_ENDPOINT', '').trim();
-    const bucket = this.configService.get<string>('DO_SPACES_BUCKET', '').trim();
-    const key = this.configService.get<string>('DO_SPACES_KEY', '').trim();
-    const secret = this.configService.get<string>('DO_SPACES_SECRET', '').trim();
-    const cdnEndpoint = this.configService.get<string>('DO_SPACES_CDN_ENDPOINT', '').trim();
 
-    if (!region || !endpoint || !bucket || !key || !secret) {
-      throw new Error(
-        'Faltan variables DO_SPACES_REGION, DO_SPACES_ENDPOINT, DO_SPACES_BUCKET, DO_SPACES_KEY o DO_SPACES_SECRET.',
-      );
-    }
-
-    return { region, endpoint, bucket, key, secret, cdnEndpoint };
-  }
-
-  private getSpacesClient() {
-    if (this.s3Client) {
-      return this.s3Client;
-    }
-
-    const cfg = this.getSpacesConfig();
-    this.s3Client = new S3Client({
-      region: cfg.region,
-      endpoint: cfg.endpoint,
-      forcePathStyle: false,
-      credentials: {
-        accessKeyId: cfg.key,
-        secretAccessKey: cfg.secret,
-      },
-    });
-
-    return this.s3Client;
-  }
 
   private sanitizeSegment(value: string) {
     const normalized = String(value || '')
@@ -79,43 +44,15 @@ export class EmployeesService {
     contentType: string;
     body: Buffer;
   }) {
-    const cfg = this.getSpacesConfig();
-    const client = this.getSpacesClient();
-
-    await client.send(
-      new PutObjectCommand({
-        Bucket: cfg.bucket,
-        Key: params.objectKey,
-        Body: params.body,
-        ContentType: params.contentType,
-      }),
-    );
+    await this.storageService.uploadObject(params);
   }
 
   private async deleteFromSpaces(objectKey: string) {
-    const cfg = this.getSpacesConfig();
-    const client = this.getSpacesClient();
-
-    await client.send(
-      new DeleteObjectCommand({
-        Bucket: cfg.bucket,
-        Key: objectKey,
-      }),
-    );
+    await this.storageService.deleteObject(objectKey);
   }
 
   private async buildSignedUrl(objectKey: string, expiresInSeconds = 900) {
-    const cfg = this.getSpacesConfig();
-    const client = this.getSpacesClient();
-
-    return getSignedUrl(
-      client,
-      new GetObjectCommand({
-        Bucket: cfg.bucket,
-        Key: objectKey,
-      }),
-      { expiresIn: expiresInSeconds },
-    );
+    return this.storageService.generateSignedUrl(objectKey, expiresInSeconds);
   }
 
   private async convertImageToWebP(params: {
@@ -419,7 +356,7 @@ export class EmployeesService {
         tenantId,
         documentType: dto.documentType,
         fileName: processedFile.originalname,
-        fileUrl: `https://${this.getSpacesConfig().cdnEndpoint}/${objectKey}`,
+        fileUrl: `https://${this.storageService.getConfig().cdnEndpoint}/${objectKey}`,
         objectKey,
         mimeType: processedFile.mimetype,
         size: processedFile.size,
