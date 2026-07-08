@@ -59,6 +59,8 @@ model Tenant {
   contracts                   Contract[]
   contractDrafts              ContractDraft[]
   contractNumbers             ContractNumber[]
+  customerDocuments           CustomerDocument[]
+  customerNotes               CustomerNote[]
   exchangeRates               ExchangeRate[]
   travelPackages              TravelPackage[]
   users                       User[]
@@ -98,6 +100,7 @@ model User {
   attendance_entries         AttendanceEntry[]
   employee                   Employee?
   passwordResetTokens        PasswordResetToken[]
+  assignedCustomers          Client[]                 @relation("CustomerAssignedTo")
 
   @@index([tenantId])
 }
@@ -234,27 +237,95 @@ model ContractDraft {
 }
 
 model Client {
-  id                    String                @id @default(cuid())
-  fullName              String
-  idNumber              String
-  email                 String
-  phone                 String?
-  emergencyContactName  String?
-  emergencyContactPhone String?
-  createdAt             DateTime              @default(now())
-  updatedAt             DateTime              @updatedAt
-  tenantId              String
-  billingClientBalance  BillingClientBalance?
-  billingInvoices       BillingInvoice[]
-  tenant                Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  portalUsers           ClientPortalUser[]
-  contracts             Contract[]
-  internalBookings      InternalTourBooking[]
+  id                           String                @id @default(cuid())
+  fullName                     String
+  idNumber                     String
+  email                        String
+  phone                        String?
+  emergencyContactName         String?
+  emergencyContactPhone        String?
+  createdAt                    DateTime              @default(now())
+  updatedAt                    DateTime              @updatedAt
+  tenantId                     String
+  dateOfBirth                  DateTime?
+  nationality                  String?
+  occupation                   String?
+  address                      String?
+  city                         String?
+  country                      String?
+  postalCode                   String?
+  secondaryEmail               String?
+  secondaryPhone               String?
+  emergencyContactRelationship String?
+  emergencyContactEmail        String?
+  leadSource                   String?
+  customerStatus               String                @default("ACTIVE")
+  assignedToUserId             String?
+  lastContactDate              DateTime?
+  nextFollowUpDate             DateTime?
+  preferredLanguage            String?
+  tags                         String?
+  bloodType                    String?
+  allergies                    String?
+  medicalConditions            String?
+  medications                  String?
+  billingClientBalance         BillingClientBalance?
+  billingInvoices              BillingInvoice[]
+  tenant                       Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  portalUsers                  ClientPortalUser[]
+  contracts                    Contract[]
+  internalBookings             InternalTourBooking[]
+  documents                    CustomerDocument[]
+  notes                        CustomerNote[]
+  assignedTo                   User?                 @relation("CustomerAssignedTo", fields: [assignedToUserId], references: [id])
 
   @@unique([idNumber, tenantId])
   @@index([fullName])
   @@index([email])
   @@index([tenantId])
+  @@index([customerStatus])
+  @@index([assignedToUserId])
+  @@index([lastContactDate])
+  @@index([nextFollowUpDate])
+}
+
+model CustomerDocument {
+  id               String                   @id @default(cuid())
+  customerId       String
+  tenantId         String
+  category         CustomerDocumentCategory
+  originalFileName String
+  objectKey        String                   @unique
+  mimeType         String
+  size             Int
+  createdAt        DateTime                 @default(now())
+  customer         Client                   @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  tenant           Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@index([tenantId])
+  @@index([category])
+  @@index([createdAt])
+  @@index([tenantId, customerId])
+  @@map("customer_documents")
+}
+
+model CustomerNote {
+  id              String   @id @default(cuid())
+  customerId      String
+  tenantId        String
+  note            String
+  createdByUserId String
+  createdByName   String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  customer        Client   @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@index([tenantId])
+  @@index([createdAt])
+  @@map("customer_notes")
 }
 
 model ContractDocument {
@@ -578,25 +649,25 @@ model PaymentReceiptImage {
 }
 
 model TravelPackage {
-  id              String     @id @default(cuid())
+  id              String            @id @default(cuid())
   name            String
   destination     String
   departureDate   DateTime
   returnDate      DateTime
   capacity        Int
-  occupiedSlots   Int        @default(0)
-  status          String     @default("OPEN")
-  travelType TravelPackageType @default(INTERNATIONAL)
-  packagePrice    Decimal?   @db.Decimal(14, 2)
-  priceCurrency   String     @default("USD")
+  occupiedSlots   Int               @default(0)
+  status          String            @default("OPEN")
+  travelType      TravelPackageType @default(INTERNATIONAL)
+  packagePrice    Decimal?          @db.Decimal(14, 2)
+  priceCurrency   String            @default("USD")
   createdByUserId String
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
-  packageCode     String     @unique
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  packageCode     String            @unique
   tenantId        String
-  minReservation  Decimal?   @db.Decimal(14, 2)
+  minReservation  Decimal?          @db.Decimal(14, 2)
   contracts       Contract[]
-  tenant          Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant          Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([departureDate])
   @@index([status])
@@ -899,6 +970,14 @@ enum EmployeeDocumentType {
   OTRO
 }
 
+enum CustomerDocumentCategory {
+  ID_FRONT
+  ID_BACK
+  PASSPORT
+  PROFILE_PHOTO
+  OTHER
+}
+
 enum TransportType {
   AIR
   BUS
@@ -920,7 +999,6 @@ enum TravelPackageType {
   INTERNATIONAL
   MIGRATION
 }
-
 
 enum PayrollFrequency {
   WEEKLY
