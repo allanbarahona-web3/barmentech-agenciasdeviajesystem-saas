@@ -166,6 +166,12 @@ export function ContractsWizard({
     idBack: { id: string; fileName: string; mimeType: string } | null;
     passport: { id: string; fileName: string; mimeType: string } | null;
   }>({ idFront: null, idBack: null, passport: null });
+  const [companionCustomerDocuments, setCompanionCustomerDocuments] = useState<Record<string, {
+    customerId: string;
+    idFront: { id: string; fileName: string; mimeType: string } | null;
+    idBack: { id: string; fileName: string; mimeType: string } | null;
+    passport: { id: string; fileName: string; mimeType: string } | null;
+  }>>({});
   const [attachmentViewerData, setAttachmentViewerData] = useState<{
     attachments: Array<{ id: string; originalFileName: string; url: string; mimeType: string }>;
     initialIndex: number;
@@ -252,6 +258,65 @@ export function ContractsWizard({
     } catch (error) {
       console.error('Error viewing document:', error);
       alert('Error al abrir el documento');
+    }
+  };
+
+  // ==================== COMPANION CUSTOMER LOOKUP ====================
+  const handleValidateCompanionIdentity = async (companionId: string, idNumber: string, fullName: string) => {
+    // Skip validation if either field is empty
+    if (!idNumber.trim() || !fullName.trim()) {
+      return;
+    }
+
+    try {
+      const result = await validateCustomerIdentity({
+        idNumber: idNumber.trim(),
+        fullName: fullName.trim(),
+      });
+
+      if (result.valid && result.existingCustomer) {
+        // Customer exists - load their profile and documents
+        const profile = await getCustomerProfile(result.existingCustomer.id);
+        const customer = profile.customer;
+        const documents = profile.documents || [];
+
+        // Update companion fields with customer data
+        setState((prev) => ({
+          ...prev,
+          companions: prev.companions.map(c => 
+            c.id === companionId
+              ? {
+                  ...c,
+                  fullName: customer.fullName,
+                  idNumber: customer.idNumber,
+                  email: customer.email,
+                  phone: customer.phone || '',
+                  emergencyContactName: customer.emergencyContactName || '',
+                  emergencyContactPhone: customer.emergencyContactPhone || '',
+                  address: customer.address || '',
+                }
+              : c
+          ),
+        }));
+
+        // Map customer documents to companion documents
+        const idFront = documents.find(d => d.category === 'ID_FRONT' && (d as any).isCurrent !== false);
+        const idBack = documents.find(d => d.category === 'ID_BACK' && (d as any).isCurrent !== false);
+        const passport = documents.find(d => d.category === 'PASSPORT' && (d as any).isCurrent !== false);
+
+        setCompanionCustomerDocuments(prev => ({
+          ...prev,
+          [companionId]: {
+            customerId: result.existingCustomer!.id,
+            idFront: idFront ? { id: idFront.id, fileName: idFront.originalFileName, mimeType: idFront.mimeType } : null,
+            idBack: idBack ? { id: idBack.id, fileName: idBack.originalFileName, mimeType: idBack.mimeType } : null,
+            passport: passport ? { id: passport.id, fileName: passport.originalFileName, mimeType: passport.mimeType } : null,
+          },
+        }));
+      }
+    } catch (error) {
+      console.error('Error validating companion identity:', error);
+      // Silent fail - user can still manually enter data
     }
   };
 
@@ -1174,6 +1239,7 @@ console.log("====================================");
       holderDocs={holderDocs}
       setHolderDocs={setHolderDocs}
       existingCustomerDocuments={existingCustomerDocuments}
+      companionCustomerDocuments={companionCustomerDocuments}
       onViewDocument={handleViewDocument}
       supportDocs={supportDocs}
       setSupportDocs={setSupportDocs}
@@ -1211,6 +1277,7 @@ console.log("====================================");
       saveDraftFlow={saveDraftFlow}
       saveStepDraft={saveStepDraft}
       handleValidateCustomerIdentity={handleValidateCustomerIdentity}
+      handleValidateCompanionIdentity={handleValidateCompanionIdentity}
       copySigningUrl={copySigningUrl}
       runPreviewFlow={runPreviewFlow}
       runArchiveFlow={runArchiveFlow}

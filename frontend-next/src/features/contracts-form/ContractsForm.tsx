@@ -118,6 +118,12 @@ type ContractsFormProps = {
     idBack: { id: string; fileName: string; mimeType: string } | null;
     passport: { id: string; fileName: string; mimeType: string } | null;
   };
+  companionCustomerDocuments: Record<string, {
+    customerId: string;
+    idFront: { id: string; fileName: string; mimeType: string } | null;
+    idBack: { id: string; fileName: string; mimeType: string } | null;
+    passport: { id: string; fileName: string; mimeType: string } | null;
+  }>;
   onViewDocument: (customerId: string, documentId: string) => void;
   supportDocs: File[];
   setSupportDocs: React.Dispatch<React.SetStateAction<File[]>>;
@@ -193,6 +199,7 @@ type ContractsFormProps = {
   saveDraftFlow: () => Promise<void>;
   saveStepDraft: () => Promise<void>;
   handleValidateCustomerIdentity: () => Promise<void>;
+  handleValidateCompanionIdentity: (companionId: string, idNumber: string, fullName: string) => Promise<void>;
   copySigningUrl: (signingUrl: string, signerKey: string) => Promise<void>;
   runPreviewFlow: () => Promise<void>;
   runArchiveFlow: () => Promise<void>;
@@ -246,6 +253,7 @@ export function ContractsForm(props: ContractsFormProps) {
     holderDocs,
     setHolderDocs,
     existingCustomerDocuments,
+    companionCustomerDocuments,
     onViewDocument,
     supportDocs,
     setSupportDocs,
@@ -283,6 +291,7 @@ export function ContractsForm(props: ContractsFormProps) {
     saveDraftFlow,
     saveStepDraft,
     handleValidateCustomerIdentity,
+    handleValidateCompanionIdentity,
     copySigningUrl,
     runPreviewFlow,
     runArchiveFlow,
@@ -439,6 +448,9 @@ export function ContractsForm(props: ContractsFormProps) {
               isInternalTrip={isInternalTrip}
               companionDocs={companionDocs}
               setCompanionDocs={setCompanionDocs}
+              companionCustomerDocuments={companionCustomerDocuments}
+              onViewDocument={onViewDocument}
+              handleValidateCompanionIdentity={handleValidateCompanionIdentity}
               nationalityOptions={NATIONALITY_OPTIONS}
               requiredDocumentLabelClass={requiredDocumentLabelClass}
               updateFileInputState={updateFileInputState}

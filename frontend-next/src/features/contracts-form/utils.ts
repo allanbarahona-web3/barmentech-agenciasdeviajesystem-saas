@@ -353,6 +353,48 @@ export const addCompanion = (state: ContractFormState): ContractFormState => {
   };
 };
 
+export const addCompanionFromCustomer = (
+  state: ContractFormState,
+  customerData: {
+    fullName: string;
+    idNumber: string;
+    email: string;
+    phone: string;
+    emergencyContactName: string;
+    emergencyContactPhone: string;
+    address: string;
+  }
+): ContractFormState => {
+  const newCompanion: Companion = {
+    id: `companion-${Date.now()}-${Math.random().toString(16).slice(2, 7)}`,
+    fullName: customerData.fullName,
+    idType: "Cedula",
+    idNumber: customerData.idNumber,
+    email: customerData.email,
+    phone: customerData.phone,
+    emergencyContactName: customerData.emergencyContactName,
+    emergencyContactPhone: customerData.emergencyContactPhone,
+    address: customerData.address,
+    civilStatus: "Soltero",
+    profession: "",
+    nationality: "Costa Rica",
+    idFrontDocumentName: "",
+    idBackDocumentName: "",
+    passportDocumentName: "",
+  };
+  return {
+    ...state,
+    companions: [...state.companions, newCompanion],
+    insurance: {
+      ...state.insurance,
+      companions: {
+        ...state.insurance.companions,
+        [newCompanion.id]: false,
+      },
+    },
+  };
+};
+
 export const removeCompanion = (state: ContractFormState, id: string): ContractFormState => {
   const newCompanions = { ...state.insurance.companions };
   delete newCompanions[id];

@@ -19,7 +19,7 @@ import { DocumentSigningAuditService } from "../documents/document-signing-audit
 import { DocumentSignatureFinalizationService } from "../documents/document-signature-finalization.service";
 import { DocumentDeliveryService } from "../documents/document-delivery.service";
 import { ArchiveContractDto } from "./dto/archive-contract.dto";
-import { CustomerDocumentCategory } from "@prisma/client";
+import { CustomerDocumentCategory, Client } from "@prisma/client";
 
 import { SendContractEmailDto } from "./dto/send-contract-email.dto";
 import { SendSigningEmailDto } from "./dto/send-signing-email.dto";
@@ -234,6 +234,37 @@ export class ContractsService {
     
     // Default to OTHER for unrecognized customer documents
     return CustomerDocumentCategory.OTHER;
+  }
+
+  /**
+   * Determine which customer a document belongs to based on filename prefix
+   * @param filename Original filename (e.g., "titular-cedula-frente", "acompanante1-cedula-frente")
+   * @param holderId Holder customer ID
+   * @param companions Array of registered companion clients
+   * @returns Customer ID or null if cannot determine
+   */
+  private getCustomerIdFromFilename(
+    filename: string,
+    holderId: string,
+    companions: Client[]
+  ): string | null {
+    const lower = filename.toLowerCase();
+
+    // Check if it's a holder document
+    if (lower.includes('titular-')) {
+      return holderId;
+    }
+
+    // Check if it's a companion document (e.g., "acompanante1-", "acompanante2-")
+    const companionMatch = lower.match(/acompanante(\d+)-/);
+    if (companionMatch) {
+      const companionIndex = parseInt(companionMatch[1], 10) - 1; // Convert to 0-based index
+      if (companionIndex >= 0 && companionIndex < companions.length) {
+        return companions[companionIndex].id;
+      }
+    }
+
+    return null;
   }
 
   private getTenantBasePath(tenantSubdomain: string): string {
@@ -910,7 +941,7 @@ export class ContractsService {
     });
 
     // Register adult companions as clients
-    await this.customersService.registerCompanionsAsClients(
+    const registeredCompanions = await this.customersService.registerCompanionsAsClients(
       Array.isArray(payloadRecord.companions) ? payloadRecord.companions : [],
       user.tenantId
     );
@@ -1175,9 +1206,21 @@ export class ContractsService {
             continue;
           }
           
+          // Determine which customer this document belongs to
+          const customerId = this.getCustomerIdFromFilename(
+            doc.originalFileName,
+            client.id,
+            registeredCompanions
+          );
+          
+          if (!customerId) {
+            this.logger.debug(`Could not determine customer for document: ${doc.originalFileName}`);
+            continue;
+          }
+          
           await this.customerDocumentsService.registerExistingDocument(
             user.tenantId,
-            client.id,
+            customerId,
             category,
             {
               originalFileName: doc.originalFileName,
@@ -1187,7 +1230,7 @@ export class ContractsService {
             },
           );
           
-          this.logger.log(`✅ Registered: ${doc.originalFileName} → ${category}`);
+          this.logger.log(`✅ Registered: ${doc.originalFileName} → ${category} for customer ${customerId}`);
         } catch (error) {
           // Log but don't fail the entire contract creation
           this.logger.error(

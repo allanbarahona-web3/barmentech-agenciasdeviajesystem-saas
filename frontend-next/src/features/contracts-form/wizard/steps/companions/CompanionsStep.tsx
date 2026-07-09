@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { ContractFormState } from "@/features/contracts-form/types";
-import { addCompanion, removeCompanion, updateCompanion } from "@/features/contracts-form/utils";
+import { addCompanion, addCompanionFromCustomer, removeCompanion, updateCompanion } from "@/features/contracts-form/utils";
+import { getCustomers, getCustomerProfile, type CustomerListItem } from '@/lib/customers-api';
 
 export interface CompanionsStepProps {
   state: ContractFormState;
@@ -8,6 +9,14 @@ export interface CompanionsStepProps {
   isInternalTrip: boolean;
   companionDocs: Record<string, { idFront: File | null; idBack: File | null; passport: File | null }>;
   setCompanionDocs: React.Dispatch<React.SetStateAction<Record<string, { idFront: File | null; idBack: File | null; passport: File | null }>>>;
+  companionCustomerDocuments: Record<string, {
+    customerId: string;
+    idFront: { id: string; fileName: string; mimeType: string } | null;
+    idBack: { id: string; fileName: string; mimeType: string } | null;
+    passport: { id: string; fileName: string; mimeType: string } | null;
+  }>;
+  onViewDocument: (customerId: string, documentId: string) => void;
+  handleValidateCompanionIdentity: (companionId: string, idNumber: string, fullName: string) => Promise<void>;
   nationalityOptions: string[];
   requiredDocumentLabelClass: (hasAttachment: boolean) => string;
   updateFileInputState: (input: HTMLInputElement, hasFile: boolean) => void;
@@ -36,12 +45,114 @@ export function CompanionsStep({
   isInternalTrip,
   companionDocs,
   setCompanionDocs,
+  companionCustomerDocuments,
+  onViewDocument,
+  handleValidateCompanionIdentity,
   nationalityOptions,
   requiredDocumentLabelClass,
   updateFileInputState,
 }: CompanionsStepProps) {
   const [replacingDocs, setReplacingDocs] = useState<Record<string, { idFront: boolean; idBack: boolean; passport: boolean }>>({});
   const [showMenu, setShowMenu] = useState<string | null>(null);
+  const [showLookupModal, setShowLookupModal] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searching, setSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState<CustomerListItem[]>([]);
+  const [lookupError, setLookupError] = useState<string | null>(null);
+  const [selectedCompanionCustomer, setSelectedCompanionCustomer] = useState<CustomerListItem | null>(null);
+
+  async function handleSearchCompanion() {
+    if (!searchQuery.trim()) {
+      setLookupError('Por favor ingrese un número de identificación');
+      return;
+    }
+
+    setSearching(true);
+    setLookupError(null);
+
+    try {
+      const response = await getCustomers({ search: searchQuery.trim(), pageSize: 10 });
+      setSearchResults(response.customers);
+      if (response.customers.length === 0) {
+        setLookupError('No se encontraron clientes con esa identificación');
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Error al buscar clientes';
+      setLookupError(errorMessage);
+      setSearchResults([]);
+    } finally {
+      setSearching(false);
+    }
+  }
+
+  async function handleSelectCompanionCustomer(customer: CustomerListItem) {
+    setSelectedCompanionCustomer(customer);
+  }
+
+  function handleClearSelection() {
+    setSelectedCompanionCustomer(null);
+  }
+
+  async function handleConfirmSelection() {
+    if (!selectedCompanionCustomer) return;
+
+    try {
+      // Fetch full customer profile
+      const profile = await getCustomerProfile(selectedCompanionCustomer.id);
+      const customerData = profile.customer;
+
+      // Create companion with customer data and capture the new state
+      let newCompanionId: string | null = null;
+      setState((prev) => {
+        const newState = addCompanionFromCustomer(prev, {
+          fullName: customerData.fullName,
+          idNumber: customerData.idNumber,
+          email: customerData.email,
+          phone: customerData.phone || '',
+          emergencyContactName: customerData.emergencyContactName || '',
+          emergencyContactPhone: customerData.emergencyContactPhone || '',
+          address: customerData.address || '',
+        });
+        // Capture the newly created companion's ID (it's the last one)
+        newCompanionId = newState.companions[newState.companions.length - 1]?.id || null;
+        return newState;
+      });
+
+      // Wait for React to process the state update, then load documents
+      setTimeout(() => {
+        if (newCompanionId) {
+          handleValidateCompanionIdentity(newCompanionId, customerData.idNumber, customerData.fullName);
+        }
+      }, 50);
+
+      // Close modal
+      setShowLookupModal(false);
+      setSearchQuery('');
+      setSearchResults([]);
+      setLookupError(null);
+      setSelectedCompanionCustomer(null);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Error al cargar cliente';
+      setLookupError(errorMessage);
+    }
+  }
+
+  function handleSkipLookup() {
+    setState((prev) => addCompanion(prev));
+    setShowLookupModal(false);
+    setSearchQuery('');
+    setSearchResults([]);
+    setLookupError(null);
+    setSelectedCompanionCustomer(null);
+  }
+
+  function handleOpenLookupModal() {
+    setShowLookupModal(true);
+    setSearchQuery('');
+    setSearchResults([]);
+    setLookupError(null);
+    setSelectedCompanionCustomer(null);
+  }
 
   return (
     <div className="itinerary-box">
@@ -50,11 +161,376 @@ export function CompanionsStep({
         <button 
           type="button" 
           className="btn-secondary" 
-          onClick={() => setState((prev) => addCompanion(prev))}
+          onClick={handleOpenLookupModal}
         >
           + Agregar acompanante
         </button>
       </div>
+
+      {/* Companion Lookup Modal */}
+      {showLookupModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+        }}>
+          <div style={{
+            background: 'white',
+            borderRadius: '12px',
+            padding: '24px',
+            maxWidth: '600px',
+            width: '90%',
+            maxHeight: '80vh',
+            overflow: 'auto',
+          }}>
+            <h2 style={{ marginTop: 0, marginBottom: '24px', fontSize: '20px', fontWeight: '600', color: '#1f2937' }}>Buscar Acompañante</h2>
+            
+            <div style={{ marginBottom: '24px' }}>
+              <p style={{ color: '#6b7280', fontSize: '14px', marginBottom: '16px' }}>
+                Busque un acompañante existente por número de identificación o continúe para crear un nuevo acompañante.
+              </p>
+
+              {/* Search Input */}
+              <div style={{ display: 'flex', gap: '12px', marginBottom: '16px' }}>
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      handleSearchCompanion();
+                    }
+                  }}
+                  placeholder="Número de identificación"
+                  disabled={searching}
+                  style={{
+                    flex: 1,
+                    padding: '10px 14px',
+                    border: '2px solid #e5e7eb',
+                    borderRadius: '8px',
+                    fontSize: '15px',
+                    color: '#1f2937',
+                    transition: 'border-color 0.2s',
+                  }}
+                  onFocus={(e) => (e.currentTarget.style.borderColor = '#667eea')}
+                  onBlur={(e) => (e.currentTarget.style.borderColor = '#e5e7eb')}
+                />
+                <button
+                  onClick={handleSearchCompanion}
+                  disabled={searching}
+                  style={{
+                    padding: '10px 24px',
+                    background: searching ? '#9ca3af' : '#667eea',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '8px',
+                    cursor: searching ? 'not-allowed' : 'pointer',
+                    fontSize: '14px',
+                    fontWeight: '500',
+                    transition: 'all 0.2s',
+                    whiteSpace: 'nowrap',
+                  }}
+                  onMouseEnter={(e) => !searching && (e.currentTarget.style.background = '#5568d3')}
+                  onMouseLeave={(e) => !searching && (e.currentTarget.style.background = '#667eea')}
+                >
+                  {searching ? 'Buscando...' : '🔍 Buscar'}
+                </button>
+              </div>
+
+              {/* Error Message */}
+              {lookupError && (
+                <div
+                  style={{
+                    padding: '12px',
+                    background: '#fee2e2',
+                    border: '1px solid #fca5a5',
+                    borderRadius: '8px',
+                    color: '#991b1b',
+                    fontSize: '14px',
+                    marginBottom: '16px',
+                  }}
+                >
+                  {lookupError}
+                </div>
+              )}
+
+              {/* Selected Companion Display */}
+              {selectedCompanionCustomer && (
+                <div
+                  style={{
+                    padding: '16px',
+                    background: '#f0fdf4',
+                    border: '2px solid #86efac',
+                    borderRadius: '12px',
+                    marginBottom: '16px',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '20px' }}>✅</span>
+                      <h3 style={{ fontSize: '16px', fontWeight: '600', color: '#166534' }}>
+                        Acompañante Seleccionado
+                      </h3>
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        onClick={handleClearSelection}
+                        style={{
+                          padding: '4px 12px',
+                          background: 'transparent',
+                          color: '#166534',
+                          border: '1px solid #86efac',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          fontSize: '12px',
+                          fontWeight: '500',
+                          transition: 'all 0.2s',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = '#dcfce7';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = 'transparent';
+                        }}
+                      >
+                        Cambiar
+                      </button>
+                    </div>
+                  </div>
+                  <div style={{ display: 'grid', gap: '8px' }}>
+                    <div style={{ fontSize: '14px', color: '#15803d' }}>
+                      <strong>Nombre:</strong> {selectedCompanionCustomer.fullName}
+                    </div>
+                    <div style={{ fontSize: '14px', color: '#15803d' }}>
+                      <strong>Cédula:</strong> {selectedCompanionCustomer.idNumber}
+                    </div>
+                    <div style={{ fontSize: '14px', color: '#15803d' }}>
+                      <strong>Email:</strong> {selectedCompanionCustomer.email}
+                    </div>
+                    {selectedCompanionCustomer.phone && (
+                      <div style={{ fontSize: '14px', color: '#15803d' }}>
+                        <strong>Teléfono:</strong> {selectedCompanionCustomer.phone}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Search Results */}
+              {!selectedCompanionCustomer && searchResults.length > 0 && (
+                <div>
+                  <h3 style={{ fontSize: '16px', fontWeight: '600', color: '#374151', marginBottom: '12px' }}>
+                    Resultados de Búsqueda ({searchResults.length})
+                  </h3>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {searchResults.map((customer) => (
+                      <div
+                        key={customer.id}
+                        style={{
+                          padding: '16px',
+                          background: 'white',
+                          border: '2px solid #e5e7eb',
+                          borderRadius: '12px',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.borderColor = '#667eea';
+                          e.currentTarget.style.background = '#f9fafb';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.borderColor = '#e5e7eb';
+                          e.currentTarget.style.background = 'white';
+                        }}
+                        onClick={() => handleSelectCompanionCustomer(customer)}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+                          <div style={{ flex: 1 }}>
+                            <h4 style={{ fontSize: '16px', fontWeight: '600', color: '#1f2937', marginBottom: '8px' }}>
+                              {customer.fullName}
+                            </h4>
+                            <div style={{ display: 'grid', gap: '4px' }}>
+                              <div style={{ fontSize: '14px', color: '#6b7280' }}>
+                                <strong>Cédula:</strong> {customer.idNumber}
+                              </div>
+                              <div style={{ fontSize: '14px', color: '#6b7280' }}>
+                                <strong>Email:</strong> {customer.email}
+                              </div>
+                              {customer.phone && (
+                                <div style={{ fontSize: '14px', color: '#6b7280' }}>
+                                  <strong>Teléfono:</strong> {customer.phone}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <button
+                            style={{
+                              padding: '6px 16px',
+                              background: '#667eea',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '6px',
+                              cursor: 'pointer',
+                              fontSize: '14px',
+                              fontWeight: '500',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            Seleccionar
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* No Results Message */}
+              {!selectedCompanionCustomer && searchResults.length === 0 && !searching && lookupError && searchQuery.trim() && (
+                <div
+                  style={{
+                    padding: '40px 20px',
+                    textAlign: 'center',
+                    background: '#fef3c7',
+                    border: '2px solid #fcd34d',
+                    borderRadius: '12px',
+                  }}
+                >
+                  <div style={{ fontSize: '48px', marginBottom: '16px' }}>🔍</div>
+                  <h3
+                    style={{
+                      fontSize: '18px',
+                      fontWeight: '600',
+                      color: '#92400e',
+                      marginBottom: '8px',
+                    }}
+                  >
+                    No se encontró ningún acompañante
+                  </h3>
+                  <p style={{ color: '#b45309', fontSize: '14px', maxWidth: '500px', margin: '0 auto 16px' }}>
+                    No existe un cliente con el número de identificación "{searchQuery}".
+                  </p>
+                  <button
+                    onClick={handleSkipLookup}
+                    style={{
+                      padding: '12px 24px',
+                      background: '#10b981',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      fontSize: '15px',
+                      fontWeight: '600',
+                      transition: 'all 0.2s',
+                      marginTop: '8px',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = '#059669')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = '#10b981')}
+                  >
+                    ➕ Crear Nuevo Acompañante
+                  </button>
+                </div>
+              )}
+
+              {/* Initial State */}
+              {!selectedCompanionCustomer && !searchQuery.trim() && searchResults.length === 0 && (
+                <div
+                  style={{
+                    padding: '40px 20px',
+                    textAlign: 'center',
+                    background: '#f9fafb',
+                    borderRadius: '12px',
+                    border: '2px dashed #e5e7eb',
+                  }}
+                >
+                  <div style={{ fontSize: '48px', marginBottom: '16px' }}>👤</div>
+                  <h3
+                    style={{
+                      fontSize: '18px',
+                      fontWeight: '600',
+                      color: '#374151',
+                      marginBottom: '8px',
+                    }}
+                  >
+                    Buscar Acompañante Existente
+                  </h3>
+                  <p style={{ color: '#6b7280', fontSize: '14px', maxWidth: '500px', margin: '0 auto 16px' }}>
+                    Ingrese el número de identificación del acompañante para buscar en la base de datos.
+                    Si el acompañante ya existe, puede seleccionarlo para continuar.
+                  </p>
+                  <button
+                    onClick={handleSkipLookup}
+                    style={{
+                      padding: '12px 24px',
+                      background: '#667eea',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      fontSize: '15px',
+                      fontWeight: '600',
+                      transition: 'all 0.2s',
+                      marginTop: '8px',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = '#5568d3')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = '#667eea')}
+                  >
+                    ➕ Crear Nuevo Acompañante
+                  </button>
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '20px' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowLookupModal(false)}
+                  style={{
+                    padding: '10px 20px',
+                    background: 'white',
+                    color: '#374151',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    fontWeight: '500',
+                  }}
+                >
+                  Cancelar
+                </button>
+                {selectedCompanionCustomer && (
+                  <button
+                    type="button"
+                    onClick={handleConfirmSelection}
+                    style={{
+                      padding: '10px 20px',
+                      background: '#10b981',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      transition: 'all 0.2s',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = '#059669')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = '#10b981')}
+                  >
+                    Siguiente →
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="itinerary-list">
         {state.companions.length === 0 ? <p className="m-0 text-[#4b6790] text-sm">Aun no hay acompanantes.</p> : null}
@@ -198,9 +674,9 @@ export function CompanionsStep({
                   ))}
                 </select>
               </label>
-              <label className={requiredDocumentLabelClass(Boolean(companionDocs[companion.id]?.idFront))}>
+              <label className={requiredDocumentLabelClass(Boolean(companionDocs[companion.id]?.idFront) || Boolean(companionCustomerDocuments[companion.id]?.idFront))}>
                 Cédula frente
-                {false && !replacingDocs[companion.id]?.idFront ? (
+                {companionCustomerDocuments[companion.id]?.idFront && !replacingDocs[companion.id]?.idFront ? (
                   <div style={{ position: 'relative', marginTop: '8px' }}>
                     <button
                       type="button"
@@ -239,6 +715,7 @@ export function CompanionsStep({
                         <button
                           type="button"
                           onClick={() => {
+                            onViewDocument(companionCustomerDocuments[companion.id].customerId, companionCustomerDocuments[companion.id].idFront!.id);
                             setShowMenu(null);
                           }}
                           style={{
@@ -323,9 +800,9 @@ export function CompanionsStep({
                   </>
                 )}
               </label>
-              <label className={requiredDocumentLabelClass(Boolean(companionDocs[companion.id]?.idBack))}>
+              <label className={requiredDocumentLabelClass(Boolean(companionDocs[companion.id]?.idBack) || Boolean(companionCustomerDocuments[companion.id]?.idBack))}>
                 Cédula reverso
-                {false && !replacingDocs[companion.id]?.idBack ? (
+                {companionCustomerDocuments[companion.id]?.idBack && !replacingDocs[companion.id]?.idBack ? (
                   <div style={{ position: 'relative', marginTop: '8px' }}>
                     <button
                       type="button"
@@ -364,6 +841,7 @@ export function CompanionsStep({
                         <button
                           type="button"
                           onClick={() => {
+                            onViewDocument(companionCustomerDocuments[companion.id].customerId, companionCustomerDocuments[companion.id].idBack!.id);
                             setShowMenu(null);
                           }}
                           style={{
@@ -450,9 +928,9 @@ export function CompanionsStep({
               </label>
               {/* Pasaporte acompañante: SOLO internacional */}
               {!isInternalTrip && (
-              <label className={requiredDocumentLabelClass(Boolean(companionDocs[companion.id]?.passport))}>
+              <label className={requiredDocumentLabelClass(Boolean(companionDocs[companion.id]?.passport) || Boolean(companionCustomerDocuments[companion.id]?.passport))}>
                 Pasaporte
-                {false && !replacingDocs[companion.id]?.passport ? (
+                {companionCustomerDocuments[companion.id]?.passport && !replacingDocs[companion.id]?.passport ? (
                   <div style={{ position: 'relative', marginTop: '8px' }}>
                     <button
                       type="button"
@@ -491,6 +969,7 @@ export function CompanionsStep({
                         <button
                           type="button"
                           onClick={() => {
+                            onViewDocument(companionCustomerDocuments[companion.id].customerId, companionCustomerDocuments[companion.id].passport!.id);
                             setShowMenu(null);
                           }}
                           style={{
