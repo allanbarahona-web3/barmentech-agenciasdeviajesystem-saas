@@ -312,6 +312,7 @@ export class CustomersService {
         id: true,
         fullName: true,
         idNumber: true,
+        idType: true,
         email: true,
         phone: true,
         emergencyContactName: true,
@@ -321,6 +322,7 @@ export class CustomersService {
         dateOfBirth: true,
         nationality: true,
         occupation: true,
+        maritalStatus: true,
         address: true,
         city: true,
         country: true,
@@ -494,6 +496,7 @@ export class CustomersService {
       id: customer.id,
       fullName: customer.fullName,
       idNumber: customer.idNumber,
+      idType: customer.idType,
       email: customer.email,
       phone: customer.phone,
       emergencyContactName: customer.emergencyContactName,
@@ -503,6 +506,7 @@ export class CustomersService {
       dateOfBirth: customer.dateOfBirth,
       nationality: customer.nationality,
       occupation: customer.occupation,
+      maritalStatus: customer.maritalStatus,
       address: customer.address,
       city: customer.city,
       country: customer.country,
@@ -611,12 +615,32 @@ export class CustomersService {
       updateData.fullName = String(dto.fullName || "").trim();
     }
 
+    if (dto.idType !== undefined) {
+      updateData.idType = String(dto.idType || "").trim() || null;
+    }
+
     if (dto.email !== undefined) {
       updateData.email = String(dto.email || "").trim().toLowerCase();
     }
 
     if (dto.phone !== undefined) {
       updateData.phone = String(dto.phone || "").trim() || null;
+    }
+
+    if (dto.maritalStatus !== undefined) {
+      updateData.maritalStatus = String(dto.maritalStatus || "").trim() || null;
+    }
+
+    if (dto.nationality !== undefined) {
+      updateData.nationality = String(dto.nationality || "").trim() || null;
+    }
+
+    if (dto.occupation !== undefined) {
+      updateData.occupation = String(dto.occupation || "").trim() || null;
+    }
+
+    if (dto.address !== undefined) {
+      updateData.address = String(dto.address || "").trim() || null;
     }
 
     if (dto.emergencyContactName !== undefined) {

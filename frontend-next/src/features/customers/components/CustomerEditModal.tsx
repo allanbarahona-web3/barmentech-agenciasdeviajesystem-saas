@@ -8,17 +8,27 @@ interface CustomerEditModalProps {
   customer: {
     fullName: string;
     idNumber: string;
+    idType: string | null;
     email: string;
     phone: string | null;
     emergencyContactName: string | null;
     emergencyContactPhone: string | null;
     createdAt: string;
+    nationality: string | null;
+    occupation: string | null;
+    maritalStatus: string | null;
+    address: string | null;
   };
   onClose: () => void;
   onSave: (formData: {
     fullName: string;
+    idType: string;
     email: string;
     phone: string;
+    maritalStatus: string;
+    nationality: string;
+    occupation: string;
+    address: string;
     emergencyContactName: string;
     emergencyContactPhone: string;
   }) => Promise<void>;
@@ -27,8 +37,13 @@ interface CustomerEditModalProps {
 export function CustomerEditModal({ isOpen, customer, onClose, onSave }: CustomerEditModalProps) {
   const [editForm, setEditForm] = useState({
     fullName: customer.fullName,
+    idType: customer.idType || '',
     email: customer.email,
     phone: customer.phone || '',
+    maritalStatus: customer.maritalStatus || '',
+    nationality: customer.nationality || '',
+    occupation: customer.occupation || '',
+    address: customer.address || '',
     emergencyContactName: customer.emergencyContactName || '',
     emergencyContactPhone: customer.emergencyContactPhone || '',
   });
@@ -56,8 +71,13 @@ export function CustomerEditModal({ isOpen, customer, onClose, onSave }: Custome
     // Reset form to original values
     setEditForm({
       fullName: customer.fullName,
+      idType: customer.idType || '',
       email: customer.email,
       phone: customer.phone || '',
+      maritalStatus: customer.maritalStatus || '',
+      nationality: customer.nationality || '',
+      occupation: customer.occupation || '',
+      address: customer.address || '',
       emergencyContactName: customer.emergencyContactName || '',
       emergencyContactPhone: customer.emergencyContactPhone || '',
     });

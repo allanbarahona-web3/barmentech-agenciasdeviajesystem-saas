@@ -13,6 +13,11 @@ export class UpdateCustomerDto {
   @MaxLength(200)
   fullName?: string;
 
+  @IsString()
+  @IsOptional()
+  @MaxLength(50)
+  idType?: string | null;
+
   @IsEmail()
   @IsOptional()
   email?: string;
@@ -21,6 +26,26 @@ export class UpdateCustomerDto {
   @IsOptional()
   @MaxLength(20)
   phone?: string | null;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(50)
+  maritalStatus?: string | null;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(100)
+  nationality?: string | null;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(100)
+  occupation?: string | null;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(500)
+  address?: string | null;
 
   @IsString()
   @IsOptional()

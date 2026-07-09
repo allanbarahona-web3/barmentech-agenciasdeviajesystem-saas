@@ -59,6 +59,7 @@ export interface CustomerInfo {
   id: string;
   fullName: string;
   idNumber: string;
+  idType: string | null;
   email: string;
   phone: string | null;
   emergencyContactName: string | null;
@@ -68,6 +69,7 @@ export interface CustomerInfo {
   dateOfBirth: string | null;
   nationality: string | null;
   occupation: string | null;
+  maritalStatus: string | null;
   address: string | null;
   city: string | null;
   country: string | null;
@@ -139,8 +141,13 @@ export interface CustomerProfile {
 
 export interface UpdateCustomerDto {
   fullName?: string;
+  idType?: string;
   email?: string;
   phone?: string;
+  maritalStatus?: string;
+  nationality?: string;
+  occupation?: string;
+  address?: string;
   emergencyContactName?: string;
   emergencyContactPhone?: string;
 }

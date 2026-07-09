@@ -1,20 +1,32 @@
 'use client';
 
+import { ID_TYPE_OPTIONS, MARITAL_STATUS_OPTIONS, NATIONALITY_OPTIONS } from '@/features/contracts-form/constants';
+
 interface CustomerFormProps {
   customer: {
     fullName: string;
     idNumber: string;
+    idType: string | null;
     email: string;
     phone: string | null;
     emergencyContactName: string | null;
     emergencyContactPhone: string | null;
     createdAt: string;
+    nationality: string | null;
+    occupation: string | null;
+    maritalStatus: string | null;
+    address: string | null;
   };
   isEditMode: boolean;
   editForm: {
     fullName: string;
+    idType: string;
     email: string;
     phone: string;
+    maritalStatus: string;
+    nationality: string;
+    occupation: string;
+    address: string;
     emergencyContactName: string;
     emergencyContactPhone: string;
   };
@@ -147,6 +159,41 @@ export function CustomerForm({
             {customer.idNumber}
           </div>
         </div>
+        {/* ID Type - Editable */}
+        <div>
+          <div style={{ fontSize: '12px', fontWeight: '600', color: '#6b7280', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            Tipo de Identificación
+          </div>
+          {isEditMode ? (
+            <select
+              value={editForm.idType}
+              onChange={(e) => onEditFormChange({ idType: e.target.value })}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                border: '2px solid #e5e7eb',
+                borderRadius: '6px',
+                fontSize: '15px',
+                color: '#1f2937',
+                transition: 'border-color 0.2s',
+                backgroundColor: 'white',
+              }}
+              onFocus={(e) => (e.currentTarget.style.borderColor = '#667eea')}
+              onBlur={(e) => (e.currentTarget.style.borderColor = '#e5e7eb')}
+            >
+              <option value="">Seleccionar</option>
+              {ID_TYPE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <div style={{ fontSize: '15px', color: '#1f2937' }}>
+              {customer.idType || '-'}
+            </div>
+          )}
+        </div>
         {/* Email - Editable */}
         <div>
           <div style={{ fontSize: '12px', fontWeight: '600', color: '#6b7280', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
@@ -203,6 +250,41 @@ export function CustomerForm({
             </div>
           )}
         </div>
+        {/* Marital Status - Editable */}
+        <div>
+          <div style={{ fontSize: '12px', fontWeight: '600', color: '#6b7280', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            Estado Civil
+          </div>
+          {isEditMode ? (
+            <select
+              value={editForm.maritalStatus}
+              onChange={(e) => onEditFormChange({ maritalStatus: e.target.value })}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                border: '2px solid #e5e7eb',
+                borderRadius: '6px',
+                fontSize: '15px',
+                color: '#1f2937',
+                transition: 'border-color 0.2s',
+                backgroundColor: 'white',
+              }}
+              onFocus={(e) => (e.currentTarget.style.borderColor = '#667eea')}
+              onBlur={(e) => (e.currentTarget.style.borderColor = '#e5e7eb')}
+            >
+              <option value="">Seleccionar</option>
+              {MARITAL_STATUS_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <div style={{ fontSize: '15px', color: '#1f2937' }}>
+              {customer.maritalStatus || '-'}
+            </div>
+          )}
+        </div>
         {/* Emergency Contact - Editable */}
         <div>
           <div style={{ fontSize: '12px', fontWeight: '600', color: '#6b7280', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
@@ -253,6 +335,97 @@ export function CustomerForm({
                   ({customer.emergencyContactPhone})
                 </span>
               )}
+            </div>
+          )}
+        </div>
+        {/* Nationality - Editable */}
+        <div>
+          <div style={{ fontSize: '12px', fontWeight: '600', color: '#6b7280', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            Nacionalidad
+          </div>
+          {isEditMode ? (
+            <select
+              value={editForm.nationality}
+              onChange={(e) => onEditFormChange({ nationality: e.target.value })}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                border: '2px solid #e5e7eb',
+                borderRadius: '6px',
+                fontSize: '15px',
+                color: '#1f2937',
+                transition: 'border-color 0.2s',
+                backgroundColor: 'white',
+              }}
+              onFocus={(e) => (e.currentTarget.style.borderColor = '#667eea')}
+              onBlur={(e) => (e.currentTarget.style.borderColor = '#e5e7eb')}
+            >
+              <option value="">Seleccionar</option>
+              {NATIONALITY_OPTIONS.map((country, idx) => (
+                <option key={idx} value={country}>
+                  {country}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <div style={{ fontSize: '15px', color: '#1f2937' }}>
+              {customer.nationality || '-'}
+            </div>
+          )}
+        </div>
+        {/* Profession - Editable */}
+        <div>
+          <div style={{ fontSize: '12px', fontWeight: '600', color: '#6b7280', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            Profesión
+          </div>
+          {isEditMode ? (
+            <input
+              type="text"
+              value={editForm.occupation}
+              onChange={(e) => onEditFormChange({ occupation: e.target.value })}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                border: '2px solid #e5e7eb',
+                borderRadius: '6px',
+                fontSize: '15px',
+                color: '#1f2937',
+                transition: 'border-color 0.2s',
+              }}
+              onFocus={(e) => (e.currentTarget.style.borderColor = '#667eea')}
+              onBlur={(e) => (e.currentTarget.style.borderColor = '#e5e7eb')}
+            />
+          ) : (
+            <div style={{ fontSize: '15px', color: '#1f2937' }}>
+              {customer.occupation || '-'}
+            </div>
+          )}
+        </div>
+        {/* Address - Editable */}
+        <div>
+          <div style={{ fontSize: '12px', fontWeight: '600', color: '#6b7280', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            Dirección
+          </div>
+          {isEditMode ? (
+            <input
+              type="text"
+              value={editForm.address}
+              onChange={(e) => onEditFormChange({ address: e.target.value })}
+              style={{
+                width: '100%',
+                padding: '8px 12px',
+                border: '2px solid #e5e7eb',
+                borderRadius: '6px',
+                fontSize: '15px',
+                color: '#1f2937',
+                transition: 'border-color 0.2s',
+              }}
+              onFocus={(e) => (e.currentTarget.style.borderColor = '#667eea')}
+              onBlur={(e) => (e.currentTarget.style.borderColor = '#e5e7eb')}
+            />
+          ) : (
+            <div style={{ fontSize: '15px', color: '#1f2937' }}>
+              {customer.address || '-'}
             </div>
           )}
         </div>

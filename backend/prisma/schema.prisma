@@ -240,6 +240,7 @@ model Client {
   id                           String                @id @default(cuid())
   fullName                     String
   idNumber                     String
+  idType                       String?
   email                        String
   phone                        String?
   emergencyContactName         String?
@@ -250,6 +251,7 @@ model Client {
   dateOfBirth                  DateTime?
   nationality                  String?
   occupation                   String?
+  maritalStatus                String?
   address                      String?
   city                         String?
   country                      String?

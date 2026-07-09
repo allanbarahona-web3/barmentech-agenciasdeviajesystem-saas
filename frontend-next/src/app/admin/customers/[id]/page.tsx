@@ -84,8 +84,13 @@ export default function CustomerProfilePage() {
 
   async function handleSaveEdit(formData: {
     fullName: string;
+    idType: string;
     email: string;
     phone: string;
+    maritalStatus: string;
+    nationality: string;
+    occupation: string;
+    address: string;
     emergencyContactName: string;
     emergencyContactPhone: string;
   }) {
@@ -98,8 +103,13 @@ export default function CustomerProfilePage() {
 
       const updateData: UpdateCustomerDto = {
         fullName: formData.fullName.trim() || undefined,
+        idType: formData.idType.trim() || undefined,
         email: formData.email.trim() || undefined,
         phone: formData.phone.trim() || undefined,
+        maritalStatus: formData.maritalStatus.trim() || undefined,
+        nationality: formData.nationality.trim() || undefined,
+        occupation: formData.occupation.trim() || undefined,
+        address: formData.address.trim() || undefined,
         emergencyContactName: formData.emergencyContactName.trim() || undefined,
         emergencyContactPhone: formData.emergencyContactPhone.trim() || undefined,
       };
@@ -311,8 +321,13 @@ export default function CustomerProfilePage() {
           isEditMode={false}
           editForm={{
             fullName: '',
+            idType: '',
             email: '',
             phone: '',
+            maritalStatus: '',
+            nationality: '',
+            occupation: '',
+            address: '',
             emergencyContactName: '',
             emergencyContactPhone: '',
           }}

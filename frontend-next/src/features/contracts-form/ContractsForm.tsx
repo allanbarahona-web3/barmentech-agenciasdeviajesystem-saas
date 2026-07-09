@@ -31,47 +31,7 @@ import { InsuranceStep } from "@/features/contracts-form/wizard/steps/insurance/
 import { SummaryStep } from "@/features/contracts-form/wizard/steps/summary/SummaryStep";
 import { contractsStepRegistry } from "@/features/contracts-form/wizard/registry";
 import { getStepById } from "@/features/contracts-form/wizard/navigation/navigation-helpers";
-
-const NATIONALITY_OPTIONS = [
-  "Costa Rica",
-  "──────────",
-  "Argentina",
-  "Antigua y Barbuda",
-  "Bahamas",
-  "Barbados",
-  "Belice",
-  "Bolivia",
-  "Brasil",
-  "Canadá",
-  "Chile",
-  "Colombia",
-  "Cuba",
-  "Dominica",
-  "Ecuador",
-  "El Salvador",
-  "Estados Unidos",
-  "Granada",
-  "Guatemala",
-  "Guyana",
-  "Haití",
-  "Honduras",
-  "Jamaica",
-  "México",
-  "Nicaragua",
-  "Panamá",
-  "Paraguay",
-  "Perú",
-  "República Dominicana",
-  "San Cristóbal y Nieves",
-  "Santa Lucía",
-  "San Vicente y las Granadinas",
-  "Surinam",
-  "Trinidad y Tobago",
-  "Uruguay",
-  "Venezuela",
-  "──────────",
-  "Otro",
-];
+import { NATIONALITY_OPTIONS } from './constants';
 
 type ContractsFormProps = {
   // Original props
