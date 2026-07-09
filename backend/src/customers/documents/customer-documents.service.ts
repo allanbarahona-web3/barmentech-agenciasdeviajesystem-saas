@@ -168,6 +168,57 @@ export class CustomerDocumentsService {
     };
   }
 
+  /**
+   * Register an existing document (already uploaded) as a customer document
+   * Used when archiving contracts to link contract documents to customer profile
+   * Does NOT upload the file - reuses existing objectKey
+   */
+  async registerExistingDocument(
+    tenantId: string,
+    customerId: string,
+    category: CustomerDocumentCategory,
+    documentData: {
+      originalFileName: string;
+      objectKey: string;
+      mimeType: string;
+      size: number;
+    },
+  ) {
+    // Verify customer exists and belongs to tenant
+    await this.validateCustomer(tenantId, customerId);
+
+    // Check if this objectKey is already registered for this customer
+    const existing = await this.prisma.customerDocument.findFirst({
+      where: {
+        customerId,
+        tenantId,
+        objectKey: documentData.objectKey,
+      },
+    });
+
+    if (existing) {
+      // Already registered, skip
+      this.logger.debug(`Document ${documentData.objectKey} already registered for customer ${customerId}`);
+      return existing;
+    }
+
+    // Create customer document record without uploading
+    const document = await this.prisma.customerDocument.create({
+      data: {
+        customerId,
+        tenantId,
+        category,
+        originalFileName: documentData.originalFileName,
+        objectKey: documentData.objectKey,
+        mimeType: documentData.mimeType,
+        size: documentData.size,
+      },
+    });
+
+    this.logger.log(`✅ Registered customer document: ${documentData.originalFileName} (${category})`);
+    return document;
+  }
+
   // ========== Private Helper Methods ==========
 
   /**

@@ -13,11 +13,13 @@ import { StorageService } from "../storage/storage.service";
 import { BillingService } from "../billing/billing.service";
 import { ContractsEmailsService } from "./contracts-emails.service";
 import { CustomersService } from "../customers/customers.service";
+import { CustomerDocumentsService } from "../customers/documents/customer-documents.service";
 import { DocumentSigningService } from "../documents/document-signing.service";
 import { DocumentSigningAuditService } from "../documents/document-signing-audit.service";
 import { DocumentSignatureFinalizationService } from "../documents/document-signature-finalization.service";
 import { DocumentDeliveryService } from "../documents/document-delivery.service";
 import { ArchiveContractDto } from "./dto/archive-contract.dto";
+import { CustomerDocumentCategory } from "@prisma/client";
 
 import { SendContractEmailDto } from "./dto/send-contract-email.dto";
 import { SendSigningEmailDto } from "./dto/send-signing-email.dto";
@@ -61,6 +63,7 @@ export class ContractsService {
     private readonly billingService: BillingService,
     private readonly contractsEmailsService: ContractsEmailsService,
     private readonly customersService: CustomersService,
+    private readonly customerDocumentsService: CustomerDocumentsService,
     private readonly documentSigningService: DocumentSigningService,
     private readonly documentSigningAuditService: DocumentSigningAuditService,
     private readonly documentSignatureFinalizationService: DocumentSignatureFinalizationService,
@@ -198,6 +201,39 @@ export class ContractsService {
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
+  }
+
+  /**
+   * Determines CustomerDocumentCategory from filename
+   * Maps wizard upload prefixes to document categories
+   * Returns null if the file is not a customer document
+   */
+  private getCategoryFromFilename(filename: string): CustomerDocumentCategory | null {
+    const lower = filename.toLowerCase();
+    
+    // Map common prefixes used in the wizard to categories
+    if (lower.includes('cedula-frente') || lower.includes('id-front') || lower.includes('identificacion-frente')) {
+      return CustomerDocumentCategory.ID_FRONT;
+    }
+    if (lower.includes('cedula-reverso') || lower.includes('id-back') || lower.includes('identificacion-reverso')) {
+      return CustomerDocumentCategory.ID_BACK;
+    }
+    if (lower.includes('pasaporte') || lower.includes('passport')) {
+      return CustomerDocumentCategory.PASSPORT;
+    }
+    if (lower.includes('foto') || lower.includes('photo') || lower.includes('perfil') || lower.includes('profile')) {
+      return CustomerDocumentCategory.PROFILE_PHOTO;
+    }
+    
+    // Skip files that are clearly not customer documents
+    if (lower.includes('recibo') || lower.includes('receipt') || 
+        lower.includes('comprobante') || lower.includes('voucher') ||
+        lower.includes('reserva') || lower.includes('reservation')) {
+      return null;
+    }
+    
+    // Default to OTHER for unrecognized customer documents
+    return CustomerDocumentCategory.OTHER;
   }
 
   private getTenantBasePath(tenantSubdomain: string): string {
@@ -1123,6 +1159,43 @@ export class ContractsService {
     const pdfUrl = !isInternalTrip && pdfKey 
       ? await this.buildSignedObjectUrl(pdfKey, 900)
       : null;
+
+    // ========================================================================
+    // 📄 Register customer documents from contract documents
+    // ========================================================================
+    if (archived.documents && archived.documents.length > 0) {
+      this.logger.log(`📄 Registering ${archived.documents.length} contract documents as customer documents...`);
+      
+      for (const doc of archived.documents) {
+        try {
+          const category = this.getCategoryFromFilename(doc.originalFileName);
+          
+          if (category === null) {
+            this.logger.debug(`Skipping non-customer document: ${doc.originalFileName}`);
+            continue;
+          }
+          
+          await this.customerDocumentsService.registerExistingDocument(
+            user.tenantId,
+            client.id,
+            category,
+            {
+              originalFileName: doc.originalFileName,
+              objectKey: doc.objectKey,
+              mimeType: doc.mimeType,
+              size: doc.size,
+            },
+          );
+          
+          this.logger.log(`✅ Registered: ${doc.originalFileName} → ${category}`);
+        } catch (error) {
+          // Log but don't fail the entire contract creation
+          this.logger.error(
+            `Failed to register customer document ${doc.originalFileName}: ${error instanceof Error ? error.message : String(error)}`
+          );
+        }
+      }
+    }
 
     if (dto.draftId?.trim()) {
       await (this.prisma as any).contractDraft.deleteMany({
