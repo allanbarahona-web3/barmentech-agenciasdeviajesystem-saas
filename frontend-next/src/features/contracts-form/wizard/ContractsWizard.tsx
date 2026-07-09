@@ -1,6 +1,7 @@
 "use client";
 
 import { ContractsForm } from "@/features/contracts-form/ContractsForm";
+import AttachmentViewer from "@/components/attachment-viewer";
 import { useState, useRef, useMemo, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { contractsStepRegistry } from "@/features/contracts-form/wizard/registry";
@@ -28,7 +29,7 @@ import { getContractDraft, reserveNextContractNumber, saveContractDraft, archive
 import { bootstrapBillingContract } from "@/lib/billing-api";
 import { getTravelPackageById } from "@/lib/travel-packages-api";
 import { getInternalTripById } from "@/lib/internal-trips-api";
-import { validateCustomerIdentity, getCustomerProfile } from "@/lib/customers-api";
+import { validateCustomerIdentity, getCustomerProfile, getCustomerDocumentDownloadUrl } from "@/lib/customers-api";
 import { getTenantLegalConfig, getTenantConfig, type TenantLegalConfig } from "@/lib/auth-api";
 import { getAllBankAccounts } from "@/lib/bank-accounts-api";
 import { type TenantLegalInfo, type BankAccountForContract } from "@/features/contracts-form/pdf-template";
@@ -158,10 +159,21 @@ export function ContractsWizard({
     }
   }, [searchParams]);
 
-  // ==================== CUSTOMER PREFILL ====================
-  // Prefill holder fields when a customer is selected in Customer Lookup
+  // ==================== CUSTOMER PREFILL & DOCUMENTS ====================
+  // Prefill holder fields and load documents when a customer is selected in Customer Lookup
+  const [existingCustomerDocuments, setExistingCustomerDocuments] = useState<{
+    idFront: { id: string; fileName: string; mimeType: string } | null;
+    idBack: { id: string; fileName: string; mimeType: string } | null;
+    passport: { id: string; fileName: string; mimeType: string } | null;
+  }>({ idFront: null, idBack: null, passport: null });
+  const [attachmentViewerData, setAttachmentViewerData] = useState<{
+    attachments: Array<{ id: string; originalFileName: string; url: string; mimeType: string }>;
+    initialIndex: number;
+  } | null>(null);
+
   useEffect(() => {
     if (!state.selectedCustomerId) {
+      setExistingCustomerDocuments({ idFront: null, idBack: null, passport: null });
       return;
     }
 
@@ -171,6 +183,7 @@ export function ContractsWizard({
       try {
         const profile = await getCustomerProfile(state.selectedCustomerId!);
         const customer = profile.customer;
+        const documents = profile.documents || [];
 
         if (isCancelled) return;
 
@@ -184,6 +197,17 @@ export function ContractsWizard({
           emergencyContactName: customer.emergencyContactName || '',
           emergencyContactPhone: customer.emergencyContactPhone || '',
         }));
+
+        // Map customer documents to holder documents
+        const idFront = documents.find(d => d.category === 'ID_FRONT');
+        const idBack = documents.find(d => d.category === 'ID_BACK');
+        const passport = documents.find(d => d.category === 'PASSPORT');
+
+        setExistingCustomerDocuments({
+          idFront: idFront ? { id: idFront.id, fileName: idFront.originalFileName, mimeType: idFront.mimeType } : null,
+          idBack: idBack ? { id: idBack.id, fileName: idBack.originalFileName, mimeType: idBack.mimeType } : null,
+          passport: passport ? { id: passport.id, fileName: passport.originalFileName, mimeType: passport.mimeType } : null,
+        });
       } catch (err) {
         console.error('Error fetching customer for prefill:', err);
         // Silent fail - user can still manually enter data
@@ -196,6 +220,40 @@ export function ContractsWizard({
       isCancelled = true;
     };
   }, [state.selectedCustomerId]);
+
+  // ==================== DOCUMENT VIEWER ====================
+  const handleViewDocument = async (customerId: string, documentId: string) => {
+    try {
+      // Fetch all documents for this customer
+      const profile = await getCustomerProfile(customerId);
+      const documents = profile.documents || [];
+
+      // Get download URLs for all documents
+      const attachments = await Promise.all(
+        documents.map(async (doc) => {
+          const result = await getCustomerDocumentDownloadUrl(customerId, doc.id);
+          return {
+            id: doc.id,
+            originalFileName: doc.originalFileName || 'documento.pdf',
+            url: result.url,
+            mimeType: doc.mimeType || 'application/pdf',
+          };
+        })
+      );
+
+      // Find the index of the clicked document
+      const initialIndex = documents.findIndex((doc) => doc.id === documentId);
+
+      // Set viewer data to open the viewer
+      setAttachmentViewerData({
+        attachments,
+        initialIndex: initialIndex >= 0 ? initialIndex : 0,
+      });
+    } catch (error) {
+      console.error('Error viewing document:', error);
+      alert('Error al abrir el documento');
+    }
+  };
 
   // ==================== COMPUTED VALUES ====================
   const todayIso = useMemo(() => getTodayIsoLocal(), []);
@@ -537,6 +595,16 @@ export function ContractsWizard({
 
   const collectDocumentsForArchive = (): File[] => {
     const docs: File[] = [];
+
+    // TODO Story 5.2: Complete document inheritance
+    // Current limitation: Only newly uploaded files are included in the contract.
+    // Existing customer documents that aren't replaced are NOT automatically linked to the contract.
+    // To fully implement "existing + replaced + newly uploaded", the backend archiveContract API
+    // needs to accept a list of existing customerDocumentIds to link (without re-uploading).
+    // For now, contracts will contain only:
+    // - Newly uploaded documents
+    // - Replacement documents (new uploads)
+    // Existing documents remain in customer profile but aren't explicitly linked to this contract.
 
     if (holderDocs.idFront) docs.push(cloneWithPrefix(holderDocs.idFront, "titular-cedula-frente"));
     if (holderDocs.idBack) docs.push(cloneWithPrefix(holderDocs.idBack, "titular-cedula-reverso"));
@@ -1072,11 +1140,12 @@ console.log("====================================");
   };
 
   return (
-    <ContractsForm
-      agent={agent}
-      initialDraftId={initialDraftId}
-      initialTravelPackageId={initialTravelPackageId}
-      initialInternalTripId={initialInternalTripId}
+    <>
+      <ContractsForm
+        agent={agent}
+        initialDraftId={initialDraftId}
+        initialTravelPackageId={initialTravelPackageId}
+        initialInternalTripId={initialInternalTripId}
       mode={mode}
       state={state}
       setState={setState}
@@ -1104,6 +1173,8 @@ console.log("====================================");
       setLatestSigningLinks={setLatestSigningLinks}
       holderDocs={holderDocs}
       setHolderDocs={setHolderDocs}
+      existingCustomerDocuments={existingCustomerDocuments}
+      onViewDocument={handleViewDocument}
       supportDocs={supportDocs}
       setSupportDocs={setSupportDocs}
       reservationProof={reservationProof}
@@ -1153,5 +1224,13 @@ console.log("====================================");
       totalSteps={totalSteps}
       completedSteps={completedSteps}
     />
+      {attachmentViewerData && (
+        <AttachmentViewer
+          attachments={attachmentViewerData.attachments}
+          initialIndex={attachmentViewerData.initialIndex}
+          onClose={() => setAttachmentViewerData(null)}
+        />
+      )}
+    </>
   );
 }

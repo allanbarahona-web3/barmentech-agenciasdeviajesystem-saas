@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { ContractFormState } from "@/features/contracts-form/types";
 import { addCompanion, removeCompanion, updateCompanion } from "@/features/contracts-form/utils";
 
@@ -39,6 +40,9 @@ export function CompanionsStep({
   requiredDocumentLabelClass,
   updateFileInputState,
 }: CompanionsStepProps) {
+  const [replacingDocs, setReplacingDocs] = useState<Record<string, { idFront: boolean; idBack: boolean; passport: boolean }>>({});
+  const [showMenu, setShowMenu] = useState<string | null>(null);
+
   return (
     <div className="itinerary-box">
       <div className="itinerary-head">
@@ -196,76 +200,379 @@ export function CompanionsStep({
               </label>
               <label className={requiredDocumentLabelClass(Boolean(companionDocs[companion.id]?.idFront))}>
                 Cédula frente
-                <input
-                  type="file"
-                  accept=".pdf,.jpg,.jpeg,.png,.webp"
-                  key={companionDocs[companion.id]?.idFront ? companionDocs[companion.id].idFront!.name : `empty-${companion.id}-idFront`}
-                  onChange={(event) => {
-                    const file = event.target.files?.[0] || null;
-                    updateFileInputState(event.target, !!file);
-                    setCompanionDocs((prev) => ({
-                      ...prev,
-                      [companion.id]: {
-                        idFront: file,
-                        idBack: prev[companion.id]?.idBack || null,
-                        passport: prev[companion.id]?.passport || null,
-                      },
-                    }));
-                    setState((prev) => updateCompanion(prev, companion.id, "idFrontDocumentName", file?.name || ""));
-                  }}
-                />
-                {companionDocs[companion.id]?.idFront && (
-                  <small style={{ color: '#1a8a4e', fontWeight: 600 }}>✓ {companionDocs[companion.id].idFront!.name}</small>
+                {false && !replacingDocs[companion.id]?.idFront ? (
+                  <div style={{ position: 'relative', marginTop: '8px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setShowMenu(showMenu === `${companion.id}-idFront` ? null : `${companion.id}-idFront`)}
+                      style={{
+                        width: '100%',
+                        padding: '8px 12px',
+                        background: 'white',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        fontSize: '14px',
+                        color: '#374151'
+                      }}
+                    >
+                      <span>✓ Existing document</span>
+                      <span>▼</span>
+                    </button>
+                    {showMenu === `${companion.id}-idFront` && (
+                      <div style={{
+                        position: 'absolute',
+                        top: '100%',
+                        left: 0,
+                        right: 0,
+                        marginTop: '4px',
+                        background: 'white',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '6px',
+                        boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+                        zIndex: 10,
+                        overflow: 'hidden'
+                      }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowMenu(null);
+                          }}
+                          style={{
+                            width: '100%',
+                            padding: '10px 12px',
+                            background: 'white',
+                            border: 'none',
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                            fontSize: '14px'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
+                          onMouseLeave={(e) => e.currentTarget.style.background = 'white'}
+                        >
+                          View document
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setReplacingDocs(prev => ({ ...prev, [companion.id]: { ...prev[companion.id], idFront: true } }));
+                            setShowMenu(null);
+                          }}
+                          style={{
+                            width: '100%',
+                            padding: '10px 12px',
+                            background: 'white',
+                            border: 'none',
+                            borderTop: '1px solid #f3f4f6',
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                            fontSize: '14px'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
+                          onMouseLeave={(e) => e.currentTarget.style.background = 'white'}
+                        >
+                          Replace document
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    <input
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png,.webp"
+                      key={companionDocs[companion.id]?.idFront ? companionDocs[companion.id].idFront!.name : `empty-${companion.id}-idFront`}
+                      onChange={(event) => {
+                        const file = event.target.files?.[0] || null;
+                        updateFileInputState(event.target, !!file);
+                        setCompanionDocs((prev) => ({
+                          ...prev,
+                          [companion.id]: {
+                            idFront: file,
+                            idBack: prev[companion.id]?.idBack || null,
+                            passport: prev[companion.id]?.passport || null,
+                          },
+                        }));
+                        setState((prev) => updateCompanion(prev, companion.id, "idFrontDocumentName", file?.name || ""));
+                      }}
+                    />
+                    {companionDocs[companion.id]?.idFront && (
+                      <small style={{ color: '#1a8a4e', fontWeight: 600 }}>✓ {companionDocs[companion.id].idFront!.name}</small>
+                    )}
+                    {replacingDocs[companion.id]?.idFront && (
+                      <button
+                        type="button"
+                        onClick={() => setReplacingDocs(prev => ({ ...prev, [companion.id]: { ...prev[companion.id], idFront: false } }))}
+                        style={{
+                          marginTop: '6px',
+                          padding: '4px 10px',
+                          background: '#ef4444',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                          fontSize: '11px'
+                        }}
+                      >
+                        Cancelar
+                      </button>
+                    )}
+                  </>
                 )}
               </label>
               <label className={requiredDocumentLabelClass(Boolean(companionDocs[companion.id]?.idBack))}>
                 Cédula reverso
-                <input
-                  type="file"
-                  accept=".pdf,.jpg,.jpeg,.png,.webp"
-                  key={companionDocs[companion.id]?.idBack ? companionDocs[companion.id].idBack!.name : `empty-${companion.id}-idBack`}
-                  onChange={(event) => {
-                    const file = event.target.files?.[0] || null;
-                    updateFileInputState(event.target, !!file);
-                    setCompanionDocs((prev) => ({
-                      ...prev,
-                      [companion.id]: {
-                        idFront: prev[companion.id]?.idFront || null,
-                        idBack: file,
-                        passport: prev[companion.id]?.passport || null,
-                      },
-                    }));
-                    setState((prev) => updateCompanion(prev, companion.id, "idBackDocumentName", file?.name || ""));
-                  }}
-                />
-                {companionDocs[companion.id]?.idBack && (
-                  <small style={{ color: '#1a8a4e', fontWeight: 600 }}>✓ {companionDocs[companion.id].idBack!.name}</small>
+                {false && !replacingDocs[companion.id]?.idBack ? (
+                  <div style={{ position: 'relative', marginTop: '8px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setShowMenu(showMenu === `${companion.id}-idBack` ? null : `${companion.id}-idBack`)}
+                      style={{
+                        width: '100%',
+                        padding: '8px 12px',
+                        background: 'white',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        fontSize: '14px',
+                        color: '#374151'
+                      }}
+                    >
+                      <span>✓ Existing document</span>
+                      <span>▼</span>
+                    </button>
+                    {showMenu === `${companion.id}-idBack` && (
+                      <div style={{
+                        position: 'absolute',
+                        top: '100%',
+                        left: 0,
+                        right: 0,
+                        marginTop: '4px',
+                        background: 'white',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '6px',
+                        boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+                        zIndex: 10,
+                        overflow: 'hidden'
+                      }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowMenu(null);
+                          }}
+                          style={{
+                            width: '100%',
+                            padding: '10px 12px',
+                            background: 'white',
+                            border: 'none',
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                            fontSize: '14px'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
+                          onMouseLeave={(e) => e.currentTarget.style.background = 'white'}
+                        >
+                          View document
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setReplacingDocs(prev => ({ ...prev, [companion.id]: { ...prev[companion.id], idBack: true } }));
+                            setShowMenu(null);
+                          }}
+                          style={{
+                            width: '100%',
+                            padding: '10px 12px',
+                            background: 'white',
+                            border: 'none',
+                            borderTop: '1px solid #f3f4f6',
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                            fontSize: '14px'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
+                          onMouseLeave={(e) => e.currentTarget.style.background = 'white'}
+                        >
+                          Replace document
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    <input
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png,.webp"
+                      key={companionDocs[companion.id]?.idBack ? companionDocs[companion.id].idBack!.name : `empty-${companion.id}-idBack`}
+                      onChange={(event) => {
+                        const file = event.target.files?.[0] || null;
+                        updateFileInputState(event.target, !!file);
+                        setCompanionDocs((prev) => ({
+                          ...prev,
+                          [companion.id]: {
+                            idFront: prev[companion.id]?.idFront || null,
+                            idBack: file,
+                            passport: prev[companion.id]?.passport || null,
+                          },
+                        }));
+                        setState((prev) => updateCompanion(prev, companion.id, "idBackDocumentName", file?.name || ""));
+                      }}
+                    />
+                    {companionDocs[companion.id]?.idBack && (
+                      <small style={{ color: '#1a8a4e', fontWeight: 600 }}>✓ {companionDocs[companion.id].idBack!.name}</small>
+                    )}
+                    {replacingDocs[companion.id]?.idBack && (
+                      <button
+                        type="button"
+                        onClick={() => setReplacingDocs(prev => ({ ...prev, [companion.id]: { ...prev[companion.id], idBack: false } }))}
+                        style={{
+                          marginTop: '6px',
+                          padding: '4px 10px',
+                          background: '#ef4444',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                          fontSize: '11px'
+                        }}
+                      >
+                        Cancelar
+                      </button>
+                    )}
+                  </>
                 )}
               </label>
               {/* Pasaporte acompañante: SOLO internacional */}
               {!isInternalTrip && (
               <label className={requiredDocumentLabelClass(Boolean(companionDocs[companion.id]?.passport))}>
                 Pasaporte
-                <input
-                  type="file"
-                  accept=".pdf,.jpg,.jpeg,.png,.webp"
-                  key={companionDocs[companion.id]?.passport ? companionDocs[companion.id].passport!.name : `empty-${companion.id}-passport`}
-                  onChange={(event) => {
-                    const file = event.target.files?.[0] || null;
-                    updateFileInputState(event.target, !!file);
-                    setCompanionDocs((prev) => ({
-                      ...prev,
-                      [companion.id]: {
-                        idFront: prev[companion.id]?.idFront || null,
-                        idBack: prev[companion.id]?.idBack || null,
-                        passport: file,
-                      },
-                    }));
-                    setState((prev) => updateCompanion(prev, companion.id, "passportDocumentName", file?.name || ""));
-                  }}
-                />
-                {companionDocs[companion.id]?.passport && (
-                  <small style={{ color: '#1a8a4e', fontWeight: 600 }}>✓ {companionDocs[companion.id].passport!.name}</small>
+                {false && !replacingDocs[companion.id]?.passport ? (
+                  <div style={{ position: 'relative', marginTop: '8px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setShowMenu(showMenu === `${companion.id}-passport` ? null : `${companion.id}-passport`)}
+                      style={{
+                        width: '100%',
+                        padding: '8px 12px',
+                        background: 'white',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        fontSize: '14px',
+                        color: '#374151'
+                      }}
+                    >
+                      <span>✓ Existing document</span>
+                      <span>▼</span>
+                    </button>
+                    {showMenu === `${companion.id}-passport` && (
+                      <div style={{
+                        position: 'absolute',
+                        top: '100%',
+                        left: 0,
+                        right: 0,
+                        marginTop: '4px',
+                        background: 'white',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '6px',
+                        boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+                        zIndex: 10,
+                        overflow: 'hidden'
+                      }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowMenu(null);
+                          }}
+                          style={{
+                            width: '100%',
+                            padding: '10px 12px',
+                            background: 'white',
+                            border: 'none',
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                            fontSize: '14px'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
+                          onMouseLeave={(e) => e.currentTarget.style.background = 'white'}
+                        >
+                          View document
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setReplacingDocs(prev => ({ ...prev, [companion.id]: { ...prev[companion.id], passport: true } }));
+                            setShowMenu(null);
+                          }}
+                          style={{
+                            width: '100%',
+                            padding: '10px 12px',
+                            background: 'white',
+                            border: 'none',
+                            borderTop: '1px solid #f3f4f6',
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                            fontSize: '14px'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
+                          onMouseLeave={(e) => e.currentTarget.style.background = 'white'}
+                        >
+                          Replace document
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    <input
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png,.webp"
+                      key={companionDocs[companion.id]?.passport ? companionDocs[companion.id].passport!.name : `empty-${companion.id}-passport`}
+                      onChange={(event) => {
+                        const file = event.target.files?.[0] || null;
+                        updateFileInputState(event.target, !!file);
+                        setCompanionDocs((prev) => ({
+                          ...prev,
+                          [companion.id]: {
+                            idFront: prev[companion.id]?.idFront || null,
+                            idBack: prev[companion.id]?.idBack || null,
+                            passport: file,
+                          },
+                        }));
+                        setState((prev) => updateCompanion(prev, companion.id, "passportDocumentName", file?.name || ""));
+                      }}
+                    />
+                    {companionDocs[companion.id]?.passport && (
+                      <small style={{ color: '#1a8a4e', fontWeight: 600 }}>✓ {companionDocs[companion.id].passport!.name}</small>
+                    )}
+                    {replacingDocs[companion.id]?.passport && (
+                      <button
+                        type="button"
+                        onClick={() => setReplacingDocs(prev => ({ ...prev, [companion.id]: { ...prev[companion.id], passport: false } }))}
+                        style={{
+                          marginTop: '6px',
+                          padding: '4px 10px',
+                          background: '#ef4444',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                          fontSize: '11px'
+                        }}
+                      >
+                        Cancelar
+                      </button>
+                    )}
+                  </>
                 )}
               </label>
               )}

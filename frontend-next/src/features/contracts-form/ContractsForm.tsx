@@ -113,6 +113,12 @@ type ContractsFormProps = {
   setLatestSigningLinks: React.Dispatch<React.SetStateAction<Array<{ signerKey: string; signerName: string; signerEmail: string | null; signingUrl: string }>>>;
   holderDocs: { idFront: File | null; idBack: File | null; passport: File | null };
   setHolderDocs: React.Dispatch<React.SetStateAction<{ idFront: File | null; idBack: File | null; passport: File | null }>>;
+  existingCustomerDocuments: {
+    idFront: { id: string; fileName: string; mimeType: string } | null;
+    idBack: { id: string; fileName: string; mimeType: string } | null;
+    passport: { id: string; fileName: string; mimeType: string } | null;
+  };
+  onViewDocument: (customerId: string, documentId: string) => void;
   supportDocs: File[];
   setSupportDocs: React.Dispatch<React.SetStateAction<File[]>>;
   reservationProof: File | null;
@@ -239,6 +245,8 @@ export function ContractsForm(props: ContractsFormProps) {
     setLatestSigningLinks,
     holderDocs,
     setHolderDocs,
+    existingCustomerDocuments,
+    onViewDocument,
     supportDocs,
     setSupportDocs,
     reservationProof,
@@ -416,6 +424,8 @@ export function ContractsForm(props: ContractsFormProps) {
               isInternalTrip={isInternalTrip}
               holderDocs={holderDocs}
               setHolderDocs={setHolderDocs}
+              existingCustomerDocuments={existingCustomerDocuments}
+              onViewDocument={onViewDocument}
               nationalityOptions={NATIONALITY_OPTIONS}
               requiredDocumentLabelClass={requiredDocumentLabelClass}
               updateFileInputState={updateFileInputState}

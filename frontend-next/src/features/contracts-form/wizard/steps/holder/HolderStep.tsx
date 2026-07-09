@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { ContractFormState, IdType } from "@/features/contracts-form/types";
 
 export interface HolderStepProps {
@@ -6,6 +7,12 @@ export interface HolderStepProps {
   isInternalTrip: boolean;
   holderDocs: { idFront: File | null; idBack: File | null; passport: File | null };
   setHolderDocs: React.Dispatch<React.SetStateAction<{ idFront: File | null; idBack: File | null; passport: File | null }>>;
+  existingCustomerDocuments: {
+    idFront: { id: string; fileName: string; mimeType: string } | null;
+    idBack: { id: string; fileName: string; mimeType: string } | null;
+    passport: { id: string; fileName: string; mimeType: string } | null;
+  };
+  onViewDocument: (customerId: string, documentId: string) => void;
   nationalityOptions: string[];
   requiredDocumentLabelClass: (hasAttachment: boolean) => string;
   updateFileInputState: (input: HTMLInputElement, hasFile: boolean) => void;
@@ -38,11 +45,27 @@ export function HolderStep({
   isInternalTrip,
   holderDocs,
   setHolderDocs,
+  existingCustomerDocuments,
+  onViewDocument,
   nationalityOptions,
   requiredDocumentLabelClass,
   updateFileInputState,
   handleValidateCustomerIdentity,
 }: HolderStepProps) {
+  // Track which documents are being replaced
+  const [replacingDocs, setReplacingDocs] = useState<{
+    idFront: boolean;
+    idBack: boolean;
+    passport: boolean;
+  }>({ idFront: false, idBack: false, passport: false });
+  const [showMenu, setShowMenu] = useState<string | null>(null);
+
+  const hasExistingIdFront = Boolean(existingCustomerDocuments.idFront);
+  const hasExistingIdBack = Boolean(existingCustomerDocuments.idBack);
+  const hasExistingPassport = Boolean(existingCustomerDocuments.passport);
+  const hasAttachment = (docType: 'idFront' | 'idBack' | 'passport') => 
+    Boolean(holderDocs[docType]) || Boolean(existingCustomerDocuments[docType]);
+
   return (
     <div className="form-section-card">
       <h2 className="section-title">Datos del Cliente</h2>
@@ -158,68 +181,376 @@ export function HolderStep({
           </select>
         </label>
 
-        <label className={requiredDocumentLabelClass(Boolean(holderDocs.idFront))}>
+        {/* Cédula (frente) - Existing or Upload */}
+        <label className={requiredDocumentLabelClass(hasAttachment('idFront'))}>
           Cédula titular (frente)
-          <input
-            type="file"
-            accept=".pdf,.jpg,.jpeg,.png,.webp"
-            key={holderDocs.idFront ? holderDocs.idFront.name : 'empty-idFront'}
-            onChange={(event) => {
-              const file = event.target.files?.[0] || null;
-              updateFileInputState(event.target, !!file);
-              setHolderDocs((prev) => ({ ...prev, idFront: file }));
-              setState((prev) => ({
-                ...prev,
-                idFrontDocumentName: file?.name || "",
-              }));
-            }}
-          />
-          {holderDocs.idFront && (
-            <small style={{ color: '#1a8a4e', fontWeight: 600 }}>✓ {holderDocs.idFront.name}</small>
+          {hasExistingIdFront && !replacingDocs.idFront ? (
+            <div style={{ position: 'relative', marginTop: '8px' }}>
+              <button
+                type="button"
+                onClick={() => setShowMenu(showMenu === 'idFront' ? null : 'idFront')}
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  background: 'white',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  fontSize: '14px',
+                  color: '#374151'
+                }}
+              >
+                <span>✓ Existing document</span>
+                <span>▼</span>
+              </button>
+              {showMenu === 'idFront' && (
+                <div style={{
+                  position: 'absolute',
+                  top: '100%',
+                  left: 0,
+                  right: 0,
+                  marginTop: '4px',
+                  background: 'white',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '6px',
+                  boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+                  zIndex: 10,
+                  overflow: 'hidden'
+                }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onViewDocument(state.selectedCustomerId!, existingCustomerDocuments.idFront!.id);
+                      setShowMenu(null);
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      background: 'white',
+                      border: 'none',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      fontSize: '14px'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = 'white'}
+                  >
+                    View document
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setReplacingDocs(prev => ({ ...prev, idFront: true }));
+                      setShowMenu(null);
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      background: 'white',
+                      border: 'none',
+                      borderTop: '1px solid #f3f4f6',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      fontSize: '14px'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = 'white'}
+                  >
+                    Replace document
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <>
+              <input
+                type="file"
+                accept=".pdf,.jpg,.jpeg,.png,.webp"
+                key={holderDocs.idFront ? holderDocs.idFront.name : 'empty-idFront'}
+                onChange={(event) => {
+                  const file = event.target.files?.[0] || null;
+                  updateFileInputState(event.target, !!file);
+                  setHolderDocs((prev) => ({ ...prev, idFront: file }));
+                  setState((prev) => ({
+                    ...prev,
+                    idFrontDocumentName: file?.name || "",
+                  }));
+                }}
+              />
+              {holderDocs.idFront && (
+                <small style={{ color: '#1a8a4e', fontWeight: 600 }}>✓ {holderDocs.idFront.name}</small>
+              )}
+              {replacingDocs.idFront && (
+                <button
+                  type="button"
+                  onClick={() => setReplacingDocs(prev => ({ ...prev, idFront: false }))}
+                  style={{
+                    marginTop: '6px',
+                    padding: '4px 10px',
+                    background: '#ef4444',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontSize: '11px'
+                  }}
+                >
+                  Cancelar
+                </button>
+              )}
+            </>
           )}
         </label>
 
-        <label className={requiredDocumentLabelClass(Boolean(holderDocs.idBack))}>
+        {/* Cédula (reverso) - Existing or Upload */}
+        <label className={requiredDocumentLabelClass(hasAttachment('idBack'))}>
           Cédula titular (reverso)
-          <input
-            type="file"
-            accept=".pdf,.jpg,.jpeg,.png,.webp"
-            key={holderDocs.idBack ? holderDocs.idBack.name : 'empty-idBack'}
-            onChange={(event) => {
-              const file = event.target.files?.[0] || null;
-              updateFileInputState(event.target, !!file);
-              setHolderDocs((prev) => ({ ...prev, idBack: file }));
-              setState((prev) => ({
-                ...prev,
-                idBackDocumentName: file?.name || "",
-              }));
-            }}
-          />
-          {holderDocs.idBack && (
-            <small style={{ color: '#1a8a4e', fontWeight: 600 }}>✓ {holderDocs.idBack.name}</small>
+          {hasExistingIdBack && !replacingDocs.idBack ? (
+            <div style={{ position: 'relative', marginTop: '8px' }}>
+              <button
+                type="button"
+                onClick={() => setShowMenu(showMenu === 'idBack' ? null : 'idBack')}
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  background: 'white',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  fontSize: '14px',
+                  color: '#374151'
+                }}
+              >
+                <span>✓ Existing document</span>
+                <span>▼</span>
+              </button>
+              {showMenu === 'idBack' && (
+                <div style={{
+                  position: 'absolute',
+                  top: '100%',
+                  left: 0,
+                  right: 0,
+                  marginTop: '4px',
+                  background: 'white',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '6px',
+                  boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+                  zIndex: 10,
+                  overflow: 'hidden'
+                }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onViewDocument(state.selectedCustomerId!, existingCustomerDocuments.idBack!.id);
+                      setShowMenu(null);
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      background: 'white',
+                      border: 'none',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      fontSize: '14px'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = 'white'}
+                  >
+                    View document
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setReplacingDocs(prev => ({ ...prev, idBack: true }));
+                      setShowMenu(null);
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      background: 'white',
+                      border: 'none',
+                      borderTop: '1px solid #f3f4f6',
+                      cursor: 'pointer',
+                      textAlign: 'left',
+                      fontSize: '14px'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = 'white'}
+                  >
+                    Replace document
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : (
+            <>
+              <input
+                type="file"
+                accept=".pdf,.jpg,.jpeg,.png,.webp"
+                key={holderDocs.idBack ? holderDocs.idBack.name : 'empty-idBack'}
+                onChange={(event) => {
+                  const file = event.target.files?.[0] || null;
+                  updateFileInputState(event.target, !!file);
+                  setHolderDocs((prev) => ({ ...prev, idBack: file }));
+                  setState((prev) => ({
+                    ...prev,
+                    idBackDocumentName: file?.name || "",
+                  }));
+                }}
+              />
+              {holderDocs.idBack && (
+                <small style={{ color: '#1a8a4e', fontWeight: 600 }}>✓ {holderDocs.idBack.name}</small>
+              )}
+              {replacingDocs.idBack && (
+                <button
+                  type="button"
+                  onClick={() => setReplacingDocs(prev => ({ ...prev, idBack: false }))}
+                  style={{
+                    marginTop: '6px',
+                    padding: '4px 10px',
+                    background: '#ef4444',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontSize: '11px'
+                  }}
+                >
+                  Cancelar
+                </button>
+              )}
+            </>
           )}
         </label>
 
-        {/* Pasaporte: SOLO para viajes internacionales */}
+        {/* Pasaporte: SOLO para viajes internacionales - Existing or Upload */}
         {!isInternalTrip && (
-          <label className={requiredDocumentLabelClass(Boolean(holderDocs.passport))}>
+          <label className={requiredDocumentLabelClass(hasAttachment('passport'))}>
             Pasaporte titular
-            <input
-              type="file"
-              accept=".pdf,.jpg,.jpeg,.png,.webp"
-              key={holderDocs.passport ? holderDocs.passport.name : 'empty-passport'}
-              onChange={(event) => {
-                const file = event.target.files?.[0] || null;
-                updateFileInputState(event.target, !!file);
-                setHolderDocs((prev) => ({ ...prev, passport: file }));
-                setState((prev) => ({
-                  ...prev,
-                  passportDocumentName: file?.name || "",
-                }));
-              }}
-            />
-            {holderDocs.passport && (
-              <small style={{ color: '#1a8a4e', fontWeight: 600 }}>✓ {holderDocs.passport.name}</small>
+            {hasExistingPassport && !replacingDocs.passport ? (
+              <div style={{ position: 'relative', marginTop: '8px' }}>
+                <button
+                  type="button"
+                  onClick={() => setShowMenu(showMenu === 'passport' ? null : 'passport')}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    background: 'white',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '6px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    fontSize: '14px',
+                    color: '#374151'
+                  }}
+                >
+                  <span>✓ Existing document</span>
+                  <span>▼</span>
+                </button>
+                {showMenu === 'passport' && (
+                  <div style={{
+                    position: 'absolute',
+                    top: '100%',
+                    left: 0,
+                    right: 0,
+                    marginTop: '4px',
+                    background: 'white',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '6px',
+                    boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+                    zIndex: 10,
+                    overflow: 'hidden'
+                  }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onViewDocument(state.selectedCustomerId!, existingCustomerDocuments.passport!.id);
+                        setShowMenu(null);
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px',
+                        background: 'white',
+                        border: 'none',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        fontSize: '14px'
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = 'white'}
+                    >
+                      View document
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setReplacingDocs(prev => ({ ...prev, passport: true }));
+                        setShowMenu(null);
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px',
+                        background: 'white',
+                        border: 'none',
+                        borderTop: '1px solid #f3f4f6',
+                        cursor: 'pointer',
+                        textAlign: 'left',
+                        fontSize: '14px'
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = '#f9fafb'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = 'white'}
+                    >
+                      Replace document
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <>
+                <input
+                  type="file"
+                  accept=".pdf,.jpg,.jpeg,.png,.webp"
+                  key={holderDocs.passport ? holderDocs.passport.name : 'empty-passport'}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0] || null;
+                    updateFileInputState(event.target, !!file);
+                    setHolderDocs((prev) => ({ ...prev, passport: file }));
+                    setState((prev) => ({
+                      ...prev,
+                      passportDocumentName: file?.name || "",
+                    }));
+                  }}
+                />
+                {holderDocs.passport && (
+                  <small style={{ color: '#1a8a4e', fontWeight: 600 }}>✓ {holderDocs.passport.name}</small>
+                )}
+                {replacingDocs.passport && (
+                  <button
+                    type="button"
+                    onClick={() => setReplacingDocs(prev => ({ ...prev, passport: false }))}
+                    style={{
+                      marginTop: '6px',
+                      padding: '4px 10px',
+                      background: '#ef4444',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontSize: '11px'
+                    }}
+                  >
+                    Cancelar
+                  </button>
+                )}
+              </>
             )}
           </label>
         )}

@@ -7,6 +7,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { LoadingModal } from '@/components/loading-modal';
 import { getCustomerProfile, updateCustomer, getCustomerDocumentDownloadUrl, type CustomerProfile, type UpdateCustomerDto } from '@/lib/customers-api';
 import { CustomerForm, CustomerEditModal } from '@/features/customers/components';
+import AttachmentViewer from '@/components/attachment-viewer';
 
 export default function CustomerProfilePage() {
   const router = useRouter();
@@ -22,6 +23,10 @@ export default function CustomerProfilePage() {
 
   // Edit modal state
   const [editModalOpen, setEditModalOpen] = useState(false);
+  const [attachmentViewerData, setAttachmentViewerData] = useState<{
+    attachments: Array<{ id: string; originalFileName: string; url: string; mimeType: string }>;
+    initialIndex: number;
+  } | null>(null);
 
   useEffect(() => {
     loadProfile();
@@ -152,16 +157,35 @@ export default function CustomerProfilePage() {
     try {
       setLoadingModalOpen(true);
       setLoadingModalState('loading');
-      setLoadingModalMessage('Generando URL de descarga...');
+      setLoadingModalMessage('Cargando documento...');
 
-      const result = await getCustomerDocumentDownloadUrl(customerId, documentId);
+      const allDocuments = profile?.documents || [];
       
-      // Open download URL in new tab
-      window.open(result.url, '_blank');
+      // Get download URLs for all documents
+      const attachments = await Promise.all(
+        allDocuments.map(async (doc) => {
+          const result = await getCustomerDocumentDownloadUrl(customerId, doc.id);
+          return {
+            id: doc.id,
+            originalFileName: doc.originalFileName || 'documento.pdf',
+            url: result.url,
+            mimeType: doc.mimeType || 'application/pdf',
+          };
+        })
+      );
+
+      // Find the index of the clicked document
+      const initialIndex = allDocuments.findIndex((doc) => doc.id === documentId);
+
+      // Set viewer data to open the viewer
+      setAttachmentViewerData({
+        attachments,
+        initialIndex: initialIndex >= 0 ? initialIndex : 0,
+      });
       
       setLoadingModalOpen(false);
     } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : 'Error al descargar documento';
+      const errorMessage = err instanceof Error ? err.message : 'Error al abrir documento';
       setLoadingModalState('error');
       setLoadingModalMessage(errorMessage);
     }
@@ -790,7 +814,7 @@ export default function CustomerProfilePage() {
                     onMouseEnter={(e) => (e.currentTarget.style.background = '#5568d3')}
                     onMouseLeave={(e) => (e.currentTarget.style.background = '#667eea')}
                   >
-                    📥 Descargar
+                    �️ Ver
                   </button>
                 </div>
               ))}
@@ -895,6 +919,14 @@ export default function CustomerProfilePage() {
         onClose={() => setEditModalOpen(false)}
         onSave={handleSaveEdit}
       />
+
+      {attachmentViewerData && (
+        <AttachmentViewer
+          attachments={attachmentViewerData.attachments}
+          initialIndex={attachmentViewerData.initialIndex}
+          onClose={() => setAttachmentViewerData(null)}
+        />
+      )}
 
       <LoadingModal
         isOpen={loadingModalOpen}
