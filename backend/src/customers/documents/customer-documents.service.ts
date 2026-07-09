@@ -69,17 +69,34 @@ export class CustomerDocumentsService {
       body: processedFile.buffer,
     });
 
-    // Save metadata to database
-    const document = await this.prisma.customerDocument.create({
-      data: {
-        customerId,
-        tenantId,
-        category,
-        originalFileName: processedFile.originalname,
-        objectKey,
-        mimeType: processedFile.mimetype,
-        size: processedFile.size,
-      },
+    // Atomically mark previous documents as not current and create new one
+    const document = await this.prisma.$transaction(async (tx) => {
+      // Mark previous documents of same category as not current
+      await tx.customerDocument.updateMany({
+        where: {
+          customerId,
+          tenantId,
+          category,
+          isCurrent: true,
+        },
+        data: {
+          isCurrent: false,
+        },
+      });
+
+      // Save metadata to database
+      return tx.customerDocument.create({
+        data: {
+          customerId,
+          tenantId,
+          category,
+          originalFileName: processedFile.originalname,
+          objectKey,
+          mimeType: processedFile.mimetype,
+          size: processedFile.size,
+          isCurrent: true,
+        },
+      });
     });
 
     return document;
@@ -92,15 +109,18 @@ export class CustomerDocumentsService {
     // Verify customer exists and belongs to tenant
     await this.validateCustomer(tenantId, customerId);
 
-    return this.prisma.customerDocument.findMany({
+    const documents = await this.prisma.customerDocument.findMany({
       where: {
         tenantId,
         customerId,
       },
-      orderBy: {
-        createdAt: 'desc',
-      },
+      orderBy: [
+        { isCurrent: 'desc' }, // Current documents first
+        { createdAt: 'desc' },  // Then by date descending
+      ],
     });
+
+    return documents;
   }
 
   /**
@@ -197,22 +217,63 @@ export class CustomerDocumentsService {
     });
 
     if (existing) {
-      // Already registered, skip
-      this.logger.debug(`Document ${documentData.objectKey} already registered for customer ${customerId}`);
-      return existing;
+      // Document already registered, update version tracking
+      this.logger.debug(`Document ${documentData.objectKey} already registered for customer ${customerId}, updating version tracking`);
+      
+      // Atomically mark other documents as not current and update this one to current
+      const updated = await this.prisma.$transaction(async (tx) => {
+        // Mark all other documents of same category as not current
+        await tx.customerDocument.updateMany({
+          where: {
+            customerId,
+            tenantId,
+            category: existing.category,
+            isCurrent: true,
+            id: { not: existing.id }, // Exclude the existing document
+          },
+          data: {
+            isCurrent: false,
+          },
+        });
+
+        // Update the existing document to be current
+        return tx.customerDocument.update({
+          where: { id: existing.id },
+          data: { isCurrent: true },
+        });
+      });
+
+      return updated;
     }
 
-    // Create customer document record without uploading
-    const document = await this.prisma.customerDocument.create({
-      data: {
-        customerId,
-        tenantId,
-        category,
-        originalFileName: documentData.originalFileName,
-        objectKey: documentData.objectKey,
-        mimeType: documentData.mimeType,
-        size: documentData.size,
-      },
+    // Atomically mark previous documents as not current and create new one
+    const document = await this.prisma.$transaction(async (tx) => {
+      // Mark previous documents of same category as not current
+      await tx.customerDocument.updateMany({
+        where: {
+          customerId,
+          tenantId,
+          category,
+          isCurrent: true,
+        },
+        data: {
+          isCurrent: false,
+        },
+      });
+
+      // Create customer document record without uploading
+      return tx.customerDocument.create({
+        data: {
+          customerId,
+          tenantId,
+          category,
+          originalFileName: documentData.originalFileName,
+          objectKey: documentData.objectKey,
+          mimeType: documentData.mimeType,
+          size: documentData.size,
+          isCurrent: true,
+        },
+      });
     });
 
     this.logger.log(`✅ Registered customer document: ${documentData.originalFileName} (${category})`);

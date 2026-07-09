@@ -298,6 +298,7 @@ model CustomerDocument {
   objectKey        String                   @unique
   mimeType         String
   size             Int
+  isCurrent        Boolean                  @default(true)
   createdAt        DateTime                 @default(now())
   customer         Client                   @relation(fields: [customerId], references: [id], onDelete: Cascade)
   tenant           Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -307,6 +308,7 @@ model CustomerDocument {
   @@index([category])
   @@index([createdAt])
   @@index([tenantId, customerId])
+  @@index([customerId, category, isCurrent])
   @@map("customer_documents")
 }
 
