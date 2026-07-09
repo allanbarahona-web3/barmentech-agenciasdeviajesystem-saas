@@ -328,3 +328,36 @@ export async function getCustomerDocumentDownloadUrl(
 
   return response.json();
 }
+
+export async function uploadCustomerDocument(
+  customerId: string,
+  category: CustomerDocumentCategory,
+  file: File
+): Promise<CustomerDocument> {
+  const apiBase = resolveApiBase();
+  const token = getStoredToken();
+
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('category', category);
+
+  const response = await authenticatedFetch(
+    `${apiBase}/customers/${customerId}/documents`,
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+      },
+      body: formData,
+    }
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(
+      errorText || `Error al subir documento: ${response.status}`
+    );
+  }
+
+  return response.json();
+}

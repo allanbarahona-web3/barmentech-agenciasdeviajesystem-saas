@@ -2,10 +2,10 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { LoadingModal } from '@/components/loading-modal';
-import { getCustomerProfile, updateCustomer, getCustomerDocumentDownloadUrl, type CustomerProfile, type UpdateCustomerDto } from '@/lib/customers-api';
+import { getCustomerProfile, updateCustomer, getCustomerDocumentDownloadUrl, uploadCustomerDocument, type CustomerProfile, type UpdateCustomerDto } from '@/lib/customers-api';
 import { CustomerForm, CustomerEditModal } from '@/features/customers/components';
 import AttachmentViewer from '@/components/attachment-viewer';
 
@@ -27,6 +27,8 @@ export default function CustomerProfilePage() {
     attachments: Array<{ id: string; originalFileName: string; url: string; mimeType: string }>;
     initialIndex: number;
   } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingDocCategory, setUploadingDocCategory] = useState<string | null>(null);
 
   useEffect(() => {
     loadProfile();
@@ -191,6 +193,41 @@ export default function CustomerProfilePage() {
     }
   }
 
+  function handleUpdateDocumentClick(category: string) {
+    setUploadingDocCategory(category);
+    fileInputRef.current?.click();
+  }
+
+  async function handleFileSelect(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file || !uploadingDocCategory) return;
+
+    try {
+      setLoadingModalOpen(true);
+      setLoadingModalState('loading');
+      setLoadingModalMessage('Subiendo documento...');
+
+      await uploadCustomerDocument(customerId, uploadingDocCategory as any, file);
+      
+      // Reload profile
+      const updatedProfile = await getCustomerProfile(customerId);
+      setProfile(updatedProfile);
+
+      setLoadingModalState('success');
+      setLoadingModalMessage('✅ Documento actualizado exitosamente');
+      setTimeout(() => setLoadingModalOpen(false), 1500);
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Error al subir documento';
+      setLoadingModalState('error');
+      setLoadingModalMessage(errorMessage);
+    } finally {
+      setUploadingDocCategory(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  }
+
   if (loading || !profile) {
     return (
       <>
@@ -217,6 +254,15 @@ export default function CustomerProfilePage() {
 
   return (
     <main className="app-shell">
+      {/* Hidden file input for document upload */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".pdf,.jpg,.jpeg,.png,.webp"
+        style={{ display: 'none' }}
+        onChange={handleFileSelect}
+      />
+
       {/* Header */}
       <div
         style={{
@@ -749,7 +795,18 @@ export default function CustomerProfilePage() {
         ) : (
           <div style={{ padding: '20px' }}>
             <div style={{ display: 'grid', gap: '16px' }}>
-              {documents.map((doc) => (
+              {documents
+                .sort((a, b) => {
+                  // Sort by isCurrent first (current = true first)
+                  const aIsCurrent = (a as any).isCurrent ?? false;
+                  const bIsCurrent = (b as any).isCurrent ?? false;
+                  if (aIsCurrent !== bIsCurrent) {
+                    return bIsCurrent ? 1 : -1;
+                  }
+                  // Then sort by date (newest first)
+                  return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+                })
+                .map((doc) => (
                 <div
                   key={doc.id}
                   style={{
@@ -784,6 +841,18 @@ export default function CustomerProfilePage() {
                       >
                         {getCategoryLabel(doc.category)}
                       </span>
+                      <span
+                        style={{
+                          padding: '4px 12px',
+                          background: (doc as any).isCurrent ? '#d1fae5' : '#f3f4f6',
+                          color: (doc as any).isCurrent ? '#065f46' : '#6b7280',
+                          borderRadius: '6px',
+                          fontSize: '12px',
+                          fontWeight: '600',
+                        }}
+                      >
+                        {(doc as any).isCurrent ? 'Current' : 'History'}
+                      </span>
                       <span style={{ fontSize: '12px', color: '#9ca3af' }}>
                         {formatDate(doc.createdAt)}
                       </span>
@@ -795,27 +864,52 @@ export default function CustomerProfilePage() {
                       {doc.mimeType} • {(doc.size / 1024).toFixed(2)} KB
                     </div>
                   </div>
-                  <button
-                    onClick={() => handleDownloadDocument(doc.id)}
-                    style={{
-                      padding: '8px 16px',
-                      background: '#667eea',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '6px',
-                      cursor: 'pointer',
-                      fontSize: '13px',
-                      fontWeight: '500',
-                      transition: 'all 0.2s',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = '#5568d3')}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = '#667eea')}
-                  >
-                    �️ Ver
-                  </button>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      onClick={() => handleDownloadDocument(doc.id)}
+                      style={{
+                        padding: '8px 16px',
+                        background: '#667eea',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        fontSize: '13px',
+                        fontWeight: '500',
+                        transition: 'all 0.2s',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = '#5568d3')}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = '#667eea')}
+                    >
+                      🗂️ Ver
+                    </button>
+                    {(doc as any).isCurrent && (
+                      <button
+                        onClick={() => handleUpdateDocumentClick(doc.category)}
+                        style={{
+                          padding: '8px 16px',
+                          background: '#10b981',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          fontSize: '13px',
+                          fontWeight: '500',
+                          transition: 'all 0.2s',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = '#059669')}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = '#10b981')}
+                      >
+                        ✏️ Actualizar
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
