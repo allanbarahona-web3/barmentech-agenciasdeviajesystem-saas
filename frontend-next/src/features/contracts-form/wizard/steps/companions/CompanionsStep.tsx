@@ -116,6 +116,10 @@ export function CompanionsStep({
           emergencyContactName: customerData.emergencyContactName || '',
           emergencyContactPhone: customerData.emergencyContactPhone || '',
           address: customerData.address || '',
+          idType: customerData.idType || undefined,
+          maritalStatus: customerData.maritalStatus || undefined,
+          occupation: customerData.occupation || undefined,
+          nationality: customerData.nationality || undefined,
         });
         // Capture the newly created companion's ID (it's the last one)
         newCompanionId = newState.companions[newState.companions.length - 1]?.id || null;
@@ -204,13 +208,15 @@ export function CompanionsStep({
               ? {
                   ...c,
                   fullName: updatedCustomer.fullName,
+                  idType: (updatedCustomer.idType || 'Cedula') as 'Cedula' | 'Pasaporte' | 'DIMEX',
                   email: updatedCustomer.email,
                   phone: updatedCustomer.phone || '',
                   emergencyContactName: updatedCustomer.emergencyContactName || '',
                   emergencyContactPhone: updatedCustomer.emergencyContactPhone || '',
                   address: updatedCustomer.address || '',
+                  civilStatus: (updatedCustomer.maritalStatus || 'Soltero') as 'Soltero' | 'Casado' | 'Divorciado' | 'Viudo',
                   profession: updatedCustomer.occupation || '',
-                  nationality: updatedCustomer.nationality || '',
+                  nationality: updatedCustomer.nationality || 'Costa Rica',
                 }
               : c
           );
@@ -705,31 +711,24 @@ export function CompanionsStep({
                 Nombre completo
                 <input
                   value={companion.fullName}
-                  onChange={(event) =>
-                    setState((prev) => updateCompanion(prev, companion.id, "fullName", event.target.value))
-                  }
+                  readOnly
+                  style={{ backgroundColor: "#f3f4f6", cursor: "not-allowed" }}
                 />
               </label>
               <label>
                 Tipo ID
-                <select
+                <input
                   value={companion.idType}
-                  onChange={(event) =>
-                    setState((prev) => updateCompanion(prev, companion.id, "idType", event.target.value))
-                  }
-                >
-                  <option value="Cédula">Cédula</option>
-                  <option value="Pasaporte">Pasaporte</option>
-                  <option value="DIMEX">DIMEX</option>
-                </select>
+                  readOnly
+                  style={{ backgroundColor: "#f3f4f6", cursor: "not-allowed" }}
+                />
               </label>
               <label>
                 Numero ID
                 <input
                   value={companion.idNumber}
-                  onChange={(event) =>
-                    setState((prev) => updateCompanion(prev, companion.id, "idNumber", event.target.value))
-                  }
+                  readOnly
+                  style={{ backgroundColor: "#f3f4f6", cursor: "not-allowed" }}
                 />
               </label>
               <label>
@@ -737,88 +736,65 @@ export function CompanionsStep({
                 <input
                   type="email"
                   value={companion.email}
-                  onChange={(event) =>
-                    setState((prev) => updateCompanion(prev, companion.id, "email", event.target.value))
-                  }
+                  readOnly
+                  style={{ backgroundColor: "#f3f4f6", cursor: "not-allowed" }}
                 />
               </label>
               <label>
                 Telefono
                 <input
                   value={companion.phone}
-                  onChange={(event) =>
-                    setState((prev) => updateCompanion(prev, companion.id, "phone", event.target.value))
-                  }
+                  readOnly
+                  style={{ backgroundColor: "#f3f4f6", cursor: "not-allowed" }}
                 />
               </label>
               <label>
                 Contacto emergencia
                 <input
                   value={companion.emergencyContactName}
-                  onChange={(event) =>
-                    setState((prev) =>
-                      updateCompanion(prev, companion.id, "emergencyContactName", event.target.value)
-                    )
-                  }
+                  readOnly
+                  style={{ backgroundColor: "#f3f4f6", cursor: "not-allowed" }}
                 />
               </label>
               <label>
                 Telefono emergencia
                 <input
                   value={companion.emergencyContactPhone}
-                  onChange={(event) =>
-                    setState((prev) =>
-                      updateCompanion(prev, companion.id, "emergencyContactPhone", event.target.value)
-                    )
-                  }
+                  readOnly
+                  style={{ backgroundColor: "#f3f4f6", cursor: "not-allowed" }}
                 />
               </label>
               <label>
                 Direccion
                 <input
                   value={companion.address}
-                  onChange={(event) =>
-                    setState((prev) => updateCompanion(prev, companion.id, "address", event.target.value))
-                  }
+                  readOnly
+                  style={{ backgroundColor: "#f3f4f6", cursor: "not-allowed" }}
                 />
               </label>
               <label>
                 Estado civil
-                <select
+                <input
                   value={companion.civilStatus}
-                  onChange={(event) =>
-                    setState((prev) => updateCompanion(prev, companion.id, "civilStatus", event.target.value))
-                  }
-                >
-                  <option value="Soltero">Soltero</option>
-                  <option value="Casado">Casado</option>
-                  <option value="Divorciado">Divorciado</option>
-                  <option value="Viudo">Viudo</option>
-                </select>
+                  readOnly
+                  style={{ backgroundColor: "#f3f4f6", cursor: "not-allowed" }}
+                />
               </label>
               <label>
                 Profesion
                 <input
                   value={companion.profession}
-                  onChange={(event) =>
-                    setState((prev) => updateCompanion(prev, companion.id, "profession", event.target.value))
-                  }
+                  readOnly
+                  style={{ backgroundColor: "#f3f4f6", cursor: "not-allowed" }}
                 />
               </label>
               <label>
                 Nacionalidad
-                <select
+                <input
                   value={companion.nationality}
-                  onChange={(event) =>
-                    setState((prev) => updateCompanion(prev, companion.id, "nationality", event.target.value))
-                  }
-                >
-                  {nationalityOptions.map((country, idx) => (
-                    <option key={idx} value={country} disabled={country === "──────────"}>
-                      {country}
-                    </option>
-                  ))}
-                </select>
+                  readOnly
+                  style={{ backgroundColor: "#f3f4f6", cursor: "not-allowed" }}
+                />
               </label>
               <label className={requiredDocumentLabelClass(Boolean(companionDocs[companion.id]?.idFront) || Boolean(companionCustomerDocuments[companion.id]?.idFront))}>
                 Cédula frente

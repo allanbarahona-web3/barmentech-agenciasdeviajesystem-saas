@@ -75,28 +75,26 @@ export function HolderStep({
           Nombre completo
           <input
             value={state.clientFullName}
-            onChange={(event) => setState((prev) => ({ ...prev, clientFullName: event.target.value }))}
+            readOnly
+            style={{ backgroundColor: "#f3f4f6", cursor: "not-allowed" }}
           />
         </label>
 
         <label>
           Tipo ID
-          <select
+          <input
             value={state.clientIdType}
-            onChange={(event) => setState((prev) => ({ ...prev, clientIdType: event.target.value as IdType }))}
-          >
-            <option value="Cedula">Cédula</option>
-            <option value="Pasaporte">Pasaporte</option>
-            <option value="DIMEX">DIMEX</option>
-          </select>
+            readOnly
+            style={{ backgroundColor: "#f3f4f6", cursor: "not-allowed" }}
+          />
         </label>
 
         <label>
           Numero ID
           <input
             value={state.clientIdNumber}
-            onChange={(event) => setState((prev) => ({ ...prev, clientIdNumber: event.target.value }))}
-            onBlur={handleValidateCustomerIdentity}
+            readOnly
+            style={{ backgroundColor: "#f3f4f6", cursor: "not-allowed" }}
           />
         </label>
 
@@ -105,7 +103,8 @@ export function HolderStep({
           <input
             type="email"
             value={state.clientEmail}
-            onChange={(event) => setState((prev) => ({ ...prev, clientEmail: event.target.value }))}
+            readOnly
+            style={{ backgroundColor: "#f3f4f6", cursor: "not-allowed" }}
           />
         </label>
 
@@ -113,7 +112,8 @@ export function HolderStep({
           Telefono
           <input
             value={state.clientPhone}
-            onChange={(event) => setState((prev) => ({ ...prev, clientPhone: event.target.value }))}
+            readOnly
+            style={{ backgroundColor: "#f3f4f6", cursor: "not-allowed" }}
           />
         </label>
 
@@ -121,7 +121,8 @@ export function HolderStep({
           Direccion
           <input
             value={state.clientAddress}
-            onChange={(event) => setState((prev) => ({ ...prev, clientAddress: event.target.value }))}
+            readOnly
+            style={{ backgroundColor: "#f3f4f6", cursor: "not-allowed" }}
           />
         </label>
 
@@ -129,7 +130,8 @@ export function HolderStep({
           Contacto emergencia
           <input
             value={state.emergencyContactName}
-            onChange={(event) => setState((prev) => ({ ...prev, emergencyContactName: event.target.value }))}
+            readOnly
+            style={{ backgroundColor: "#f3f4f6", cursor: "not-allowed" }}
           />
         </label>
 
@@ -137,48 +139,36 @@ export function HolderStep({
           Telefono emergencia
           <input
             value={state.emergencyContactPhone}
-            onChange={(event) => setState((prev) => ({ ...prev, emergencyContactPhone: event.target.value }))}
+            readOnly
+            style={{ backgroundColor: "#f3f4f6", cursor: "not-allowed" }}
           />
         </label>
 
         <label>
           Estado civil
-          <select
+          <input
             value={state.civilStatus}
-            onChange={(event) =>
-              setState((prev) => ({
-                ...prev,
-                civilStatus: event.target.value as "Soltero" | "Casado" | "Divorciado" | "Viudo",
-              }))
-            }
-          >
-            <option value="Soltero">Soltero</option>
-            <option value="Casado">Casado</option>
-            <option value="Divorciado">Divorciado</option>
-            <option value="Viudo">Viudo</option>
-          </select>
+            readOnly
+            style={{ backgroundColor: "#f3f4f6", cursor: "not-allowed" }}
+          />
         </label>
 
         <label>
           Profesion
           <input
             value={state.profession}
-            onChange={(event) => setState((prev) => ({ ...prev, profession: event.target.value }))}
+            readOnly
+            style={{ backgroundColor: "#f3f4f6", cursor: "not-allowed" }}
           />
         </label>
 
         <label>
           Nacionalidad
-          <select
+          <input
             value={state.clientNationality}
-            onChange={(event) => setState((prev) => ({ ...prev, clientNationality: event.target.value }))}
-          >
-            {nationalityOptions.map((country, idx) => (
-              <option key={idx} value={country} disabled={country === "──────────"}>
-                {country}
-              </option>
-            ))}
-          </select>
+            readOnly
+            style={{ backgroundColor: "#f3f4f6", cursor: "not-allowed" }}
+          />
         </label>
 
         {/* Cédula (frente) - Existing or Upload */}

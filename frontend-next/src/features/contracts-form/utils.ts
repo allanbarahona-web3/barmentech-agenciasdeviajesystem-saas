@@ -363,21 +363,25 @@ export const addCompanionFromCustomer = (
     emergencyContactName: string;
     emergencyContactPhone: string;
     address: string;
+    idType?: string;
+    maritalStatus?: string;
+    occupation?: string;
+    nationality?: string;
   }
 ): ContractFormState => {
   const newCompanion: Companion = {
     id: `companion-${Date.now()}-${Math.random().toString(16).slice(2, 7)}`,
     fullName: customerData.fullName,
-    idType: "Cedula",
+    idType: (customerData.idType || "Cedula") as "Cedula" | "Pasaporte" | "DIMEX",
     idNumber: customerData.idNumber,
     email: customerData.email,
     phone: customerData.phone,
     emergencyContactName: customerData.emergencyContactName,
     emergencyContactPhone: customerData.emergencyContactPhone,
     address: customerData.address,
-    civilStatus: "Soltero",
-    profession: "",
-    nationality: "Costa Rica",
+    civilStatus: (customerData.maritalStatus || "Soltero") as "Soltero" | "Casado" | "Divorciado" | "Viudo",
+    profession: customerData.occupation || "",
+    nationality: customerData.nationality || "Costa Rica",
     idFrontDocumentName: "",
     idBackDocumentName: "",
     passportDocumentName: "",

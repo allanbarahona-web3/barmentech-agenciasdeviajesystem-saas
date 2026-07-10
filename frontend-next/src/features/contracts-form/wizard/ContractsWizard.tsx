@@ -198,11 +198,16 @@ export function ContractsWizard({
         setState((prev) => ({
           ...prev,
           clientFullName: customer.fullName,
+          clientIdType: (customer.idType || 'Cedula') as 'Cedula' | 'Pasaporte' | 'DIMEX',
           clientIdNumber: customer.idNumber,
           clientEmail: customer.email,
           clientPhone: customer.phone || '',
+          clientAddress: customer.address || '',
           emergencyContactName: customer.emergencyContactName || '',
           emergencyContactPhone: customer.emergencyContactPhone || '',
+          civilStatus: (customer.maritalStatus || 'Soltero') as 'Soltero' | 'Casado' | 'Divorciado' | 'Viudo',
+          profession: customer.occupation || '',
+          clientNationality: customer.nationality || 'Costa Rica',
         }));
 
         // Map customer documents to holder documents
@@ -311,12 +316,16 @@ export function ContractsWizard({
               ? {
                   ...c,
                   fullName: customer.fullName,
+                  idType: (customer.idType || 'Cedula') as 'Cedula' | 'Pasaporte' | 'DIMEX',
                   idNumber: customer.idNumber,
                   email: customer.email,
                   phone: customer.phone || '',
                   emergencyContactName: customer.emergencyContactName || '',
                   emergencyContactPhone: customer.emergencyContactPhone || '',
                   address: customer.address || '',
+                  civilStatus: (customer.maritalStatus || 'Soltero') as 'Soltero' | 'Casado' | 'Divorciado' | 'Viudo',
+                  profession: customer.occupation || '',
+                  nationality: customer.nationality || 'Costa Rica',
                 }
               : c
           ),
