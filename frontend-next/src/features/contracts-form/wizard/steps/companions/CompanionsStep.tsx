@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import type { ContractFormState } from "@/features/contracts-form/types";
 import { addCompanion, addCompanionFromCustomer, removeCompanion, updateCompanion } from "@/features/contracts-form/utils";
-import { getCustomers, getCustomerProfile, type CustomerListItem } from '@/lib/customers-api';
+import { getCustomers, getCustomerProfile, updateCustomer, type CustomerListItem, type CustomerInfo } from '@/lib/customers-api';
+import { CustomerEditModal } from '@/features/customers/components/CustomerEditModal';
 
 export interface CompanionsStepProps {
   state: ContractFormState;
@@ -60,6 +61,9 @@ export function CompanionsStep({
   const [searchResults, setSearchResults] = useState<CustomerListItem[]>([]);
   const [lookupError, setLookupError] = useState<string | null>(null);
   const [selectedCompanionCustomer, setSelectedCompanionCustomer] = useState<CustomerListItem | null>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [customerToEdit, setCustomerToEdit] = useState<CustomerInfo | null>(null);
+  const [editingCompanionId, setEditingCompanionId] = useState<string | null>(null);
 
   async function handleSearchCompanion() {
     if (!searchQuery.trim()) {
@@ -137,6 +141,19 @@ export function CompanionsStep({
     }
   }
 
+  async function handleEditSelectedCompanion() {
+    if (!selectedCompanionCustomer) return;
+
+    try {
+      const profile = await getCustomerProfile(selectedCompanionCustomer.id);
+      setCustomerToEdit(profile.customer);
+      setIsEditModalOpen(true);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Error al cargar cliente';
+      setLookupError(errorMessage);
+    }
+  }
+
   function handleSkipLookup() {
     setState((prev) => addCompanion(prev));
     setShowLookupModal(false);
@@ -144,6 +161,97 @@ export function CompanionsStep({
     setSearchResults([]);
     setLookupError(null);
     setSelectedCompanionCustomer(null);
+  }
+
+  async function handleEditCompanionCustomer(companionId: string, customerId: string) {
+    try {
+      // Fetch full customer profile
+      const profile = await getCustomerProfile(customerId);
+      setCustomerToEdit(profile.customer);
+      setEditingCompanionId(companionId);
+      setIsEditModalOpen(true);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Error al cargar cliente';
+      console.error(errorMessage);
+    }
+  }
+
+  async function handleSaveCustomerEdit(formData: {
+    fullName: string;
+    idType: string;
+    email: string;
+    phone: string;
+    maritalStatus: string;
+    nationality: string;
+    occupation: string;
+    address: string;
+    emergencyContactName: string;
+    emergencyContactPhone: string;
+  }) {
+    if (!customerToEdit) return;
+
+    try {
+      // Update customer via API
+      const updatedProfile = await updateCustomer(customerToEdit.id, formData);
+      const updatedCustomer = updatedProfile.customer;
+
+      // If editing a companion already in the list
+      if (editingCompanionId) {
+        // Update companion fields with the updated customer data
+        setState((prev) => {
+          const updatedCompanions = prev.companions.map((c) =>
+            c.id === editingCompanionId
+              ? {
+                  ...c,
+                  fullName: updatedCustomer.fullName,
+                  email: updatedCustomer.email,
+                  phone: updatedCustomer.phone || '',
+                  emergencyContactName: updatedCustomer.emergencyContactName || '',
+                  emergencyContactPhone: updatedCustomer.emergencyContactPhone || '',
+                  address: updatedCustomer.address || '',
+                  profession: updatedCustomer.occupation || '',
+                  nationality: updatedCustomer.nationality || '',
+                }
+              : c
+          );
+          return { ...prev, companions: updatedCompanions };
+        });
+      } else {
+        // If editing from the lookup modal (selectedCompanionCustomer)
+        // Update the selected companion customer in the search results
+        setSearchResults((prev) =>
+          prev.map((c) =>
+            c.id === updatedCustomer.id
+              ? {
+                  ...c,
+                  fullName: updatedCustomer.fullName,
+                  email: updatedCustomer.email,
+                  phone: updatedCustomer.phone,
+                }
+              : c
+          )
+        );
+
+        // Update the selected companion customer
+        setSelectedCompanionCustomer((prev) =>
+          prev
+            ? {
+                ...prev,
+                fullName: updatedCustomer.fullName,
+                email: updatedCustomer.email,
+                phone: updatedCustomer.phone,
+              }
+            : null
+        );
+      }
+
+      setIsEditModalOpen(false);
+      setCustomerToEdit(null);
+      setEditingCompanionId(null);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Error al actualizar cliente';
+      throw new Error(errorMessage);
+    }
   }
 
   function handleOpenLookupModal() {
@@ -280,6 +388,28 @@ export function CompanionsStep({
                       </h3>
                     </div>
                     <div style={{ display: 'flex', gap: '8px' }}>
+                      <button
+                        onClick={handleEditSelectedCompanion}
+                        style={{
+                          padding: '4px 12px',
+                          background: 'transparent',
+                          color: '#166534',
+                          border: '1px solid #86efac',
+                          borderRadius: '6px',
+                          cursor: 'pointer',
+                          fontSize: '12px',
+                          fontWeight: '500',
+                          transition: 'all 0.2s',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = '#dcfce7';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = 'transparent';
+                        }}
+                      >
+                        ✏️ Editar
+                      </button>
                       <button
                         onClick={handleClearSelection}
                         style={{
@@ -538,20 +668,36 @@ export function CompanionsStep({
           <article key={companion.id} className="subcard">
             <div className="itinerary-head">
               <h3>Acompanante {index + 1}</h3>
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => {
-                  setCompanionDocs((prev) => {
-                    const next = { ...prev };
-                    delete next[companion.id];
-                    return next;
-                  });
-                  setState((prev) => removeCompanion(prev, companion.id));
-                }}
-              >
-                Eliminar
-              </button>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                {companionCustomerDocuments[companion.id]?.customerId && (
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    onClick={() => handleEditCompanionCustomer(companion.id, companionCustomerDocuments[companion.id].customerId)}
+                    style={{
+                      background: '#667eea',
+                      color: 'white',
+                      border: 'none',
+                    }}
+                  >
+                    ✏️ Editar
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => {
+                    setCompanionDocs((prev) => {
+                      const next = { ...prev };
+                      delete next[companion.id];
+                      return next;
+                    });
+                    setState((prev) => removeCompanion(prev, companion.id));
+                  }}
+                >
+                  Eliminar
+                </button>
+              </div>
             </div>
 
             <div className="contracts-grid">
@@ -1084,6 +1230,20 @@ export function CompanionsStep({
           </p>
         )}
       </div>
+
+      {/* Customer Edit Modal */}
+      {customerToEdit && (
+        <CustomerEditModal
+          isOpen={isEditModalOpen}
+          customer={customerToEdit}
+          onClose={() => {
+            setIsEditModalOpen(false);
+            setCustomerToEdit(null);
+            setEditingCompanionId(null);
+          }}
+          onSave={handleSaveCustomerEdit}
+        />
+      )}
     </div>
   );
 }
