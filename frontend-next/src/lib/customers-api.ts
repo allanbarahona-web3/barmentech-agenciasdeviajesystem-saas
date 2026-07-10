@@ -160,6 +160,10 @@ export interface CreateCustomerDto {
   phone?: string;
   emergencyContactName?: string;
   emergencyContactPhone?: string;
+  nationality?: string;
+  occupation?: string;
+  maritalStatus?: string;
+  address?: string;
 }
 
 export interface ValidateCustomerIdentityRequest {

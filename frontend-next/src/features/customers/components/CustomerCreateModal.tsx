@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { createCustomer, type CreateCustomerDto, type CustomerInfo } from '@/lib/customers-api';
 import { normalizeIdentification, validateIdentification } from '@/features/customers/utils/normalize-identification';
+import { NATIONALITY_OPTIONS, MARITAL_STATUS_OPTIONS } from '@/features/contracts-form/constants';
 
 interface CustomerCreateModalProps {
   isOpen: boolean;
@@ -19,6 +20,10 @@ export function CustomerCreateModal({ isOpen, onClose, onCustomerCreated }: Cust
     phone: '',
     emergencyContactName: '',
     emergencyContactPhone: '',
+    nationality: '',
+    occupation: '',
+    maritalStatus: '',
+    address: '',
   });
 
   const [isSaving, setIsSaving] = useState(false);
@@ -40,6 +45,10 @@ export function CustomerCreateModal({ isOpen, onClose, onCustomerCreated }: Cust
       phone: '',
       emergencyContactName: '',
       emergencyContactPhone: '',
+      nationality: '',
+      occupation: '',
+      maritalStatus: '',
+      address: '',
     });
     setError(null);
     onClose();
@@ -327,6 +336,120 @@ export function CustomerCreateModal({ isOpen, onClose, onCustomerCreated }: Cust
                     borderRadius: '6px',
                     fontSize: '15px',
                     color: '#1f2937',
+                    transition: 'border-color 0.2s',
+                  }}
+                  onFocus={(e) => (e.currentTarget.style.borderColor = '#667eea')}
+                  onBlur={(e) => (e.currentTarget.style.borderColor = '#e5e7eb')}
+                />
+              </div>
+
+              {/* Nationality */}
+              <div>
+                <div style={{ fontSize: '12px', fontWeight: '600', color: '#6b7280', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  Nacionalidad
+                </div>
+                <select
+                  value={formData.nationality || ''}
+                  onChange={(e) => handleChange('nationality', e.target.value)}
+                  disabled={isSaving}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    border: '2px solid #e5e7eb',
+                    borderRadius: '6px',
+                    fontSize: '15px',
+                    color: '#1f2937',
+                    fontWeight: '500',
+                    transition: 'border-color 0.2s',
+                    background: 'white',
+                  }}
+                  onFocus={(e) => (e.currentTarget.style.borderColor = '#667eea')}
+                  onBlur={(e) => (e.currentTarget.style.borderColor = '#e5e7eb')}
+                >
+                  <option value="">Seleccionar...</option>
+                  {NATIONALITY_OPTIONS.map((nat, idx) => (
+                    <option key={idx} value={nat} disabled={nat === '──────────'}>
+                      {nat}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Occupation */}
+              <div>
+                <div style={{ fontSize: '12px', fontWeight: '600', color: '#6b7280', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  Ocupación
+                </div>
+                <input
+                  type="text"
+                  value={formData.occupation || ''}
+                  onChange={(e) => handleChange('occupation', e.target.value)}
+                  disabled={isSaving}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    border: '2px solid #e5e7eb',
+                    borderRadius: '6px',
+                    fontSize: '15px',
+                    color: '#1f2937',
+                    fontWeight: '500',
+                    transition: 'border-color 0.2s',
+                  }}
+                  onFocus={(e) => (e.currentTarget.style.borderColor = '#667eea')}
+                  onBlur={(e) => (e.currentTarget.style.borderColor = '#e5e7eb')}
+                />
+              </div>
+
+              {/* Marital Status */}
+              <div>
+                <div style={{ fontSize: '12px', fontWeight: '600', color: '#6b7280', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  Estado Civil
+                </div>
+                <select
+                  value={formData.maritalStatus || ''}
+                  onChange={(e) => handleChange('maritalStatus', e.target.value)}
+                  disabled={isSaving}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    border: '2px solid #e5e7eb',
+                    borderRadius: '6px',
+                    fontSize: '15px',
+                    color: '#1f2937',
+                    fontWeight: '500',
+                    transition: 'border-color 0.2s',
+                    background: 'white',
+                  }}
+                  onFocus={(e) => (e.currentTarget.style.borderColor = '#667eea')}
+                  onBlur={(e) => (e.currentTarget.style.borderColor = '#e5e7eb')}
+                >
+                  <option value="">Seleccionar...</option>
+                  {MARITAL_STATUS_OPTIONS.map((status) => (
+                    <option key={status.value} value={status.value}>
+                      {status.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Address */}
+              <div>
+                <div style={{ fontSize: '12px', fontWeight: '600', color: '#6b7280', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  Dirección
+                </div>
+                <input
+                  type="text"
+                  value={formData.address || ''}
+                  onChange={(e) => handleChange('address', e.target.value)}
+                  disabled={isSaving}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    border: '2px solid #e5e7eb',
+                    borderRadius: '6px',
+                    fontSize: '15px',
+                    color: '#1f2937',
+                    fontWeight: '500',
                     transition: 'border-color 0.2s',
                   }}
                   onFocus={(e) => (e.currentTarget.style.borderColor = '#667eea')}

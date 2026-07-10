@@ -43,6 +43,26 @@ export class CreateOrUpdateClientDto {
   emergencyContactPhone?: string | null;
 
   @IsString()
+  @IsOptional()
+  @MaxLength(100)
+  nationality?: string | null;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(100)
+  occupation?: string | null;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(50)
+  maritalStatus?: string | null;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(500)
+  address?: string | null;
+
+  @IsString()
   @IsNotEmpty()
   tenantId!: string;
 }

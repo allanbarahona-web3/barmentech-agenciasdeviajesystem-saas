@@ -5,7 +5,8 @@ export const dynamic = 'force-dynamic';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { LoadingModal } from '@/components/loading-modal';
-import { getCustomers, type CustomerListResponse } from '@/lib/customers-api';
+import { getCustomers, type CustomerListResponse, type CustomerInfo } from '@/lib/customers-api';
+import { CustomerCreateModal } from '@/features/customers/components';
 
 export default function CustomersPage() {
   const router = useRouter();
@@ -19,6 +20,9 @@ export default function CustomersPage() {
   const [loadingModalOpen, setLoadingModalOpen] = useState(false);
   const [loadingModalState, setLoadingModalState] = useState<'loading' | 'success' | 'error'>('loading');
   const [loadingModalMessage, setLoadingModalMessage] = useState('');
+
+  // Create customer modal
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   useEffect(() => {
     loadCustomers();
@@ -65,6 +69,12 @@ export default function CustomersPage() {
     });
   }
 
+  function handleCustomerCreated(customer: CustomerInfo) {
+    // Refresh the customer list
+    loadCustomers();
+    setShowCreateModal(false);
+  }
+
   return (
     <main className="app-shell">
       {/* Header with gradient */}
@@ -86,23 +96,53 @@ export default function CustomersPage() {
               Consulta y gestiona la información de tus clientes
             </p>
           </div>
-          {customers && (
-            <div
+          <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+            {customers && (
+              <div
+                style={{
+                  background: 'rgba(255,255,255,0.2)',
+                  padding: '12px 20px',
+                  borderRadius: '8px',
+                  backdropFilter: 'blur(10px)',
+                }}
+              >
+                <div style={{ fontSize: '28px', fontWeight: 'bold', color: 'white' }}>
+                  {customers.total}
+                </div>
+                <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.9)' }}>
+                  Total Clientes
+                </div>
+              </div>
+            )}
+            <button
+              onClick={() => setShowCreateModal(true)}
               style={{
-                background: 'rgba(255,255,255,0.2)',
-                padding: '12px 20px',
+                padding: '12px 24px',
+                background: 'rgba(255,255,255,0.95)',
+                color: '#667eea',
+                border: 'none',
                 borderRadius: '8px',
-                backdropFilter: 'blur(10px)',
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: '600',
+                transition: 'all 0.2s',
+                boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = 'white';
+                e.currentTarget.style.transform = 'translateY(-2px)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'rgba(255,255,255,0.95)';
+                e.currentTarget.style.transform = 'translateY(0)';
               }}
             >
-              <div style={{ fontSize: '28px', fontWeight: 'bold', color: 'white' }}>
-                {customers.total}
-              </div>
-              <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.9)' }}>
-                Total Clientes
-              </div>
-            </div>
-          )}
+              ➕ Nuevo Cliente
+            </button>
+          </div>
         </div>
       </div>
 
@@ -265,6 +305,13 @@ export default function CustomersPage() {
         loadingMessage={loadingModalMessage}
         errorMessage={loadingModalMessage}
         onClose={() => setLoadingModalOpen(false)}
+      />
+
+      {/* Create Customer Modal */}
+      <CustomerCreateModal
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        onCustomerCreated={handleCustomerCreated}
       />
     </main>
   );

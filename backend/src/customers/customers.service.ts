@@ -104,6 +104,10 @@ export class CustomersService {
           phone: normalized.phone,
           emergencyContactName: normalized.emergencyContactName,
           emergencyContactPhone: normalized.emergencyContactPhone,
+          nationality: normalized.nationality,
+          occupation: normalized.occupation,
+          maritalStatus: normalized.maritalStatus,
+          address: normalized.address,
         },
       });
 
@@ -120,6 +124,10 @@ export class CustomersService {
         phone: normalized.phone,
         emergencyContactName: normalized.emergencyContactName,
         emergencyContactPhone: normalized.emergencyContactPhone,
+        nationality: normalized.nationality,
+        occupation: normalized.occupation,
+        maritalStatus: normalized.maritalStatus,
+        address: normalized.address,
         tenantId: normalized.tenantId,
       },
     });
@@ -865,6 +873,10 @@ export class CustomersService {
       phone: String(dto.phone || "").trim() || null,
       emergencyContactName: String(dto.emergencyContactName || "").trim() || null,
       emergencyContactPhone: String(dto.emergencyContactPhone || "").trim() || null,
+      nationality: String(dto.nationality || "").trim() || null,
+      occupation: String(dto.occupation || "").trim() || null,
+      maritalStatus: String(dto.maritalStatus || "").trim() || null,
+      address: String(dto.address || "").trim() || null,
       tenantId: String(dto.tenantId || "").trim(),
     };
   }
