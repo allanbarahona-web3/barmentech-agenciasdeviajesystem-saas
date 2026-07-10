@@ -43,13 +43,43 @@ export function normalizeIdentification(
   // Normalize based on ID type
   switch (rawIdType) {
     case "Cedula": {
-      // Remove all non-numeric characters
-      const digitsOnly = rawIdNumber.replace(/\D/g, "");
-      
-      // Left-pad with zeros to ensure exactly 10 digits
-      const normalized = digitsOnly.padStart(10, "0");
-      
-      return normalized;
+      // Check if input has separators (formatted input)
+      if (/[-\s]/.test(rawIdNumber)) {
+        // Parse as three groups separated by hyphen or space
+        const groups = rawIdNumber.split(/[-\s]+/).filter(g => g.length > 0);
+        
+        if (groups.length !== 3) {
+          // Invalid format - return as-is, validation will catch it
+          return rawIdNumber.replace(/\D/g, "");
+        }
+
+        // Validate each group contains only digits
+        if (!groups.every(g => /^\d+$/.test(g))) {
+          // Invalid format - return as-is, validation will catch it
+          return rawIdNumber.replace(/\D/g, "");
+        }
+
+        // Pad each group: province(2), second(4), third(4)
+        const province = groups[0].padStart(2, "0");
+        const second = groups[1].padStart(4, "0");
+        const third = groups[2].padStart(4, "0");
+
+        return province + second + third;
+      } else {
+        // Unformatted numeric input
+        const digitsOnly = rawIdNumber.replace(/\D/g, "");
+        
+        if (digitsOnly.length === 9) {
+          // 9 digits: prepend one zero
+          return "0" + digitsOnly;
+        } else if (digitsOnly.length === 10) {
+          // 10 digits: keep as is
+          return digitsOnly;
+        } else {
+          // Invalid length - return as-is, validation will catch it
+          return digitsOnly;
+        }
+      }
     }
 
     case "DIMEX": {
@@ -101,28 +131,28 @@ export function validateIdentification(
 
   switch (type) {
     case "Cedula": {
-      // Must be exactly 10 digits
+      // HARD VALIDATION: Must be EXACTLY 10 digits after normalization
       if (!/^\d{10}$/.test(idNum)) {
         return {
           isValid: false,
-          errorMessage: "La cédula debe contener exactamente 10 dígitos",
+          errorMessage: "La cédula debe contener exactamente 10 dígitos. Formato aceptado: 1-2345-6789 o 10 dígitos sin separadores",
         };
       }
       return { isValid: true };
     }
 
     case "DIMEX": {
-      // Must be exactly 12 digits and start with 1
+      // HARD VALIDATION: Must be EXACTLY 12 digits and start with 1
       if (!/^\d{12}$/.test(idNum)) {
         return {
           isValid: false,
-          errorMessage: "El DIMEX debe contener exactamente 12 dígitos",
+          errorMessage: "El DIMEX debe contener exactamente 12 dígitos (no más, no menos)",
         };
       }
       if (!idNum.startsWith("1")) {
         return {
           isValid: false,
-          errorMessage: "El DIMEX debe comenzar con 1",
+          errorMessage: "El DIMEX debe comenzar con el dígito 1",
         };
       }
       return { isValid: true };
