@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { createCustomer, type CreateCustomerDto, type CustomerInfo } from '@/lib/customers-api';
+import { normalizeIdentification, validateIdentification } from '@/features/customers/utils/normalize-identification';
 
 interface CustomerCreateModalProps {
   isOpen: boolean;
@@ -13,6 +14,7 @@ export function CustomerCreateModal({ isOpen, onClose, onCustomerCreated }: Cust
   const [formData, setFormData] = useState<CreateCustomerDto>({
     fullName: '',
     idNumber: '',
+    idType: 'Cedula',
     email: '',
     phone: '',
     emergencyContactName: '',
@@ -33,6 +35,7 @@ export function CustomerCreateModal({ isOpen, onClose, onCustomerCreated }: Cust
     setFormData({
       fullName: '',
       idNumber: '',
+      idType: 'Cedula',
       email: '',
       phone: '',
       emergencyContactName: '',
@@ -57,11 +60,24 @@ export function CustomerCreateModal({ isOpen, onClose, onCustomerCreated }: Cust
       return;
     }
 
+    // Normalize idNumber based on idType
+    const normalizedIdNumber = normalizeIdentification(formData.idType, formData.idNumber);
+
+    // Validate normalized idNumber
+    const validationResult = validateIdentification(formData.idType, normalizedIdNumber);
+    if (!validationResult.isValid) {
+      setError(validationResult.errorMessage || 'Número de identificación inválido');
+      return;
+    }
+
     setIsSaving(true);
     setError(null);
 
     try {
-      const createdCustomer = await createCustomer(formData);
+      const createdCustomer = await createCustomer({
+        ...formData,
+        idNumber: normalizedIdNumber,
+      });
       onCustomerCreated(createdCustomer);
       handleClose();
     } catch (err) {
@@ -166,6 +182,35 @@ export function CustomerCreateModal({ isOpen, onClose, onCustomerCreated }: Cust
                   onFocus={(e) => (e.currentTarget.style.borderColor = '#667eea')}
                   onBlur={(e) => (e.currentTarget.style.borderColor = '#e5e7eb')}
                 />
+              </div>
+
+              {/* ID Type */}
+              <div>
+                <div style={{ fontSize: '12px', fontWeight: '600', color: '#6b7280', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  Tipo de Identificación *
+                </div>
+                <select
+                  value={formData.idType || 'Cedula'}
+                  onChange={(e) => handleChange('idType', e.target.value)}
+                  disabled={isSaving}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    border: '2px solid #e5e7eb',
+                    borderRadius: '6px',
+                    fontSize: '15px',
+                    color: '#1f2937',
+                    fontWeight: '500',
+                    transition: 'border-color 0.2s',
+                    background: 'white',
+                  }}
+                  onFocus={(e) => (e.currentTarget.style.borderColor = '#667eea')}
+                  onBlur={(e) => (e.currentTarget.style.borderColor = '#e5e7eb')}
+                >
+                  <option value="Cedula">Cédula</option>
+                  <option value="Pasaporte">Pasaporte</option>
+                  <option value="DIMEX">DIMEX</option>
+                </select>
               </div>
 
               {/* ID Number */}

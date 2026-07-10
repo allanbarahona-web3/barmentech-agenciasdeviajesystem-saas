@@ -16,6 +16,7 @@ import { ValidateCustomerIdentityDto } from "./dto/validate-customer-identity.dt
 import { CustomerIdentityValidationResultDto } from "./dto/customer-identity-validation-result.dto";
 import { CustomerDocumentsService } from "./documents/customer-documents.service";
 import { CustomerNotesService } from "./notes/customer-notes.service";
+import { normalizeIdentification, validateIdentification } from "./utils/normalize-identification";
 
 /**
  * CustomersService
@@ -60,6 +61,12 @@ export class CustomersService {
   async upsertClient(dto: CreateOrUpdateClientDto): Promise<Client> {
     // Step 1: Normalize all fields
     const normalized = this.normalizeClientData(dto);
+
+    // Step 1.5: Validate normalized idNumber
+    const validationResult = validateIdentification(normalized.idType, normalized.idNumber);
+    if (!validationResult.isValid) {
+      throw new ConflictException(validationResult.errorMessage || "Número de identificación inválido");
+    }
 
     // Step 2: Check if client already exists
     const existingClient = await this.prisma.client.findUnique({
@@ -108,6 +115,7 @@ export class CustomersService {
       data: {
         fullName: normalized.fullName,
         idNumber: normalized.idNumber,
+        idType: normalized.idType,
         email: normalized.email,
         phone: normalized.phone,
         emergencyContactName: normalized.emergencyContactName,
@@ -182,6 +190,7 @@ export class CustomersService {
       const client = await this.upsertClient({
         fullName: companion.fullName,
         idNumber: companion.idNumber,
+        idType: companion.idType || null,
         email: companion.email,
         phone: companion.phone,
         emergencyContactName: companion.emergencyContactName,
@@ -222,15 +231,11 @@ export class CustomersService {
     // Add search filter if provided
     if (dto.search && dto.search.trim()) {
       const searchTerm = dto.search.trim();
-      where.OR = [
+      
+      // Build OR conditions for searching
+      const orConditions: Prisma.ClientWhereInput[] = [
         {
           fullName: {
-            contains: searchTerm,
-            mode: "insensitive",
-          },
-        },
-        {
-          idNumber: {
             contains: searchTerm,
             mode: "insensitive",
           },
@@ -242,6 +247,49 @@ export class CustomersService {
           },
         },
       ];
+
+      // If search term contains digits, try normalizing as different ID types
+      if (/\d/.test(searchTerm)) {
+        // Try as Cedula (10 digits)
+        const normalizedAsCedula = normalizeIdentification("Cedula", searchTerm);
+        if (normalizedAsCedula) {
+          orConditions.push({
+            idNumber: {
+              contains: normalizedAsCedula,
+              mode: "insensitive",
+            },
+          });
+        }
+
+        // Try as DIMEX (12 digits)
+        const normalizedAsDimex = normalizeIdentification("DIMEX", searchTerm);
+        if (normalizedAsDimex && normalizedAsDimex !== normalizedAsCedula) {
+          orConditions.push({
+            idNumber: {
+              contains: normalizedAsDimex,
+              mode: "insensitive",
+            },
+          });
+        }
+
+        // Also search for the raw term (for passport or partial matches)
+        orConditions.push({
+          idNumber: {
+            contains: searchTerm,
+            mode: "insensitive",
+          },
+        });
+      } else {
+        // Non-numeric search: could be passport or name/email
+        orConditions.push({
+          idNumber: {
+            contains: searchTerm,
+            mode: "insensitive",
+          },
+        });
+      }
+
+      where.OR = orConditions;
     }
 
     // Execute query with pagination
@@ -687,13 +735,22 @@ export class CustomersService {
     dto: ValidateCustomerIdentityDto
   ): Promise<CustomerIdentityValidationResultDto> {
     // Normalize inputs
-    const normalizedIdNumber = String(dto.idNumber || "").trim();
+    const normalizedIdNumber = normalizeIdentification(dto.idType, dto.idNumber);
     const normalizedFullName = String(dto.fullName || "").trim();
 
     if (!normalizedIdNumber || !normalizedFullName) {
       return {
         valid: false,
         message: "El número de identificación y el nombre completo son requeridos",
+      };
+    }
+
+    // Validate normalized idNumber
+    const validationResult = validateIdentification(dto.idType, normalizedIdNumber);
+    if (!validationResult.isValid) {
+      return {
+        valid: false,
+        message: validationResult.errorMessage || "Número de identificación inválido",
       };
     }
 
@@ -797,9 +854,13 @@ export class CustomersService {
   private normalizeClientData(
     dto: CreateOrUpdateClientDto
   ): CreateOrUpdateClientDto {
+    // Normalize idNumber based on idType
+    const normalizedIdNumber = normalizeIdentification(dto.idType, dto.idNumber);
+    
     return {
       fullName: String(dto.fullName || "").trim(),
-      idNumber: String(dto.idNumber || "").trim(),
+      idNumber: normalizedIdNumber,
+      idType: String(dto.idType || "").trim() || null,
       email: String(dto.email || "").trim().toLowerCase(),
       phone: String(dto.phone || "").trim() || null,
       emergencyContactName: String(dto.emergencyContactName || "").trim() || null,

@@ -155,6 +155,7 @@ export interface UpdateCustomerDto {
 export interface CreateCustomerDto {
   fullName: string;
   idNumber: string;
+  idType?: string;
   email: string;
   phone?: string;
   emergencyContactName?: string;
@@ -163,6 +164,7 @@ export interface CreateCustomerDto {
 
 export interface ValidateCustomerIdentityRequest {
   idNumber: string;
+  idType?: string;
   fullName: string;
 }
 

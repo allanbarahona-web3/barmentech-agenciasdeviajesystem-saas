@@ -28,6 +28,7 @@ import type { TravelPackage } from "@/lib/travel-packages-api";
 import { getContractDraft, reserveNextContractNumber, saveContractDraft, archiveContract } from "@/lib/contracts-api";
 import { bootstrapBillingContract } from "@/lib/billing-api";
 import { getTravelPackageById } from "@/lib/travel-packages-api";
+import { normalizeIdentification, validateIdentification } from "@/features/customers/utils/normalize-identification";
 import { getInternalTripById } from "@/lib/internal-trips-api";
 import { validateCustomerIdentity, getCustomerProfile, getCustomerDocumentDownloadUrl } from "@/lib/customers-api";
 import { getTenantLegalConfig, getTenantConfig, type TenantLegalConfig } from "@/lib/auth-api";
@@ -262,15 +263,37 @@ export function ContractsWizard({
   };
 
   // ==================== COMPANION CUSTOMER LOOKUP ====================
-  const handleValidateCompanionIdentity = async (companionId: string, idNumber: string, fullName: string) => {
+  const handleValidateCompanionIdentity = async (companionId: string, idNumber: string, fullName: string, idType?: string) => {
     // Skip validation if either field is empty
     if (!idNumber.trim() || !fullName.trim()) {
       return;
     }
 
+    // Normalize idNumber based on idType
+    const normalizedIdNumber = normalizeIdentification(idType, idNumber);
+
+    // Validate normalized idNumber
+    const validationResult = validateIdentification(idType, normalizedIdNumber);
+    if (!validationResult.isValid) {
+      // Show validation error - could display in UI or console
+      console.error('Companion ID validation failed:', validationResult.errorMessage);
+      return;
+    }
+
+    // Update companion state with normalized value
+    setState((prev) => ({
+      ...prev,
+      companions: prev.companions.map(c => 
+        c.id === companionId
+          ? { ...c, idNumber: normalizedIdNumber }
+          : c
+      ),
+    }));
+
     try {
       const result = await validateCustomerIdentity({
-        idNumber: idNumber.trim(),
+        idNumber: normalizedIdNumber,
+        idType: idType,
         fullName: fullName.trim(),
       });
 
@@ -841,15 +864,34 @@ export function ContractsWizard({
   const handleValidateCustomerIdentity = async () => {
     const idNumber = state.clientIdNumber.trim();
     const fullName = state.clientFullName.trim();
+    const idType = state.clientIdType;
 
     // Skip validation if either field is empty
     if (!idNumber || !fullName) {
       return;
     }
 
+    // Normalize idNumber based on idType
+    const normalizedIdNumber = normalizeIdentification(idType, idNumber);
+
+    // Validate normalized idNumber
+    const validationResult = validateIdentification(idType, normalizedIdNumber);
+    if (!validationResult.isValid) {
+      setIdentityConflictMessage(validationResult.errorMessage || 'Número de identificación inválido');
+      setShowIdentityConflictModal(true);
+      return;
+    }
+
+    // Update state with normalized value
+    setState((prev) => ({
+      ...prev,
+      clientIdNumber: normalizedIdNumber,
+    }));
+
     try {
       const result = await validateCustomerIdentity({
-        idNumber,
+        idNumber: normalizedIdNumber,
+        idType: idType,
         fullName,
       });
 

@@ -17,7 +17,7 @@ export interface CompanionsStepProps {
     passport: { id: string; fileName: string; mimeType: string } | null;
   }>;
   onViewDocument: (customerId: string, documentId: string) => void;
-  handleValidateCompanionIdentity: (companionId: string, idNumber: string, fullName: string) => Promise<void>;
+  handleValidateCompanionIdentity: (companionId: string, idNumber: string, fullName: string, idType?: string) => Promise<void>;
   nationalityOptions: string[];
   requiredDocumentLabelClass: (hasAttachment: boolean) => string;
   updateFileInputState: (input: HTMLInputElement, hasFile: boolean) => void;
@@ -125,7 +125,7 @@ export function CompanionsStep({
       // Wait for React to process the state update, then load documents
       setTimeout(() => {
         if (newCompanionId) {
-          handleValidateCompanionIdentity(newCompanionId, customerData.idNumber, customerData.fullName);
+          handleValidateCompanionIdentity(newCompanionId, customerData.idNumber, customerData.fullName, customerData.idType || undefined);
         }
       }, 50);
 

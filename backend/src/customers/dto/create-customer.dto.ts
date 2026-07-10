@@ -17,6 +17,11 @@ export class CreateCustomerDto {
   @MaxLength(80)
   idNumber!: string;
 
+  @IsString()
+  @IsOptional()
+  @MaxLength(50)
+  idType?: string | null;
+
   @IsEmail()
   @IsNotEmpty()
   email!: string;
