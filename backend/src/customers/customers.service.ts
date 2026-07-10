@@ -422,6 +422,13 @@ export class CustomersService {
         participantCount: true,
         createdAt: true,
         payload: true,
+        startDate: true,
+        endDate: true,
+        travelPackage: {
+          select: {
+            name: true,
+          },
+        },
       },
       orderBy: {
         createdAt: "desc",
@@ -588,10 +595,13 @@ export class CustomersService {
       id: c.id,
       contractNumber: c.contractNumber,
       destination: c.destination,
+      travelName: c.travelPackage?.name || c.destination,
       status: c.status,
       source: c.source,
       participantCount: c.participantCount,
       createdAt: c.createdAt,
+      startDate: c.startDate,
+      endDate: c.endDate,
     }));
 
     const financialSummary: CustomerFinancialSummaryDto = {

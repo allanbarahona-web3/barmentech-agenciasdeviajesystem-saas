@@ -95,10 +95,13 @@ export interface CustomerContractItem {
   id: string;
   contractNumber: string;
   destination: string;
+  travelName: string;
   status: string;
   source: string;
   participantCount: number;
   createdAt: string;
+  startDate: string | null;
+  endDate: string | null;
 }
 
 export interface CustomerFinancialSummary {

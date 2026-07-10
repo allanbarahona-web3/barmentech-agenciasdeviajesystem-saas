@@ -4,11 +4,13 @@ export const dynamic = 'force-dynamic';
 
 import { useEffect, useState, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
+import Link from 'next/link';
 import { LoadingModal } from '@/components/loading-modal';
 import { getCustomerProfile, updateCustomer, getCustomerDocumentDownloadUrl, uploadCustomerDocument, createCustomerNote, updateCustomerNote, deleteCustomerNote, type CustomerProfile, type UpdateCustomerDto, type CustomerDocumentCategory } from '@/lib/customers-api';
 import { getStoredSession } from '@/lib/auth-api';
 import { CustomerForm, CustomerEditModal, CustomerDocumentUploadModal } from '@/features/customers/components';
 import AttachmentViewer from '@/components/attachment-viewer';
+import { getContractFiles } from '@/lib/contracts-api';
 
 export default function CustomerProfilePage() {
   const router = useRouter();
@@ -38,6 +40,11 @@ export default function CustomerProfilePage() {
   // Document upload modal state
   const [showUploadModal, setShowUploadModal] = useState(false);
   
+  // Section refs for navigation
+  const contractsRef = useRef<HTMLDivElement>(null);
+  const documentsRef = useRef<HTMLDivElement>(null);
+  const notesRef = useRef<HTMLDivElement>(null);
+  
   // Customer notes state
   const [expandedNoteId, setExpandedNoteId] = useState<string | null>(null);
   const [showAddNoteModal, setShowAddNoteModal] = useState(false);
@@ -48,9 +55,27 @@ export default function CustomerProfilePage() {
   const [editingNoteText, setEditingNoteText] = useState('');
   const [noteToDelete, setNoteToDelete] = useState<{ id: string; preview: string } | null>(null);
 
+  // Contract viewer state
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [viewerHtml, setViewerHtml] = useState('');
+  const [busyContractId, setBusyContractId] = useState<string>('');
+
   useEffect(() => {
     loadProfile();
   }, [customerId]);
+
+  useEffect(() => {
+    if (!viewerOpen) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closeViewer();
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [viewerOpen]);
 
   async function loadProfile() {
     try {
@@ -95,6 +120,55 @@ export default function CustomerProfilePage() {
       minute: '2-digit',
     });
   }
+
+  function formatTravelDates(startDate: string | null, endDate: string | null): string {
+    if (!startDate || !endDate) return 'Fechas no disponibles';
+    
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    
+    const formatShortDate = (date: Date) => {
+      return date.toLocaleDateString('es-ES', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      });
+    };
+    
+    return `${formatShortDate(start)} - ${formatShortDate(end)}`;
+  }
+
+  const closeViewer = () => {
+    setViewerOpen(false);
+    setViewerHtml('');
+  };
+
+  const openContractPdf = async (contractId: string) => {
+    setBusyContractId(contractId);
+    try {
+      const files = await getContractFiles(contractId);
+      const url = files.signedPdf?.url || files.pdf?.url || '';
+      if (!url) {
+        setLoadingModalState('error');
+        setLoadingModalMessage('No hay contrato disponible.');
+        setLoadingModalOpen(true);
+      } else {
+        setViewerHtml(`<iframe src="${url}" title="Contrato" class="viewer-iframe"></iframe>`);
+        setViewerOpen(true);
+      }
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'No se pudo abrir el contrato.';
+      setLoadingModalState('error');
+      setLoadingModalMessage(errorMessage);
+      setLoadingModalOpen(true);
+    } finally {
+      setBusyContractId('');
+    }
+  };
+
+  const scrollToSection = (ref: React.RefObject<HTMLDivElement | null>) => {
+    ref.current?.scrollIntoView({ behavior: 'smooth' });
+  };
 
   function getFirstLinePreview(text: string): string {
     const firstLine = text.split('\n')[0].trim();
@@ -627,6 +701,7 @@ export default function CustomerProfilePage() {
           </h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div
+              onClick={() => scrollToSection(contractsRef)}
               style={{
                 padding: '16px',
                 background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
@@ -634,6 +709,16 @@ export default function CustomerProfilePage() {
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
+                cursor: 'pointer',
+                transition: 'transform 0.2s, box-shadow 0.2s',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-2px)';
+                e.currentTarget.style.boxShadow = '0 4px 12px rgba(102, 126, 234, 0.3)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = 'none';
               }}
             >
               <div>
@@ -647,26 +732,7 @@ export default function CustomerProfilePage() {
               <div style={{ fontSize: '40px' }}>📝</div>
             </div>
             <div
-              style={{
-                padding: '16px',
-                background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
-                borderRadius: '10px',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-              }}
-            >
-              <div>
-                <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.9)', fontWeight: '500', marginBottom: '4px' }}>
-                  Total Viajes
-                </div>
-                <div style={{ fontSize: '32px', fontWeight: 'bold', color: 'white' }}>
-                  {statistics.totalTravels}
-                </div>
-              </div>
-              <div style={{ fontSize: '40px' }}>✈️</div>
-            </div>
-            <div
+              onClick={() => scrollToSection(documentsRef)}
               style={{
                 padding: '16px',
                 background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
@@ -674,6 +740,16 @@ export default function CustomerProfilePage() {
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
+                cursor: 'pointer',
+                transition: 'transform 0.2s, box-shadow 0.2s',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-2px)';
+                e.currentTarget.style.boxShadow = '0 4px 12px rgba(79, 172, 254, 0.3)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = 'none';
               }}
             >
               <div>
@@ -687,6 +763,7 @@ export default function CustomerProfilePage() {
               <div style={{ fontSize: '40px' }}>📎</div>
             </div>
             <div
+              onClick={() => scrollToSection(notesRef)}
               style={{
                 padding: '16px',
                 background: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
@@ -694,6 +771,16 @@ export default function CustomerProfilePage() {
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
+                cursor: 'pointer',
+                transition: 'transform 0.2s, box-shadow 0.2s',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-2px)';
+                e.currentTarget.style.boxShadow = '0 4px 12px rgba(67, 233, 123, 0.3)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = 'none';
               }}
             >
               <div>
@@ -872,6 +959,28 @@ export default function CustomerProfilePage() {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      </div>
+
+      {/* Notas Operativas Section - Full Width */}
+      <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', padding: '24px', marginBottom: '30px' }}>
+        <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#1f2937', marginBottom: '20px' }}>
+          📋 Notas Operativas
+        </h2>
+        <div style={{ padding: '24px', background: '#f9fafb', borderRadius: '10px', textAlign: 'center' }}>
+          <div style={{ fontSize: '48px', marginBottom: '16px' }}>📋</div>
+          <p style={{ fontSize: '16px', fontWeight: '600', color: '#374151', marginBottom: '12px' }}>
+            No existen notas operativas.
+          </p>
+          <p style={{ fontSize: '14px', color: '#6b7280', lineHeight: '1.6', marginBottom: '8px' }}>
+            Las notas operativas serán creadas desde el contrato y estarán disponibles aquí para su consulta.
+          </p>
+          <p style={{ fontSize: '14px', color: '#6b7280', lineHeight: '1.6', marginBottom: '16px' }}>
+            Estas notas permiten comunicar información importante a Facturación y Operaciones sin modificar el expediente permanente del cliente.
+          </p>
+          <div style={{ display: 'inline-block', padding: '8px 16px', background: '#fef3c7', color: '#92400e', borderRadius: '8px', fontSize: '14px', fontWeight: '600' }}>
+            🚧 Próximamente
           </div>
         </div>
       </div>
@@ -1073,7 +1182,7 @@ export default function CustomerProfilePage() {
       )}
 
       {/* Customer Documents Section */}
-      <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', overflow: 'hidden', marginBottom: '30px' }}>
+      <div ref={documentsRef} style={{ background: 'white', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', overflow: 'hidden', marginBottom: '30px' }}>
         <div style={{ padding: '20px 24px', borderBottom: '2px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#1f2937' }}>
             📎 Documentos ({documents.length})
@@ -1237,7 +1346,7 @@ export default function CustomerProfilePage() {
       </div>
 
       {/* Section 5: Contracts */}
-      <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', overflow: 'hidden', marginBottom: '30px' }}>
+      <div ref={contractsRef} style={{ background: 'white', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', overflow: 'hidden', marginBottom: '30px' }}>
         <div style={{ padding: '20px 24px', borderBottom: '2px solid #e5e7eb' }}>
           <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#1f2937' }}>
             📄 Contratos ({contracts.length})
@@ -1263,19 +1372,19 @@ export default function CustomerProfilePage() {
                     Contrato
                   </th>
                   <th style={{ padding: '14px 16px', textAlign: 'left', fontSize: '13px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                    Destino
+                    Nombre del Viaje
                   </th>
                   <th style={{ padding: '14px 16px', textAlign: 'left', fontSize: '13px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                    Estado
-                  </th>
-                  <th style={{ padding: '14px 16px', textAlign: 'left', fontSize: '13px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                    Origen
+                    Fechas del Viaje
                   </th>
                   <th style={{ padding: '14px 16px', textAlign: 'left', fontSize: '13px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                     Participantes
                   </th>
                   <th style={{ padding: '14px 16px', textAlign: 'left', fontSize: '13px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                     Creado
+                  </th>
+                  <th style={{ padding: '14px 16px', textAlign: 'center', fontSize: '13px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    Acciones
                   </th>
                 </tr>
               </thead>
@@ -1291,32 +1400,55 @@ export default function CustomerProfilePage() {
                     onMouseLeave={(e) => (e.currentTarget.style.background = 'white')}
                   >
                     <td style={{ padding: '14px 16px', fontSize: '14px', fontWeight: '500', color: '#1f2937' }}>
-                      {contract.contractNumber}
-                    </td>
-                    <td style={{ padding: '14px 16px', fontSize: '14px', color: '#4b5563' }}>
-                      {contract.destination}
-                    </td>
-                    <td style={{ padding: '14px 16px' }}>
-                      <span
+                      <button
+                        onClick={() => openContractPdf(contract.id)}
+                        disabled={busyContractId === contract.id}
                         style={{
-                          padding: '4px 12px',
-                          borderRadius: '12px',
-                          fontSize: '12px',
-                          fontWeight: '600',
-                          ...getStatusBadgeStyle(contract.status),
+                          background: 'none',
+                          border: 'none',
+                          color: '#667eea',
+                          textDecoration: 'underline',
+                          cursor: busyContractId === contract.id ? 'wait' : 'pointer',
+                          fontSize: '14px',
+                          fontWeight: '500',
+                          padding: 0,
+                          opacity: busyContractId === contract.id ? 0.6 : 1,
                         }}
                       >
-                        {contract.status}
-                      </span>
+                        {contract.contractNumber}
+                      </button>
+                    </td>
+                    <td style={{ padding: '14px 16px', fontSize: '14px', color: '#4b5563' }}>
+                      {contract.travelName}
                     </td>
                     <td style={{ padding: '14px 16px', fontSize: '14px', color: '#6b7280' }}>
-                      {contract.source}
+                      {formatTravelDates(contract.startDate, contract.endDate)}
                     </td>
                     <td style={{ padding: '14px 16px', fontSize: '14px', color: '#6b7280', textAlign: 'center' }}>
                       {contract.participantCount}
                     </td>
                     <td style={{ padding: '14px 16px', fontSize: '13px', color: '#9ca3af' }}>
                       {formatDateTime(contract.createdAt)}
+                    </td>
+                    <td style={{ padding: '14px 16px', textAlign: 'center' }}>
+                      <Link
+                        href={`/billing/${encodeURIComponent(contract.id)}`}
+                        style={{
+                          display: 'inline-block',
+                          padding: '6px 12px',
+                          background: '#10b981',
+                          color: 'white',
+                          borderRadius: '6px',
+                          fontSize: '12px',
+                          fontWeight: '600',
+                          textDecoration: 'none',
+                          transition: 'all 0.2s',
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = '#059669')}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = '#10b981')}
+                      >
+                        Open Account
+                      </Link>
                     </td>
                   </tr>
                 ))}
@@ -1327,7 +1459,7 @@ export default function CustomerProfilePage() {
       </div>
 
       {/* Section 6: Customer Notes */}
-      <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', overflow: 'hidden', marginBottom: '30px' }}>
+      <div ref={notesRef} style={{ background: 'white', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', overflow: 'hidden', marginBottom: '30px' }}>
         <div style={{ padding: '20px 24px', borderBottom: '2px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#1f2937' }}>
             📝 Customer Notes ({profile.notes.length})
@@ -1807,6 +1939,26 @@ export default function CustomerProfilePage() {
           initialIndex={attachmentViewerData.initialIndex}
           onClose={() => setAttachmentViewerData(null)}
         />
+      )}
+
+      {viewerOpen && (
+        <section className="viewer-modal" onClick={closeViewer}>
+          <div className="viewer-panel" onClick={(event) => event.stopPropagation()}>
+            <div className="viewer-head">
+              <h2>Contrato</h2>
+              <button 
+                type="button" 
+                className="rounded-xl px-4 py-2.5 bg-white text-blue-900 border border-blue-200 font-semibold transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md active:translate-y-0" 
+                onClick={closeViewer}
+              >
+                Cerrar
+              </button>
+            </div>
+            <div className="viewer-body">
+              <div dangerouslySetInnerHTML={{ __html: viewerHtml }} />
+            </div>
+          </div>
+        </section>
       )}
 
       <LoadingModal

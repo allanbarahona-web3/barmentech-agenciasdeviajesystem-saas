@@ -8,8 +8,11 @@ export class CustomerContractItemDto {
   id!: string;
   contractNumber!: string;
   destination!: string;
+  travelName!: string;
   status!: string;
   source!: string;
   participantCount!: number;
   createdAt!: Date;
+  startDate!: Date | null;
+  endDate!: Date | null;
 }
