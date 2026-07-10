@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, Uploaded
 import { FileInterceptor } from "@nestjs/platform-express";
 import { CustomersService } from "./customers.service";
 import { CustomerDocumentsService } from "./documents/customer-documents.service";
+import { CustomerNotesService } from "./notes/customer-notes.service";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { RolesGuard } from "../auth/roles.guard";
 import { Roles } from "../auth/roles.decorator";
@@ -13,6 +14,8 @@ import { UpdateCustomerDto } from "./dto/update-customer.dto";
 import { ValidateCustomerIdentityDto } from "./dto/validate-customer-identity.dto";
 import { CustomerIdentityValidationResultDto } from "./dto/customer-identity-validation-result.dto";
 import { UploadCustomerDocumentDto } from "./dto/upload-customer-document.dto";
+import { CreateCustomerNoteDto } from "./dto/create-customer-note.dto";
+import { UpdateCustomerNoteDto } from "./dto/update-customer-note.dto";
 import { CUSTOMER_ACCESS_ROLES } from "./constants/customer-roles.constant";
 import { Client } from "@prisma/client";
 
@@ -29,6 +32,7 @@ export class CustomersController {
   constructor(
     private readonly customersService: CustomersService,
     private readonly customerDocumentsService: CustomerDocumentsService,
+    private readonly customerNotesService: CustomerNotesService,
   ) {}
 
   /**
@@ -288,6 +292,85 @@ export class CustomersController {
       req.user.tenantId,
       customerId,
       documentId,
+    );
+  }
+
+  /**
+   * POST /customers/:id/notes
+   * 
+   * Create a new note for a customer.
+   * Protected endpoint - requires customer access roles (ADMIN, AGENT, FACTURACION_COBROS).
+   * Enforces tenant isolation automatically via user's tenantId.
+   */
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(...CUSTOMER_ACCESS_ROLES)
+  @Post(":id/notes")
+  createCustomerNote(
+    @Req()
+    req: {
+      user: { id: string; email: string; fullName: string; tenantId: string };
+    },
+    @Param("id") customerId: string,
+    @Body() dto: CreateCustomerNoteDto,
+  ) {
+    return this.customerNotesService.createCustomerNote(
+      req.user.tenantId,
+      customerId,
+      dto.note.trim(),
+      req.user.id,
+      req.user.fullName,
+    );
+  }
+
+  /**
+   * PATCH /customers/:customerId/notes/:noteId
+   * 
+   * Update an existing customer note.
+   * Protected endpoint - requires ADMIN role only.
+   * Enforces tenant isolation automatically via user's tenantId.
+   */
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles("ADMIN")
+  @Patch(":customerId/notes/:noteId")
+  updateCustomerNote(
+    @Req()
+    req: {
+      user: { tenantId: string };
+    },
+    @Param("customerId") customerId: string,
+    @Param("noteId") noteId: string,
+    @Body() dto: UpdateCustomerNoteDto,
+  ) {
+    return this.customerNotesService.updateCustomerNote(
+      req.user.tenantId,
+      customerId,
+      noteId,
+      dto.note.trim(),
+    );
+  }
+
+  /**
+   * DELETE /customers/:customerId/notes/:noteId
+   * 
+   * Delete a customer note.
+   * Protected endpoint - requires ADMIN role only.
+   * Enforces tenant isolation automatically via user's tenantId.
+   */
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles("ADMIN")
+  @Delete(":customerId/notes/:noteId")
+  deleteCustomerNote(
+    @Req()
+    req: {
+      user: { tenantId: string };
+    },
+    @Param("customerId") customerId: string,
+    @Param("noteId") noteId: string,
+  ) {
+    return this.customerNotesService.deleteCustomerNote(
+      req.user.tenantId,
+      customerId,
+      noteId,
     );
   }
 }

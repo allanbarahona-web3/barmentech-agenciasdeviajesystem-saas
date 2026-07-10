@@ -5,7 +5,8 @@ export const dynamic = 'force-dynamic';
 import { useEffect, useState, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { LoadingModal } from '@/components/loading-modal';
-import { getCustomerProfile, updateCustomer, getCustomerDocumentDownloadUrl, uploadCustomerDocument, type CustomerProfile, type UpdateCustomerDto, type CustomerDocumentCategory } from '@/lib/customers-api';
+import { getCustomerProfile, updateCustomer, getCustomerDocumentDownloadUrl, uploadCustomerDocument, createCustomerNote, updateCustomerNote, deleteCustomerNote, type CustomerProfile, type UpdateCustomerDto, type CustomerDocumentCategory } from '@/lib/customers-api';
+import { getStoredSession } from '@/lib/auth-api';
 import { CustomerForm, CustomerEditModal, CustomerDocumentUploadModal } from '@/features/customers/components';
 import AttachmentViewer from '@/components/attachment-viewer';
 
@@ -21,6 +22,10 @@ export default function CustomerProfilePage() {
   const [loadingModalMessage, setLoadingModalMessage] = useState('');
   const [is404Error, setIs404Error] = useState(false);
 
+  // User session for role check
+  const session = getStoredSession();
+  const isAdmin = session?.user?.role?.toUpperCase() === 'ADMIN';
+
   // Edit modal state
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [attachmentViewerData, setAttachmentViewerData] = useState<{
@@ -32,6 +37,16 @@ export default function CustomerProfilePage() {
   
   // Document upload modal state
   const [showUploadModal, setShowUploadModal] = useState(false);
+  
+  // Customer notes state
+  const [expandedNoteId, setExpandedNoteId] = useState<string | null>(null);
+  const [showAddNoteModal, setShowAddNoteModal] = useState(false);
+  const [newNoteText, setNewNoteText] = useState('');
+  const [showAllNotesModal, setShowAllNotesModal] = useState(false);
+  const [expandedNoteIdInModal, setExpandedNoteIdInModal] = useState<string | null>(null);
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
+  const [editingNoteText, setEditingNoteText] = useState('');
+  const [noteToDelete, setNoteToDelete] = useState<{ id: string; preview: string } | null>(null);
 
   useEffect(() => {
     loadProfile();
@@ -79,6 +94,155 @@ export default function CustomerProfilePage() {
       hour: '2-digit',
       minute: '2-digit',
     });
+  }
+
+  function getFirstLinePreview(text: string): string {
+    const firstLine = text.split('\n')[0].trim();
+    return firstLine.length > 100 ? firstLine.substring(0, 100) + '...' : firstLine;
+  }
+
+  function renderNote(
+    note: { id: string; note: string; createdAt: string; createdByName: string },
+    expandedId: string | null,
+    onToggle: (id: string | null) => void,
+    showActions = false
+  ) {
+    const isExpanded = expandedId === note.id;
+    const noteDate = new Date(note.createdAt);
+    const localDate = noteDate.toLocaleDateString('es-ES', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    const localTime = noteDate.toLocaleTimeString('es-ES', {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+
+    return (
+      <div
+        key={note.id}
+        style={{
+          border: '2px solid #e5e7eb',
+          borderRadius: '10px',
+          overflow: 'hidden',
+          transition: 'all 0.2s',
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.borderColor = '#667eea';
+          e.currentTarget.style.boxShadow = '0 2px 8px rgba(102,126,234,0.1)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.borderColor = '#e5e7eb';
+          e.currentTarget.style.boxShadow = 'none';
+        }}
+      >
+        <div style={{ padding: '16px' }}>
+          <div 
+            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', cursor: 'pointer' }}
+            onClick={() => onToggle(isExpanded ? null : note.id)}
+          >
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flex: 1 }}>
+              <span style={{ fontSize: '14px', fontWeight: '600', color: '#1f2937' }}>
+                {localDate}
+              </span>
+              <span style={{ fontSize: '14px', color: '#6b7280' }}>
+                {localTime}
+              </span>
+              <span
+                style={{
+                  padding: '4px 10px',
+                  background: '#eff6ff',
+                  color: '#1e40af',
+                  borderRadius: '6px',
+                  fontSize: '12px',
+                  fontWeight: '600',
+                }}
+              >
+                {note.createdByName}
+              </span>
+            </div>
+            <span style={{ fontSize: '18px', transition: 'transform 0.2s', transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+              ▼
+            </span>
+          </div>
+          
+          {!isExpanded && (
+            <div 
+              style={{ fontSize: '14px', color: '#4b5563', marginTop: '8px', cursor: 'pointer' }}
+              onClick={() => onToggle(isExpanded ? null : note.id)}
+            >
+              {getFirstLinePreview(note.note)}
+            </div>
+          )}
+          
+          {isExpanded && (
+            <>
+              <div style={{ 
+                fontSize: '14px', 
+                color: '#1f2937', 
+                marginTop: '12px',
+                padding: '12px',
+                background: '#f9fafb',
+                borderRadius: '8px',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+              }}>
+                {note.note}
+              </div>
+              
+              {showActions && isAdmin && (
+                <div style={{ display: 'flex', gap: '8px', marginTop: '12px', justifyContent: 'flex-end' }}>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditingNoteId(note.id);
+                      setEditingNoteText(note.note);
+                    }}
+                    style={{
+                      padding: '6px 14px',
+                      background: '#3b82f6',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                      fontWeight: '500',
+                      transition: 'all 0.2s',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = '#2563eb')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = '#3b82f6')}
+                  >
+                    ✏️ Edit
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setNoteToDelete({ id: note.id, preview: getFirstLinePreview(note.note) });
+                    }}
+                    style={{
+                      padding: '6px 14px',
+                      background: '#ef4444',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                      fontWeight: '500',
+                      transition: 'all 0.2s',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = '#dc2626')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = '#ef4444')}
+                  >
+                    🗑️ Delete
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    );
   }
 
   function handleEnterEditMode() {
@@ -261,6 +425,99 @@ export default function CustomerProfilePage() {
       setLoadingModalState('error');
       setLoadingModalMessage(errorMessage);
       throw err; // Re-throw so modal can show error
+    }
+  }
+
+  async function handleCreateNote() {
+    const trimmedNote = newNoteText.trim();
+    
+    if (!trimmedNote) {
+      setLoadingModalState('error');
+      setLoadingModalMessage('La nota no puede estar vacía');
+      setLoadingModalOpen(true);
+      return;
+    }
+
+    try {
+      setLoadingModalOpen(true);
+      setLoadingModalState('loading');
+      setLoadingModalMessage('Guardando nota...');
+
+      await createCustomerNote(customerId, trimmedNote);
+      
+      // Reload profile
+      const updatedProfile = await getCustomerProfile(customerId);
+      setProfile(updatedProfile);
+
+      setLoadingModalState('success');
+      setLoadingModalMessage('✅ Nota creada exitosamente');
+      setShowAddNoteModal(false);
+      setNewNoteText('');
+      setTimeout(() => setLoadingModalOpen(false), 1500);
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Error al crear nota';
+      setLoadingModalState('error');
+      setLoadingModalMessage(errorMessage);
+    }
+  }
+
+  async function handleUpdateNote() {
+    if (!editingNoteId) return;
+    
+    const trimmedNote = editingNoteText.trim();
+    
+    if (!trimmedNote) {
+      setLoadingModalState('error');
+      setLoadingModalMessage('La nota no puede estar vacía');
+      setLoadingModalOpen(true);
+      return;
+    }
+
+    try {
+      setLoadingModalOpen(true);
+      setLoadingModalState('loading');
+      setLoadingModalMessage('Actualizando nota...');
+
+      await updateCustomerNote(customerId, editingNoteId, trimmedNote);
+      
+      // Reload profile
+      const updatedProfile = await getCustomerProfile(customerId);
+      setProfile(updatedProfile);
+
+      setLoadingModalState('success');
+      setLoadingModalMessage('✅ Nota actualizada exitosamente');
+      setEditingNoteId(null);
+      setEditingNoteText('');
+      setTimeout(() => setLoadingModalOpen(false), 1500);
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Error al actualizar nota';
+      setLoadingModalState('error');
+      setLoadingModalMessage(errorMessage);
+    }
+  }
+
+  async function handleDeleteNote() {
+    if (!noteToDelete) return;
+
+    try {
+      setLoadingModalOpen(true);
+      setLoadingModalState('loading');
+      setLoadingModalMessage('Eliminando nota...');
+
+      await deleteCustomerNote(customerId, noteToDelete.id);
+      
+      // Reload profile
+      const updatedProfile = await getCustomerProfile(customerId);
+      setProfile(updatedProfile);
+
+      setLoadingModalState('success');
+      setLoadingModalMessage('✅ Nota eliminada exitosamente');
+      setNoteToDelete(null);
+      setTimeout(() => setLoadingModalOpen(false), 1500);
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Error al eliminar nota';
+      setLoadingModalState('error');
+      setLoadingModalMessage(errorMessage);
     }
   }
 
@@ -1069,6 +1326,80 @@ export default function CustomerProfilePage() {
         )}
       </div>
 
+      {/* Section 6: Customer Notes */}
+      <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', overflow: 'hidden', marginBottom: '30px' }}>
+        <div style={{ padding: '20px 24px', borderBottom: '2px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#1f2937' }}>
+            📝 Customer Notes ({profile.notes.length})
+          </h2>
+          <button
+            onClick={() => setShowAddNoteModal(true)}
+            style={{
+              padding: '10px 20px',
+              background: '#667eea',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontSize: '14px',
+              fontWeight: '500',
+              transition: 'all 0.2s',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = '#5568d3')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = '#667eea')}
+          >
+            ➕ Add Note
+          </button>
+        </div>
+
+        {profile.notes.length === 0 ? (
+          <div style={{ padding: '60px 20px', textAlign: 'center' }}>
+            <div style={{ fontSize: '64px', marginBottom: '16px' }}>📝</div>
+            <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#4b5563', marginBottom: '8px' }}>
+              No customer notes available.
+            </h3>
+            <p style={{ color: '#9ca3af', fontSize: '14px' }}>
+              No notes have been added for this customer yet.
+            </p>
+          </div>
+        ) : (
+          <div style={{ padding: '20px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {profile.notes
+                .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                .slice(0, 5)
+                .map((note) => renderNote(note, expandedNoteId, setExpandedNoteId, true))}
+            </div>
+            
+            {profile.notes.length > 5 && (
+              <div style={{ marginTop: '16px', textAlign: 'center' }}>
+                <button
+                  onClick={() => setShowAllNotesModal(true)}
+                  style={{
+                    padding: '10px 20px',
+                    background: '#667eea',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    fontSize: '14px',
+                    fontWeight: '500',
+                    transition: 'all 0.2s',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = '#5568d3')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = '#667eea')}
+                >
+                  View All Notes ({profile.notes.length})
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       <CustomerEditModal
         isOpen={editModalOpen}
         customer={customer}
@@ -1081,6 +1412,394 @@ export default function CustomerProfilePage() {
         onClose={() => setShowUploadModal(false)}
         onUpload={handleUploadDocument}
       />
+
+      {/* Add Note Modal */}
+      {showAddNoteModal && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+          }}
+          onClick={() => {
+            setShowAddNoteModal(false);
+            setNewNoteText('');
+          }}
+        >
+          <div
+            style={{
+              background: 'white',
+              borderRadius: '12px',
+              padding: '24px',
+              width: '90%',
+              maxWidth: '600px',
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#1f2937', marginBottom: '20px' }}>
+              Add Customer Note
+            </h2>
+            
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: '#374151', marginBottom: '8px' }}>
+                Note
+              </label>
+              <textarea
+                value={newNoteText}
+                onChange={(e) => setNewNoteText(e.target.value)}
+                placeholder="Enter your note here..."
+                rows={8}
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  border: '2px solid #e5e7eb',
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  fontFamily: 'inherit',
+                  resize: 'vertical',
+                  outline: 'none',
+                }}
+                onFocus={(e) => (e.currentTarget.style.borderColor = '#667eea')}
+                onBlur={(e) => (e.currentTarget.style.borderColor = '#e5e7eb')}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => {
+                  setShowAddNoteModal(false);
+                  setNewNoteText('');
+                }}
+                style={{
+                  padding: '10px 20px',
+                  background: '#f3f4f6',
+                  color: '#374151',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  transition: 'all 0.2s',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = '#e5e7eb')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = '#f3f4f6')}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCreateNote}
+                disabled={!newNoteText.trim()}
+                style={{
+                  padding: '10px 20px',
+                  background: newNoteText.trim() ? '#667eea' : '#d1d5db',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: newNoteText.trim() ? 'pointer' : 'not-allowed',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  transition: 'all 0.2s',
+                }}
+                onMouseEnter={(e) => {
+                  if (newNoteText.trim()) {
+                    e.currentTarget.style.background = '#5568d3';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (newNoteText.trim()) {
+                    e.currentTarget.style.background = '#667eea';
+                  }
+                }}
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Note Modal */}
+      {editingNoteId && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+          }}
+          onClick={() => {
+            setEditingNoteId(null);
+            setEditingNoteText('');
+          }}
+        >
+          <div
+            style={{
+              background: 'white',
+              borderRadius: '12px',
+              padding: '24px',
+              width: '90%',
+              maxWidth: '600px',
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#1f2937', marginBottom: '20px' }}>
+              Edit Customer Note
+            </h2>
+            
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: '#374151', marginBottom: '8px' }}>
+                Note
+              </label>
+              <textarea
+                value={editingNoteText}
+                onChange={(e) => setEditingNoteText(e.target.value)}
+                placeholder="Enter your note here..."
+                rows={8}
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  border: '2px solid #e5e7eb',
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  fontFamily: 'inherit',
+                  resize: 'vertical',
+                  outline: 'none',
+                }}
+                onFocus={(e) => (e.currentTarget.style.borderColor = '#667eea')}
+                onBlur={(e) => (e.currentTarget.style.borderColor = '#e5e7eb')}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => {
+                  setEditingNoteId(null);
+                  setEditingNoteText('');
+                }}
+                style={{
+                  padding: '10px 20px',
+                  background: '#f3f4f6',
+                  color: '#374151',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  transition: 'all 0.2s',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = '#e5e7eb')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = '#f3f4f6')}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleUpdateNote}
+                disabled={!editingNoteText.trim()}
+                style={{
+                  padding: '10px 20px',
+                  background: editingNoteText.trim() ? '#3b82f6' : '#d1d5db',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: editingNoteText.trim() ? 'pointer' : 'not-allowed',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  transition: 'all 0.2s',
+                }}
+                onMouseEnter={(e) => {
+                  if (editingNoteText.trim()) {
+                    e.currentTarget.style.background = '#2563eb';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (editingNoteText.trim()) {
+                    e.currentTarget.style.background = '#3b82f6';
+                  }
+                }}
+              >
+                Update
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Note Confirmation Modal */}
+      {noteToDelete && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+          }}
+          onClick={() => setNoteToDelete(null)}
+        >
+          <div
+            style={{
+              background: 'white',
+              borderRadius: '12px',
+              padding: '24px',
+              width: '90%',
+              maxWidth: '500px',
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#1f2937', marginBottom: '16px' }}>
+              Delete Customer Note
+            </h2>
+            
+            <p style={{ fontSize: '14px', color: '#4b5563', marginBottom: '12px' }}>
+              Are you sure you want to delete this note? This action cannot be undone.
+            </p>
+            
+            <div style={{ 
+              padding: '12px',
+              background: '#fef2f2',
+              border: '1px solid #fecaca',
+              borderRadius: '8px',
+              marginBottom: '20px',
+            }}>
+              <p style={{ fontSize: '13px', color: '#991b1b', margin: 0, fontStyle: 'italic' }}>
+                "{noteToDelete.preview}"
+              </p>
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setNoteToDelete(null)}
+                style={{
+                  padding: '10px 20px',
+                  background: '#f3f4f6',
+                  color: '#374151',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  transition: 'all 0.2s',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = '#e5e7eb')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = '#f3f4f6')}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteNote}
+                style={{
+                  padding: '10px 20px',
+                  background: '#ef4444',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  transition: 'all 0.2s',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = '#dc2626')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = '#ef4444')}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* View All Notes Modal */}
+      {showAllNotesModal && profile && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            padding: '20px',
+          }}
+          onClick={() => {
+            setShowAllNotesModal(false);
+            setExpandedNoteIdInModal(null);
+          }}
+        >
+          <div
+            style={{
+              background: 'white',
+              borderRadius: '12px',
+              width: '100%',
+              maxWidth: '900px',
+              maxHeight: '90vh',
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ padding: '24px', borderBottom: '2px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#1f2937', margin: 0 }}>
+                All Customer Notes ({profile.notes.length})
+              </h2>
+              <button
+                onClick={() => {
+                  setShowAllNotesModal(false);
+                  setExpandedNoteIdInModal(null);
+                }}
+                style={{
+                  padding: '8px 16px',
+                  background: '#f3f4f6',
+                  color: '#374151',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  transition: 'all 0.2s',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = '#e5e7eb')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = '#f3f4f6')}
+              >
+                Close
+              </button>
+            </div>
+            
+            <div style={{ padding: '20px', overflowY: 'auto', flex: 1 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {profile.notes
+                  .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                  .map((note) => renderNote(note, expandedNoteIdInModal, setExpandedNoteIdInModal, true))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {attachmentViewerData && (
         <AttachmentViewer

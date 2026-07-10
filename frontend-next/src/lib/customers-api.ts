@@ -374,3 +374,90 @@ export async function uploadCustomerDocument(
 
   return response.json();
 }
+
+export async function createCustomerNote(
+  customerId: string,
+  note: string
+): Promise<CustomerNote> {
+  const apiBase = resolveApiBase();
+  const token = getStoredToken();
+
+  const response = await authenticatedFetch(
+    `${apiBase}/customers/${customerId}/notes`,
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ note }),
+    }
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(
+      errorText || `Error al crear nota: ${response.status}`
+    );
+  }
+
+  return response.json();
+}
+
+export async function updateCustomerNote(
+  customerId: string,
+  noteId: string,
+  note: string
+): Promise<CustomerNote> {
+  const apiBase = resolveApiBase();
+  const token = getStoredToken();
+
+  const response = await authenticatedFetch(
+    `${apiBase}/customers/${customerId}/notes/${noteId}`,
+    {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ note }),
+    }
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(
+      errorText || `Error al actualizar nota: ${response.status}`
+    );
+  }
+
+  return response.json();
+}
+
+export async function deleteCustomerNote(
+  customerId: string,
+  noteId: string
+): Promise<{ message: string }> {
+  const apiBase = resolveApiBase();
+  const token = getStoredToken();
+
+  const response = await authenticatedFetch(
+    `${apiBase}/customers/${customerId}/notes/${noteId}`,
+    {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    }
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(
+      errorText || `Error al eliminar nota: ${response.status}`
+    );
+  }
+
+  return response.json();
+}
