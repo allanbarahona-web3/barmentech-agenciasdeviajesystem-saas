@@ -498,7 +498,7 @@ ${minorsIntro}
 
 ${clause(
   "PRIMERO: OBJETO.",
-  `<p>El presente Contrato será el documento base para regular las cláusulas y condiciones referentes a la contratación del paquete turístico internacional acordado entre las Partes.</p>`,
+  `<p>El presente Contrato tiene por objeto regular los términos, condiciones, derechos y obligaciones que regirán la contratación y prestación del paquete turístico internacional acordado entre las Partes.</p>`,
 )}
 
 ${clause(
@@ -564,14 +564,14 @@ ${clause(
   <p>En caso de que los Clientes tengan la intención de solicitar su asiento junto a sus acompañantes, deberá solicitarlo con al menos 15 días hábiles a ${esc(tenantName)}, lo cual generará un costo adicional al precio del Tour, sin embargo, ${esc(tenantName)} no se hace responsable en caso de que por disponibilidad de asientos del avión no sea posible.</p>
   <p>Los Clientes exoneran a ${esc(tenantName)} de toda responsabilidad sobre la asignación de asientos, o bien, la disponibilidad de asientos en caso de que sea interés de los Clientes la compra del espacio junto a sus acompañantes, ya que, dependerá meramente por parte de la aerolínea.</p>
   <p><strong>Equipaje permitido:</strong> ${v(state.luggageClause)}</p>
-  <p>Cualquier equipaje diferente al que se permite en el paquete tiene costos adicionales.</p>`,
+  <p>Cualquier equipaje diferente al que se permite en el paquete tiene costos adicionales. Las medidas y el peso del equipaje permitido estarán sujetos a las políticas y restricciones de la aerolínea correspondiente.</p>`,
 )}
 
 ${clause(
   "OCTAVO: SEGURO DE VIAJE.",
   `<p>${esc(tenantName)} podrá colaborar con la adquisición de seguro de viaje mediante proveedores asegurados aliados, siendo opcional para el Cliente.</p>
   <p>El Cliente acepta que, en caso de no contratar seguro con ${esc(tenantName)} o bien no contar con un seguro viajero propio durante el Tour en este mismo acto, exonera a ${esc(tenantName)} de toda responsabilidad por cualquier accidente, enfermedad, gasto médico, muerte o repatriación.</p>
-  <p>Asimismo, el Cliente declara que exime a ${esc(tenantName)}, en este mismo acto y en la medida permitida por ley, de responsabilidad por gastos médicos, hospitalarios, emergencias, cancelaciones, retrasos, pérdida de equipaje u otras contingencias cubribles por el seguro de viaje.</p>`,
+  <p>Asimismo, el Cliente declara que exime a ${esc(tenantName)}, en este mismo acto y en la medida permitida por ley, de responsabilidad por gastos médicos, hospitalarios, emergencias, cancelaciones, retrasos, pérdida de equipaje u otras contingencias cubiertas por el seguro de viaje.</p>`,
 )}
 
 ${clause(

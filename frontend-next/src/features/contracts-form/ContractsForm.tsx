@@ -327,7 +327,7 @@ export function ContractsForm(props: ContractsFormProps) {
         <p>
           {isInternalTrip
             ? "Formulario interno: cliente, acompañantes, menores y comprobantes para aprobación administrativa."
-            : "Migracion ampliada: contrato, cliente, acompanantes, menores, itinerario, equipaje y adjuntos."}
+            : "Migración ampliada: contrato, cliente, acompañantes, menores, itinerario, equipaje y adjuntos."}
         </p>
       )}
       <p className="agent-line">
@@ -591,7 +591,7 @@ export function ContractsForm(props: ContractsFormProps) {
                   />
                 ) : (
                   <div className="contract-preview-placeholder">
-                    Completa los datos y pulsa Vista previa para mostrar el contrato aqui.
+                    Completa los datos y pulsa Vista previa para mostrar el contrato aquí.
                   </div>
                 )}
               </div>

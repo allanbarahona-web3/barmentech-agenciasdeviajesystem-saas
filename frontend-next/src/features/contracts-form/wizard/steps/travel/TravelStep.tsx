@@ -14,9 +14,9 @@ export interface TravelStepProps {
 }
 
 const LUGGAGE_OPTIONS = [
-  "Mochila Personal",
-  "Carrion 10kg",
-  "Equipaje Documentado",
+  "Equipaje de mano (medidas 40 x 30 x 15 cm)",
+  "Carry on (10kg)",
+  "Equipaje documentado (20 kg)",
 ];
 
 /**
@@ -58,11 +58,11 @@ export function TravelStep({
 
       <div className="contracts-grid">
         <label>
-          Numero de contrato
+          Número de contrato
           <input 
             value={state.contractNumber} 
             readOnly 
-            placeholder="Generando automaticamente..." 
+            placeholder="Generando automáticamente..." 
             className="font-mono text-sm"
             title={state.contractNumber || "Esperando asignación automática..."}
           />
@@ -70,7 +70,7 @@ export function TravelStep({
 
         {isInternalTrip && (
           <label>
-            Codigo viaje interno
+            Código viaje interno
             <input
               value={internalTripMeta?.tripCode || "Cargando..."}
               readOnly
@@ -82,7 +82,7 @@ export function TravelStep({
         )}
 
         <label>
-          Fecha de emision
+          Fecha de emisión
           <input type="date" value={state.issuedAt} readOnly />
         </label>
 
@@ -112,7 +112,7 @@ export function TravelStep({
         </label>
 
         <label>
-          Tipo de acomodacion
+          Tipo de acomodación
           <select
             value={state.accommodationType}
             onChange={(event) => setState((prev) => ({ ...prev, accommodationType: event.target.value }))}
@@ -132,9 +132,9 @@ export function TravelStep({
             onChange={(event) => handleLuggageChange(event.target.value)}
           >
             <option value="">Seleccionar...</option>
-            <option value="Mochila Personal">Mochila Personal</option>
-            <option value="Carrion 10kg">Carrion 10kg</option>
-            <option value="Equipaje Documentado">Equipaje Documentado</option>
+            <option value="Equipaje de mano (medidas 40 x 30 x 15 cm)">Equipaje de mano (medidas 40 x 30 x 15 cm)</option>
+            <option value="Carry on (10kg)">Carry on (10kg)</option>
+            <option value="Equipaje documentado (20 kg)">Equipaje documentado (20 kg)</option>
             <option value="Otros">Otros</option>
           </select>
         </label>
@@ -145,7 +145,7 @@ export function TravelStep({
             <input
               value={state.luggageClause}
               onChange={(event) => setState((prev) => ({ ...prev, luggageClause: event.target.value }))}
-              placeholder="Ej. 1 maleta de mano y 1 articulo personal"
+              placeholder="Ej. 1 maleta de mano y 1 artículo personal"
             />
           </label>
         )}
@@ -208,7 +208,7 @@ export function TravelStep({
 
         <label>
           Saldo pendiente USD
-          <input value={state.balanceAmount} readOnly placeholder="Se calcula automaticamente" />
+          <input value={state.balanceAmount} readOnly placeholder="Se calcula automáticamente" />
         </label>
 
         <label>
@@ -224,14 +224,14 @@ export function TravelStep({
               )
             }
           >
-            <option value="MENSUAL">Mensual (cada 30 dias)</option>
-            <option value="QUINCENAL">Quincenal (cada 15 dias)</option>
+            <option value="MENSUAL">Mensual (cada 30 días)</option>
+            <option value="QUINCENAL">Quincenal (cada 15 días)</option>
           </select>
         </label>
 
         <label>
-          Cantidad de cuotas (automatico)
-          <input value={state.installmentCount} readOnly placeholder="Se calcula automaticamente" />
+          Cantidad de cuotas (automático)
+          <input value={state.installmentCount} readOnly placeholder="Se calcula automáticamente" />
         </label>
 
         <div className="col-span-full payment-summary-grid">
@@ -241,15 +241,15 @@ export function TravelStep({
           </label>
 
           <label className="payment-summary-field">
-            Ultima cuota USD
-            <input value={state.lastInstallmentAmount} readOnly placeholder="Ajuste de fraccion" />
-            <small>Si hay fraccion, se ajusta en la ultima cuota.</small>
+            Última cuota USD
+            <input value={state.lastInstallmentAmount} readOnly placeholder="Ajuste de fracción" />
+            <small>Si hay fracción, se ajusta en la última cuota.</small>
           </label>
 
           <label className="payment-summary-field">
-            Fecha limite de pago total
+            Fecha límite de pago total
             <input value={state.paymentDueDate} type="date" readOnly />
-            <small>Todo debe quedar cancelado 22 dias antes de iniciar el viaje.</small>
+            <small>Todo debe quedar cancelado 22 días antes de iniciar el viaje.</small>
           </label>
         </div>
       </div>
