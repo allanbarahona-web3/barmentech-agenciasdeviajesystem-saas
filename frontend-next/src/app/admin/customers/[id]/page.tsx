@@ -5,8 +5,8 @@ export const dynamic = 'force-dynamic';
 import { useEffect, useState, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { LoadingModal } from '@/components/loading-modal';
-import { getCustomerProfile, updateCustomer, getCustomerDocumentDownloadUrl, uploadCustomerDocument, type CustomerProfile, type UpdateCustomerDto } from '@/lib/customers-api';
-import { CustomerForm, CustomerEditModal } from '@/features/customers/components';
+import { getCustomerProfile, updateCustomer, getCustomerDocumentDownloadUrl, uploadCustomerDocument, type CustomerProfile, type UpdateCustomerDto, type CustomerDocumentCategory } from '@/lib/customers-api';
+import { CustomerForm, CustomerEditModal, CustomerDocumentUploadModal } from '@/features/customers/components';
 import AttachmentViewer from '@/components/attachment-viewer';
 
 export default function CustomerProfilePage() {
@@ -29,6 +29,9 @@ export default function CustomerProfilePage() {
   } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadingDocCategory, setUploadingDocCategory] = useState<string | null>(null);
+  
+  // Document upload modal state
+  const [showUploadModal, setShowUploadModal] = useState(false);
 
   useEffect(() => {
     loadProfile();
@@ -235,6 +238,29 @@ export default function CustomerProfilePage() {
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
+    }
+  }
+
+  async function handleUploadDocument(category: CustomerDocumentCategory, file: File) {
+    try {
+      setLoadingModalOpen(true);
+      setLoadingModalState('loading');
+      setLoadingModalMessage('Subiendo documento...');
+
+      await uploadCustomerDocument(customerId, category, file);
+      
+      // Reload profile
+      const updatedProfile = await getCustomerProfile(customerId);
+      setProfile(updatedProfile);
+
+      setLoadingModalState('success');
+      setLoadingModalMessage('✅ Documento agregado exitosamente');
+      setTimeout(() => setLoadingModalOpen(false), 1500);
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Error al subir documento';
+      setLoadingModalState('error');
+      setLoadingModalMessage(errorMessage);
+      throw err; // Re-throw so modal can show error
     }
   }
 
@@ -791,10 +817,31 @@ export default function CustomerProfilePage() {
 
       {/* Customer Documents Section */}
       <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', overflow: 'hidden', marginBottom: '30px' }}>
-        <div style={{ padding: '20px 24px', borderBottom: '2px solid #e5e7eb' }}>
+        <div style={{ padding: '20px 24px', borderBottom: '2px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#1f2937' }}>
             📎 Documentos ({documents.length})
           </h2>
+          <button
+            onClick={() => setShowUploadModal(true)}
+            style={{
+              padding: '10px 20px',
+              background: '#667eea',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontSize: '14px',
+              fontWeight: '500',
+              transition: 'all 0.2s',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = '#5568d3')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = '#667eea')}
+          >
+            ➕ Agregar Documento
+          </button>
         </div>
 
         {documents.length === 0 ? (
@@ -1027,6 +1074,12 @@ export default function CustomerProfilePage() {
         customer={customer}
         onClose={() => setEditModalOpen(false)}
         onSave={handleSaveEdit}
+      />
+
+      <CustomerDocumentUploadModal
+        isOpen={showUploadModal}
+        onClose={() => setShowUploadModal(false)}
+        onUpload={handleUploadDocument}
       />
 
       {attachmentViewerData && (
