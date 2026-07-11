@@ -7,6 +7,7 @@ import { DocumentSigningService } from "./document-signing.service";
 import { DocumentSigningAuditService } from "./document-signing-audit.service";
 import { DocumentSignatureFinalizationService } from "./document-signature-finalization.service";
 import { DocumentDeliveryService } from "./document-delivery.service";
+import { DocumentSigningSessionService } from "./document-signing-session.service";
 
 /**
  * DocumentsModule
@@ -49,6 +50,7 @@ import { DocumentDeliveryService } from "./document-delivery.service";
     DocumentSigningAuditService,
     DocumentSignatureFinalizationService,
     DocumentDeliveryService,
+    DocumentSigningSessionService,
   ],
   exports: [
     DocumentsService,
@@ -58,6 +60,7 @@ import { DocumentDeliveryService } from "./document-delivery.service";
     DocumentSigningAuditService,
     DocumentSignatureFinalizationService,
     DocumentDeliveryService,
+    DocumentSigningSessionService,
   ],
 })
 export class DocumentsModule {}

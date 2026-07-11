@@ -1,14 +1,8 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { DocumentEmailsService } from "./document-emails.service";
+import { SigningParticipant } from "./signing-session/signing-session.types";
 
 type SigningRole = "CLIENTE" | "ACOMPANANTE";
-
-type SigningParticipant = {
-  key: string;
-  name: string;
-  email: string | null;
-  role: SigningRole;
-};
 
 type DeliveryRecipient = {
   email: string;
@@ -78,7 +72,7 @@ export class DocumentDeliveryService {
       recipients.push({
         email: normalizedEmail,
         name: participant.name,
-        role: participant.role,
+        role: participant.role as SigningRole,
       });
     });
 

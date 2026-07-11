@@ -18,6 +18,8 @@ import { DocumentSigningService } from "../documents/document-signing.service";
 import { DocumentSigningAuditService } from "../documents/document-signing-audit.service";
 import { DocumentSignatureFinalizationService } from "../documents/document-signature-finalization.service";
 import { DocumentDeliveryService } from "../documents/document-delivery.service";
+import { DocumentSigningSessionService } from "../documents/document-signing-session.service";
+import { ContractSigningSessionBuilder } from "./contract-signing-session.builder";
 import { ArchiveContractDto } from "./dto/archive-contract.dto";
 import { CustomerDocumentCategory, Client } from "@prisma/client";
 
@@ -26,6 +28,7 @@ import { SendSigningEmailDto } from "./dto/send-signing-email.dto";
 import { SearchContractsDto } from "./dto/search-contracts.dto";
 import { ResolvedTenant } from "../tenant/tenant.service";
 import { getPublicAppBaseUrl } from "../common/utils/tenant-url.util";
+import { SigningParticipant } from "../documents/signing-session/signing-session.types";
 
 const CONTRACT_STATUS_PENDING_PAYMENT_RESERVE = "PENDING_PAYMENT_RESERVE";
 const CONTRACT_STATUS_RESERVE_IN_REVIEW = "RESERVE_IN_REVIEW";
@@ -35,13 +38,6 @@ const CONTRACT_STATUS_SIGNED = "SIGNED";
 const CONTRACT_STATUS_DRAFT = "DRAFT";
 
 type SigningRole = "CLIENTE" | "ACOMPANANTE";
-
-type SigningParticipant = {
-  key: string;
-  name: string;
-  email: string | null;
-  role: SigningRole;
-};
 
 @Injectable()
 export class ContractsService {
@@ -68,6 +64,8 @@ export class ContractsService {
     private readonly documentSigningAuditService: DocumentSigningAuditService,
     private readonly documentSignatureFinalizationService: DocumentSignatureFinalizationService,
     private readonly documentDeliveryService: DocumentDeliveryService,
+    private readonly documentSigningSessionService: DocumentSigningSessionService,
+    private readonly contractSigningSessionBuilder: ContractSigningSessionBuilder,
     private readonly storageService: StorageService,
   ) {}
 
@@ -344,34 +342,14 @@ export class ContractsService {
     return this.documentSigningService.getPayloadRecord(payload);
   }
 
-  private getSigningParticipants(contract: any): SigningParticipant[] {
-    const payload = this.getPayloadRecord(contract?.payload);
-    const companions = Array.isArray(payload.companions) ? payload.companions : [];
-
-    const participants: SigningParticipant[] = [
-      {
-        key: "client",
-        name: String(contract?.client?.fullName || payload.clientFullName || "").trim(),
-        email: String(contract?.client?.email || payload.clientEmail || "").trim() || null,
-        role: "CLIENTE",
-      },
-    ];
-
-    companions.forEach((item: any, index: number) => {
-      const name = String(item?.fullName || "").trim();
-      if (!name) {
-        return;
-      }
-
-      participants.push({
-        key: `companion-${index}`,
-        name,
-        email: String(item?.email || "").trim() || null,
-        role: "ACOMPANANTE",
-      });
-    });
-
-    return participants;
+  /**
+   * Extract signing participants from a contract using SigningSessionPlan.
+   * The builder is the single source of truth for participant resolution.
+   */
+  private getSigningParticipantsFromPlan(contract: any): SigningParticipant[] {
+    const plan = this.contractSigningSessionBuilder.buildFromContract(contract);
+    // For contracts, there's always exactly one document
+    return plan.documents[0]?.signers || [];
   }
 
   private getSignatureAnchorForSigner(payload: Record<string, any>, signerKey: string) {
@@ -567,7 +545,7 @@ export class ContractsService {
     }
 
     const payload = this.getPayloadRecord(contract.payload);
-    const participants = this.getSigningParticipants(contract);
+    const participants = this.getSigningParticipantsFromPlan(contract);
 
     // Download signed PDF buffer (storage infrastructure responsibility)
     const signedPdfBuffer = await this.downloadObjectBuffer(contract.signedPdfObjectKey);
@@ -776,16 +754,16 @@ export class ContractsService {
     const safeTtlMinutes = Math.min(Math.max(Number(ttlMinutes) || 0, 15), 60 * 24 * 7);
     const expiresAt = new Date(Date.now() + safeTtlMinutes * 60 * 1000);
     const baseUrl = getPublicAppBaseUrl(this.configService, contract.tenant);
-    const participants = this.getSigningParticipants(contract);
+    const participants = this.getSigningParticipantsFromPlan(contract);
 
     const signingLinks = participants.map((participant) => {
       const token = this.buildSigningToken(contract.id, expiresAt, {
-        key: participant.key,
-        role: participant.role,
+        key: participant.signerKey,
+        role: participant.role as SigningRole,
         name: participant.name,
       });
       return {
-        signerKey: participant.key,
+        signerKey: participant.signerKey,
         signerRole: participant.role,
         signerName: participant.name,
         signerEmail: participant.email,
@@ -831,32 +809,28 @@ export class ContractsService {
       throw new InternalServerErrorException("Tenant no encontrado para enviar email.");
     }
 
-    // Generate signing links (1 day TTL)
-    const signing = await this.createContractSigningLink(user, contractId, 1440);
-    const links = signing.signingLinks || [];
+    // Build signing session plan
+    const signingPlan = this.contractSigningSessionBuilder.buildFromContract(contract);
 
-    let sent = 0;
-    for (const target of links) {
-      if (!target.signerEmail) continue;
-      try {
-        await this.sendContractSigningEmail(user, {
-          toEmail: target.signerEmail,
-          clientName: target.signerName || "Firmante",
-          contractNumber: contract.contractNumber,
-          signingUrl: target.signingUrl,
-        }, tenant);
-        sent += 1;
-      } catch (error) {
-  console.error(
-    "[sendSigningLinksForContract]",
-    error,
-  );
-
-  this.logger.warn(
-    `[sendSigningLinksForContract] Could not send email to ${target.signerEmail}`
-  );
-}
-    }
+    // Start signing session and generate signing links + send emails (Story 8)
+    const baseUrl = getPublicAppBaseUrl(this.configService, tenant);
+    const session = await this.documentSigningSessionService.startSigningSession(signingPlan, {
+      baseUrl,
+      ttlMinutes: 1440, // 1 day TTL
+      documentDisplayName: contract.contractNumber,
+      actor: {
+        id: user.id,
+        email: user.email,
+        fullName: user.fullName,
+      },
+      tenant: tenant ? {
+        id: tenant.id,
+        name: tenant.name,
+        subdomain: tenant.subdomain,
+        emailLogoUrl: tenant.emailLogoUrl,
+        logoUrl: tenant.logoUrl,
+      } : null,
+    });
 
     // Mark as signing sent
     await (this.prisma as any).contract.update({
@@ -867,8 +841,8 @@ export class ContractsService {
     return {
       contractId: contract.id,
       contractNumber: contract.contractNumber,
-      emailsSent: sent,
-      signingLinks: links,
+      emailsSent: session.emailsSent,
+      signingLinks: session.signingLinks,
     };
   }
 
@@ -1465,8 +1439,8 @@ export class ContractsService {
       throw new BadRequestException("Este contrato ya fue marcado como firmado.");
     }
 
-    const participants = this.getSigningParticipants(contract);
-    const signer = participants.find((item) => item.key === parsed.signerKey) || participants[0];
+    const participants = this.getSigningParticipantsFromPlan(contract);
+    const signer = participants.find((item) => item.signerKey === parsed.signerKey) || participants[0];
     if (!signer) {
       throw new BadRequestException("No se pudo resolver el firmante de este enlace.");
     }
@@ -1477,7 +1451,7 @@ export class ContractsService {
       : [];
 
     // Guard 1: signer already completed their signature
-    const alreadySigned = signedParticipants.some((item: any) => String(item?.signerKey || "") === signer.key);
+    const alreadySigned = signedParticipants.some((item: any) => String(item?.signerKey || "") === signer.signerKey);
     if (alreadySigned) {
       throw new BadRequestException("Este firmante ya completo su firma.");
     }
@@ -1521,7 +1495,7 @@ export class ContractsService {
     const finalizationResult = await this.documentSignatureFinalizationService.finalizeSignature({
       contractHtml,
       signatureImageBase64,
-      signerKey: signer.key,
+      signerKey: signer.signerKey,
       existingSignatureImages,
     });
 
@@ -1547,7 +1521,7 @@ export class ContractsService {
     const nextSignedParticipants = [
       ...signedParticipants,
       {
-        signerKey: signer.key,
+        signerKey: signer.signerKey,
         signerRole: signer.role,
         signerName,
         signedAt: now.toISOString(),
@@ -1556,7 +1530,7 @@ export class ContractsService {
       },
     ];
 
-    const requiredSignerKeys = participants.map((item) => item.key);
+    const requiredSignerKeys = participants.map((item) => item.signerKey);
     const completedKeys = new Set(
       nextSignedParticipants.map((item: any) => String(item?.signerKey || "")).filter(Boolean),
     );
@@ -1567,12 +1541,12 @@ export class ContractsService {
       {
         documentId: contract.id,
         tokenHash,
-        signerKey: signer.key,
+        signerKey: signer.signerKey,
         usedAt: now,
       },
       {
         documentId: contract.id,
-        signerKey: signer.key,
+        signerKey: signer.signerKey,
         signerRole: signer.role,
         signerName,
         signedAt: now,
@@ -1613,7 +1587,7 @@ export class ContractsService {
     ]);
 
     this.logger.log(
-      `[signing] Signature recorded contractId=${contract.id} signerKey=${signer.key} ` +
+      `[signing] Signature recorded contractId=${contract.id} signerKey=${signer.signerKey} ` +
       `allCompleted=${allCompleted} ip=${signedClientIp || "unknown"} sha256=${finalizationResult.signedPdfHash.slice(0, 16)}…`,
     );
 
@@ -1677,9 +1651,9 @@ export class ContractsService {
       signedCount: completedKeys.size,
       totalSigners: requiredSignerKeys.length,
       pendingSigners: participants
-        .filter((item) => !completedKeys.has(item.key))
+        .filter((item) => !completedKeys.has(item.signerKey))
         .map((item) => ({
-          signerKey: item.key,
+          signerKey: item.signerKey,
           signerName: item.name,
           signerRole: item.role,
           signerEmail: item.email,
@@ -1736,19 +1710,19 @@ export class ContractsService {
       ? await this.buildSignedObjectUrl(contract.signedPdfObjectKey, 1200)
       : null;
     const payload = this.getPayloadRecord(contract.payload);
-    const participants = this.getSigningParticipants(contract);
-    const tokenSigner = participants.find((item) => item.key === parsed.signerKey);
+    const participants = this.getSigningParticipantsFromPlan(contract);
+    const tokenSigner = participants.find((item) => item.signerKey === parsed.signerKey);
     const resolvedSigner =
       tokenSigner ||
       participants.find((item) => item.role === parsed.signerRole && item.name === parsed.signerName) ||
-      participants.find((item) => item.key === "client") ||
+      participants.find((item) => item.signerKey === "client") ||
       participants[0];
 
     if (!resolvedSigner) {
       throw new BadRequestException("No se pudo resolver el firmante para este enlace.");
     }
 
-    const rawSignatureAnchor = this.getSignatureAnchorForSigner(payload, resolvedSigner.key);
+    const rawSignatureAnchor = this.getSignatureAnchorForSigner(payload, resolvedSigner.signerKey);
     const signatureAnchorCandidate =
       rawSignatureAnchor &&
       typeof rawSignatureAnchor === "object" &&
@@ -1783,7 +1757,7 @@ export class ContractsService {
       ? await this.buildSignedObjectUrl(contract.htmlObjectKey, 1200)
       : null;
 
-    this.logger.log(`[signing-session] Contract ${contract.contractNumber} status: ${contract.status}, signerKey: ${resolvedSigner.key}`);
+    this.logger.log(`[signing-session] Contract ${contract.contractNumber} status: ${contract.status}, signerKey: ${resolvedSigner.signerKey}`);
 
     return {
       contractId: contract.id,
@@ -1792,7 +1766,7 @@ export class ContractsService {
       clientName: contract.client?.fullName || "",
       signerName: resolvedSigner.name,
       signerRole: resolvedSigner.role,
-      signerKey: resolvedSigner.key,
+      signerKey: resolvedSigner.signerKey,
       status: contract.status || CONTRACT_STATUS_PENDING_SIGNATURE,
       pdfUrl: basePdfUrl,
       signedPdfUrl,
