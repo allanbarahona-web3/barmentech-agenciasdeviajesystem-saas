@@ -406,6 +406,7 @@ model DocumentSigningSession {
 model DocumentSigning {
   id                 String                 @id @default(cuid())
   sessionId          String
+  documentKey        String
   documentType       String
   status             String                 @default("PENDING")
   pdfObjectKey       String?
@@ -421,6 +422,7 @@ model DocumentSigning {
   session            DocumentSigningSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   signers            DocumentSigner[]
 
+  @@unique([sessionId, documentKey])
   @@index([sessionId])
   @@index([status])
   @@index([documentType])

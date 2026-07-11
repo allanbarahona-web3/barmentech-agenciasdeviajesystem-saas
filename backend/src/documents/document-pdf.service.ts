@@ -19,6 +19,76 @@ export interface SignatureAnchor {
 }
 
 /**
+ * Template handler for a specific document type
+ * 
+ * Pluggable interface for registering document type renderers.
+ * Each handler validates and processes its document type.
+ */
+interface TemplateHandler {
+  /** Document type identifier */
+  documentType: string;
+  /** Validate HTML contains required structure for this document type */
+  validateHtml(html: string): boolean;
+  /** Get renderer configuration for this document type */
+  getConfig(): {
+    format: "A4";
+    printBackground: boolean;
+    preferCSSPageSize: boolean;
+  };
+}
+
+/**
+ * Template resolver for document types
+ * 
+ * Maps documentType to pluggable template handlers.
+ * Supports extensible registration of new document types.
+ */
+class TemplateResolver {
+  private handlers: Map<string, TemplateHandler> = new Map();
+
+  /**
+   * Register a template handler for a document type
+   * @param documentType Type identifier
+   * @param handler Handler implementation
+   */
+  register(documentType: string, handler: TemplateHandler): void {
+    this.handlers.set(documentType.toUpperCase(), handler);
+  }
+
+  /**
+   * Resolve handler for a document type
+   * Falls back to generic handler if specific handler not found
+   * @param documentType Type identifier
+   * @returns Handler for rendering this document type
+   */
+  resolve(documentType: string): TemplateHandler {
+    const type = documentType.toUpperCase();
+    return this.handlers.get(type) || this.getDefaultHandler();
+  }
+
+  /**
+   * Get default handler (generic for any document type)
+   * Used as fallback when specific handler not registered
+   */
+  private getDefaultHandler(): TemplateHandler {
+    return {
+      documentType: "DEFAULT",
+      validateHtml(): boolean {
+        // All HTML is valid for generic rendering
+        return true;
+      },
+      getConfig(): { format: "A4"; printBackground: boolean; preferCSSPageSize: boolean } {
+        return {
+          format: "A4",
+          printBackground: true,
+          preferCSSPageSize: true,
+        };
+      },
+    };
+  }
+}
+
+/**
  * DocumentPdfService
  * 
  * Generic service for rendering HTML documents to PDF using Puppeteer.
@@ -42,18 +112,96 @@ export interface SignatureAnchor {
 @Injectable()
 export class DocumentPdfService {
   private readonly logger = new Logger(DocumentPdfService.name);
+  private readonly templateResolver: TemplateResolver;
+
+  constructor() {
+    this.templateResolver = new TemplateResolver();
+    this.registerTemplateHandlers();
+  }
+
+  /**
+   * Register built-in template handlers
+   * 
+   * Current support:
+   * - CONTRACT: Standard contract with signatures
+   * - MINOR_ANNEX: Minor authorization annex
+   * - LIABILITY_WAIVER: Liability waiver document
+   * 
+   * Future document types plug into the same resolver.
+   */
+  private registerTemplateHandlers(): void {
+    // CONTRACT handler
+    this.templateResolver.register("CONTRACT", {
+      documentType: "CONTRACT",
+      validateHtml(html: string): boolean {
+        // Minimal validation: HTML should not be empty
+        return typeof html === "string" && html.trim().length > 0;
+      },
+      getConfig(): { format: "A4"; printBackground: boolean; preferCSSPageSize: boolean } {
+        return {
+          format: "A4",
+          printBackground: true,
+          preferCSSPageSize: true,
+        };
+      },
+    });
+
+    // MINOR_ANNEX handler
+    this.templateResolver.register("MINOR_ANNEX", {
+      documentType: "MINOR_ANNEX",
+      validateHtml(html: string): boolean {
+        // Minimal validation: HTML should not be empty
+        return typeof html === "string" && html.trim().length > 0;
+      },
+      getConfig(): { format: "A4"; printBackground: boolean; preferCSSPageSize: boolean } {
+        return {
+          format: "A4",
+          printBackground: true,
+          preferCSSPageSize: true,
+        };
+      },
+    });
+
+    // LIABILITY_WAIVER handler
+    this.templateResolver.register("LIABILITY_WAIVER", {
+      documentType: "LIABILITY_WAIVER",
+      validateHtml(html: string): boolean {
+        // Minimal validation: HTML should not be empty
+        return typeof html === "string" && html.trim().length > 0;
+      },
+      getConfig(): { format: "A4"; printBackground: boolean; preferCSSPageSize: boolean } {
+        return {
+          format: "A4",
+          printBackground: true,
+          preferCSSPageSize: true,
+        };
+      },
+    });
+  }
 
   /**
    * Render a signed document with signature images embedded
    * 
+   * Supports all document types:
+   * - CONTRACT: Standard contract with signatures
+   * - MINOR_ANNEX: Minor authorization annex
+   * - LIABILITY_WAIVER: Liability waiver document
+   * - Future types plug into the same pipeline
+   * 
    * @param standaloneHtml Complete HTML document ready for rendering
    * @param signaturesBySigner Map of signer keys to signature image data URLs
+   * @param documentType Document type (defaults to CONTRACT for backward compatibility)
    * @returns PDF buffer with signatures embedded
    */
   async renderSignedDocumentToBuffer(
     standaloneHtml: string,
     signaturesBySigner: Record<string, string>,
+    documentType?: string,
   ): Promise<Buffer> {
+    // Log document type for debugging (useful for multi-document sessions)
+    const type = documentType || "CONTRACT";
+    this.logger.log(`[pdf] renderSignedDocumentToBuffer documentType=${type}`);
+
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const puppeteer = require("puppeteer-core") as {
       launch: (opts: Record<string, unknown>) => Promise<{
@@ -139,10 +287,14 @@ export class DocumentPdfService {
         });
       }, signaturesBySigner);
 
+      // Resolve template handler for this document type
+      const templateHandler = this.templateResolver.resolve(documentType || "CONTRACT");
+      const pdfConfig = templateHandler.getConfig();
+
       const pdfBytes = await page.pdf({
-        format: "A4",
-        printBackground: true,
-        preferCSSPageSize: true,
+        format: pdfConfig.format,
+        printBackground: pdfConfig.printBackground,
+        preferCSSPageSize: pdfConfig.preferCSSPageSize,
       });
 
       return Buffer.from(pdfBytes);
@@ -209,10 +361,15 @@ export class DocumentPdfService {
       await page.emulateMediaType("print");
 
       this.logger.log("[pdf] generating PDF first to determine page count...");
+      
+      // Resolve template handler for unsigned documents (defaults to CONTRACT)
+      const templateHandler = this.templateResolver.resolve("CONTRACT");
+      const pdfConfig = templateHandler.getConfig();
+      
       const pdfBytes = await page.pdf({
-        format: "A4",
-        printBackground: true,
-        preferCSSPageSize: true,
+        format: pdfConfig.format,
+        printBackground: pdfConfig.printBackground,
+        preferCSSPageSize: pdfConfig.preferCSSPageSize,
       });
       this.logger.log(`[pdf] pdf generated, size=${pdfBytes.length} bytes`);
 

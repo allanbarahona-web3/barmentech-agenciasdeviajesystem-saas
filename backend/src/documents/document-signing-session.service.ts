@@ -121,63 +121,65 @@ export class DocumentSigningSessionService {
       );
     }
 
-    // Persist primary document (or retrieve existing)
-    const existingDocument = await this.prisma.documentSigning.findFirst({
-      where: {
-        sessionId: session.id,
-        documentType: "CONTRACT",
-      },
-    });
-
-    let document;
-    if (existingDocument) {
-      document = existingDocument;
-      this.logger.log(
-        `[signing-session] Reusing existing document id=${document.id} sessionId=${session.id}`,
-      );
-    } else {
-      // Create new document
-      document = await this.prisma.documentSigning.create({
-        data: {
+    // Persist all documents defined in the plan (or retrieve existing)
+    for (const planDocument of plan.documents) {
+      const existingDocument = await this.prisma.documentSigning.findFirst({
+        where: {
           sessionId: session.id,
-          documentType: "CONTRACT",
-          status: "PENDING",
+          documentKey: planDocument.key,
         },
       });
-      this.logger.log(
-        `[signing-session] Created document id=${document.id} sessionId=${session.id}`,
-      );
-    }
 
-    // Persist signers (or retrieve existing)
-    const primaryDocument = plan.documents[0];
-    if (primaryDocument && Array.isArray(primaryDocument.signers)) {
-      for (const planSigner of primaryDocument.signers) {
-        const existingSigner = await this.prisma.documentSigner.findFirst({
-          where: {
-            documentSigningId: document.id,
-            signerKey: planSigner.signerKey,
+      let document;
+      if (existingDocument) {
+        document = existingDocument;
+        this.logger.log(
+          `[signing-session] Reusing existing document id=${document.id} key=${planDocument.key} type=${planDocument.type} sessionId=${session.id}`,
+        );
+      } else {
+        // Create new document
+        document = await this.prisma.documentSigning.create({
+          data: {
+            sessionId: session.id,
+            documentKey: planDocument.key,
+            documentType: planDocument.type,
+            status: "PENDING",
           },
         });
+        this.logger.log(
+          `[signing-session] Created document id=${document.id} key=${planDocument.key} type=${planDocument.type} sessionId=${session.id}`,
+        );
+      }
 
-        if (existingSigner) {
-          this.logger.log(
-            `[signing-session] Reusing existing signer id=${existingSigner.id} key=${planSigner.signerKey}`,
-          );
-        } else {
-          const newSigner = await this.prisma.documentSigner.create({
-            data: {
+      // Persist signers for this document (or retrieve existing)
+      if (Array.isArray(planDocument.signers)) {
+        for (const planSigner of planDocument.signers) {
+          const existingSigner = await this.prisma.documentSigner.findFirst({
+            where: {
               documentSigningId: document.id,
               signerKey: planSigner.signerKey,
-              signerRole: planSigner.role,
-              signerName: planSigner.name,
-              signerEmail: planSigner.email,
-              status: "PENDING",
             },
           });
-          this.logger.log(
-            `[signing-session] Created signer id=${newSigner.id} key=${planSigner.signerKey}`,
-          );
+
+          if (existingSigner) {
+            this.logger.log(
+              `[signing-session] Reusing existing signer id=${existingSigner.id} key=${planSigner.signerKey}`,
+            );
+          } else {
+            const newSigner = await this.prisma.documentSigner.create({
+              data: {
+                documentSigningId: document.id,
+                signerKey: planSigner.signerKey,
+                signerRole: planSigner.role,
+                signerName: planSigner.name,
+                signerEmail: planSigner.email,
+                status: "PENDING",
+              },
+            });
+            this.logger.log(
+              `[signing-session] Created signer id=${newSigner.id} key=${planSigner.signerKey}`,
+            );
+          }
         }
       }
     }
@@ -193,7 +195,7 @@ export class DocumentSigningSessionService {
       for (const signer of document.signers) {
         // Generate signing token
         const token = this.documentSigningService.buildSigningToken({
-          documentId: document.id,
+          documentId: document.key,
           expiresAt,
           signerKey: signer.signerKey,
           signerRole: signer.role,
@@ -205,7 +207,7 @@ export class DocumentSigningSessionService {
         const signingUrl = `${context.baseUrl}${signingPath}?token=${encodeURIComponent(token)}`;
 
         signingLinks.push({
-          documentId: document.id,
+          documentId: document.key,
           documentType: document.type,
           signerKey: signer.signerKey,
           signerRole: signer.role,

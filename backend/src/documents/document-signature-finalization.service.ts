@@ -6,8 +6,10 @@ import { DocumentPdfService } from "./document-pdf.service";
  * Signature finalization input
  */
 export interface FinalizeSignatureInput {
-  /** Contract/document HTML source */
+  /** Document HTML source */
   contractHtml: string;
+  /** Document type (CONTRACT, MINOR_ANNEX, LIABILITY_WAIVER, etc.) */
+  documentType?: string;
   /** Signature image as base64 string */
   signatureImageBase64: string;
   /** Signer key (used for signature image filename) */
@@ -62,8 +64,14 @@ export class DocumentSignatureFinalizationService {
   /**
    * Finalize a document signature
    * 
-   * Takes a signature image and contract HTML, generates a signed PDF with
+   * Takes a signature image and document HTML, generates a signed PDF with
    * embedded signatures, calculates hashes, and processes image files.
+   * 
+   * Supports all document types through the PDF rendering pipeline:
+   * - CONTRACT (default)
+   * - MINOR_ANNEX
+   * - LIABILITY_WAIVER
+   * - Future document types
    * 
    * Returns all generated artifacts for the caller to upload and persist.
    * 
@@ -71,29 +79,34 @@ export class DocumentSignatureFinalizationService {
    * @returns All generated artifacts and metadata
    */
   async finalizeSignature(input: FinalizeSignatureInput): Promise<FinalizeSignatureResult> {
-    // Step 1: Parse and normalize signature image to data URL
+    // Step 1: Determine document type (default to CONTRACT for backward compatibility)
+    const documentType = input.documentType || "CONTRACT";
+
+    // Step 2: Parse and normalize signature image to data URL
     const normalizedSignature = input.signatureImageBase64.trim();
     const signatureDataUrl = normalizedSignature.startsWith("data:")
       ? normalizedSignature
       : `data:image/png;base64,${normalizedSignature}`;
 
-    // Step 2: Build next signature images map
+    // Step 3: Build next signature images map
     const nextSignatureImages: Record<string, string> = {
       ...input.existingSignatureImages,
       [input.signerKey]: signatureDataUrl,
     };
 
-    // Step 3: Render signed PDF with embedded signatures
+    // Step 4: Render signed PDF with embedded signatures
+    // Document type determines the rendering pipeline used
     const signedPdfBuffer = await this.documentPdfService.renderSignedDocumentToBuffer(
       input.contractHtml,
       nextSignatureImages,
+      documentType,
     );
 
-    // Step 4: Calculate SHA-256 hash of the final signed PDF bytes
+    // Step 5: Calculate SHA-256 hash of the final signed PDF bytes
     // This MUST be calculated from the final PDF bytes to maintain cryptographic integrity
     const signedPdfHash = createHash("sha256").update(signedPdfBuffer).digest("hex");
 
-    // Step 5: Convert signature image to WebP format
+    // Step 6: Convert signature image to WebP format
     const pngBuffer = Buffer.from(input.signatureImageBase64.trim(), "base64");
     const processedSignature = await this.convertImageToWebP({
       buffer: pngBuffer,

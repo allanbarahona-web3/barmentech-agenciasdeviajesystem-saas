@@ -41,28 +41,37 @@ export class ContractSigningSessionBuilder {
   /**
    * Build a signing session plan from a contract.
    *
-   * For Story 3, this generates exactly one document representing the contract.
+   * Generates documents for:
+   * - CONTRACT: Main contract signed by client and companions
+   * - MINOR_ANNEX: One per qualifying minor, signed by tutor and responsible companion
+   *
    * Participants are resolved using the same logic as today's implementation:
    * - Primary client (from contract.client or payload.clientFullName)
    * - Companions (from payload.companions array)
    *
    * @param contract - The contract entity to convert
-   * @returns A complete signing session plan with one document
+   * @returns A complete signing session plan with one or more documents
    */
   buildFromContract(contract: ContractForSigning): SigningSessionPlan {
     const participants = this.resolveParticipants(contract);
 
-    const document: SigningDocumentDefinition = {
-      id: contract.id,
-      type: "contract",
+    const contractDocument: SigningDocumentDefinition = {
+      key: "contract",
+      type: "CONTRACT",
       displayName: contract.contractNumber,
       signers: participants,
     };
 
+    const documents: SigningDocumentDefinition[] = [contractDocument];
+
+    // Add Minor Annex documents for qualifying minors
+    const minorAnnexDocuments = this.buildMinorAnnexDocuments(contract, participants);
+    documents.push(...minorAnnexDocuments);
+
     const plan: SigningSessionPlan = {
       processId: contract.id,
-      processType: "contract",
-      documents: [document],
+      processType: "CONTRACT",
+      documents,
     };
 
     return plan;
@@ -123,5 +132,78 @@ export class ContractSigningSessionBuilder {
       return {};
     }
     return payload;
+  }
+
+  /**
+   * Build Minor Annex documents for qualifying minors.
+   *
+   * A minor qualifies if they have:
+   * - tutorName
+   * - tutorEmail
+   * - travelingWith (name of responsible adult)
+   *
+   * Each Minor Annex document requires exactly two signers:
+   * - Tutor (legal guardian)
+   * - Responsible Companion (adult traveling with the minor)
+   *
+   * @param contract - The contract entity
+   * @param participants - List of resolved participants (client + companions)
+   * @returns Array of Minor Annex documents
+   */
+  private buildMinorAnnexDocuments(
+    contract: ContractForSigning,
+    participants: SigningParticipant[],
+  ): SigningDocumentDefinition[] {
+    const payload = this.getPayloadRecord(contract?.payload);
+    const minors = Array.isArray(payload.minors) ? payload.minors : [];
+
+    const documents: SigningDocumentDefinition[] = [];
+
+    minors.forEach((minor: any, index: number) => {
+      const tutorName = String(minor?.tutorName || "").trim();
+      const tutorEmail = String(minor?.tutorEmail || "").trim();
+      const travelingWith = String(minor?.travelingWith || "").trim();
+      const minorName = String(minor?.name || minor?.minorName || "").trim();
+
+      // Skip if missing required data
+      if (!tutorName || !tutorEmail || !travelingWith) {
+        return;
+      }
+
+      // Find responsible adult participant by matching travelingWith name
+      const responsibleAdult = participants.find(
+        (participant) => participant.name === travelingWith,
+      );
+
+      // Skip if responsible adult not found in participants
+      if (!responsibleAdult) {
+        return;
+      }
+
+      // Build signers for this Minor Annex
+      const signers: SigningParticipant[] = [
+        {
+          signerKey: `minor-${index}-tutor`,
+          name: tutorName,
+          email: tutorEmail,
+          role: "TUTOR",
+        },
+        {
+          signerKey: responsibleAdult.signerKey,
+          name: responsibleAdult.name,
+          email: responsibleAdult.email,
+          role: "ACOMPANANTE_RESPONSABLE",
+        },
+      ];
+
+      documents.push({
+        key: `minor-annex-${index}`,
+        type: "MINOR_ANNEX",
+        displayName: `Anexo Menor ${index + 1} - ${minorName || "Sin nombre"}`,
+        signers,
+      });
+    });
+
+    return documents;
   }
 }

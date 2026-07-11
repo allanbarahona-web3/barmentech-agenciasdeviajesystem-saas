@@ -23,8 +23,8 @@ export interface SigningParticipant {
  * Represents one document within a signing session
  */
 export interface SigningDocumentDefinition {
-  /** Unique identifier for the document */
-  id: string;
+  /** Stable key uniquely identifying this document within the session */
+  key: string;
   /** Type of document (contract, waiver, authorization, etc.) */
   type: string;
   /** Human-readable name for the document */
