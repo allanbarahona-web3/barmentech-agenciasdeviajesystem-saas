@@ -276,18 +276,22 @@ export class DocumentSigningSessionService {
   /**
    * Calculate signing progress for a session
    *
+   * Priority order:
+   * 1. PRIMARY: Read from persisted DocumentSigner records (if available)
+   * 2. FALLBACK: Calculate from in-memory SigningSessionPlan
+   *
    * Determines how many signers have completed their signatures
    * and who is still pending.
    *
    * @param plan Signing session plan
-   * @param completedSignerKeys List of signer keys who have already signed
+   * @param completedSignerKeys List of signer keys who have already signed (used for fallback only)
    * @returns Signing progress information
    */
   async calculateSigningProgress(
     plan: SigningSessionPlan,
     completedSignerKeys: string[],
   ): Promise<SigningProgress> {
-    // Try to calculate from persisted DocumentSigner records
+    // PRIMARY SOURCE: Try to calculate from persisted DocumentSigner records
     try {
       const session = await this.prisma.documentSigningSession.findFirst({
         where: {
@@ -314,14 +318,18 @@ export class DocumentSigningSessionService {
           });
 
           if (signers.length > 0) {
-            // Calculate progress from persisted signers
+            // PRIMARY SOURCE: Calculate progress from persisted signers
             const totalSigners = signers.length;
-            const signedSigners = signers.filter((s) => s.status === "COMPLETED");
+            const signedSigners = signers.filter((s) => s.status === "SIGNED" || s.status === "COMPLETED");
             const signedCount = signedSigners.length;
-            const pendingSigners = signers.filter((s) => s.status !== "COMPLETED");
+            const pendingSigners = signers.filter((s) => s.status !== "SIGNED" && s.status !== "COMPLETED");
             const pendingCount = pendingSigners.length;
             const pendingSignerKeys = pendingSigners.map((s) => s.signerKey);
             const completed = pendingCount === 0 && totalSigners > 0;
+
+            this.logger.log(
+              `[signing-session] Progress from persistence: ${signedCount}/${totalSigners} signed`,
+            );
 
             return {
               totalSigners,
@@ -339,7 +347,11 @@ export class DocumentSigningSessionService {
       );
     }
 
-    // Fallback: calculate from in-memory plan
+    // FALLBACK: Calculate progress from in-memory plan
+    this.logger.log(
+      `[signing-session] Using in-memory plan for progress calculation`,
+    );
+
     // Collect all required signer keys from all documents
     const requiredSignerKeys: string[] = [];
     for (const document of plan.documents) {
@@ -405,5 +417,274 @@ export class DocumentSigningSessionService {
       hasPendingSignatures,
       pendingSignerKeys: progress.pendingSignerKeys,
     };
+  }
+
+  /**
+   * Record signer completion in the persistence layer
+   *
+   * Updates the DocumentSigner status to SIGNED when a signer completes their signature.
+   * This keeps the new signing framework synchronized with the existing workflow.
+   *
+   * @param contractId Contract identifier
+   * @param signerKey Signer key identifier
+   * @param signedAt Signature timestamp
+   */
+  async recordSignerCompletion(
+    contractId: string,
+    signerKey: string,
+    signedAt: Date,
+  ): Promise<void> {
+    try {
+      // Locate active session
+      const session = await this.prisma.documentSigningSession.findFirst({
+        where: {
+          contractId,
+          status: {
+            in: ["PENDING", "IN_PROGRESS"],
+          },
+        },
+      });
+
+      if (!session) {
+        this.logger.warn(
+          `[signer-completion] No active session found for contractId=${contractId}`,
+        );
+        return;
+      }
+
+      // Locate CONTRACT document
+      const document = await this.prisma.documentSigning.findFirst({
+        where: {
+          sessionId: session.id,
+          documentType: "CONTRACT",
+        },
+      });
+
+      if (!document) {
+        this.logger.warn(
+          `[signer-completion] No CONTRACT document found for sessionId=${session.id}`,
+        );
+        return;
+      }
+
+      // Locate signer
+      const signer = await this.prisma.documentSigner.findFirst({
+        where: {
+          documentSigningId: document.id,
+          signerKey,
+        },
+      });
+
+      if (!signer) {
+        this.logger.warn(
+          `[signer-completion] No signer found for key=${signerKey} documentId=${document.id}`,
+        );
+        return;
+      }
+
+      // Check if already signed (idempotency)
+      if (signer.status === "SIGNED" || signer.status === "COMPLETED") {
+        this.logger.log(
+          `[signer-completion] Signer already completed id=${signer.id} key=${signerKey}`,
+        );
+        return;
+      }
+
+      // Update signer status
+      await this.prisma.documentSigner.update({
+        where: { id: signer.id },
+        data: {
+          status: "SIGNED",
+          signedAt,
+        },
+      });
+
+      this.logger.log(
+        `[signer-completion] Updated signer id=${signer.id} key=${signerKey} status=SIGNED`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `[signer-completion] Failed to record completion for key=${signerKey}: ${error}`,
+      );
+      // Do not throw - this is a synchronization operation that should not break the main workflow
+    }
+  }
+
+  /**
+   * Complete document signing when all signers have signed
+   *
+   * Updates the DocumentSigning status to SIGNED when all required signers
+   * have completed their signatures. This keeps the document entity synchronized
+   * with the signer completion state.
+   *
+   * @param contractId Contract identifier
+   */
+  async completeDocumentSigning(contractId: string): Promise<void> {
+    try {
+      // Locate active session
+      const session = await this.prisma.documentSigningSession.findFirst({
+        where: {
+          contractId,
+          status: {
+            in: ["PENDING", "IN_PROGRESS"],
+          },
+        },
+      });
+
+      if (!session) {
+        this.logger.warn(
+          `[document-completion] No active session found for contractId=${contractId}`,
+        );
+        return;
+      }
+
+      // Locate CONTRACT document
+      const document = await this.prisma.documentSigning.findFirst({
+        where: {
+          sessionId: session.id,
+          documentType: "CONTRACT",
+        },
+      });
+
+      if (!document) {
+        this.logger.warn(
+          `[document-completion] No CONTRACT document found for sessionId=${session.id}`,
+        );
+        return;
+      }
+
+      // Check if already signed (idempotency)
+      if (document.status === "SIGNED" || document.status === "COMPLETED") {
+        this.logger.log(
+          `[document-completion] Document already completed id=${document.id}`,
+        );
+        return;
+      }
+
+      // Count signers
+      const signers = await this.prisma.documentSigner.findMany({
+        where: {
+          documentSigningId: document.id,
+        },
+      });
+
+      if (signers.length === 0) {
+        this.logger.warn(
+          `[document-completion] No signers found for documentId=${document.id}`,
+        );
+        return;
+      }
+
+      // Check if all signers are signed
+      const allSigned = signers.every(
+        (s) => s.status === "SIGNED" || s.status === "COMPLETED",
+      );
+
+      if (!allSigned) {
+        this.logger.log(
+          `[document-completion] Not all signers completed for documentId=${document.id}`,
+        );
+        return;
+      }
+
+      // Update document status
+      await this.prisma.documentSigning.update({
+        where: { id: document.id },
+        data: {
+          status: "SIGNED",
+        },
+      });
+
+      this.logger.log(
+        `[document-completion] Updated document id=${document.id} status=SIGNED`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `[document-completion] Failed to complete document for contractId=${contractId}: ${error}`,
+      );
+      // Do not throw - this is a synchronization operation that should not break the main workflow
+    }
+  }
+
+  /**
+   * Complete signing session when all documents have been signed
+   *
+   * Updates the DocumentSigningSession status to SIGNED when all documents
+   * in the session have been completed. This keeps the session entity
+   * synchronized with the document completion state.
+   *
+   * @param contractId Contract identifier
+   */
+  async completeSigningSession(contractId: string): Promise<void> {
+    try {
+      // Locate active session
+      const session = await this.prisma.documentSigningSession.findFirst({
+        where: {
+          contractId,
+          status: {
+            in: ["PENDING", "IN_PROGRESS"],
+          },
+        },
+      });
+
+      if (!session) {
+        this.logger.warn(
+          `[session-completion] No active session found for contractId=${contractId}`,
+        );
+        return;
+      }
+
+      // Check if already completed (idempotency)
+      if (session.status === "SIGNED" || session.status === "COMPLETED") {
+        this.logger.log(
+          `[session-completion] Session already completed id=${session.id}`,
+        );
+        return;
+      }
+
+      // Count documents
+      const documents = await this.prisma.documentSigning.findMany({
+        where: {
+          sessionId: session.id,
+        },
+      });
+
+      if (documents.length === 0) {
+        this.logger.warn(
+          `[session-completion] No documents found for sessionId=${session.id}`,
+        );
+        return;
+      }
+
+      // Check if all documents are signed
+      const allSigned = documents.every(
+        (d) => d.status === "SIGNED" || d.status === "COMPLETED",
+      );
+
+      if (!allSigned) {
+        this.logger.log(
+          `[session-completion] Not all documents completed for sessionId=${session.id}`,
+        );
+        return;
+      }
+
+      // Update session status
+      await this.prisma.documentSigningSession.update({
+        where: { id: session.id },
+        data: {
+          status: "SIGNED",
+          completedAt: new Date(),
+        },
+      });
+
+      this.logger.log(
+        `[session-completion] Updated session id=${session.id} status=SIGNED`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `[session-completion] Failed to complete session for contractId=${contractId}: ${error}`,
+      );
+      // Do not throw - this is a synchronization operation that should not break the main workflow
+    }
   }
 }

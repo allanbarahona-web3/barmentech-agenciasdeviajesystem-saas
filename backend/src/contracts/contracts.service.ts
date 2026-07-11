@@ -1530,6 +1530,13 @@ export class ContractsService {
       },
     ];
 
+    // Synchronize signer completion with new persistence layer
+    await this.documentSigningSessionService.recordSignerCompletion(
+      contract.id,
+      signer.signerKey,
+      now,
+    );
+
     // Calculate signing progress using DocumentSigningSessionService
     const signingPlan = this.contractSigningSessionBuilder.buildFromContract(contract);
     const completedSignerKeys = nextSignedParticipants
@@ -1539,6 +1546,12 @@ export class ContractsService {
       signingPlan,
       completedSignerKeys,
     );
+
+    // Synchronize document completion status
+    await this.documentSigningSessionService.completeDocumentSigning(contract.id);
+
+    // Synchronize session completion status
+    await this.documentSigningSessionService.completeSigningSession(contract.id);
 
     // Determine session finalization state
     const finalization = this.documentSigningSessionService.finalizeSigningSession(
