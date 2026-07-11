@@ -1530,11 +1530,21 @@ export class ContractsService {
       },
     ];
 
-    const requiredSignerKeys = participants.map((item) => item.signerKey);
-    const completedKeys = new Set(
-      nextSignedParticipants.map((item: any) => String(item?.signerKey || "")).filter(Boolean),
+    // Calculate signing progress using DocumentSigningSessionService
+    const signingPlan = this.contractSigningSessionBuilder.buildFromContract(contract);
+    const completedSignerKeys = nextSignedParticipants
+      .map((item: any) => String(item?.signerKey || ""))
+      .filter(Boolean);
+    const progress = await this.documentSigningSessionService.calculateSigningProgress(
+      signingPlan,
+      completedSignerKeys,
     );
-    const allCompleted = requiredSignerKeys.every((key) => completedKeys.has(key));
+
+    // Determine session finalization state
+    const finalization = this.documentSigningSessionService.finalizeSigningSession(
+      signingPlan,
+      progress,
+    );
 
     // Atomic DB write: mark token spent + record evidence + update contract
     const auditOps = this.documentSigningAuditService.buildAuditOperations(
@@ -1566,7 +1576,7 @@ export class ContractsService {
       (this.prisma as any).contract.update({
         where: { id: contract.id },
         data: {
-          status: allCompleted ? CONTRACT_STATUS_SIGNED : (contract.status || CONTRACT_STATUS_PENDING_SIGNATURE),
+          status: finalization.shouldFinalize ? CONTRACT_STATUS_SIGNED : (contract.status || CONTRACT_STATUS_PENDING_SIGNATURE),
           signedPdfObjectKey: signedObjectKey,
           signedPdfFileName: `${contract.contractNumber}-signed.pdf`,
           signedPdfMimeType: "application/pdf",
@@ -1578,7 +1588,7 @@ export class ContractsService {
           signedUserAgent,
           payload: {
             ...payload,
-            requiredSignerKeys,
+            requiredSignerKeys: participants.map((item) => item.signerKey),
             signedParticipants: nextSignedParticipants,
             signatureImagesBySigner: finalizationResult.nextSignatureImages,
           },
@@ -1588,7 +1598,7 @@ export class ContractsService {
 
     this.logger.log(
       `[signing] Signature recorded contractId=${contract.id} signerKey=${signer.signerKey} ` +
-      `allCompleted=${allCompleted} ip=${signedClientIp || "unknown"} sha256=${finalizationResult.signedPdfHash.slice(0, 16)}…`,
+      `allCompleted=${finalization.shouldFinalize} ip=${signedClientIp || "unknown"} sha256=${finalizationResult.signedPdfHash.slice(0, 16)}…`,
     );
 
     let billingInvoiceAutoEmail: {
@@ -1599,7 +1609,7 @@ export class ContractsService {
       error?: string;
     } | null = null;
 
-    if (allCompleted) {
+    if (finalization.shouldFinalize) {
       try {
         const autoResult = await this.billingService.autoIssueAndSendInvoiceToTitular({
           contractId: contract.id,
@@ -1648,10 +1658,10 @@ export class ContractsService {
       signedAt: updated.signedAt,
       signerName,
       signerRole: signer.role,
-      signedCount: completedKeys.size,
-      totalSigners: requiredSignerKeys.length,
+      signedCount: progress.signedCount,
+      totalSigners: progress.totalSigners,
       pendingSigners: participants
-        .filter((item) => !completedKeys.has(item.signerKey))
+        .filter((item) => progress.pendingSignerKeys.includes(item.signerKey))
         .map((item) => ({
           signerKey: item.signerKey,
           signerName: item.name,

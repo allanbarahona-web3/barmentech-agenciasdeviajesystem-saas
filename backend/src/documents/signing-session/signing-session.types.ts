@@ -115,3 +115,37 @@ export interface SigningSessionResult {
   /** Generated signing links for all document-signer pairs */
   signingLinks: SigningLink[];
 }
+
+/**
+ * Represents the signing progress of a session
+ *
+ * Tracks how many signers have completed their signatures
+ * and who is still pending.
+ */
+export interface SigningProgress {
+  /** Total number of required signers */
+  totalSigners: number;
+  /** Number of signers who have completed their signature */
+  signedCount: number;
+  /** Number of signers still pending */
+  pendingCount: number;
+  /** Whether all required signatures are complete */
+  completed: boolean;
+  /** List of signer keys that have not yet signed */
+  pendingSignerKeys: string[];
+}
+
+/**
+ * Represents the finalization state of a signing session
+ *
+ * Indicates whether a session should be finalized and what
+ * signatures are still pending.
+ */
+export interface SigningSessionFinalization {
+  /** Whether the session should be finalized (all signatures complete) */
+  shouldFinalize: boolean;
+  /** Whether signatures are still pending */
+  hasPendingSignatures: boolean;
+  /** List of signer keys that have not yet signed */
+  pendingSignerKeys: string[];
+}

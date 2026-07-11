@@ -60,6 +60,7 @@ model Tenant {
   contractDrafts              ContractDraft[]
   contractNumbers             ContractNumber[]
   customerDocuments           CustomerDocument[]
+  documentSigningSessions     DocumentSigningSession[]
   customerNotes               CustomerNote[]
   exchangeRates               ExchangeRate[]
   travelPackages              TravelPackage[]
@@ -203,6 +204,7 @@ model Contract {
   documents             ContractDocument[]
   signatureEvents       ContractSignatureEvent[]
   usedTokens            ContractUsedToken[]
+  signingSessions       DocumentSigningSession[]
 
   @@index([clientId])
   @@index([travelPackageId])
@@ -377,6 +379,75 @@ model ContractUsedToken {
   contract   Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
 
   @@index([contractId])
+}
+
+model DocumentSigningSession {
+  id          String            @id @default(cuid())
+  contractId  String
+  tenantId    String
+  processType String            @default("CONTRACT")
+  status      String            @default("PENDING")
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  contract    Contract          @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  documents   DocumentSigning[]
+
+  @@index([contractId])
+  @@index([tenantId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([tenantId, contractId])
+  @@map("document_signing_sessions")
+}
+
+model DocumentSigning {
+  id                 String                 @id @default(cuid())
+  sessionId          String
+  documentType       String
+  status             String                 @default("PENDING")
+  pdfObjectKey       String?
+  pdfFileName        String?
+  pdfMimeType        String?
+  pdfSize            Int?
+  signedPdfObjectKey String?
+  signedPdfFileName  String?
+  signedPdfMimeType  String?
+  signedPdfSize      Int?
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+  session            DocumentSigningSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  signers            DocumentSigner[]
+
+  @@index([sessionId])
+  @@index([status])
+  @@index([documentType])
+  @@index([createdAt])
+  @@index([sessionId, status])
+  @@map("document_signings")
+}
+
+model DocumentSigner {
+  id                String          @id @default(cuid())
+  documentSigningId String
+  signerKey         String
+  signerRole        String
+  signerName        String
+  signerEmail       String?
+  status            String          @default("PENDING")
+  signedAt          DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  documentSigning   DocumentSigning @relation(fields: [documentSigningId], references: [id], onDelete: Cascade)
+
+  @@index([documentSigningId])
+  @@index([status])
+  @@index([signerKey])
+  @@index([createdAt])
+  @@index([documentSigningId, status])
+  @@map("document_signers")
 }
 
 model BillingInvoice {
