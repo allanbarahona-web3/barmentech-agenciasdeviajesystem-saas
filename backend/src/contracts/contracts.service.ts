@@ -1553,10 +1553,9 @@ export class ContractsService {
     // Synchronize session completion status
     await this.documentSigningSessionService.completeSigningSession(contract.id);
 
-    // Determine session finalization state
-    const finalization = this.documentSigningSessionService.finalizeSigningSession(
-      signingPlan,
-      progress,
+    // Determine session completion (authoritative source)
+    const sessionCompleted = await this.documentSigningSessionService.isSigningSessionCompleted(
+      contract.id,
     );
 
     // Atomic DB write: mark token spent + record evidence + update contract
@@ -1589,7 +1588,7 @@ export class ContractsService {
       (this.prisma as any).contract.update({
         where: { id: contract.id },
         data: {
-          status: finalization.shouldFinalize ? CONTRACT_STATUS_SIGNED : (contract.status || CONTRACT_STATUS_PENDING_SIGNATURE),
+          status: sessionCompleted ? CONTRACT_STATUS_SIGNED : (contract.status || CONTRACT_STATUS_PENDING_SIGNATURE),
           signedPdfObjectKey: signedObjectKey,
           signedPdfFileName: `${contract.contractNumber}-signed.pdf`,
           signedPdfMimeType: "application/pdf",
@@ -1611,7 +1610,7 @@ export class ContractsService {
 
     this.logger.log(
       `[signing] Signature recorded contractId=${contract.id} signerKey=${signer.signerKey} ` +
-      `allCompleted=${finalization.shouldFinalize} ip=${signedClientIp || "unknown"} sha256=${finalizationResult.signedPdfHash.slice(0, 16)}…`,
+      `allCompleted=${sessionCompleted} ip=${signedClientIp || "unknown"} sha256=${finalizationResult.signedPdfHash.slice(0, 16)}…`,
     );
 
     let billingInvoiceAutoEmail: {
@@ -1622,7 +1621,7 @@ export class ContractsService {
       error?: string;
     } | null = null;
 
-    if (finalization.shouldFinalize) {
+    if (sessionCompleted) {
       try {
         const autoResult = await this.billingService.autoIssueAndSendInvoiceToTitular({
           contractId: contract.id,

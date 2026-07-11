@@ -420,6 +420,48 @@ export class DocumentSigningSessionService {
   }
 
   /**
+   * Check if signing session is completed
+   *
+   * Determines completion status by querying the persisted DocumentSigningSession.
+   * This is the authoritative source for session completion state.
+   *
+   * @param contractId Contract identifier
+   * @returns True if session is completed, false otherwise
+   */
+  async isSigningSessionCompleted(contractId: string): Promise<boolean> {
+    try {
+      const session = await this.prisma.documentSigningSession.findFirst({
+        where: {
+          contractId,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+      });
+
+      if (!session) {
+        this.logger.warn(
+          `[session-completion-check] No session found for contractId=${contractId}`,
+        );
+        return false;
+      }
+
+      const isCompleted = session.status === "SIGNED" || session.status === "COMPLETED";
+
+      this.logger.log(
+        `[session-completion-check] Session id=${session.id} status=${session.status} completed=${isCompleted}`,
+      );
+
+      return isCompleted;
+    } catch (error) {
+      this.logger.error(
+        `[session-completion-check] Failed to check session completion for contractId=${contractId}: ${error}`,
+      );
+      return false;
+    }
+  }
+
+  /**
    * Record signer completion in the persistence layer
    *
    * Updates the DocumentSigner status to SIGNED when a signer completes their signature.
