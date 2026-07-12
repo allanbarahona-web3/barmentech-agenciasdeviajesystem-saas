@@ -19,6 +19,7 @@ import { DocumentSigningAuditService } from "../documents/document-signing-audit
 import { DocumentSignatureFinalizationService } from "../documents/document-signature-finalization.service";
 import { DocumentDeliveryService } from "../documents/document-delivery.service";
 import { DocumentSigningSessionService } from "../documents/document-signing-session.service";
+import { DocumentPackageService } from "../documents/document-package.service";
 import { ContractSigningSessionBuilder } from "./contract-signing-session.builder";
 import { ArchiveContractDto } from "./dto/archive-contract.dto";
 import { CustomerDocumentCategory, Client } from "@prisma/client";
@@ -65,6 +66,7 @@ export class ContractsService {
     private readonly documentSignatureFinalizationService: DocumentSignatureFinalizationService,
     private readonly documentDeliveryService: DocumentDeliveryService,
     private readonly documentSigningSessionService: DocumentSigningSessionService,
+    private readonly documentPackageService: DocumentPackageService,
     private readonly contractSigningSessionBuilder: ContractSigningSessionBuilder,
     private readonly storageService: StorageService,
   ) {}
@@ -1553,10 +1555,9 @@ export class ContractsService {
     // Synchronize session completion status
     await this.documentSigningSessionService.completeSigningSession(contract.id);
 
-    // Determine session completion (authoritative source)
-    const sessionCompleted = await this.documentSigningSessionService.isSigningSessionCompleted(
-      contract.id,
-    );
+    // Evaluate package completion and trigger post-signing workflow
+    // DocumentPackageService handles: billing + delivery if package complete
+    const sessionCompleted = await this.documentPackageService.documentCompleted(contract.id);
 
     // Atomic DB write: mark token spent + record evidence + update contract
     const auditOps = this.documentSigningAuditService.buildAuditOperations(
@@ -1613,6 +1614,8 @@ export class ContractsService {
       `allCompleted=${sessionCompleted} ip=${signedClientIp || "unknown"} sha256=${finalizationResult.signedPdfHash.slice(0, 16)}…`,
     );
 
+    // Post-signing workflow (billing + delivery) now handled by DocumentPackageService
+    // Post-signing workflow (billing + delivery) now handled by DocumentPackageService
     let billingInvoiceAutoEmail: {
       ok: boolean;
       alreadySent?: boolean;
@@ -1620,48 +1623,6 @@ export class ContractsService {
       invoiceNumber?: string;
       error?: string;
     } | null = null;
-
-    if (sessionCompleted) {
-      try {
-        const autoResult = await this.billingService.autoIssueAndSendInvoiceToTitular({
-          contractId: contract.id,
-          actorUserId: String(contract.generatedByUserId || "system"),
-          actorEmail: String(contract.generatedByEmail || "system@local"),
-          actorName: String(contract.generatedByName || "Sistema"),
-        });
-
-        billingInvoiceAutoEmail = {
-          ok: true,
-          alreadySent: Boolean(autoResult.alreadySent),
-          sentToEmail: autoResult.sentToEmail ?? null,
-          invoiceNumber: autoResult.invoiceNumber,
-        };
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Fallo el auto-envio de factura al titular.";
-        this.logger.error(
-          `[billing-auto] No se pudo enviar factura automatica contractId=${contract.id}: ${message}`,
-        );
-        billingInvoiceAutoEmail = {
-          ok: false,
-          error: message,
-        };
-      }
-
-      // 🚀 Envío automático del contrato firmado a todas las partes
-      try {
-        await this.autoSendSignedContractToAllParties(contract.id, {
-          userId: String(contract.generatedByUserId || "system"),
-          email: String(contract.generatedByEmail || "system@local"),
-          fullName: String(contract.generatedByName || "Sistema"),
-        });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Fallo el envio automatico del contrato firmado.";
-        this.logger.error(
-          `[auto-send-signed] No se pudo enviar automaticamente contractId=${contract.id}: ${message}`,
-        );
-        // No fallar el proceso principal de firma
-      }
-    }
 
     return {
       id: updated.id,
@@ -1680,7 +1641,7 @@ export class ContractsService {
           signerRole: item.role,
           signerEmail: item.email,
         })),
-      billingInvoiceAutoEmail,
+      billingInvoiceAutoEmail: null,
     };
   }
 

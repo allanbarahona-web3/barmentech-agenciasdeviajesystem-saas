@@ -14,5 +14,6 @@ import { ContractSigningSessionBuilder } from "./contract-signing-session.builde
   imports: [BillingModule, EmailModule, CustomersModule, DocumentsModule, StorageModule],
   controllers: [ContractsController],
   providers: [ContractsService, ContractsEmailsService, PdfRenderService, ContractSigningSessionBuilder],
+  exports: [ContractSigningSessionBuilder],
 })
 export class ContractsModule {}

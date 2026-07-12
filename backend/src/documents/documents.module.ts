@@ -1,5 +1,7 @@
-import { Module } from "@nestjs/common";
+import { Module, forwardRef } from "@nestjs/common";
 import { EmailModule } from "../email/email.module";
+import { BillingModule } from "../billing/billing.module";
+import { StorageModule } from "../storage/storage.module";
 import { DocumentsService } from "./documents.service";
 import { DocumentEmailsService } from "./document-emails.service";
 import { DocumentPdfService } from "./document-pdf.service";
@@ -8,6 +10,7 @@ import { DocumentSigningAuditService } from "./document-signing-audit.service";
 import { DocumentSignatureFinalizationService } from "./document-signature-finalization.service";
 import { DocumentDeliveryService } from "./document-delivery.service";
 import { DocumentSigningSessionService } from "./document-signing-session.service";
+import { DocumentPackageService } from "./document-package.service";
 
 /**
  * DocumentsModule
@@ -41,7 +44,12 @@ import { DocumentSigningSessionService } from "./document-signing-session.servic
  * - Archive and retrieval
  */
 @Module({
-  imports: [EmailModule],
+  imports: [
+    EmailModule,
+    BillingModule,
+    StorageModule,
+    forwardRef(() => require("../contracts/contracts.module").ContractsModule),
+  ],
   providers: [
     DocumentsService,
     DocumentEmailsService,
@@ -51,6 +59,7 @@ import { DocumentSigningSessionService } from "./document-signing-session.servic
     DocumentSignatureFinalizationService,
     DocumentDeliveryService,
     DocumentSigningSessionService,
+    DocumentPackageService,
   ],
   exports: [
     DocumentsService,
@@ -61,6 +70,7 @@ import { DocumentSigningSessionService } from "./document-signing-session.servic
     DocumentSignatureFinalizationService,
     DocumentDeliveryService,
     DocumentSigningSessionService,
+    DocumentPackageService,
   ],
 })
 export class DocumentsModule {}
