@@ -20,6 +20,8 @@ import { DocumentSignatureFinalizationService } from "../documents/document-sign
 import { DocumentDeliveryService } from "../documents/document-delivery.service";
 import { DocumentSigningSessionService } from "../documents/document-signing-session.service";
 import { DocumentPackageService } from "../documents/document-package.service";
+import { DocumentGenerationService } from "../documents/document-generation.service";
+import { DocumentPdfService } from "../documents/document-pdf.service";
 import { ContractSigningSessionBuilder } from "./contract-signing-session.builder";
 import { ArchiveContractDto } from "./dto/archive-contract.dto";
 import { CustomerDocumentCategory, Client } from "@prisma/client";
@@ -67,6 +69,8 @@ export class ContractsService {
     private readonly documentDeliveryService: DocumentDeliveryService,
     private readonly documentSigningSessionService: DocumentSigningSessionService,
     private readonly documentPackageService: DocumentPackageService,
+    private readonly documentGenerationService: DocumentGenerationService,
+    private readonly documentPdfService: DocumentPdfService,
     private readonly contractSigningSessionBuilder: ContractSigningSessionBuilder,
     private readonly storageService: StorageService,
   ) {}
@@ -146,6 +150,122 @@ export class ContractsService {
     }
     
     return result;
+  }
+
+  /**
+   * Generate additional documents (MINOR_ANNEX, etc.) for the contract package
+   * 
+   * This method:
+   * 1. Builds the signing session plan
+   * 2. Generates HTML/PDF for each non-CONTRACT document
+   * 3. Uploads to storage
+   * 4. Adds to uploadedDocuments array with appropriate kind
+   * 
+   * @param contractData Contract data for document generation
+   * @param baseFolder Storage folder for this contract
+   * @param uploadedDocuments Array to append generated documents to
+   * @param tenantId Tenant ID for company info
+   */
+  private async generateAdditionalDocuments(
+    contractData: {
+      id: string;
+      contractNumber: string;
+      payload: Record<string, any>;
+    },
+    baseFolder: string,
+    uploadedDocuments: Array<{
+      kind?: string;
+      originalFileName: string;
+      objectKey: string;
+      mimeType: string;
+      size: number;
+    }>,
+    tenantId: string,
+  ): Promise<void> {
+    // Build signing session plan to determine which documents need generation
+    const signingPlan = this.contractSigningSessionBuilder.buildFromContract(contractData);
+
+    // Get tenant info for document headers
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: {
+        name: true,
+        legalId: true,
+        contactEmail: true,
+        contactPhone: true,
+        logoUrl: true,
+      },
+    });
+
+    const companyInfo = {
+      name: tenant?.name || "Viajes Alma Nova",
+      legalId: tenant?.legalId || null,
+      contactEmail: tenant?.contactEmail || null,
+      contactPhone: tenant?.contactPhone || null,
+      logoSrc: tenant?.logoUrl || null,
+    };
+
+    // Process each document in the plan
+    for (const documentDef of signingPlan.documents) {
+      const documentType = documentDef.type.toUpperCase();
+
+      // Skip CONTRACT (already handled by existing logic)
+      if (documentType === "CONTRACT") {
+        continue;
+      }
+
+      // Generate document based on type
+      if (documentType === "MINOR_ANNEX") {
+        this.logger.log(
+          `[generate] Generating MINOR_ANNEX document key=${documentDef.key}`,
+        );
+
+        // Generate HTML using DocumentGenerationService
+        const documentHtml = await this.documentGenerationService.generateDocumentHtml(
+          documentDef,
+          contractData,
+          companyInfo,
+        );
+
+        // Generate PDF using DocumentPdfService
+        const { pdfBuffer, signatureAnchors } = await this.documentPdfService.renderDocumentToBuffer(
+          documentHtml,
+        );
+
+        // Upload HTML
+        const htmlKey = `${baseFolder}/${documentDef.key}.html`;
+        await this.uploadToSpaces({
+          objectKey: htmlKey,
+          contentType: "text/html; charset=utf-8",
+          body: Buffer.from(documentHtml, "utf-8"),
+        });
+
+        // Upload PDF
+        const pdfKey = `${baseFolder}/${documentDef.key}.pdf`;
+        await this.uploadToSpaces({
+          objectKey: pdfKey,
+          contentType: "application/pdf",
+          body: pdfBuffer,
+        });
+
+        // Add to uploaded documents with kind="MINOR_ANNEX"
+        uploadedDocuments.push({
+          kind: "MINOR_ANNEX",
+          originalFileName: `${documentDef.displayName}.pdf`,
+          objectKey: pdfKey,
+          mimeType: "application/pdf",
+          size: pdfBuffer.length,
+        });
+
+        this.logger.log(
+          `[generate] MINOR_ANNEX generated successfully key=${documentDef.key} size=${pdfBuffer.length}`,
+        );
+      } else {
+        this.logger.warn(
+          `[generate] Unsupported document type for generation: ${documentType}`,
+        );
+      }
+    }
   }
 
   /**
@@ -939,6 +1059,20 @@ export class ContractsService {
       mimeType: string;
       size: number;
     }> = [];
+
+    // Generate additional documents (MINOR_ANNEX, etc.) for international trips
+    if (!isInternalTrip) {
+      await this.generateAdditionalDocuments(
+        {
+          id: contractNumber, // temporary ID for generation
+          contractNumber,
+          payload: payloadRecord,
+        },
+        baseFolder,
+        uploadedDocuments,
+        user.tenantId,
+      );
+    }
 
     for (let index = 0; index < documents.length; index += 1) {
       const doc = documents[index];

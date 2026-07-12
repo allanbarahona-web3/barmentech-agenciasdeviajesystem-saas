@@ -1,5 +1,4 @@
 import { ContractFormState } from "@/features/contracts-form/types";
-import { buildMinorAnnexHtml } from "@/features/documents/minor-annex/minor-annex-template";
 import {
   esc,
   formatDate,
@@ -134,14 +133,6 @@ export const buildContractPdfHtml = (
       <p>Representante legal de ${esc(tenantName)}</p>
       <p>Fecha: ${v(signatureDate)}</p>
     </div>`;
-
-  const minorAnnexPages = buildMinorAnnexHtml(
-    state,
-    tenantName,
-    esc,
-    formatDate,
-    getResponsibleAdultIdentity,
-  );
 
   return `<!DOCTYPE html>
 <html lang="es">
@@ -720,8 +711,6 @@ ${clause(
     ${karenBlock}
   </div>
 </section>
-
-${minorAnnexPages}
 
 </body>
 </html>`;

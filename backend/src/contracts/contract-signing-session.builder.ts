@@ -171,6 +171,11 @@ export class ContractSigningSessionBuilder {
         return;
       }
 
+      // Business Rule 1: If minor travels with parent/tutor, no annex is needed
+      if (travelingWith === tutorName) {
+        return;
+      }
+
       // Find responsible adult participant by matching travelingWith name
       const responsibleAdult = participants.find(
         (participant) => participant.name === travelingWith,

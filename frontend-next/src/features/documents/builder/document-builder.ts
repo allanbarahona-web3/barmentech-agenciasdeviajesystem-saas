@@ -61,7 +61,6 @@ export function buildDocumentPackage(
   bankAccounts: BankAccountForContract[] = [],
 ): DocumentPackage {
   // Generate the main contract document
-  // The contract HTML already includes minor annexes via buildMinorAnnexHtml()
   const contractHtml = buildContractPdfHtml(
     state,
     assets,

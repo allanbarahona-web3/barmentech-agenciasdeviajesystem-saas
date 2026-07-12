@@ -11,6 +11,7 @@ import { DocumentSignatureFinalizationService } from "./document-signature-final
 import { DocumentDeliveryService } from "./document-delivery.service";
 import { DocumentSigningSessionService } from "./document-signing-session.service";
 import { DocumentPackageService } from "./document-package.service";
+import { DocumentGenerationService } from "./document-generation.service";
 
 /**
  * DocumentsModule
@@ -37,9 +38,9 @@ import { DocumentPackageService } from "./document-package.service";
  * - Document signing audit (token replay prevention, signature event recording)
  * - Document signature finalization (PDF generation, hash calculation, image processing)
  * - Document delivery (recipient resolution, signed document distribution)
+ * - Document generation from templates (CONTRACT, MINOR_ANNEX, LIABILITY_WAIVER)
  * 
  * Future Capabilities (to be extracted incrementally):
- * - Document generation from templates
  * - Signature session management
  * - Archive and retrieval
  */
@@ -60,6 +61,7 @@ import { DocumentPackageService } from "./document-package.service";
     DocumentDeliveryService,
     DocumentSigningSessionService,
     DocumentPackageService,
+    DocumentGenerationService,
   ],
   exports: [
     DocumentsService,
@@ -71,6 +73,7 @@ import { DocumentPackageService } from "./document-package.service";
     DocumentDeliveryService,
     DocumentSigningSessionService,
     DocumentPackageService,
+    DocumentGenerationService,
   ],
 })
 export class DocumentsModule {}
