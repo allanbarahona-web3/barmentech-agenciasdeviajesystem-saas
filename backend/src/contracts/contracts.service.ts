@@ -340,10 +340,6 @@ export class ContractsService {
     };
   }
 
-  private getPayloadRecord(payload: unknown) {
-    return this.documentSigningService.getPayloadRecord(payload);
-  }
-
   /**
    * Extract signing participants from a contract using SigningSessionPlan.
    * The builder is the single source of truth for participant resolution.
@@ -352,10 +348,6 @@ export class ContractsService {
     const plan = this.contractSigningSessionBuilder.buildFromContract(contract);
     // For contracts, there's always exactly one document
     return plan.documents[0]?.signers || [];
-  }
-
-  private getSignatureAnchorForSigner(payload: Record<string, any>, signerKey: string) {
-    return this.documentSigningService.getSignatureAnchorForSigner(payload, signerKey);
   }
 
 
@@ -516,88 +508,6 @@ export class ContractsService {
     FIN CÓDIGO ANTIGUO */
   }
 
-  /**
-   * 🚀 Envío automático de contrato firmado a todas las partes
-   * Se ejecuta cuando el contrato cambia a estado SIGNED (última firma completada)
-   * Envía el PDF firmado a titular + acompañantes
-   */
-  private async autoSendSignedContractToAllParties(
-    contractId: string,
-    actorContext: { userId: string; email: string; fullName: string },
-  ): Promise<{ ok: boolean; sentCount: number; failedCount: number; sentTo: string[]; failedTo: string[] }> {
-    const contract = await (this.prisma as any).contract.findUnique({
-      where: { id: contractId },
-      include: {
-        client: true,
-        tenant: true,
-      },
-    });
-
-    if (!contract) {
-      throw new NotFoundException("Contrato no encontrado.");
-    }
-
-    if (String(contract.status || "").toUpperCase() !== CONTRACT_STATUS_SIGNED || !contract.signedPdfObjectKey) {
-      throw new BadRequestException("El contrato aun no esta firmado por todas las partes.");
-    }
-
-    const tenant = contract.tenant || null;
-    if (!tenant) {
-      throw new InternalServerErrorException("Tenant no encontrado para enviar email.");
-    }
-
-    const payload = this.getPayloadRecord(contract.payload);
-    const participants = this.getSigningParticipantsFromPlan(contract);
-
-    // Download signed PDF buffer (storage infrastructure responsibility)
-    const signedPdfBuffer = await this.downloadObjectBuffer(contract.signedPdfObjectKey);
-    if (!signedPdfBuffer.length) {
-      throw new InternalServerErrorException("No se pudo leer el contrato firmado.");
-    }
-
-    // Delegate delivery to DocumentDeliveryService
-    const deliveryResult = await this.documentDeliveryService.deliverSignedDocument({
-      contractId: contract.id,
-      contractNumber: contract.contractNumber,
-      signedPdfBuffer,
-      signedPdfFileName: contract.signedPdfFileName,
-      signingParticipants: participants,
-      actorContext,
-      tenant,
-    });
-
-    // Build dispatch log entry
-    const dispatchLogEntry = this.documentDeliveryService.buildDispatchLogEntry({
-      type: "SIGNED_AUTO_SEND",
-      contractId: contract.id,
-      contractNumber: contract.contractNumber,
-      actorContext,
-      sentTo: deliveryResult.sentTo,
-      failedTo: deliveryResult.failedTo,
-    });
-
-    // Persist dispatch log to contract payload
-    const existingDispatchLog = Array.isArray(payload?.emailDispatchLog)
-      ? payload.emailDispatchLog.filter((item: any) => item && typeof item === "object")
-      : [];
-
-    await (this.prisma as any).contract.update({
-      where: { id: contract.id },
-      data: {
-        payload: {
-          ...payload,
-          emailDispatchLog: [...existingDispatchLog, dispatchLogEntry],
-        },
-      },
-    });
-
-    this.logger.log(
-      `[auto-send-signed] Contrato firmado enviado automáticamente: ${contract.contractNumber} (${deliveryResult.sentTo.length} enviados, ${deliveryResult.failedTo.length} fallidos)`,
-    );
-
-    return deliveryResult;
-  }
-
   async resendSignedContractEmailToParties(
     user: { id: string; email: string; fullName: string },
     contractId: string,
@@ -640,7 +550,7 @@ export class ContractsService {
       role: "CLIENT" as SigningRole,
     }];
 
-    const payload = this.getPayloadRecord(contract.payload);
+    const payload = this.documentSigningService.getPayloadRecord(contract.payload);
 
     const signedPdfBuffer = await this.downloadObjectBuffer(contract.signedPdfObjectKey);
     if (!signedPdfBuffer.length) {
@@ -1447,7 +1357,7 @@ export class ContractsService {
       throw new BadRequestException("No se pudo resolver el firmante de este enlace.");
     }
 
-    const payload = this.getPayloadRecord(contract.payload);
+    const payload = this.documentSigningService.getPayloadRecord(contract.payload);
     const signedParticipants = Array.isArray(payload.signedParticipants)
       ? payload.signedParticipants.filter((item: any) => item && typeof item === "object")
       : [];
@@ -1600,7 +1510,6 @@ export class ContractsService {
           signedUserAgent,
           payload: {
             ...payload,
-            requiredSignerKeys: participants.map((item) => item.signerKey),
             signedParticipants: nextSignedParticipants,
             signatureImagesBySigner: finalizationResult.nextSignatureImages,
           },
@@ -1696,7 +1605,7 @@ export class ContractsService {
     const signedPdfUrl = contract.signedPdfObjectKey
       ? await this.buildSignedObjectUrl(contract.signedPdfObjectKey, 1200)
       : null;
-    const payload = this.getPayloadRecord(contract.payload);
+    const payload = this.documentSigningService.getPayloadRecord(contract.payload);
     const participants = this.getSigningParticipantsFromPlan(contract);
     const tokenSigner = participants.find((item) => item.signerKey === parsed.signerKey);
     const resolvedSigner =
@@ -1709,7 +1618,7 @@ export class ContractsService {
       throw new BadRequestException("No se pudo resolver el firmante para este enlace.");
     }
 
-    const rawSignatureAnchor = this.getSignatureAnchorForSigner(payload, resolvedSigner.signerKey);
+    const rawSignatureAnchor = this.documentSigningService.getSignatureAnchorForSigner(payload, resolvedSigner.signerKey);
     const signatureAnchorCandidate =
       rawSignatureAnchor &&
       typeof rawSignatureAnchor === "object" &&
@@ -1871,7 +1780,7 @@ export class ContractsService {
         : [];
 
     const contractRows = items.map((item: any) => {
-        const payload = this.getPayloadRecord(item.payload);
+        const payload = this.documentSigningService.getPayloadRecord(item.payload);
         const emailDispatchLog = Array.isArray(payload?.emailDispatchLog)
           ? payload.emailDispatchLog.filter((entry: any) => entry && typeof entry === "object")
           : [];
