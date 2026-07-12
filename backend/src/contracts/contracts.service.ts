@@ -1555,8 +1555,7 @@ export class ContractsService {
     // Synchronize session completion status
     await this.documentSigningSessionService.completeSigningSession(contract.id);
 
-    // Evaluate package completion and trigger post-signing workflow
-    // DocumentPackageService handles: billing + delivery if package complete
+    // Evaluate package completion
     const sessionCompleted = await this.documentPackageService.documentCompleted(contract.id);
 
     // Atomic DB write: mark token spent + record evidence + update contract
@@ -1614,7 +1613,12 @@ export class ContractsService {
       `allCompleted=${sessionCompleted} ip=${signedClientIp || "unknown"} sha256=${finalizationResult.signedPdfHash.slice(0, 16)}…`,
     );
 
-    // Post-signing workflow (billing + delivery) now handled by DocumentPackageService
+    // Trigger post-package workflow if package completed
+    // Contract status is now SIGNED, billing and delivery can proceed
+    if (sessionCompleted) {
+      await this.documentPackageService.onPackageCompleted(contract.id);
+    }
+
     // Post-signing workflow (billing + delivery) now handled by DocumentPackageService
     let billingInvoiceAutoEmail: {
       ok: boolean;

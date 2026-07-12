@@ -195,7 +195,7 @@ export class DocumentSigningSessionService {
       for (const signer of document.signers) {
         // Generate signing token
         const token = this.documentSigningService.buildSigningToken({
-          documentId: document.key,
+          documentId: document.id,
           expiresAt,
           signerKey: signer.signerKey,
           signerRole: signer.role,
@@ -207,7 +207,7 @@ export class DocumentSigningSessionService {
         const signingUrl = `${context.baseUrl}${signingPath}?token=${encodeURIComponent(token)}`;
 
         signingLinks.push({
-          documentId: document.key,
+          documentId: document.id,
           documentType: document.type,
           signerKey: signer.signerKey,
           signerRole: signer.role,
@@ -263,15 +263,21 @@ export class DocumentSigningSessionService {
    * @returns Signing path (e.g., "/sign-contract")
    */
   private getSigningPathForDocumentType(documentType: string): string {
-    switch (documentType) {
-      case "contract":
+    const normalizedType = documentType.toUpperCase();
+
+    switch (normalizedType) {
+      case "CONTRACT":
         return "/sign-contract";
-      case "waiver":
+      case "MINOR_ANNEX":
+        return "/sign-contract";
+      case "WAIVER":
         return "/sign-waiver";
-      case "authorization":
+      case "LIABILITY_WAIVER":
+        return "/sign-waiver";
+      case "AUTHORIZATION":
         return "/sign-authorization";
       default:
-        return `/sign-${documentType}`;
+        return `/sign-${documentType.toLowerCase()}`;
     }
   }
 

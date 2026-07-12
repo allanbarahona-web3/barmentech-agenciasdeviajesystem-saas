@@ -23,6 +23,8 @@ export interface SigningParticipant {
  * Represents one document within a signing session
  */
 export interface SigningDocumentDefinition {
+  /** Business entity identifier (e.g., contract UUID) */
+  id: string;
   /** Stable key uniquely identifying this document within the session */
   key: string;
   /** Type of document (contract, waiver, authorization, etc.) */

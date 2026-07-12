@@ -56,6 +56,7 @@ export class ContractSigningSessionBuilder {
     const participants = this.resolveParticipants(contract);
 
     const contractDocument: SigningDocumentDefinition = {
+      id: contract.id,
       key: "contract",
       type: "CONTRACT",
       displayName: contract.contractNumber,
@@ -197,6 +198,7 @@ export class ContractSigningSessionBuilder {
       ];
 
       documents.push({
+        id: contract.id,
         key: `minor-annex-${index}`,
         type: "MINOR_ANNEX",
         displayName: `Anexo Menor ${index + 1} - ${minorName || "Sin nombre"}`,

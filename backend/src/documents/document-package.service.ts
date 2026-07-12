@@ -43,23 +43,17 @@ export class DocumentPackageService {
   ) {}
 
   /**
-   * Check if a single document is completed and trigger post-completion workflow
+   * Check if a single document is completed
    * 
    * Evaluates if the package containing this document is complete.
-   * If complete, triggers onPackageCompleted() to execute billing and delivery.
+   * Does NOT trigger post-completion workflow.
+   * Caller is responsible for calling onPackageCompleted() after status updates.
    * 
    * @param documentId Document identifier (contract ID for current single-document packages)
    * @returns True if document (and its package) is completed
    */
   async documentCompleted(documentId: string): Promise<boolean> {
-    const isComplete = await this.isPackageCompleted(documentId);
-
-    if (isComplete) {
-      // Trigger post-package workflow (billing + delivery)
-      await this.onPackageCompleted(documentId);
-    }
-
-    return isComplete;
+    return this.isPackageCompleted(documentId);
   }
 
   /**
