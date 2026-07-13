@@ -229,9 +229,16 @@ export function CustomerCreateModal({ isOpen, onClose, onCustomerCreated }: Cust
                 </div>
                 <input
                   type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                   value={formData.idNumber}
-                  onChange={(e) => handleChange('idNumber', e.target.value)}
+                  onChange={(e) => {
+                    // Solo permitir dígitos 0-9
+                    const value = e.target.value.replace(/\D/g, '');
+                    handleChange('idNumber', value);
+                  }}
                   disabled={isSaving}
+                  placeholder="Solo números (0-9)"
                   style={{
                     width: '100%',
                     padding: '8px 12px',
