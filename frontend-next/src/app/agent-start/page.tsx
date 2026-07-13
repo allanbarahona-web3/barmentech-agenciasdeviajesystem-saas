@@ -87,6 +87,12 @@ export default function AgentStartPage() {
     setTimeout(() => router.push("/internal-trips-available"), 100);
   };
 
+  const handleSelectCustomers = () => {
+    setShowMenuModal(false);
+    // Redirigir a la página de clientes
+    setTimeout(() => router.push("/admin/customers"), 100);
+  };
+
   const handleSelectQuote = () => {
     // Futuro: Redirigir a página de cotización
     console.log("Cotización seleccionada (futuro)");
@@ -133,6 +139,7 @@ export default function AgentStartPage() {
         onSelectTrips={handleSelectTrips}
         onSelectMigration={handleSelectMigration}
         onSelectInternalTrips={handleSelectInternalTrips}
+        onSelectCustomers={handleSelectCustomers}
         onSelectQuote={handleSelectQuote}
         onSelectCustom={handleSelectCustom}
       />

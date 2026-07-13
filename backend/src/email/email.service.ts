@@ -26,6 +26,8 @@ import { invoiceInitialTemplate } from './templates/invoice-initial.template';
 // Contract templates
 import { contractPdfAttachmentTemplate } from './templates/contract-pdf-attachment.template';
 import { contractSigningLinkTemplate } from './templates/contract-signing-link.template';
+import { minorAnnexSigningLinkTemplate } from './templates/minor-annex-signing-link.template';
+import { liabilityWaiverSigningLinkTemplate } from './templates/liability-waiver-signing-link.template';
 import { contractSignedConfirmationTemplate } from './templates/contract-signed-confirmation.template';
 
 // Internal Tourism templates
@@ -393,6 +395,12 @@ export class EmailService {
 
       case 'contract-signing-link':
         return contractSigningLinkTemplate(data as any);
+
+      case 'minor-annex-signing-link':
+        return minorAnnexSigningLinkTemplate(data as any);
+
+      case 'liability-waiver-signing-link':
+        return liabilityWaiverSigningLinkTemplate(data as any);
 
       case 'contract-signed-confirmation':
         return contractSignedConfirmationTemplate(data as any);

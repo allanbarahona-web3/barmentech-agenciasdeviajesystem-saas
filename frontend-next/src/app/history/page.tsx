@@ -6,6 +6,7 @@ import { getStoredToken } from "@/lib/auth-api";
 import {
   type ContractFileDocument,
   type HistoryContractItem,
+  type PackageDocument,
   deleteContractDraft,
   getContractFiles,
   resendSignedEmail,
@@ -16,6 +17,7 @@ import { ToastNotification, useToast } from "@/components/toast-notification";
 import { ConfirmModal } from "@/components/confirm-modal";
 import { PageLoader } from "@/components/loading-spinner";
 import AttachmentViewer from "@/components/attachment-viewer";
+import { DocumentStatusIndicator } from "@/components/document-status-indicator";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -93,6 +95,7 @@ export default function HistoryPage() {
   
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<HistoryContractItem[]>([]);
+  const [packageDocsMap, setPackageDocsMap] = useState<Record<string, PackageDocument[]>>({});
   const [busyAction, setBusyAction] = useState<string>("");
   const [viewerOpen, setViewerOpen] = useState(false);
   const [viewerTitle, setViewerTitle] = useState("Visor");
@@ -152,10 +155,41 @@ export default function HistoryPage() {
       
       const result = await searchContracts(params);
       setItems(result);
+      
+      // Cargar packageDocuments para contratos no-draft
+      const contractIds = result.filter(item => item.kind !== "DRAFT").map(item => item.id);
+      if (contractIds.length > 0) {
+        loadPackageDocuments(contractIds);
+      }
     } catch (fetchError) {
       showError(fetchError instanceof Error ? fetchError.message : "No se pudo cargar historial.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Cargar packageDocuments en batch
+  const loadPackageDocuments = async (contractIds: string[]) => {
+    try {
+      const results = await Promise.all(
+        contractIds.map(async (id) => {
+          try {
+            const files = await getContractFiles(id);
+            return { id, packageDocuments: files.packageDocuments || [] };
+          } catch {
+            return { id, packageDocuments: [] };
+          }
+        })
+      );
+      
+      const docsMap: Record<string, PackageDocument[]> = {};
+      results.forEach(({ id, packageDocuments }) => {
+        docsMap[id] = packageDocuments;
+      });
+      setPackageDocsMap(docsMap);
+    } catch (error) {
+      // Silent fail - packageDocuments son opcionales
+      console.warn("Error loading package documents:", error);
     }
   };
 
@@ -260,6 +294,35 @@ export default function HistoryPage() {
       }
     } catch (actionError) {
       showError(actionError instanceof Error ? actionError.message : "No se pudo abrir el contrato.");
+    } finally {
+      setBusyAction("");
+    }
+  };
+
+  const openPackageDocuments = async (contractId: string) => {
+    setBusyAction(`package:${contractId}`);
+    try {
+      const files = await getContractFiles(contractId);
+      const packageDocs = files.packageDocuments || [];
+      
+      // Convertir packageDocuments a formato de attachments
+      const attachments = packageDocs
+        .filter(doc => doc.signedPdfUrl) // Solo mostrar documentos con PDF firmado
+        .map(doc => ({
+          id: doc.id,
+          originalFileName: doc.signedPdfFileName || `${doc.documentType}.pdf`,
+          url: doc.signedPdfUrl!,
+          mimeType: 'application/pdf',
+        }));
+      
+      if (attachments.length === 0) {
+        showInfo("No hay documentos firmados disponibles aún.");
+        return;
+      }
+      
+      setAttachmentViewerData({ attachments, initialIndex: 0 });
+    } catch (actionError) {
+      showError(actionError instanceof Error ? actionError.message : "No se pudieron abrir los documentos.");
     } finally {
       setBusyAction("");
     }
@@ -501,7 +564,11 @@ export default function HistoryPage() {
                           </span>
                         </td>
                         <td>
-                          <span className={`contract-status ${status.className}`}>{status.label}</span>
+                          {isDraft ? (
+                            <span className={`contract-status ${status.className}`}>{status.label}</span>
+                          ) : (
+                            <DocumentStatusIndicator documents={packageDocsMap[item.id] || []} />
+                          )}
                         </td>
                         <td>
                           <div className="history-actions">
@@ -528,6 +595,15 @@ export default function HistoryPage() {
                                   disabled={busyAction === `contract:${item.id}`}
                                 >
                                   {busyAction === `contract:${item.id}` ? "Abriendo..." : "Contrato"}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="rounded-xl px-4 py-2.5 bg-white text-blue-900 border border-blue-200 font-semibold transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-none"
+                                  onClick={() => void openPackageDocuments(item.id)}
+                                  disabled={busyAction === `package:${item.id}`}
+                                  title="Ver documentos firmados del expediente (Anexos, Exoneraciones)"
+                                >
+                                  {busyAction === `package:${item.id}` ? "Abriendo..." : "📦 Expediente"}
                                 </button>
                                 <button
                                   type="button"

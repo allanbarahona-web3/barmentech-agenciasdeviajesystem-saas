@@ -368,10 +368,13 @@ export default function CustomerProfilePage() {
     }
   }
 
-  function formatCurrency(amount: number): string {
+  function formatCurrency(amount: number, currency?: string): string {
+    // Use the currency from financialSummary, default to USD
+    const currencyCode = currency || financialSummary?.currency || 'USD';
+    
     return new Intl.NumberFormat('es-CR', {
       style: 'currency',
-      currency: 'CRC',
+      currency: currencyCode,
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(amount);
@@ -818,7 +821,7 @@ export default function CustomerProfilePage() {
                   Total Contratado
                 </div>
                 <div style={{ fontSize: '28px', fontWeight: 'bold', color: 'white' }}>
-                  {formatCurrency(financialSummary.totalContractedAmount)}
+                  {formatCurrency(financialSummary.totalContractedAmount, financialSummary.currency)}
                 </div>
               </div>
               <div style={{ fontSize: '32px' }}>📝</div>
@@ -841,7 +844,7 @@ export default function CustomerProfilePage() {
                   Total Facturado
                 </div>
                 <div style={{ fontSize: '28px', fontWeight: 'bold', color: '#1e3a8a' }}>
-                  {formatCurrency(financialSummary.totalInvoicedAmount)}
+                  {formatCurrency(financialSummary.totalInvoicedAmount, financialSummary.currency)}
                 </div>
               </div>
               <div style={{ fontSize: '32px' }}>🧾</div>
@@ -864,7 +867,7 @@ export default function CustomerProfilePage() {
                   Total Pagado
                 </div>
                 <div style={{ fontSize: '28px', fontWeight: 'bold', color: '#15803d' }}>
-                  {formatCurrency(financialSummary.totalPaidAmount)}
+                  {formatCurrency(financialSummary.totalPaidAmount, financialSummary.currency)}
                 </div>
               </div>
               <div style={{ fontSize: '32px' }}>💳</div>
@@ -887,7 +890,7 @@ export default function CustomerProfilePage() {
                   Saldo Pendiente
                 </div>
                 <div style={{ fontSize: '28px', fontWeight: 'bold', color: financialSummary.outstandingBalance > 0 ? '#b45309' : '#15803d' }}>
-                  {formatCurrency(financialSummary.outstandingBalance)}
+                  {formatCurrency(financialSummary.outstandingBalance, financialSummary.currency)}
                 </div>
               </div>
               <div style={{ fontSize: '32px' }}>{financialSummary.outstandingBalance > 0 ? '⚠️' : '✅'}</div>
@@ -910,7 +913,7 @@ export default function CustomerProfilePage() {
                   Crédito Disponible
                 </div>
                 <div style={{ fontSize: '28px', fontWeight: 'bold', color: '#b45309' }}>
-                  {formatCurrency(financialSummary.availableCredit)}
+                  {formatCurrency(financialSummary.availableCredit, financialSummary.currency)}
                 </div>
               </div>
               <div style={{ fontSize: '32px' }}>🏦</div>
@@ -930,7 +933,7 @@ export default function CustomerProfilePage() {
                   Último Pago
                 </div>
                 <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#1f2937' }}>
-                  {formatCurrency(financialSummary.lastPaymentAmount || 0)}
+                  {formatCurrency(financialSummary.lastPaymentAmount || 0, financialSummary.currency)}
                 </div>
                 <div style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>
                   {formatDate(financialSummary.lastPaymentDate)}

@@ -39,6 +39,7 @@ export type { CompanyInfo, DocumentMetadata } from "./document-header";
 export {
   signaturePage,
   minorAuthorizationAnnex,
+  liabilityWaiverDocument,
 } from "./signature-components";
 
 export type { SignerInfo, CompanySignerInfo } from "./signature-components";

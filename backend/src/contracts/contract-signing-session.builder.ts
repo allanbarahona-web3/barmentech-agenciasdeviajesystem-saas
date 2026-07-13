@@ -69,6 +69,10 @@ export class ContractSigningSessionBuilder {
     const minorAnnexDocuments = this.buildMinorAnnexDocuments(contract, participants);
     documents.push(...minorAnnexDocuments);
 
+    // Add Liability Waiver documents for participants who declined insurance
+    const liabilityWaiverDocuments = this.buildLiabilityWaiverDocuments(contract, participants);
+    documents.push(...liabilityWaiverDocuments);
+
     const plan: SigningSessionPlan = {
       processId: contract.id,
       processType: "CONTRACT",
@@ -208,6 +212,74 @@ export class ContractSigningSessionBuilder {
         type: "MINOR_ANNEX",
         displayName: `Anexo Menor ${index + 1} - ${minorName || "Sin nombre"}`,
         signers,
+      });
+    });
+
+    return documents;
+  }
+
+  /**
+   * Build Liability Waiver documents for participants who declined insurance.
+   *
+   * A participant requires a waiver if:
+   * - They are an adult (not a minor)
+   * - insurance[participantId] === false in the payload
+   *
+   * Each waiver is signed only by the participant who declined insurance.
+   *
+   * @param contract - The contract entity
+   * @param participants - List of resolved participants (client + companions)
+   * @returns Array of Liability Waiver documents
+   */
+  private buildLiabilityWaiverDocuments(
+    contract: ContractForSigning,
+    participants: SigningParticipant[],
+  ): SigningDocumentDefinition[] {
+    const payload = this.getPayloadRecord(contract?.payload);
+    const insurance = this.getPayloadRecord(payload.insurance);
+
+    const documents: SigningDocumentDefinition[] = [];
+
+    participants.forEach((participant, index) => {
+      // Determine if this participant declined insurance
+      let hasInsurance = true; // Default to true (no waiver needed)
+
+      if (participant.signerKey === "client") {
+        hasInsurance = insurance.holder !== false;
+      } else if (participant.signerKey.startsWith("companion-")) {
+        const companionIndex = parseInt(participant.signerKey.replace("companion-", ""), 10);
+        const companions = Array.isArray(payload.companions) ? payload.companions : [];
+        const companion = companions[companionIndex];
+        
+        if (companion && companion.id) {
+          const companionInsurance = this.getPayloadRecord(insurance.companions);
+          hasInsurance = companionInsurance[companion.id] !== false;
+        }
+      }
+
+      // Skip if participant has insurance
+      if (hasInsurance) {
+        return;
+      }
+
+      // Generate waiver document
+      const waiverKey = participant.signerKey === "client" 
+        ? "liability-waiver-holder" 
+        : `liability-waiver-${participant.signerKey}`;
+
+      documents.push({
+        id: contract.id,
+        key: waiverKey,
+        type: "LIABILITY_WAIVER",
+        displayName: `Exoneración Seguro - ${participant.name}`,
+        signers: [
+          {
+            signerKey: participant.signerKey,
+            name: participant.name,
+            email: participant.email,
+            role: participant.role,
+          },
+        ],
       });
     });
 

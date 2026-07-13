@@ -554,6 +554,23 @@ export class CustomersService {
       ? parseFloat(String(clientBalance.availableCreditAmount))
       : 0;
 
+    // Determine primary currency from invoices (most common currency)
+    // Default to USD if no invoices or no currency info
+    const currencyCount: Record<string, number> = {};
+    invoices.forEach((invoice: any) => {
+      const curr = String(invoice.currency || 'USD').toUpperCase();
+      currencyCount[curr] = (currencyCount[curr] || 0) + 1;
+    });
+    
+    let primaryCurrency = 'USD';
+    let maxCount = 0;
+    for (const [curr, count] of Object.entries(currencyCount)) {
+      if (count > maxCount) {
+        maxCount = count;
+        primaryCurrency = curr;
+      }
+    }
+
     // Map to DTOs
     const customerInfo: CustomerInfoDto = {
       id: customer.id,
@@ -610,6 +627,7 @@ export class CustomersService {
       totalPaidAmount,
       outstandingBalance,
       availableCredit,
+      currency: primaryCurrency,
       lastPaymentDate: lastPayment?.verifiedAt?.toISOString() || null,
       lastPaymentAmount: lastPayment
         ? parseFloat(String(lastPayment.amount))

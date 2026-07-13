@@ -3,6 +3,7 @@ import {
   documentLayout, 
   documentHeader, 
   minorAuthorizationAnnex,
+  liabilityWaiverDocument,
   formatDate,
   escapeHtml,
 } from "./templates/shared";
@@ -54,6 +55,9 @@ export class DocumentGenerationService {
     switch (documentType) {
       case "MINOR_ANNEX":
         return this.generateMinorAnnexHtml(documentDef, contractData, companyInfo);
+      
+      case "LIABILITY_WAIVER":
+        return this.generateLiabilityWaiverHtml(documentDef, contractData, companyInfo);
       
       case "CONTRACT":
         throw new BadRequestException(
@@ -189,6 +193,100 @@ export class DocumentGenerationService {
   }
 
   /**
+   * Generate HTML for a Liability Waiver document
+   * 
+   * @param documentDef Document definition
+   * @param contractData Contract with payload containing participant data
+   * @param companyInfo Company information
+   * @returns Complete HTML document
+   */
+  private generateLiabilityWaiverHtml(
+    documentDef: SigningDocumentDefinition,
+    contractData: {
+      id: string;
+      contractNumber: string;
+      payload: any;
+    },
+    companyInfo: CompanyInfo,
+  ): string {
+    const payload = this.getPayloadRecord(contractData.payload);
+
+    // Find the signer for this waiver
+    const signer = documentDef.signers[0];
+    if (!signer) {
+      throw new BadRequestException(
+        `No signer found for liability waiver ${documentDef.key}`,
+      );
+    }
+
+    // Extract participant data
+    let participantIdType = "Cédula";
+    let participantId = "";
+    let participantCivilStatus = "";
+    let participantOccupation = "";
+    let participantAddress = "";
+
+    if (signer.signerKey === "client") {
+      participantIdType = String(payload.clientIdType || "Cédula");
+      participantId = String(payload.clientIdNumber || "");
+      participantCivilStatus = String(payload.clientCivilStatus || "");
+      participantOccupation = String(payload.clientOccupation || "");
+      participantAddress = String(payload.clientAddress || "");
+    } else if (signer.signerKey.startsWith("companion-")) {
+      const companionIndex = parseInt(signer.signerKey.replace("companion-", ""), 10);
+      const companions = Array.isArray(payload.companions) ? payload.companions : [];
+      const companion = companions[companionIndex];
+      if (companion) {
+        participantIdType = String(companion.idType || "Cédula");
+        participantId = String(companion.idNumber || "");
+        participantCivilStatus = String(companion.civilStatus || "");
+        participantOccupation = String(companion.occupation || "");
+        participantAddress = String(companion.address || "");
+      }
+    }
+
+    // Generate header
+    const headerHtml = documentHeader(
+      companyInfo,
+      {
+        documentNumber: contractData.contractNumber,
+        issuedAt: this.formatDateDisplay(payload.issuedAt || new Date().toISOString().slice(0, 10)),
+        agentName: String(payload.generatedByAgentName || ""),
+      },
+    );
+
+    // Format dates
+    const formattedStartDate = this.formatDateDisplay(payload.startDate);
+    const formattedEndDate = this.formatDateDisplay(payload.endDate);
+    const formattedSignatureDate = this.formatDateDisplay(new Date().toISOString().slice(0, 10));
+
+    // Generate waiver content
+    const waiverContent = liabilityWaiverDocument({
+      participantName: signer.name,
+      participantIdType,
+      participantId,
+      participantCivilStatus,
+      participantOccupation,
+      participantAddress,
+      destination: String(payload.destination || "").trim(),
+      startDate: formattedStartDate,
+      endDate: formattedEndDate,
+      tenantLegalName: companyInfo.name,
+      tenantLegalId: companyInfo.legalId || "",
+      signatureDate: formattedSignatureDate,
+    });
+
+    // Wrap in full document layout
+    const fullHtml = documentLayout(`${headerHtml}\n${waiverContent}`, {
+      title: `Exoneración de Responsabilidad - ${contractData.contractNumber}`,
+      lang: "es",
+      additionalStyles: this.getLiabilityWaiverStyles(),
+    });
+
+    return fullHtml;
+  }
+
+  /**
    * Get additional CSS styles for Minor Annex documents
    */
   private getMinorAnnexStyles(): string {
@@ -236,6 +334,61 @@ export class DocumentGenerationService {
   border-top: 1px solid #000;
   margin-bottom: 10px;
   padding-top: 5px;
+}
+    `;
+  }
+
+  /**
+   * Get additional CSS styles for Liability Waiver documents
+   */
+  private getLiabilityWaiverStyles(): string {
+    return `
+.waiver-page {
+  margin-top: 30px;
+}
+
+.waiver-page h2 {
+  font-size: 16pt;
+  text-align: center;
+  margin-bottom: 25px;
+  text-transform: uppercase;
+  color: #1a1a1a;
+  font-weight: bold;
+}
+
+.waiver-content {
+  text-align: justify;
+  line-height: 1.6;
+}
+
+.waiver-content p {
+  margin-bottom: 12px;
+}
+
+.waiver-list {
+  margin: 15px 0 15px 25px;
+  list-style: disc;
+}
+
+.waiver-list li {
+  margin-bottom: 6px;
+  line-height: 1.5;
+}
+
+.waiver-signature-section {
+  margin-top: 50px;
+  text-align: center;
+}
+
+.waiver-signature-section p {
+  margin-bottom: 8px;
+}
+
+.waiver-sig-line {
+  border-top: 1px solid #000;
+  margin: 20px auto 15px auto;
+  padding-top: 5px;
+  max-width: 400px;
 }
     `;
   }

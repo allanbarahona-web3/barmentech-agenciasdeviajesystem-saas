@@ -7,11 +7,18 @@ type ActionMenuModalProps = {
   onSelectTrips: () => void;
   onSelectMigration: () => void;
   onSelectInternalTrips?: () => void;
+  onSelectCustomers?: () => void;
   onSelectQuote: () => void;
   onSelectCustom: () => void;
 };
 
-export function ActionMenuModal({ isOpen, onSelectTrips, onSelectMigration, onSelectInternalTrips }: ActionMenuModalProps) {
+export function ActionMenuModal({ 
+  isOpen, 
+  onSelectTrips, 
+  onSelectMigration, 
+  onSelectInternalTrips,
+  onSelectCustomers 
+}: ActionMenuModalProps) {
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = "hidden";
@@ -190,7 +197,46 @@ export function ActionMenuModal({ isOpen, onSelectTrips, onSelectMigration, onSe
             </button>
           )}
 
-          {/* Opción 4: Cotización - DISABLED */}
+          {/* Opción 4: Clientes - HABILITADA */}
+          {onSelectCustomers && (
+            <button
+              onClick={onSelectCustomers}
+              style={{
+                padding: "20px 24px",
+                background: "linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)",
+                color: "white",
+                border: "none",
+                borderRadius: 12,
+                fontSize: "1.05rem",
+                fontWeight: 600,
+                cursor: "pointer",
+                textAlign: "left",
+                display: "flex",
+                alignItems: "center",
+                gap: 16,
+                boxShadow: "0 4px 12px rgba(139, 92, 246, 0.3)",
+                transition: "transform 0.2s, box-shadow 0.2s",
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = "translateY(-2px)";
+                e.currentTarget.style.boxShadow = "0 8px 20px rgba(139, 92, 246, 0.4)";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = "translateY(0)";
+                e.currentTarget.style.boxShadow = "0 4px 12px rgba(139, 92, 246, 0.3)";
+              }}
+            >
+              <span style={{ fontSize: "2rem" }}>👥</span>
+              <div>
+                <div style={{ fontWeight: 700 }}>Clientes</div>
+                <div style={{ fontSize: "0.85rem", opacity: 0.9, marginTop: 4 }}>
+                  Ver y gestionar clientes
+                </div>
+              </div>
+            </button>
+          )}
+
+          {/* Opción 5: Cotización - DISABLED */}
           <button
             disabled
             style={{
@@ -216,7 +262,7 @@ export function ActionMenuModal({ isOpen, onSelectTrips, onSelectMigration, onSe
             </div>
           </button>
 
-          {/* Opción 5: Viaje Personalizado - DISABLED */}
+          {/* Opción 6: Viaje Personalizado - DISABLED */}
           <button
             disabled
             style={{

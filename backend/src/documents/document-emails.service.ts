@@ -122,7 +122,7 @@ export class DocumentEmailsService {
 
   /**
    * Enviar link de firma digital (CRÍTICO - contiene signingUrl)
-   * Template: contract-signing-link (para contratos)
+   * Template: contract-signing-link (para contratos), minor-annex-signing-link (para anexos), etc.
    * Endpoints: POST /contracts/send-signing-email + uso interno en sendSigningLinksForContract
    */
   async sendDocumentSigningEmail(
@@ -132,6 +132,9 @@ export class DocumentEmailsService {
       clientName: string;
       documentNumber: string;
       signingUrl: string;
+      documentType?: string;
+      signerRole?: string;
+      minorName?: string;
     },
     tenant: { id: string; name: string; emailLogoUrl?: string | null; logoUrl?: string | null } | null | undefined,
     options?: {
@@ -143,18 +146,45 @@ export class DocumentEmailsService {
       throw new InternalServerErrorException("Tenant no encontrado para enviar email.");
     }
 
+    // Determine template and subject based on document type
+    let template: EmailTemplate = 'contract-signing-link';
+    let defaultSubject = `✍️ Firma tu Contrato - ${payload.documentNumber}`;
+    let templateData: any = {
+      clientName: payload.clientName,
+      contractNumber: payload.documentNumber,
+      signingUrl: payload.signingUrl,
+      tenantName: tenant.name,
+    };
+
+    if (payload.documentType === 'MINOR_ANNEX') {
+      template = 'minor-annex-signing-link';
+      defaultSubject = `👶 Firma Anexo de Menor - ${payload.documentNumber}`;
+      templateData = {
+        signerName: payload.clientName,
+        minorName: payload.minorName || 'Menor',
+        contractNumber: payload.documentNumber,
+        signingUrl: payload.signingUrl,
+        signerRole: payload.signerRole || 'TUTOR',
+        tenantName: tenant.name,
+      };
+    } else if (payload.documentType === 'LIABILITY_WAIVER') {
+      template = 'liability-waiver-signing-link';
+      defaultSubject = `⚠️ Firma Exoneración de Seguro - ${payload.documentNumber}`;
+      templateData = {
+        signerName: payload.clientName,
+        contractNumber: payload.documentNumber,
+        signingUrl: payload.signingUrl,
+        tenantName: tenant.name,
+      };
+    }
+
     try {
       await this.emailService.sendEmail({
         tenantId: tenant.id,
         to: payload.toEmail,
-        subject: options?.subject || `✍️ Firma tu Contrato - ${payload.documentNumber}`,
-        template: options?.template || 'contract-signing-link',
-        templateData: {
-          clientName: payload.clientName,
-          contractNumber: payload.documentNumber,
-          signingUrl: payload.signingUrl, // ⚠️ CRÍTICO: Enlace público para la firma del documento.
-          tenantName: tenant.name,
-        },
+        subject: options?.subject || defaultSubject,
+        template: options?.template || template,
+        templateData,
         triggeredBy: {
           userId: user.id,
           email: user.email,

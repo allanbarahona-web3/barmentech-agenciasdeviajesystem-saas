@@ -14,6 +14,9 @@ export class CustomerFinancialSummaryDto {
   totalPaidAmount!: number;
   outstandingBalance!: number;
   availableCredit!: number;
+  
+  // Currency info - primary currency used for this customer's contracts/invoices
+  currency!: string; // "USD" or "CRC"
 
   // Last payment info
   lastPaymentDate!: string | null;

@@ -147,3 +147,71 @@ export const minorAuthorizationAnnex = (params: {
   <p><strong>Fecha de emisión:</strong> ${esc(params.issuedAt)}</p>
 </section>`;
 };
+
+/**
+ * Generate liability waiver document (general exoneration)
+ */
+export const liabilityWaiverDocument = (params: {
+  participantName: string;
+  participantIdType: string;
+  participantId: string;
+  participantCivilStatus: string;
+  participantOccupation: string;
+  participantAddress: string;
+  destination: string;
+  startDate: string;
+  endDate: string;
+  tenantLegalName: string;
+  tenantLegalId: string;
+  signatureDate: string;
+}): string => {
+  const { escapeHtml: esc } = require("./template-helpers");
+  
+  return `
+<section class="waiver-page">
+  <h2>EXONERACIÓN DE RESPONSABILIDAD</h2>
+
+  <div class="waiver-content">
+    <p>Yo, <strong>${esc(params.participantName)}</strong>, mayor de edad, <strong>${esc(params.participantCivilStatus)}</strong>, <strong>${esc(params.participantOccupation)}</strong>, portador(a) de la <strong>${esc(params.participantIdType)}</strong> número <strong>${esc(params.participantId)}</strong>, vecino(a) de <strong>${esc(params.participantAddress)}</strong>, denominado(a) como el "Cliente",</p>
+
+    <p>en pleno uso de mis facultades, manifiesto:</p>
+
+    <p>Por medio de la presente, libero y exonero de toda responsabilidad civil, penal, administrativa o de cualquier otra índole a <strong>${esc(params.tenantLegalName)}</strong>, cédula jurídica número <strong>${esc(params.tenantLegalId)}</strong>,</p>
+
+    <p>con respecto al Tour a realizarse del <strong>${esc(params.startDate)}</strong> al <strong>${esc(params.endDate)}</strong>, en el país <strong>${esc(params.destination)}</strong>.</p>
+
+    <p>Asimismo, declaro y exonero de cualquier tipo de responsabilidad a <strong>${esc(params.tenantLegalName)}</strong>, conforme a lo siguiente:</p>
+
+    <ul class="waiver-list">
+      <li>He sido informado de los posibles riesgos asociados al Tour</li>
+      <li>Participo y adquiero el Tour de manera voluntaria y bajo mi propio riesgo</li>
+      <li>Asumo plena responsabilidad por mi participación y sus consecuencias</li>
+      <li>Renuncio expresa e irrevocablemente a cualquier reclamación, demanda o acción futura derivada de daños, enfermedades, lesiones, fallecimiento o pérdidas que pudieran ocurrir durante o como consecuencia del Tour</li>
+      <li>Cualquier tipo de enfermedad adquirida durante el Tour</li>
+      <li>Cualquier gasto médico o accidente durante el Tour</li>
+      <li>Cualquier robo, hurto, extravío de pertenencias, asalto o lesión durante el Tour</li>
+      <li>Atraso o pérdidas de vuelos durante el Tour</li>
+      <li>Condiciones adversas climatológicas que impidan la ejecución del Tour</li>
+      <li>Cierre de atracciones en la ejecución del Tour</li>
+      <li>Riña o contienda entre los demás pasajeros o terceras personas ajenas al Tour</li>
+      <li>Eventualidades en los servicios brindados por terceros contratados</li>
+      <li>Atrasos y decisiones propias del Cliente durante el Tour que sean ajenas al mismo</li>
+      <li>Desvíos de vuelos por emergencia aérea</li>
+      <li>Documentos personales del Cliente dudosos o falsos que provoquen contratiempos en los aeropuertos que eventualmente impidan el acceso a los países de destino</li>
+      <li>En caso de ir con personal de acompañamiento, exoneran de responsabilidad a ${esc(params.tenantLegalName)} de su comportamiento fuera de su horario y jornada laboral</li>
+      <li>Cualquier otra causa o evento no atribuible durante el Tour a ${esc(params.tenantLegalName)}</li>
+    </ul>
+
+    <p>Este documento formará parte como anexo del CONTRATO DE VIAJE TURÍSTICO suscrito entre el Cliente y ${esc(params.tenantLegalName)}.</p>
+  </div>
+
+  <div class="waiver-signature-section">
+    <p><strong>Cliente:</strong></p>
+    <div class="waiver-sig-line">____________________________________</div>
+    <p>${esc(params.participantName)}</p>
+    <p>En su condición personal</p>
+    <p>Fecha: ${esc(params.signatureDate)}</p>
+  </div>
+</section>`;
+};
+

@@ -122,6 +122,8 @@ export class DocumentSigningSessionService {
     }
 
     // Persist all documents defined in the plan (or retrieve existing)
+    const documentSigningIdMap = new Map<string, string>(); // documentKey -> DocumentSigning.id
+
     for (const planDocument of plan.documents) {
       const existingDocument = await this.prisma.documentSigning.findFirst({
         where: {
@@ -150,6 +152,9 @@ export class DocumentSigningSessionService {
           `[signing-session] Created document id=${document.id} key=${planDocument.key} type=${planDocument.type} sessionId=${session.id}`,
         );
       }
+
+      // Store mapping for token generation
+      documentSigningIdMap.set(planDocument.key, document.id);
 
       // Persist signers for this document (or retrieve existing)
       if (Array.isArray(planDocument.signers)) {
@@ -192,10 +197,20 @@ export class DocumentSigningSessionService {
     const signingLinks: SigningLink[] = [];
 
     for (const document of plan.documents) {
+      // Get the persisted DocumentSigning.id for this document
+      const documentSigningId = documentSigningIdMap.get(document.key);
+      if (!documentSigningId) {
+        this.logger.error(
+          `[signing-session] No DocumentSigning.id found for document key=${document.key}`,
+        );
+        continue;
+      }
+
       for (const signer of document.signers) {
-        // Generate signing token
+        // Generate signing token with both contractId and documentSigningId
         const token = this.documentSigningService.buildSigningToken({
-          documentId: document.id,
+          documentId: plan.processId, // contractId
+          documentSigningId, // Specific DocumentSigning record
           expiresAt,
           signerKey: signer.signerKey,
           signerRole: signer.role,
@@ -226,6 +241,19 @@ export class DocumentSigningSessionService {
       for (const link of signingLinks) {
         if (!link.signerEmail) continue;
 
+        // Extract minorName from document displayName for MINOR_ANNEX
+        let minorName: string | undefined;
+        if (link.documentType === 'MINOR_ANNEX') {
+          const matchMinorName = link.documentType === 'MINOR_ANNEX' 
+            ? plan.documents.find(d => d.id === link.documentId)?.displayName
+            : undefined;
+          if (matchMinorName) {
+            // Extract minor name from "Anexo Menor 1 - Juan Perez" format
+            const parts = matchMinorName.split(' - ');
+            minorName = parts.length > 1 ? parts[1] : 'Menor';
+          }
+        }
+
         try {
           await this.documentEmailsService.sendDocumentSigningEmail(
             context.actor,
@@ -234,6 +262,9 @@ export class DocumentSigningSessionService {
               clientName: link.signerName || "Firmante",
               documentNumber: context.documentDisplayName,
               signingUrl: link.signingUrl,
+              documentType: link.documentType,
+              signerRole: link.signerRole,
+              minorName,
             },
             context.tenant,
           );
@@ -270,10 +301,10 @@ export class DocumentSigningSessionService {
         return "/sign-contract";
       case "MINOR_ANNEX":
         return "/sign-contract";
-      case "WAIVER":
-        return "/sign-waiver";
       case "LIABILITY_WAIVER":
-        return "/sign-waiver";
+        return "/sign-contract";
+      case "WAIVER":
+        return "/sign-contract";
       case "AUTHORIZATION":
         return "/sign-authorization";
       default:
@@ -478,41 +509,51 @@ export class DocumentSigningSessionService {
    * @param contractId Contract identifier
    * @param signerKey Signer key identifier
    * @param signedAt Signature timestamp
+   * @param documentSigningId Optional specific document signing ID (for MINOR_ANNEX)
    */
   async recordSignerCompletion(
     contractId: string,
     signerKey: string,
     signedAt: Date,
+    documentSigningId?: string,
   ): Promise<void> {
     try {
-      // Locate active session
-      const session = await this.prisma.documentSigningSession.findFirst({
-        where: {
-          contractId,
-          status: {
-            in: ["PENDING", "IN_PROGRESS"],
+      let document;
+
+      if (documentSigningId) {
+        // Use specific document if provided
+        document = await this.prisma.documentSigning.findUnique({
+          where: { id: documentSigningId },
+        });
+      } else {
+        // Fallback: Locate active session and CONTRACT document
+        const session = await this.prisma.documentSigningSession.findFirst({
+          where: {
+            contractId,
+            status: {
+              in: ["PENDING", "IN_PROGRESS"],
+            },
           },
-        },
-      });
+        });
 
-      if (!session) {
-        this.logger.warn(
-          `[signer-completion] No active session found for contractId=${contractId}`,
-        );
-        return;
+        if (!session) {
+          this.logger.warn(
+            `[signer-completion] No active session found for contractId=${contractId}`,
+          );
+          return;
+        }
+
+        document = await this.prisma.documentSigning.findFirst({
+          where: {
+            sessionId: session.id,
+            documentType: "CONTRACT",
+          },
+        });
       }
-
-      // Locate CONTRACT document
-      const document = await this.prisma.documentSigning.findFirst({
-        where: {
-          sessionId: session.id,
-          documentType: "CONTRACT",
-        },
-      });
 
       if (!document) {
         this.logger.warn(
-          `[signer-completion] No CONTRACT document found for sessionId=${session.id}`,
+          `[signer-completion] No document found for contractId=${contractId} docId=${documentSigningId}`,
         );
         return;
       }
@@ -550,7 +591,7 @@ export class DocumentSigningSessionService {
       });
 
       this.logger.log(
-        `[signer-completion] Updated signer id=${signer.id} key=${signerKey} status=SIGNED`,
+        `[signer-completion] Updated signer id=${signer.id} key=${signerKey} status=SIGNED docType=${document.documentType}`,
       );
     } catch (error) {
       this.logger.error(
@@ -564,8 +605,7 @@ export class DocumentSigningSessionService {
    * Complete document signing when all signers have signed
    *
    * Updates the DocumentSigning status to SIGNED when all required signers
-   * have completed their signatures. This keeps the document entity synchronized
-   * with the signer completion state.
+   * have completed their signatures. Checks all documents in the session.
    *
    * @param contractId Contract identifier
    */
@@ -588,66 +628,68 @@ export class DocumentSigningSessionService {
         return;
       }
 
-      // Locate CONTRACT document
-      const document = await this.prisma.documentSigning.findFirst({
+      // Get all documents in session
+      const documents = await this.prisma.documentSigning.findMany({
         where: {
           sessionId: session.id,
-          documentType: "CONTRACT",
         },
       });
 
-      if (!document) {
+      if (documents.length === 0) {
         this.logger.warn(
-          `[document-completion] No CONTRACT document found for sessionId=${session.id}`,
+          `[document-completion] No documents found for sessionId=${session.id}`,
         );
         return;
       }
 
-      // Check if already signed (idempotency)
-      if (document.status === "SIGNED" || document.status === "COMPLETED") {
+      // Check each document for completion
+      for (const document of documents) {
+        // Skip if already completed
+        if (document.status === "SIGNED" || document.status === "COMPLETED") {
+          this.logger.log(
+            `[document-completion] Document already completed id=${document.id} type=${document.documentType}`,
+          );
+          continue;
+        }
+
+        // Get signers for this document
+        const signers = await this.prisma.documentSigner.findMany({
+          where: {
+            documentSigningId: document.id,
+          },
+        });
+
+        if (signers.length === 0) {
+          this.logger.warn(
+            `[document-completion] No signers found for documentId=${document.id}`,
+          );
+          continue;
+        }
+
+        // Check if all signers are signed
+        const allSigned = signers.every(
+          (s) => s.status === "SIGNED" || s.status === "COMPLETED",
+        );
+
+        if (!allSigned) {
+          this.logger.log(
+            `[document-completion] Not all signers completed for documentId=${document.id} type=${document.documentType}`,
+          );
+          continue;
+        }
+
+        // Update document status
+        await this.prisma.documentSigning.update({
+          where: { id: document.id },
+          data: {
+            status: "SIGNED",
+          },
+        });
+
         this.logger.log(
-          `[document-completion] Document already completed id=${document.id}`,
+          `[document-completion] Updated document id=${document.id} type=${document.documentType} status=SIGNED`,
         );
-        return;
       }
-
-      // Count signers
-      const signers = await this.prisma.documentSigner.findMany({
-        where: {
-          documentSigningId: document.id,
-        },
-      });
-
-      if (signers.length === 0) {
-        this.logger.warn(
-          `[document-completion] No signers found for documentId=${document.id}`,
-        );
-        return;
-      }
-
-      // Check if all signers are signed
-      const allSigned = signers.every(
-        (s) => s.status === "SIGNED" || s.status === "COMPLETED",
-      );
-
-      if (!allSigned) {
-        this.logger.log(
-          `[document-completion] Not all signers completed for documentId=${document.id}`,
-        );
-        return;
-      }
-
-      // Update document status
-      await this.prisma.documentSigning.update({
-        where: { id: document.id },
-        data: {
-          status: "SIGNED",
-        },
-      });
-
-      this.logger.log(
-        `[document-completion] Updated document id=${document.id} status=SIGNED`,
-      );
     } catch (error) {
       this.logger.error(
         `[document-completion] Failed to complete document for contractId=${contractId}: ${error}`,

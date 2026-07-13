@@ -9,6 +9,7 @@ const SIGNING_TOKEN_VERSION = 1;
  */
 export interface ParsedSigningToken {
   documentId: string;
+  documentSigningId?: string; // NEW: Specific DocumentSigning record for multi-document sessions
   expiresAt: Date;
   signerKey: string;
   signerRole: string;
@@ -30,6 +31,7 @@ export interface SigningParticipant {
  */
 export interface SigningTokenOptions {
   documentId: string;
+  documentSigningId?: string; // NEW: Specific DocumentSigning record for multi-document sessions
   expiresAt: Date;
   signerKey?: string;
   signerRole?: string;
@@ -109,7 +111,7 @@ export class DocumentSigningService {
    * @returns Signed token string
    */
   buildSigningToken(options: SigningTokenOptions): string {
-    const payload = {
+    const payload: any = {
       v: SIGNING_TOKEN_VERSION,
       contractId: options.documentId, // Keep 'contractId' for backward compatibility
       exp: options.expiresAt.toISOString(),
@@ -117,6 +119,11 @@ export class DocumentSigningService {
       signerRole: options.signerRole || "CLIENTE",
       signerName: options.signerName || "",
     };
+
+    // Include documentSigningId if provided (multi-document sessions)
+    if (options.documentSigningId) {
+      payload.documentSigningId = options.documentSigningId;
+    }
 
     const payloadB64 = this.toBase64Url(JSON.stringify(payload));
     const signature = this.signPayload(payloadB64);
@@ -161,6 +168,7 @@ export class DocumentSigningService {
     let payload: {
       v: number;
       contractId: string;
+      documentSigningId?: string; // NEW: Multi-document support
       exp: string;
       signerKey?: string;
       signerRole?: string;
@@ -188,6 +196,7 @@ export class DocumentSigningService {
 
     return {
       documentId: payload.contractId, // Map to generic documentId
+      documentSigningId: payload.documentSigningId, // NEW: Include if present
       expiresAt: expDate,
       signerKey: String(payload.signerKey || "client").trim() || "client",
       signerRole: String(payload.signerRole || "CLIENTE").trim(),

@@ -215,9 +215,9 @@ export class ContractsService {
       }
 
       // Generate document based on type
-      if (documentType === "MINOR_ANNEX") {
+      if (documentType === "MINOR_ANNEX" || documentType === "LIABILITY_WAIVER") {
         this.logger.log(
-          `[generate] Generating MINOR_ANNEX document key=${documentDef.key}`,
+          `[generate] Generating ${documentType} document key=${documentDef.key}`,
         );
 
         // Generate HTML using DocumentGenerationService
@@ -249,7 +249,7 @@ export class ContractsService {
         });
 
         this.logger.log(
-          `[generate] MINOR_ANNEX generated successfully key=${documentDef.key} size=${pdfBuffer.length}`,
+          `[generate] ${documentType} generated successfully key=${documentDef.key} size=${pdfBuffer.length}`,
         );
       } else {
         this.logger.warn(
@@ -381,6 +381,40 @@ export class ContractsService {
         this.logger.log(
           `[populate-artifacts] MINOR_ANNEX artifacts populated for docSigningId=${docSigning.id} key=${docSigning.documentKey}`,
         );
+      } else if (documentType === "LIABILITY_WAIVER") {
+        // Find corresponding document definition from signing plan
+        const documentDef = signingPlan.documents.find(
+          (def) => def.key === docSigning.documentKey
+        );
+
+        if (!documentDef) {
+          this.logger.warn(
+            `[populate-artifacts] Document definition not found for key=${docSigning.documentKey}`,
+          );
+          continue;
+        }
+
+        // Reconstruct artifact paths
+        const pdfObjectKey = `${baseFolder}/${docSigning.documentKey}.pdf`;
+        const htmlObjectKey = `${baseFolder}/${docSigning.documentKey}.html`;
+        const pdfFileName = `${documentDef.displayName}.pdf`;
+
+        // Download PDF to get actual size
+        const pdfBuffer = await this.storageService.downloadObject(pdfObjectKey);
+
+        await (this.prisma as any).documentSigning.update({
+          where: { id: docSigning.id },
+          data: {
+            pdfObjectKey,
+            pdfFileName,
+            pdfMimeType: "application/pdf",
+            pdfSize: pdfBuffer.length,
+            htmlObjectKey,
+          },
+        });
+        this.logger.log(
+          `[populate-artifacts] LIABILITY_WAIVER artifacts populated for docSigningId=${docSigning.id} key=${docSigning.documentKey}`,
+        );
       }
     }
   }
@@ -412,6 +446,94 @@ export class ContractsService {
     });
 
     return contractDoc;
+  }
+
+  /**
+   * Retrieves the DocumentSigning record for a specific document based on signerKey.
+   * Determines whether to return CONTRACT or MINOR_ANNEX document.
+   */
+  private async getDocumentSigningForSigner(
+    contractId: string,
+    signerKey: string,
+  ): Promise<{ document: any; documentType: string; documentKey: string } | null> {
+    const session = await (this.prisma as any).documentSigningSession.findFirst({
+      where: {
+        contractId,
+        status: {
+          in: ["PENDING", "IN_PROGRESS", "COMPLETED", "SIGNED"],
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (!session) {
+      return null;
+    }
+
+    // Check if signerKey indicates a MINOR_ANNEX document
+    const minorMatch = signerKey.match(/^minor-(\d+)-tutor$/);
+    if (minorMatch) {
+      const minorIndex = parseInt(minorMatch[1], 10);
+      const documentKey = `minor-annex-${minorIndex}`;
+      
+      const minorDoc = await (this.prisma as any).documentSigning.findFirst({
+        where: {
+          sessionId: session.id,
+          documentType: "MINOR_ANNEX",
+          documentKey,
+        },
+      });
+
+      if (minorDoc) {
+        return {
+          document: minorDoc,
+          documentType: "MINOR_ANNEX",
+          documentKey,
+        };
+      }
+    }
+
+    // Check if signerKey is a companion responsible for a MINOR_ANNEX
+    const allMinorDocs = await (this.prisma as any).documentSigning.findMany({
+      where: {
+        sessionId: session.id,
+        documentType: "MINOR_ANNEX",
+      },
+      include: {
+        signers: true,
+      },
+    });
+
+    for (const minorDoc of allMinorDocs) {
+      const hasCompanion = minorDoc.signers.some(
+        (s: any) => s.signerKey === signerKey && s.signerRole === "ACOMPANANTE_RESPONSABLE",
+      );
+      if (hasCompanion) {
+        return {
+          document: minorDoc,
+          documentType: "MINOR_ANNEX",
+          documentKey: minorDoc.documentKey,
+        };
+      }
+    }
+
+    // Default to CONTRACT
+    const contractDoc = await (this.prisma as any).documentSigning.findFirst({
+      where: {
+        sessionId: session.id,
+        documentType: "CONTRACT",
+      },
+    });
+
+    if (!contractDoc) {
+      return null;
+    }
+
+    return {
+      document: contractDoc,
+      documentType: "CONTRACT",
+      documentKey: "contract",
+    };
   }
 
   /**
@@ -599,6 +721,7 @@ export class ContractsService {
     // Map generic documentId back to contractId for backward compatibility
     return {
       contractId: parsed.documentId,
+      documentSigningId: parsed.documentSigningId, // NEW: Include documentSigningId if present
       expiresAt: parsed.expiresAt,
       signerKey: parsed.signerKey,
       signerRole: parsed.signerRole.toUpperCase() === "ACOMPANANTE" ? "ACOMPANANTE" : "CLIENTE",
@@ -679,7 +802,10 @@ export class ContractsService {
     return params;
   }
 
-  private async buildSignedObjectUrl(objectKey: string, expiresInSeconds = 900) {
+  private async buildSignedObjectUrl(objectKey: string | null | undefined, expiresInSeconds = 900): Promise<string | null> {
+    if (!objectKey) {
+      return null;
+    }
     return this.storageService.generateSignedUrl(objectKey, expiresInSeconds);
   }
 
@@ -1627,11 +1753,47 @@ export class ContractsService {
 
     
 
+    // Determine which document is being signed
+    let targetDoc: any;
+    let documentType: string;
+    let documentKey: string;
+
+    if (parsed.documentSigningId) {
+      // NEW: Use documentSigningId from token (multi-document sessions)
+      targetDoc = await (this.prisma as any).documentSigning.findUnique({
+        where: { id: parsed.documentSigningId },
+      });
+
+      if (!targetDoc) {
+        throw new NotFoundException("Documento de firma no encontrado.");
+      }
+
+      documentType = targetDoc.documentType;
+      documentKey = targetDoc.documentKey;
+
+      this.logger.log(
+        `[finalize-signature] Using documentSigningId=${parsed.documentSigningId} from token`,
+      );
+    } else {
+      // LEGACY: Determine document based on signerKey
+      const docResult = await this.getDocumentSigningForSigner(contract.id, parsed.signerKey);
+      if (!docResult) {
+        throw new NotFoundException("No se encontro el documento para este firmante.");
+      }
+
+      targetDoc = docResult.document;
+      documentType = docResult.documentType;
+      documentKey = docResult.documentKey;
+
+      this.logger.log(
+        `[finalize-signature] Using legacy signerKey lookup signerKey=${parsed.signerKey}`,
+      );
+    }
+
     // Validate signing session not already completed using DocumentSigningSession framework
     const isSessionCompleted = await this.documentSigningSessionService.isSigningSessionCompleted(contract.id);
-    const contractDoc = await this.getContractDocumentSigning(contract.id);
-    if (isSessionCompleted && contractDoc?.signedPdfObjectKey) {
-      throw new BadRequestException("Este contrato ya fue marcado como firmado.");
+    if (isSessionCompleted && targetDoc?.signedPdfObjectKey) {
+      throw new BadRequestException("Este documento ya fue marcado como firmado.");
     }
 
     const participants = this.getSigningParticipantsFromPlan(contract);
@@ -1640,14 +1802,18 @@ export class ContractsService {
       throw new BadRequestException("No se pudo resolver el firmante de este enlace.");
     }
 
-    const payload = this.documentSigningService.getPayloadRecord(contract.payload);
-    const signedParticipants = Array.isArray(payload.signedParticipants)
-      ? payload.signedParticipants.filter((item: any) => item && typeof item === "object")
-      : [];
+    // Check if signer already completed their signature using DocumentSigner
+    const existingSigner = await (this.prisma as any).documentSigner.findFirst({
+      where: {
+        documentSigningId: targetDoc.id,
+        signerKey: parsed.signerKey,
+        status: {
+          in: ["SIGNED", "COMPLETED"],
+        },
+      },
+    });
 
-    // Guard 1: signer already completed their signature
-    const alreadySigned = signedParticipants.some((item: any) => String(item?.signerKey || "") === signer.signerKey);
-    if (alreadySigned) {
+    if (existingSigner) {
       throw new BadRequestException("Este firmante ya completo su firma.");
     }
 
@@ -1655,8 +1821,9 @@ export class ContractsService {
     // prevents two concurrent requests from both succeeding
     await this.documentSigningAuditService.ensureTokenNotUsed(tokenHash);
 
-    // Read pdfObjectKey from DocumentSigning (Story 3)
-    const keyRoot = String(contractDoc?.pdfObjectKey || "").replace(/\/contract\.pdf$/i, "");
+    // Read pdfObjectKey from DocumentSigning
+    const pdfKeyPattern = documentType === "CONTRACT" ? /\/contract\.pdf$/i : new RegExp(`/${documentKey}\\.pdf$`, "i");
+    const keyRoot = String(targetDoc?.pdfObjectKey || "").replace(pdfKeyPattern, "");
     
     // Fallback con estructura nueva (ambiente/tenant/...)
     let fallbackKeyRoot = `contracts/signed/${this.sanitizeSegment(contract.contractNumber)}`;
@@ -1673,6 +1840,7 @@ export class ContractsService {
     const baseFolder = keyRoot || fallbackKeyRoot;
 
     // Extract existing signature images from payload
+    const payload = this.documentSigningService.getPayloadRecord(contract.payload);
     const existingSignatureImages =
       payload.signatureImagesBySigner &&
       typeof payload.signatureImagesBySigner === "object" &&
@@ -1680,23 +1848,25 @@ export class ContractsService {
         ? (payload.signatureImagesBySigner as Record<string, string>)
         : {};
 
-    // Download contract HTML source (Story 3)
-    if (!contractDoc?.htmlObjectKey) {
-      throw new InternalServerErrorException("El contrato no tiene HTML fuente para regenerar PDF firmado.");
+    // Download document HTML source
+    if (!targetDoc?.htmlObjectKey) {
+      throw new InternalServerErrorException("El documento no tiene HTML fuente para regenerar PDF firmado.");
     }
-    const contractHtmlBuffer = await this.downloadObjectBuffer(contractDoc.htmlObjectKey);
-    const contractHtml = contractHtmlBuffer.toString("utf8");
+    const documentHtmlBuffer = await this.downloadObjectBuffer(targetDoc.htmlObjectKey);
+    const documentHtml = documentHtmlBuffer.toString("utf8");
 
     // Generate all signature finalization artifacts
     const finalizationResult = await this.documentSignatureFinalizationService.finalizeSignature({
-      contractHtml,
+      contractHtml: documentHtml,
+      documentType,
       signatureImageBase64,
       signerKey: signer.signerKey,
       existingSignatureImages,
     });
 
-    // Upload signed PDF
-    const signedObjectKey = `${baseFolder}/signed/contract-signed.pdf`;
+    // Upload signed PDF with document-specific naming
+    const signedPdfName = documentType === "CONTRACT" ? "contract-signed.pdf" : `${documentKey}-signed.pdf`;
+    const signedObjectKey = `${baseFolder}/signed/${signedPdfName}`;
     await this.uploadToSpaces({
       objectKey: signedObjectKey,
       contentType: "application/pdf",
@@ -1712,9 +1882,11 @@ export class ContractsService {
     });
 
     // Persist signed artifacts to DocumentSigning
-    const signedPdfFileName = `${contract.contractNumber}-signed.pdf`;
+    const signedPdfFileName = documentType === "CONTRACT" 
+      ? `${contract.contractNumber}-signed.pdf`
+      : `${contract.contractNumber}-${documentKey}-signed.pdf`;
     await (this.prisma as any).documentSigning.update({
-      where: { id: contractDoc.id },
+      where: { id: targetDoc.id },
       data: {
         signedPdfObjectKey: signedObjectKey,
         signedPdfFileName,
@@ -1724,11 +1896,16 @@ export class ContractsService {
       },
     });
     this.logger.log(
-      `[signing] CONTRACT signed artifacts persisted docSigningId=${contractDoc.id} signedPdfKey=${signedObjectKey}`,
+      `[signing] ${documentType} signed artifacts persisted docSigningId=${targetDoc.id} signedPdfKey=${signedObjectKey}`,
     );
 
     const now = new Date();
     const signerName = String(signer.name || signedByName || "").trim();
+
+    // Update contract payload with signing event (backward compatibility)
+    const signedParticipants = Array.isArray(payload.signedParticipants)
+      ? payload.signedParticipants.filter((item: any) => item && typeof item === "object")
+      : [];
 
     const nextSignedParticipants = [
       ...signedParticipants,
@@ -1747,6 +1924,7 @@ export class ContractsService {
       contract.id,
       signer.signerKey,
       now,
+      targetDoc.id, // Pass specific document ID
     );
 
     // Calculate signing progress using DocumentSigningSessionService
@@ -1896,11 +2074,53 @@ export class ContractsService {
       throw new BadRequestException("Este contrato ya esta cerrado o firmado.");
     }
 
-    // Read artifact keys from DocumentSigning (Story 3)
-    const contractDoc = await this.getContractDocumentSigning(contract.id);
-    const basePdfUrl = await this.buildSignedObjectUrl(contractDoc?.pdfObjectKey, 1200);
-    const signedPdfUrl = contractDoc?.signedPdfObjectKey
-      ? await this.buildSignedObjectUrl(contractDoc.signedPdfObjectKey, 1200)
+    // If token includes documentSigningId, use it directly (multi-document sessions)
+    // Otherwise, fall back to legacy signerKey-based lookup
+    let targetDoc: any;
+    let documentType: string;
+    let documentKey: string;
+
+    if (parsed.documentSigningId) {
+      // NEW: Direct lookup using documentSigningId from token
+      targetDoc = await (this.prisma as any).documentSigning.findUnique({
+        where: { id: parsed.documentSigningId },
+      });
+
+      if (!targetDoc) {
+        throw new NotFoundException(
+          "No se encontro el documento especificado en el token.",
+        );
+      }
+
+      documentType = targetDoc.documentType;
+      documentKey = targetDoc.documentKey;
+
+      this.logger.log(
+        `[signing-session] Using documentSigningId=${parsed.documentSigningId} from token documentType=${documentType}`,
+      );
+    } else {
+      // LEGACY: Determine which document this signer is signing based on signerKey
+      const docResult = await this.getDocumentSigningForSigner(
+        contract.id,
+        parsed.signerKey,
+      );
+      if (!docResult) {
+        throw new NotFoundException("No se encontro el documento para este firmante.");
+      }
+
+      targetDoc = docResult.document;
+      documentType = docResult.documentType;
+      documentKey = docResult.documentKey;
+
+      this.logger.log(
+        `[signing-session] Using legacy signerKey lookup signerKey=${parsed.signerKey} documentType=${documentType}`,
+      );
+    }
+    const basePdfUrl = targetDoc?.pdfObjectKey 
+      ? await this.buildSignedObjectUrl(targetDoc.pdfObjectKey, 1200)
+      : null;
+    const signedPdfUrl = targetDoc?.signedPdfObjectKey
+      ? await this.buildSignedObjectUrl(targetDoc.signedPdfObjectKey, 1200)
       : null;
     const payload = this.documentSigningService.getPayloadRecord(contract.payload);
     const participants = this.getSigningParticipantsFromPlan(contract);
@@ -1946,12 +2166,12 @@ export class ContractsService {
         ? signatureAnchorCandidate
         : null;
 
-    // Read htmlObjectKey from DocumentSigning (Story 3)
-    const contractHtmlUrl = contractDoc?.htmlObjectKey
-      ? await this.buildSignedObjectUrl(contractDoc.htmlObjectKey, 1200)
+    // Read htmlObjectKey from DocumentSigning
+    const documentHtmlUrl = targetDoc?.htmlObjectKey
+      ? await this.buildSignedObjectUrl(targetDoc.htmlObjectKey, 1200)
       : null;
 
-    this.logger.log(`[signing-session] Contract ${contract.contractNumber} status: ${contract.status}, signerKey: ${resolvedSigner.signerKey}`);
+    this.logger.log(`[signing-session] Contract ${contract.contractNumber} signerKey=${resolvedSigner.signerKey} documentType=${documentType} status=${contract.status}`);
 
     return {
       contractId: contract.id,
@@ -1965,7 +2185,8 @@ export class ContractsService {
       pdfUrl: basePdfUrl,
       signedPdfUrl,
       signatureAnchor,
-      contractHtmlUrl,
+      contractHtmlUrl: documentHtmlUrl,
+      documentType,
       expiresAt: parsed.expiresAt,
     };
   }
@@ -2165,7 +2386,9 @@ export class ContractsService {
 
     // Read artifact keys from DocumentSigning (Story 3)
     const contractDoc = await this.getContractDocumentSigning(contract.id);
-    const pdfUrl = await this.buildSignedObjectUrl(contractDoc?.pdfObjectKey);
+    const pdfUrl = contractDoc?.pdfObjectKey 
+      ? await this.buildSignedObjectUrl(contractDoc.pdfObjectKey)
+      : null;
     const signedPdfUrl = contractDoc?.signedPdfObjectKey
       ? await this.buildSignedObjectUrl(contractDoc.signedPdfObjectKey)
       : null;
@@ -2175,9 +2398,46 @@ export class ContractsService {
         originalFileName: doc.originalFileName,
         mimeType: doc.mimeType,
         size: doc.size,
-        url: await this.buildSignedObjectUrl(doc.objectKey),
+        url: doc.objectKey ? await this.buildSignedObjectUrl(doc.objectKey) : null,
       })),
     );
+
+    // Get ALL documents in the signing package (CONTRACT, MINOR_ANNEX, LIABILITY_WAIVER)
+    const session = await (this.prisma as any).documentSigningSession.findFirst({
+      where: { contractId: contract.id },
+      include: {
+        documents: {
+          include: {
+            signers: true,
+          },
+        },
+      },
+    });
+
+    const packageDocuments = session?.documents
+      ? await Promise.all(
+          session.documents.map(async (doc: any) => {
+            const pdfUrl = doc.pdfObjectKey ? await this.buildSignedObjectUrl(doc.pdfObjectKey) : null;
+            const signedPdfUrl = doc.signedPdfObjectKey ? await this.buildSignedObjectUrl(doc.signedPdfObjectKey) : null;
+            
+            const totalSigners = doc.signers.length;
+            const signedCount = doc.signers.filter((s: any) => s.status === 'SIGNED').length;
+            
+            return {
+              id: doc.id,
+              documentKey: doc.documentKey,
+              documentType: doc.documentType,
+              status: doc.status,
+              signedCount,
+              totalSigners,
+              pdfFileName: doc.pdfFileName,
+              pdfUrl,
+              signedPdfFileName: doc.signedPdfFileName,
+              signedPdfUrl,
+            };
+          }),
+        )
+      : [];
 
     return {
       id: contract.id,
@@ -2201,6 +2461,7 @@ export class ContractsService {
           }
         : null,
       documents,
+      packageDocuments, // Nuevo: todos los documentos del paquete con estado
     };
   }
 

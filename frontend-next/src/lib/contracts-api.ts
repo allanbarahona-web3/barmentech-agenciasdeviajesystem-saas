@@ -30,6 +30,19 @@ export type ContractFileDocument = {
   url: string;
 };
 
+export type PackageDocument = {
+  id: string;
+  documentKey: string;
+  documentType: string;
+  status: string;
+  signedCount: number;
+  totalSigners: number;
+  pdfFileName: string | null;
+  pdfUrl: string | null;
+  signedPdfFileName: string | null;
+  signedPdfUrl: string | null;
+};
+
 export type ContractFilesResult = {
   id: string;
   contractNumber: string;
@@ -49,6 +62,7 @@ export type ContractFilesResult = {
     signedAt?: string | null;
   } | null;
   documents: ContractFileDocument[];
+  packageDocuments?: PackageDocument[];
 };
 
 export type BillingDataResult = {

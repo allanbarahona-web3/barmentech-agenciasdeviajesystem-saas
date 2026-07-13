@@ -90,6 +90,8 @@ export type EmailTemplate =
   // Contracts
   | 'contract-pdf-attachment'
   | 'contract-signing-link'
+  | 'minor-annex-signing-link'
+  | 'liability-waiver-signing-link'
   | 'contract-signed-confirmation'
   
   // Internal Tourism

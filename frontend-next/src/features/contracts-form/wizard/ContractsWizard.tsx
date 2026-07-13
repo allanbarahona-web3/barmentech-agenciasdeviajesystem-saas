@@ -568,22 +568,29 @@ export function ContractsWizard({
                 : travelPackage.packagePrice.toFixed(2))
             : "";
 
-          const reservationPrice = travelPackage.minReservation !== null && travelPackage.minReservation !== undefined
-            ? String(
-                typeof travelPackage.minReservation === "string"
-                  ? parseFloat(travelPackage.minReservation).toFixed(2)
-                  : travelPackage.minReservation.toFixed(2),
-              )
-            : "";
+          // Calculate initial totalAmount and reservationAmount: both are per person × total people (1 + companions + minors)
+          const totalPeople = 1 + prev.companions.length + prev.minors.length;
+          const priceNum = price ? parseFloat(price) : 0;
+          const totalAmount = priceNum > 0 ? (priceNum * totalPeople).toFixed(2) : price;
+
+          // Reservation is also per person, multiply by total people
+          const reservationPerPerson = travelPackage.minReservation !== null && travelPackage.minReservation !== undefined
+            ? (typeof travelPackage.minReservation === "string"
+                  ? parseFloat(travelPackage.minReservation)
+                  : travelPackage.minReservation)
+            : 0;
+          const reservationPrice = reservationPerPerson > 0 ? (reservationPerPerson * totalPeople).toFixed(2) : "";
 
           // Primero sincronizar las fechas del tour para actualizar paymentDueDate
           const withDates = syncTourDates({
             ...prev,
             travelPackageId: packageId,
+            pricePerPerson: price, // Store base price per person
+            reservationPerPerson: reservationPerPerson > 0 ? reservationPerPerson.toFixed(2) : "", // Store base reservation per person
             destination: travelPackage.destination,
             startDate: toLocalDateIso(travelPackage.departureDate),
             endDate: toLocalDateIso(travelPackage.returnDate),
-            totalAmount: price,
+            totalAmount: totalAmount,
             reservationAmount: reservationPrice,
           }, "start", toLocalDateIso(travelPackage.departureDate));
 

@@ -14,9 +14,23 @@ export interface TravelStepProps {
 }
 
 const LUGGAGE_OPTIONS = [
-  "Equipaje de mano (medidas 40 x 30 x 15 cm)",
-  "Carry on (10kg)",
-  "Equipaje documentado (20 kg)",
+  "Equipaje de Mano",
+  "Carry On",
+  "Equipaje Documentado",
+];
+
+const LODGING_OPTIONS = [
+  "Hotel con Desayunos",
+  "Hotel sin Desayunos",
+  "Hostel",
+  "Airbnb",
+];
+
+const ACCOMMODATION_OPTIONS = [
+  "Sencilla",
+  "Doble",
+  "Triple",
+  "Cuadruple",
 ];
 
 /**
@@ -39,149 +53,332 @@ export function TravelStep({
   onMoneyChange,
   onMoneyBlur,
 }: TravelStepProps) {
-  // Determinar si el valor actual es una opción predefinida o "Otros"
-  const isCustomLuggage = !LUGGAGE_OPTIONS.includes(state.luggageClause);
-  const luggageSelection = isCustomLuggage ? "Otros" : state.luggageClause;
+  // Parse selected luggage types from luggageClause
+  const parseLuggageSelection = (): Set<string> => {
+    const clause = state.luggageClause.trim();
+    if (!clause) return new Set();
 
-  const handleLuggageChange = (value: string) => {
-    if (value === "Otros") {
-      // Cuando seleccionan "Otros", limpiar el campo para que escriban
-      setState((prev) => ({ ...prev, luggageClause: "" }));
-    } else {
-      // Opción predefinida
-      setState((prev) => ({ ...prev, luggageClause: value }));
+    // Split by " + " to detect multiple selections
+    const parts = clause.split(" + ").map(p => p.trim());
+    const selected = new Set<string>();
+
+    for (const part of parts) {
+      if (LUGGAGE_OPTIONS.includes(part)) {
+        selected.add(part);
+      }
     }
+
+    return selected;
   };
+
+  const selectedLuggage = parseLuggageSelection();
+
+  const handleLuggageCheckChange = (option: string, checked: boolean) => {
+    const newSelected = new Set(selectedLuggage);
+    
+    if (checked) {
+      newSelected.add(option);
+    } else {
+      newSelected.delete(option);
+    }
+
+    const clause = Array.from(newSelected).join(" + ");
+    setState((prev) => ({ ...prev, luggageClause: clause }));
+  };
+
+  // Parse selected lodging types
+  const parseLodgingSelection = (): Set<string> => {
+    const type = state.lodgingType.trim();
+    if (!type || type === "N/A") return new Set();
+
+    const parts = type.split(" + ").map(p => p.trim());
+    const selected = new Set<string>();
+
+    for (const part of parts) {
+      if (LODGING_OPTIONS.includes(part)) {
+        selected.add(part);
+      }
+    }
+
+    return selected;
+  };
+
+  const selectedLodging = parseLodgingSelection();
+
+  const handleLodgingCheckChange = (option: string, checked: boolean) => {
+    const newSelected = new Set(selectedLodging);
+    
+    if (checked) {
+      newSelected.add(option);
+    } else {
+      newSelected.delete(option);
+    }
+
+    const type = Array.from(newSelected).join(" + ");
+    setState((prev) => ({ ...prev, lodgingType: type || "N/A" }));
+  };
+
+  // Parse selected accommodation types
+  const parseAccommodationSelection = (): Set<string> => {
+    const type = state.accommodationType.trim();
+    if (!type || type === "N/A") return new Set();
+
+    const parts = type.split(" + ").map(p => p.trim());
+    const selected = new Set<string>();
+
+    for (const part of parts) {
+      if (ACCOMMODATION_OPTIONS.includes(part)) {
+        selected.add(part);
+      }
+    }
+
+    return selected;
+  };
+
+  const selectedAccommodation = parseAccommodationSelection();
+
+  const handleAccommodationCheckChange = (option: string, checked: boolean) => {
+    const newSelected = new Set(selectedAccommodation);
+    
+    if (checked) {
+      newSelected.add(option);
+    } else {
+      newSelected.delete(option);
+    }
+
+    const type = Array.from(newSelected).join(" + ");
+    setState((prev) => ({ ...prev, accommodationType: type || "N/A" }));
+  };
+  
   return (
-    <div className="form-section-card">
-      <h2 className="section-title">Datos del Contrato</h2>
+    <>
+      {/* SECCIÓN 1: INFORMACIÓN DEL VIAJE */}
+      <div className="form-section-card">
+        <h2 className="section-title">📋 Información del Viaje</h2>
 
-      <div className="contracts-grid">
-        <label>
-          Número de contrato
-          <input 
-            value={state.contractNumber} 
-            readOnly 
-            placeholder="Generando automáticamente..." 
-            className="font-mono text-sm"
-            title={state.contractNumber || "Esperando asignación automática..."}
-          />
-        </label>
-
-        {isInternalTrip && (
+        <div className="contracts-grid">
           <label>
-            Código viaje interno
-            <input
-              value={internalTripMeta?.tripCode || "Cargando..."}
-              readOnly
-              title={internalTripMeta?.name || "Viaje interno seleccionado"}
+            Número de contrato
+            <input 
+              value={state.contractNumber} 
+              readOnly 
+              placeholder="Generando automáticamente..." 
               className="font-mono text-sm"
-              style={{ backgroundColor: "#f3f4f6" }}
+              title={state.contractNumber || "Esperando asignación automática..."}
             />
           </label>
-        )}
 
-        <label>
-          Fecha de emisión
-          <input type="date" value={state.issuedAt} readOnly />
-        </label>
+          {isInternalTrip && (
+            <label>
+              Código viaje interno
+              <input
+                value={internalTripMeta?.tripCode || "Cargando..."}
+                readOnly
+                title={internalTripMeta?.name || "Viaje interno seleccionado"}
+                className="font-mono text-sm"
+                style={{ backgroundColor: "#f3f4f6" }}
+              />
+            </label>
+          )}
 
-        <label>
-          Destino
-          <input
-            value={state.destination}
-            onChange={(event) => setState((prev) => ({ ...prev, destination: event.target.value }))}
-            placeholder="Ej. España"
-            readOnly={packageFieldsLocked}
-            style={packageFieldsLocked ? { backgroundColor: "#f3f4f6", cursor: "not-allowed" } : undefined}
-          />
-        </label>
+          <label>
+            Fecha de emisión
+            <input type="date" value={state.issuedAt} readOnly />
+          </label>
+
+          <label>
+            Destino
+            <input
+              value={state.destination}
+              onChange={(event) => setState((prev) => ({ ...prev, destination: event.target.value }))}
+              placeholder="Ej. España"
+              readOnly={packageFieldsLocked}
+              style={packageFieldsLocked ? { backgroundColor: "#f3f4f6", cursor: "not-allowed" } : undefined}
+            />
+          </label>
+
+          <label>
+            Fecha inicio tour
+            <input
+              type="date"
+              value={state.startDate}
+              min={todayIso}
+              onChange={(event) => {
+                const selected = String(event.target.value || "");
+                const safe = selected && selected < todayIso ? todayIso : selected;
+                setState((prev) => applyMoneyDerivedValues(syncTourDates(prev, "start", safe)));
+              }}
+              readOnly={packageFieldsLocked}
+              style={packageFieldsLocked ? { backgroundColor: "#f3f4f6", cursor: "not-allowed" } : undefined}
+            />
+          </label>
+
+          <label>
+            Fecha fin tour
+            <input
+              type="date"
+              value={state.endDate}
+              min={state.startDate ? addDaysIso(state.startDate, 1) : addDaysIso(todayIso, 1)}
+              onChange={(event) =>
+                setState((prev) => applyMoneyDerivedValues(syncTourDates(prev, "end", event.target.value)))
+              }
+              readOnly={packageFieldsLocked}
+              style={packageFieldsLocked ? { backgroundColor: "#f3f4f6", cursor: "not-allowed" } : undefined}
+            />
+          </label>
+
+          <label>
+            Fecha límite de pago total
+            <input value={state.paymentDueDate} type="date" readOnly />
+            <small>Todo debe quedar cancelado 22 días antes de iniciar el viaje.</small>
+          </label>
+
+          {rangeMessage ? <p className="form-error full-row">{rangeMessage}</p> : null}
+        </div>
+      </div>
+
+      {/* SECCIÓN 2: PREFERENCIAS DEL VIAJE (CHECKBOXES) */}
+      <div className="form-section-card">
+        <h2 className="section-title">✅ Preferencias del Viaje</h2>
+
+        <div className="contracts-grid">
 
         <label>
           Tipo de hospedaje
-          <select
-            value={state.lodgingType}
-            onChange={(event) => setState((prev) => ({ ...prev, lodgingType: event.target.value }))}
-          >
-            <option value="N/A">N/A</option>
-            <option value="Hotel con Desayunos">Hotel con Desayunos</option>
-            <option value="Hotel sin Desayunos">Hotel sin Desayunos</option>
-            <option value="Hostel">Hostel</option>
-            <option value="Airbnb">Airbnb</option>
-          </select>
+          <div style={{ 
+            display: "flex", 
+            flexDirection: "column", 
+            gap: "10px", 
+            padding: "12px",
+            backgroundColor: "#f9fafb",
+            borderRadius: "6px",
+            border: "1px solid #e5e7eb"
+          }}>
+            {LODGING_OPTIONS.map((option) => {
+              const isChecked = selectedLodging.has(option);
+              return (
+                <label 
+                  key={option} 
+                  style={{ 
+                    display: "flex", 
+                    alignItems: "center", 
+                    gap: "8px", 
+                    cursor: "pointer",
+                    fontSize: "0.95rem",
+                    padding: "8px 10px",
+                    borderRadius: "6px",
+                    backgroundColor: isChecked ? "#d1fae5" : "transparent",
+                    border: isChecked ? "1px solid #10b981" : "1px solid transparent",
+                    transition: "all 0.2s ease",
+                    boxShadow: isChecked ? "0 0 8px rgba(16, 185, 129, 0.3)" : "none"
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isChecked}
+                    onChange={(e) => handleLodgingCheckChange(option, e.target.checked)}
+                    style={{ cursor: "pointer" }}
+                  />
+                  <span style={{ color: isChecked ? "#065f46" : "#374151", fontWeight: isChecked ? 600 : 400 }}>{option}</span>
+                </label>
+              );
+            })}
+          </div>
         </label>
 
         <label>
           Tipo de acomodación
-          <select
-            value={state.accommodationType}
-            onChange={(event) => setState((prev) => ({ ...prev, accommodationType: event.target.value }))}
-          >
-            <option value="N/A">N/A</option>
-            <option value="Sencilla">Sencilla</option>
-            <option value="Doble">Doble</option>
-            <option value="Triple">Triple</option>
-            <option value="Cuadruple">Cuadruple</option>
-          </select>
+          <div style={{ 
+            display: "flex", 
+            flexDirection: "column", 
+            gap: "10px", 
+            padding: "12px",
+            backgroundColor: "#f9fafb",
+            borderRadius: "6px",
+            border: "1px solid #e5e7eb"
+          }}>
+            {ACCOMMODATION_OPTIONS.map((option) => {
+              const isChecked = selectedAccommodation.has(option);
+              return (
+                <label 
+                  key={option} 
+                  style={{ 
+                    display: "flex", 
+                    alignItems: "center", 
+                    gap: "8px", 
+                    cursor: "pointer",
+                    fontSize: "0.95rem",
+                    padding: "8px 10px",
+                    borderRadius: "6px",
+                    backgroundColor: isChecked ? "#d1fae5" : "transparent",
+                    border: isChecked ? "1px solid #10b981" : "1px solid transparent",
+                    transition: "all 0.2s ease",
+                    boxShadow: isChecked ? "0 0 8px rgba(16, 185, 129, 0.3)" : "none"
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isChecked}
+                    onChange={(e) => handleAccommodationCheckChange(option, e.target.checked)}
+                    style={{ cursor: "pointer" }}
+                  />
+                  <span style={{ color: isChecked ? "#065f46" : "#374151", fontWeight: isChecked ? 600 : 400 }}>{option}</span>
+                </label>
+              );
+            })}
+          </div>
         </label>
 
         <label>
           Equipaje permitido
-          <select
-            value={luggageSelection}
-            onChange={(event) => handleLuggageChange(event.target.value)}
-          >
-            <option value="">Seleccionar...</option>
-            <option value="Equipaje de mano (medidas 40 x 30 x 15 cm)">Equipaje de mano (medidas 40 x 30 x 15 cm)</option>
-            <option value="Carry on (10kg)">Carry on (10kg)</option>
-            <option value="Equipaje documentado (20 kg)">Equipaje documentado (20 kg)</option>
-            <option value="Otros">Otros</option>
-          </select>
+          <div style={{ 
+            display: "flex", 
+            flexDirection: "column", 
+            gap: "10px", 
+            padding: "12px",
+            backgroundColor: "#f9fafb",
+            borderRadius: "6px",
+            border: "1px solid #e5e7eb"
+          }}>
+            {LUGGAGE_OPTIONS.map((option) => {
+              const isChecked = selectedLuggage.has(option);
+              return (
+                <label 
+                  key={option} 
+                  style={{ 
+                    display: "flex", 
+                    alignItems: "center", 
+                    gap: "8px", 
+                    cursor: "pointer",
+                    fontSize: "0.95rem",
+                    padding: "8px 10px",
+                    borderRadius: "6px",
+                    backgroundColor: isChecked ? "#d1fae5" : "transparent",
+                    border: isChecked ? "1px solid #10b981" : "1px solid transparent",
+                    transition: "all 0.2s ease",
+                    boxShadow: isChecked ? "0 0 8px rgba(16, 185, 129, 0.3)" : "none"
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isChecked}
+                    onChange={(e) => handleLuggageCheckChange(option, e.target.checked)}
+                    style={{ cursor: "pointer" }}
+                  />
+                  <span style={{ color: isChecked ? "#065f46" : "#374151", fontWeight: isChecked ? 600 : 400 }}>{option}</span>
+                </label>
+              );
+            })}
+          </div>
         </label>
+        </div>
+      </div>
 
-        {luggageSelection === "Otros" && (
-          <label>
-            Especificar equipaje
-            <input
-              value={state.luggageClause}
-              onChange={(event) => setState((prev) => ({ ...prev, luggageClause: event.target.value }))}
-              placeholder="Ej. 1 maleta de mano y 1 artículo personal"
-            />
-          </label>
-        )}
+      {/* SECCIÓN 3: INFORMACIÓN DE PAGOS Y CUOTAS */}
+      <div className="form-section-card">
+        <h2 className="section-title">💰 Información de Pagos y Cuotas</h2>
 
-        <label>
-          Fecha inicio tour
-          <input
-            type="date"
-            value={state.startDate}
-            min={todayIso}
-            onChange={(event) => {
-              const selected = String(event.target.value || "");
-              const safe = selected && selected < todayIso ? todayIso : selected;
-              setState((prev) => applyMoneyDerivedValues(syncTourDates(prev, "start", safe)));
-            }}
-            readOnly={packageFieldsLocked}
-            style={packageFieldsLocked ? { backgroundColor: "#f3f4f6", cursor: "not-allowed" } : undefined}
-          />
-        </label>
-
-        <label>
-          Fecha fin tour
-          <input
-            type="date"
-            value={state.endDate}
-            min={state.startDate ? addDaysIso(state.startDate, 1) : addDaysIso(todayIso, 1)}
-            onChange={(event) =>
-              setState((prev) => applyMoneyDerivedValues(syncTourDates(prev, "end", event.target.value)))
-            }
-            readOnly={packageFieldsLocked}
-            style={packageFieldsLocked ? { backgroundColor: "#f3f4f6", cursor: "not-allowed" } : undefined}
-          />
-        </label>
-
-        {rangeMessage ? <p className="form-error full-row">{rangeMessage}</p> : null}
-
+        <div className="contracts-grid">
         <label>
           Monto total USD
           <input
@@ -245,14 +442,9 @@ export function TravelStep({
             <input value={state.lastInstallmentAmount} readOnly placeholder="Ajuste de fracción" />
             <small>Si hay fracción, se ajusta en la última cuota.</small>
           </label>
-
-          <label className="payment-summary-field">
-            Fecha límite de pago total
-            <input value={state.paymentDueDate} type="date" readOnly />
-            <small>Todo debe quedar cancelado 22 días antes de iniciar el viaje.</small>
-          </label>
+        </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }
