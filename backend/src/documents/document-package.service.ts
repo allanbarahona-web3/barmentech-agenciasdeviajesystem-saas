@@ -89,6 +89,35 @@ export class DocumentPackageService {
   }
 
   /**
+   * Retrieves the CONTRACT DocumentSigning record for a given contract.
+   * (Story 3 - Read Path Migration)
+   */
+  private async getContractDocumentSigning(contractId: string): Promise<any> {
+    const session = await (this.prisma as any).documentSigningSession.findFirst({
+      where: {
+        contractId,
+        status: {
+          in: ["PENDING", "IN_PROGRESS", "COMPLETED", "SIGNED"],
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    if (!session) {
+      return null;
+    }
+
+    const contractDoc = await (this.prisma as any).documentSigning.findFirst({
+      where: {
+        sessionId: session.id,
+        documentType: "CONTRACT",
+      },
+    });
+
+    return contractDoc;
+  }
+
+  /**
    * Handle package completion event
    * 
    * Orchestrates post-signing workflow:
@@ -143,7 +172,10 @@ export class DocumentPackageService {
         throw new NotFoundException("Contrato no encontrado.");
       }
 
-      if (String(contract.status || "").toUpperCase() !== CONTRACT_STATUS_SIGNED || !contract.signedPdfObjectKey) {
+      // Validate signing session completion using DocumentSigningSession framework
+      const isSessionCompleted = await this.documentSigningSessionService.isSigningSessionCompleted(contract.id);
+      const contractDoc = await this.getContractDocumentSigning(contract.id);
+      if (!isSessionCompleted || !contractDoc?.signedPdfObjectKey) {
         throw new BadRequestException("El contrato aun no esta firmado por todas las partes.");
       }
 
@@ -155,18 +187,18 @@ export class DocumentPackageService {
       const payload = this.documentSigningService.getPayloadRecord(contract.payload);
       const participants = this.getSigningParticipantsFromPlan(contract);
 
-      // Download signed PDF buffer
-      const signedPdfBuffer = await this.storageService.downloadObject(contract.signedPdfObjectKey);
+      // Download signed PDF buffer (Story 3)
+      const signedPdfBuffer = await this.storageService.downloadObject(contractDoc.signedPdfObjectKey);
       if (!signedPdfBuffer.length) {
         throw new InternalServerErrorException("No se pudo leer el contrato firmado.");
       }
 
-      // Deliver signed document
+      // Deliver signed document (Story 3)
       const deliveryResult = await this.documentDeliveryService.deliverSignedDocument({
         contractId: contract.id,
         contractNumber: contract.contractNumber,
         signedPdfBuffer,
-        signedPdfFileName: contract.signedPdfFileName,
+        signedPdfFileName: contractDoc.signedPdfFileName,
         signingParticipants: participants,
         actorContext: {
           userId: String(contract.generatedByUserId || "system"),

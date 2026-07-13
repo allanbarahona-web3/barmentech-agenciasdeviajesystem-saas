@@ -166,10 +166,10 @@ model Contract {
   startDate             DateTime?
   endDate               DateTime?
   payload               Json
-  pdfObjectKey          String
-  pdfFileName           String
-  pdfMimeType           String
-  pdfSize               Int
+  pdfObjectKey          String?
+  pdfFileName           String?
+  pdfMimeType           String?
+  pdfSize               Int?
   createdAt             DateTime                 @default(now())
   updatedAt             DateTime                 @updatedAt
   clientId              String
@@ -404,23 +404,25 @@ model DocumentSigningSession {
 }
 
 model DocumentSigning {
-  id                 String                 @id @default(cuid())
-  sessionId          String
-  documentKey        String
-  documentType       String
-  status             String                 @default("PENDING")
-  pdfObjectKey       String?
-  pdfFileName        String?
-  pdfMimeType        String?
-  pdfSize            Int?
-  signedPdfObjectKey String?
-  signedPdfFileName  String?
-  signedPdfMimeType  String?
-  signedPdfSize      Int?
-  createdAt          DateTime               @default(now())
-  updatedAt          DateTime               @updatedAt
-  session            DocumentSigningSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  signers            DocumentSigner[]
+  id                    String                 @id @default(cuid())
+  sessionId             String
+  documentKey           String
+  documentType          String
+  status                String                 @default("PENDING")
+  pdfObjectKey          String?
+  pdfFileName           String?
+  pdfMimeType           String?
+  pdfSize               Int?
+  htmlObjectKey         String?
+  signedPdfObjectKey    String?
+  signedPdfFileName     String?
+  signedPdfMimeType     String?
+  signedPdfSize         Int?
+  signaturePngObjectKey String?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  session               DocumentSigningSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  signers               DocumentSigner[]
 
   @@unique([sessionId, documentKey])
   @@index([sessionId])
