@@ -102,6 +102,7 @@ export interface CustomerContractItem {
   createdAt: string;
   startDate: string | null;
   endDate: string | null;
+  role: 'HOLDER' | 'COMPANION';
 }
 
 export interface CustomerFinancialSummary {

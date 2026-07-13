@@ -15,4 +15,5 @@ export class CustomerContractItemDto {
   createdAt!: Date;
   startDate!: Date | null;
   endDate!: Date | null;
+  role!: 'HOLDER' | 'COMPANION';
 }

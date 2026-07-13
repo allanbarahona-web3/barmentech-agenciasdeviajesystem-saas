@@ -165,7 +165,7 @@ export class ContractsController {
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles("AGENT")
+  @Roles("AGENT", "ADMIN")
   @Post(":contractId/send-signing-links")
   sendSigningLinks(
     @Req()

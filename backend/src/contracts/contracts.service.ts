@@ -1283,8 +1283,51 @@ export class ContractsService {
       });
     }
 
+    // =================================================================
+    // 📋 Enrich companions with Customer references (selectedCustomerId)
+    // =================================================================
+    const companionsArray = Array.isArray(payloadRecord.companions) 
+      ? payloadRecord.companions 
+      : [];
+    
+    const enrichedCompanions = companionsArray.map((companion: any, index: number) => {
+      // Only enrich companions that were successfully registered as clients
+      const hasValidId = 
+        companion &&
+        String(companion.fullName || "").trim() &&
+        String(companion.idNumber || "").trim();
+      
+      if (!hasValidId) {
+        // Keep original companion data if not valid for registration
+        return companion;
+      }
+
+      // Find matching registered client
+      // registeredCompanions are in same order as valid companions in payload
+      const validCompanionIndex = companionsArray
+        .slice(0, index)
+        .filter((c: any) => 
+          c &&
+          String(c.fullName || "").trim() &&
+          String(c.idNumber || "").trim()
+        ).length;
+
+      const registeredClient = registeredCompanions[validCompanionIndex];
+      
+      if (registeredClient?.id) {
+        // Preserve Customer reference using same convention as holder
+        return {
+          ...companion,
+          selectedCustomerId: registeredClient.id,
+        };
+      }
+
+      return companion;
+    });
+
     const enrichedPayload = {
       ...payloadRecord,
+      companions: enrichedCompanions,
       signatureAnchors,
       signatureAnchor: signatureAnchors?.["client"] ?? null,
     };

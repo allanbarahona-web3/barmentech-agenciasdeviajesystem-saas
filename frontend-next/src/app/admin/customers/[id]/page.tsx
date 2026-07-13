@@ -11,7 +11,7 @@ import { getStoredSession } from '@/lib/auth-api';
 import { CustomerForm, CustomerEditModal, CustomerDocumentUploadModal } from '@/features/customers/components';
 import AttachmentViewer from '@/components/attachment-viewer';
 import { getContractFiles } from '@/lib/contracts-api';
-import { listCustomerOperationalNotes, type ContractNote } from '@/lib/contract-notes-api';
+import { listCustomerOperationalNotes, deleteContractNote, type ContractNote } from '@/lib/contract-notes-api';
 
 export default function CustomerProfilePage() {
   const router = useRouter();
@@ -1060,17 +1060,60 @@ export default function CustomerProfilePage() {
                   <div style={{ fontSize: '12px', color: '#9ca3af' }}>
                     Creada por: {note.createdByName} • {formatDate(note.createdAt.toString())}
                   </div>
-                  <div
-                    style={{
-                      padding: '4px 8px',
-                      background: note.status === 'ACTIVE' ? '#d1fae5' : '#f3f4f6',
-                      color: note.status === 'ACTIVE' ? '#065f46' : '#6b7280',
-                      borderRadius: '4px',
-                      fontSize: '11px',
-                      fontWeight: '600',
-                    }}
-                  >
-                    {note.status === 'ACTIVE' ? 'ACTIVA' : 'ARCHIVADA'}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div
+                      style={{
+                        padding: '4px 8px',
+                        background: note.status === 'ACTIVE' ? '#d1fae5' : '#f3f4f6',
+                        color: note.status === 'ACTIVE' ? '#065f46' : '#6b7280',
+                        borderRadius: '4px',
+                        fontSize: '11px',
+                        fontWeight: '600',
+                      }}
+                    >
+                      {note.status === 'ACTIVE' ? 'ACTIVA' : 'ARCHIVADA'}
+                    </div>
+                    {isAdmin && (
+                      <button
+                        onClick={async () => {
+                          if (confirm('¿Está seguro de eliminar esta nota operativa?')) {
+                            try {
+                              setLoadingModalOpen(true);
+                              setLoadingModalState('loading');
+                              setLoadingModalMessage('Eliminando nota...');
+                              await deleteContractNote(note.contractId, note.id);
+                              await loadOperationalNotes();
+                              setLoadingModalState('success');
+                              setLoadingModalMessage('✅ Nota eliminada');
+                              setTimeout(() => setLoadingModalOpen(false), 1500);
+                            } catch (err) {
+                              setLoadingModalState('error');
+                              setLoadingModalMessage(err instanceof Error ? err.message : 'Error al eliminar');
+                            }
+                          }
+                        }}
+                        style={{
+                          padding: '4px 8px',
+                          background: '#fee2e2',
+                          color: '#991b1b',
+                          border: 'none',
+                          borderRadius: '4px',
+                          fontSize: '11px',
+                          fontWeight: '600',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = '#fca5a5';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = '#fee2e2';
+                        }}
+                        title="Eliminar nota (solo Admin)"
+                      >
+                        🗑️ Eliminar
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1466,6 +1509,9 @@ export default function CustomerProfilePage() {
                     Contrato
                   </th>
                   <th style={{ padding: '14px 16px', textAlign: 'left', fontSize: '13px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    Participación
+                  </th>
+                  <th style={{ padding: '14px 16px', textAlign: 'left', fontSize: '13px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                     Nombre del Viaje
                   </th>
                   <th style={{ padding: '14px 16px', textAlign: 'left', fontSize: '13px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
@@ -1511,6 +1557,20 @@ export default function CustomerProfilePage() {
                       >
                         {contract.contractNumber}
                       </button>
+                    </td>
+                    <td style={{ padding: '14px 16px', fontSize: '14px' }}>
+                      <span
+                        style={{
+                          padding: '4px 10px',
+                          borderRadius: '6px',
+                          fontSize: '12px',
+                          fontWeight: '600',
+                          background: contract.role === 'HOLDER' ? '#dbeafe' : '#fef3c7',
+                          color: contract.role === 'HOLDER' ? '#1e40af' : '#92400e',
+                        }}
+                      >
+                        {contract.role === 'HOLDER' ? 'Titular' : 'Acompañante'}
+                      </span>
                     </td>
                     <td style={{ padding: '14px 16px', fontSize: '14px', color: '#4b5563' }}>
                       {contract.travelName}

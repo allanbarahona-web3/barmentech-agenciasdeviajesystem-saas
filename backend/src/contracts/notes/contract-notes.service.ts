@@ -64,10 +64,15 @@ export class ContractNotesService {
 
   /**
    * List all active notes for a customer (across all their contracts)
+   * 
+   * Role-aware filtering:
+   * - Returns only notes that belong to this customer's participation
+   * - If customer is HOLDER: returns HOLDER notes only
+   * - If customer is COMPANION: returns COMPANION notes matching their passengerIndex only
    */
   async listCustomerOperationalNotes(tenantId: string, customerId: string) {
-    // Get all contracts for this customer
-    const contracts = await this.prisma.contract.findMany({
+    // Get all contracts where customer is HOLDER
+    const holderContracts = await this.prisma.contract.findMany({
       where: {
         tenantId,
         clientId: customerId,
@@ -78,21 +83,85 @@ export class ContractNotesService {
         destination: true,
         startDate: true,
         endDate: true,
+        payload: true,
       },
     });
 
-    const contractIds = contracts.map(c => c.id);
+    // Get all contracts where customer might be COMPANION
+    const allTenantContracts = await this.prisma.contract.findMany({
+      where: {
+        tenantId,
+        clientId: { not: customerId }, // Exclude holder contracts already fetched
+      },
+      select: {
+        id: true,
+        contractNumber: true,
+        destination: true,
+        startDate: true,
+        endDate: true,
+        payload: true,
+      },
+    });
 
-    if (contractIds.length === 0) {
+    // Resolve participation for each contract
+    const participations: Array<{
+      contractId: string;
+      role: 'HOLDER' | 'COMPANION';
+      passengerIndex: number | null;
+    }> = [];
+
+    // Process holder contracts
+    holderContracts.forEach((contract) => {
+      participations.push({
+        contractId: contract.id,
+        role: 'HOLDER',
+        passengerIndex: null,
+      });
+    });
+
+    // Process potential companion contracts
+    allTenantContracts.forEach((contract) => {
+      const payload = contract.payload as any;
+      const companions = Array.isArray(payload?.companions) ? payload.companions : [];
+      
+      companions.forEach((companion: any, index: number) => {
+        if (companion?.selectedCustomerId === customerId) {
+          participations.push({
+            contractId: contract.id,
+            role: 'COMPANION',
+            passengerIndex: index,
+          });
+        }
+      });
+    });
+
+    if (participations.length === 0) {
       return [];
     }
 
-    // Get all active notes for these contracts
+    // Build filter conditions for each participation
+    const noteFilters = participations.map((participation) => {
+      if (participation.role === 'HOLDER') {
+        return {
+          contractId: participation.contractId,
+          passengerType: 'HOLDER',
+        };
+      } else {
+        // COMPANION
+        return {
+          contractId: participation.contractId,
+          passengerType: 'COMPANION',
+          passengerIndex: participation.passengerIndex,
+        };
+      }
+    });
+
+    // Fetch notes matching any of the participation filters
     const notes = await this.prisma.contractNote.findMany({
       where: {
         tenantId,
-        contractId: { in: contractIds },
         status: 'ACTIVE',
+        OR: noteFilters,
       },
       include: {
         contract: {

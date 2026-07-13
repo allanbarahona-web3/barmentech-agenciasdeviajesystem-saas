@@ -408,13 +408,15 @@ export class CustomersService {
     }
 
     // Fetch contracts with payload to extract totalAmount
-    const contracts = await this.prisma.contract.findMany({
+    // Fetch contracts where customer is the holder
+    const holderContracts = await this.prisma.contract.findMany({
       where: {
         clientId: customerId,
         tenantId: tenantId,
       },
       select: {
         id: true,
+        clientId: true,
         contractNumber: true,
         destination: true,
         status: true,
@@ -434,6 +436,51 @@ export class CustomersService {
         createdAt: "desc",
       },
     });
+
+    // Fetch contracts where customer is a companion
+    // Look for contracts in same tenant where payload.companions contains selectedCustomerId
+    const allTenantContracts = await this.prisma.contract.findMany({
+      where: {
+        tenantId: tenantId,
+        clientId: { not: customerId }, // Exclude holder contracts already fetched
+      },
+      select: {
+        id: true,
+        clientId: true,
+        contractNumber: true,
+        destination: true,
+        status: true,
+        source: true,
+        participantCount: true,
+        createdAt: true,
+        payload: true,
+        startDate: true,
+        endDate: true,
+        travelPackage: {
+          select: {
+            name: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    // Filter contracts where customer appears as companion
+    const companionContracts = allTenantContracts.filter((contract) => {
+      const payload = contract.payload as any;
+      const companions = Array.isArray(payload?.companions) ? payload.companions : [];
+      
+      return companions.some(
+        (companion: any) => companion?.selectedCustomerId === customerId
+      );
+    });
+
+    // Merge both lists
+    const contracts = [...holderContracts, ...companionContracts].sort(
+      (a, b) => b.createdAt.getTime() - a.createdAt.getTime()
+    );
 
     // Get contract IDs for financial queries
     const contractIds = contracts.map((c) => c.id);
@@ -608,18 +655,39 @@ export class CustomersService {
       medications: customer.medications,
     };
 
-    const contractDtos: CustomerContractItemDto[] = contracts.map((c) => ({
-      id: c.id,
-      contractNumber: c.contractNumber,
-      destination: c.destination,
-      travelName: c.travelPackage?.name || c.destination,
-      status: c.status,
-      source: c.source,
-      participantCount: c.participantCount,
-      createdAt: c.createdAt,
-      startDate: c.startDate,
-      endDate: c.endDate,
-    }));
+    const contractDtos: CustomerContractItemDto[] = contracts.map((c) => {
+      // Determine customer's participation role
+      let role: 'HOLDER' | 'COMPANION' = 'HOLDER';
+      
+      // If contract.clientId matches customerId, they are the HOLDER
+      // Otherwise, check payload companions for selectedCustomerId
+      if (c.clientId !== customerId) {
+        const payload = c.payload as any;
+        const companions = Array.isArray(payload?.companions) ? payload.companions : [];
+        
+        const isCompanion = companions.some(
+          (companion: any) => companion?.selectedCustomerId === customerId
+        );
+        
+        if (isCompanion) {
+          role = 'COMPANION';
+        }
+      }
+      
+      return {
+        id: c.id,
+        contractNumber: c.contractNumber,
+        destination: c.destination,
+        travelName: c.travelPackage?.name || c.destination,
+        status: c.status,
+        source: c.source,
+        participantCount: c.participantCount,
+        createdAt: c.createdAt,
+        startDate: c.startDate,
+        endDate: c.endDate,
+        role,
+      };
+    });
 
     const financialSummary: CustomerFinancialSummaryDto = {
       totalContractedAmount,
