@@ -9,6 +9,7 @@ import { MinorsStep, type MinorsStepProps } from '../steps/minors/MinorsStep';
 import { ItineraryStep, type ItineraryStepProps } from '../steps/itinerary/ItineraryStep';
 import { DocumentsStep, type DocumentsStepProps } from '../steps/documents/DocumentsStep';
 import { InsuranceStep, type InsuranceStepProps } from '../steps/insurance/InsuranceStep';
+import { ContractNotesStep, type ContractNoteStepProps } from '../steps/notes/ContractNotesStep';
 import { SummaryStep, type SummaryStepProps } from '../steps/summary/SummaryStep';
 
 /**
@@ -204,7 +205,28 @@ const insuranceStep: WizardStepDefinition<InsuranceStepProps> = {
 };
 
 /**
- * Step 9: Summary and Submission
+ * Step 9: Contract Notes
+ * 
+ * Captures operational notes for each passenger:
+ * - Notes per passenger (holder, companions, minors)
+ * - Used for operations and billing
+ * - Not printed in contract PDF
+ * - Archived 1 day after trip ends
+ * 
+ * Always visible and optional
+ */
+const contractNotesStep: WizardStepDefinition<ContractNoteStepProps> = {
+  id: 'notes',
+  title: 'Notas',
+  order: 9,
+  component: ContractNotesStep,
+  validate: () => true, // No validation needed - notes are optional
+  isVisible: () => true, // Always visible
+  isOptional: () => true, // Optional step
+};
+
+/**
+ * Step 10: Summary and Submission
  * 
  * Final review and submission:
  * - Contract summary display
@@ -218,7 +240,7 @@ const insuranceStep: WizardStepDefinition<InsuranceStepProps> = {
 const summaryStep: WizardStepDefinition<SummaryStepProps> = {
   id: 'summary',
   title: 'Resumen',
-  order: 9,
+  order: 10,
   component: SummaryStep,
   validate: () => true, // Future: Add validation logic
   isVisible: () => true, // Always visible
@@ -239,7 +261,8 @@ const summaryStep: WizardStepDefinition<SummaryStepProps> = {
  * ```typescript
  * import { contractsStepRegistry } from '@/features/contracts-form/wizard/registry';
  * 
- * // Iterate through steps
+ *contractNotesStep,
+   // Iterate through steps
  * contractsStepRegistry.forEach(step => {
  *   console.log(step.title, step.order);
  * });
@@ -260,6 +283,7 @@ export const contractsStepRegistry: WizardStepRegistry = [
   itineraryStep,
   documentsStep,
   insuranceStep,
+  contractNotesStep,
   summaryStep,
 ];
 

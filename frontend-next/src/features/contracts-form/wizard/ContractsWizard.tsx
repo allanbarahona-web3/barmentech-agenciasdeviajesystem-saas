@@ -1209,6 +1209,7 @@ console.log("====================================");
         documents: docs,
         source: isInternalTrip ? "INTERNAL_TRIP" : (isMigrationMode ? "MIGRATION" : "SCHEDULED_TRIP"),
         internalTripId: initialInternalTripId || undefined,
+        notes: state.notes || [],
       });
       console.log("✅ Respuesta del backend recibida:", archived);
 

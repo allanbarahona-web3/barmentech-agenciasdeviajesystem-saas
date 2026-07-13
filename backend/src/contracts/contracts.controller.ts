@@ -30,10 +30,16 @@ import { SendSigningEmailDto } from "./dto/send-signing-email.dto";
 import { SaveContractDraftDto } from "./dto/save-contract-draft.dto";
 import { Tenant } from "../tenant/tenant.decorator";
 import { ResolvedTenant } from "../tenant/tenant.service";
+import { ContractNotesService } from "./notes/contract-notes.service";
+import { CreateContractNoteDto } from "./dto/create-contract-note.dto";
+import { UpdateContractNoteDto } from "./dto/update-contract-note.dto";
 
 @Controller("contracts")
 export class ContractsController {
-  constructor(private readonly contractsService: ContractsService) {}
+  constructor(
+    private readonly contractsService: ContractsService,
+    private readonly contractNotesService: ContractNotesService,
+  ) {}
 
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles("AGENT")
@@ -291,6 +297,125 @@ export class ContractsController {
       dto.signatureImageBase64,
       req.ip || null,
       userAgent || null,
+    );
+  }
+
+  // ========== Contract Notes Endpoints ==========
+
+  /**
+   * POST /contracts/:contractId/notes
+   * Create a new note for a contract passenger
+   */
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles("AGENT", "ADMIN")
+  @Post(":contractId/notes")
+  createContractNote(
+    @Req()
+    req: {
+      user: { id: string; email: string; fullName: string; tenantId: string };
+    },
+    @Param("contractId") contractId: string,
+    @Body() dto: CreateContractNoteDto,
+  ) {
+    return this.contractNotesService.createContractNote(
+      req.user.tenantId,
+      contractId,
+      dto.passengerType,
+      dto.passengerIndex ?? null,
+      dto.passengerName,
+      dto.note,
+      req.user.id,
+      req.user.fullName,
+    );
+  }
+
+  /**
+   * GET /contracts/:contractId/notes
+   * List all notes for a contract
+   */
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles("AGENT", "ADMIN", "FACTURACION_COBROS")
+  @Get(":contractId/notes")
+  listContractNotes(
+    @Req()
+    req: {
+      user: { id: string; email: string; fullName: string; tenantId: string };
+    },
+    @Param("contractId") contractId: string,
+    @Query("includeArchived") includeArchived?: string,
+  ) {
+    const includeArchivedBool = includeArchived === "true";
+    return this.contractNotesService.listContractNotes(
+      req.user.tenantId,
+      contractId,
+      includeArchivedBool,
+    );
+  }
+
+  /**
+   * PATCH /contracts/:contractId/notes/:noteId
+   * Update a contract note
+   */
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles("AGENT", "ADMIN")
+  @Post(":contractId/notes/:noteId")
+  updateContractNote(
+    @Req()
+    req: {
+      user: { id: string; email: string; fullName: string; tenantId: string };
+    },
+    @Param("contractId") contractId: string,
+    @Param("noteId") noteId: string,
+    @Body() dto: UpdateContractNoteDto,
+  ) {
+    return this.contractNotesService.updateContractNote(
+      req.user.tenantId,
+      contractId,
+      noteId,
+      dto.note,
+    );
+  }
+
+  /**
+   * DELETE /contracts/:contractId/notes/:noteId
+   * Delete a contract note (admin only)
+   */
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles("ADMIN")
+  @Delete(":contractId/notes/:noteId")
+  deleteContractNote(
+    @Req()
+    req: {
+      user: { id: string; email: string; fullName: string; tenantId: string };
+    },
+    @Param("contractId") contractId: string,
+    @Param("noteId") noteId: string,
+  ) {
+    return this.contractNotesService.deleteContractNote(
+      req.user.tenantId,
+      contractId,
+      noteId,
+    );
+  }
+
+  /**
+   * GET /contracts/operational-notes/customer/:customerId
+   * Get all operational notes for a customer (across all their contracts)
+   * Used in customer profile "Notas Operativas" section
+   */
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles("AGENT", "ADMIN", "FACTURACION_COBROS")
+  @Get("operational-notes/customer/:customerId")
+  listCustomerOperationalNotes(
+    @Req()
+    req: {
+      user: { id: string; email: string; fullName: string; tenantId: string };
+    },
+    @Param("customerId") customerId: string,
+  ) {
+    return this.contractNotesService.listCustomerOperationalNotes(
+      req.user.tenantId,
+      customerId,
     );
   }
 }

@@ -113,6 +113,12 @@ type ArchiveContractInput = {
   documents: File[];
   source?: string; // SCHEDULED_TRIP | MIGRATION | CUSTOM_TRIP | QUOTE | INTERNAL_TRIP
   internalTripId?: string; // Para viajes internos (sin contrato PDF)
+  notes?: Array<{
+    passengerType: string;
+    passengerIndex: number | null;
+    passengerName: string;
+    note: string;
+  }>;
 };
 
 type ArchiveContractResult = {
@@ -246,6 +252,9 @@ export const archiveContract = async (input: ArchiveContractInput): Promise<Arch
   formData.append("contractHtml", input.contractHtml);
   if (input.source) {
     formData.append("source", input.source);
+  }
+  if (input.notes && input.notes.length > 0) {
+    formData.append("notes", JSON.stringify(input.notes));
   }
 
   input.documents.forEach((doc) => {

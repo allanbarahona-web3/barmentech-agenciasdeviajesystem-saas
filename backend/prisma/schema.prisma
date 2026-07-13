@@ -59,6 +59,7 @@ model Tenant {
   contracts                   Contract[]
   contractDrafts              ContractDraft[]
   contractNumbers             ContractNumber[]
+  contractNotes               ContractNote[]
   customerDocuments           CustomerDocument[]
   documentSigningSessions     DocumentSigningSession[]
   customerNotes               CustomerNote[]
@@ -205,6 +206,7 @@ model Contract {
   signatureEvents       ContractSignatureEvent[]
   usedTokens            ContractUsedToken[]
   signingSessions       DocumentSigningSession[]
+  notes                 ContractNote[]
 
   @@index([clientId])
   @@index([travelPackageId])
@@ -332,6 +334,30 @@ model CustomerNote {
   @@index([tenantId])
   @@index([createdAt])
   @@map("customer_notes")
+}
+
+model ContractNote {
+  id              String    @id @default(cuid())
+  contractId      String
+  passengerType   String // "HOLDER", "COMPANION", "MINOR"
+  passengerIndex  Int? // Index in companions/minors array (null for holder)
+  passengerName   String // Full name of passenger for display
+  note            String // Note content
+  status          String    @default("ACTIVE") // "ACTIVE", "ARCHIVED"
+  archivedAt      DateTime?
+  createdByUserId String
+  createdByName   String
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  tenantId        String
+  contract        Contract  @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([contractId])
+  @@index([tenantId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("contract_notes")
 }
 
 model ContractDocument {

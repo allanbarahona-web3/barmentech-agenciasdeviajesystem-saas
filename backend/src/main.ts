@@ -158,7 +158,7 @@ async function bootstrap() {
       console.warn(`[CORS] Origin bloqueado: ${normalized}`);
       callback(new Error(`CORS origin not allowed: ${normalized}`), false);
     },
-    credentials: false,
+    credentials: true,
   });
   app.useGlobalPipes(
     new ValidationPipe({

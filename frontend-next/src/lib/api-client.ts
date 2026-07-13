@@ -3,6 +3,8 @@
  * Maneja JWT, multi-tenancy, y errores de forma centralizada
  */
 
+import { AUTH_TOKEN_KEY } from './runtime-config';
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
 interface FetchOptions extends RequestInit {
@@ -11,7 +13,7 @@ interface FetchOptions extends RequestInit {
 
 function getToken(): string | null {
   if (typeof window === 'undefined') return null;
-  return localStorage.getItem('auth_token');
+  return localStorage.getItem(AUTH_TOKEN_KEY);
 }
 
 function buildUrl(path: string, params?: Record<string, any>): string {
@@ -56,7 +58,7 @@ export async function fetchApi(
     // Si es 401, probablemente el token expiró
     if (response.status === 401) {
       if (typeof window !== 'undefined') {
-        localStorage.removeItem('auth_token');
+        localStorage.removeItem(AUTH_TOKEN_KEY);
         window.location.href = '/login';
       }
     }

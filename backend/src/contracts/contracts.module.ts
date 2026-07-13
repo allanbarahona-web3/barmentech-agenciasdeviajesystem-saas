@@ -9,11 +9,12 @@ import { ContractsService } from "./contracts.service";
 import { ContractsEmailsService } from "./contracts-emails.service";
 import { PdfRenderService } from "./pdf-render.service";
 import { ContractSigningSessionBuilder } from "./contract-signing-session.builder";
+import { ContractNotesService } from "./notes/contract-notes.service";
 
 @Module({
   imports: [BillingModule, EmailModule, CustomersModule, DocumentsModule, StorageModule],
   controllers: [ContractsController],
-  providers: [ContractsService, ContractsEmailsService, PdfRenderService, ContractSigningSessionBuilder],
+  providers: [ContractsService, ContractsEmailsService, PdfRenderService, ContractSigningSessionBuilder, ContractNotesService],
   exports: [ContractSigningSessionBuilder],
 })
 export class ContractsModule {}

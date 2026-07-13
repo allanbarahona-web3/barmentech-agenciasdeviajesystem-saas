@@ -61,4 +61,8 @@ export class ArchiveContractDto {
   @IsString()
   @MaxLength(40)
   internalTripId?: string; // Para viajes internos (sin contrato PDF)
+
+  @IsOptional()
+  @IsString()
+  notes?: string; // JSON string of operational notes
 }

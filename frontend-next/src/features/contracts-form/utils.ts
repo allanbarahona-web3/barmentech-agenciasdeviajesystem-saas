@@ -177,6 +177,7 @@ export const createInitialFormState = (agent?: { fullName?: string; email?: stri
     contractDocumentsNames: [],
     generatedByAgentName: String(agent?.fullName || "").trim(),
     generatedByAgentEmail: String(agent?.email || "").trim(),
+    notes: [],
   };
 };
 

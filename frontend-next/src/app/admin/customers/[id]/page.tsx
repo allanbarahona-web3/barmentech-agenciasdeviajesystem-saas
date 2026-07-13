@@ -11,6 +11,7 @@ import { getStoredSession } from '@/lib/auth-api';
 import { CustomerForm, CustomerEditModal, CustomerDocumentUploadModal } from '@/features/customers/components';
 import AttachmentViewer from '@/components/attachment-viewer';
 import { getContractFiles } from '@/lib/contracts-api';
+import { listCustomerOperationalNotes, type ContractNote } from '@/lib/contract-notes-api';
 
 export default function CustomerProfilePage() {
   const router = useRouter();
@@ -55,6 +56,10 @@ export default function CustomerProfilePage() {
   const [editingNoteText, setEditingNoteText] = useState('');
   const [noteToDelete, setNoteToDelete] = useState<{ id: string; preview: string } | null>(null);
 
+  // Operational notes state (from contracts)
+  const [operationalNotes, setOperationalNotes] = useState<ContractNote[]>([]);
+  const [loadingOperationalNotes, setLoadingOperationalNotes] = useState(false);
+
   // Contract viewer state
   const [viewerOpen, setViewerOpen] = useState(false);
   const [viewerHtml, setViewerHtml] = useState('');
@@ -62,6 +67,12 @@ export default function CustomerProfilePage() {
 
   useEffect(() => {
     loadProfile();
+  }, [customerId]);
+
+  useEffect(() => {
+    if (customerId) {
+      loadOperationalNotes();
+    }
   }, [customerId]);
 
   useEffect(() => {
@@ -98,6 +109,20 @@ export default function CustomerProfilePage() {
       setIs404Error(is404);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadOperationalNotes() {
+    try {
+      setLoadingOperationalNotes(true);
+      const notes = await listCustomerOperationalNotes(customerId);
+      setOperationalNotes(notes);
+    } catch (err: unknown) {
+      console.error('Error al cargar notas operativas:', err);
+      // Silently fail - operational notes are not critical
+      setOperationalNotes([]);
+    } finally {
+      setLoadingOperationalNotes(false);
     }
   }
 
@@ -969,23 +994,89 @@ export default function CustomerProfilePage() {
       {/* Notas Operativas Section - Full Width */}
       <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', padding: '24px', marginBottom: '30px' }}>
         <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#1f2937', marginBottom: '20px' }}>
-          📋 Notas Operativas
+          📋 Notas Operativas {operationalNotes.length > 0 && `(${operationalNotes.length})`}
         </h2>
-        <div style={{ padding: '24px', background: '#f9fafb', borderRadius: '10px', textAlign: 'center' }}>
-          <div style={{ fontSize: '48px', marginBottom: '16px' }}>📋</div>
-          <p style={{ fontSize: '16px', fontWeight: '600', color: '#374151', marginBottom: '12px' }}>
-            No existen notas operativas.
-          </p>
-          <p style={{ fontSize: '14px', color: '#6b7280', lineHeight: '1.6', marginBottom: '8px' }}>
-            Las notas operativas serán creadas desde el contrato y estarán disponibles aquí para su consulta.
-          </p>
-          <p style={{ fontSize: '14px', color: '#6b7280', lineHeight: '1.6', marginBottom: '16px' }}>
-            Estas notas permiten comunicar información importante a Facturación y Operaciones sin modificar el expediente permanente del cliente.
-          </p>
-          <div style={{ display: 'inline-block', padding: '8px 16px', background: '#fef3c7', color: '#92400e', borderRadius: '8px', fontSize: '14px', fontWeight: '600' }}>
-            🚧 Próximamente
+        
+        {loadingOperationalNotes ? (
+          <div style={{ padding: '24px', textAlign: 'center', color: '#6b7280' }}>
+            Cargando notas operativas...
           </div>
-        </div>
+        ) : operationalNotes.length === 0 ? (
+          <div style={{ padding: '24px', background: '#f9fafb', borderRadius: '10px', textAlign: 'center' }}>
+            <div style={{ fontSize: '48px', marginBottom: '16px' }}>📋</div>
+            <p style={{ fontSize: '16px', fontWeight: '600', color: '#374151', marginBottom: '12px' }}>
+              No existen notas operativas.
+            </p>
+            <p style={{ fontSize: '14px', color: '#6b7280', lineHeight: '1.6', marginBottom: '8px' }}>
+              Las notas operativas serán creadas desde el contrato y estarán disponibles aquí para su consulta.
+            </p>
+            <p style={{ fontSize: '14px', color: '#6b7280', lineHeight: '1.6' }}>
+              Estas notas permiten comunicar información importante a Facturación y Operaciones sin modificar el expediente permanente del cliente.
+            </p>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {operationalNotes.map((note) => (
+              <div
+                key={note.id}
+                style={{
+                  padding: '20px',
+                  background: '#f9fafb',
+                  border: '2px solid #e5e7eb',
+                  borderRadius: '12px',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '12px' }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+                      <div
+                        style={{
+                          padding: '4px 12px',
+                          background: note.passengerType === 'HOLDER' ? '#dbeafe' : note.passengerType === 'COMPANION' ? '#d1fae5' : '#fed7aa',
+                          color: note.passengerType === 'HOLDER' ? '#1e40af' : note.passengerType === 'COMPANION' ? '#065f46' : '#9a3412',
+                          borderRadius: '6px',
+                          fontSize: '12px',
+                          fontWeight: '600',
+                        }}
+                      >
+                        {note.passengerName}
+                      </div>
+                      <span style={{ fontSize: '12px', color: '#9ca3af' }}>
+                        {note.passengerType === 'HOLDER' ? 'Titular' : note.passengerType === 'COMPANION' ? 'Acompañante' : 'Menor'}
+                      </span>
+                    </div>
+                    {note.contract && (
+                      <div style={{ fontSize: '13px', color: '#6b7280', marginBottom: '8px' }}>
+                        <strong>Contrato:</strong> {note.contract.contractNumber} - {note.contract.destination}
+                        {note.contract.startDate && ` (${formatDate(note.contract.startDate.toString())})`}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div style={{ fontSize: '14px', color: '#374151', marginBottom: '12px', whiteSpace: 'pre-wrap', lineHeight: '1.6' }}>
+                  {note.note}
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '12px', borderTop: '1px solid #e5e7eb' }}>
+                  <div style={{ fontSize: '12px', color: '#9ca3af' }}>
+                    Creada por: {note.createdByName} • {formatDate(note.createdAt.toString())}
+                  </div>
+                  <div
+                    style={{
+                      padding: '4px 8px',
+                      background: note.status === 'ACTIVE' ? '#d1fae5' : '#f3f4f6',
+                      color: note.status === 'ACTIVE' ? '#065f46' : '#6b7280',
+                      borderRadius: '4px',
+                      fontSize: '11px',
+                      fontWeight: '600',
+                    }}
+                  >
+                    {note.status === 'ACTIVE' ? 'ACTIVA' : 'ARCHIVADA'}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Section 4: Additional Profile Information */}

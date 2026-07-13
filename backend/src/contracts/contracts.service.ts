@@ -1541,6 +1541,45 @@ export class ContractsService {
       });
     }
 
+    // ========================================================================
+    // 📝 Persist Operational Notes
+    // ========================================================================
+    if (dto.notes?.trim()) {
+      try {
+        const notesArray = JSON.parse(dto.notes);
+        if (Array.isArray(notesArray) && notesArray.length > 0) {
+          this.logger.log(`📝 Creating ${notesArray.length} operational notes for contract ${archived.contractNumber}...`);
+          
+          for (const noteDto of notesArray) {
+            if (!noteDto.passengerType || !noteDto.passengerName || !noteDto.note?.trim()) {
+              this.logger.warn(`Skipping invalid note: ${JSON.stringify(noteDto)}`);
+              continue;
+            }
+
+            await this.prisma.contractNote.create({
+              data: {
+                contractId: archived.id,
+                tenantId: user.tenantId,
+                passengerType: noteDto.passengerType,
+                passengerIndex: noteDto.passengerIndex ?? null,
+                passengerName: noteDto.passengerName,
+                note: noteDto.note.trim(),
+                status: 'ACTIVE',
+                createdByUserId: user.id,
+                createdByName: user.fullName,
+              },
+            });
+          }
+          
+          this.logger.log(`✅ Successfully created ${notesArray.length} operational notes`);
+        }
+      } catch (error) {
+        this.logger.error('❌ Error parsing or creating operational notes:', error);
+        // Don't fail the entire contract creation if notes fail
+        // Notes can be added later via the CRUD endpoints
+      }
+    }
+
     return {
       id: archived.id,
       contractNumber: archived.contractNumber,

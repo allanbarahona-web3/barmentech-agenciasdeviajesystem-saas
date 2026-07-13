@@ -49,6 +49,13 @@ export type ItineraryItem = {
   detail: string;
 };
 
+export type ContractNote = {
+  passengerType: "HOLDER" | "COMPANION" | "MINOR";
+  passengerIndex: number | null;
+  passengerName: string;
+  note: string;
+};
+
 export type ContractFormState = {
   contractNumber: string;
   issuedAt: string;
@@ -96,4 +103,5 @@ export type ContractFormState = {
   contractDocumentsNames: string[];
   generatedByAgentName: string;
   generatedByAgentEmail: string;
+  notes: ContractNote[];
  };
