@@ -11,7 +11,7 @@ import { getStoredSession } from '@/lib/auth-api';
 import { CustomerForm, CustomerEditModal, CustomerDocumentUploadModal } from '@/features/customers/components';
 import AttachmentViewer from '@/components/attachment-viewer';
 import { getContractFiles } from '@/lib/contracts-api';
-import { listCustomerOperationalNotes, deleteContractNote, type ContractNote } from '@/lib/contract-notes-api';
+import { listCustomerOperationalNotes, createContractNoteForCustomer, updateContractNote, deleteContractNote, type ContractNote } from '@/lib/contract-notes-api';
 
 export default function CustomerProfilePage() {
   const router = useRouter();
@@ -59,6 +59,12 @@ export default function CustomerProfilePage() {
   // Operational notes state (from contracts)
   const [operationalNotes, setOperationalNotes] = useState<ContractNote[]>([]);
   const [loadingOperationalNotes, setLoadingOperationalNotes] = useState(false);
+  const [showCreateOperationalNoteModal, setShowCreateOperationalNoteModal] = useState(false);
+  const [editingOperationalNote, setEditingOperationalNote] = useState<ContractNote | null>(null);
+  const [operationalNoteForm, setOperationalNoteForm] = useState({
+    contractId: '',
+    note: '',
+  });
 
   // Contract viewer state
   const [viewerOpen, setViewerOpen] = useState(false);
@@ -623,6 +629,89 @@ export default function CustomerProfilePage() {
     }
   }
 
+  // Operational Notes handlers
+  function handleOpenCreateOperationalNote() {
+    const activeContracts = contracts.filter(c => c.status !== 'DRAFT');
+    
+    // Reset form
+    const initialForm = {
+      contractId: activeContracts.length === 1 ? activeContracts[0].id : '',
+      note: '',
+    };
+
+    setOperationalNoteForm(initialForm);
+    setShowCreateOperationalNoteModal(true);
+  }
+
+  async function handleCreateOperationalNote() {
+    if (!operationalNoteForm.contractId || !operationalNoteForm.note.trim()) {
+      setLoadingModalState('error');
+      setLoadingModalMessage('Por favor complete todos los campos requeridos');
+      setLoadingModalOpen(true);
+      return;
+    }
+
+    try {
+      setLoadingModalOpen(true);
+      setLoadingModalState('loading');
+      setLoadingModalMessage('Creando nota operativa...');
+
+      await createContractNoteForCustomer(operationalNoteForm.contractId, {
+        customerId: customerId,
+        note: operationalNoteForm.note,
+      });
+
+      await loadOperationalNotes();
+
+      setLoadingModalState('success');
+      setLoadingModalMessage('✅ Nota operativa creada');
+      setShowCreateOperationalNoteModal(false);
+      setTimeout(() => setLoadingModalOpen(false), 1500);
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Error al crear nota';
+      setLoadingModalState('error');
+      setLoadingModalMessage(errorMessage);
+    }
+  }
+
+  function handleOpenEditOperationalNote(note: ContractNote) {
+    setEditingOperationalNote(note);
+    setOperationalNoteForm({
+      contractId: note.contractId,
+      note: note.note,
+    });
+  }
+
+  async function handleUpdateOperationalNote() {
+    if (!editingOperationalNote || !operationalNoteForm.note.trim()) {
+      setLoadingModalState('error');
+      setLoadingModalMessage('La nota no puede estar vacía');
+      setLoadingModalOpen(true);
+      return;
+    }
+
+    try {
+      setLoadingModalOpen(true);
+      setLoadingModalState('loading');
+      setLoadingModalMessage('Actualizando nota...');
+
+      await updateContractNote(editingOperationalNote.contractId, editingOperationalNote.id, {
+        note: operationalNoteForm.note,
+      });
+
+      await loadOperationalNotes();
+
+      setLoadingModalState('success');
+      setLoadingModalMessage('✅ Nota actualizada');
+      setEditingOperationalNote(null);
+      setTimeout(() => setLoadingModalOpen(false), 1500);
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Error al actualizar nota';
+      setLoadingModalState('error');
+      setLoadingModalMessage(errorMessage);
+    }
+  }
+
   if (loading || !profile) {
     return (
       <>
@@ -993,9 +1082,38 @@ export default function CustomerProfilePage() {
 
       {/* Notas Operativas Section - Full Width */}
       <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', padding: '24px', marginBottom: '30px' }}>
-        <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#1f2937', marginBottom: '20px' }}>
-          📋 Notas Operativas {operationalNotes.length > 0 && `(${operationalNotes.length})`}
-        </h2>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#1f2937', margin: 0 }}>
+            📋 Notas Operativas {operationalNotes.length > 0 && `(${operationalNotes.length})`}
+          </h2>
+          {contracts.filter(c => c.status !== 'DRAFT').length > 0 && (
+            <button
+              onClick={handleOpenCreateOperationalNote}
+              style={{
+                padding: '10px 20px',
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: '600',
+                transition: 'all 0.2s',
+                boxShadow: '0 2px 8px rgba(102, 126, 234, 0.3)',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'translateY(-2px)';
+                e.currentTarget.style.boxShadow = '0 4px 12px rgba(102, 126, 234, 0.4)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'translateY(0)';
+                e.currentTarget.style.boxShadow = '0 2px 8px rgba(102, 126, 234, 0.3)';
+              }}
+            >
+              ➕ Nueva Nota Operativa
+            </button>
+          )}
+        </div>
         
         {loadingOperationalNotes ? (
           <div style={{ padding: '24px', textAlign: 'center', color: '#6b7280' }}>
@@ -1073,6 +1191,31 @@ export default function CustomerProfilePage() {
                     >
                       {note.status === 'ACTIVE' ? 'ACTIVA' : 'ARCHIVADA'}
                     </div>
+                    {note.status === 'ACTIVE' && (
+                      <button
+                        onClick={() => handleOpenEditOperationalNote(note)}
+                        style={{
+                          padding: '4px 8px',
+                          background: '#dbeafe',
+                          color: '#1e40af',
+                          border: 'none',
+                          borderRadius: '4px',
+                          fontSize: '11px',
+                          fontWeight: '600',
+                          cursor: 'pointer',
+                          transition: 'all 0.15s',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = '#93c5fd';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = '#dbeafe';
+                        }}
+                        title="Editar nota"
+                      >
+                        ✏️ Editar
+                      </button>
+                    )}
                     {isAdmin && (
                       <button
                         onClick={async () => {
@@ -2113,6 +2256,274 @@ export default function CustomerProfilePage() {
             </div>
           </div>
         </section>
+      )}
+
+      {/* Create Operational Note Modal */}
+      {showCreateOperationalNoteModal && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            padding: '20px',
+          }}
+          onClick={() => setShowCreateOperationalNoteModal(false)}
+        >
+          <div
+            style={{
+              background: 'white',
+              borderRadius: '12px',
+              maxWidth: '600px',
+              width: '100%',
+              maxHeight: '90vh',
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ padding: '24px', borderBottom: '2px solid #e5e7eb' }}>
+              <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#1f2937', margin: 0 }}>
+                📋 Nueva Nota Operativa
+              </h2>
+            </div>
+            
+            <div style={{ padding: '24px', overflowY: 'auto', flex: 1 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                {/* Contract Selection */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#374151', marginBottom: '8px' }}>
+                    Contrato *
+                  </label>
+                  <select
+                    value={operationalNoteForm.contractId}
+                    onChange={(e) => setOperationalNoteForm({ ...operationalNoteForm, contractId: e.target.value })}
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      border: '2px solid #e5e7eb',
+                      borderRadius: '8px',
+                      fontSize: '14px',
+                      color: '#1f2937',
+                    }}
+                  >
+                    <option value="">Seleccione un contrato</option>
+                    {contracts.filter(c => c.status !== 'DRAFT').map((contract) => (
+                      <option key={contract.id} value={contract.id}>
+                        {contract.contractNumber} - {contract.travelName} ({contract.role === 'HOLDER' ? 'Titular' : 'Acompañante'})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Participation Info (Read-only) */}
+                {operationalNoteForm.contractId && (
+                  <div style={{
+                    padding: '12px 16px',
+                    background: '#f0f9ff',
+                    border: '2px solid #bae6fd',
+                    borderRadius: '8px',
+                  }}>
+                    <div style={{ fontSize: '12px', fontWeight: '600', color: '#0369a1', marginBottom: '4px' }}>
+                      ℹ️ Participación detectada
+                    </div>
+                    <div style={{ fontSize: '14px', color: '#075985' }}>
+                      {(() => {
+                        const contract = contracts.find(c => c.id === operationalNoteForm.contractId);
+                        if (!contract) return null;
+                        return (
+                          <>
+                            <strong>Rol:</strong> {contract.role === 'HOLDER' ? 'Titular' : 'Acompañante'}
+                            <br />
+                            <strong>Pasajero:</strong> {profile.customer.fullName}
+                          </>
+                        );
+                      })()}
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#0284c7', marginTop: '8px', fontStyle: 'italic' }}>
+                      La identidad del pasajero se determina automáticamente según su participación en el contrato.
+                    </div>
+                  </div>
+                )}
+
+                {/* Note Text */}
+                <div>
+                  <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#374151', marginBottom: '8px' }}>
+                    Nota *
+                  </label>
+                  <textarea
+                    value={operationalNoteForm.note}
+                    onChange={(e) => setOperationalNoteForm({ ...operationalNoteForm, note: e.target.value })}
+                    rows={8}
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      border: '2px solid #e5e7eb',
+                      borderRadius: '8px',
+                      fontSize: '14px',
+                      color: '#1f2937',
+                      resize: 'vertical',
+                      fontFamily: 'inherit',
+                    }}
+                    placeholder="Información operativa importante..."
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div style={{ padding: '20px 24px', borderTop: '2px solid #e5e7eb', display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setShowCreateOperationalNoteModal(false)}
+                style={{
+                  padding: '10px 20px',
+                  background: '#f3f4f6',
+                  color: '#374151',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  transition: 'all 0.2s',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = '#e5e7eb')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = '#f3f4f6')}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleCreateOperationalNote}
+                style={{
+                  padding: '10px 20px',
+                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  transition: 'all 0.2s',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.transform = 'translateY(-2px)')}
+                onMouseLeave={(e) => (e.currentTarget.style.transform = 'translateY(0)')}
+              >
+                Crear Nota
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Operational Note Modal */}
+      {editingOperationalNote && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            padding: '20px',
+          }}
+          onClick={() => setEditingOperationalNote(null)}
+        >
+          <div
+            style={{
+              background: 'white',
+              borderRadius: '12px',
+              maxWidth: '600px',
+              width: '100%',
+              maxHeight: '90vh',
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ padding: '24px', borderBottom: '2px solid #e5e7eb' }}>
+              <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#1f2937', margin: 0 }}>
+                ✏️ Editar Nota Operativa
+              </h2>
+              <p style={{ fontSize: '13px', color: '#6b7280', marginTop: '8px', marginBottom: 0 }}>
+                {editingOperationalNote.passengerName} - {editingOperationalNote.contract?.contractNumber}
+              </p>
+            </div>
+            
+            <div style={{ padding: '24px', overflowY: 'auto', flex: 1 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#374151', marginBottom: '8px' }}>
+                  Nota *
+                </label>
+                <textarea
+                  value={operationalNoteForm.note}
+                  onChange={(e) => setOperationalNoteForm({ ...operationalNoteForm, note: e.target.value })}
+                  rows={8}
+                  style={{
+                    width: '100%',
+                    padding: '10px 12px',
+                    border: '2px solid #e5e7eb',
+                    borderRadius: '8px',
+                    fontSize: '14px',
+                    color: '#1f2937',
+                    resize: 'vertical',
+                    fontFamily: 'inherit',
+                  }}
+                  placeholder="Información operativa importante..."
+                />
+              </div>
+            </div>
+
+            <div style={{ padding: '20px 24px', borderTop: '2px solid #e5e7eb', display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setEditingOperationalNote(null)}
+                style={{
+                  padding: '10px 20px',
+                  background: '#f3f4f6',
+                  color: '#374151',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '500',
+                  transition: 'all 0.2s',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = '#e5e7eb')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = '#f3f4f6')}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleUpdateOperationalNote}
+                style={{
+                  padding: '10px 20px',
+                  background: '#3b82f6',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  transition: 'all 0.2s',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = '#2563eb')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = '#3b82f6')}
+              >
+                Guardar Cambios
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       <LoadingModal

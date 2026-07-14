@@ -18,3 +18,17 @@ export class CreateContractNoteDto {
   @IsNotEmpty()
   note!: string;
 }
+
+/**
+ * DTO for creating a contract note from customer profile
+ * Passenger identity is derived automatically from customer-contract participation
+ */
+export class CreateContractNoteForCustomerDto {
+  @IsString()
+  @IsNotEmpty()
+  customerId!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  note!: string;
+}

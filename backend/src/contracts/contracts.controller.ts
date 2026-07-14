@@ -31,7 +31,7 @@ import { SaveContractDraftDto } from "./dto/save-contract-draft.dto";
 import { Tenant } from "../tenant/tenant.decorator";
 import { ResolvedTenant } from "../tenant/tenant.service";
 import { ContractNotesService } from "./notes/contract-notes.service";
-import { CreateContractNoteDto } from "./dto/create-contract-note.dto";
+import { CreateContractNoteDto, CreateContractNoteForCustomerDto } from "./dto/create-contract-note.dto";
 import { UpdateContractNoteDto } from "./dto/update-contract-note.dto";
 
 @Controller("contracts")
@@ -323,6 +323,32 @@ export class ContractsController {
       dto.passengerType,
       dto.passengerIndex ?? null,
       dto.passengerName,
+      dto.note,
+      req.user.id,
+      req.user.fullName,
+    );
+  }
+
+  /**
+   * POST /contracts/:contractId/notes/for-customer
+   * Create a note for a customer's participation in a contract
+   * Passenger identity is derived automatically from customer-contract participation
+   */
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles("AGENT", "ADMIN")
+  @Post(":contractId/notes/for-customer")
+  createContractNoteForCustomer(
+    @Req()
+    req: {
+      user: { id: string; email: string; fullName: string; tenantId: string };
+    },
+    @Param("contractId") contractId: string,
+    @Body() dto: CreateContractNoteForCustomerDto,
+  ) {
+    return this.contractNotesService.createContractNoteForCustomer(
+      req.user.tenantId,
+      contractId,
+      dto.customerId,
       dto.note,
       req.user.id,
       req.user.fullName,

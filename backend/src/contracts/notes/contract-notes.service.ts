@@ -39,6 +39,93 @@ export class ContractNotesService {
   }
 
   /**
+   * Create a note for a customer's participation in a contract
+   * Automatically resolves passenger identity from customer-contract participation
+   */
+  async createContractNoteForCustomer(
+    tenantId: string,
+    contractId: string,
+    customerId: string,
+    note: string,
+    createdByUserId: string,
+    createdByName: string,
+  ) {
+    // Verify contract exists and belongs to tenant
+    await this.validateContract(tenantId, contractId);
+
+    // Fetch the contract to resolve participation
+    const contract = await this.prisma.contract.findFirst({
+      where: {
+        id: contractId,
+        tenantId,
+      },
+      select: {
+        clientId: true,
+        payload: true,
+        client: {
+          select: {
+            fullName: true,
+          },
+        },
+      },
+    });
+
+    if (!contract) {
+      throw new NotFoundException('Contrato no encontrado');
+    }
+
+    let passengerType: 'HOLDER' | 'COMPANION';
+    let passengerIndex: number | null = null;
+    let passengerName: string;
+
+    // Check if customer is the holder
+    if (contract.clientId === customerId) {
+      passengerType = 'HOLDER';
+      passengerIndex = null;
+      passengerName = contract.client.fullName;
+    } else {
+      // Check if customer is a companion
+      const payload = contract.payload as any;
+      const companions = Array.isArray(payload?.companions) ? payload.companions : [];
+      
+      let found = false;
+      for (let index = 0; index < companions.length; index++) {
+        const companion = companions[index];
+        if (companion?.selectedCustomerId === customerId) {
+          passengerType = 'COMPANION';
+          passengerIndex = index;
+          passengerName = companion.fullName || companion.name || `Acompañante ${index + 1}`;
+          found = true;
+          break;
+        }
+      }
+
+      if (!found) {
+        throw new ForbiddenException(
+          'El cliente no participa en este contrato. No se puede crear una nota operativa.',
+        );
+      }
+    }
+
+    // Create the note with resolved passenger identity
+    const contractNote = await this.prisma.contractNote.create({
+      data: {
+        contractId,
+        tenantId,
+        passengerType: passengerType!,
+        passengerIndex,
+        passengerName: passengerName!,
+        note,
+        status: 'ACTIVE',
+        createdByUserId,
+        createdByName,
+      },
+    });
+
+    return contractNote;
+  }
+
+  /**
    * List all active notes for a contract
    */
   async listContractNotes(tenantId: string, contractId: string, includeArchived = false) {

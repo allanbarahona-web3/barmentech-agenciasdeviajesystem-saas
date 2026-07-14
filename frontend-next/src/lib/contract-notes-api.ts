@@ -31,6 +31,11 @@ export interface CreateContractNoteDto {
   note: string;
 }
 
+export interface CreateContractNoteForCustomerDto {
+  customerId: string;
+  note: string;
+}
+
 export interface UpdateContractNoteDto {
   note: string;
 }
@@ -43,6 +48,17 @@ export async function createContractNote(
   data: CreateContractNoteDto
 ): Promise<ContractNote> {
   return apiPost<ContractNote>(`/contracts/${contractId}/notes`, data);
+}
+
+/**
+ * Create a new note for a customer's participation in a contract
+ * Passenger identity is derived automatically
+ */
+export async function createContractNoteForCustomer(
+  contractId: string,
+  data: CreateContractNoteForCustomerDto
+): Promise<ContractNote> {
+  return apiPost<ContractNote>(`/contracts/${contractId}/notes/for-customer`, data);
 }
 
 /**
