@@ -1,6 +1,7 @@
 // Contract Notes API Client
 
-import { apiGet, apiPost, apiDelete } from './api-client';
+import { authenticatedFetch, getStoredToken } from './auth-api';
+import { resolveApiBase } from './runtime-config';
 
 export interface ContractNote {
   id: string;
@@ -40,6 +41,38 @@ export interface UpdateContractNoteDto {
   note: string;
 }
 
+async function requestContractNotes<T>(
+  path: string,
+  options: RequestInit = {}
+): Promise<T> {
+  const apiBase = resolveApiBase();
+  const token = getStoredToken();
+
+  if (!apiBase) {
+    throw new Error('No hay API configurada.');
+  }
+
+  if (!token) {
+    throw new Error('Sesion no activa.');
+  }
+
+  const response = await authenticatedFetch(`${apiBase}${path}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      ...(options.headers || {}),
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.message || `API Error: ${response.statusText}`);
+  }
+
+  return response.json();
+}
+
 /**
  * Create a new note for a contract passenger
  */
@@ -47,7 +80,10 @@ export async function createContractNote(
   contractId: string,
   data: CreateContractNoteDto
 ): Promise<ContractNote> {
-  return apiPost<ContractNote>(`/contracts/${contractId}/notes`, data);
+  return requestContractNotes<ContractNote>(`/contracts/${contractId}/notes`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
 }
 
 /**
@@ -58,7 +94,13 @@ export async function createContractNoteForCustomer(
   contractId: string,
   data: CreateContractNoteForCustomerDto
 ): Promise<ContractNote> {
-  return apiPost<ContractNote>(`/contracts/${contractId}/notes/for-customer`, data);
+  return requestContractNotes<ContractNote>(
+    `/contracts/${contractId}/notes/for-customer`,
+    {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }
+  );
 }
 
 /**
@@ -68,9 +110,11 @@ export async function listContractNotes(
   contractId: string,
   includeArchived = false
 ): Promise<ContractNote[]> {
-  return apiGet<ContractNote[]>(`/contracts/${contractId}/notes`, {
-    params: { includeArchived },
-  });
+  const params = new URLSearchParams({ includeArchived: String(includeArchived) });
+  return requestContractNotes<ContractNote[]>(
+    `/contracts/${contractId}/notes?${params.toString()}`,
+    { method: 'GET' }
+  );
 }
 
 /**
@@ -79,7 +123,10 @@ export async function listContractNotes(
 export async function listCustomerOperationalNotes(
   customerId: string
 ): Promise<ContractNote[]> {
-  return apiGet<ContractNote[]>(`/contracts/operational-notes/customer/${customerId}`);
+  return requestContractNotes<ContractNote[]>(
+    `/contracts/operational-notes/customer/${customerId}`,
+    { method: 'GET' }
+  );
 }
 
 /**
@@ -90,7 +137,13 @@ export async function updateContractNote(
   noteId: string,
   data: UpdateContractNoteDto
 ): Promise<ContractNote> {
-  return apiPost<ContractNote>(`/contracts/${contractId}/notes/${noteId}`, data);
+  return requestContractNotes<ContractNote>(
+    `/contracts/${contractId}/notes/${noteId}`,
+    {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }
+  );
 }
 
 /**
@@ -100,5 +153,8 @@ export async function deleteContractNote(
   contractId: string,
   noteId: string
 ): Promise<{ message: string }> {
-  return apiDelete<{ message: string }>(`/contracts/${contractId}/notes/${noteId}`);
+  return requestContractNotes<{ message: string }>(
+    `/contracts/${contractId}/notes/${noteId}`,
+    { method: 'DELETE' }
+  );
 }
