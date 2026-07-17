@@ -24,6 +24,7 @@ import { LoadingModal } from "@/components/loading-modal";
 import type { ExtractedPaymentData } from "@/lib/payment-verification-api";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState, Suspense } from "react";
+import { formatBusinessDate } from "@/shared/regional";
 
 type BillingModalMode = "RESERVATION" | "INSTALLMENT" | "CREDIT_NOTE" | "NONE";
 type DocumentEmailType = "RECEIPT" | "CREDIT_NOTE";
@@ -82,24 +83,6 @@ const formatDateTime = (value?: string | null): string => {
     hour: "2-digit",
     minute: "2-digit",
   });
-};
-
-const formatDate = (value?: string | null): string => {
-  const date = value ? new Date(value) : null;
-  if (!date || Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleDateString("es-CR", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
-};
-
-const formatVoucherDate = (value?: string | null): string => {
-  const raw = String(value || "").trim();
-  if (!raw) return "-";
-  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!match) return raw;
-  return `${match[3]}/${match[2]}/${match[1]}`;
 };
 
 const statusBadgeClassName = (value?: string | null): string => {
@@ -1067,7 +1050,7 @@ function BillingContractAccountContent() {
                       </strong>
                       {account.invoice.travel.departureDate && account.invoice.travel.returnDate ? (
                         <span style={{ fontSize: '13px', color: '#075985', fontWeight: 500 }}>
-                          {formatDate(account.invoice.travel.departureDate)} → {formatDate(account.invoice.travel.returnDate)}
+                          {formatBusinessDate(account.invoice.travel.departureDate)} → {formatBusinessDate(account.invoice.travel.returnDate)}
                         </span>
                       ) : null}
                     </div>
@@ -1199,7 +1182,7 @@ function BillingContractAccountContent() {
                   {account.payments.map((payment) => (
                     <tr key={payment.id}>
                       <td>{formatDateTime(payment.reportedAt)}</td>
-                      <td>{formatVoucherDate(payment.voucherDate)}</td>
+                      <td>{formatBusinessDate(payment.voucherDate || "")}</td>
                       <td>{paymentTypeLabel(payment.type)}</td>
                       <td>{formatMoney(payment.amount)}</td>
                       <td>

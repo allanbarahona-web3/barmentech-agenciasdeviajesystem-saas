@@ -5,6 +5,7 @@ import { getStoredToken } from '@/lib/auth-api';
 import { resolveApiBase } from '@/lib/runtime-config';
 import { ConfirmModal } from '@/components/confirm-modal';
 import { LoadingModal } from '@/components/loading-modal';
+import { formatBusinessDate, toLocalDateIso } from '@/shared/regional';
 
 interface InternalTrip {
   id: string;
@@ -30,15 +31,6 @@ interface InternalTripsListProps {
   trips: InternalTrip[];
   onTripsUpdated?: () => void;
 }
-
-const formatDate_ = (dateString: string): string => {
-  try {
-    const date = new Date(dateString);
-    return date.toLocaleDateString("es-CR", { day: "2-digit", month: "short", year: "numeric" });
-  } catch {
-    return "-";
-  }
-};
 
 const formatPrice = (price: number | string | null | undefined, currency: string): string => {
   if (price === null || price === undefined) return "Sin precio";
@@ -153,8 +145,8 @@ export function InternalTripsList({ trips, onTripsUpdated }: InternalTripsListPr
     setFormData({
       name: trip.name,
       destination: trip.destination,
-      departureDate: new Date(trip.departureDate).toISOString().split('T')[0],
-      returnDate: new Date(trip.returnDate).toISOString().split('T')[0],
+      departureDate: toLocalDateIso(trip.departureDate),
+      returnDate: toLocalDateIso(trip.returnDate),
       capacity: String(trip.capacity),
       price: String(trip.price),
       minReservation: trip.minReservation ? String(trip.minReservation) : '',
@@ -401,7 +393,7 @@ export function InternalTripsList({ trips, onTripsUpdated }: InternalTripsListPr
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 12 }}>
               <span style={{ fontSize: "1rem" }}>📅</span>
               <span style={{ color: "#6b7280", fontSize: "0.9rem" }}>
-                {formatDate_(trip.departureDate)} - {formatDate_(trip.returnDate)}
+                {formatBusinessDate(trip.departureDate)} - {formatBusinessDate(trip.returnDate)}
               </span>
             </div>
 

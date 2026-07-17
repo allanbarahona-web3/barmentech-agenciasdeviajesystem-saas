@@ -10,6 +10,7 @@ import { resolveApiBase } from '@/lib/runtime-config';
 import { PageLoader } from '@/components/loading-spinner';
 import { ConfirmModal } from '@/components/confirm-modal';
 import { LoadingModal } from '@/components/loading-modal';
+import { toLocalDateIso } from '@/shared/regional';
 
 interface InternalTrip {
   id: string;
@@ -143,8 +144,8 @@ export default function EditInternalTripPage() {
         setName(data.name);
         setDestination(data.destination);
         setDescription(data.description || '');
-        setDepartureDate(new Date(data.departureDate).toISOString().split('T')[0]);
-        setReturnDate(new Date(data.returnDate).toISOString().split('T')[0]);
+        setDepartureDate(toLocalDateIso(data.departureDate));
+        setReturnDate(toLocalDateIso(data.returnDate));
         setDepartureTime(data.departureTime || '');
         setReturnTime(data.returnTime || '');
         setCapacity(String(data.capacity));

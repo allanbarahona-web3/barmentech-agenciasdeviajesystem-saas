@@ -6,6 +6,7 @@ import { getStoredSession, getStoredToken } from "@/lib/auth-api";
 import { approveAndSendBillingReceipt } from "@/lib/billing-api";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { formatBusinessDate } from "@/shared/regional";
 
 const formatMoney = (value: number): string => `USD ${value.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}`;
 
@@ -178,7 +179,7 @@ export default function PendingReceiptsPage() {
                     <td>
                       <strong style={{ color: "#10b981" }}>{formatMoney(receipt.amount)}</strong>
                     </td>
-                    <td>{formatDateTime(receipt.paymentDate)}</td>
+                    <td>{formatBusinessDate(receipt.paymentDate)}</td>
                     <td>{formatDateTime(receipt.issuedAt)}</td>
                     <td>
                       <div className="history-actions">

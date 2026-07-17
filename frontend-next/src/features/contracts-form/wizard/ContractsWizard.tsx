@@ -20,9 +20,9 @@ import {
   getDateRangeValidityMessage, 
   getItineraryValidityMessage,
   syncTourDates,
-  applyMoneyDerivedValues,
-  toLocalDateIso
+  applyMoneyDerivedValues
 } from "@/features/contracts-form/utils";
+import { toLocalDateIso } from "@/shared/regional";
 import type { ContractFormState } from "@/features/contracts-form/types";
 import type { TravelPackage } from "@/lib/travel-packages-api";
 import { getContractDraft, reserveNextContractNumber, saveContractDraft, archiveContract } from "@/lib/contracts-api";

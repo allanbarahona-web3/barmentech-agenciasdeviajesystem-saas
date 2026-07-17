@@ -8,15 +8,7 @@ import { getStoredSession, getHomeRouteForRole } from "@/lib/auth-api";
 import { getAvailableTravelPackages, type TravelPackage } from "@/lib/travel-packages-api";
 import { ConfirmModal } from "@/components/confirm-modal";
 import { PageLoader } from "@/components/loading-spinner";
-
-const formatDate = (dateString: string): string => {
-  try {
-    const date = new Date(dateString);
-    return date.toLocaleDateString("es-CR", { day: "2-digit", month: "short", year: "numeric" });
-  } catch {
-    return "-";
-  }
-};
+import { formatBusinessDate } from "@/shared/regional";
 
 const formatPrice = (price: number | string | null | undefined, currency: string): string => {
   if (price === null || price === undefined) return "Sin precio";
@@ -273,7 +265,7 @@ function TripsPageContent() {
                   <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 12 }}>
                     <span style={{ fontSize: "1rem" }}>📅</span>
                     <span style={{ color: "#6b7280", fontSize: "0.9rem" }}>
-                      {formatDate(pkg.departureDate)} - {formatDate(pkg.returnDate)}
+                      {formatBusinessDate(pkg.departureDate)} - {formatBusinessDate(pkg.returnDate)}
                     </span>
                   </div>
 

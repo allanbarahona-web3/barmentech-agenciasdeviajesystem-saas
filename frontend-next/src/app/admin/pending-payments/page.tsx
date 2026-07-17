@@ -13,6 +13,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import AttachmentViewer from "@/components/attachment-viewer";
 import { LoadingModal } from "@/components/loading-modal";
+import { formatBusinessDate } from "@/shared/regional";
 
 const formatMoney = (value: number): string => `USD ${value.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}`;
 
@@ -30,15 +31,6 @@ type ViewerAttachment = {
   originalFileName: string;
   url: string;
   mimeType: string;
-};
-
-const formatDate = (value: string): string => {
-  try {
-    const date = new Date(value);
-    return date.toLocaleDateString("es-CR", { year: "numeric", month: "short", day: "numeric" });
-  } catch {
-    return "-";
-  }
 };
 
 export default function PendingPaymentsPage() {
@@ -216,7 +208,7 @@ export default function PendingPaymentsPage() {
                             {payment.travel.departureDate && payment.travel.returnDate ? (
                               <div style={{ display: "flex", alignItems: "center", gap: "4px", marginTop: "2px" }}>
                                 <span>📅</span>
-                                <span>{formatDate(payment.travel.departureDate)} → {formatDate(payment.travel.returnDate)}</span>
+                                <span>{formatBusinessDate(payment.travel.departureDate)} → {formatBusinessDate(payment.travel.returnDate)}</span>
                               </div>
                             ) : null}
                           </div>

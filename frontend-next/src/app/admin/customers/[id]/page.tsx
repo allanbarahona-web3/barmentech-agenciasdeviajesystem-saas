@@ -12,6 +12,7 @@ import { CustomerForm, CustomerEditModal, CustomerDocumentUploadModal } from '@/
 import AttachmentViewer from '@/components/attachment-viewer';
 import { getContractFiles } from '@/lib/contracts-api';
 import { listCustomerOperationalNotes, createContractNoteForCustomer, updateContractNote, deleteContractNote, type ContractNote } from '@/lib/contract-notes-api';
+import { formatBusinessDate } from '@/shared/regional';
 
 export default function CustomerProfilePage() {
   const router = useRouter();
@@ -150,23 +151,6 @@ export default function CustomerProfilePage() {
       hour: '2-digit',
       minute: '2-digit',
     });
-  }
-
-  function formatTravelDates(startDate: string | null, endDate: string | null): string {
-    if (!startDate || !endDate) return 'Fechas no disponibles';
-    
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    
-    const formatShortDate = (date: Date) => {
-      return date.toLocaleDateString('es-ES', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-      });
-    };
-    
-    return `${formatShortDate(start)} - ${formatShortDate(end)}`;
   }
 
   const closeViewer = () => {
@@ -1050,7 +1034,7 @@ export default function CustomerProfilePage() {
                   {formatCurrency(financialSummary.lastPaymentAmount || 0, financialSummary.currency)}
                 </div>
                 <div style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>
-                  {formatDate(financialSummary.lastPaymentDate)}
+                  {formatBusinessDate(financialSummary.lastPaymentDate)}
                 </div>
               </div>
             )}
@@ -1072,7 +1056,7 @@ export default function CustomerProfilePage() {
                   {financialSummary.lastContractNumber}
                 </div>
                 <div style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>
-                  {formatDate(financialSummary.lastContractDate)}
+                  {formatBusinessDate(financialSummary.lastContractDate)}
                 </div>
               </div>
             )}
@@ -1166,7 +1150,7 @@ export default function CustomerProfilePage() {
                     {note.contract && (
                       <div style={{ fontSize: '13px', color: '#6b7280', marginBottom: '8px' }}>
                         <strong>Contrato:</strong> {note.contract.contractNumber} - {note.contract.destination}
-                        {note.contract.startDate && ` (${formatDate(note.contract.startDate.toString())})`}
+                        {note.contract.startDate && ` (${formatBusinessDate(note.contract.startDate.toString())})`}
                       </div>
                     )}
                   </div>
@@ -1287,7 +1271,7 @@ export default function CustomerProfilePage() {
                   {customer.dateOfBirth && (
                     <div>
                       <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '2px' }}>Fecha de Nacimiento</div>
-                      <div style={{ fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>{formatDate(customer.dateOfBirth)}</div>
+                      <div style={{ fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>{formatBusinessDate(customer.dateOfBirth)}</div>
                     </div>
                   )}
                   {customer.nationality && (
@@ -1410,13 +1394,13 @@ export default function CustomerProfilePage() {
                   {customer.lastContactDate && (
                     <div>
                       <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '2px' }}>Último Contacto</div>
-                      <div style={{ fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>{formatDate(customer.lastContactDate)}</div>
+                      <div style={{ fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>{formatBusinessDate(customer.lastContactDate)}</div>
                     </div>
                   )}
                   {customer.nextFollowUpDate && (
                     <div>
                       <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '2px' }}>Próximo Seguimiento</div>
-                      <div style={{ fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>{formatDate(customer.nextFollowUpDate)}</div>
+                      <div style={{ fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>{formatBusinessDate(customer.nextFollowUpDate)}</div>
                     </div>
                   )}
                   {customer.tags && (
@@ -1719,7 +1703,9 @@ export default function CustomerProfilePage() {
                       {contract.travelName}
                     </td>
                     <td style={{ padding: '14px 16px', fontSize: '14px', color: '#6b7280' }}>
-                      {formatTravelDates(contract.startDate, contract.endDate)}
+                      {contract.startDate && contract.endDate
+                        ? `${formatBusinessDate(contract.startDate)} - ${formatBusinessDate(contract.endDate)}`
+                        : 'Fechas no disponibles'}
                     </td>
                     <td style={{ padding: '14px 16px', fontSize: '14px', color: '#6b7280', textAlign: 'center' }}>
                       {contract.participantCount}

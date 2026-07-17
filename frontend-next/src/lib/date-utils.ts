@@ -1,14 +1,7 @@
+import { formatBusinessDate } from '@/shared/regional';
+
 export function formatDate(dateString: string): string {
-  try {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('es-CR', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  } catch (e) {
-    return dateString;
-  }
+  return formatBusinessDate(dateString);
 }
 
 export function formatDateTime(dateString: string): string {

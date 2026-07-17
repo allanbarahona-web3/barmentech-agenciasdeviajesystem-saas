@@ -9,18 +9,9 @@ import { PageLoader } from "@/components/loading-spinner";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { formatBusinessDate } from "@/shared/regional";
 
 const formatMoney = (value: number) => `USD ${Number.isFinite(value) ? value.toFixed(2) : "0.00"}`;
-
-const formatDate = (value?: string | null): string => {
-  const date = value ? new Date(value) : null;
-  if (!date || Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleDateString("es-CR", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
-};
 
 export default function BillingPage() {
   const router = useRouter();
@@ -246,7 +237,7 @@ export default function BillingPage() {
                     </span>
                   </td>
                   <td>
-                    <div>{formatDate(item.paymentDueDate)}</div>
+                    <div>{formatBusinessDate(item.paymentDueDate || "")}</div>
                     {item.isOverdue ? <div className="history-col-muted">{item.overdueDays} dia(s) vencida</div> : null}
                   </td>
                   <td>{formatMoney(item.amounts.total)}</td>

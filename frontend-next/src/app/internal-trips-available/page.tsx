@@ -8,6 +8,7 @@ import { getStoredSession, getStoredToken } from '@/lib/auth-api';
 import { resolveApiBase } from '@/lib/runtime-config';
 import { ConfirmModal } from '@/components/confirm-modal';
 import { PageLoader } from '@/components/loading-spinner';
+import { formatBusinessDate } from '@/shared/regional';
 
 interface InternalTrip {
   id: string;
@@ -24,15 +25,6 @@ interface InternalTrip {
   status: string;
   createdAt: string;
 }
-
-const formatDate = (dateString: string): string => {
-  try {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('es-CR', { day: '2-digit', month: 'short', year: 'numeric' });
-  } catch {
-    return '-';
-  }
-};
 
 const formatPrice = (price: number | string | null | undefined, currency: string): string => {
   if (price === null || price === undefined) return 'Sin precio';
@@ -283,10 +275,10 @@ export default function InternalTripsAvailablePage() {
                   {/* Dates */}
                   <div style={{ marginBottom: 12, fontSize: 13, color: '#6b7280' }}>
                     <p style={{ margin: '0 0 4px 0' }}>
-                      📅 Salida: <strong>{formatDate(trip.departureDate)}</strong>
+                      📅 Salida: <strong>{formatBusinessDate(trip.departureDate)}</strong>
                     </p>
                     <p style={{ margin: '0 0 4px 0' }}>
-                      📅 Retorno: <strong>{formatDate(trip.returnDate)}</strong>
+                      📅 Retorno: <strong>{formatBusinessDate(trip.returnDate)}</strong>
                     </p>
                   </div>
 

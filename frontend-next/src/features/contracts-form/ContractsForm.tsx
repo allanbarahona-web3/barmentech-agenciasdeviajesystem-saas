@@ -9,7 +9,6 @@ import {
   addMinor,
   applyMoneyDerivedValues,
   createInitialFormState,
-  toLocalDateIso,
   normalizeMoneyInputValue,
   removeCompanion,
   removeCustomItineraryItem,

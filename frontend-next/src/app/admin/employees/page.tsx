@@ -7,6 +7,7 @@ import { useRouter } from 'next/navigation';
 import AttachmentViewer from '@/components/attachment-viewer';
 import { LoadingModal } from '@/components/loading-modal';
 import { ConfirmModal } from '@/components/confirm-modal';
+import { formatBusinessDate, toLocalDateIso } from '@/shared/regional';
 import {
   getEmployees,
   getEmployee,
@@ -155,21 +156,17 @@ export default function EmployeesPage() {
           setFormData({
             fullName: emp.fullName,
             documentId: emp.documentId,
-            dateOfBirth: emp.dateOfBirth
-              ? new Date(emp.dateOfBirth).toISOString().split('T')[0]
-              : '',
+            dateOfBirth: emp.dateOfBirth ? toLocalDateIso(String(emp.dateOfBirth)) : '',
             email: emp.email,
             phone: emp.phone || '',
             address: emp.address || '',
-            hireDate: new Date(emp.hireDate).toISOString().split('T')[0],
+            hireDate: toLocalDateIso(String(emp.hireDate)),
             employmentType: emp.employmentType,
             position: emp.position,
             department: emp.department || '',
             monthlySalary: Number(emp.monthlySalary),
             status: emp.status,
-            terminationDate: emp.terminationDate
-            ? new Date(emp.terminationDate).toISOString().split('T')[0]
-            : '',
+            terminationDate: emp.terminationDate ? toLocalDateIso(String(emp.terminationDate)) : '',
           });
         }
 
@@ -1334,7 +1331,7 @@ export default function EmployeesPage() {
                 )}
                 <div>
                   <strong>Fecha de Ingreso:</strong>{' '}
-                  {new Date(selectedEmployee.hireDate).toLocaleDateString('es-CR')}
+                  {formatBusinessDate(String(selectedEmployee.hireDate))}
                 </div>
                 <div>
                   <strong>Estado:</strong>{' '}
@@ -1366,7 +1363,7 @@ export default function EmployeesPage() {
                 {selectedEmployee.terminationDate && (
                 <div>
                 <strong>Fecha de Terminación:</strong>{' '}
-                  {new Date(selectedEmployee.terminationDate).toLocaleDateString('es-CR')}
+                  {formatBusinessDate(String(selectedEmployee.terminationDate))}
               </div>
           )}
 

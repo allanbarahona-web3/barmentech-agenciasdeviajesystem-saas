@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic';
 
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { formatBusinessDate } from "@/shared/regional";
 import { getStoredSession, getHomeRouteForRole } from "@/lib/auth-api";
 import {
   getCurrentExchangeRate,
@@ -342,12 +343,6 @@ export default function AdminExchangeRatePage() {
     }
   };
 
-  const formatDate = (dateStr: string) => {
-    // Parse date as local time to avoid timezone conversion issues
-    const [year, month, day] = dateStr.split('T')[0].split('-');
-    return `${day}/${month}/${year}`;
-  };
-
   const formatTimestamp = (dateStr: string) => {
     const date = new Date(dateStr);
     const day = String(date.getDate()).padStart(2, '0');
@@ -403,7 +398,7 @@ export default function AdminExchangeRatePage() {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 20 }}>
             <div style={{ background: "rgba(255,255,255,0.15)", borderRadius: 8, padding: 16, backdropFilter: "blur(10px)" }}>
               <div style={{ fontSize: "0.85rem", opacity: 0.9, marginBottom: 6 }}>📅 Fecha</div>
-              <div style={{ fontSize: "1.3rem", fontWeight: "bold" }}>{formatDate(currentRate.date)}</div>
+              <div style={{ fontSize: "1.3rem", fontWeight: "bold" }}>{formatBusinessDate(currentRate.date)}</div>
             </div>
             <div style={{ background: "rgba(255,255,255,0.15)", borderRadius: 8, padding: 16, backdropFilter: "blur(10px)" }}>
               <div style={{ fontSize: "0.85rem", opacity: 0.9, marginBottom: 6 }}>💰 TC Compra</div>
@@ -637,7 +632,7 @@ export default function AdminExchangeRatePage() {
               <tbody>
                 {history.map((rate) => (
                   <tr key={rate.id} style={{ borderBottom: "1px solid #e5e7eb" }}>
-                    <td style={{ padding: "12px 16px" }}>{formatDate(rate.date)}</td>
+                    <td style={{ padding: "12px 16px" }}>{formatBusinessDate(rate.date)}</td>
                     <td style={{ padding: "12px 16px", color: "#10b981", fontWeight: "bold" }}>
                       ₡{rate.buyRate.toFixed(4)}
                     </td>

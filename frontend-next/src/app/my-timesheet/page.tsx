@@ -9,6 +9,7 @@ import { canViewTimesheet } from '@/lib/attendance-permissions';
 import { getAttendanceMySummary, getAttendanceMyEntries } from '@/lib/attendance-api';
 import { LoadingModal } from '@/components/loading-modal';
 import { CorrectionsModal } from '@/components/corrections-modal';
+import { formatBusinessDate } from '@/shared/regional';
 
 const isoDate = (d: Date) => d.toISOString().slice(0, 10);
 
@@ -153,7 +154,7 @@ export default function MyTimesheetPage() {
       <section className="rounded-xl border border-gray-200 bg-white p-5 overflow-x-auto">
         <h2 className="text-lg font-semibold text-gray-900 mb-3">Marcajes del periodo</h2>
         <p className="text-sm text-gray-500 mb-3">
-          {appliedDateRange.startDate} → {appliedDateRange.endDate}
+          {formatBusinessDate(appliedDateRange.startDate)} → {formatBusinessDate(appliedDateRange.endDate)}
         </p>
         {loading ? <p className="text-sm text-gray-600">Cargando...</p> : null}
         <table className="min-w-full text-sm">
@@ -171,7 +172,7 @@ export default function MyTimesheetPage() {
             {(entries || []).map((entry) => (
               <tr key={entry.id} className="border-b border-gray-100 text-gray-800">
                 <td className="py-2 pr-3">
-                  {new Date(entry.date).toLocaleDateString()}
+                  {formatBusinessDate(entry.date)}
                 </td>
                 <td className="py-2 pr-3 font-medium">{entry.type}</td>
                 <td className="py-2 pr-3">{new Date(entry.clockIn).toLocaleTimeString()}</td>

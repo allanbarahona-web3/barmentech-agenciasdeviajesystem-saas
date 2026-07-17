@@ -7,17 +7,9 @@ import { getBillingDashboardMetrics, type DashboardMetrics } from "@/lib/billing
 import { ExchangeRateChecker } from "@/components/exchange-rate-checker";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { formatBusinessDate } from "@/shared/regional";
 
 const formatMoney = (value: number): string => `USD ${value.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}`;
-
-const formatDate = (value: string): string => {
-  try {
-    const date = new Date(value);
-    return date.toLocaleDateString("es-CR", { year: "numeric", month: "short", day: "numeric" });
-  } catch {
-    return "-";
-  }
-};
 
 const getTodayISO = (): string => {
   const today = new Date();
@@ -336,7 +328,7 @@ export default function AdminDashboardPage() {
                             }}
                             title={`${day.count} pagos - ${formatMoney(day.total)}`}
                           />
-                          <div style={{ fontSize: "10px", color: "#9ca3af", marginTop: "4px" }}>{formatDate(day.day).split(" ")[0]}</div>
+                          <div style={{ fontSize: "10px", color: "#9ca3af", marginTop: "4px" }}>{formatBusinessDate(day.day)}</div>
                         </div>
                       );
                     })}

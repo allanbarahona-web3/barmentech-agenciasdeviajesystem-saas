@@ -14,15 +14,7 @@ import {
 import { ConfirmModal } from "@/components/confirm-modal";
 import { LoadingModal } from "@/components/loading-modal";
 import { PageLoader } from "@/components/loading-spinner";
-
-const formatDate = (dateString: string): string => {
-  try {
-    const date = new Date(dateString);
-    return date.toLocaleDateString("es-CR", { day: "2-digit", month: "short", year: "numeric" });
-  } catch {
-    return "-";
-  }
-};
+import { formatBusinessDate, toLocalDateIso } from "@/shared/regional";
 
 const formatPrice = (price: number | string | null | undefined, currency: string): string => {
   if (price === null || price === undefined) return "Sin precio";
@@ -196,8 +188,8 @@ export function TravelPackagesManager({ travelType, title, icon }: TravelPackage
     setEditingPackage(pkg);
     setName(pkg.name);
     setDestination(pkg.destination);
-    setDepartureDate(pkg.departureDate.split("T")[0]);
-    setReturnDate(pkg.returnDate.split("T")[0]);
+    setDepartureDate(toLocalDateIso(pkg.departureDate));
+    setReturnDate(toLocalDateIso(pkg.returnDate));
     setCapacity(String(pkg.capacity));
     setPackagePrice(pkg.packagePrice ? String(pkg.packagePrice) : "");
     setMinReservation(pkg.minReservation ? String(pkg.minReservation) : "");
@@ -473,11 +465,11 @@ export function TravelPackagesManager({ travelType, title, icon }: TravelPackage
                       <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 16 }}>
                         <div style={{ display: "flex", gap: 8, fontSize: 13, color: "#6b7280" }}>
                           <span style={{ fontWeight: 500 }}>📅 Salida:</span>
-                          <span>{formatDate(pkg.departureDate)}</span>
+                          <span>{formatBusinessDate(pkg.departureDate)}</span>
                         </div>
                         <div style={{ display: "flex", gap: 8, fontSize: 13, color: "#6b7280" }}>
                           <span style={{ fontWeight: 500 }}>📅 Regreso:</span>
-                          <span>{formatDate(pkg.returnDate)}</span>
+                          <span>{formatBusinessDate(pkg.returnDate)}</span>
                         </div>
                       </div>
 

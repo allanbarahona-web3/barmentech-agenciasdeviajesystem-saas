@@ -1,4 +1,5 @@
 import { ContractFormState } from "@/features/contracts-form/types";
+import { formatBusinessDate } from "@/shared/regional";
 
 /**
  * Helper functions for HTML generation.
@@ -13,13 +14,7 @@ export const esc = (value: unknown): string =>
     .replace(/\"/g, "&quot;")
     .replace(/'/g, "&#39;");
 
-export const formatDate = (isoDate: string): string =>
-{
-  if (!isoDate) return "";
-  const [year, month, day] = isoDate.split("-");
-  if (!year || !month || !day) return isoDate;
-  return `${day}/${month}/${year}`;
-};
+export const formatDate = formatBusinessDate;
 
 export const formatMoney = (value: string): string => {
   const amount = Number.parseFloat(String(value || "").trim());

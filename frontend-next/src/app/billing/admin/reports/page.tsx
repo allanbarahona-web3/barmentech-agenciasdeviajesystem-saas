@@ -8,6 +8,7 @@ import { ToastNotification, useToast } from "@/components/toast-notification";
 import { PageLoader } from "@/components/loading-spinner";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { formatBusinessDate } from "@/shared/regional";
 
 const formatMoney = (value: number) => `USD ${Number.isFinite(value) ? value.toFixed(2) : "0.00"}`;
 
@@ -20,16 +21,6 @@ const formatDateTime = (value: string): string => {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
-  });
-};
-
-const formatDate = (value?: string | null): string => {
-  const date = value ? new Date(value) : null;
-  if (!date || Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleDateString("es-CR", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
   });
 };
 
@@ -316,7 +307,7 @@ export default function AdminReportsPage() {
                           {item.status}
                         </span>
                       </td>
-                      <td>{formatDate(item.paymentDueDate)}</td>
+                      <td>{formatBusinessDate(item.paymentDueDate || "")}</td>
                       <td>{item.overdueDays || 0}</td>
                       <td>{formatMoney(item.amounts.grossInvoiced || item.amounts.total)}</td>
                       <td>{formatMoney(item.amounts.creditNotesApplied || 0)}</td>
@@ -355,7 +346,7 @@ export default function AdminReportsPage() {
                         <div className="history-col-name">{item.client.fullName}</div>
                         <div className="history-col-muted">{item.client.idNumber}</div>
                       </td>
-                      <td>{formatDate(item.dueDate)}</td>
+                      <td>{formatBusinessDate(item.dueDate || "")}</td>
                       <td>{item.overdueDays}</td>
                       <td>{formatMoney(item.balanceAmount)}</td>
                     </tr>
