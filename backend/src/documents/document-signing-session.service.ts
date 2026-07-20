@@ -1,4 +1,4 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, InternalServerErrorException, Logger } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { DocumentSigningService } from "./document-signing.service";
 import { DocumentSigningAuditService } from "./document-signing-audit.service";
@@ -54,13 +54,10 @@ export class DocumentSigningSessionService {
   ) {}
 
   /**
-   * Start a new signing session with the given plan
-   *
-   * @param plan Signing session plan
-   * @param context Signing session context (base URL, TTL)
-   * @returns Signing session result with generated links
+   * Persist a signing session and prepare links without sending invitations.
+   * Artifact readiness must be established before sendSigningInvitations().
    */
-  async startSigningSession(
+  async prepareSigningSession(
     plan: SigningSessionPlan,
     context: SigningSessionContext,
   ): Promise<SigningSessionResult> {
@@ -233,7 +230,25 @@ export class DocumentSigningSessionService {
         });
       }
     }
-    // Send signing emails if actor and document display name are provided
+    return {
+      generatedDocuments: plan.documents.length,
+      generatedLinks: signingLinks.length,
+      emailsSent: 0,
+      emailsFailed: 0,
+      failedEmails: [],
+      signingLinks,
+    };
+  }
+
+  /**
+   * Send invitations only after the caller has persisted and validated every
+   * artifact referenced by the prepared signing links.
+   */
+  async sendSigningInvitations(
+    plan: SigningSessionPlan,
+    context: SigningSessionContext,
+    signingLinks: readonly SigningLink[],
+  ): Promise<Pick<SigningSessionResult, "emailsSent" | "emailsFailed" | "failedEmails">> {
     let emailsSent = 0;
     const failedEmails: string[] = [];
 
@@ -279,13 +294,45 @@ export class DocumentSigningSessionService {
     }
 
     return {
-      generatedDocuments: plan.documents.length,
-      generatedLinks: signingLinks.length,
       emailsSent,
       emailsFailed: failedEmails.length,
       failedEmails,
-      signingLinks,
     };
+  }
+
+  async assertArtifactsReady(contractId: string): Promise<void> {
+    const session = await this.prisma.documentSigningSession.findFirst({
+      where: {
+        contractId,
+        status: {
+          in: ["PENDING", "IN_PROGRESS", "COMPLETED", "SIGNED"],
+        },
+      },
+      orderBy: { createdAt: "desc" },
+      include: {
+        documents: {
+          select: {
+            documentKey: true,
+            htmlObjectKey: true,
+            pdfObjectKey: true,
+          },
+        },
+      },
+    });
+
+    const missingArtifacts = session?.documents?.filter(
+      (document) => !document.htmlObjectKey || !document.pdfObjectKey,
+    );
+    if (!session?.documents?.length || missingArtifacts?.length) {
+      const missingKeys = missingArtifacts
+        ?.map((document) => document.documentKey)
+        .join(", ");
+      throw new InternalServerErrorException(
+        missingKeys
+          ? `Los artefactos requeridos no estan listos para: ${missingKeys}.`
+          : "El paquete no contiene artefactos listos para publicar.",
+      );
+    }
   }
 
   /**

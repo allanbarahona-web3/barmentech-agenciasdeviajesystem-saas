@@ -227,12 +227,7 @@ export class ContractsService {
           companyInfo,
         );
 
-        // Generate PDF using DocumentPdfService
-        const { pdfBuffer, signatureAnchors } = await this.documentPdfService.renderDocumentToBuffer(
-          documentHtml,
-        );
-
-        // Upload HTML
+        // Persist HTML before generating the dependent PDF artifact.
         const htmlKey = `${baseFolder}/${documentDef.key}.html`;
         await this.uploadToSpaces({
           objectKey: htmlKey,
@@ -240,7 +235,10 @@ export class ContractsService {
           body: Buffer.from(documentHtml, "utf-8"),
         });
 
-        // Upload PDF
+        const { pdfBuffer } = await this.documentPdfService.renderDocumentToBuffer(
+          documentHtml,
+        );
+
         const pdfKey = `${baseFolder}/${documentDef.key}.pdf`;
         await this.uploadToSpaces({
           objectKey: pdfKey,
@@ -331,8 +329,14 @@ export class ContractsService {
         const htmlObjectKey = `${baseFolder}/contract.html`;
         const pdfFileName = `${contract.contractNumber}.pdf`;
 
-        // Download PDF to get actual size
+        // Validate both stored artifacts before persisting their metadata.
+        const htmlBuffer = await this.storageService.downloadObject(htmlObjectKey);
         const pdfBuffer = await this.storageService.downloadObject(pdfObjectKey);
+        if (!htmlBuffer.length || !pdfBuffer.length) {
+          throw new InternalServerErrorException(
+            `Los artefactos del documento ${docSigning.documentKey} estan incompletos.`,
+          );
+        }
 
         await (this.prisma as any).documentSigning.update({
           where: { id: docSigning.id },
@@ -365,8 +369,14 @@ export class ContractsService {
         const htmlObjectKey = `${baseFolder}/${docSigning.documentKey}.html`;
         const pdfFileName = `${documentDef.displayName}.pdf`;
 
-        // Download PDF to get actual size
+        // Validate both stored artifacts before persisting their metadata.
+        const htmlBuffer = await this.storageService.downloadObject(htmlObjectKey);
         const pdfBuffer = await this.storageService.downloadObject(pdfObjectKey);
+        if (!htmlBuffer.length || !pdfBuffer.length) {
+          throw new InternalServerErrorException(
+            `Los artefactos del documento ${docSigning.documentKey} estan incompletos.`,
+          );
+        }
 
         await (this.prisma as any).documentSigning.update({
           where: { id: docSigning.id },
@@ -399,8 +409,14 @@ export class ContractsService {
         const htmlObjectKey = `${baseFolder}/${docSigning.documentKey}.html`;
         const pdfFileName = `${documentDef.displayName}.pdf`;
 
-        // Download PDF to get actual size
+        // Validate both stored artifacts before persisting their metadata.
+        const htmlBuffer = await this.storageService.downloadObject(htmlObjectKey);
         const pdfBuffer = await this.storageService.downloadObject(pdfObjectKey);
+        if (!htmlBuffer.length || !pdfBuffer.length) {
+          throw new InternalServerErrorException(
+            `Los artefactos del documento ${docSigning.documentKey} estan incompletos.`,
+          );
+        }
 
         await (this.prisma as any).documentSigning.update({
           where: { id: docSigning.id },
@@ -417,6 +433,8 @@ export class ContractsService {
         );
       }
     }
+
+    await this.documentSigningSessionService.assertArtifactsReady(contractId);
   }
 
   /**
@@ -700,20 +718,6 @@ export class ContractsService {
     }
     const date = new Date(value);
     return Number.isNaN(date.getTime()) ? null : date;
-  }
-
-  private buildSigningToken(
-    contractId: string,
-    expiresAt: Date,
-    signer?: { key: string; role: SigningRole; name: string },
-  ) {
-    return this.documentSigningService.buildSigningToken({
-      documentId: contractId,
-      expiresAt,
-      signerKey: signer?.key,
-      signerRole: signer?.role,
-      signerName: signer?.name,
-    });
   }
 
   private parseSigningToken(token: string, callerIp?: string | null) {
@@ -1060,25 +1064,36 @@ export class ContractsService {
       throw new BadRequestException("Este contrato ya esta firmado.");
     }
 
-    const safeTtlMinutes = Math.min(Math.max(Number(ttlMinutes) || 0, 15), 60 * 24 * 7);
-    const expiresAt = new Date(Date.now() + safeTtlMinutes * 60 * 1000);
-    const baseUrl = getPublicAppBaseUrl(this.configService, contract.tenant);
-    const participants = this.getSigningParticipantsFromPlan(contract);
+    if (!contract.tenant) {
+      throw new InternalServerErrorException(
+        "Tenant no encontrado para preparar los documentos de firma.",
+      );
+    }
 
-    const signingLinks = participants.map((participant) => {
-      const token = this.buildSigningToken(contract.id, expiresAt, {
-        key: participant.signerKey,
-        role: participant.role as SigningRole,
-        name: participant.name,
-      });
-      return {
-        signerKey: participant.signerKey,
-        signerRole: participant.role,
-        signerName: participant.name,
-        signerEmail: participant.email,
-        signingUrl: `${baseUrl}/sign-contract?token=${encodeURIComponent(token)}`,
-      };
-    });
+    const safeTtlMinutes = Math.min(
+      Math.max(Number(ttlMinutes) || 0, 15),
+      60 * 24 * 7,
+    );
+    const baseUrl = getPublicAppBaseUrl(this.configService, contract.tenant);
+    const signingPlan = this.contractSigningSessionBuilder.buildFromContract(contract);
+    const prepared = await this.documentSigningSessionService.prepareSigningSession(
+      signingPlan,
+      {
+        baseUrl,
+        ttlMinutes: safeTtlMinutes,
+        tenant: {
+          id: contract.tenant.id,
+          name: contract.tenant.name,
+          subdomain: contract.tenant.subdomain,
+          emailLogoUrl: contract.tenant.emailLogoUrl,
+          logoUrl: contract.tenant.logoUrl,
+        },
+      },
+    );
+
+    await this.populateDocumentSigningArtifacts(contract.id);
+
+    const signingLinks = prepared.signingLinks;
 
     const clientLink = signingLinks.find((item) => item.signerKey === "client") || signingLinks[0];
 
@@ -1089,7 +1104,7 @@ export class ContractsService {
       clientEmail: contract.client?.email || null,
       signingUrl: clientLink?.signingUrl || "",
       signingLinks,
-      expiresAt,
+      expiresAt: clientLink?.expiresAt || null,
     };
   }
 
@@ -1121,9 +1136,9 @@ export class ContractsService {
     // Build signing session plan
     const signingPlan = this.contractSigningSessionBuilder.buildFromContract(contract);
 
-    // Start signing session and generate signing links + send emails (Story 8)
+    // Prepare the persisted session and links without sending invitations yet.
     const baseUrl = getPublicAppBaseUrl(this.configService, tenant);
-    const session = await this.documentSigningSessionService.startSigningSession(signingPlan, {
+    const signingContext = {
       baseUrl,
       ttlMinutes: 1440, // 1 day TTL
       documentDisplayName: contract.contractNumber,
@@ -1139,21 +1154,40 @@ export class ContractsService {
         emailLogoUrl: tenant.emailLogoUrl,
         logoUrl: tenant.logoUrl,
       } : null,
-    });
+    };
+    const session = await this.documentSigningSessionService.prepareSigningSession(
+      signingPlan,
+      signingContext,
+    );
 
-    // Populate DocumentSigning artifact fields from generated documents (Story 2)
+    // No invitation can be sent until every required HTML/PDF artifact is ready.
     await this.populateDocumentSigningArtifacts(contract.id);
 
-    // Mark as signing sent
-    await (this.prisma as any).contract.update({
-      where: { id: contractId },
+    // Atomically claim invitation delivery so concurrent requests cannot send duplicates.
+    const claimed = await (this.prisma as any).contract.updateMany({
+      where: {
+        id: contractId,
+        status: CONTRACT_STATUS_PENDING_SIGNATURE,
+      },
       data: { status: "SIGNING_SENT" },
     });
+    if (claimed.count !== 1) {
+      throw new BadRequestException(
+        "Los enlaces de firma ya fueron enviados o el contrato cambio de estado.",
+      );
+    }
+
+    const invitationResult =
+      await this.documentSigningSessionService.sendSigningInvitations(
+        signingPlan,
+        signingContext,
+        session.signingLinks,
+      );
 
     return {
       contractId: contract.id,
       contractNumber: contract.contractNumber,
-      emailsSent: session.emailsSent,
+      emailsSent: invitationResult.emailsSent,
       signingLinks: session.signingLinks,
     };
   }
@@ -1263,23 +1297,22 @@ export class ContractsService {
         paymentReference
       );
       
+      htmlKey = `${baseFolder}/contract.html`;
+      await this.uploadToSpaces({
+        objectKey: htmlKey,
+        contentType: "text/html; charset=utf-8",
+        body: Buffer.from(htmlWithPaymentRef, "utf-8"),
+      });
+
       const pdfResult = await this.pdfRenderService.renderContractToBuffer(htmlWithPaymentRef);
       pdfBuffer = pdfResult.pdfBuffer;
       signatureAnchors = pdfResult.signatureAnchors;
-
       pdfKey = `${baseFolder}/contract.pdf`;
-      htmlKey = `${baseFolder}/contract.html`;
 
       await this.uploadToSpaces({
         objectKey: pdfKey,
         contentType: "application/pdf",
         body: pdfBuffer,
-      });
-
-      await this.uploadToSpaces({
-        objectKey: htmlKey,
-        contentType: "text/html; charset=utf-8",
-        body: Buffer.from(htmlWithPaymentRef, "utf-8"),
       });
     }
 

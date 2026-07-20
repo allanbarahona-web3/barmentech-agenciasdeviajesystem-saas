@@ -1,12 +1,10 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, InternalServerErrorException } from "@nestjs/common";
+import { Inject, Injectable, Logger } from "@nestjs/common";
 import { DocumentSigningSessionService } from "./document-signing-session.service";
-import { DocumentSigningService } from "./document-signing.service";
-import { DocumentDeliveryService } from "./document-delivery.service";
-import { PrismaService } from "../prisma/prisma.service";
-import { StorageService } from "../storage/storage.service";
-import { BillingService } from "../billing/billing.service";
-import { ContractSigningSessionBuilder } from "../contracts/contract-signing-session.builder";
-import { SigningParticipant } from "./signing-session/signing-session.types";
+import {
+  EVENT_PUBLISHER,
+  EventPublisher,
+  PackageCompletedEvent,
+} from "../common/events";
 
 /**
  * DocumentPackageService
@@ -34,12 +32,8 @@ export class DocumentPackageService {
 
   constructor(
     private readonly documentSigningSessionService: DocumentSigningSessionService,
-    private readonly prisma: PrismaService,
-    private readonly billingService: BillingService,
-    private readonly documentDeliveryService: DocumentDeliveryService,
-    private readonly storageService: StorageService,
-    private readonly documentSigningService: DocumentSigningService,
-    private readonly contractSigningSessionBuilder: ContractSigningSessionBuilder,
+    @Inject(EVENT_PUBLISHER)
+    private readonly eventPublisher: EventPublisher,
   ) {}
 
   /**
@@ -89,35 +83,6 @@ export class DocumentPackageService {
   }
 
   /**
-   * Retrieves the CONTRACT DocumentSigning record for a given contract.
-   * (Story 3 - Read Path Migration)
-   */
-  private async getContractDocumentSigning(contractId: string): Promise<any> {
-    const session = await (this.prisma as any).documentSigningSession.findFirst({
-      where: {
-        contractId,
-        status: {
-          in: ["PENDING", "IN_PROGRESS", "COMPLETED", "SIGNED"],
-        },
-      },
-      orderBy: { createdAt: "desc" },
-    });
-
-    if (!session) {
-      return null;
-    }
-
-    const contractDoc = await (this.prisma as any).documentSigning.findFirst({
-      where: {
-        sessionId: session.id,
-        documentType: "CONTRACT",
-      },
-    });
-
-    return contractDoc;
-  }
-
-  /**
    * Handle package completion event
    * 
    * Orchestrates post-signing workflow:
@@ -132,129 +97,9 @@ export class DocumentPackageService {
   async onPackageCompleted(documentId: string): Promise<void> {
     this.logger.log(`[package-completed] Starting post-package workflow for documentId=${documentId}`);
 
-    const CONTRACT_STATUS_SIGNED = "SIGNED";
-
-    // 1. Trigger Billing
-    try {
-      const contract = await (this.prisma as any).contract.findUnique({
-        where: { id: documentId },
-      });
-
-      if (!contract) {
-        throw new NotFoundException("Contrato no encontrado.");
-      }
-
-      await this.billingService.autoIssueAndSendInvoiceToTitular({
-        contractId: documentId,
-        actorUserId: String(contract.generatedByUserId || "system"),
-        actorEmail: String(contract.generatedByEmail || "system@local"),
-        actorName: String(contract.generatedByName || "Sistema"),
-      });
-
-      this.logger.log(`[package-completed] Billing completed for documentId=${documentId}`);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Fallo el auto-envio de factura al titular.";
-      this.logger.error(`[package-completed] Billing failed for documentId=${documentId}: ${message}`);
-      // Continue with delivery even if billing fails
-    }
-
-    // 2. Trigger Delivery
-    try {
-      const contract = await (this.prisma as any).contract.findUnique({
-        where: { id: documentId },
-        include: {
-          client: true,
-          tenant: true,
-        },
-      });
-
-      if (!contract) {
-        throw new NotFoundException("Contrato no encontrado.");
-      }
-
-      // Validate signing session completion using DocumentSigningSession framework
-      const isSessionCompleted = await this.documentSigningSessionService.isSigningSessionCompleted(contract.id);
-      const contractDoc = await this.getContractDocumentSigning(contract.id);
-      if (!isSessionCompleted || !contractDoc?.signedPdfObjectKey) {
-        throw new BadRequestException("El contrato aun no esta firmado por todas las partes.");
-      }
-
-      const tenant = contract.tenant || null;
-      if (!tenant) {
-        throw new InternalServerErrorException("Tenant no encontrado para enviar email.");
-      }
-
-      const payload = this.documentSigningService.getPayloadRecord(contract.payload);
-      const participants = this.getSigningParticipantsFromPlan(contract);
-
-      // Download signed PDF buffer (Story 3)
-      const signedPdfBuffer = await this.storageService.downloadObject(contractDoc.signedPdfObjectKey);
-      if (!signedPdfBuffer.length) {
-        throw new InternalServerErrorException("No se pudo leer el contrato firmado.");
-      }
-
-      // Deliver signed document (Story 3)
-      const deliveryResult = await this.documentDeliveryService.deliverSignedDocument({
-        contractId: contract.id,
-        contractNumber: contract.contractNumber,
-        signedPdfBuffer,
-        signedPdfFileName: contractDoc.signedPdfFileName,
-        signingParticipants: participants,
-        actorContext: {
-          userId: String(contract.generatedByUserId || "system"),
-          email: String(contract.generatedByEmail || "system@local"),
-          fullName: String(contract.generatedByName || "Sistema"),
-        },
-        tenant,
-      });
-
-      // Build dispatch log entry
-      const dispatchLogEntry = this.documentDeliveryService.buildDispatchLogEntry({
-        type: "SIGNED_AUTO_SEND",
-        contractId: contract.id,
-        contractNumber: contract.contractNumber,
-        actorContext: {
-          userId: String(contract.generatedByUserId || "system"),
-          email: String(contract.generatedByEmail || "system@local"),
-          fullName: String(contract.generatedByName || "Sistema"),
-        },
-        sentTo: deliveryResult.sentTo,
-        failedTo: deliveryResult.failedTo,
-      });
-
-      // Persist dispatch log
-      const existingDispatchLog = Array.isArray(payload?.emailDispatchLog)
-        ? payload.emailDispatchLog.filter((item: any) => item && typeof item === "object")
-        : [];
-
-      await (this.prisma as any).contract.update({
-        where: { id: contract.id },
-        data: {
-          payload: {
-            ...payload,
-            emailDispatchLog: [...existingDispatchLog, dispatchLogEntry],
-          },
-        },
-      });
-
-      this.logger.log(
-        `[package-completed] Delivery completed for documentId=${documentId} ` +
-        `(${deliveryResult.sentTo.length} sent, ${deliveryResult.failedTo.length} failed)`,
-      );
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Fallo el envio automatico del contrato firmado.";
-      this.logger.error(`[package-completed] Delivery failed for documentId=${documentId}: ${message}`);
-      // Do not fail the signing process
-    }
+    await this.documentSigningSessionService.assertArtifactsReady(documentId);
+    await this.eventPublisher.publish(new PackageCompletedEvent(documentId));
 
     this.logger.log(`[package-completed] Post-package workflow completed for documentId=${documentId}`);
-  }
-
-  /**
-   * Extract signing participants from a contract using SigningSessionPlan
-   */
-  private getSigningParticipantsFromPlan(contract: any): SigningParticipant[] {
-    const plan = this.contractSigningSessionBuilder.buildFromContract(contract);
-    return plan.documents[0]?.signers || [];
   }
 }

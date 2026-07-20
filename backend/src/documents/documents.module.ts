@@ -1,6 +1,6 @@
 import { Module, forwardRef } from "@nestjs/common";
-import { EmailModule } from "../email/email.module";
 import { BillingModule } from "../billing/billing.module";
+import { EmailModule } from "../email/email.module";
 import { StorageModule } from "../storage/storage.module";
 import { DocumentsService } from "./documents.service";
 import { DocumentEmailsService } from "./document-emails.service";
@@ -12,6 +12,11 @@ import { DocumentDeliveryService } from "./document-delivery.service";
 import { DocumentSigningSessionService } from "./document-signing-session.service";
 import { DocumentPackageService } from "./document-package.service";
 import { DocumentGenerationService } from "./document-generation.service";
+import {
+  EventsModule,
+  PackageCompletedBillingHandler,
+  PackageCompletedDeliveryHandler,
+} from "../common/events";
 
 /**
  * DocumentsModule
@@ -49,9 +54,13 @@ import { DocumentGenerationService } from "./document-generation.service";
     EmailModule,
     BillingModule,
     StorageModule,
+    EventsModule,
     forwardRef(() => require("../contracts/contracts.module").ContractsModule),
   ],
   providers: [
+    // Subscription order is significant: billing must finish before delivery.
+    PackageCompletedBillingHandler,
+    PackageCompletedDeliveryHandler,
     DocumentsService,
     DocumentEmailsService,
     DocumentPdfService,
