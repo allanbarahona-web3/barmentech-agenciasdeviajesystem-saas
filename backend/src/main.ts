@@ -60,6 +60,7 @@ async function bootstrap() {
   normalizeDatabaseUrl();
 
   const app = await NestFactory.create(AppModule);
+  app.enableShutdownHooks();
   const configService = app.get(ConfigService);
   const prisma = app.get(PrismaService);
   

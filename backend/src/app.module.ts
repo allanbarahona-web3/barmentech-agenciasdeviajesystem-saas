@@ -20,6 +20,7 @@ import { InternalTourismModule } from "./internal-tourism/internal-tourism.modul
 import { AttendanceModule } from "./attendance/attendance.module";
 import { TenantMiddleware } from "./tenant/tenant.middleware";
 import { RLSInterceptor } from "./common/interceptors/rls.interceptor";
+import { RedisModule } from "./infrastructure/redis";
 
 @Module({
   controllers: [AppController],
@@ -28,6 +29,7 @@ import { RLSInterceptor } from "./common/interceptors/rls.interceptor";
       isGlobal: true,
       envFilePath: [".env.local", ".env"],
     }),
+    RedisModule,
     ThrottlerModule.forRoot([
       {
         ttl: Number(process.env.RATE_LIMIT_TTL_MS || 60000),
