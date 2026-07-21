@@ -203,6 +203,18 @@ export class ContractsController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Get("history")
+  getContractHistory(
+    @Req()
+    req: {
+      user: { id: string; email: string; fullName: string; tenantId: string };
+    },
+    @Query() query: SearchContractsDto,
+  ) {
+    return this.contractsService.searchContracts(req.user, query);
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Get(":contractId/files")
   getContractFiles(
     @Req()
