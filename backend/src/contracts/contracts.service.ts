@@ -29,6 +29,7 @@ import { CustomerDocumentCategory, Client } from "@prisma/client";
 import { SendContractEmailDto } from "./dto/send-contract-email.dto";
 import { SendSigningEmailDto } from "./dto/send-signing-email.dto";
 import { SearchContractsDto } from "./dto/search-contracts.dto";
+import { HistoryContractItemDto } from "./dto/history-contract-item.dto";
 import { ResolvedTenant } from "../tenant/tenant.service";
 import { getPublicAppBaseUrl } from "../common/utils/tenant-url.util";
 import { SigningParticipant } from "../documents/signing-session/signing-session.types";
@@ -2413,64 +2414,17 @@ export class ContractsService {
           })
         : [];
 
-    const contractRows = items.map((item: any) => {
-        const payload = this.documentSigningService.getPayloadRecord(item.payload);
-        const emailDispatchLog = Array.isArray(payload?.emailDispatchLog)
-          ? payload.emailDispatchLog.filter((entry: any) => entry && typeof entry === "object")
-          : [];
-        const signedResendEntries = emailDispatchLog.filter(
-          (entry: any) =>
-            (String(entry?.type || "").toUpperCase() === "SIGNED_RESEND_MANUAL" ||
-             String(entry?.type || "").toUpperCase() === "SIGNED_AUTO_SEND") &&
-            Number(entry?.sentCount || 0) > 0,
-        );
-        const lastSignedResendEntry = signedResendEntries.length
-          ? signedResendEntries[signedResendEntries.length - 1]
-          : null;
+    const contractRows = items.map((item: any) =>
+      HistoryContractItemDto.fromContract(
+        item,
+        this.documentSigningService.getPayloadRecord(item.payload),
+        CONTRACT_STATUS_PENDING_SIGNATURE,
+      ),
+    );
 
-        return {
-          kind: "CONTRACT",
-          id: item.id,
-          draftId: null,
-          contractNumber: item.contractNumber,
-          paymentReference: item.paymentReference || null,
-          status: item.status || CONTRACT_STATUS_PENDING_SIGNATURE,
-          source: item.source || null,
-          travelPackageId: item.travelPackageId || null,
-          internalTripId: item.internalTripId || null,
-          clientFullName: item.client?.fullName || "-",
-          clientIdNumber: item.client?.idNumber || "-",
-          clientEmail: item.client?.email || "-",
-          clientPhone: item.client?.phone || "-",
-          destination: item.destination,
-          generatedByName: item.generatedByName,
-          createdAt: item.createdAt,
-          documentCount: item.documents.length,
-          signedContractResent: signedResendEntries.length > 0,
-          signedContractResentAt: lastSignedResendEntry?.createdAt || null,
-        };
-      });
-
-    const draftRows = drafts.map((draft: any) => ({
-      kind: "DRAFT",
-      id: draft.id,
-      draftId: draft.id,
-      contractNumber: draft.contractNumber,
-      status: CONTRACT_STATUS_DRAFT,
-      source: draft.source || null,
-      travelPackageId: null,
-      internalTripId: null,
-      clientFullName: draft.clientFullName || "-",
-      clientIdNumber: draft.clientIdNumber || "-",
-      clientEmail: draft.clientEmail || "-",
-      clientPhone: draft.clientPhone || "-",
-      destination: draft.destination || "-",
-      generatedByName: draft.generatedByName || "-",
-      createdAt: draft.createdAt,
-      documentCount: 0,
-      signedContractResent: false,
-      signedContractResentAt: null,
-    }));
+    const draftRows = drafts.map((draft: any) =>
+      HistoryContractItemDto.fromDraft(draft, CONTRACT_STATUS_DRAFT),
+    );
 
     const merged = [...draftRows, ...contractRows]
       .sort((a, b) => new Date(String(b.createdAt || 0)).getTime() - new Date(String(a.createdAt || 0)).getTime())
