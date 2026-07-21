@@ -1,4 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
+import { createHash } from "crypto";
+import { SIGNED_DOCUMENT_EMAIL_JOB_NAMES } from "../email/jobs";
 import { DocumentEmailsService } from "./document-emails.service";
 import { SigningParticipant } from "./signing-session/signing-session.types";
 
@@ -8,6 +10,7 @@ type DeliveryRecipient = {
   email: string;
   name: string;
   role: SigningRole;
+  jobId?: string;
 };
 
 type DeliveryResult = {
@@ -116,6 +119,9 @@ export class DocumentDeliveryService {
       pdfBase64,
       recipients,
       tenant,
+      {
+        jobName: SIGNED_DOCUMENT_EMAIL_JOB_NAMES.AUTOMATIC_DELIVERY,
+      },
     );
 
     this.logger.log(
@@ -166,6 +172,7 @@ export class DocumentDeliveryService {
    */
   async deliverSignedDocument(params: {
     contractId: string;
+    completedPackageId: string;
     contractNumber: string;
     signedPdfBuffer: Buffer;
     signedPdfFileName: string | null;
@@ -185,6 +192,7 @@ export class DocumentDeliveryService {
   }): Promise<DeliveryResult> {
     const {
       contractId,
+      completedPackageId,
       contractNumber,
       signedPdfBuffer,
       signedPdfFileName,
@@ -194,7 +202,14 @@ export class DocumentDeliveryService {
     } = params;
 
     // Resolve recipients
-    const recipients = this.resolveRecipientsFromParticipants(signingParticipants);
+    const recipients = this.resolveRecipientsFromParticipants(signingParticipants)
+      .map((recipient) => ({
+        ...recipient,
+        jobId: this.buildAutomaticDeliveryJobId(
+          completedPackageId,
+          recipient.email,
+        ),
+      }));
 
     if (!recipients.length) {
       this.logger.warn(`[delivery] No recipients for contractId=${contractId}`);
@@ -227,5 +242,17 @@ export class DocumentDeliveryService {
       sentTo,
       failedTo,
     };
+  }
+
+  private buildAutomaticDeliveryJobId(
+    completedPackageId: string,
+    recipientEmail: string,
+  ): string {
+    const recipientHash = createHash("sha256")
+      .update(recipientEmail.trim().toLowerCase())
+      .digest("hex")
+      .slice(0, 16);
+
+    return `signed-document-auto-${completedPackageId}-${recipientHash}`;
   }
 }

@@ -8,13 +8,20 @@ import {
 } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
-import { Resend } from "resend";
 import * as sharp from "sharp";
 import * as path from "path";
 import { readFile } from "fs/promises";
 import { PrismaService } from "../prisma/prisma.service";
 import { StorageService } from "../storage/storage.service";
-import { EmailService } from "../email/email.service";
+import { SendEmailOptions } from "../email/interfaces/email-options.interface";
+import {
+  BILLING_FINANCIAL_EMAIL_JOB_NAMES,
+  BILLING_FINANCIAL_EMAIL_JOB_OPTIONS,
+  BillingFinancialEmailJobName,
+  BillingFinancialEmailJobPayload,
+} from "../email/jobs";
+import { JobDispatcherService } from "../infrastructure/job-dispatcher";
+import { PLATFORM_QUEUE_KEYS } from "../infrastructure/queue";
 import { TravelPackagesService } from "../travel-packages/travel-packages.service";
 import { InternalToursService } from "../internal-tourism/internal-tours.service";
 import { formatDateForClient, formatDateTimeForClient } from "../common/request-context";
@@ -38,7 +45,7 @@ export class BillingService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
-    private readonly emailService: EmailService,
+    private readonly jobDispatcher: JobDispatcherService,
     private readonly travelPackagesService: TravelPackagesService,
     private readonly internalToursService: InternalToursService,
     private readonly storageService: StorageService,
@@ -2491,27 +2498,31 @@ export class BillingService {
     const paymentRef = String(contract.paymentReference || "N/A");
 
     // Enviar email usando EmailService centralizado
-    await this.emailService.sendEmail({
-      tenantId: tenant.id,
-      to: targetEmail,
-      subject: `Contrato ${invoice.contractNumber} - Estado de cuenta inicial - ${tenant.name}`,
-      template: 'invoice-initial',
-      templateData: {
-        clientName: String(invoice.client?.fullName || "Cliente"),
-        contractNumber: String(invoice.contractNumber || "-"),
-        invoiceNumber: String(invoice.invoiceNumber || "-"),
-        paymentReference: paymentRef,
-        currency,
-        totalAmount: amount(invoice.totalAmount),
-        invoicePdfUrl,
-        tenantName: tenant.name,
+    await this.dispatchBillingFinancialEmail(
+      BILLING_FINANCIAL_EMAIL_JOB_NAMES.AUTOMATIC_INITIAL_INVOICE,
+      {
+        tenantId: tenant.id,
+        to: targetEmail,
+        subject: `Contrato ${invoice.contractNumber} - Estado de cuenta inicial - ${tenant.name}`,
+        template: 'invoice-initial',
+        templateData: {
+          clientName: String(invoice.client?.fullName || "Cliente"),
+          contractNumber: String(invoice.contractNumber || "-"),
+          invoiceNumber: String(invoice.invoiceNumber || "-"),
+          paymentReference: paymentRef,
+          currency,
+          totalAmount: amount(invoice.totalAmount),
+          invoicePdfUrl,
+          tenantName: tenant.name,
+        },
+        triggeredBy: {
+          userId: input.actorUserId,
+          email: input.actorEmail,
+          fullName: input.actorName,
+        },
       },
-      triggeredBy: {
-        userId: input.actorUserId,
-        email: input.actorEmail,
-        fullName: input.actorName,
-      },
-    });
+      `billing-initial-invoice-${invoice.id}`,
+    );
 
     await this.logAudit({
       tenantId: contract.tenantId,
@@ -2616,27 +2627,30 @@ export class BillingService {
     const tenantName = tenant.name || "Sistema de Viajes";
 
     // Enviar email usando EmailService centralizado
-    await this.emailService.sendEmail({
-      tenantId: tenant.id,
-      to: targetEmail,
-      ...(normalizedCc ? { cc: normalizedCc } : {}),
-      subject: `💳 Nota de Crédito ${creditNote.creditNoteNumber} - ${tenantName}`,
-      template: 'credit-note-approved',
-      templateData: {
-        clientName,
-        contractNumber: String(creditNote.contractNumber || "-"),
-        creditNoteNumber: String(creditNote.creditNoteNumber || "-"),
-        amount: amountFormatted,
-        reason,
-        pdfUrl,
-        tenantName,
+    await this.dispatchBillingFinancialEmail(
+      BILLING_FINANCIAL_EMAIL_JOB_NAMES.MANUAL_CREDIT_NOTE,
+      {
+        tenantId: tenant.id,
+        to: targetEmail,
+        ...(normalizedCc ? { cc: normalizedCc } : {}),
+        subject: `💳 Nota de Crédito ${creditNote.creditNoteNumber} - ${tenantName}`,
+        template: 'credit-note-approved',
+        templateData: {
+          clientName,
+          contractNumber: String(creditNote.contractNumber || "-"),
+          creditNoteNumber: String(creditNote.creditNoteNumber || "-"),
+          amount: amountFormatted,
+          reason,
+          pdfUrl,
+          tenantName,
+        },
+        triggeredBy: {
+          userId: user.id,
+          email: user.email,
+          fullName: user.fullName,
+        },
       },
-      triggeredBy: {
-        userId: user.id,
-        email: user.email,
-        fullName: user.fullName,
-      },
-    });
+    );
 
     await this.logAudit({
       entityType: "CREDIT_NOTE",
@@ -2724,31 +2738,34 @@ export class BillingService {
     const formatAmount = (value: unknown) => `${currency} ${this.toNumber(value, 0).toFixed(2)}`;
 
     // Enviar email usando EmailService centralizado
-    await this.emailService.sendEmail({
-      tenantId: tenant.id,
-      to: targetEmail,
-      ...(normalizedCc ? { cc: normalizedCc } : {}),
-      subject: `📄 Estado de Cuenta - Contrato ${invoice.contractNumber}`,
-      template: 'contract-account-statement',
-      templateData: {
-        clientName,
-        contractNumber: String(invoice.contractNumber || "-"),
-        paymentReference: paymentRef,
-        status: statusText,
-        currency,
-        totalAmount: formatAmount(invoice.totalAmount),
-        verifiedAmount: formatAmount(invoice.verifiedAmount),
-        pendingAmount: formatAmount(invoice.pendingAmount),
-        balanceAmount: formatAmount(invoice.balanceAmount),
-        documentUrl,
-        tenantName: tenant.name,
+    await this.dispatchBillingFinancialEmail(
+      BILLING_FINANCIAL_EMAIL_JOB_NAMES.MANUAL_STATEMENT,
+      {
+        tenantId: tenant.id,
+        to: targetEmail,
+        ...(normalizedCc ? { cc: normalizedCc } : {}),
+        subject: `📄 Estado de Cuenta - Contrato ${invoice.contractNumber}`,
+        template: 'contract-account-statement',
+        templateData: {
+          clientName,
+          contractNumber: String(invoice.contractNumber || "-"),
+          paymentReference: paymentRef,
+          status: statusText,
+          currency,
+          totalAmount: formatAmount(invoice.totalAmount),
+          verifiedAmount: formatAmount(invoice.verifiedAmount),
+          pendingAmount: formatAmount(invoice.pendingAmount),
+          balanceAmount: formatAmount(invoice.balanceAmount),
+          documentUrl,
+          tenantName: tenant.name,
+        },
+        triggeredBy: {
+          userId: user.id,
+          email: user.email,
+          fullName: user.fullName,
+        },
       },
-      triggeredBy: {
-        userId: user.id,
-        email: user.email,
-        fullName: user.fullName,
-      },
-    });
+    );
 
     await this.logAudit({
       tenantId: invoice.tenantId,
@@ -4448,7 +4465,7 @@ this.logger.log(
     if (paymentSnapshot.receipt && paymentSnapshot.invoice?.client?.email) {
       try {
         const clientEmail = String(paymentSnapshot.invoice.client.email).trim();
-        this.logger.log(`[verifyPayment] Enviando recibo automático al cliente: ${clientEmail}`);
+        this.logger.log(`[verifyPayment] Encolando recibo automático al cliente.`);
 
         await this.approveAndSendReceipt(
           { ...user, role: "ADMIN" }, // Forzar rol ADMIN para permitir el primer envío
@@ -4457,9 +4474,10 @@ this.logger.log(
           undefined,
           sourceIp,
           userAgent,
+          "AUTOMATIC",
         );
 
-        this.logger.log(`[verifyPayment] ✅ Recibo enviado automáticamente a ${clientEmail}`);
+        this.logger.log(`[verifyPayment] ✅ Recibo automático encolado.`);
       } catch (emailError) {
         // No revertir la aprobación si falla el email, solo registrar el error
         this.logger.error(
@@ -4468,7 +4486,7 @@ this.logger.log(
       }
     } else {
       this.logger.warn(
-        `[verifyPayment] ⚠️ No se pudo enviar recibo: receiptId=${paymentSnapshot.receipt?.id || "N/A"}, clientEmail=${paymentSnapshot.invoice?.client?.email || "N/A"}`
+        `[verifyPayment] ⚠️ No se pudo encolar recibo: receiptId=${paymentSnapshot.receipt?.id || "N/A"}, clientEmailAvailable=${Boolean(paymentSnapshot.invoice?.client?.email)}`
       );
     }
 
@@ -4926,6 +4944,7 @@ await tx.billingClientBalance.upsert({
     ccEmail?: string,
     sourceIp?: string | null,
     userAgent?: string | null,
+    deliveryMode: "AUTOMATIC" | "MANUAL" = "MANUAL",
   ) {
     const receipt = await (this.prisma as any).billingReceipt.findUnique({
       where: { id: receiptId },
@@ -4993,30 +5012,47 @@ await tx.billingClientBalance.upsert({
     const paymentRef = String(receipt.invoice?.contract?.paymentReference || "N/A");
 
     // Enviar email usando EmailService centralizado
-    await this.emailService.sendEmail({
-      tenantId: tenant.id,
-      to: targetEmail,
-      ...(normalizedCc ? { cc: normalizedCc } : {}),
-      subject: `✅ Recibo Aprobado ${receipt.receiptNumber} - ${tenant.name}`,
-      template: 'receipt-approved',
-      templateData: {
-        clientName,
-        contractNumber: String(receipt.contractNumber || "-"),
-        receiptNumber: String(receipt.receiptNumber || "-"),
-        paymentReference: paymentRef,
-        amount: amountFormatted,
-        previousBalance: previousBalanceFormatted,
-        newBalance: newBalanceFormatted,
-        receiptPdfUrl,
-        accountStatementUrl: accountStatementUrl || undefined,
-        tenantName: tenant.name,
+    const isReservationPayment =
+      String(receipt.payment?.type || "").toUpperCase() === "RESERVATION";
+    const jobName = deliveryMode === "AUTOMATIC"
+      ? isReservationPayment
+        ? BILLING_FINANCIAL_EMAIL_JOB_NAMES.AUTOMATIC_RESERVATION_RECEIPT
+        : BILLING_FINANCIAL_EMAIL_JOB_NAMES.AUTOMATIC_PAYMENT_RECEIPT
+      : isReservationPayment
+        ? BILLING_FINANCIAL_EMAIL_JOB_NAMES.MANUAL_RESERVATION_RECEIPT
+        : BILLING_FINANCIAL_EMAIL_JOB_NAMES.MANUAL_PAYMENT_RECEIPT;
+    const jobId = deliveryMode === "AUTOMATIC"
+      ? `billing-payment-approved-${receipt.payment.id}`
+      : undefined;
+
+    await this.dispatchBillingFinancialEmail(
+      jobName,
+      {
+        tenantId: tenant.id,
+        to: targetEmail,
+        ...(normalizedCc ? { cc: normalizedCc } : {}),
+        subject: `✅ Recibo Aprobado ${receipt.receiptNumber} - ${tenant.name}`,
+        template: 'receipt-approved',
+        templateData: {
+          clientName,
+          contractNumber: String(receipt.contractNumber || "-"),
+          receiptNumber: String(receipt.receiptNumber || "-"),
+          paymentReference: paymentRef,
+          amount: amountFormatted,
+          previousBalance: previousBalanceFormatted,
+          newBalance: newBalanceFormatted,
+          receiptPdfUrl,
+          accountStatementUrl: accountStatementUrl || undefined,
+          tenantName: tenant.name,
+        },
+        triggeredBy: {
+          userId: user.id,
+          email: user.email,
+          fullName: user.fullName,
+        },
       },
-      triggeredBy: {
-        userId: user.id,
-        email: user.email,
-        fullName: user.fullName,
-      },
-    });
+      jobId,
+    );
 
     const now = new Date();
     const updated = await (this.prisma as any).billingReceipt.update({
@@ -5284,5 +5320,22 @@ await tx.billingClientBalance.upsert({
         })),
       },
     };
+  }
+
+  private async dispatchBillingFinancialEmail(
+    jobName: BillingFinancialEmailJobName,
+    options: SendEmailOptions,
+    jobId?: string,
+  ): Promise<void> {
+    await this.jobDispatcher.dispatch<BillingFinancialEmailJobPayload>({
+      queueKey: PLATFORM_QUEUE_KEYS.EMAIL,
+      jobName,
+      payload: { options },
+      metadata: { tenantId: options.tenantId },
+      options: {
+        ...BILLING_FINANCIAL_EMAIL_JOB_OPTIONS,
+        ...(jobId ? { jobId } : {}),
+      },
+    });
   }
 }

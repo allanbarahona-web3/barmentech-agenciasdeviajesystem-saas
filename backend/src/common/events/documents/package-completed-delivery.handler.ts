@@ -99,6 +99,7 @@ export class PackageCompletedDeliveryHandler
       const deliveryResult =
         await this.documentDeliveryService.deliverSignedDocument({
           contractId: contract.id,
+          completedPackageId: contractDoc.sessionId,
           contractNumber: contract.contractNumber,
           signedPdfBuffer,
           signedPdfFileName: contractDoc.signedPdfFileName,

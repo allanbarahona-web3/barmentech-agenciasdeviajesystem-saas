@@ -1,7 +1,6 @@
 import { Injectable, Logger, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
-import { EmailService } from '../email/email.service';
 import {
   EmailTemplate,
   SendEmailOptions,
@@ -11,6 +10,10 @@ import {
   CONTRACTS_EMAIL_JOB_OPTIONS,
   ContractsEmailJobName,
   ContractsEmailJobPayload,
+  SIGNED_DOCUMENT_EMAIL_JOB_NAMES,
+  SIGNED_DOCUMENT_EMAIL_JOB_OPTIONS,
+  SignedDocumentEmailJobName,
+  SignedDocumentEmailJobPayload,
 } from '../email/jobs';
 import { JobDispatcherService } from '../infrastructure/job-dispatcher';
 import { PLATFORM_QUEUE_KEYS } from '../infrastructure/queue';
@@ -41,7 +44,6 @@ export class DocumentEmailsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
-    private readonly emailService: EmailService,
     private readonly jobDispatcher: JobDispatcherService,
   ) {
     this.logger.log('✅ DocumentEmailsService inicializado');
@@ -243,11 +245,12 @@ export class DocumentEmailsService {
     documentNumber: string,
     fileName: string,
     pdfBase64: string,
-    recipients: Array<{ email: string; name: string }>,
+    recipients: Array<{ email: string; name: string; jobId?: string }>,
     tenant: { id: string; name: string; emailLogoUrl?: string | null; logoUrl?: string | null } | null | undefined,
     options?: {
       subject?: string;
       template?: EmailTemplate;
+      jobName?: SignedDocumentEmailJobName;
     },
   ): Promise<{ sentTo: string[]; failedTo: string[] }> {
     if (!tenant) {
@@ -259,34 +262,37 @@ export class DocumentEmailsService {
 
     for (const recipient of recipients) {
       try {
-        await this.emailService.sendEmail({
-          tenantId: tenant.id,
-          to: recipient.email,
-          subject: options?.subject || `✅ Contrato Firmado - ${documentNumber}`,
-          template: options?.template || 'contract-signed-confirmation',
-          templateData: {
-            recipientName: recipient.name,
-            contractNumber: documentNumber,
-            tenantName: tenant.name,
-          },
-          attachments: [
-            {
-              filename: fileName,
-              content: pdfBase64,
+        await this.dispatchSignedDocumentEmail(
+          options?.jobName || SIGNED_DOCUMENT_EMAIL_JOB_NAMES.MANUAL_RESEND,
+          {
+            tenantId: tenant.id,
+            to: recipient.email,
+            subject: options?.subject || `✅ Contrato Firmado - ${documentNumber}`,
+            template: options?.template || 'contract-signed-confirmation',
+            templateData: {
+              recipientName: recipient.name,
+              contractNumber: documentNumber,
+              tenantName: tenant.name,
             },
-          ],
-          triggeredBy: {
-            userId: user.id,
-            email: user.email,
-            fullName: user.fullName,
+            attachments: [
+              {
+                filename: fileName,
+                content: pdfBase64,
+              },
+            ],
+            triggeredBy: {
+              userId: user.id,
+              email: user.email,
+              fullName: user.fullName,
+            },
           },
-        });
+          recipient.jobId,
+        );
 
         sentTo.push(recipient.email);
-        this.logger.log(`✅ Sent signed document to ${recipient.email}`);
       } catch (error) {
         failedTo.push(recipient.email);
-        this.logger.warn(`⚠️ Failed to send signed document to ${recipient.email}: ${(error as Error).message}`);
+        this.logger.warn(`Failed to queue signed document email: ${(error as Error).message}`);
       }
     }
 
@@ -305,6 +311,23 @@ export class DocumentEmailsService {
       metadata: { tenantId: options.tenantId },
       options: {
         ...CONTRACTS_EMAIL_JOB_OPTIONS,
+        ...(jobId ? { jobId } : {}),
+      },
+    });
+  }
+
+  private async dispatchSignedDocumentEmail(
+    jobName: SignedDocumentEmailJobName,
+    options: SendEmailOptions,
+    jobId?: string,
+  ): Promise<void> {
+    await this.jobDispatcher.dispatch<SignedDocumentEmailJobPayload>({
+      queueKey: PLATFORM_QUEUE_KEYS.EMAIL,
+      jobName,
+      payload: { options },
+      metadata: { tenantId: options.tenantId },
+      options: {
+        ...SIGNED_DOCUMENT_EMAIL_JOB_OPTIONS,
         ...(jobId ? { jobId } : {}),
       },
     });
