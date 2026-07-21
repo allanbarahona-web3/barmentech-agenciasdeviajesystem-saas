@@ -24,6 +24,7 @@ import { RedisModule } from "./infrastructure/redis";
 import { QueueModule } from "./infrastructure/queue";
 import { WorkerModule } from "./infrastructure/worker";
 import { QueueEventsModule } from "./infrastructure/queue-events";
+import { JobDispatcherModule } from "./infrastructure/job-dispatcher";
 
 @Module({
   controllers: [AppController],
@@ -34,6 +35,7 @@ import { QueueEventsModule } from "./infrastructure/queue-events";
     }),
     RedisModule,
     QueueModule,
+    JobDispatcherModule,
     QueueEventsModule,
     WorkerModule,
     ThrottlerModule.forRoot([
