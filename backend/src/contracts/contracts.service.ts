@@ -2308,6 +2308,21 @@ export class ContractsService {
   }
 
   async searchContracts(_user: { id: string; email: string; fullName: string; tenantId: string }, query: SearchContractsDto) {
+    return this.findContractsForHistory(_user, query, false);
+  }
+
+  async getContractHistory(
+    user: { id: string; email: string; fullName: string; tenantId: string },
+    query: SearchContractsDto,
+  ) {
+    return this.findContractsForHistory(user, query, true);
+  }
+
+  private async findContractsForHistory(
+    _user: { id: string; email: string; fullName: string; tenantId: string },
+    query: SearchContractsDto,
+    useHistoryProjection: boolean,
+  ) {
     const q = String(query.q || "").trim();
     const limit = Math.min(Math.max(query.limit || 20, 1), 100);
     const status = String(query.status || "").trim().toUpperCase();
@@ -2375,14 +2390,46 @@ export class ContractsService {
       where,
       orderBy: { createdAt: "desc" },
       take: limit,
-      include: {
-        client: true,
-        documents: {
-          select: {
-            id: true,
-          },
-        },
-      },
+      ...(useHistoryProjection
+        ? {
+            select: {
+              id: true,
+              contractNumber: true,
+              paymentReference: true,
+              status: true,
+              source: true,
+              travelPackageId: true,
+              internalTripId: true,
+              destination: true,
+              generatedByName: true,
+              createdAt: true,
+              payload: true,
+              client: {
+                select: {
+                  fullName: true,
+                  idNumber: true,
+                  email: true,
+                  phone: true,
+                },
+              },
+              _count: {
+                select: {
+                  documents: true,
+                },
+              },
+            },
+          }
+        : {
+            include: {
+              client: true,
+              documents: {
+                select: {
+                  id: true,
+                },
+              },
+            },
+          }
+      ),
     });
 
     // Filtros para drafts
@@ -2411,6 +2458,22 @@ export class ContractsService {
             where: draftWhere,
             orderBy: { createdAt: "desc" },
             take: limit,
+            ...(useHistoryProjection
+              ? {
+                  select: {
+                    id: true,
+                    contractNumber: true,
+                    source: true,
+                    clientFullName: true,
+                    clientIdNumber: true,
+                    clientEmail: true,
+                    clientPhone: true,
+                    destination: true,
+                    generatedByName: true,
+                    createdAt: true,
+                  },
+                }
+              : {}),
           })
         : [];
 

@@ -54,7 +54,10 @@ export class HistoryContractItemDto {
       destination: item.destination,
       generatedByName: item.generatedByName,
       createdAt: item.createdAt,
-      documentCount: item.documents.length,
+      documentCount:
+        typeof item._count?.documents === "number"
+          ? item._count.documents
+          : item.documents.length,
       signedContractResent: signedResendEntries.length > 0,
       signedContractResentAt: lastSignedResendEntry?.createdAt || null,
     });

@@ -211,7 +211,7 @@ export class ContractsController {
     },
     @Query() query: SearchContractsDto,
   ) {
-    return this.contractsService.searchContracts(req.user, query);
+    return this.contractsService.getContractHistory(req.user, query);
   }
 
   @UseGuards(JwtAuthGuard)
