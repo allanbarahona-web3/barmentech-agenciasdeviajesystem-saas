@@ -334,7 +334,7 @@ export const searchContracts = async (query: {
     params.set("dateTo", query.dateTo);
   }
 
-  const result = await apiFetchJson<{ items?: HistoryContractItem[] }>(`/contracts?${params.toString()}`, {
+  const result = await apiFetchJson<{ items?: HistoryContractItem[] }>(`/contracts/history?${params.toString()}`, {
     method: "GET",
   });
 
