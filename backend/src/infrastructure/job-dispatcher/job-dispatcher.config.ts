@@ -9,6 +9,7 @@ export interface JobDispatcherConfig {
   logLevel: JobDispatcherLogLevel;
   maxBulkSize: number;
   maxDelayMs: number;
+  maxTimeoutMs: number;
 }
 
 function readBoolean(
@@ -74,6 +75,11 @@ export function getJobDispatcherConfig(
       configService,
       "JOB_DISPATCHER_MAX_DELAY_MS",
       2147483647,
+    ),
+    maxTimeoutMs: readPositiveInteger(
+      configService,
+      "JOB_DISPATCHER_MAX_TIMEOUT_MS",
+      86400000,
     ),
   };
 }

@@ -5,6 +5,7 @@ import { DocumentSigningAuditService } from "./document-signing-audit.service";
 import { DocumentSignatureFinalizationService } from "./document-signature-finalization.service";
 import { DocumentDeliveryService } from "./document-delivery.service";
 import { DocumentEmailsService } from "./document-emails.service";
+import { CONTRACTS_EMAIL_JOB_NAMES } from "../email/jobs";
 import type {
   SigningSessionPlan,
   SigningSessionResult,
@@ -282,6 +283,9 @@ export class DocumentSigningSessionService {
               minorName,
             },
             context.tenant,
+            {
+              jobName: CONTRACTS_EMAIL_JOB_NAMES.SIGNING_SESSION_INVITATION,
+            },
           );
           emailsSent += 1;
         } catch (error) {

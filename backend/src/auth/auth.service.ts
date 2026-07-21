@@ -5,7 +5,15 @@ import { compare, hash } from "bcryptjs";
 import { randomUUID, randomBytes } from "crypto";
 import { Resend } from "resend";
 import { PrismaService } from "../prisma/prisma.service";
-import { EmailService } from "../email/email.service";
+import {
+  AUTH_EMAIL_JOB_NAMES,
+  AUTH_EMAIL_JOB_OPTIONS,
+  AuthEmailJobName,
+  AuthEmailJobPayload,
+} from "../email/jobs";
+import { SendEmailOptions } from "../email/interfaces/email-options.interface";
+import { JobDispatcherService } from "../infrastructure/job-dispatcher";
+import { PLATFORM_QUEUE_KEYS } from "../infrastructure/queue";
 import { LoginDto } from "./dto/login.dto";
 import { AdminCreateUserDto } from "./dto/admin-create-user.dto";
 import { AdminUpdateUserDto } from "./dto/admin-update-user.dto";
@@ -30,7 +38,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
-    private readonly emailService: EmailService,
+    private readonly jobDispatcher: JobDispatcherService,
   ) {}
 
   /**
@@ -327,8 +335,8 @@ export class AuthService {
     // Enviar email de bienvenida con credenciales (no bloquear si falla)
     try {
       const emailResult = await this.sendWelcomeEmail(email, fullName, password, role, tenant);
-      this.logger.log(`✅ Email de bienvenida enviado a ${email} (Usuario ID: ${created.id})`);
-      this.logger.debug(`📧 Resend Response:`, JSON.stringify(emailResult, null, 2));
+      this.logger.log(`✅ Email de bienvenida encolado para ${email} (Usuario ID: ${created.id})`);
+      this.logger.debug(`📧 Queue Response:`, JSON.stringify(emailResult, null, 2));
     } catch (emailError) {
       this.logger.error(`❌ Error al enviar email de bienvenida a ${email}:`);
       this.logger.error(`Error completo:`, emailError);
@@ -509,7 +517,7 @@ export class AuthService {
     // Send password reset email
     try {
       await this.sendPasswordResetEmail(user.email, user.fullName, token, tenant);
-      this.logger.log(`[PASSWORD RESET] Email sent to ${user.email}`);
+      this.logger.log(`[PASSWORD RESET] Email queued for ${user.email}`);
     } catch (emailError) {
       this.logger.error(`[PASSWORD RESET] Failed to send email to ${user.email}:`, emailError);
       // Don't throw error to avoid revealing if email exists
@@ -677,7 +685,7 @@ export class AuthService {
 
     // Enviar email con contraseña temporal usando EmailService
     try {
-      await this.emailService.sendEmail({
+      await this.dispatchAuthEmail(AUTH_EMAIL_JOB_NAMES.ADMIN_PASSWORD_RESET, {
         tenantId: tenant.id,
         to: user.email,
         subject: `🔄 Tu contraseña ha sido restablecida - ${tenant.name}`,
@@ -690,7 +698,7 @@ export class AuthService {
         },
       });
 
-      this.logger.log(`✅ Email de reset de contraseña (admin) enviado a ${user.email} mediante EmailService`);
+      this.logger.log(`✅ Email de reset de contraseña (admin) encolado para ${user.email}`);
     } catch (emailError) {
       this.logger.error(`❌ Error al enviar email de reset (admin) a ${user.email}:`, emailError);
       // No lanzamos error para que el admin al menos vea la contraseña temporal en respuesta
@@ -782,6 +790,24 @@ export class AuthService {
   /**
    * Send welcome email with credentials to new user
    */
+  private async dispatchAuthEmail(
+    jobName: AuthEmailJobName,
+    options: SendEmailOptions,
+  ): Promise<{ success: true; jobId: string | undefined }> {
+    const job = await this.jobDispatcher.dispatch<AuthEmailJobPayload>({
+      queueKey: PLATFORM_QUEUE_KEYS.EMAIL,
+      jobName,
+      payload: { options },
+      metadata: { tenantId: options.tenantId },
+      options: AUTH_EMAIL_JOB_OPTIONS,
+    });
+
+    return {
+      success: true,
+      jobId: job.id,
+    };
+  }
+
   /**
    * Enviar email de bienvenida con credenciales (usando EmailService centralizado)
    */
@@ -811,7 +837,7 @@ export class AuthService {
     const roleLabel = roleLabels[role] || role;
 
     // Enviar email usando el servicio centralizado
-    const result = await this.emailService.sendEmail({
+    const result = await this.dispatchAuthEmail(AUTH_EMAIL_JOB_NAMES.WELCOME, {
       tenantId: tenant.id,
       to: email,
       subject: `🎉 Bienvenido a ${tenant.name} - Credenciales de Acceso`,
@@ -826,7 +852,7 @@ export class AuthService {
       },
     });
 
-    this.logger.log(`✅ Email de bienvenida enviado a ${email} mediante EmailService`);
+    this.logger.log(`✅ Email de bienvenida encolado para ${email}`);
     return result;
 
     /* CÓDIGO ANTIGUO COMENTADO PARA ROLLBACK:
@@ -850,7 +876,7 @@ export class AuthService {
     const expirationMinutes = 5; // Tokens expiran en 5 minutos
 
     // Enviar email usando el servicio centralizado
-    await this.emailService.sendEmail({
+    await this.dispatchAuthEmail(AUTH_EMAIL_JOB_NAMES.PASSWORD_RESET, {
       tenantId: tenant.id,
       to: email,
       subject: `🔐 Restablece tu contraseña - ${tenant.name}`,
@@ -863,7 +889,7 @@ export class AuthService {
       },
     });
 
-    this.logger.log(`✅ Email de reset de contraseña enviado a ${email} mediante EmailService`);
+    this.logger.log(`✅ Email de reset de contraseña encolado para ${email}`);
 
     /* CÓDIGO ANTIGUO COMENTADO PARA ROLLBACK:
     const apiKey = this.configService.get<string>("RESEND_API_KEY", "").trim();

@@ -21,6 +21,17 @@ interface RegisteredWorker {
   connection: Redis;
 }
 
+interface DispatcherJobData {
+  metadata?: {
+    correlationId?: unknown;
+    tenantId?: unknown;
+    requestId?: unknown;
+  };
+  runtime?: {
+    timeout?: unknown;
+  };
+}
+
 @Injectable()
 export class WorkerService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(WorkerService.name);
@@ -107,7 +118,7 @@ export class WorkerService implements OnModuleInit, OnModuleDestroy {
     });
     let worker: Worker;
     try {
-      worker = new Worker(queueName, processor, {
+      worker = new Worker(queueName, this.wrapProcessor(processor), {
         connection,
         prefix: this.queueService.getPrefix(),
         concurrency: this.config.concurrency,
@@ -124,15 +135,32 @@ export class WorkerService implements OnModuleInit, OnModuleDestroy {
     worker.on("ready", () => {
       this.logger.log(`BullMQ worker ready: ${registrationKey}.`);
     });
+    worker.on("active", (job: Job) => {
+      this.logger.log(
+        `BullMQ worker ${registrationKey} executing job ${job.id ?? "unknown"}` +
+          `${this.formatJobContext(job)} attempt=${job.attemptsMade + 1}/${job.opts.attempts ?? 1}.`,
+      );
+    });
     worker.on("completed", (job: Job) => {
       this.logger.log(
-        `BullMQ worker ${registrationKey} completed job ${job.id ?? "unknown"}.`,
+        `BullMQ worker ${registrationKey} completed job ${job.id ?? "unknown"}` +
+          `${this.formatJobContext(job)} attemptsMade=${job.attemptsMade}.`,
       );
     });
     worker.on("failed", (job: Job | undefined, error: Error) => {
+      const attempts = job?.opts.attempts ?? 1;
+      const willRetry = Boolean(job && job.attemptsMade < attempts);
       this.logger.error(
-        `BullMQ worker ${registrationKey} failed job ${job?.id ?? "unknown"}: ${error.message}`,
+        `BullMQ worker ${registrationKey} failed job ${job?.id ?? "unknown"}` +
+          `${job ? this.formatJobContext(job) : ""} attemptsMade=${job?.attemptsMade ?? 0}` +
+          ` willRetry=${willRetry}: ${error.message}`,
       );
+      if (willRetry) {
+        this.logger.warn(
+          `BullMQ worker ${registrationKey} retry scheduled for job ${job?.id ?? "unknown"}` +
+            `${job ? this.formatJobContext(job) : ""}.`,
+        );
+      }
     });
     worker.on("error", (error: Error) => {
       this.logger.error(
@@ -193,6 +221,64 @@ export class WorkerService implements OnModuleInit, OnModuleDestroy {
     }
 
     connection.disconnect();
+  }
+
+  private wrapProcessor(processor: Processor): Processor {
+    return async (job: Job, token?: string, workerSignal?: AbortSignal) => {
+      const timeout = this.getJobTimeout(job);
+      if (!timeout) {
+        return processor(job, token, workerSignal);
+      }
+
+      const controller = new AbortController();
+      const abortFromWorker = () => controller.abort(workerSignal?.reason);
+      if (workerSignal?.aborted) {
+        abortFromWorker();
+      } else {
+        workerSignal?.addEventListener("abort", abortFromWorker, { once: true });
+      }
+
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          controller.abort(new Error(`Job execution timed out after ${timeout}ms.`));
+          reject(new Error(`Job execution timed out after ${timeout}ms.`));
+        }, timeout);
+      });
+
+      try {
+        return await Promise.race([
+          processor(job, token, controller.signal),
+          timeoutPromise,
+        ]);
+      } finally {
+        if (timer) {
+          clearTimeout(timer);
+        }
+        workerSignal?.removeEventListener("abort", abortFromWorker);
+      }
+    };
+  }
+
+  private getJobTimeout(job: Job): number | undefined {
+    const timeout = (job.data as DispatcherJobData | undefined)?.runtime?.timeout;
+    return typeof timeout === "number" && Number.isInteger(timeout) && timeout > 0
+      ? timeout
+      : undefined;
+  }
+
+  private formatJobContext(job: Job): string {
+    const metadata = (job.data as DispatcherJobData | undefined)?.metadata;
+    if (!metadata) {
+      return "";
+    }
+
+    return ["correlationId", "tenantId", "requestId"]
+      .map((key) => {
+        const value = metadata[key as keyof typeof metadata];
+        return value === undefined || value === null ? "" : ` ${key}=${String(value)}`;
+      })
+      .join("");
   }
 
   private getErrorMessage(error: unknown): string {

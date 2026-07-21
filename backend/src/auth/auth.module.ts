@@ -5,6 +5,7 @@ import { AuthController } from "./auth.controller";
 import { AuthService } from "./auth.service";
 import { JwtStrategy } from "./jwt.strategy";
 import { EmailModule } from "../email/email.module";
+import { AuthEmailWorker } from "../email/jobs";
 
 @Module({
   imports: [
@@ -24,6 +25,6 @@ import { EmailModule } from "../email/email.module";
     EmailModule,
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy],
+  providers: [AuthService, JwtStrategy, AuthEmailWorker],
 })
 export class AuthModule {}

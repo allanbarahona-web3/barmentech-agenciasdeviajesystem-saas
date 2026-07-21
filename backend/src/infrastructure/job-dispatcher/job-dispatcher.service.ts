@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
-import { Job, JobsOptions, Queue } from "bullmq";
+import { BackoffOptions, Job, JobsOptions, Queue } from "bullmq";
 import { PlatformQueueKey, QueueService } from "../queue";
 import {
   getJobDispatcherConfig,
@@ -19,11 +19,19 @@ export interface JobDispatchMetadata {
 export interface JobEnvelope<TPayload> {
   payload: TPayload;
   metadata?: JobDispatchMetadata;
+  runtime?: JobRuntimeOptions;
+}
+
+export interface JobRuntimeOptions {
+  timeout?: number;
 }
 
 export interface GenericDispatchOptions {
   jobId?: string;
   priority?: number;
+  attempts?: number;
+  backoff?: number | BackoffOptions;
+  timeout?: number;
 }
 
 export interface DispatchRequest<TPayload> {
@@ -108,7 +116,11 @@ export class JobDispatcherService implements OnModuleInit {
 
           return {
             name: item.jobName,
-            data: this.createEnvelope(item.payload, item.metadata),
+            data: this.createEnvelope(
+              item.payload,
+              item.metadata,
+              item.options?.timeout,
+            ),
             opts: this.createJobOptions(item.options, item.delayMs),
           };
         }),
@@ -139,12 +151,17 @@ export class JobDispatcherService implements OnModuleInit {
     try {
       const job = await queue.add(
         request.jobName,
-        this.createEnvelope(request.payload, request.metadata),
+        this.createEnvelope(
+          request.payload,
+          request.metadata,
+          request.options?.timeout,
+        ),
         this.createJobOptions(request.options, delayMs),
       );
 
       this.logInfrastructure(
-        `Dispatched job ${job.id ?? "unknown"} to queue ${queueName} in ${Date.now() - startedAt}ms.`,
+        `Created job queue=${queueName} jobName=${request.jobName} jobId=${job.id ?? "unknown"}` +
+          `${this.formatMetadata(request.metadata)} durationMs=${Date.now() - startedAt}.`,
       );
       return job as Job<JobEnvelope<TPayload>>;
     } catch (error) {
@@ -178,19 +195,87 @@ export class JobDispatcherService implements OnModuleInit {
   private createEnvelope<TPayload>(
     payload: TPayload,
     metadata?: JobDispatchMetadata,
+    timeout?: number,
   ): JobEnvelope<TPayload> {
-    return metadata ? { payload, metadata: { ...metadata } } : { payload };
+    return {
+      payload,
+      ...(metadata ? { metadata: { ...metadata } } : {}),
+      ...(timeout !== undefined ? { runtime: { timeout } } : {}),
+    };
   }
 
   private createJobOptions(
     options?: GenericDispatchOptions,
     delayMs?: number,
   ): JobsOptions {
+    this.validateJobOptions(options);
+
     return {
       ...(options?.jobId ? { jobId: options.jobId } : {}),
       ...(options?.priority !== undefined ? { priority: options.priority } : {}),
+      ...(options?.attempts !== undefined ? { attempts: options.attempts } : {}),
+      ...(options?.backoff !== undefined ? { backoff: options.backoff } : {}),
       ...(delayMs !== undefined ? { delay: delayMs } : {}),
     };
+  }
+
+  private validateJobOptions(options?: GenericDispatchOptions): void {
+    if (!options) {
+      return;
+    }
+
+    if (options.jobId !== undefined && !options.jobId.trim()) {
+      throw new Error("Job ID must not be empty.");
+    }
+    if (options.jobId?.includes(":")) {
+      throw new Error("Job ID cannot contain colons.");
+    }
+    if (
+      options.attempts !== undefined &&
+      (!Number.isInteger(options.attempts) || options.attempts < 1)
+    ) {
+      throw new Error("Job attempts must be a positive integer.");
+    }
+    if (options.backoff !== undefined) {
+      this.validateBackoff(options.backoff);
+    }
+    if (
+      options.timeout !== undefined &&
+      (!Number.isInteger(options.timeout) ||
+        options.timeout < 1 ||
+        options.timeout > this.config.maxTimeoutMs)
+    ) {
+      throw new Error(
+        `Job timeout must be an integer between 1 and ${this.config.maxTimeoutMs} milliseconds.`,
+      );
+    }
+  }
+
+  private validateBackoff(backoff: number | BackoffOptions): void {
+    if (typeof backoff === "number") {
+      if (!Number.isFinite(backoff) || backoff < 0) {
+        throw new Error("Job backoff must be a non-negative number.");
+      }
+      return;
+    }
+
+    if (!backoff.type?.trim()) {
+      throw new Error("Job backoff type must not be empty.");
+    }
+    if (
+      backoff.delay !== undefined &&
+      (!Number.isFinite(backoff.delay) || backoff.delay < 0)
+    ) {
+      throw new Error("Job backoff delay must be a non-negative number.");
+    }
+    if (
+      backoff.jitter !== undefined &&
+      (!Number.isFinite(backoff.jitter) ||
+        backoff.jitter < 0 ||
+        backoff.jitter > 1)
+    ) {
+      throw new Error("Job backoff jitter must be between 0 and 1.");
+    }
   }
 
   private validateJobName(jobName: string): void {
@@ -232,5 +317,18 @@ export class JobDispatcherService implements OnModuleInit {
 
   private getErrorMessage(error: unknown): string {
     return error instanceof Error ? error.message : "Unknown job dispatch error";
+  }
+
+  private formatMetadata(metadata?: JobDispatchMetadata): string {
+    if (!metadata) {
+      return "";
+    }
+
+    return ["correlationId", "tenantId", "requestId"]
+      .map((key) => {
+        const value = metadata[key];
+        return value === undefined || value === null ? "" : ` ${key}=${String(value)}`;
+      })
+      .join("");
   }
 }

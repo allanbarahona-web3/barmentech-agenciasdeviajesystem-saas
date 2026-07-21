@@ -2,7 +2,18 @@ import { Injectable, Logger, InternalServerErrorException } from '@nestjs/common
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
-import { EmailTemplate } from '../email/interfaces/email-options.interface';
+import {
+  EmailTemplate,
+  SendEmailOptions,
+} from '../email/interfaces/email-options.interface';
+import {
+  CONTRACTS_EMAIL_JOB_NAMES,
+  CONTRACTS_EMAIL_JOB_OPTIONS,
+  ContractsEmailJobName,
+  ContractsEmailJobPayload,
+} from '../email/jobs';
+import { JobDispatcherService } from '../infrastructure/job-dispatcher';
+import { PLATFORM_QUEUE_KEYS } from '../infrastructure/queue';
 
 /**
  * DocumentEmailsService
@@ -31,6 +42,7 @@ export class DocumentEmailsService {
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
     private readonly emailService: EmailService,
+    private readonly jobDispatcher: JobDispatcherService,
   ) {
     this.logger.log('✅ DocumentEmailsService inicializado');
   }
@@ -67,6 +79,8 @@ export class DocumentEmailsService {
     options?: {
       subject?: string;
       template?: EmailTemplate;
+      jobName?: ContractsEmailJobName;
+      jobId?: string;
     },
   ) {
     if (!tenant) {
@@ -80,28 +94,32 @@ export class DocumentEmailsService {
     const pdfBase64 = pdfBuffer.toString("base64");
 
     try {
-      await this.emailService.sendEmail({
-        tenantId: tenant.id,
-        to: payload.toEmail,
-        subject: options?.subject || `📄 Contrato para Firma - ${payload.documentNumber}`,
-        template: options?.template || 'contract-pdf-attachment',
-        templateData: {
-          clientName: payload.clientName,
-          contractNumber: payload.documentNumber,
-          tenantName: tenant.name,
-        },
-        attachments: [
-          {
-            filename: payload.fileName,
-            content: pdfBase64,
+      await this.dispatchContractsEmail(
+        options?.jobName || CONTRACTS_EMAIL_JOB_NAMES.CONTRACT_REVIEW,
+        {
+          tenantId: tenant.id,
+          to: payload.toEmail,
+          subject: options?.subject || `📄 Contrato para Firma - ${payload.documentNumber}`,
+          template: options?.template || 'contract-pdf-attachment',
+          templateData: {
+            clientName: payload.clientName,
+            contractNumber: payload.documentNumber,
+            tenantName: tenant.name,
           },
-        ],
-        triggeredBy: {
-          userId: user.id,
-          email: user.email,
-          fullName: user.fullName,
+          attachments: [
+            {
+              filename: payload.fileName,
+              content: pdfBase64,
+            },
+          ],
+          triggeredBy: {
+            userId: user.id,
+            email: user.email,
+            fullName: user.fullName,
+          },
         },
-      });
+        options?.jobId,
+      );
 
       return {
         ok: true,
@@ -140,6 +158,8 @@ export class DocumentEmailsService {
     options?: {
       subject?: string;
       template?: EmailTemplate;
+      jobName?: ContractsEmailJobName;
+      jobId?: string;
     },
   ) {
     if (!tenant) {
@@ -179,18 +199,22 @@ export class DocumentEmailsService {
     }
 
     try {
-      await this.emailService.sendEmail({
-        tenantId: tenant.id,
-        to: payload.toEmail,
-        subject: options?.subject || defaultSubject,
-        template: options?.template || template,
-        templateData,
-        triggeredBy: {
-          userId: user.id,
-          email: user.email,
-          fullName: user.fullName,
+      await this.dispatchContractsEmail(
+        options?.jobName || CONTRACTS_EMAIL_JOB_NAMES.SIGNING_INVITATION,
+        {
+          tenantId: tenant.id,
+          to: payload.toEmail,
+          subject: options?.subject || defaultSubject,
+          template: options?.template || template,
+          templateData,
+          triggeredBy: {
+            userId: user.id,
+            email: user.email,
+            fullName: user.fullName,
+          },
         },
-      });
+        options?.jobId,
+      );
 
       return {
         ok: true,
@@ -267,5 +291,22 @@ export class DocumentEmailsService {
     }
 
     return { sentTo, failedTo };
+  }
+
+  private async dispatchContractsEmail(
+    jobName: ContractsEmailJobName,
+    options: SendEmailOptions,
+    jobId?: string,
+  ): Promise<void> {
+    await this.jobDispatcher.dispatch<ContractsEmailJobPayload>({
+      queueKey: PLATFORM_QUEUE_KEYS.EMAIL,
+      jobName,
+      payload: { options },
+      metadata: { tenantId: options.tenantId },
+      options: {
+        ...CONTRACTS_EMAIL_JOB_OPTIONS,
+        ...(jobId ? { jobId } : {}),
+      },
+    });
   }
 }
