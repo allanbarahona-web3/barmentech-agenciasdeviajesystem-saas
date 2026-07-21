@@ -6,7 +6,6 @@ import { getStoredToken } from "@/lib/auth-api";
 import {
   type ContractFileDocument,
   type HistoryContractItem,
-  type PackageDocument,
   deleteContractDraft,
   getContractFiles,
   resendSignedEmail,
@@ -95,7 +94,6 @@ export default function HistoryPage() {
   
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<HistoryContractItem[]>([]);
-  const [packageDocsMap, setPackageDocsMap] = useState<Record<string, PackageDocument[]>>({});
   const [busyAction, setBusyAction] = useState<string>("");
   const [viewerOpen, setViewerOpen] = useState(false);
   const [viewerTitle, setViewerTitle] = useState("Visor");
@@ -155,41 +153,10 @@ export default function HistoryPage() {
       
       const result = await searchContracts(params);
       setItems(result);
-      
-      // Cargar packageDocuments para contratos no-draft
-      const contractIds = result.filter(item => item.kind !== "DRAFT").map(item => item.id);
-      if (contractIds.length > 0) {
-        loadPackageDocuments(contractIds);
-      }
     } catch (fetchError) {
       showError(fetchError instanceof Error ? fetchError.message : "No se pudo cargar historial.");
     } finally {
       setLoading(false);
-    }
-  };
-
-  // Cargar packageDocuments en batch
-  const loadPackageDocuments = async (contractIds: string[]) => {
-    try {
-      const results = await Promise.all(
-        contractIds.map(async (id) => {
-          try {
-            const files = await getContractFiles(id);
-            return { id, packageDocuments: files.packageDocuments || [] };
-          } catch {
-            return { id, packageDocuments: [] };
-          }
-        })
-      );
-      
-      const docsMap: Record<string, PackageDocument[]> = {};
-      results.forEach(({ id, packageDocuments }) => {
-        docsMap[id] = packageDocuments;
-      });
-      setPackageDocsMap(docsMap);
-    } catch (error) {
-      // Silent fail - packageDocuments son opcionales
-      console.warn("Error loading package documents:", error);
     }
   };
 
@@ -567,7 +534,7 @@ export default function HistoryPage() {
                           {isDraft ? (
                             <span className={`contract-status ${status.className}`}>{status.label}</span>
                           ) : (
-                            <DocumentStatusIndicator documents={packageDocsMap[item.id] || []} />
+                            <DocumentStatusIndicator documents={item.packageDocuments || []} />
                           )}
                         </td>
                         <td>

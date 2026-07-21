@@ -1,9 +1,9 @@
 "use client";
 
-import { PackageDocument } from "@/lib/contracts-api";
+import { HistoryPackageDocument } from "@/lib/contracts-api";
 
 type DocumentStatusIndicatorProps = {
-  documents: PackageDocument[];
+  documents: HistoryPackageDocument[];
 };
 
 const getDocumentIcon = (type: string): string => {

@@ -2417,6 +2417,24 @@ export class ContractsService {
                   documents: true,
                 },
               },
+              signingSessions: {
+                take: 1,
+                select: {
+                  documents: {
+                    select: {
+                      id: true,
+                      documentKey: true,
+                      documentType: true,
+                      status: true,
+                      signers: {
+                        select: {
+                          status: true,
+                        },
+                      },
+                    },
+                  },
+                },
+              },
             },
           }
         : {

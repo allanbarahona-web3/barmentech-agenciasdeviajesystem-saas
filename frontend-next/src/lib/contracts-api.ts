@@ -20,6 +20,16 @@ export type HistoryContractItem = {
   documentCount: number;
   signedContractResent?: boolean;
   signedContractResentAt?: string | null;
+  packageDocuments?: HistoryPackageDocument[];
+};
+
+export type HistoryPackageDocument = {
+  id: string;
+  documentKey: string;
+  documentType: string;
+  status: string;
+  signedCount: number;
+  totalSigners: number;
 };
 
 export type ContractFileDocument = {

@@ -18,6 +18,7 @@ export class HistoryContractItemDto {
   documentCount!: number;
   signedContractResent!: boolean;
   signedContractResentAt!: string | null;
+  packageDocuments?: HistoryPackageDocumentDto[];
 
   static fromContract(
     item: any,
@@ -37,7 +38,7 @@ export class HistoryContractItemDto {
       ? signedResendEntries[signedResendEntries.length - 1]
       : null;
 
-    return Object.assign(new HistoryContractItemDto(), {
+    const historyItem = Object.assign(new HistoryContractItemDto(), {
       kind: "CONTRACT",
       id: item.id,
       draftId: null,
@@ -61,6 +62,24 @@ export class HistoryContractItemDto {
       signedContractResent: signedResendEntries.length > 0,
       signedContractResentAt: lastSignedResendEntry?.createdAt || null,
     });
+
+    if (Array.isArray(item.signingSessions)) {
+      const session = item.signingSessions[0];
+      historyItem.packageDocuments = Array.isArray(session?.documents)
+        ? session.documents.map((document: any) => ({
+            id: document.id,
+            documentKey: document.documentKey,
+            documentType: document.documentType,
+            status: document.status,
+            signedCount: document.signers.filter(
+              (signer: any) => signer.status === "SIGNED",
+            ).length,
+            totalSigners: document.signers.length,
+          }))
+        : [];
+    }
+
+    return historyItem;
   }
 
   static fromDraft(draft: any, draftStatus: string): HistoryContractItemDto {
@@ -85,4 +104,13 @@ export class HistoryContractItemDto {
       signedContractResentAt: null,
     });
   }
+}
+
+export class HistoryPackageDocumentDto {
+  id!: string;
+  documentKey!: string;
+  documentType!: string;
+  status!: string;
+  signedCount!: number;
+  totalSigners!: number;
 }
