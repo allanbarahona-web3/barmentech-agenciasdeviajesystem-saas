@@ -22,6 +22,7 @@ import { TenantMiddleware } from "./tenant/tenant.middleware";
 import { RLSInterceptor } from "./common/interceptors/rls.interceptor";
 import { RedisModule } from "./infrastructure/redis";
 import { QueueModule } from "./infrastructure/queue";
+import { WorkerModule } from "./infrastructure/worker";
 
 @Module({
   controllers: [AppController],
@@ -32,6 +33,7 @@ import { QueueModule } from "./infrastructure/queue";
     }),
     RedisModule,
     QueueModule,
+    WorkerModule,
     ThrottlerModule.forRoot([
       {
         ttl: Number(process.env.RATE_LIMIT_TTL_MS || 60000),

@@ -4,6 +4,7 @@ export const PLATFORM_QUEUE_KEYS = {
   EMAIL: "email",
   PDF: "pdf",
   NOTIFICATION: "notification",
+  WORKER_RUNTIME: "worker-runtime",
 } as const;
 
 export type PlatformQueueKey =
@@ -15,6 +16,7 @@ export const DEFAULT_QUEUE_NAMES: Record<PlatformQueueKey, string> = {
   email: "email",
   pdf: "pdf",
   notification: "notification",
+  "worker-runtime": "worker-runtime",
 };
 
 export const QUEUE_NAME_ENV_KEYS: Record<PlatformQueueKey, string> = {
@@ -23,4 +25,5 @@ export const QUEUE_NAME_ENV_KEYS: Record<PlatformQueueKey, string> = {
   email: "BULLMQ_EMAIL_QUEUE_NAME",
   pdf: "BULLMQ_PDF_QUEUE_NAME",
   notification: "BULLMQ_NOTIFICATION_QUEUE_NAME",
+  "worker-runtime": "BULLMQ_WORKER_RUNTIME_QUEUE_NAME",
 };

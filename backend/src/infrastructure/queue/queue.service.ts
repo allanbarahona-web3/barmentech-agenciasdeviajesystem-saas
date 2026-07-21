@@ -91,6 +91,10 @@ export class QueueService implements OnModuleInit, OnModuleDestroy {
     return this.config.queueNames[queueKey];
   }
 
+  getPrefix(): string {
+    return this.config.prefix;
+  }
+
   getRegisteredQueues(): readonly Queue[] {
     return [...this.queues.values()];
   }
