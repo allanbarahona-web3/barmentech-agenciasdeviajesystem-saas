@@ -23,6 +23,7 @@ import { RLSInterceptor } from "./common/interceptors/rls.interceptor";
 import { RedisModule } from "./infrastructure/redis";
 import { QueueModule } from "./infrastructure/queue";
 import { WorkerModule } from "./infrastructure/worker";
+import { QueueEventsModule } from "./infrastructure/queue-events";
 
 @Module({
   controllers: [AppController],
@@ -33,6 +34,7 @@ import { WorkerModule } from "./infrastructure/worker";
     }),
     RedisModule,
     QueueModule,
+    QueueEventsModule,
     WorkerModule,
     ThrottlerModule.forRoot([
       {
