@@ -4117,10 +4117,34 @@ export class BillingService {
     sourceIp?: string | null,
     userAgent?: string | null,
   ) {
-    // Primer fetch: obtener datos para email/audit (fuera de transacción)
+    const paymentSnapshot = await this.loadPaymentVerificationSnapshot(paymentId);
+    const updated = await this.executePaymentVerificationTransaction(
+      user,
+      paymentId,
+    );
+
+    await this.recordPaymentVerificationAudit(
+      user,
+      paymentId,
+      paymentSnapshot,
+      updated,
+      sourceIp,
+      userAgent,
+    );
+    await this.processVerifiedPaymentReceipt(
+      user,
+      paymentSnapshot,
+      sourceIp,
+      userAgent,
+    );
+
+    return { ok: true, paymentId: updated.id, status: updated.status };
+  }
+
+  private async loadPaymentVerificationSnapshot(paymentId: string): Promise<any> {
     const paymentSnapshot = await (this.prisma as any).billingPayment.findUnique({
       where: { id: paymentId },
-      include: { 
+      include: {
         receipt: true,
         invoice: {
           include: {
@@ -4134,9 +4158,15 @@ export class BillingService {
       throw new NotFoundException("Abono no encontrado.");
     }
 
+    return paymentSnapshot;
+  }
+
+  private async executePaymentVerificationTransaction(
+    user: { id: string; email: string; fullName: string },
+    paymentId: string,
+  ): Promise<any> {
     const now = new Date();
     let updated: any;
-    let invoiceIdToRecalc: string;
 
     // ✅ TRANSACCIÓN ATÓMICA: Garantiza consistencia de datos y previene race conditions
     try {
@@ -4244,8 +4274,6 @@ export class BillingService {
             rejectionReason: null,
           },
         });
-
-        invoiceIdToRecalc = updated.invoiceId;
 
         // 5. Recalcular montos del invoice
         await this.recalcInvoiceAmounts(updated.invoiceId, tx);
@@ -4432,11 +4460,17 @@ this.logger.log(
       // Re-lanzar el error para que el caller lo maneje
       throw transactionError;
     }
+    return updated;
+  }
 
-    // ✅ OPERACIONES IDEMPOTENTES (fuera de transacción)
-    // Si fallan, no revierten la aprobación del pago
-
-    // 8. Log de auditoría (idempotente)
+  private async recordPaymentVerificationAudit(
+    user: { id: string; email: string; fullName: string },
+    paymentId: string,
+    paymentSnapshot: any,
+    updated: any,
+    sourceIp?: string | null,
+    userAgent?: string | null,
+  ): Promise<void> {
     try {
       await this.logAudit({
         tenantId: paymentSnapshot.invoice.tenantId,
@@ -4456,19 +4490,24 @@ this.logger.log(
       });
     } catch (auditError) {
       this.logger.error(
-        `[verifyPayment] ⚠️ No se pudo registrar auditoría: ${auditError instanceof Error ? auditError.message : String(auditError)}`
+        `[verifyPayment] ⚠️ No se pudo registrar auditoría: ${auditError instanceof Error ? auditError.message : String(auditError)}`,
       );
-      // No revertir si falla el audit log
     }
+  }
 
-    // 9. Envío automático del recibo al cliente (idempotente)
+  private async processVerifiedPaymentReceipt(
+    user: { id: string; email: string; fullName: string },
+    paymentSnapshot: any,
+    sourceIp?: string | null,
+    userAgent?: string | null,
+  ): Promise<void> {
     if (paymentSnapshot.receipt && paymentSnapshot.invoice?.client?.email) {
       try {
         const clientEmail = String(paymentSnapshot.invoice.client.email).trim();
-        this.logger.log(`[verifyPayment] Encolando recibo automático al cliente.`);
+        this.logger.log("[verifyPayment] Encolando recibo automático al cliente.");
 
         await this.approveAndSendReceipt(
-          { ...user, role: "ADMIN" }, // Forzar rol ADMIN para permitir el primer envío
+          { ...user, role: "ADMIN" },
           paymentSnapshot.receipt.id,
           clientEmail,
           undefined,
@@ -4477,22 +4516,18 @@ this.logger.log(
           "AUTOMATIC",
         );
 
-        this.logger.log(`[verifyPayment] ✅ Recibo automático encolado.`);
+        this.logger.log("[verifyPayment] ✅ Recibo automático encolado.");
       } catch (emailError) {
-        // No revertir la aprobación si falla el email, solo registrar el error
         this.logger.error(
-          `[verifyPayment] ⚠️ No se pudo enviar el recibo automáticamente: ${emailError instanceof Error ? emailError.message : String(emailError)}`
+          `[verifyPayment] ⚠️ No se pudo enviar el recibo automáticamente: ${emailError instanceof Error ? emailError.message : String(emailError)}`,
         );
       }
     } else {
       this.logger.warn(
-        `[verifyPayment] ⚠️ No se pudo encolar recibo: receiptId=${paymentSnapshot.receipt?.id || "N/A"}, clientEmailAvailable=${Boolean(paymentSnapshot.invoice?.client?.email)}`
+        `[verifyPayment] ⚠️ No se pudo encolar recibo: receiptId=${paymentSnapshot.receipt?.id || "N/A"}, clientEmailAvailable=${Boolean(paymentSnapshot.invoice?.client?.email)}`,
       );
     }
-
-    return { ok: true, paymentId: updated.id, status: updated.status };
   }
-
   async rejectPayment(
     user: { id: string; email: string; fullName: string },
     paymentId: string,
