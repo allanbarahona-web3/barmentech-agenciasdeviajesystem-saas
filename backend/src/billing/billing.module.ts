@@ -5,11 +5,12 @@ import { EmailModule } from "../email/email.module";
 import { TravelPackagesModule } from "../travel-packages/travel-packages.module";
 import { InternalTourismModule } from "../internal-tourism/internal-tourism.module";
 import { StorageModule } from "../storage/storage.module";
+import { ReceiptProcessingWorker } from "./jobs/receipt-processing.worker";
 
 @Module({
   imports: [EmailModule, TravelPackagesModule, InternalTourismModule, StorageModule],
   controllers: [BillingController],
-  providers: [BillingService],
+  providers: [BillingService, ReceiptProcessingWorker],
   exports: [BillingService],
 })
 export class BillingModule {}

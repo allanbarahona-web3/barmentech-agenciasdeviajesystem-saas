@@ -29,6 +29,11 @@ import { ApplyCreditNoteDto } from "./dto/apply-credit-note.dto";
 import { CreateCreditNoteDto } from "./dto/create-credit-note.dto";
 import { ListBillingContractsDto } from "./dto/list-billing-contracts.dto";
 import { ReportPaymentDto } from "./dto/report-payment.dto";
+import {
+  RECEIPT_PROCESSING_JOB_NAME,
+  RECEIPT_PROCESSING_JOB_OPTIONS,
+} from "./jobs/receipt-processing-job.constants";
+import type { ReceiptProcessingJobPayload } from "./jobs/receipt-processing-job.types";
 
 @Injectable()
 export class BillingService {
@@ -4131,9 +4136,9 @@ export class BillingService {
       sourceIp,
       userAgent,
     );
-    await this.processVerifiedPaymentReceipt(
+    await this.dispatchVerifiedPaymentReceiptJob(
       user,
-      paymentSnapshot,
+      paymentId,
       sourceIp,
       userAgent,
     );
@@ -4495,38 +4500,56 @@ this.logger.log(
     }
   }
 
-  private async processVerifiedPaymentReceipt(
-    user: { id: string; email: string; fullName: string },
-    paymentSnapshot: any,
+  private async dispatchVerifiedPaymentReceiptJob(
+    actor: { id: string; email: string; fullName: string },
+    paymentId: string,
     sourceIp?: string | null,
     userAgent?: string | null,
   ): Promise<void> {
+    await this.jobDispatcher.dispatch<ReceiptProcessingJobPayload>({
+      queueKey: PLATFORM_QUEUE_KEYS.BILLING,
+      jobName: RECEIPT_PROCESSING_JOB_NAME,
+      payload: {
+        paymentId,
+        actor,
+        sourceIp,
+        userAgent,
+      },
+      options: {
+        ...RECEIPT_PROCESSING_JOB_OPTIONS,
+        jobId: `billing-payment-receipt-processing-${paymentId}`,
+      },
+    });
+  }
+
+  async processVerifiedPaymentReceiptJob(
+    payload: ReceiptProcessingJobPayload,
+  ): Promise<void> {
+    const paymentSnapshot = await this.loadPaymentVerificationSnapshot(
+      payload.paymentId,
+    );
+
     if (paymentSnapshot.receipt && paymentSnapshot.invoice?.client?.email) {
-      try {
-        const clientEmail = String(paymentSnapshot.invoice.client.email).trim();
-        this.logger.log("[verifyPayment] Encolando recibo automático al cliente.");
+      const clientEmail = String(paymentSnapshot.invoice.client.email).trim();
+      this.logger.log("[verifyPayment] Encolando recibo automático al cliente.");
 
-        await this.approveAndSendReceipt(
-          { ...user, role: "ADMIN" },
-          paymentSnapshot.receipt.id,
-          clientEmail,
-          undefined,
-          sourceIp,
-          userAgent,
-          "AUTOMATIC",
-        );
-
-        this.logger.log("[verifyPayment] ✅ Recibo automático encolado.");
-      } catch (emailError) {
-        this.logger.error(
-          `[verifyPayment] ⚠️ No se pudo enviar el recibo automáticamente: ${emailError instanceof Error ? emailError.message : String(emailError)}`,
-        );
-      }
-    } else {
-      this.logger.warn(
-        `[verifyPayment] ⚠️ No se pudo encolar recibo: receiptId=${paymentSnapshot.receipt?.id || "N/A"}, clientEmailAvailable=${Boolean(paymentSnapshot.invoice?.client?.email)}`,
+      await this.approveAndSendReceipt(
+        { ...payload.actor, role: "ADMIN" },
+        paymentSnapshot.receipt.id,
+        clientEmail,
+        undefined,
+        payload.sourceIp,
+        payload.userAgent,
+        "AUTOMATIC",
       );
+
+      this.logger.log("[verifyPayment] ✅ Recibo automático encolado.");
+      return;
     }
+
+    this.logger.warn(
+      `[verifyPayment] ⚠️ No se pudo encolar recibo: receiptId=${paymentSnapshot.receipt?.id || "N/A"}, clientEmailAvailable=${Boolean(paymentSnapshot.invoice?.client?.email)}`,
+    );
   }
   async rejectPayment(
     user: { id: string; email: string; fullName: string },
