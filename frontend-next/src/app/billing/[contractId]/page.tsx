@@ -5,7 +5,6 @@ export const dynamic = 'force-dynamic';
 import { getStoredSession, getStoredToken, getTenantConfig } from "@/lib/auth-api";
 import {
   approveAndSendBillingReceipt,
-  bootstrapBillingContract,
   createBillingCreditNote,
   getBillingAccountStatementPdfUrl,
   getBillingContractAccount,
@@ -198,7 +197,6 @@ function BillingContractAccountContent() {
     setLoading(true);
     setError("");
     try {
-      await bootstrapBillingContract(contractId);
       const result = await getBillingContractAccount(contractId);
       setAccount(result);
     } catch (fetchError) {

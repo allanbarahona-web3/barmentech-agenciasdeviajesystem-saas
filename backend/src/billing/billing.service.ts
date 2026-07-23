@@ -2814,157 +2814,245 @@ export class BillingService {
   ) {
     const contract = await (this.prisma as any).contract.findUnique({
       where: { id: contractId },
-      include: { client: true },
+      include: { client: true, documents: true },
     });
 
     if (!contract) {
       throw new NotFoundException("Contrato no encontrado.");
     }
 
-    const existing = await (this.prisma as any).billingInvoice.findUnique({
+    let invoice = await (this.prisma as any).billingInvoice.findUnique({
       where: { contractId },
     });
-
-    if (existing) {
-      return {
-        created: false,
-        invoiceId: existing.id,
-        invoiceNumber: existing.invoiceNumber,
-      };
-    }
-
-    // ✅ VALIDACIÓN DE CAPACIDAD PREVENTIVA (Capa 2)
-    // Rechaza reservas imposibles antes de que lleguen al admin
-    const participantCount = contract.participantCount || 1;
-    await this.validateTripCapacity(
-      contract.travelPackageId,
-      contract.internalTripId,
-      participantCount,
-      'bootstrapContractBilling'
-    );
 
     const payload = contract.payload && typeof contract.payload === "object" ? contract.payload : {};
     const totalAmount = this.toNumber((payload as any)?.totalAmount, 0);
     const reservationAmount = this.toNumber((payload as any)?.reservationAmount, 0);
     const paymentDueDate = this.toDateOrNull((payload as any)?.paymentDueDate);
+    let invoiceCreated = false;
 
-    const invoice = await (this.prisma as any).billingInvoice.create({
-      data: {
-        contractId: contract.id,
-        clientId: contract.clientId,
+    if (!invoice) {
+      // ✅ VALIDACIÓN DE CAPACIDAD PREVENTIVA (Capa 2 - Backend)
+      // Rechaza reservas imposibles antes de crear la factura.
+      const participantCount = contract.participantCount || 1;
+      await this.validateTripCapacity(
+        contract.travelPackageId,
+        contract.internalTripId,
+        participantCount,
+        'bootstrapContractBilling'
+      );
+
+      try {
+        invoice = await (this.prisma as any).billingInvoice.create({
+          data: {
+            contractId: contract.id,
+            clientId: contract.clientId,
+            tenantId: contract.tenantId,
+            contractNumber: contract.contractNumber,
+            invoiceNumber: `FAC-${contract.contractNumber}`,
+            currency: "USD",
+            totalAmount: this.toDecimalString(totalAmount),
+            verifiedAmount: this.toDecimalString(0),
+            pendingAmount: this.toDecimalString(0),
+            balanceAmount: this.toDecimalString(totalAmount),
+            status: "FACTURA_EMITIDA",
+            paymentDueDate,
+            createdByUserId: user.id,
+            createdByName: user.fullName,
+          },
+        });
+        invoiceCreated = true;
+      } catch (error) {
+        if (
+          !error ||
+          typeof error !== "object" ||
+          !("code" in error) ||
+          (error as { code?: string }).code !== "P2002"
+        ) {
+          throw error;
+        }
+
+        invoice = await (this.prisma as any).billingInvoice.findUnique({
+          where: { contractId },
+        });
+        if (!invoice) {
+          throw error;
+        }
+      }
+    }
+
+    if (invoiceCreated) {
+      await this.logAudit({
         tenantId: contract.tenantId,
-        contractNumber: contract.contractNumber,
-        invoiceNumber: `FAC-${contract.contractNumber}`,
-        currency: "USD",
-        totalAmount: this.toDecimalString(totalAmount),
-        verifiedAmount: this.toDecimalString(0),
-        pendingAmount: this.toDecimalString(0),
-        balanceAmount: this.toDecimalString(totalAmount),
-        status: "FACTURA_EMITIDA",
-        paymentDueDate,
-        createdByUserId: user.id,
-        createdByName: user.fullName,
-      },
-    });
+        entityType: "INVOICE",
+        entityId: invoice.id,
+        action: "CREATE",
+        actorUserId: user.id,
+        actorName: user.fullName,
+        afterJson: {
+          invoiceNumber: invoice.invoiceNumber,
+          totalAmount: invoice.totalAmount,
+          contractNumber: invoice.contractNumber,
+          paymentDueDate: invoice.paymentDueDate,
+        },
+        sourceIp,
+        userAgent,
+      });
+    }
 
-    await this.logAudit({
-      tenantId: contract.tenantId,
-      entityType: "INVOICE",
-      entityId: invoice.id,
-      action: "CREATE",
-      actorUserId: user.id,
-      actorName: user.fullName,
-      afterJson: {
-        invoiceNumber: invoice.invoiceNumber,
-        totalAmount: invoice.totalAmount,
-        contractNumber: invoice.contractNumber,
-        paymentDueDate: invoice.paymentDueDate,
-      },
-      sourceIp,
-      userAgent,
-    });
-
-    await this.ensureInvoicePdf(invoice.id);
+    if (!invoice.objectKeyPdf) {
+      await this.ensureInvoicePdf(invoice.id);
+    }
 
     let reservationPaymentId: string | null = null;
 
     if (reservationAmount > 0) {
-      const payment = await (this.prisma as any).billingPayment.create({
-        data: {
-          invoiceId: invoice.id,
-          contractId: contract.id,
-          tenantId: contract.tenantId,
-          type: "RESERVATION",
-          amount: this.toDecimalString(reservationAmount),
-          currency: "USD",
-          status: "ABONO_REPORTADO",
-          notes: "Abono inicial de reserva generado desde contrato.",
-          createdByUserId: user.id,
-          createdByName: user.fullName,
+      const paymentResult = await (this.prisma as any).$transaction(
+        async (tx: any) => {
+          await tx.$queryRawUnsafe(
+            'SELECT "id" FROM "BillingInvoice" WHERE "id" = $1 FOR UPDATE',
+            invoice.id,
+          );
+
+          let payment = await tx.billingPayment.findFirst({
+            where: {
+              invoiceId: invoice.id,
+              contractId: contract.id,
+              type: "RESERVATION",
+            },
+            orderBy: { createdAt: "asc" },
+          });
+
+          if (payment) {
+            return { payment, created: false };
+          }
+
+          payment = await tx.billingPayment.create({
+            data: {
+              invoiceId: invoice.id,
+              contractId: contract.id,
+              tenantId: contract.tenantId,
+              type: "RESERVATION",
+              amount: this.toDecimalString(reservationAmount),
+              currency: "USD",
+              status: "ABONO_REPORTADO",
+              notes: "Abono inicial de reserva generado desde contrato.",
+              createdByUserId: user.id,
+              createdByName: user.fullName,
+            },
+          });
+
+          return { payment, created: true };
         },
-      });
+      );
+      const payment = paymentResult.payment;
 
       reservationPaymentId = payment.id;
 
-      const receipt = await (this.prisma as any).billingReceipt.create({
-        data: {
-          paymentId: payment.id,
-          invoiceId: invoice.id,
-          contractId: contract.id,
+      if (paymentResult.created) {
+        await this.logAudit({
           tenantId: contract.tenantId,
-          contractNumber: contract.contractNumber,
-          receiptNumber: await this.buildReceiptNumber(),
-          amount: this.toDecimalString(reservationAmount),
-          issuedByUserId: user.id,
-          issuedByName: user.fullName,
-          status: "RECIBO_PENDIENTE_VERIFICACION",
-        },
-      });
+          entityType: "PAYMENT",
+          entityId: payment.id,
+          action: "REPORT",
+          actorUserId: user.id,
+          actorName: user.fullName,
+          afterJson: {
+            amount: payment.amount,
+            type: payment.type,
+            status: payment.status,
+          },
+          sourceIp,
+          userAgent,
+        });
+      }
 
-      await this.logAudit({
-        tenantId: contract.tenantId,
-        entityType: "PAYMENT",
-        entityId: payment.id,
-        action: "REPORT",
-        actorUserId: user.id,
-        actorName: user.fullName,
-        afterJson: {
-          amount: payment.amount,
-          type: payment.type,
-          status: payment.status,
-        },
-        sourceIp,
-        userAgent,
+      let receipt = await (this.prisma as any).billingReceipt.findUnique({
+        where: { paymentId: payment.id },
       });
+      let receiptCreated = false;
 
-      await this.logAudit({
-        tenantId: contract.tenantId,
-        entityType: "RECEIPT",
-        entityId: receipt.id,
-        action: "CREATE_PENDING",
-        actorUserId: user.id,
-        actorName: user.fullName,
-        afterJson: {
-          receiptNumber: receipt.receiptNumber,
-          status: receipt.status,
-          paymentId: payment.id,
-        },
-        sourceIp,
-        userAgent,
-      });
+      if (!receipt) {
+        try {
+          receipt = await (this.prisma as any).billingReceipt.create({
+            data: {
+              paymentId: payment.id,
+              invoiceId: invoice.id,
+              contractId: contract.id,
+              tenantId: contract.tenantId,
+              contractNumber: contract.contractNumber,
+              receiptNumber: await this.buildReceiptNumber(),
+              amount: this.toDecimalString(reservationAmount),
+              issuedByUserId: user.id,
+              issuedByName: user.fullName,
+              status: "RECIBO_PENDIENTE_VERIFICACION",
+            },
+          });
+          receiptCreated = true;
+        } catch (error) {
+          if (
+            !error ||
+            typeof error !== "object" ||
+            !("code" in error) ||
+            (error as { code?: string }).code !== "P2002"
+          ) {
+            throw error;
+          }
 
-      await this.ensureReceiptPdf(receipt.id);
+          receipt = await (this.prisma as any).billingReceipt.findUnique({
+            where: { paymentId: payment.id },
+          });
+          if (!receipt) {
+            throw error;
+          }
+        }
+      }
+
+      if (receiptCreated) {
+        await this.logAudit({
+          tenantId: contract.tenantId,
+          entityType: "RECEIPT",
+          entityId: receipt.id,
+          action: "CREATE_PENDING",
+          actorUserId: user.id,
+          actorName: user.fullName,
+          afterJson: {
+            receiptNumber: receipt.receiptNumber,
+            status: receipt.status,
+            paymentId: payment.id,
+          },
+          sourceIp,
+          userAgent,
+        });
+      }
+
+      if (!receipt.objectKeyPdf) {
+        await this.ensureReceiptPdf(receipt.id);
+      }
 
       await this.recalcInvoiceAmounts(invoice.id);
 
-      // Vincular documentos de reserva del contrato como adjuntos del pago
-      try {
-        const contractWithDocs = await (this.prisma as any).contract.findUnique({
-          where: { id: contract.id },
-          include: { documents: true },
-        });
-        const reservationDocs = this.normalizeContractReservationDocuments(contractWithDocs);
+      const reservationDocs = this.normalizeContractReservationDocuments(contract);
+      if (reservationDocs.length > 0) {
+        const existingAttachments =
+          await (this.prisma as any).billingPaymentAttachment.findMany({
+            where: {
+              paymentId: payment.id,
+              objectKey: {
+                in: reservationDocs.map((doc: any) => doc.objectKey),
+              },
+            },
+            select: { objectKey: true },
+          });
+        const existingObjectKeys = new Set(
+          existingAttachments.map((attachment: any) => attachment.objectKey),
+        );
+
         for (const doc of reservationDocs) {
+          if (existingObjectKeys.has(doc.objectKey)) {
+            continue;
+          }
+
           await (this.prisma as any).billingPaymentAttachment.create({
             data: {
               paymentId: payment.id,
@@ -2974,17 +3062,17 @@ export class BillingService {
               size: doc.size,
             },
           });
+          existingObjectKeys.add(doc.objectKey);
         }
-        if (reservationDocs.length) {
-          this.logger.log(`[bootstrapContractBilling] Vinculados ${reservationDocs.length} comprobante(s) de reserva al pago ${payment.id}`);
-        }
-      } catch (docError) {
-        this.logger.warn(`[bootstrapContractBilling] No se pudieron vincular comprobantes: ${docError instanceof Error ? docError.message : String(docError)}`);
+
+        this.logger.log(
+          `[bootstrapContractBilling] Verificados ${reservationDocs.length} comprobante(s) de reserva para el pago ${payment.id}`,
+        );
       }
     }
 
     return {
-      created: true,
+      created: invoiceCreated,
       invoiceId: invoice.id,
       invoiceNumber: invoice.invoiceNumber,
       reservationPaymentId,

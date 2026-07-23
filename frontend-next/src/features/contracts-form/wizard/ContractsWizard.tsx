@@ -26,7 +26,6 @@ import { toLocalDateIso } from "@/shared/regional";
 import type { ContractFormState } from "@/features/contracts-form/types";
 import type { TravelPackage } from "@/lib/travel-packages-api";
 import { getContractDraft, reserveNextContractNumber, saveContractDraft, archiveContract } from "@/lib/contracts-api";
-import { bootstrapBillingContract } from "@/lib/billing-api";
 import { getTravelPackageById } from "@/lib/travel-packages-api";
 import { normalizeIdentification, validateIdentification } from "@/features/customers/utils/normalize-identification";
 import { getInternalTripById } from "@/lib/internal-trips-api";
@@ -1217,19 +1216,7 @@ console.log("====================================");
         window.open(archived.pdfUrl, "_blank", "noopener,noreferrer");
       }
 
-      // Inicializar el sistema de billing (crea factura + pago de reserva)
-      console.log("🔵 Paso 6: Inicializando billing...");
-      setStatus(isInternalTrip ? "Enviando formulario/comprobante para aprobación..." : "Creando pago de reserva...");
-      try {
-        await bootstrapBillingContract(archived.id);
-        console.log("✅ Billing inicializado correctamente");
-      } catch (billingError) {
-        console.error("⚠️ Error al inicializar billing:", billingError);
-        // No bloqueamos el flujo, pero advertimos al usuario
-        setStatus("Contrato guardado, pero hubo un error al crear el pago de reserva. Contacta al admin.");
-      }
-
-      console.log("🔵 Paso 7: Reseteando formulario...");
+      console.log("🔵 Paso 6: Reseteando formulario...");
       await resetFormForNextContract(
         isInternalTrip
           ? "Formulario enviado correctamente. El comprobante de reserva quedará pendiente de aprobación del admin."

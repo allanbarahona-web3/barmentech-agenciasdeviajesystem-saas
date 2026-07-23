@@ -24,7 +24,7 @@ import { DocumentGenerationService } from "../documents/document-generation.serv
 import { DocumentPdfService } from "../documents/document-pdf.service";
 import { ContractSigningSessionBuilder } from "./contract-signing-session.builder";
 import { ArchiveContractDto } from "./dto/archive-contract.dto";
-import { CustomerDocumentCategory, Client } from "@prisma/client";
+import { CustomerDocumentCategory } from "@prisma/client";
 
 import { SendContractEmailDto } from "./dto/send-contract-email.dto";
 import { SendSigningEmailDto } from "./dto/send-signing-email.dto";
@@ -33,6 +33,13 @@ import { HistoryContractItemDto } from "./dto/history-contract-item.dto";
 import { ResolvedTenant } from "../tenant/tenant.service";
 import { getPublicAppBaseUrl } from "../common/utils/tenant-url.util";
 import { SigningParticipant } from "../documents/signing-session/signing-session.types";
+import { JobDispatcherService } from "../infrastructure/job-dispatcher";
+import { PLATFORM_QUEUE_KEYS } from "../infrastructure/queue";
+import {
+  ARCHIVE_PROCESSING_JOB_NAME,
+  ARCHIVE_PROCESSING_JOB_OPTIONS,
+} from "./jobs/archive-processing-job.constants";
+import type { ArchiveProcessingJobPayload } from "./jobs/archive-processing-job.types";
 
 const CONTRACT_STATUS_PENDING_PAYMENT_RESERVE = "PENDING_PAYMENT_RESERVE";
 const CONTRACT_STATUS_RESERVE_IN_REVIEW = "RESERVE_IN_REVIEW";
@@ -89,6 +96,7 @@ export class ContractsService {
     private readonly documentPdfService: DocumentPdfService,
     private readonly contractSigningSessionBuilder: ContractSigningSessionBuilder,
     private readonly storageService: StorageService,
+    private readonly jobDispatcher: JobDispatcherService,
   ) {}
 
   private pad(value: number, size = 2) {
@@ -668,7 +676,7 @@ export class ContractsService {
   private getCustomerIdFromFilename(
     filename: string,
     holderId: string,
-    companions: Client[]
+    companions: Array<{ id: string }>
   ): string | null {
     const lower = filename.toLowerCase();
 
@@ -1291,19 +1299,24 @@ export class ContractsService {
     const d = this.pad(now.getDate());
     const baseFolder = `${appEnv}/${tenantSubdomain}/contracts/${y}/${m}/${d}/${this.sanitizeSegment(contractNumber)}`;
     
-    // Generar código de pago único ANTES de renderizar el PDF
+    // Generar código de pago único al aceptar el contrato.
     const paymentReference = await this.generateUniquePaymentReference();
-    
-    const {
-      pdfKey,
-      htmlKey,
-      signatureAnchors,
-    } = await this.processContractArchiveArtifacts(
-      isInternalTrip,
-      dto.contractHtml,
-      paymentReference,
-      baseFolder,
-    );
+
+    // Persist the original request artifacts so later processing can reconstruct
+    // the archive without keeping HTML or file buffers in the HTTP request.
+    const pdfKey: string | null = null;
+    const signatureAnchors = null;
+    const htmlKey = !isInternalTrip
+      ? `${baseFolder}/staging/contract.html`
+      : null;
+
+    if (htmlKey) {
+      await this.uploadToSpaces({
+        objectKey: htmlKey,
+        contentType: "text/html; charset=utf-8",
+        body: Buffer.from(dto.contractHtml!, "utf-8"),
+      });
+    }
 
     // =================================================================
     // 📋 Enrich companions with Customer references (selectedCustomerId)
@@ -1397,14 +1410,31 @@ export class ContractsService {
       'archiveContract'
     );
 
-    const uploadedDocuments = await this.processAdditionalArchiveDocuments(
-      isInternalTrip,
-      contractNumber,
-      payloadRecord,
-      baseFolder,
-      documents,
-      user.tenantId,
-    );
+    const uploadedDocuments: UploadedArchiveDocument[] = [];
+    for (let index = 0; index < documents.length; index += 1) {
+      const doc = documents[index];
+      if (!doc?.buffer?.length) {
+        continue;
+      }
+
+      const originalFileName = doc.originalname || `document-${index + 1}`;
+      const safeName = this.sanitizeSegment(originalFileName);
+      const objectKey = `${baseFolder}/staging/docs/${index + 1}-${safeName}`;
+      const mimeType = doc.mimetype || "application/octet-stream";
+
+      await this.uploadToSpaces({
+        objectKey,
+        contentType: mimeType,
+        body: doc.buffer,
+      });
+
+      uploadedDocuments.push({
+        originalFileName,
+        objectKey,
+        mimeType,
+        size: doc.size || doc.buffer.length,
+      });
+    }
 
     // =================================================================
     // 🔍 DEBUG: Log de tamaños ANTES de insertar en base de datos
@@ -1420,7 +1450,7 @@ export class ContractsService {
     console.log(`generatedByEmail: "${user.email}" (${user.email.length} chars)`);
     console.log(`generatedByName: "${user.fullName}" (${user.fullName.length} chars)`);
     if (!isInternalTrip) {
-      console.log(`pdfObjectKey: "${pdfKey}" (${pdfKey?.length || 0} chars)`);
+      console.log(`pdfObjectKey: "${pdfKey}" (0 chars)`);
       console.log(`pdfFileName: "${contractNumber}.pdf" (${(contractNumber + '.pdf').length} chars)`);
       console.log(`htmlObjectKey: "${htmlKey}" (${htmlKey?.length || 0} chars)`);
     } else {
@@ -1452,6 +1482,7 @@ export class ContractsService {
           startDate: this.toDateOrNull(dto.startDate),
           endDate: this.toDateOrNull(dto.endDate),
           payload: enrichedPayload as any,
+          htmlObjectKey: htmlKey,
           source: contractSource,
           participantCount: participantCount,
           travelPackageId: travelPackageId, // Para viajes internacionales programados
@@ -1505,59 +1536,98 @@ export class ContractsService {
       throw error;
     }
 
-    // Generar URL del PDF solo si NO es viaje interno
-    const pdfUrl = !isInternalTrip && pdfKey 
-      ? await this.buildSignedObjectUrl(pdfKey, 900)
-      : null;
+    if (dto.notes?.trim()) {
+      try {
+        const notesArray = JSON.parse(dto.notes);
+        if (Array.isArray(notesArray) && notesArray.length > 0) {
+          this.logger.log(`📝 Creating ${notesArray.length} operational notes for contract ${archived.contractNumber}...`);
 
-    // ========================================================================
-    // 📄 Register customer documents from contract documents
-    // ========================================================================
-    if (archived.documents && archived.documents.length > 0) {
-      this.logger.log(`📄 Registering ${archived.documents.length} contract documents as customer documents...`);
-      
-      for (const doc of archived.documents) {
-        try {
-          const category = this.getCategoryFromFilename(doc.originalFileName);
-          
-          if (category === null) {
-            this.logger.debug(`Skipping non-customer document: ${doc.originalFileName}`);
-            continue;
+          for (const noteDto of notesArray) {
+            if (!noteDto.passengerType || !noteDto.passengerName || !noteDto.note?.trim()) {
+              this.logger.warn(`Skipping invalid note: ${JSON.stringify(noteDto)}`);
+              continue;
+            }
+
+            await this.prisma.contractNote.create({
+              data: {
+                contractId: archived.id,
+                tenantId: user.tenantId,
+                passengerType: noteDto.passengerType,
+                passengerIndex: noteDto.passengerIndex ?? null,
+                passengerName: noteDto.passengerName,
+                note: noteDto.note.trim(),
+                status: 'ACTIVE',
+                createdByUserId: user.id,
+                createdByName: user.fullName,
+              },
+            });
           }
-          
-          // Determine which customer this document belongs to
-          const customerId = this.getCustomerIdFromFilename(
-            doc.originalFileName,
-            client.id,
-            registeredCompanions
-          );
-          
-          if (!customerId) {
-            this.logger.debug(`Could not determine customer for document: ${doc.originalFileName}`);
-            continue;
-          }
-          
-          await this.customerDocumentsService.registerExistingDocument(
-            user.tenantId,
-            customerId,
-            category,
-            {
-              originalFileName: doc.originalFileName,
-              objectKey: doc.objectKey,
-              mimeType: doc.mimeType,
-              size: doc.size,
-            },
-          );
-          
-          this.logger.log(`✅ Registered: ${doc.originalFileName} → ${category} for customer ${customerId}`);
-        } catch (error) {
-          // Log but don't fail the entire contract creation
-          this.logger.error(
-            `Failed to register customer document ${doc.originalFileName}: ${error instanceof Error ? error.message : String(error)}`
-          );
+
+          this.logger.log(`✅ Successfully created ${notesArray.length} operational notes`);
         }
+      } catch (error) {
+        this.logger.error('❌ Error parsing or creating operational notes:', error);
       }
     }
+
+    try {
+      await this.jobDispatcher.dispatch<ArchiveProcessingJobPayload>({
+        queueKey: PLATFORM_QUEUE_KEYS.DOCUMENT,
+        jobName: ARCHIVE_PROCESSING_JOB_NAME,
+        payload: { contractId: archived.id },
+        metadata: { tenantId: user.tenantId },
+        options: {
+          ...ARCHIVE_PROCESSING_JOB_OPTIONS,
+          jobId: `contract-archive-processing-${archived.id}`,
+        },
+      });
+    } catch (error) {
+      this.logger.error(
+        `Failed to dispatch contract archive job contractId=${archived.id}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+
+      try {
+        await (this.prisma as any).contract.delete({
+          where: { id: archived.id },
+        });
+      } catch (rollbackError) {
+        this.logger.error(
+          `Failed to roll back Contract after archive dispatch failure contractId=${archived.id}: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`,
+        );
+      }
+
+      throw new InternalServerErrorException(
+        "No se pudo enviar el contrato para procesamiento.",
+      );
+    }
+
+    if (dto.draftId?.trim()) {
+      await (this.prisma as any).contractDraft.deleteMany({
+        where: {
+          id: dto.draftId.trim(),
+          generatedByUserId: user.id,
+        },
+      });
+    }
+
+    // Temporary synchronous acceptance boundary. The existing processing below
+    // remains available for the BullMQ worker introduced by the next story.
+    if (archived?.id) {
+      return {
+        id: archived.id,
+        contractNumber: archived.contractNumber,
+        paymentReference: archived.paymentReference,
+        status: archived.status,
+        documentCount: archived.documents.length,
+        createdAt: archived.createdAt,
+        pdfUrl: null,
+      };
+    }
+
+    // Generar URL del PDF solo si NO es viaje interno
+    const pdfUrl = !isInternalTrip && pdfKey
+      ? await this.buildSignedObjectUrl(pdfKey, 900)
+      : null;
 
     if (dto.draftId?.trim()) {
       await (this.prisma as any).contractDraft.deleteMany({
@@ -1666,6 +1736,182 @@ export class ContractsService {
       htmlKey,
       signatureAnchors,
     };
+  }
+
+  async processContractArchiveArtifactsForWorker(contract: {
+    id: string;
+    contractNumber: string;
+    internalTripId: string | null;
+    htmlObjectKey: string | null;
+    paymentReference: string;
+    payload: unknown;
+  }): Promise<string> {
+    const isInternalTrip = Boolean(contract.internalTripId?.trim());
+    let contractHtml: string | undefined;
+    let baseFolder = "";
+
+    if (!isInternalTrip) {
+      const persistedHtmlKey = contract.htmlObjectKey?.trim();
+      const stagingSuffix = "/staging/contract.html";
+      const finalSuffix = "/contract.html";
+      if (!persistedHtmlKey) {
+        throw new Error(
+          `Staged contract HTML not found for contract ${contract.id}.`,
+        );
+      }
+
+      if (persistedHtmlKey.endsWith(stagingSuffix)) {
+        baseFolder = persistedHtmlKey.slice(0, -stagingSuffix.length);
+      } else if (persistedHtmlKey.endsWith(finalSuffix)) {
+        baseFolder = persistedHtmlKey.slice(0, -finalSuffix.length);
+      } else {
+        throw new Error(
+          `Invalid contract HTML key for contract ${contract.id}.`,
+        );
+      }
+
+      const stagedHtmlKey = `${baseFolder}${stagingSuffix}`;
+      const htmlBuffer = await this.downloadObjectBuffer(stagedHtmlKey);
+      contractHtml = htmlBuffer.toString("utf-8");
+    }
+
+    const {
+      pdfKey,
+      htmlKey,
+      signatureAnchors,
+    } = await this.processContractArchiveArtifacts(
+      isInternalTrip,
+      contractHtml,
+      contract.paymentReference,
+      baseFolder,
+    );
+
+    const payloadRecord =
+      contract.payload &&
+      typeof contract.payload === "object" &&
+      !Array.isArray(contract.payload)
+        ? (contract.payload as Record<string, unknown>)
+        : {};
+
+    await (this.prisma as any).contract.update({
+      where: { id: contract.id },
+      data: {
+        pdfObjectKey: pdfKey,
+        pdfFileName: pdfKey ? `${contract.contractNumber}.pdf` : null,
+        pdfMimeType: pdfKey ? "application/pdf" : null,
+        htmlObjectKey: htmlKey,
+        payload: {
+          ...payloadRecord,
+          signatureAnchors,
+          signatureAnchor: signatureAnchors?.["client"] ?? null,
+        },
+      },
+    });
+
+    return baseFolder;
+  }
+
+  async processAdditionalArchiveDocumentsForWorker(
+    contract: {
+      contractNumber: string;
+      internalTripId: string | null;
+      payload: unknown;
+      tenantId: string;
+    },
+    baseFolder: string,
+  ): Promise<void> {
+    const payloadRecord =
+      contract.payload &&
+      typeof contract.payload === "object" &&
+      !Array.isArray(contract.payload)
+        ? (contract.payload as Record<string, unknown>)
+        : {};
+
+    await this.processAdditionalArchiveDocuments(
+      Boolean(contract.internalTripId?.trim()),
+      contract.contractNumber,
+      payloadRecord,
+      baseFolder,
+      [],
+      contract.tenantId,
+    );
+  }
+
+  async registerContractCustomerDocumentsForWorker(contract: {
+    clientId: string;
+    tenantId: string;
+    payload: unknown;
+    documents: Array<{
+      originalFileName: string;
+      objectKey: string;
+      mimeType: string;
+      size: number;
+    }>;
+  }): Promise<void> {
+    const payloadRecord =
+      contract.payload &&
+      typeof contract.payload === "object" &&
+      !Array.isArray(contract.payload)
+        ? (contract.payload as Record<string, unknown>)
+        : {};
+    const companions = Array.isArray(payloadRecord.companions)
+      ? payloadRecord.companions
+          .filter(
+            (companion: any) =>
+              companion &&
+              String(companion.fullName || "").trim() &&
+              String(companion.idNumber || "").trim(),
+          )
+          .map((companion: any) => ({
+            id: String(companion.selectedCustomerId || "").trim(),
+          }))
+      : [];
+
+    if (contract.documents.length > 0) {
+      this.logger.log(
+        `📄 Registering ${contract.documents.length} contract documents as customer documents...`,
+      );
+    }
+
+    for (const doc of contract.documents) {
+      const category = this.getCategoryFromFilename(doc.originalFileName);
+
+      if (category === null) {
+        this.logger.debug(
+          `Skipping non-customer document: ${doc.originalFileName}`,
+        );
+        continue;
+      }
+
+      const customerId = this.getCustomerIdFromFilename(
+        doc.originalFileName,
+        contract.clientId,
+        companions,
+      );
+
+      if (!customerId) {
+        this.logger.debug(
+          `Could not determine customer for document: ${doc.originalFileName}`,
+        );
+        continue;
+      }
+
+      await this.customerDocumentsService.registerExistingDocument(
+        contract.tenantId,
+        customerId,
+        category,
+        {
+          originalFileName: doc.originalFileName,
+          objectKey: doc.objectKey,
+          mimeType: doc.mimeType,
+          size: doc.size,
+        },
+      );
+
+      this.logger.log(
+        `✅ Registered: ${doc.originalFileName} → ${category} for customer ${customerId}`,
+      );
+    }
   }
 
   private async processAdditionalArchiveDocuments(

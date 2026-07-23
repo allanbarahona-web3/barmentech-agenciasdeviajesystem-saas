@@ -357,14 +357,6 @@ const apiFetchJson = async <T>(path: string, init?: RequestInit): Promise<T> => 
   return payload as T;
 };
 
-export const bootstrapBillingContract = async (contractId: string): Promise<{ created: boolean; invoiceId: string; invoiceNumber: string }> =>
-  apiFetchJson<{ created: boolean; invoiceId: string; invoiceNumber: string }>(
-    `/billing/contracts/${encodeURIComponent(contractId)}/bootstrap`,
-    {
-      method: "POST",
-    },
-  );
-
 export const listBillingContracts = async (params: { 
   q?: string; 
   status?: string; 
