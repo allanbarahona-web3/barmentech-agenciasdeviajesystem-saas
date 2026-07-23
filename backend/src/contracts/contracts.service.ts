@@ -43,6 +43,21 @@ const CONTRACT_STATUS_DRAFT = "DRAFT";
 
 type SigningRole = "CLIENTE" | "ACOMPANANTE";
 
+type ArchiveDocument = {
+  buffer: Buffer;
+  mimetype: string;
+  originalname: string;
+  size: number;
+};
+
+type UploadedArchiveDocument = {
+  kind?: string;
+  originalFileName: string;
+  objectKey: string;
+  mimeType: string;
+  size: number;
+};
+
 @Injectable()
 export class ContractsService {
   private readonly logger = new Logger(ContractsService.name);
@@ -1196,12 +1211,7 @@ export class ContractsService {
   async archiveContract(
     user: { id: string; email: string; fullName: string; tenantId: string },
     dto: ArchiveContractDto,
-    documents: Array<{
-      buffer: Buffer;
-      mimetype: string;
-      originalname: string;
-      size: number;
-    }> = [],
+    documents: ArchiveDocument[] = [],
   ) {
     // Detectar si es viaje interno (no requiere PDF)
     const isInternalTrip = Boolean(dto.internalTripId?.trim());
@@ -1284,38 +1294,16 @@ export class ContractsService {
     // Generar código de pago único ANTES de renderizar el PDF
     const paymentReference = await this.generateUniquePaymentReference();
     
-    // Variables para PDF (solo si no es viaje interno)
-    let pdfKey: string | null = null;
-    let htmlKey: string | null = null;
-    let pdfBuffer: Buffer | null = null;
-    let signatureAnchors: any = null;
-
-    // VIAJES INTERNACIONALES: Generar PDF + HTML
-    if (!isInternalTrip) {
-      // Inyectar el código de pago en el HTML del contrato
-      const htmlWithPaymentRef = this.injectPaymentReferenceIntoHtml(
-        dto.contractHtml!,
-        paymentReference
-      );
-      
-      htmlKey = `${baseFolder}/contract.html`;
-      await this.uploadToSpaces({
-        objectKey: htmlKey,
-        contentType: "text/html; charset=utf-8",
-        body: Buffer.from(htmlWithPaymentRef, "utf-8"),
-      });
-
-      const pdfResult = await this.pdfRenderService.renderContractToBuffer(htmlWithPaymentRef);
-      pdfBuffer = pdfResult.pdfBuffer;
-      signatureAnchors = pdfResult.signatureAnchors;
-      pdfKey = `${baseFolder}/contract.pdf`;
-
-      await this.uploadToSpaces({
-        objectKey: pdfKey,
-        contentType: "application/pdf",
-        body: pdfBuffer,
-      });
-    }
+    const {
+      pdfKey,
+      htmlKey,
+      signatureAnchors,
+    } = await this.processContractArchiveArtifacts(
+      isInternalTrip,
+      dto.contractHtml,
+      paymentReference,
+      baseFolder,
+    );
 
     // =================================================================
     // 📋 Enrich companions with Customer references (selectedCustomerId)
@@ -1409,52 +1397,14 @@ export class ContractsService {
       'archiveContract'
     );
 
-    const uploadedDocuments: Array<{
-      kind?: string;
-      originalFileName: string;
-      objectKey: string;
-      mimeType: string;
-      size: number;
-    }> = [];
-
-    // Generate additional documents (MINOR_ANNEX, etc.) for international trips
-    if (!isInternalTrip) {
-      await this.generateAdditionalDocuments(
-        {
-          id: contractNumber, // temporary ID for generation
-          contractNumber,
-          payload: payloadRecord,
-        },
-        baseFolder,
-        uploadedDocuments,
-        user.tenantId,
-      );
-    }
-
-    for (let index = 0; index < documents.length; index += 1) {
-      const doc = documents[index];
-      if (!doc?.buffer?.length) {
-        continue;
-      }
-
-      // Convertir imágenes a WebP automáticamente
-      const processedDoc = await this.convertImageToWebP(doc);
-
-      const safeName = this.sanitizeSegment(processedDoc.originalname || `document-${index + 1}`);
-      const objectKey = `${baseFolder}/docs/${index + 1}-${safeName}`;
-      await this.uploadToSpaces({
-        objectKey,
-        contentType: processedDoc.mimetype || "application/octet-stream",
-        body: processedDoc.buffer,
-      });
-
-      uploadedDocuments.push({
-        originalFileName: processedDoc.originalname || `document-${index + 1}`,
-        objectKey,
-        mimeType: processedDoc.mimetype || "application/octet-stream",
-        size: processedDoc.size || processedDoc.buffer.length,
-      });
-    }
+    const uploadedDocuments = await this.processAdditionalArchiveDocuments(
+      isInternalTrip,
+      contractNumber,
+      payloadRecord,
+      baseFolder,
+      documents,
+      user.tenantId,
+    );
 
     // =================================================================
     // 🔍 DEBUG: Log de tamaños ANTES de insertar en base de datos
@@ -1666,6 +1616,108 @@ export class ContractsService {
       createdAt: archived.createdAt,
       pdfUrl,
     };
+  }
+
+  private async processContractArchiveArtifacts(
+    isInternalTrip: boolean,
+    contractHtml: string | undefined,
+    paymentReference: string,
+    baseFolder: string,
+  ): Promise<{
+    pdfKey: string | null;
+    htmlKey: string | null;
+    signatureAnchors: any;
+  }> {
+    // Variables para PDF (solo si no es viaje interno)
+    let pdfKey: string | null = null;
+    let htmlKey: string | null = null;
+    let pdfBuffer: Buffer | null = null;
+    let signatureAnchors: any = null;
+
+    // VIAJES INTERNACIONALES: Generar PDF + HTML
+    if (!isInternalTrip) {
+      // Inyectar el código de pago en el HTML del contrato
+      const htmlWithPaymentRef = this.injectPaymentReferenceIntoHtml(
+        contractHtml!,
+        paymentReference
+      );
+
+      htmlKey = `${baseFolder}/contract.html`;
+      await this.uploadToSpaces({
+        objectKey: htmlKey,
+        contentType: "text/html; charset=utf-8",
+        body: Buffer.from(htmlWithPaymentRef, "utf-8"),
+      });
+
+      const pdfResult = await this.pdfRenderService.renderContractToBuffer(htmlWithPaymentRef);
+      pdfBuffer = pdfResult.pdfBuffer;
+      signatureAnchors = pdfResult.signatureAnchors;
+      pdfKey = `${baseFolder}/contract.pdf`;
+
+      await this.uploadToSpaces({
+        objectKey: pdfKey,
+        contentType: "application/pdf",
+        body: pdfBuffer,
+      });
+    }
+
+    return {
+      pdfKey,
+      htmlKey,
+      signatureAnchors,
+    };
+  }
+
+  private async processAdditionalArchiveDocuments(
+    isInternalTrip: boolean,
+    contractNumber: string,
+    payloadRecord: Record<string, unknown>,
+    baseFolder: string,
+    documents: ArchiveDocument[],
+    tenantId: string,
+  ): Promise<UploadedArchiveDocument[]> {
+    const uploadedDocuments: UploadedArchiveDocument[] = [];
+
+    // Generate additional documents (MINOR_ANNEX, etc.) for international trips
+    if (!isInternalTrip) {
+      await this.generateAdditionalDocuments(
+        {
+          id: contractNumber, // temporary ID for generation
+          contractNumber,
+          payload: payloadRecord,
+        },
+        baseFolder,
+        uploadedDocuments,
+        tenantId,
+      );
+    }
+
+    for (let index = 0; index < documents.length; index += 1) {
+      const doc = documents[index];
+      if (!doc?.buffer?.length) {
+        continue;
+      }
+
+      // Convertir imágenes a WebP automáticamente
+      const processedDoc = await this.convertImageToWebP(doc);
+
+      const safeName = this.sanitizeSegment(processedDoc.originalname || `document-${index + 1}`);
+      const objectKey = `${baseFolder}/docs/${index + 1}-${safeName}`;
+      await this.uploadToSpaces({
+        objectKey,
+        contentType: processedDoc.mimetype || "application/octet-stream",
+        body: processedDoc.buffer,
+      });
+
+      uploadedDocuments.push({
+        originalFileName: processedDoc.originalname || `document-${index + 1}`,
+        objectKey,
+        mimeType: processedDoc.mimetype || "application/octet-stream",
+        size: processedDoc.size || processedDoc.buffer.length,
+      });
+    }
+
+    return uploadedDocuments;
   }
 
   async saveContractDraft(
