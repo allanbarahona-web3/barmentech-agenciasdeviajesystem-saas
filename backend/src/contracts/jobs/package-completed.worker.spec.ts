@@ -31,10 +31,13 @@ describe("PackageCompletedWorker", () => {
       },
     });
     const autoIssueAndSendInvoiceToTitular = jest.fn().mockResolvedValue({});
+    const deliver = jest.fn().mockResolvedValue(undefined);
     const worker = new PackageCompletedWorker(workerService as never, {
       documentSigningSession: { findUnique },
     } as never, {
       autoIssueAndSendInvoiceToTitular,
+    } as never, {
+      deliver,
     } as never);
 
     worker.onModuleInit();
@@ -85,5 +88,9 @@ describe("PackageCompletedWorker", () => {
       actorEmail: "agent@example.com",
       actorName: "Agent",
     });
+    expect(deliver).toHaveBeenCalledWith("contract-1");
+    expect(
+      autoIssueAndSendInvoiceToTitular.mock.invocationCallOrder[0],
+    ).toBeLessThan(deliver.mock.invocationCallOrder[0]);
   });
 });

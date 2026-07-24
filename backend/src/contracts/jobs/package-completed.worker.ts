@@ -5,6 +5,7 @@ import { PLATFORM_QUEUE_KEYS } from "../../infrastructure/queue";
 import { WorkerService } from "../../infrastructure/worker";
 import { PrismaService } from "../../prisma/prisma.service";
 import { BillingService } from "../../billing/billing.service";
+import { PackageCompletedDeliveryService } from "../../documents/package-completed-delivery.service";
 import {
   PACKAGE_COMPLETED_JOB_NAME,
   PACKAGE_COMPLETED_WORKER_REGISTRATION_KEY,
@@ -19,6 +20,7 @@ export class PackageCompletedWorker implements OnModuleInit {
     private readonly workerService: WorkerService,
     private readonly prisma: PrismaService,
     private readonly billingService: BillingService,
+    private readonly packageCompletedDeliveryService: PackageCompletedDeliveryService,
   ) {}
 
   onModuleInit(): void {
@@ -75,6 +77,8 @@ export class PackageCompletedWorker implements OnModuleInit {
       ),
       actorName: String(session.contract.generatedByName || "Sistema"),
     });
+
+    await this.packageCompletedDeliveryService.deliver(payload.contractId);
 
     this.logger.log(
       `PackageCompleted received contractId=${session.contractId} ` +

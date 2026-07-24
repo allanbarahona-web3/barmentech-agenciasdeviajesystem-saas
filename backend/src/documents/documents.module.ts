@@ -12,10 +12,7 @@ import { DocumentDeliveryService } from "./document-delivery.service";
 import { DocumentSigningSessionService } from "./document-signing-session.service";
 import { DocumentPackageService } from "./document-package.service";
 import { DocumentGenerationService } from "./document-generation.service";
-import {
-  EventsModule,
-  PackageCompletedDeliveryHandler,
-} from "../common/events";
+import { PackageCompletedDeliveryService } from "./package-completed-delivery.service";
 
 /**
  * DocumentsModule
@@ -53,11 +50,10 @@ import {
     EmailModule,
     BillingModule,
     StorageModule,
-    EventsModule,
     forwardRef(() => require("../contracts/contracts.module").ContractsModule),
   ],
   providers: [
-    PackageCompletedDeliveryHandler,
+    PackageCompletedDeliveryService,
     DocumentsService,
     DocumentEmailsService,
     DocumentPdfService,
@@ -80,6 +76,7 @@ import {
     DocumentSigningSessionService,
     DocumentPackageService,
     DocumentGenerationService,
+    PackageCompletedDeliveryService,
   ],
 })
 export class DocumentsModule {}

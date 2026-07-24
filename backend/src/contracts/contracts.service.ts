@@ -2449,11 +2449,9 @@ export class ContractsService {
         ).toISOString(),
         eventVersion: PACKAGE_COMPLETED_EVENT_VERSION,
       });
-
-      await this.documentPackageService.onPackageCompleted(contract.id);
     }
 
-    // Post-signing workflow (billing + delivery) now handled by DocumentPackageService
+    // Post-signing Billing and Delivery are handled by PackageCompletedWorker.
     let billingInvoiceAutoEmail: {
       ok: boolean;
       alreadySent?: boolean;

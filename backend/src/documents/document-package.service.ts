@@ -1,10 +1,5 @@
-import { Inject, Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 import { DocumentSigningSessionService } from "./document-signing-session.service";
-import {
-  EVENT_PUBLISHER,
-  EventPublisher,
-  PackageCompletedEvent,
-} from "../common/events";
 
 /**
  * DocumentPackageService
@@ -14,7 +9,7 @@ import {
  * Purpose:
  * - Coordinate completion states across documents in a signing session
  * - Delegate package-level decisions to appropriate document engines
- * - Manage package-level lifecycle events
+ * - Evaluate package-level lifecycle state
  * 
  * Current State:
  * - Evaluates single-document packages (CONTRACT)
@@ -23,7 +18,6 @@ import {
  * Responsibilities:
  * - Track completion state of individual documents
  * - Determine when entire package is complete
- * - Trigger delivery and finalization workflows
  * - Orchestrate multi-document signing sessions
  */
 @Injectable()
@@ -32,8 +26,6 @@ export class DocumentPackageService {
 
   constructor(
     private readonly documentSigningSessionService: DocumentSigningSessionService,
-    @Inject(EVENT_PUBLISHER)
-    private readonly eventPublisher: EventPublisher,
   ) {}
 
   /**
@@ -41,8 +33,6 @@ export class DocumentPackageService {
    * 
    * Evaluates if the package containing this document is complete.
    * Does NOT trigger post-completion workflow.
-   * Caller is responsible for calling onPackageCompleted() after status updates.
-   * 
    * @param documentId Document identifier (contract ID for current single-document packages)
    * @returns True if document (and its package) is completed
    */
@@ -80,26 +70,5 @@ export class DocumentPackageService {
     );
 
     return isComplete;
-  }
-
-  /**
-   * Handle package completion event
-   * 
-   * Orchestrates post-signing workflow:
-   * 1. Billing - Auto-issue and send initial invoice to titular
-   * 2. Delivery - Auto-send signed contract to all parties
-   * 
-   * Current: Single-document packages (CONTRACT)
-   * Future: Multi-document packages (CONTRACT + MINOR_ANNEX + WAIVER)
-   * 
-   * @param documentId Document identifier (contract ID for current single-document packages)
-   */
-  async onPackageCompleted(documentId: string): Promise<void> {
-    this.logger.log(`[package-completed] Starting post-package workflow for documentId=${documentId}`);
-
-    await this.documentSigningSessionService.assertArtifactsReady(documentId);
-    await this.eventPublisher.publish(new PackageCompletedEvent(documentId));
-
-    this.logger.log(`[package-completed] Post-package workflow completed for documentId=${documentId}`);
   }
 }

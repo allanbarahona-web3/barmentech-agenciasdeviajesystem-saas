@@ -1,33 +1,23 @@
 import {
   BadRequestException,
-  Inject,
   Injectable,
   InternalServerErrorException,
   Logger,
   NotFoundException,
-  OnModuleDestroy,
-  OnModuleInit,
 } from "@nestjs/common";
-import { ContractSigningSessionBuilder } from "../../../contracts/contract-signing-session.builder";
-import { DocumentDeliveryService } from "../../../documents/document-delivery.service";
-import { DocumentSigningSessionService } from "../../../documents/document-signing-session.service";
-import { DocumentSigningService } from "../../../documents/document-signing.service";
-import { SigningParticipant } from "../../../documents/signing-session/signing-session.types";
-import { PrismaService } from "../../../prisma/prisma.service";
-import { StorageService } from "../../../storage/storage.service";
-import { EventBus, EVENT_BUS } from "../event-bus";
-import { EventHandler } from "../event-handler";
-import { PackageCompletedEvent } from "./package-completed.event";
+import { ContractSigningSessionBuilder } from "../contracts/contract-signing-session.builder";
+import { PrismaService } from "../prisma/prisma.service";
+import { StorageService } from "../storage/storage.service";
+import { DocumentDeliveryService } from "./document-delivery.service";
+import { DocumentSigningSessionService } from "./document-signing-session.service";
+import { DocumentSigningService } from "./document-signing.service";
+import { SigningParticipant } from "./signing-session/signing-session.types";
 
 @Injectable()
-export class PackageCompletedDeliveryHandler
-  implements EventHandler<PackageCompletedEvent>, OnModuleInit, OnModuleDestroy
-{
-  private readonly logger = new Logger(PackageCompletedDeliveryHandler.name);
+export class PackageCompletedDeliveryService {
+  private readonly logger = new Logger(PackageCompletedDeliveryService.name);
 
   constructor(
-    @Inject(EVENT_BUS)
-    private readonly eventBus: EventBus,
     private readonly prisma: PrismaService,
     private readonly documentSigningSessionService: DocumentSigningSessionService,
     private readonly documentDeliveryService: DocumentDeliveryService,
@@ -36,17 +26,7 @@ export class PackageCompletedDeliveryHandler
     private readonly contractSigningSessionBuilder: ContractSigningSessionBuilder,
   ) {}
 
-  onModuleInit(): void {
-    this.eventBus.subscribe(PackageCompletedEvent, this);
-  }
-
-  onModuleDestroy(): void {
-    this.eventBus.unsubscribe(PackageCompletedEvent, this);
-  }
-
-  async handle(event: PackageCompletedEvent): Promise<void> {
-    const { documentId } = event;
-
+  async deliver(documentId: string): Promise<void> {
     try {
       const contract = await (this.prisma as any).contract.findUnique({
         where: { id: documentId },
