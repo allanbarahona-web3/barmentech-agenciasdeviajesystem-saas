@@ -40,6 +40,10 @@ import {
   ARCHIVE_PROCESSING_JOB_OPTIONS,
 } from "./jobs/archive-processing-job.constants";
 import type { ArchiveProcessingJobPayload } from "./jobs/archive-processing-job.types";
+import {
+  PACKAGE_COMPLETED_EVENT_VERSION,
+  PackageCompletedDispatcher,
+} from "./jobs";
 
 const CONTRACT_STATUS_PENDING_PAYMENT_RESERVE = "PENDING_PAYMENT_RESERVE";
 const CONTRACT_STATUS_RESERVE_IN_REVIEW = "RESERVE_IN_REVIEW";
@@ -97,6 +101,7 @@ export class ContractsService {
     private readonly contractSigningSessionBuilder: ContractSigningSessionBuilder,
     private readonly storageService: StorageService,
     private readonly jobDispatcher: JobDispatcherService,
+    private readonly packageCompletedDispatcher: PackageCompletedDispatcher,
   ) {}
 
   private pad(value: number, size = 2) {
@@ -2411,9 +2416,40 @@ export class ContractsService {
       `allCompleted=${sessionCompleted} ip=${signedClientIp || "unknown"} sha256=${finalizationResult.signedPdfHash.slice(0, 16)}…`,
     );
 
-    // Trigger post-package workflow if package completed
-    // Contract status is now SIGNED, billing and delivery can proceed
     if (sessionCompleted) {
+      const completedSession =
+        await (this.prisma as any).documentSigningSession.findFirst({
+          where: {
+            contractId: contract.id,
+            status: { in: ["SIGNED", "COMPLETED"] },
+          },
+          orderBy: { updatedAt: "desc" },
+          select: {
+            id: true,
+            tenantId: true,
+            completedAt: true,
+          },
+        });
+
+      if (!completedSession) {
+        throw new InternalServerErrorException(
+          "No se encontro la sesion de firma completada.",
+        );
+      }
+
+      const correlationId = `package-completed-${completedSession.id}`;
+      await this.packageCompletedDispatcher.dispatch({
+        contractId: contract.id,
+        documentSigningSessionId: completedSession.id,
+        tenantId: completedSession.tenantId,
+        correlationId,
+        actorUserId: String(contract.generatedByUserId || "system"),
+        completedAt: (
+          completedSession.completedAt || now
+        ).toISOString(),
+        eventVersion: PACKAGE_COMPLETED_EVENT_VERSION,
+      });
+
       await this.documentPackageService.onPackageCompleted(contract.id);
     }
 
