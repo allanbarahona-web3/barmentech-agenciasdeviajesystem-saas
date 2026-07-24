@@ -164,9 +164,10 @@ export default function CustomerProfilePage() {
       const files = await getContractFiles(contractId);
       const url = files.signedPdf?.url || files.pdf?.url || '';
       if (!url) {
-        setLoadingModalState('error');
-        setLoadingModalMessage('No hay contrato disponible.');
+        setLoadingModalState('loading');
+        setLoadingModalMessage('Generando PDF...');
         setLoadingModalOpen(true);
+        window.setTimeout(() => setLoadingModalOpen(false), 2000);
       } else {
         setViewerHtml(`<iframe src="${url}" title="Contrato" class="viewer-iframe"></iframe>`);
         setViewerOpen(true);

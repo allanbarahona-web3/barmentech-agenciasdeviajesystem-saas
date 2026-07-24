@@ -35,6 +35,7 @@ import { getAllBankAccounts } from "@/lib/bank-accounts-api";
 import { type TenantLegalInfo, type BankAccountForContract } from "@/features/contracts-form/pdf-template";
 import { buildDocumentPackage } from "@/features/documents/builder/document-builder";
 import { calculateParticipants } from "@/features/contracts-form/capacity-validation";
+import { ConfirmModal } from "@/components/confirm-modal";
 
 /**
  * Contracts Wizard Props
@@ -92,6 +93,10 @@ export function ContractsWizard({
   const [previewing, setPreviewing] = useState(false);
   const [previewHtml, setPreviewHtml] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [completion, setCompletion] = useState<{
+    contractNumber: string;
+    customerId: string;
+  } | null>(null);
   const [copiedSignerKey, setCopiedSignerKey] = useState("");
   const [latestSigningLinks, setLatestSigningLinks] = useState<
     Array<{ signerKey: string; signerName: string; signerEmail: string | null; signingUrl: string }>
@@ -764,28 +769,6 @@ export function ContractsWizard({
     setStatus("⚠️ No hay capacidad suficiente. Ver modal.");
   };
 
-  const resetFormForNextContract = async (successMessage: string) => {
-    const nextBaseState = createInitialFormState(agent || undefined);
-    setState(nextBaseState);
-    setHolderDocs({ idFront: null, idBack: null, passport: null });
-    setSupportDocs([]);
-    setReservationProof(null);
-    setCompanionDocs({});
-    setMinorDocs({});
-    setPreviewHtml("");
-    setLatestSigningLinks([]);
-    setCopiedSignerKey("");
-    setActiveDraftId(null);
-
-    try {
-      const nextNumber = await reserveNextContractNumber();
-      setState((prev) => ({ ...prev, contractNumber: nextNumber }));
-      setStatus(`${successMessage} Formulario limpiado y listo para nuevo contrato (${nextNumber}).`);
-    } catch {
-      setStatus(`${successMessage} Formulario limpiado. Usa "Reintentar" para reservar nuevo numero.`);
-    }
-  };
-
   // ==================== BUSINESS HANDLERS ====================
   const saveDraftFlow = async () => {
     if (savingDraft || submitting || previewing || busyNumber) return;
@@ -1216,13 +1199,10 @@ console.log("====================================");
         window.open(archived.pdfUrl, "_blank", "noopener,noreferrer");
       }
 
-      console.log("🔵 Paso 6: Reseteando formulario...");
-      await resetFormForNextContract(
-        isInternalTrip
-          ? "Formulario enviado correctamente. El comprobante de reserva quedará pendiente de aprobación del admin."
-          : "Contrato guardado correctamente. El pago de reserva quedará pendiente de aprobación del admin.",
-      );
-      console.log("✅ Formulario reseteado");
+      setCompletion({
+        contractNumber: archived.contractNumber,
+        customerId: archived.customerId,
+      });
     } catch (error) {
       console.error("❌ ERROR en runArchiveFlow:", error);
       
@@ -1344,6 +1324,23 @@ console.log("====================================");
           onClose={() => setAttachmentViewerData(null)}
         />
       )}
+      <ConfirmModal
+        isOpen={Boolean(completion)}
+        title="Reserva enviada correctamente"
+        message={
+          completion
+            ? `Contrato: ${completion.contractNumber}\n\nPendiente de aprobación por Administración\n\nEl contrato se está preparando automáticamente en segundo plano.\n\nPuede continuar trabajando mientras la plataforma completa el procesamiento.`
+            : ""
+        }
+        confirmText="Ir al perfil del cliente"
+        cancelText="Salir al Dashboard"
+        onConfirm={() => {
+          if (completion) {
+            router.push(`/admin/customers/${encodeURIComponent(completion.customerId)}`);
+          }
+        }}
+        onCancel={() => router.push("/agent-start")}
+      />
     </>
   );
 }

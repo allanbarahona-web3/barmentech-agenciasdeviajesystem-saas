@@ -8,6 +8,7 @@ export type ConfirmModalProps = {
   message: string;
   confirmText?: string;
   cancelText?: string;
+  showCancel?: boolean;
   confirmVariant?: "primary" | "danger" | "warning";
   onConfirm: () => void;
   onCancel: () => void;
@@ -19,6 +20,7 @@ export function ConfirmModal({
   message,
   confirmText = "Confirmar",
   cancelText = "Cancelar",
+  showCancel = true,
   confirmVariant = "primary",
   onConfirm,
   onCancel,
@@ -59,13 +61,15 @@ export function ConfirmModal({
         </div>
         
         <div className="confirm-modal-footer">
-          <button 
-            type="button"
-            className="confirm-modal-btn confirm-modal-btn-cancel" 
-            onClick={onCancel}
-          >
-            {cancelText}
-          </button>
+          {showCancel ? (
+            <button
+              type="button"
+              className="confirm-modal-btn confirm-modal-btn-cancel"
+              onClick={onCancel}
+            >
+              {cancelText}
+            </button>
+          ) : null}
           <button 
             type="button"
             className={`confirm-modal-btn ${confirmButtonClass}`}

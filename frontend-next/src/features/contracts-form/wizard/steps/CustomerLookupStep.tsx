@@ -107,8 +107,13 @@ export function CustomerLookupStep({
 
   async function handleSaveCustomer(formData: {
     fullName: string;
+    idType: string;
     email: string;
     phone: string;
+    maritalStatus: string;
+    nationality: string;
+    occupation: string;
+    address: string;
     emergencyContactName: string;
     emergencyContactPhone: string;
   }) {
@@ -137,14 +142,20 @@ export function CustomerLookupStep({
       setState((prev) => ({
         ...prev,
         clientFullName: updatedCustomer.fullName,
+        clientIdType: (updatedCustomer.idType || 'Cedula') as 'Cedula' | 'Pasaporte' | 'DIMEX',
         clientIdNumber: updatedCustomer.idNumber,
         clientEmail: updatedCustomer.email,
         clientPhone: updatedCustomer.phone || '',
+        clientAddress: updatedCustomer.address || '',
         emergencyContactName: updatedCustomer.emergencyContactName || '',
         emergencyContactPhone: updatedCustomer.emergencyContactPhone || '',
+        civilStatus: (updatedCustomer.maritalStatus || 'Soltero') as 'Soltero' | 'Casado' | 'Divorciado' | 'Viudo',
+        profession: updatedCustomer.occupation || '',
+        clientNationality: updatedCustomer.nationality || 'Costa Rica',
       }));
 
       setIsEditModalOpen(false);
+      setCustomerToEdit(null);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Error al actualizar cliente';
       throw new Error(errorMessage);
@@ -487,7 +498,10 @@ export function CustomerLookupStep({
         <CustomerEditModal
           isOpen={isEditModalOpen}
           customer={customerToEdit}
-          onClose={() => setIsEditModalOpen(false)}
+          onClose={() => {
+            setIsEditModalOpen(false);
+            setCustomerToEdit(null);
+          }}
           onSave={handleSaveCustomer}
         />
       )}

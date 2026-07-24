@@ -46,7 +46,32 @@ export function DocumentStatusIndicator({
   documents,
 }: DocumentStatusIndicatorProps) {
   if (!documents || documents.length === 0) {
-    return <div style={{ color: "#9ca3af", fontSize: "13px" }}>Sin documentos</div>;
+    return (
+      <div
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: "6px",
+          padding: "4px 8px",
+          borderRadius: "12px",
+          backgroundColor: "#fffbeb",
+          border: "1px solid #fde68a",
+          color: "#92400e",
+          fontSize: "12px",
+          fontWeight: 500,
+        }}
+      >
+        <span
+          style={{
+            width: "8px",
+            height: "8px",
+            borderRadius: "50%",
+            backgroundColor: "#f59e0b",
+          }}
+        />
+        Preparando contrato...
+      </div>
+    );
   }
 
   return (

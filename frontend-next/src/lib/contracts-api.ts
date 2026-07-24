@@ -134,6 +134,7 @@ type ArchiveContractInput = {
 type ArchiveContractResult = {
   id: string;
   contractNumber: string;
+  customerId: string;
   status: string;
   documentCount: number;
   createdAt: string;

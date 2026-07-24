@@ -101,6 +101,7 @@ export default function HistoryPage() {
   const [viewerHtml, setViewerHtml] = useState("");
   const [viewerDocs, setViewerDocs] = useState<ContractFileDocument[]>([]);
   const [draftToDelete, setDraftToDelete] = useState<{ id: string; contractNumber: string; clientFullName: string } | null>(null);
+  const [pdfProcessingDialogOpen, setPdfProcessingDialogOpen] = useState(false);
   const [attachmentViewerData, setAttachmentViewerData] = useState<{ attachments: Array<{ id: string; originalFileName: string; url: string; mimeType: string }>; initialIndex: number } | null>(null);
   const { toasts, showSuccess, showError, showInfo, dismissToast } = useToast();
 
@@ -252,7 +253,7 @@ export default function HistoryPage() {
       const files = await getContractFiles(contractId);
       const url = files.signedPdf?.url || files.pdf?.url || "";
       if (!url) {
-        showError("No hay contrato disponible.");
+        setPdfProcessingDialogOpen(true);
       } else {
         setViewerTitle("Contrato");
         setViewerMode("html");
@@ -709,6 +710,16 @@ export default function HistoryPage() {
           </div>
         </section>
       ) : null}
+
+      <ConfirmModal
+        isOpen={pdfProcessingDialogOpen}
+        onCancel={() => setPdfProcessingDialogOpen(false)}
+        onConfirm={() => setPdfProcessingDialogOpen(false)}
+        title="El contrato se está preparando"
+        message={`El contrato ya fue creado correctamente.\n\nEl PDF todavía se está generando automáticamente en segundo plano.\n\nIntenta nuevamente en unos momentos.`}
+        confirmText="Aceptar"
+        showCancel={false}
+      />
 
       <ConfirmModal
         isOpen={draftToDelete !== null}

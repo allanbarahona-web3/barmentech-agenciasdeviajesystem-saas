@@ -675,20 +675,6 @@ export function CompanionsStep({
             <div className="itinerary-head">
               <h3>Acompanante {index + 1}</h3>
               <div style={{ display: 'flex', gap: '8px' }}>
-                {companionCustomerDocuments[companion.id]?.customerId && (
-                  <button
-                    type="button"
-                    className="btn-secondary"
-                    onClick={() => handleEditCompanionCustomer(companion.id, companionCustomerDocuments[companion.id].customerId)}
-                    style={{
-                      background: '#667eea',
-                      color: 'white',
-                      border: 'none',
-                    }}
-                  >
-                    ✏️ Editar
-                  </button>
-                )}
                 <button
                   type="button"
                   className="btn-secondary"

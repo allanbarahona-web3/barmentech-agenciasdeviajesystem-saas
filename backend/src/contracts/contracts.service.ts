@@ -1616,6 +1616,7 @@ export class ContractsService {
       return {
         id: archived.id,
         contractNumber: archived.contractNumber,
+        customerId: archived.clientId,
         paymentReference: archived.paymentReference,
         status: archived.status,
         documentCount: archived.documents.length,
@@ -1680,6 +1681,7 @@ export class ContractsService {
     return {
       id: archived.id,
       contractNumber: archived.contractNumber,
+      customerId: archived.clientId,
       paymentReference: archived.paymentReference,
       status: archived.status,
       documentCount: archived.documents.length,
