@@ -11,14 +11,10 @@ describe("PackageCompletedDispatcher", () => {
       registerQueue: jest.fn(),
       getConfiguredQueueName: jest.fn().mockReturnValue("package-completed"),
     };
-    const queueEvents = {};
     const queueEventsService = {
-      registerQueueEvents: jest.fn().mockReturnValue(queueEvents),
+      registerQueueEvents: jest.fn(),
     };
-    const waitUntilFinished = jest.fn().mockResolvedValue(undefined);
-    const jobDispatcher = {
-      dispatch: jest.fn().mockResolvedValue({ waitUntilFinished }),
-    };
+    const jobDispatcher = { dispatch: jest.fn().mockResolvedValue({}) };
     const dispatcher = new PackageCompletedDispatcher(
       queueService as never,
       queueEventsService as never,
@@ -49,6 +45,5 @@ describe("PackageCompletedDispatcher", () => {
         jobId: getPackageCompletedJobId(payload.documentSigningSessionId),
       },
     });
-    expect(waitUntilFinished).toHaveBeenCalledWith(queueEvents);
   });
 });

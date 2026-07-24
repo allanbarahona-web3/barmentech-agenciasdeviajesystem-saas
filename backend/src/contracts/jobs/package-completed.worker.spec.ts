@@ -30,11 +30,11 @@ describe("PackageCompletedWorker", () => {
         generatedByName: "Agent",
       },
     });
-    const bootstrapContractBillingRecords = jest.fn().mockResolvedValue({});
+    const autoIssueAndSendInvoiceToTitular = jest.fn().mockResolvedValue({});
     const worker = new PackageCompletedWorker(workerService as never, {
       documentSigningSession: { findUnique },
     } as never, {
-      bootstrapContractBillingRecords,
+      autoIssueAndSendInvoiceToTitular,
     } as never);
 
     worker.onModuleInit();
@@ -79,13 +79,11 @@ describe("PackageCompletedWorker", () => {
         },
       },
     });
-    expect(bootstrapContractBillingRecords).toHaveBeenCalledWith(
-      {
-        id: "user-1",
-        email: "agent@example.com",
-        fullName: "Agent",
-      },
-      "contract-1",
-    );
+    expect(autoIssueAndSendInvoiceToTitular).toHaveBeenCalledWith({
+      contractId: "contract-1",
+      actorUserId: "user-1",
+      actorEmail: "agent@example.com",
+      actorName: "Agent",
+    });
   });
 });

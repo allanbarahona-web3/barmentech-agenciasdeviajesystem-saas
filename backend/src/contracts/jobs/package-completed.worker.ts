@@ -67,14 +67,14 @@ export class PackageCompletedWorker implements OnModuleInit {
       );
     }
 
-    await this.billingService.bootstrapContractBillingRecords(
-      {
-        id: payload.actorUserId,
-        email: String(session.contract.generatedByEmail || "system@local"),
-        fullName: String(session.contract.generatedByName || "Sistema"),
-      },
-      payload.contractId,
-    );
+    await this.billingService.autoIssueAndSendInvoiceToTitular({
+      contractId: payload.contractId,
+      actorUserId: payload.actorUserId,
+      actorEmail: String(
+        session.contract.generatedByEmail || "system@local",
+      ),
+      actorName: String(session.contract.generatedByName || "Sistema"),
+    });
 
     this.logger.log(
       `PackageCompleted received contractId=${session.contractId} ` +

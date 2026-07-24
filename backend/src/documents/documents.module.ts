@@ -14,7 +14,6 @@ import { DocumentPackageService } from "./document-package.service";
 import { DocumentGenerationService } from "./document-generation.service";
 import {
   EventsModule,
-  PackageCompletedBillingHandler,
   PackageCompletedDeliveryHandler,
 } from "../common/events";
 
@@ -58,8 +57,6 @@ import {
     forwardRef(() => require("../contracts/contracts.module").ContractsModule),
   ],
   providers: [
-    // Subscription order is significant: billing must finish before delivery.
-    PackageCompletedBillingHandler,
     PackageCompletedDeliveryHandler,
     DocumentsService,
     DocumentEmailsService,

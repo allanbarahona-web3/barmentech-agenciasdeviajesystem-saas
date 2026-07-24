@@ -2,7 +2,6 @@ export * from "./billing/invoice-created.event";
 export * from "./contracts/contract-archived.event";
 export * from "./domain-event";
 export * from "./documents/package-completed.event";
-export * from "./documents/package-completed-billing.handler";
 export * from "./documents/package-completed-delivery.handler";
 export * from "./event-bus";
 export * from "./event-handler";
