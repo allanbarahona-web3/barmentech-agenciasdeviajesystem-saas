@@ -154,6 +154,16 @@ export function VerticalNav() {
           },
         ]
       : []),
+
+    ...(role === "AGENT"
+      ? [
+          {
+            href: "/agent-dashboard",
+            label: "Dashboard",
+            icon: "📊",
+          },
+        ]
+      : []),
     
     // My Timesheet - para roles que usan Attendance
     ...(needsAttendanceWidget

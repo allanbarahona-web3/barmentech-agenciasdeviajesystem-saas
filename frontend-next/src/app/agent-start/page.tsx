@@ -6,37 +6,64 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getStoredSession } from "@/lib/auth-api";
 import { usesAttendance } from "@/lib/attendance-permissions";
-import { attendanceCheckIn } from "@/lib/attendance-api";
+import { attendanceCheckIn, getAttendanceStatus } from "@/lib/attendance-api";
 import { ShiftModal } from "@/components/shift-modal";
-import { ActionMenuModal } from "@/components/action-menu-modal";
 import { PageLoader } from "@/components/loading-spinner";
 
 export default function AgentStartPage() {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [showShiftModal, setShowShiftModal] = useState(false);
-  const [showMenuModal, setShowMenuModal] = useState(false);
   const [startingShift, setStartingShift] = useState(false);
   const [shiftError, setShiftError] = useState("");
 
   useEffect(() => {
-    setMounted(true);
-    const session = getStoredSession();
+    let active = true;
 
-    if (!session?.user?.id) {
-      router.replace("/");
-      return;
-    }
+    const validateAttendance = async () => {
+      const session = getStoredSession();
 
-    const role = String(session.user.role || "").toUpperCase();
-    // Solo roles operacionales de attendance deberían ver esta página
-    if (!usesAttendance(role)) {
-      router.replace("/contracts");
-      return;
-    }
+      if (!session?.user?.id) {
+        router.replace("/");
+        return;
+      }
 
-    // Mostrar el shift modal después de un pequeño delay
-    setTimeout(() => setShowShiftModal(true), 300);
+      const role = String(session.user.role || "").toUpperCase();
+      if (!usesAttendance(role)) {
+        router.replace("/contracts");
+        return;
+      }
+
+      try {
+        const attendance = await getAttendanceStatus();
+        if (!active) return;
+
+        if (attendance.currentState && attendance.currentState !== "OFF") {
+          router.replace(
+            role === "FACTURACION_COBROS" ? "/billing" : "/agent-dashboard",
+          );
+          return;
+        }
+
+        setMounted(true);
+        setShowShiftModal(true);
+      } catch (error) {
+        if (!active) return;
+        setMounted(true);
+        setShiftError(
+          error instanceof Error
+            ? error.message
+            : "No se pudo validar el estado de asistencia.",
+        );
+        setShowShiftModal(true);
+      }
+    };
+
+    void validateAttendance();
+
+    return () => {
+      active = false;
+    };
   }, [router]);
 
   const handleStartShift = async () => {
@@ -56,51 +83,15 @@ export default function AgentStartPage() {
       const role = String(session?.user?.role || "").toUpperCase();
 
       if (role === "FACTURACION_COBROS") {
-        // For billing/finance role, redirect directly to billing area
-        setTimeout(() => router.push("/billing"), 200);
+        router.replace("/billing");
       } else {
-        // For commercial/operational roles (AGENT, OPERACIONES, VENTAS), show action menu
-        setTimeout(() => setShowMenuModal(true), 200);
+        router.replace("/agent-dashboard");
       }
     } catch (error) {
       setShiftError(error instanceof Error ? error.message : "No se pudo iniciar el shift.");
     } finally {
       setStartingShift(false);
     }
-  };
-
-  const handleSelectTrips = () => {
-    setShowMenuModal(false);
-    // Redirigir a la página de viajes internacionales
-    setTimeout(() => router.push("/trips?travelType=INTERNATIONAL"), 100);
-  };
-
-  const handleSelectMigration = () => {
-    setShowMenuModal(false);
-    // Redirigir a la página de paquetes de migración
-    setTimeout(() => router.push("/trips?travelType=MIGRATION"), 100);
-  };
-
-  const handleSelectInternalTrips = () => {
-    setShowMenuModal(false);
-    // Redirigir a la página de viajes internos disponibles
-    setTimeout(() => router.push("/internal-trips-available"), 100);
-  };
-
-  const handleSelectCustomers = () => {
-    setShowMenuModal(false);
-    // Redirigir a la página de clientes
-    setTimeout(() => router.push("/admin/customers"), 100);
-  };
-
-  const handleSelectQuote = () => {
-    // Futuro: Redirigir a página de cotización
-    console.log("Cotización seleccionada (futuro)");
-  };
-
-  const handleSelectCustom = () => {
-    // Futuro: Redirigir a página de viaje personalizado
-    console.log("Viaje personalizado seleccionado (futuro)");
   };
 
   if (!mounted) {
@@ -134,15 +125,6 @@ export default function AgentStartPage() {
         error={shiftError}
       />
       
-      <ActionMenuModal
-        isOpen={showMenuModal}
-        onSelectTrips={handleSelectTrips}
-        onSelectMigration={handleSelectMigration}
-        onSelectInternalTrips={handleSelectInternalTrips}
-        onSelectCustomers={handleSelectCustomers}
-        onSelectQuote={handleSelectQuote}
-        onSelectCustom={handleSelectCustom}
-      />
     </>
   );
 }

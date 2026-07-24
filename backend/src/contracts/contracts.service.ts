@@ -40,10 +40,8 @@ import {
   ARCHIVE_PROCESSING_JOB_OPTIONS,
 } from "./jobs/archive-processing-job.constants";
 import type { ArchiveProcessingJobPayload } from "./jobs/archive-processing-job.types";
-import {
-  PACKAGE_COMPLETED_EVENT_VERSION,
-  PackageCompletedDispatcher,
-} from "./jobs";
+import { PACKAGE_COMPLETED_EVENT_VERSION } from "./jobs/package-completed-job.constants";
+import { PackageCompletedDispatcher } from "./jobs/package-completed.dispatcher";
 
 const CONTRACT_STATUS_PENDING_PAYMENT_RESERVE = "PENDING_PAYMENT_RESERVE";
 const CONTRACT_STATUS_RESERVE_IN_REVIEW = "RESERVE_IN_REVIEW";

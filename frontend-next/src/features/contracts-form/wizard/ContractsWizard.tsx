@@ -1339,7 +1339,7 @@ console.log("====================================");
             router.push(`/admin/customers/${encodeURIComponent(completion.customerId)}`);
           }
         }}
-        onCancel={() => router.push("/agent-start")}
+        onCancel={() => router.push("/agent-dashboard")}
       />
     </>
   );
