@@ -4,6 +4,7 @@ import { JobEnvelope } from "../../infrastructure/job-dispatcher";
 import { PLATFORM_QUEUE_KEYS } from "../../infrastructure/queue";
 import { WorkerService } from "../../infrastructure/worker";
 import { PrismaService } from "../../prisma/prisma.service";
+import { BillingService } from "../../billing/billing.service";
 import {
   PACKAGE_COMPLETED_JOB_NAME,
   PACKAGE_COMPLETED_WORKER_REGISTRATION_KEY,
@@ -17,6 +18,7 @@ export class PackageCompletedWorker implements OnModuleInit {
   constructor(
     private readonly workerService: WorkerService,
     private readonly prisma: PrismaService,
+    private readonly billingService: BillingService,
   ) {}
 
   onModuleInit(): void {
@@ -43,18 +45,36 @@ export class PackageCompletedWorker implements OnModuleInit {
         tenantId: true,
         status: true,
         completedAt: true,
+        contract: {
+          select: {
+            generatedByUserId: true,
+            generatedByEmail: true,
+            generatedByName: true,
+          },
+        },
       },
     });
 
     if (
       !session ||
       session.contractId !== payload.contractId ||
-      session.tenantId !== payload.tenantId
+      session.tenantId !== payload.tenantId ||
+      String(session.contract.generatedByUserId || "system") !==
+        payload.actorUserId
     ) {
       throw new Error(
         `PackageCompleted authoritative session data does not match job ${job.id ?? "unknown"}.`,
       );
     }
+
+    await this.billingService.bootstrapContractBillingRecords(
+      {
+        id: payload.actorUserId,
+        email: String(session.contract.generatedByEmail || "system@local"),
+        fullName: String(session.contract.generatedByName || "Sistema"),
+      },
+      payload.contractId,
+    );
 
     this.logger.log(
       `PackageCompleted received contractId=${session.contractId} ` +

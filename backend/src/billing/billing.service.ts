@@ -2444,16 +2444,14 @@ export class BillingService {
       throw new BadRequestException("Solo se puede auto-facturar cuando el contrato esta firmado.");
     }
 
-    if (!contract.billingInvoice) {
-      await this.bootstrapContractBilling(
-        {
-          id: input.actorUserId,
-          email: input.actorEmail,
-          fullName: input.actorName,
-        },
-        contract.id,
-      );
-    }
+    await this.bootstrapContractBilling(
+      {
+        id: input.actorUserId,
+        email: input.actorEmail,
+        fullName: input.actorName,
+      },
+      contract.id,
+    );
 
     const invoice = await (this.prisma as any).billingInvoice.findUnique({
       where: { contractId: contract.id },
@@ -2811,7 +2809,9 @@ export class BillingService {
     contractId: string,
     sourceIp?: string | null,
     userAgent?: string | null,
+    options?: { recordsOnly?: boolean },
   ) {
+    const recordsOnly = options?.recordsOnly === true;
     const contract = await (this.prisma as any).contract.findUnique({
       where: { id: contractId },
       include: { client: true, documents: true },
@@ -2881,7 +2881,20 @@ export class BillingService {
       }
     }
 
-    if (invoiceCreated) {
+    const invoiceAuditExists = recordsOnly
+      ? true
+      : Boolean(
+          await (this.prisma as any).billingAuditLog.findFirst({
+            where: {
+              entityType: "INVOICE",
+              entityId: invoice.id,
+              action: "CREATE",
+            },
+            select: { id: true },
+          }),
+        );
+
+    if (!recordsOnly && (invoiceCreated || !invoiceAuditExists)) {
       await this.logAudit({
         tenantId: contract.tenantId,
         entityType: "INVOICE",
@@ -2900,7 +2913,7 @@ export class BillingService {
       });
     }
 
-    if (!invoice.objectKeyPdf) {
+    if (!recordsOnly && !invoice.objectKeyPdf) {
       await this.ensureInvoicePdf(invoice.id);
     }
 
@@ -2949,7 +2962,20 @@ export class BillingService {
 
       reservationPaymentId = payment.id;
 
-      if (paymentResult.created) {
+      const paymentAuditExists = recordsOnly
+        ? true
+        : Boolean(
+            await (this.prisma as any).billingAuditLog.findFirst({
+              where: {
+                entityType: "PAYMENT",
+                entityId: payment.id,
+                action: "REPORT",
+              },
+              select: { id: true },
+            }),
+          );
+
+      if (!recordsOnly && (paymentResult.created || !paymentAuditExists)) {
         await this.logAudit({
           tenantId: contract.tenantId,
           entityType: "PAYMENT",
@@ -3008,7 +3034,20 @@ export class BillingService {
         }
       }
 
-      if (receiptCreated) {
+      const receiptAuditExists = recordsOnly
+        ? true
+        : Boolean(
+            await (this.prisma as any).billingAuditLog.findFirst({
+              where: {
+                entityType: "RECEIPT",
+                entityId: receipt.id,
+                action: "CREATE_PENDING",
+              },
+              select: { id: true },
+            }),
+          );
+
+      if (!recordsOnly && (receiptCreated || !receiptAuditExists)) {
         await this.logAudit({
           tenantId: contract.tenantId,
           entityType: "RECEIPT",
@@ -3026,14 +3065,16 @@ export class BillingService {
         });
       }
 
-      if (!receipt.objectKeyPdf) {
+      if (!recordsOnly && !receipt.objectKeyPdf) {
         await this.ensureReceiptPdf(receipt.id);
       }
 
-      await this.recalcInvoiceAmounts(invoice.id);
+      if (!recordsOnly) {
+        await this.recalcInvoiceAmounts(invoice.id);
+      }
 
       const reservationDocs = this.normalizeContractReservationDocuments(contract);
-      if (reservationDocs.length > 0) {
+      if (!recordsOnly && reservationDocs.length > 0) {
         const existingAttachments =
           await (this.prisma as any).billingPaymentAttachment.findMany({
             where: {
@@ -3077,6 +3118,19 @@ export class BillingService {
       invoiceNumber: invoice.invoiceNumber,
       reservationPaymentId,
     };
+  }
+
+  async bootstrapContractBillingRecords(
+    user: { id: string; email: string; fullName: string },
+    contractId: string,
+  ) {
+    return this.bootstrapContractBilling(
+      user,
+      contractId,
+      null,
+      null,
+      { recordsOnly: true },
+    );
   }
 
   async listBillingContracts(

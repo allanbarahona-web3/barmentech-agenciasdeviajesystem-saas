@@ -24,9 +24,17 @@ describe("PackageCompletedWorker", () => {
       tenantId: "tenant-1",
       status: "SIGNED",
       completedAt: new Date("2026-07-23T12:00:00.000Z"),
+      contract: {
+        generatedByUserId: "user-1",
+        generatedByEmail: "agent@example.com",
+        generatedByName: "Agent",
+      },
     });
+    const bootstrapContractBillingRecords = jest.fn().mockResolvedValue({});
     const worker = new PackageCompletedWorker(workerService as never, {
       documentSigningSession: { findUnique },
+    } as never, {
+      bootstrapContractBillingRecords,
     } as never);
 
     worker.onModuleInit();
@@ -62,7 +70,22 @@ describe("PackageCompletedWorker", () => {
         tenantId: true,
         status: true,
         completedAt: true,
+        contract: {
+          select: {
+            generatedByUserId: true,
+            generatedByEmail: true,
+            generatedByName: true,
+          },
+        },
       },
     });
+    expect(bootstrapContractBillingRecords).toHaveBeenCalledWith(
+      {
+        id: "user-1",
+        email: "agent@example.com",
+        fullName: "Agent",
+      },
+      "contract-1",
+    );
   });
 });
