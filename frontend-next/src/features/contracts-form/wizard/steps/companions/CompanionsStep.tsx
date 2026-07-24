@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import type { ContractFormState } from "@/features/contracts-form/types";
-import { addCompanion, addCompanionFromCustomer, removeCompanion, updateCompanion } from "@/features/contracts-form/utils";
+import { addCompanionFromCustomer, removeCompanion, updateCompanion } from "@/features/contracts-form/utils";
 import { getCustomers, getCustomerProfile, updateCustomer, type CustomerListItem, type CustomerInfo } from '@/lib/customers-api';
+import { CustomerCreateModal } from '@/features/customers/components/CustomerCreateModal';
 import { CustomerEditModal } from '@/features/customers/components/CustomerEditModal';
 
 export interface CompanionsStepProps {
@@ -61,6 +62,7 @@ export function CompanionsStep({
   const [searchResults, setSearchResults] = useState<CustomerListItem[]>([]);
   const [lookupError, setLookupError] = useState<string | null>(null);
   const [selectedCompanionCustomer, setSelectedCompanionCustomer] = useState<CustomerListItem | null>(null);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [customerToEdit, setCustomerToEdit] = useState<CustomerInfo | null>(null);
   const [editingCompanionId, setEditingCompanionId] = useState<string | null>(null);
@@ -158,13 +160,20 @@ export function CompanionsStep({
     }
   }
 
-  function handleSkipLookup() {
-    setState((prev) => addCompanion(prev));
-    setShowLookupModal(false);
-    setSearchQuery('');
-    setSearchResults([]);
+  function handleCustomerCreated(customer: CustomerInfo) {
+    const newCustomerListItem: CustomerListItem = {
+      id: customer.id,
+      fullName: customer.fullName,
+      idNumber: customer.idNumber,
+      email: customer.email,
+      phone: customer.phone,
+      createdAt: customer.createdAt,
+    };
+
+    setSearchResults((prev) => [newCustomerListItem, ...prev]);
+    setSelectedCompanionCustomer(newCustomerListItem);
     setLookupError(null);
-    setSelectedCompanionCustomer(null);
+    setIsCreateModalOpen(false);
   }
 
   async function handleEditCompanionCustomer(companionId: string, customerId: string) {
@@ -551,10 +560,10 @@ export function CompanionsStep({
                     No se encontró ningún acompañante
                   </h3>
                   <p style={{ color: '#b45309', fontSize: '14px', maxWidth: '500px', margin: '0 auto 16px' }}>
-                    No existe un cliente con el número de identificación "{searchQuery}".
+                    No existe un cliente con el número de identificación &quot;{searchQuery}&quot;.
                   </p>
                   <button
-                    onClick={handleSkipLookup}
+                    onClick={() => setIsCreateModalOpen(true)}
                     style={{
                       padding: '12px 24px',
                       background: '#10b981',
@@ -602,7 +611,7 @@ export function CompanionsStep({
                     Si el acompañante ya existe, puede seleccionarlo para continuar.
                   </p>
                   <button
-                    onClick={handleSkipLookup}
+                    onClick={() => setIsCreateModalOpen(true)}
                     style={{
                       padding: '12px 24px',
                       background: '#667eea',
@@ -1192,6 +1201,12 @@ export function CompanionsStep({
           </p>
         )}
       </div>
+
+      <CustomerCreateModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        onCustomerCreated={handleCustomerCreated}
+      />
 
       {/* Customer Edit Modal */}
       {customerToEdit && (
