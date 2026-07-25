@@ -30,6 +30,21 @@ export class AdditionalServicesService {
     private readonly repository: AdditionalServicesRepository,
   ) {}
 
+  async getOrder(
+    tenantId: string,
+    orderId: string,
+  ): Promise<AdditionalServiceOrderRecord> {
+    const order = await this.repository.findById(tenantId, orderId);
+
+    if (!order) {
+      throw new NotFoundException(
+        "Orden de servicios adicionales no encontrada.",
+      );
+    }
+
+    return order;
+  }
+
   async createOrder(
     tenantId: string,
     actor: AdditionalServiceOrderActor,

@@ -34,6 +34,10 @@ import {
   RECEIPT_PROCESSING_JOB_OPTIONS,
 } from "./jobs/receipt-processing-job.constants";
 import type { ReceiptProcessingJobPayload } from "./jobs/receipt-processing-job.types";
+import {
+  TravelPackageParticipantsRepository,
+  type TravelPackageParticipantWrite,
+} from "../travel-packages/repositories/travel-package-participants.repository";
 
 @Injectable()
 export class BillingService {
@@ -52,6 +56,7 @@ export class BillingService {
     private readonly configService: ConfigService,
     private readonly jobDispatcher: JobDispatcherService,
     private readonly travelPackagesService: TravelPackagesService,
+    private readonly travelPackageParticipantsRepository: TravelPackageParticipantsRepository,
     private readonly internalToursService: InternalToursService,
     private readonly storageService: StorageService,
   ) {}
@@ -4278,6 +4283,8 @@ export class BillingService {
                     internalTripId: true,
                     participantCount: true,
                     tenantId: true,
+                    clientId: true,
+                    payload: true,
                   },
                 },
               },
@@ -4307,10 +4314,18 @@ export class BillingService {
           if (contract.travelPackageId) {
             const travelPackage = await tx.travelPackage.findUnique({
               where: { id: contract.travelPackageId },
-              select: { capacity: true, occupiedSlots: true, name: true },
+              select: {
+                capacity: true,
+                occupiedSlots: true,
+                name: true,
+                tenantId: true,
+              },
             });
 
-            if (!travelPackage) {
+            if (
+              !travelPackage ||
+              travelPackage.tenantId !== contract.tenantId
+            ) {
               throw new NotFoundException(`Paquete de viaje ${contract.travelPackageId} no encontrado.`);
             }
 
@@ -4391,6 +4406,7 @@ export class BillingService {
 
           // 6b. Incrementar occupiedSlots del paquete de viaje internacional
           if (contract.travelPackageId) {
+            await this.createInternationalTravelRoster(tx, contract);
 
             const travelPackage = await tx.travelPackage.update({
   where: { id: contract.travelPackageId },
@@ -4554,6 +4570,115 @@ this.logger.log(
       throw transactionError;
     }
     return updated;
+  }
+
+  private async createInternationalTravelRoster(
+    tx: any,
+    contract: {
+      clientId: string;
+      tenantId: string;
+      travelPackageId: string;
+      payload: unknown;
+    },
+  ): Promise<void> {
+    const payload =
+      contract.payload &&
+      typeof contract.payload === "object" &&
+      !Array.isArray(contract.payload)
+        ? (contract.payload as Record<string, unknown>)
+        : {};
+
+    const companions = Array.isArray(payload.companions)
+      ? payload.companions.filter(
+          (companion: any) =>
+            companion &&
+            String(companion.fullName || "").trim() &&
+            String(companion.idNumber || "").trim(),
+        )
+      : [];
+    const minors = Array.isArray(payload.minors)
+      ? payload.minors.filter(
+          (minor: any) =>
+            minor &&
+            String(minor.minorName || minor.name || "").trim() &&
+            String(minor.minorId || minor.idNumber || "").trim(),
+        )
+      : [];
+
+    const companionClientIds = companions.map((companion: any) =>
+      String(companion.selectedCustomerId || "").trim(),
+    );
+    if (companionClientIds.some((clientId) => !clientId)) {
+      throw new BadRequestException(
+        "No se puede aprobar la reserva porque un acompañante no tiene una identidad de cliente autoritativa.",
+      );
+    }
+
+    const minorClientIds = minors.map((minor: any) =>
+      String(minor.selectedCustomerId || "").trim(),
+    );
+    if (minorClientIds.some((clientId) => !clientId)) {
+      throw new BadRequestException(
+        "No se puede aprobar la reserva porque un menor no tiene una identidad de cliente autoritativa.",
+      );
+    }
+
+    const clientIds = [
+      contract.clientId,
+      ...companionClientIds,
+      ...minorClientIds,
+    ];
+    const clients =
+      await this.travelPackageParticipantsRepository.findClients(
+        tx,
+        contract.tenantId,
+        clientIds,
+      );
+    const clientsById = new Map(clients.map((client) => [client.id, client]));
+
+    const participants: TravelPackageParticipantWrite[] = [
+      {
+        tenantId: contract.tenantId,
+        travelPackageId: contract.travelPackageId,
+        clientId: contract.clientId,
+        role: "HOLDER",
+      },
+      ...companionClientIds.map((clientId) => ({
+        tenantId: contract.tenantId,
+        travelPackageId: contract.travelPackageId,
+        clientId,
+        role: "COMPANION" as const,
+      })),
+      ...minorClientIds.map((clientId) => ({
+        tenantId: contract.tenantId,
+        travelPackageId: contract.travelPackageId,
+        clientId,
+        role: "MINOR" as const,
+      })),
+    ];
+
+    if (
+      clientIds.some((clientId) => !clientsById.has(clientId)) ||
+      participants.some((participant) => !participant.clientId)
+    ) {
+      throw new BadRequestException(
+        "No se puede aprobar la reserva porque uno o más participantes no pertenecen al tenant o no existen como clientes.",
+      );
+    }
+
+    const uniqueClientIds = new Set(
+      participants.map((participant) => participant.clientId),
+    );
+    if (uniqueClientIds.size !== participants.length) {
+      throw new BadRequestException(
+        "No se puede aprobar la reserva porque un cliente está duplicado en la lista de participantes.",
+      );
+    }
+
+    await this.travelPackageParticipantsRepository.createMany(
+      tx,
+      participants,
+    );
   }
 
   private async recordPaymentVerificationAudit(

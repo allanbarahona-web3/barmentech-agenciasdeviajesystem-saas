@@ -73,8 +73,10 @@ model Tenant {
   employeeDocuments                  EmployeeDocument[]
   employees                          Employee[]
   internalBookings                   InternalTourBooking[]
+  internalBookingParticipants        InternalTourBookingParticipant[]
   internalInvoices                   InternalTourInvoice[]
   internalTrips                      InternalTrip[]
+  travelPackageParticipants          TravelPackageParticipant[]
   payrollConfig                      PayrollConfig?
   payrollPeriods                     PayrollPeriod[]
   payrollAdjustments                 PayrollAdjustment[]
@@ -284,6 +286,8 @@ model Client {
   portalUsers                          ClientPortalUser[]
   contracts                            Contract[]
   internalBookings                     InternalTourBooking[]
+  internalBookingParticipations        InternalTourBookingParticipant[]
+  travelPackageParticipations          TravelPackageParticipant[]
   documents                            CustomerDocument[]
   notes                                CustomerNote[]
   assignedTo                           User?                               @relation("CustomerAssignedTo", fields: [assignedToUserId], references: [id])
@@ -778,6 +782,7 @@ model TravelPackage {
   contracts               Contract[]
   tenant                  Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   additionalServiceOrders AdditionalServiceOrder[]
+  participants            TravelPackageParticipant[]
 
   @@index([departureDate])
   @@index([status])
@@ -785,6 +790,26 @@ model TravelPackage {
   @@index([packageCode])
   @@index([tenantId])
   @@index([tenantId, travelType])
+}
+
+model TravelPackageParticipant {
+  id              String                       @id @default(cuid())
+  tenantId        String
+  travelPackageId String
+  clientId        String
+  role            TravelPackageParticipantRole
+  createdAt       DateTime                     @default(now())
+  updatedAt       DateTime                     @updatedAt
+  tenant          Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  travelPackage   TravelPackage                @relation(fields: [travelPackageId], references: [id], onDelete: Cascade)
+  client          Client                       @relation(fields: [clientId], references: [id])
+
+  @@unique([travelPackageId, clientId])
+  @@index([tenantId])
+  @@index([travelPackageId])
+  @@index([clientId])
+  @@index([role])
+  @@map("travel_package_participants")
 }
 
 model Employee {
@@ -906,6 +931,7 @@ model InternalTourBooking {
   internalTrip     InternalTrip         @relation(fields: [internalTripId], references: [id])
   tenant           Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   invoice          InternalTourInvoice?
+  participants     InternalTourBookingParticipant[]
 
   @@unique([internalTripId, clientId, tenantId])
   @@index([internalTripId])
@@ -913,6 +939,25 @@ model InternalTourBooking {
   @@index([tenantId])
   @@index([status])
   @@map("internal_tour_bookings")
+}
+
+model InternalTourBookingParticipant {
+  id        String                             @id @default(cuid())
+  tenantId  String
+  bookingId String
+  clientId  String
+  role      InternalTourBookingParticipantRole
+  createdAt DateTime                           @default(now())
+  tenant    Tenant                             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  booking   InternalTourBooking                @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  client    Client                             @relation(fields: [clientId], references: [id])
+
+  @@unique([bookingId, clientId])
+  @@index([tenantId])
+  @@index([bookingId])
+  @@index([clientId])
+  @@index([role])
+  @@map("internal_tour_booking_participants")
 }
 
 model InternalTourInvoice {
@@ -1096,6 +1141,18 @@ enum TransportType {
   CRUISE
   WALKING
   MIXED
+}
+
+enum InternalTourBookingParticipantRole {
+  HOLDER
+  COMPANION
+  MINOR
+}
+
+enum TravelPackageParticipantRole {
+  HOLDER
+  COMPANION
+  MINOR
 }
 
 enum ContractSource {

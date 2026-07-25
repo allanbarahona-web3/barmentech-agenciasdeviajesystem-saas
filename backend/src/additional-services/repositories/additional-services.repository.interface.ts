@@ -26,9 +26,24 @@ export interface AdditionalServiceOrderLineRecord {
   total: string;
   supplierName: string | null;
   sourceUrl: string | null;
-  participantClientIds: string[];
+  participants: AdditionalServiceOrderParticipantDetails[];
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface AdditionalServiceOrderParticipantDetails {
+  clientId: string;
+  fullName: string;
+}
+
+export interface AdditionalServiceOrderTravelDetails {
+  type: "TRAVEL_PACKAGE" | "INTERNAL_TRIP";
+  id: string;
+  code: string;
+  name: string;
+  destination: string;
+  departureDate: Date;
+  returnDate: Date;
 }
 
 export interface AdditionalServiceOrderRecord {
@@ -37,6 +52,7 @@ export interface AdditionalServiceOrderRecord {
   orderNumber: string;
   travelPackageId: string | null;
   internalTripId: string | null;
+  travel: AdditionalServiceOrderTravelDetails | null;
   status: AdditionalServiceOrderStatus;
   lines: AdditionalServiceOrderLineRecord[];
   createdByUserId: string;

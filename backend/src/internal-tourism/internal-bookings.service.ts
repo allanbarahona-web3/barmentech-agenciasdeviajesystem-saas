@@ -69,6 +69,31 @@ export class InternalBookingsService {
     userName: string,
     dto: CreateInternalBookingDto,
   ) {
+    if (!Array.isArray(dto.participants) || dto.participants.length === 0) {
+      throw new BadRequestException('La reserva debe incluir al menos un participante');
+    }
+
+    const holderParticipants = dto.participants.filter(
+      (participant) => participant.role === 'HOLDER',
+    );
+    if (holderParticipants.length !== 1) {
+      throw new BadRequestException(
+        'La reserva debe incluir exactamente un participante HOLDER',
+      );
+    }
+
+    const participantClientIds = dto.participants.map(
+      (participant) => participant.clientId,
+    );
+    if (new Set(participantClientIds).size !== participantClientIds.length) {
+      throw new BadRequestException(
+        'No se permiten participantes duplicados en la reserva',
+      );
+    }
+
+    const holderClientId = holderParticipants[0].clientId;
+    const participantCount = dto.participants.length;
+
     // Validar viaje
     const trip = await this.prisma.internalTrip.findFirst({
       where: {
@@ -85,23 +110,35 @@ export class InternalBookingsService {
       throw new BadRequestException('El viaje no está disponible para reservas');
     }
 
-    // Validar cliente
-    const client = await this.prisma.client.findFirst({
+    // Validar todos los participantes en una sola consulta
+    const participants = await this.prisma.client.findMany({
       where: {
-        id: dto.clientId,
+        id: { in: participantClientIds },
         tenantId,
       },
     });
 
-    if (!client) {
-      throw new NotFoundException('Cliente no encontrado');
+    if (participants.length !== participantClientIds.length) {
+      const foundClientIds = new Set(
+        participants.map((participant) => participant.id),
+      );
+      const missingClientIds = participantClientIds.filter(
+        (clientId) => !foundClientIds.has(clientId),
+      );
+      throw new NotFoundException(
+        `Participantes no encontrados o fuera del tenant: ${missingClientIds.join(', ')}`,
+      );
     }
+
+    const client = participants.find(
+      (participant) => participant.id === holderClientId,
+    )!;
 
     // Verificar que cliente no tenga reserva activa en este viaje
     const existingBooking = await this.prisma.internalTourBooking.findFirst({
       where: {
         internalTripId: dto.internalTripId,
-        clientId: dto.clientId,
+        clientId: holderClientId,
         tenantId,
         status: { not: 'CANCELLED' },
       },
@@ -120,14 +157,14 @@ export class InternalBookingsService {
     });
 
     const availableSlots = trip.capacity - bookingCount;
-    if (dto.participantCount > availableSlots) {
+    if (participantCount > availableSlots) {
       throw new BadRequestException(
-        `Solo hay ${availableSlots} cupos disponibles (solicitaste ${dto.participantCount})`,
+        `Solo hay ${availableSlots} cupos disponibles (solicitaste ${participantCount})`,
       );
     }
 
     // Calcular monto total
-    const totalAmount = new Decimal(String(trip.price)).times(new Decimal(dto.participantCount));
+    const totalAmount = new Decimal(String(trip.price)).times(new Decimal(participantCount));
 
     // Generar códigos
     const bookingCode = await this.generateBookingCode(tenantId);
@@ -136,12 +173,12 @@ export class InternalBookingsService {
     // Crear reserva y factura en transacción
     const booking = await this.prisma.$transaction(async (tx) => {
       // Crear reserva (heredar moneda del viaje)
-      const newBooking = await tx.internalTourBooking.create({
+      const newBooking = await (tx as any).internalTourBooking.create({
         data: {
           bookingCode,
           internalTripId: dto.internalTripId,
-          clientId: dto.clientId,
-          participantCount: dto.participantCount,
+          clientId: holderClientId,
+          participantCount,
           totalAmount,
           currency: trip.currency,
           paidAmount: new Decimal(0),
@@ -151,6 +188,28 @@ export class InternalBookingsService {
           createdByUserId: userId,
           createdByName: userName,
           tenantId,
+          participants: {
+            create: dto.participants.map((participant) => ({
+              tenantId,
+              clientId: participant.clientId,
+              role: participant.role,
+            })),
+          },
+        },
+        include: {
+          participants: {
+            select: {
+              id: true,
+              clientId: true,
+              role: true,
+              client: {
+                select: {
+                  id: true,
+                  fullName: true,
+                },
+              },
+            },
+          },
         },
       });
 
@@ -271,7 +330,7 @@ export class InternalBookingsService {
    * Obtener detalle de reserva
    */
   async getBooking(tenantId: string, bookingId: string) {
-    const booking = await this.prisma.internalTourBooking.findFirst({
+    const booking = await (this.prisma as any).internalTourBooking.findFirst({
       where: {
         id: bookingId,
         tenantId,
@@ -281,6 +340,19 @@ export class InternalBookingsService {
         client: true,
         invoice: true,
         payments: true,
+        participants: {
+          select: {
+            id: true,
+            clientId: true,
+            role: true,
+            client: {
+              select: {
+                id: true,
+                fullName: true,
+              },
+            },
+          },
+        },
       },
     });
 

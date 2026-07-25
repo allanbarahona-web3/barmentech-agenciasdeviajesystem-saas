@@ -1288,6 +1288,14 @@ export class ContractsService {
       user.tenantId
     );
 
+    // Register minors as clients; legal payload fields remain unchanged and the
+    // returned Client IDs are added as internal relational references.
+    const registeredMinors = await this.customersService.registerMinorsAsClients(
+      Array.isArray(payloadRecord.minors) ? payloadRecord.minors : [],
+      user.tenantId,
+      dto.clientEmail,
+    );
+
     // Obtener tenant para organizar archivos
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: user.tenantId },
@@ -1363,9 +1371,45 @@ export class ContractsService {
       return companion;
     });
 
+    const minorsArray = Array.isArray(payloadRecord.minors)
+      ? payloadRecord.minors
+      : [];
+    const enrichedMinors = minorsArray.map((minor: any, index: number) => {
+      const hasValidIdentity =
+        minor &&
+        String(minor.minorName || minor.name || "").trim() &&
+        String(minor.minorId || minor.idNumber || "").trim();
+
+      if (!hasValidIdentity) {
+        return minor;
+      }
+
+      const validMinorIndex = minorsArray
+        .slice(0, index)
+        .filter(
+          (candidate: any) =>
+            candidate &&
+            String(candidate.minorName || candidate.name || "").trim() &&
+            String(candidate.minorId || candidate.idNumber || "").trim(),
+        ).length;
+      const registeredClient = registeredMinors[validMinorIndex];
+
+      if (!registeredClient?.id) {
+        throw new InternalServerErrorException(
+          "No se pudo preservar la identidad de cliente de un menor registrado.",
+        );
+      }
+
+      return {
+        ...minor,
+        selectedCustomerId: registeredClient.id,
+      };
+    });
+
     const enrichedPayload = {
       ...payloadRecord,
       companions: enrichedCompanions,
+      minors: enrichedMinors,
       signatureAnchors,
       signatureAnchor: signatureAnchors?.["client"] ?? null,
     };

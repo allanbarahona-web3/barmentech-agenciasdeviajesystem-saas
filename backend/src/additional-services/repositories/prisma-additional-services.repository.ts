@@ -26,7 +26,7 @@ interface AdditionalServicesPrismaClient {
   };
   additionalServiceOrder: {
     create(args: unknown): Promise<unknown>;
-    findUnique(args: unknown): Promise<unknown>;
+    findFirst(args: unknown): Promise<unknown>;
     findMany(args: unknown): Promise<unknown>;
   };
 }
@@ -91,16 +91,12 @@ export class PrismaAdditionalServicesRepository
     tenantId: string,
     id: string,
   ): Promise<AdditionalServiceOrderRecord | null> {
-    const order = await this.client.additionalServiceOrder.findUnique({
-      where: { id },
+    const order = await this.client.additionalServiceOrder.findFirst({
+      where: { id, tenantId },
       include: this.orderInclude(),
     });
 
-    if (!order || this.recordTenantId(order) !== tenantId) {
-      return null;
-    }
-
-    return this.toOrderRecord(order);
+    return order ? this.toOrderRecord(order) : null;
   }
 
   async findByTravel(
@@ -135,13 +131,11 @@ export class PrismaAdditionalServicesRepository
       findParticipantsByIds: (ids) => this.findParticipants(client, ids),
       create: (data) => this.createOrder(client, data),
       findById: async (tenantId, id) => {
-        const order = await client.additionalServiceOrder.findUnique({
-          where: { id },
+        const order = await client.additionalServiceOrder.findFirst({
+          where: { id, tenantId },
           include: this.orderInclude(),
         });
-        return order && this.recordTenantId(order) === tenantId
-          ? this.toOrderRecord(order)
-          : null;
+        return order ? this.toOrderRecord(order) : null;
       },
       findByTravel: async (tenantId, travel) => {
         const orders = await client.additionalServiceOrder.findMany({
@@ -259,25 +253,65 @@ export class PrismaAdditionalServicesRepository
 
   private orderInclude() {
     return {
+      travelPackage: {
+        select: {
+          id: true,
+          packageCode: true,
+          name: true,
+          destination: true,
+          departureDate: true,
+          returnDate: true,
+        },
+      },
+      internalTrip: {
+        select: {
+          id: true,
+          tripCode: true,
+          name: true,
+          destination: true,
+          departureDate: true,
+          returnDate: true,
+        },
+      },
       lines: {
         include: {
           participants: {
-            select: { clientId: true },
+            select: {
+              clientId: true,
+              client: {
+                select: { fullName: true },
+              },
+            },
           },
         },
       },
     };
   }
 
-  private recordTenantId(record: unknown): string | undefined {
-    return (record as { tenantId?: string }).tenantId;
-  }
-
   private toOrderRecord(value: unknown): AdditionalServiceOrderRecord {
     const order = value as Record<string, unknown> & {
       lines: Array<Record<string, unknown> & {
-        participants: Array<{ clientId: string }>;
+        participants: Array<{
+          clientId: string;
+          client: { fullName: string };
+        }>;
       }>;
+      travelPackage: {
+        id: string;
+        packageCode: string;
+        name: string;
+        destination: string;
+        departureDate: Date;
+        returnDate: Date;
+      } | null;
+      internalTrip: {
+        id: string;
+        tripCode: string;
+        name: string;
+        destination: string;
+        departureDate: Date;
+        returnDate: Date;
+      } | null;
     };
 
     return {
@@ -286,6 +320,10 @@ export class PrismaAdditionalServicesRepository
       orderNumber: String(order.orderNumber),
       travelPackageId: this.nullableString(order.travelPackageId),
       internalTripId: this.nullableString(order.internalTripId),
+      travel: this.toTravelDetails(
+        order.travelPackage,
+        order.internalTrip,
+      ),
       status: order.status as AdditionalServiceOrderRecord["status"],
       lines: order.lines.map((line) => ({
         id: String(line.id),
@@ -312,9 +350,10 @@ export class PrismaAdditionalServicesRepository
         total: String(line.total),
         supplierName: this.nullableString(line.supplierName),
         sourceUrl: this.nullableString(line.sourceUrl),
-        participantClientIds: line.participants.map(
-          (participant) => participant.clientId,
-        ),
+        participants: line.participants.map((participant) => ({
+          clientId: participant.clientId,
+          fullName: participant.client.fullName,
+        })),
         createdAt: line.createdAt as Date,
         updatedAt: line.updatedAt as Date,
       })),
@@ -327,5 +366,50 @@ export class PrismaAdditionalServicesRepository
 
   private nullableString(value: unknown): string | null {
     return value === null || value === undefined ? null : String(value);
+  }
+
+  private toTravelDetails(
+    travelPackage: {
+      id: string;
+      packageCode: string;
+      name: string;
+      destination: string;
+      departureDate: Date;
+      returnDate: Date;
+    } | null,
+    internalTrip: {
+      id: string;
+      tripCode: string;
+      name: string;
+      destination: string;
+      departureDate: Date;
+      returnDate: Date;
+    } | null,
+  ): AdditionalServiceOrderRecord["travel"] {
+    if (travelPackage) {
+      return {
+        type: "TRAVEL_PACKAGE",
+        id: travelPackage.id,
+        code: travelPackage.packageCode,
+        name: travelPackage.name,
+        destination: travelPackage.destination,
+        departureDate: travelPackage.departureDate,
+        returnDate: travelPackage.returnDate,
+      };
+    }
+
+    if (internalTrip) {
+      return {
+        type: "INTERNAL_TRIP",
+        id: internalTrip.id,
+        code: internalTrip.tripCode,
+        name: internalTrip.name,
+        destination: internalTrip.destination,
+        departureDate: internalTrip.departureDate,
+        returnDate: internalTrip.returnDate,
+      };
+    }
+
+    return null;
   }
 }
