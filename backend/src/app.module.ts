@@ -25,6 +25,7 @@ import { QueueModule } from "./infrastructure/queue";
 import { WorkerModule } from "./infrastructure/worker";
 import { QueueEventsModule } from "./infrastructure/queue-events";
 import { JobDispatcherModule } from "./infrastructure/job-dispatcher";
+import { AdditionalServicesModule } from "./additional-services";
 
 @Module({
   controllers: [AppController],
@@ -59,6 +60,7 @@ import { JobDispatcherModule } from "./infrastructure/job-dispatcher";
     TravelPackagesModule,
     InternalTourismModule,
     AttendanceModule,
+    AdditionalServicesModule,
   ],
   providers: [
     {
