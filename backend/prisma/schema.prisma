@@ -762,25 +762,25 @@ model PaymentReceiptImage {
 }
 
 model TravelPackage {
-  id                      String                   @id @default(cuid())
+  id                      String                     @id @default(cuid())
   name                    String
   destination             String
   departureDate           DateTime
   returnDate              DateTime
   capacity                Int
-  occupiedSlots           Int                      @default(0)
-  status                  String                   @default("OPEN")
-  travelType              TravelPackageType        @default(INTERNATIONAL)
-  packagePrice            Decimal?                 @db.Decimal(14, 2)
-  priceCurrency           String                   @default("USD")
+  occupiedSlots           Int                        @default(0)
+  status                  String                     @default("OPEN")
+  travelType              TravelPackageType          @default(INTERNATIONAL)
+  packagePrice            Decimal?                   @db.Decimal(14, 2)
+  priceCurrency           String                     @default("USD")
   createdByUserId         String
-  createdAt               DateTime                 @default(now())
-  updatedAt               DateTime                 @updatedAt
-  packageCode             String                   @unique
+  createdAt               DateTime                   @default(now())
+  updatedAt               DateTime                   @updatedAt
+  packageCode             String                     @unique
   tenantId                String
-  minReservation          Decimal?                 @db.Decimal(14, 2)
+  minReservation          Decimal?                   @db.Decimal(14, 2)
   contracts               Contract[]
-  tenant                  Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant                  Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   additionalServiceOrders AdditionalServiceOrder[]
   participants            TravelPackageParticipant[]
 
@@ -910,26 +910,26 @@ model InternalTrip {
 }
 
 model InternalTourBooking {
-  id               String               @id @default(cuid())
-  bookingCode      String               @unique
+  id               String                           @id @default(cuid())
+  bookingCode      String                           @unique
   internalTripId   String
   clientId         String
   participantCount Int
-  totalAmount      Decimal              @db.Decimal(12, 2)
-  currency         String               @default("CRC")
-  paidAmount       Decimal              @default(0) @db.Decimal(12, 2)
-  pendingAmount    Decimal              @db.Decimal(12, 2)
-  status           String               @default("PENDING")
+  totalAmount      Decimal                          @db.Decimal(12, 2)
+  currency         String                           @default("CRC")
+  paidAmount       Decimal                          @default(0) @db.Decimal(12, 2)
+  pendingAmount    Decimal                          @db.Decimal(12, 2)
+  status           String                           @default("PENDING")
   notes            String?
   createdByUserId  String
   createdByName    String
-  createdAt        DateTime             @default(now())
-  updatedAt        DateTime             @updatedAt
+  createdAt        DateTime                         @default(now())
+  updatedAt        DateTime                         @updatedAt
   tenantId         String
   payments         BillingPayment[]
-  client           Client               @relation(fields: [clientId], references: [id])
-  internalTrip     InternalTrip         @relation(fields: [internalTripId], references: [id])
-  tenant           Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client           Client                           @relation(fields: [clientId], references: [id])
+  internalTrip     InternalTrip                     @relation(fields: [internalTripId], references: [id])
+  tenant           Tenant                           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   invoice          InternalTourInvoice?
   participants     InternalTourBookingParticipant[]
 
