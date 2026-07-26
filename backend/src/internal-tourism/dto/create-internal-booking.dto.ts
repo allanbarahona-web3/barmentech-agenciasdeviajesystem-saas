@@ -1,18 +1,34 @@
-import { IsString, IsNotEmpty, IsInt, IsPositive, IsOptional, IsUUID } from 'class-validator';
+import { Type } from 'class-transformer';
+import {
+  ArrayMinSize,
+  IsArray,
+  IsEnum,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  ValidateNested,
+} from 'class-validator';
+import { InternalTourBookingParticipantRole } from '../enums';
+
+export class InternalTourBookingParticipantDto {
+  @IsString()
+  @IsNotEmpty()
+  clientId!: string;
+
+  @IsEnum(InternalTourBookingParticipantRole)
+  role!: InternalTourBookingParticipantRole;
+}
 
 export class CreateInternalBookingDto {
-  @IsUUID()
+  @IsString()
   @IsNotEmpty()
-  internalTripId!: string; // UUID del viaje
+  internalTripId!: string;
 
-  @IsUUID()
-  @IsNotEmpty()
-  clientId!: string; // UUID del cliente
-
-  @IsInt()
-  @IsPositive()
-  @IsNotEmpty()
-  participantCount!: number; // 1, 2, 3, etc.
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => InternalTourBookingParticipantDto)
+  participants!: InternalTourBookingParticipantDto[];
 
   @IsString()
   @IsOptional()

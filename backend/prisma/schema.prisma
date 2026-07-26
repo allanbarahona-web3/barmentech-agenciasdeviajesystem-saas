@@ -8,77 +8,82 @@ datasource db {
 }
 
 model Tenant {
-  id                          String                   @id @default(cuid())
-  name                        String                   @unique
-  subdomain                   String?                  @unique
-  contractPrefix              String                   @unique
-  isActive                    Boolean                  @default(true)
-  createdAt                   DateTime                 @default(now())
-  updatedAt                   DateTime                 @updatedAt
-  customDomain                String?                  @unique
-  emailLogoUrl                String?
-  logoUrl                     String?
-  primaryColor                String?
-  secondaryColor              String?
-  signatureUrl                String?
-  legalId                     String?
-  legalName                   String?
-  representativeAddress       String?
-  representativeId            String?
-  representativeMaritalStatus String?
-  representativeName          String?
-  representativePowers        String?
-  representativeTitle         String?
-  planExpiresAt               DateTime?
-  planType                    String?                  @default("FREE")
-  suspendReason               String?
-  suspendedAt                 DateTime?
-  businessAddress             String?                  @map("business_address")
-  contactEmail                String?                  @map("contact_email")
-  contactPhone                String?                  @map("contact_phone")
-  contactWhatsApp             String?                  @map("contact_whatsapp")
-  emailVerified               Boolean                  @default(false)
-  emailQuotaDaily             Int                      @default(1000) @map("email_quota_daily")
-  emailQuotaMonthly           Int                      @default(30000) @map("email_quota_monthly")
-  emailsSentMonth             Int                      @default(0) @map("emails_sent_month")
-  emailsSentToday             Int                      @default(0) @map("emails_sent_today")
-  fromEmail                   String?
-  lastEmailResetDate          DateTime?                @map("last_email_reset_date")
-  preferredCurrency           String                   @default("CRC") @map("preferred_currency")
-  replyToEmail                String?
-  websiteUrl                  String?                  @map("website_url")
-  billingAuditLogs            BillingAuditLog[]
-  billingClientBalances       BillingClientBalance[]
-  billingCreditNotes          BillingCreditNote[]
-  billingInvoices             BillingInvoice[]
-  billingPayments             BillingPayment[]
-  billingReceipts             BillingReceipt[]
-  clients                     Client[]
-  clientPortalUsers           ClientPortalUser[]
-  companyBankAccounts         CompanyBankAccount[]
-  contracts                   Contract[]
-  contractDrafts              ContractDraft[]
-  contractNumbers             ContractNumber[]
-  contractNotes               ContractNote[]
-  customerDocuments           CustomerDocument[]
-  documentSigningSessions     DocumentSigningSession[]
-  customerNotes               CustomerNote[]
-  exchangeRates               ExchangeRate[]
-  travelPackages              TravelPackage[]
-  users                       User[]
-  attendance_config           AttendanceConfig?
-  attendance_corrections      AttendanceCorrection[]
-  attendance_daily_summaries  AttendanceDailySummary[]
-  attendance_entries          AttendanceEntry[]
-  employeeDocuments           EmployeeDocument[]
-  employees                   Employee[]
-  internalBookings            InternalTourBooking[]
-  internalInvoices            InternalTourInvoice[]
-  internalTrips               InternalTrip[]
-  payrollConfig               PayrollConfig?
-  payrollPeriods              PayrollPeriod[]
-  payrollAdjustments          PayrollAdjustment[]
-  payrollRuns                 PayrollRun[]
+  id                                 String                              @id @default(cuid())
+  name                               String                              @unique
+  subdomain                          String?                             @unique
+  contractPrefix                     String                              @unique
+  isActive                           Boolean                             @default(true)
+  createdAt                          DateTime                            @default(now())
+  updatedAt                          DateTime                            @updatedAt
+  customDomain                       String?                             @unique
+  emailLogoUrl                       String?
+  logoUrl                            String?
+  primaryColor                       String?
+  secondaryColor                     String?
+  signatureUrl                       String?
+  legalId                            String?
+  legalName                          String?
+  representativeAddress              String?
+  representativeId                   String?
+  representativeMaritalStatus        String?
+  representativeName                 String?
+  representativePowers               String?
+  representativeTitle                String?
+  planExpiresAt                      DateTime?
+  planType                           String?                             @default("FREE")
+  suspendReason                      String?
+  suspendedAt                        DateTime?
+  businessAddress                    String?                             @map("business_address")
+  contactEmail                       String?                             @map("contact_email")
+  contactPhone                       String?                             @map("contact_phone")
+  contactWhatsApp                    String?                             @map("contact_whatsapp")
+  emailVerified                      Boolean                             @default(false)
+  emailQuotaDaily                    Int                                 @default(1000) @map("email_quota_daily")
+  emailQuotaMonthly                  Int                                 @default(30000) @map("email_quota_monthly")
+  emailsSentMonth                    Int                                 @default(0) @map("emails_sent_month")
+  emailsSentToday                    Int                                 @default(0) @map("emails_sent_today")
+  fromEmail                          String?
+  lastEmailResetDate                 DateTime?                           @map("last_email_reset_date")
+  preferredCurrency                  String                              @default("CRC") @map("preferred_currency")
+  replyToEmail                       String?
+  websiteUrl                         String?                             @map("website_url")
+  billingAuditLogs                   BillingAuditLog[]
+  billingClientBalances              BillingClientBalance[]
+  billingCreditNotes                 BillingCreditNote[]
+  billingInvoices                    BillingInvoice[]
+  billingPayments                    BillingPayment[]
+  billingReceipts                    BillingReceipt[]
+  clients                            Client[]
+  clientPortalUsers                  ClientPortalUser[]
+  companyBankAccounts                CompanyBankAccount[]
+  contracts                          Contract[]
+  contractDrafts                     ContractDraft[]
+  contractNumbers                    ContractNumber[]
+  contractNotes                      ContractNote[]
+  customerDocuments                  CustomerDocument[]
+  documentSigningSessions            DocumentSigningSession[]
+  customerNotes                      CustomerNote[]
+  exchangeRates                      ExchangeRate[]
+  travelPackages                     TravelPackage[]
+  users                              User[]
+  attendance_config                  AttendanceConfig?
+  attendance_corrections             AttendanceCorrection[]
+  attendance_daily_summaries         AttendanceDailySummary[]
+  attendance_entries                 AttendanceEntry[]
+  employeeDocuments                  EmployeeDocument[]
+  employees                          Employee[]
+  internalBookings                   InternalTourBooking[]
+  internalBookingParticipants        InternalTourBookingParticipant[]
+  internalInvoices                   InternalTourInvoice[]
+  internalTrips                      InternalTrip[]
+  travelPackageParticipants          TravelPackageParticipant[]
+  payrollConfig                      PayrollConfig?
+  payrollPeriods                     PayrollPeriod[]
+  payrollAdjustments                 PayrollAdjustment[]
+  payrollRuns                        PayrollRun[]
+  additionalServiceOrders            AdditionalServiceOrder[]
+  additionalServiceOrderLines        AdditionalServiceOrderLine[]
+  additionalServiceOrderParticipants AdditionalServiceOrderParticipant[]
 
   @@map("tenants")
 }
@@ -241,49 +246,52 @@ model ContractDraft {
 }
 
 model Client {
-  id                           String                @id @default(cuid())
-  fullName                     String
-  idNumber                     String
-  idType                       String?
-  email                        String
-  phone                        String?
-  emergencyContactName         String?
-  emergencyContactPhone        String?
-  createdAt                    DateTime              @default(now())
-  updatedAt                    DateTime              @updatedAt
-  tenantId                     String
-  dateOfBirth                  DateTime?
-  nationality                  String?
-  occupation                   String?
-  maritalStatus                String?
-  address                      String?
-  city                         String?
-  country                      String?
-  postalCode                   String?
-  secondaryEmail               String?
-  secondaryPhone               String?
-  emergencyContactRelationship String?
-  emergencyContactEmail        String?
-  leadSource                   String?
-  customerStatus               String                @default("ACTIVE")
-  assignedToUserId             String?
-  lastContactDate              DateTime?
-  nextFollowUpDate             DateTime?
-  preferredLanguage            String?
-  tags                         String?
-  bloodType                    String?
-  allergies                    String?
-  medicalConditions            String?
-  medications                  String?
-  billingClientBalance         BillingClientBalance?
-  billingInvoices              BillingInvoice[]
-  tenant                       Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  portalUsers                  ClientPortalUser[]
-  contracts                    Contract[]
-  internalBookings             InternalTourBooking[]
-  documents                    CustomerDocument[]
-  notes                        CustomerNote[]
-  assignedTo                   User?                 @relation("CustomerAssignedTo", fields: [assignedToUserId], references: [id])
+  id                                   String                              @id @default(cuid())
+  fullName                             String
+  idNumber                             String
+  idType                               String?
+  email                                String
+  phone                                String?
+  emergencyContactName                 String?
+  emergencyContactPhone                String?
+  createdAt                            DateTime                            @default(now())
+  updatedAt                            DateTime                            @updatedAt
+  tenantId                             String
+  dateOfBirth                          DateTime?
+  nationality                          String?
+  occupation                           String?
+  maritalStatus                        String?
+  address                              String?
+  city                                 String?
+  country                              String?
+  postalCode                           String?
+  secondaryEmail                       String?
+  secondaryPhone                       String?
+  emergencyContactRelationship         String?
+  emergencyContactEmail                String?
+  leadSource                           String?
+  customerStatus                       String                              @default("ACTIVE")
+  assignedToUserId                     String?
+  lastContactDate                      DateTime?
+  nextFollowUpDate                     DateTime?
+  preferredLanguage                    String?
+  tags                                 String?
+  bloodType                            String?
+  allergies                            String?
+  medicalConditions                    String?
+  medications                          String?
+  billingClientBalance                 BillingClientBalance?
+  billingInvoices                      BillingInvoice[]
+  tenant                               Tenant                              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  portalUsers                          ClientPortalUser[]
+  contracts                            Contract[]
+  internalBookings                     InternalTourBooking[]
+  internalBookingParticipations        InternalTourBookingParticipant[]
+  travelPackageParticipations          TravelPackageParticipant[]
+  documents                            CustomerDocument[]
+  notes                                CustomerNote[]
+  assignedTo                           User?                               @relation("CustomerAssignedTo", fields: [assignedToUserId], references: [id])
+  additionalServiceOrderParticipations AdditionalServiceOrderParticipant[]
 
   @@unique([idNumber, tenantId])
   @@index([fullName])
@@ -754,25 +762,27 @@ model PaymentReceiptImage {
 }
 
 model TravelPackage {
-  id              String            @id @default(cuid())
-  name            String
-  destination     String
-  departureDate   DateTime
-  returnDate      DateTime
-  capacity        Int
-  occupiedSlots   Int               @default(0)
-  status          String            @default("OPEN")
-  travelType      TravelPackageType @default(INTERNATIONAL)
-  packagePrice    Decimal?          @db.Decimal(14, 2)
-  priceCurrency   String            @default("USD")
-  createdByUserId String
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
-  packageCode     String            @unique
-  tenantId        String
-  minReservation  Decimal?          @db.Decimal(14, 2)
-  contracts       Contract[]
-  tenant          Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  id                      String                     @id @default(cuid())
+  name                    String
+  destination             String
+  departureDate           DateTime
+  returnDate              DateTime
+  capacity                Int
+  occupiedSlots           Int                        @default(0)
+  status                  String                     @default("OPEN")
+  travelType              TravelPackageType          @default(INTERNATIONAL)
+  packagePrice            Decimal?                   @db.Decimal(14, 2)
+  priceCurrency           String                     @default("USD")
+  createdByUserId         String
+  createdAt               DateTime                   @default(now())
+  updatedAt               DateTime                   @updatedAt
+  packageCode             String                     @unique
+  tenantId                String
+  minReservation          Decimal?                   @db.Decimal(14, 2)
+  contracts               Contract[]
+  tenant                  Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  additionalServiceOrders AdditionalServiceOrder[]
+  participants            TravelPackageParticipant[]
 
   @@index([departureDate])
   @@index([status])
@@ -780,6 +790,26 @@ model TravelPackage {
   @@index([packageCode])
   @@index([tenantId])
   @@index([tenantId, travelType])
+}
+
+model TravelPackageParticipant {
+  id              String                       @id @default(cuid())
+  tenantId        String
+  travelPackageId String
+  clientId        String
+  role            TravelPackageParticipantRole
+  createdAt       DateTime                     @default(now())
+  updatedAt       DateTime                     @updatedAt
+  tenant          Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  travelPackage   TravelPackage                @relation(fields: [travelPackageId], references: [id], onDelete: Cascade)
+  client          Client                       @relation(fields: [clientId], references: [id])
+
+  @@unique([travelPackageId, clientId])
+  @@index([tenantId])
+  @@index([travelPackageId])
+  @@index([clientId])
+  @@index([role])
+  @@map("travel_package_participants")
 }
 
 model Employee {
@@ -845,31 +875,32 @@ model EmployeeDocument {
 }
 
 model InternalTrip {
-  id              String                @id @default(cuid())
-  tripCode        String                @unique
-  name            String
-  destination     String
-  description     String?
-  departureDate   DateTime
-  returnDate      DateTime
-  departureTime   String?
-  returnTime      String?
-  capacity        Int
-  occupiedSlots   Int                   @default(0)
-  price           Decimal               @db.Decimal(12, 2)
-  currency        String
-  minReservation  Decimal?              @db.Decimal(12, 2)
-  transportType   TransportType
-  itinerary       String
-  status          String                @default("OPEN")
-  createdByUserId String
-  createdByName   String
-  createdAt       DateTime              @default(now())
-  updatedAt       DateTime              @updatedAt
-  tenantId        String
-  contracts       Contract[]
-  bookings        InternalTourBooking[]
-  tenant          Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  id                      String                   @id @default(cuid())
+  tripCode                String                   @unique
+  name                    String
+  destination             String
+  description             String?
+  departureDate           DateTime
+  returnDate              DateTime
+  departureTime           String?
+  returnTime              String?
+  capacity                Int
+  occupiedSlots           Int                      @default(0)
+  price                   Decimal                  @db.Decimal(12, 2)
+  currency                String
+  minReservation          Decimal?                 @db.Decimal(12, 2)
+  transportType           TransportType
+  itinerary               String
+  status                  String                   @default("OPEN")
+  createdByUserId         String
+  createdByName           String
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
+  tenantId                String
+  contracts               Contract[]
+  bookings                InternalTourBooking[]
+  tenant                  Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  additionalServiceOrders AdditionalServiceOrder[]
 
   @@index([departureDate])
   @@index([tenantId])
@@ -879,27 +910,28 @@ model InternalTrip {
 }
 
 model InternalTourBooking {
-  id               String               @id @default(cuid())
-  bookingCode      String               @unique
+  id               String                           @id @default(cuid())
+  bookingCode      String                           @unique
   internalTripId   String
   clientId         String
   participantCount Int
-  totalAmount      Decimal              @db.Decimal(12, 2)
-  currency         String               @default("CRC")
-  paidAmount       Decimal              @default(0) @db.Decimal(12, 2)
-  pendingAmount    Decimal              @db.Decimal(12, 2)
-  status           String               @default("PENDING")
+  totalAmount      Decimal                          @db.Decimal(12, 2)
+  currency         String                           @default("CRC")
+  paidAmount       Decimal                          @default(0) @db.Decimal(12, 2)
+  pendingAmount    Decimal                          @db.Decimal(12, 2)
+  status           String                           @default("PENDING")
   notes            String?
   createdByUserId  String
   createdByName    String
-  createdAt        DateTime             @default(now())
-  updatedAt        DateTime             @updatedAt
+  createdAt        DateTime                         @default(now())
+  updatedAt        DateTime                         @updatedAt
   tenantId         String
   payments         BillingPayment[]
-  client           Client               @relation(fields: [clientId], references: [id])
-  internalTrip     InternalTrip         @relation(fields: [internalTripId], references: [id])
-  tenant           Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client           Client                           @relation(fields: [clientId], references: [id])
+  internalTrip     InternalTrip                     @relation(fields: [internalTripId], references: [id])
+  tenant           Tenant                           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   invoice          InternalTourInvoice?
+  participants     InternalTourBookingParticipant[]
 
   @@unique([internalTripId, clientId, tenantId])
   @@index([internalTripId])
@@ -907,6 +939,25 @@ model InternalTourBooking {
   @@index([tenantId])
   @@index([status])
   @@map("internal_tour_bookings")
+}
+
+model InternalTourBookingParticipant {
+  id        String                             @id @default(cuid())
+  tenantId  String
+  bookingId String
+  clientId  String
+  role      InternalTourBookingParticipantRole
+  createdAt DateTime                           @default(now())
+  tenant    Tenant                             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  booking   InternalTourBooking                @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  client    Client                             @relation(fields: [clientId], references: [id])
+
+  @@unique([bookingId, clientId])
+  @@index([tenantId])
+  @@index([bookingId])
+  @@index([clientId])
+  @@index([role])
+  @@map("internal_tour_booking_participants")
 }
 
 model InternalTourInvoice {
@@ -1092,6 +1143,18 @@ enum TransportType {
   MIXED
 }
 
+enum InternalTourBookingParticipantRole {
+  HOLDER
+  COMPANION
+  MINOR
+}
+
+enum TravelPackageParticipantRole {
+  HOLDER
+  COMPANION
+  MINOR
+}
+
 enum ContractSource {
   SCHEDULED_TRIP
   MIGRATION
@@ -1103,6 +1166,112 @@ enum ContractSource {
 enum TravelPackageType {
   INTERNATIONAL
   MIGRATION
+}
+
+enum AdditionalServiceType {
+  SEAT
+  BAGGAGE
+  TOUR
+  ACCOMMODATION
+  LODGING
+  INSURANCE
+  TRAVEL_EXTENSION
+  ITINERARY_CHANGE
+  TRANSPORTATION
+  OTHER
+}
+
+enum AdditionalServiceOrderStatus {
+  DRAFT
+  REQUESTED
+  CONFIRMED
+  CANCELLED
+}
+
+enum AdditionalServiceCurrency {
+  USD
+  CRC
+}
+
+enum AdditionalServiceMarginType {
+  FIXED
+  PERCENTAGE
+}
+
+model AdditionalServiceOrder {
+  id              String                       @id @default(cuid())
+  tenantId        String
+  orderNumber     String
+  travelPackageId String?
+  internalTripId  String?
+  status          AdditionalServiceOrderStatus @default(DRAFT)
+  createdByUserId String
+  createdByName   String
+  createdAt       DateTime                     @default(now())
+  updatedAt       DateTime                     @updatedAt
+  tenant          Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  travelPackage   TravelPackage?               @relation(fields: [travelPackageId], references: [id], onDelete: Cascade)
+  internalTrip    InternalTrip?                @relation(fields: [internalTripId], references: [id], onDelete: Cascade)
+  lines           AdditionalServiceOrderLine[]
+
+  @@unique([tenantId, orderNumber])
+  @@index([tenantId])
+  @@index([travelPackageId])
+  @@index([internalTripId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("additional_service_orders")
+}
+
+model AdditionalServiceOrderLine {
+  id            String                              @id @default(cuid())
+  tenantId      String
+  orderId       String
+  serviceType   AdditionalServiceType
+  detail        String
+  notes         String
+  serviceDate   DateTime?
+  quantity      Int
+  currency      AdditionalServiceCurrency
+  exchangeRate  Decimal                             @db.Decimal(14, 6)
+  cost          Decimal                             @db.Decimal(14, 2)
+  salePrice     Decimal                             @db.Decimal(14, 2)
+  marginType    AdditionalServiceMarginType
+  marginValue   Decimal                             @db.Decimal(14, 4)
+  taxPercentage Decimal                             @db.Decimal(7, 4)
+  taxAmount     Decimal                             @db.Decimal(14, 2)
+  subtotal      Decimal                             @db.Decimal(14, 2)
+  total         Decimal                             @db.Decimal(14, 2)
+  supplierName  String?
+  sourceUrl     String?
+  createdAt     DateTime                            @default(now())
+  updatedAt     DateTime                            @updatedAt
+  tenant        Tenant                              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  order         AdditionalServiceOrder              @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  participants  AdditionalServiceOrderParticipant[]
+
+  @@index([tenantId])
+  @@index([orderId])
+  @@index([serviceType])
+  @@index([serviceDate])
+  @@map("additional_service_order_lines")
+}
+
+model AdditionalServiceOrderParticipant {
+  id        String                     @id @default(cuid())
+  tenantId  String
+  lineId    String
+  clientId  String
+  createdAt DateTime                   @default(now())
+  tenant    Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  line      AdditionalServiceOrderLine @relation(fields: [lineId], references: [id], onDelete: Cascade)
+  client    Client                     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([lineId, clientId], map: "additional_service_order_participants_line_client_key")
+  @@index([tenantId])
+  @@index([lineId])
+  @@index([clientId])
+  @@map("additional_service_order_participants")
 }
 
 enum PayrollFrequency {

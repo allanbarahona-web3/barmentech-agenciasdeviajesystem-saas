@@ -212,6 +212,48 @@ export class CustomersService {
   }
 
   /**
+   * Registers minors as Client records.
+   *
+   * The contract payload remains the compatibility source for minor-specific
+   * legal and tutor information. This method only establishes the relational
+   * Client identity required by future operational modules.
+   *
+   * Business Rules:
+   * - Only registers minors with a name and identification number
+   * - Uses the tutor email when available, otherwise the holder contact email
+   * - Reuses upsertClient() for normalization, identity validation and tenant
+   *   isolation
+   */
+  async registerMinorsAsClients(
+    minors: any[],
+    tenantId: string,
+    holderEmail: string,
+  ): Promise<Client[]> {
+    const validMinors = minors.filter(
+      (minor) =>
+        minor &&
+        String(minor.minorName || minor.name || "").trim() &&
+        String(minor.minorId || minor.idNumber || "").trim(),
+    );
+
+    const registeredClients: Client[] = [];
+    for (const minor of validMinors) {
+      const client = await this.upsertClient({
+        fullName: minor.minorName || minor.name,
+        idNumber: minor.minorId || minor.idNumber,
+        idType: minor.minorIdType || minor.idType || null,
+        email: String(minor.tutorEmail || "").trim() || holderEmail,
+        emergencyContactName:
+          minor.tutorName || minor.travelingWith || null,
+        tenantId,
+      });
+      registeredClients.push(client);
+    }
+
+    return registeredClients;
+  }
+
+  /**
    * List customers with pagination and search
    * 
    * Business Rules:

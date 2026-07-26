@@ -5,3 +5,4 @@ export * from './internal-trips.controller';
 export * from './internal-bookings.controller';
 export * from './dto';
 export * from './types';
+export * from './enums';
