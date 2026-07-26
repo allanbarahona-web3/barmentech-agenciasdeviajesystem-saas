@@ -94,21 +94,32 @@ export class CustomersService {
         );
       }
 
+      const updateData: Prisma.ClientUpdateInput = {
+        email: normalized.email,
+        phone: normalized.phone,
+        emergencyContactName: normalized.emergencyContactName,
+        emergencyContactPhone: normalized.emergencyContactPhone,
+      };
+
+      if (dto.nationality !== undefined) {
+        updateData.nationality = normalized.nationality;
+      }
+      if (dto.occupation !== undefined) {
+        updateData.occupation = normalized.occupation;
+      }
+      if (dto.maritalStatus !== undefined) {
+        updateData.maritalStatus = normalized.maritalStatus;
+      }
+      if (dto.address !== undefined) {
+        updateData.address = normalized.address;
+      }
+
       // Identity matches - update only mutable fields
       const updatedClient = await this.prisma.client.update({
         where: {
           id: existingClient.id,
         },
-        data: {
-          email: normalized.email,
-          phone: normalized.phone,
-          emergencyContactName: normalized.emergencyContactName,
-          emergencyContactPhone: normalized.emergencyContactPhone,
-          nationality: normalized.nationality,
-          occupation: normalized.occupation,
-          maritalStatus: normalized.maritalStatus,
-          address: normalized.address,
-        },
+        data: updateData,
       });
 
       return updatedClient;
