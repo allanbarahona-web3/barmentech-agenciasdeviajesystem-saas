@@ -6,11 +6,11 @@ describe("CustomersService", () => {
       id: "customer-1",
       fullName: "Customer Example",
     };
-    const findUnique = jest.fn().mockResolvedValue(existingClient);
+    const findFirst = jest.fn().mockResolvedValue(existingClient);
     const update = jest.fn().mockResolvedValue(existingClient);
     const prisma = {
       client: {
-        findUnique,
+        findFirst,
         update,
       },
     };
@@ -50,7 +50,7 @@ describe("CustomersService", () => {
     const update = jest.fn().mockResolvedValue(existingClient);
     const prisma = {
       client: {
-        findUnique: jest.fn().mockResolvedValue(existingClient),
+        findFirst: jest.fn().mockResolvedValue(existingClient),
         update,
       },
     };
@@ -85,5 +85,110 @@ describe("CustomersService", () => {
         address: "San José",
       },
     });
+  });
+
+  it("reuses an existing Minor Customer by tenant, ID type, and normalized ID", async () => {
+    const findFirst = jest.fn().mockResolvedValue({
+      id: "minor-1",
+      fullName: "Minor Example",
+    });
+    const create = jest.fn();
+    const service = new CustomersService(
+      {
+        client: {
+          findFirst,
+          create,
+        },
+      } as any,
+      {} as any,
+      {} as any,
+    );
+
+    const result = await service.resolveMinorCustomer("tenant-1", {
+      fullName: " Minor Example ",
+      idType: "Cedula",
+      idNumber: "1-2345-6789",
+    });
+
+    expect(result).toEqual({ id: "minor-1" });
+    expect(findFirst).toHaveBeenCalledWith({
+      where: {
+        tenantId: "tenant-1",
+        idType: "Cedula",
+        idNumber: "0123456789",
+      },
+      select: {
+        id: true,
+        fullName: true,
+      },
+    });
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("creates a new Minor Customer with only captured fields and no placeholder email", async () => {
+    const findFirst = jest.fn().mockResolvedValue(null);
+    const create = jest.fn().mockResolvedValue({ id: "minor-2" });
+    const service = new CustomersService(
+      {
+        client: {
+          findFirst,
+          create,
+        },
+      } as any,
+      {} as any,
+      {} as any,
+    );
+
+    const result = await service.resolveMinorCustomer("tenant-1", {
+      fullName: "Minor Two",
+      idType: "Pasaporte",
+      idNumber: " P-200 ",
+    });
+
+    expect(result).toEqual({ id: "minor-2" });
+    expect(create).toHaveBeenCalledWith({
+      data: {
+        fullName: "Minor Two",
+        idType: "Pasaporte",
+        idNumber: "P-200",
+        email: null,
+        dateOfBirth: null,
+        tenantId: "tenant-1",
+      },
+      select: {
+        id: true,
+      },
+    });
+  });
+
+  it("does not collide Customers that share an ID number under different document types", async () => {
+    const findFirst = jest.fn().mockResolvedValue(null);
+    const create = jest.fn().mockResolvedValue({ id: "passport-client" });
+    const service = new CustomersService(
+      {
+        client: {
+          findFirst,
+          create,
+        },
+      } as any,
+      {} as any,
+      {} as any,
+    );
+
+    await service.resolveMinorCustomer("tenant-1", {
+      fullName: "Passport Minor",
+      idType: "Pasaporte",
+      idNumber: "123456789",
+    });
+
+    expect(findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          tenantId: "tenant-1",
+          idType: "Pasaporte",
+          idNumber: "123456789",
+        },
+      }),
+    );
   });
 });

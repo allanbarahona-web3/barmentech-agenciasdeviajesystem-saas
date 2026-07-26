@@ -12,8 +12,8 @@ import { PrismaService } from "../prisma/prisma.service";
 import { StorageService } from "../storage/storage.service";
 import { BillingService } from "../billing/billing.service";
 import { ContractsEmailsService } from "./contracts-emails.service";
-import { CustomersService } from "../customers/customers.service";
 import { CustomerDocumentsService } from "../customers/documents/customer-documents.service";
+import { normalizeIdentification } from "../customers/utils/normalize-identification";
 import { DocumentSigningService } from "../documents/document-signing.service";
 import { DocumentSigningAuditService } from "../documents/document-signing-audit.service";
 import { DocumentSignatureFinalizationService } from "../documents/document-signature-finalization.service";
@@ -86,7 +86,6 @@ export class ContractsService {
     private readonly pdfRenderService: PdfRenderService,
     private readonly billingService: BillingService,
     private readonly contractsEmailsService: ContractsEmailsService,
-    private readonly customersService: CustomersService,
     private readonly customerDocumentsService: CustomerDocumentsService,
     private readonly documentSigningService: DocumentSigningService,
     private readonly documentSigningAuditService: DocumentSigningAuditService,
@@ -108,6 +107,220 @@ export class ContractsService {
 
   private randomHex(bytes = 2) {
     return randomBytes(bytes).toString("hex").toUpperCase();
+  }
+
+  private normalizeCustomerName(value: unknown): string {
+    return String(value || "")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, " ");
+  }
+
+  private async resolveExistingCustomer(params: {
+    tenantId: string;
+    selectedCustomerId?: unknown;
+    fullName: unknown;
+    idNumber: unknown;
+    idType?: unknown;
+    roleLabel: string;
+  }): Promise<{ id: string }> {
+    const selectedCustomerId = String(params.selectedCustomerId || "").trim();
+    const submittedFullName = String(params.fullName || "").trim();
+    const submittedIdNumber = String(params.idNumber || "").trim();
+    const submittedIdType = String(params.idType || "").trim() || null;
+
+    if (!submittedFullName || !submittedIdNumber) {
+      throw new BadRequestException(
+        `${params.roleLabel} no contiene una identidad completa.`,
+      );
+    }
+
+    const select = {
+      id: true,
+      fullName: true,
+      idNumber: true,
+      idType: true,
+    } as const;
+
+    let customer: {
+      id: string;
+      fullName: string;
+      idNumber: string;
+      idType: string | null;
+    } | null = null;
+
+    if (selectedCustomerId) {
+      customer = await this.prisma.client.findFirst({
+          where: {
+            id: selectedCustomerId,
+            tenantId: params.tenantId,
+          },
+          select,
+        });
+    } else if (submittedIdType) {
+      customer = await this.prisma.client.findFirst({
+          where: {
+            tenantId: params.tenantId,
+            idType: submittedIdType,
+            idNumber: normalizeIdentification(
+              submittedIdType,
+              submittedIdNumber,
+            ),
+          },
+          select,
+        });
+    } else {
+      const legacyIdentityCandidates = [
+        {
+          idType: "Cedula",
+          idNumber: normalizeIdentification("Cedula", submittedIdNumber),
+        },
+        {
+          idType: "DIMEX",
+          idNumber: normalizeIdentification("DIMEX", submittedIdNumber),
+        },
+        {
+          idType: "Pasaporte",
+          idNumber: normalizeIdentification("Pasaporte", submittedIdNumber),
+        },
+        {
+          idType: null,
+          idNumber: normalizeIdentification(null, submittedIdNumber),
+        },
+      ].filter(
+        (candidate, index, all) =>
+          candidate.idNumber &&
+          all.findIndex(
+            (other) =>
+              other.idType === candidate.idType &&
+              other.idNumber === candidate.idNumber,
+          ) === index,
+      );
+      const legacyMatches = await this.prisma.client.findMany({
+        where: {
+          tenantId: params.tenantId,
+          OR: legacyIdentityCandidates,
+        },
+        select,
+        take: 2,
+      });
+      if (legacyMatches.length > 1) {
+        throw new BadRequestException(
+          `${params.roleLabel} tiene una identificación ambigua. Selecciónelo nuevamente desde el flujo de búsqueda correspondiente.`,
+        );
+      }
+      customer = legacyMatches[0] || null;
+    }
+
+    if (!customer) {
+      throw new BadRequestException(
+        selectedCustomerId
+          ? `${params.roleLabel} referencia un cliente inválido o de otro tenant.`
+          : `${params.roleLabel} no existe como cliente. Selecciónelo nuevamente desde el flujo de búsqueda correspondiente.`,
+      );
+    }
+
+    const normalizedSubmittedId = normalizeIdentification(
+      customer.idType || submittedIdType,
+      submittedIdNumber,
+    );
+    if (
+      this.normalizeCustomerName(customer.fullName) !==
+        this.normalizeCustomerName(submittedFullName) ||
+      normalizedSubmittedId !== customer.idNumber
+    ) {
+      throw new BadRequestException(
+        `${params.roleLabel} no coincide con la identidad del cliente seleccionado.`,
+      );
+    }
+
+    return { id: customer.id };
+  }
+
+  private async resolveArchiveParticipants(
+    tenantId: string,
+    holder: {
+      selectedCustomerId?: unknown;
+      fullName: unknown;
+      idNumber: unknown;
+      idType?: unknown;
+    },
+    companions: unknown[],
+    minors: unknown[],
+  ): Promise<{
+    client: { id: string };
+    enrichedCompanions: any[];
+    enrichedMinors: any[];
+  }> {
+    const client = await this.resolveExistingCustomer({
+      selectedCustomerId: holder.selectedCustomerId,
+      fullName: holder.fullName,
+      idNumber: holder.idNumber,
+      idType: holder.idType,
+      tenantId,
+      roleLabel: "El titular",
+    });
+    const participantCustomerIds = new Set<string>([client.id]);
+    const enrichedCompanions: any[] = [];
+
+    for (let index = 0; index < companions.length; index += 1) {
+      const companion = companions[index] as any;
+      const companionCustomer = await this.resolveExistingCustomer({
+        selectedCustomerId: companion?.selectedCustomerId,
+        fullName: companion?.fullName,
+        idNumber: companion?.idNumber,
+        idType: companion?.idType,
+        tenantId,
+        roleLabel: `El acompañante ${index + 1}`,
+      });
+
+      if (participantCustomerIds.has(companionCustomer.id)) {
+        throw new BadRequestException(
+          `El acompañante ${index + 1} está duplicado en la lista de participantes.`,
+        );
+      }
+      participantCustomerIds.add(companionCustomer.id);
+      enrichedCompanions.push({
+        ...companion,
+        selectedCustomerId: companionCustomer.id,
+      });
+    }
+
+    const enrichedMinors: any[] = [];
+    for (let index = 0; index < minors.length; index += 1) {
+      const minor = minors[index] as any;
+      const hasValidIdentity =
+        minor &&
+        String(minor.minorName || minor.name || "").trim() &&
+        String(minor.minorId || minor.idNumber || "").trim();
+
+      if (!hasValidIdentity) {
+        enrichedMinors.push(minor);
+        continue;
+      }
+
+      const minorCustomer = await this.resolveExistingCustomer({
+        selectedCustomerId: minor.selectedCustomerId,
+        fullName: minor.minorName || minor.name,
+        idNumber: minor.minorId || minor.idNumber,
+        idType: minor.minorIdType || minor.idType,
+        tenantId,
+        roleLabel: `El menor ${index + 1}`,
+      });
+
+      if (participantCustomerIds.has(minorCustomer.id)) {
+        throw new BadRequestException(
+          `El menor ${index + 1} está duplicado en la lista de participantes.`,
+        );
+      }
+      participantCustomerIds.add(minorCustomer.id);
+      enrichedMinors.push({
+        ...minor,
+        selectedCustomerId: minorCustomer.id,
+      });
+    }
+
+    return { client, enrichedCompanions, enrichedMinors };
   }
 
   private buildContractNumber(prefix = "LUC") {
@@ -1271,30 +1484,24 @@ export class ContractsService {
         ? (payload as Record<string, unknown>)
         : {};
 
-    // Delegate customer management to CustomersService
-    const client = await this.customersService.upsertClient({
-      fullName: dto.clientFullName,
-      idNumber: dto.clientIdNumber,
-      email: dto.clientEmail,
-      phone: (payloadRecord as Record<string, unknown>).clientPhone as string | null,
-      emergencyContactName: (payloadRecord as Record<string, unknown>).emergencyContactName as string | null,
-      emergencyContactPhone: (payloadRecord as Record<string, unknown>).emergencyContactPhone as string | null,
-      tenantId: user.tenantId,
-    });
-
-    // Register adult companions as clients
-    const registeredCompanions = await this.customersService.registerCompanionsAsClients(
-      Array.isArray(payloadRecord.companions) ? payloadRecord.companions : [],
-      user.tenantId
-    );
-
-    // Register minors as clients; legal payload fields remain unchanged and the
-    // returned Client IDs are added as internal relational references.
-    const registeredMinors = await this.customersService.registerMinorsAsClients(
-      Array.isArray(payloadRecord.minors) ? payloadRecord.minors : [],
-      user.tenantId,
-      dto.clientEmail,
-    );
+    const companionsArray = Array.isArray(payloadRecord.companions)
+      ? payloadRecord.companions
+      : [];
+    const minorsArray = Array.isArray(payloadRecord.minors)
+      ? payloadRecord.minors
+      : [];
+    const { client, enrichedCompanions, enrichedMinors } =
+      await this.resolveArchiveParticipants(
+        user.tenantId,
+        {
+          selectedCustomerId: payloadRecord.selectedCustomerId,
+          fullName: dto.clientFullName,
+          idNumber: dto.clientIdNumber,
+          idType: payloadRecord.clientIdType,
+        },
+        companionsArray,
+        minorsArray,
+      );
 
     // Obtener tenant para organizar archivos
     const tenant = await this.prisma.tenant.findUnique({
@@ -1329,85 +1536,9 @@ export class ContractsService {
       });
     }
 
-    // =================================================================
-    // 📋 Enrich companions with Customer references (selectedCustomerId)
-    // =================================================================
-    const companionsArray = Array.isArray(payloadRecord.companions) 
-      ? payloadRecord.companions 
-      : [];
-    
-    const enrichedCompanions = companionsArray.map((companion: any, index: number) => {
-      // Only enrich companions that were successfully registered as clients
-      const hasValidId = 
-        companion &&
-        String(companion.fullName || "").trim() &&
-        String(companion.idNumber || "").trim();
-      
-      if (!hasValidId) {
-        // Keep original companion data if not valid for registration
-        return companion;
-      }
-
-      // Find matching registered client
-      // registeredCompanions are in same order as valid companions in payload
-      const validCompanionIndex = companionsArray
-        .slice(0, index)
-        .filter((c: any) => 
-          c &&
-          String(c.fullName || "").trim() &&
-          String(c.idNumber || "").trim()
-        ).length;
-
-      const registeredClient = registeredCompanions[validCompanionIndex];
-      
-      if (registeredClient?.id) {
-        // Preserve Customer reference using same convention as holder
-        return {
-          ...companion,
-          selectedCustomerId: registeredClient.id,
-        };
-      }
-
-      return companion;
-    });
-
-    const minorsArray = Array.isArray(payloadRecord.minors)
-      ? payloadRecord.minors
-      : [];
-    const enrichedMinors = minorsArray.map((minor: any, index: number) => {
-      const hasValidIdentity =
-        minor &&
-        String(minor.minorName || minor.name || "").trim() &&
-        String(minor.minorId || minor.idNumber || "").trim();
-
-      if (!hasValidIdentity) {
-        return minor;
-      }
-
-      const validMinorIndex = minorsArray
-        .slice(0, index)
-        .filter(
-          (candidate: any) =>
-            candidate &&
-            String(candidate.minorName || candidate.name || "").trim() &&
-            String(candidate.minorId || candidate.idNumber || "").trim(),
-        ).length;
-      const registeredClient = registeredMinors[validMinorIndex];
-
-      if (!registeredClient?.id) {
-        throw new InternalServerErrorException(
-          "No se pudo preservar la identidad de cliente de un menor registrado.",
-        );
-      }
-
-      return {
-        ...minor,
-        selectedCustomerId: registeredClient.id,
-      };
-    });
-
     const enrichedPayload = {
       ...payloadRecord,
+      selectedCustomerId: client.id,
       companions: enrichedCompanions,
       minors: enrichedMinors,
       signatureAnchors,

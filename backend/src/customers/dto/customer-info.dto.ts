@@ -8,7 +8,7 @@ export class CustomerInfoDto {
   fullName!: string;
   idNumber!: string;
   idType!: string | null;
-  email!: string;
+  email!: string | null;
   phone!: string | null;
   emergencyContactName!: string | null;
   emergencyContactPhone!: string | null;

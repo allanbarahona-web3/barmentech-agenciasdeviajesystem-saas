@@ -32,7 +32,9 @@ const createCompanion = (): Companion => ({
 
 const createMinor = (): Minor => ({
   id: `minor-${Date.now()}-${Math.random().toString(16).slice(2, 7)}`,
+  selectedCustomerId: null,
   minorName: "",
+  minorIdType: "Cedula",
   minorId: "",
   travelsWithParent: false,
   tutorName: "",
@@ -347,6 +349,7 @@ export const addCompanion = (state: ContractFormState): ContractFormState => {
 export const addCompanionFromCustomer = (
   state: ContractFormState,
   customerData: {
+    id: string;
     fullName: string;
     idNumber: string;
     email: string;
@@ -362,6 +365,7 @@ export const addCompanionFromCustomer = (
 ): ContractFormState => {
   const newCompanion: Companion = {
     id: `companion-${Date.now()}-${Math.random().toString(16).slice(2, 7)}`,
+    selectedCustomerId: customerData.id,
     fullName: customerData.fullName,
     idType: (customerData.idType || "Cedula") as "Cedula" | "Pasaporte" | "DIMEX",
     idNumber: customerData.idNumber,
@@ -548,9 +552,22 @@ export const updateMinor = (
       ),
     };
   }
+
+  const clearsCustomerIdentity =
+    field === "minorName" ||
+    field === "minorIdType" ||
+    field === "minorId";
   
   return {
     ...state,
-    minors: state.minors.map((item) => (item.id === id ? { ...item, [field]: value } : item)),
+    minors: state.minors.map((item) =>
+      item.id === id
+        ? {
+            ...item,
+            [field]: value,
+            ...(clearsCustomerIdentity ? { selectedCustomerId: null } : {}),
+          }
+        : item
+    ),
   };
 };

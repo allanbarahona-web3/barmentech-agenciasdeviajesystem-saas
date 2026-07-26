@@ -85,6 +85,26 @@ export function MinorsStep({
                 />
               </label>
               <label>
+                Tipo de identificación del menor
+                <select
+                  value={minor.minorIdType}
+                  onChange={(event) =>
+                    setState((prev) =>
+                      updateMinor(
+                        prev,
+                        minor.id,
+                        "minorIdType",
+                        event.target.value,
+                      )
+                    )
+                  }
+                >
+                  <option value="Cedula">Cédula</option>
+                  <option value="Pasaporte">Pasaporte</option>
+                  <option value="DIMEX">DIMEX</option>
+                </select>
+              </label>
+              <label>
                 Identificacion del menor
                 <input
                   value={minor.minorId}

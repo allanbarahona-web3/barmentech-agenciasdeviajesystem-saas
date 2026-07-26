@@ -29,7 +29,12 @@ import { getContractDraft, reserveNextContractNumber, saveContractDraft, archive
 import { getTravelPackageById } from "@/lib/travel-packages-api";
 import { normalizeIdentification, validateIdentification } from "@/features/customers/utils/normalize-identification";
 import { getInternalTripById } from "@/lib/internal-trips-api";
-import { validateCustomerIdentity, getCustomerProfile, getCustomerDocumentDownloadUrl } from "@/lib/customers-api";
+import {
+  validateCustomerIdentity,
+  getCustomerProfile,
+  getCustomerDocumentDownloadUrl,
+  resolveMinorCustomer,
+} from "@/lib/customers-api";
 import { getTenantLegalConfig, getTenantConfig, type TenantLegalConfig } from "@/lib/auth-api";
 import { getAllBankAccounts } from "@/lib/bank-accounts-api";
 import { type TenantLegalInfo, type BankAccountForContract } from "@/features/contracts-form/pdf-template";
@@ -204,7 +209,7 @@ export function ContractsWizard({
           clientFullName: customer.fullName,
           clientIdType: (customer.idType || 'Cedula') as 'Cedula' | 'Pasaporte' | 'DIMEX',
           clientIdNumber: customer.idNumber,
-          clientEmail: customer.email,
+          clientEmail: customer.email || '',
           clientPhone: customer.phone || '',
           clientAddress: customer.address || '',
           emergencyContactName: customer.emergencyContactName || '',
@@ -322,7 +327,7 @@ export function ContractsWizard({
                   fullName: customer.fullName,
                   idType: (customer.idType || 'Cedula') as 'Cedula' | 'Pasaporte' | 'DIMEX',
                   idNumber: customer.idNumber,
-                  email: customer.email,
+                  email: customer.email || '',
                   phone: customer.phone || '',
                   emergencyContactName: customer.emergencyContactName || '',
                   emergencyContactPhone: customer.emergencyContactPhone || '',
@@ -1158,7 +1163,33 @@ console.log("====================================");
       console.log("✅ Documentos recolectados:", docs.length);
 
       console.log("🔵 Paso 4: Verificando tamaños de campos...");
-      const payloadJson = JSON.stringify(state);
+      const resolvedMinors = await Promise.all(
+        state.minors.map(async (minor) => {
+          if (
+            !minor.minorName.trim() ||
+            !minor.minorId.trim() ||
+            !minor.minorIdType
+          ) {
+            return minor;
+          }
+
+          const customer = await resolveMinorCustomer({
+            fullName: minor.minorName,
+            idType: minor.minorIdType,
+            idNumber: minor.minorId,
+          });
+          return {
+            ...minor,
+            selectedCustomerId: customer.id,
+          };
+        })
+      );
+      const archiveState: ContractFormState = {
+        ...state,
+        minors: resolvedMinors,
+      };
+      setState(archiveState);
+      const payloadJson = JSON.stringify(archiveState);
       console.log("====================================");
       console.log("📏 TAMAÑOS DE CAMPOS A ENVIAR:");
       console.log("====================================");

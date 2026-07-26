@@ -8,7 +8,7 @@ export class CustomerListItemDto {
   id!: string;
   fullName!: string;
   idNumber!: string;
-  email!: string;
+  email!: string | null;
   phone!: string | null;
   createdAt!: Date;
 }

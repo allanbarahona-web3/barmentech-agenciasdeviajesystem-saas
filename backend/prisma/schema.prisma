@@ -250,7 +250,7 @@ model Client {
   fullName                             String
   idNumber                             String
   idType                               String?
-  email                                String
+  email                                String?
   phone                                String?
   emergencyContactName                 String?
   emergencyContactPhone                String?
@@ -293,7 +293,7 @@ model Client {
   assignedTo                           User?                               @relation("CustomerAssignedTo", fields: [assignedToUserId], references: [id])
   additionalServiceOrderParticipations AdditionalServiceOrderParticipant[]
 
-  @@unique([idNumber, tenantId])
+  @@unique([tenantId, idType, idNumber])
   @@index([fullName])
   @@index([email])
   @@index([tenantId])

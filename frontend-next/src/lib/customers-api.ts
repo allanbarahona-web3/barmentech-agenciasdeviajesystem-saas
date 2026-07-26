@@ -6,7 +6,7 @@ export interface CustomerListItem {
   id: string;
   fullName: string;
   idNumber: string;
-  email: string;
+  email: string | null;
   phone: string | null;
   createdAt: string;
 }
@@ -60,7 +60,7 @@ export interface CustomerInfo {
   fullName: string;
   idNumber: string;
   idType: string | null;
-  email: string;
+  email: string | null;
   phone: string | null;
   emergencyContactName: string | null;
   emergencyContactPhone: string | null;
@@ -186,8 +186,15 @@ export interface CustomerIdentityValidationResult {
     id: string;
     fullName: string;
     idNumber: string;
-    email: string;
+    email: string | null;
   };
+}
+
+export interface ResolveMinorCustomerRequest {
+  fullName: string;
+  idType: string;
+  idNumber: string;
+  dateOfBirth?: string;
 }
 
 // API Functions
@@ -264,6 +271,34 @@ export async function createCustomer(
     const errorText = await response.text();
     throw new Error(
       errorText || `Error al crear cliente: ${response.status}`
+    );
+  }
+
+  return response.json();
+}
+
+export async function resolveMinorCustomer(
+  data: ResolveMinorCustomerRequest
+): Promise<{ id: string }> {
+  const apiBase = resolveApiBase();
+  const token = getStoredToken();
+
+  const response = await authenticatedFetch(
+    `${apiBase}/customers/resolve-minor`,
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    }
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(
+      errorText || `Error al resolver cliente menor: ${response.status}`
     );
   }
 

@@ -25,6 +25,6 @@ export class CustomerIdentityValidationResultDto {
     id: string;
     fullName: string;
     idNumber: string;
-    email: string;
+    email: string | null;
   };
 }

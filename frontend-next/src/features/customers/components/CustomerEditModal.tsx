@@ -9,7 +9,7 @@ interface CustomerEditModalProps {
     fullName: string;
     idNumber: string;
     idType: string | null;
-    email: string;
+    email: string | null;
     phone: string | null;
     emergencyContactName: string | null;
     emergencyContactPhone: string | null;
@@ -38,7 +38,7 @@ export function CustomerEditModal({ isOpen, customer, onClose, onSave }: Custome
   const [editForm, setEditForm] = useState({
     fullName: customer.fullName,
     idType: customer.idType || '',
-    email: customer.email,
+    email: customer.email || '',
     phone: customer.phone || '',
     maritalStatus: customer.maritalStatus || '',
     nationality: customer.nationality || '',
@@ -72,7 +72,7 @@ export function CustomerEditModal({ isOpen, customer, onClose, onSave }: Custome
     setEditForm({
       fullName: customer.fullName,
       idType: customer.idType || '',
-      email: customer.email,
+      email: customer.email || '',
       phone: customer.phone || '',
       maritalStatus: customer.maritalStatus || '',
       nationality: customer.nationality || '',

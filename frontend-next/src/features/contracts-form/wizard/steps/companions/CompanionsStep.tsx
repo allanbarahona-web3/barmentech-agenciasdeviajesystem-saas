@@ -111,9 +111,10 @@ export function CompanionsStep({
       let newCompanionId: string | null = null;
       setState((prev) => {
         const newState = addCompanionFromCustomer(prev, {
+          id: customerData.id,
           fullName: customerData.fullName,
           idNumber: customerData.idNumber,
-          email: customerData.email,
+          email: customerData.email || '',
           phone: customerData.phone || '',
           emergencyContactName: customerData.emergencyContactName || '',
           emergencyContactPhone: customerData.emergencyContactPhone || '',
@@ -218,7 +219,7 @@ export function CompanionsStep({
                   ...c,
                   fullName: updatedCustomer.fullName,
                   idType: (updatedCustomer.idType || 'Cedula') as 'Cedula' | 'Pasaporte' | 'DIMEX',
-                  email: updatedCustomer.email,
+                  email: updatedCustomer.email || '',
                   phone: updatedCustomer.phone || '',
                   emergencyContactName: updatedCustomer.emergencyContactName || '',
                   emergencyContactPhone: updatedCustomer.emergencyContactPhone || '',

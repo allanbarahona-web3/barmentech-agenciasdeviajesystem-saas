@@ -8,6 +8,7 @@ export type PaymentFrequency = "QUINCENAL" | "MENSUAL";
 
 export type Companion = {
   id: string;
+  selectedCustomerId?: string | null;
   fullName: string;
   idType: IdType;
   idNumber: string;
@@ -26,7 +27,9 @@ export type Companion = {
 
 export type Minor = {
   id: string;
+  selectedCustomerId?: string | null;
   minorName: string;
+  minorIdType: IdType;
   minorId: string;
   travelsWithParent: boolean;
   tutorName: string;

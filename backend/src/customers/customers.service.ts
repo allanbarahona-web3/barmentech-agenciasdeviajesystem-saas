@@ -13,6 +13,7 @@ import { CustomerFinancialSummaryDto } from "./dto/customer-financial-summary.dt
 import { CustomerStatisticsDto } from "./dto/customer-statistics.dto";
 import { UpdateCustomerDto } from "./dto/update-customer.dto";
 import { ValidateCustomerIdentityDto } from "./dto/validate-customer-identity.dto";
+import { ResolveMinorCustomerDto } from "./dto/resolve-minor-customer.dto";
 import { CustomerIdentityValidationResultDto } from "./dto/customer-identity-validation-result.dto";
 import { CustomerDocumentsService } from "./documents/customer-documents.service";
 import { CustomerNotesService } from "./notes/customer-notes.service";
@@ -39,7 +40,7 @@ export class CustomersService {
   ) {}
 
   /**
-   * Creates or updates a customer based on compound key [idNumber, tenantId]
+   * Creates or updates a customer based on [tenantId, idType, idNumber]
    * 
    * Responsibilities:
    * 1. Normalize ALL fields (trim, toLowerCase, null conversion)
@@ -49,7 +50,7 @@ export class CustomersService {
    * 5. Return created/updated customer
    * 
    * Business Rules:
-   * - A Client is uniquely identified by [tenantId, idNumber]
+   * - A Client is uniquely identified by [tenantId, idType, idNumber]
    * - Identity fields (fullName, idNumber) cannot be silently overwritten
    * - If idNumber exists but fullName doesn't match, reject the operation
    * - Only mutable fields (email, phone, emergency contacts) can be updated
@@ -69,12 +70,11 @@ export class CustomersService {
     }
 
     // Step 2: Check if client already exists
-    const existingClient = await this.prisma.client.findUnique({
+    const existingClient = await this.prisma.client.findFirst({
       where: {
-        idNumber_tenantId: {
-          idNumber: normalized.idNumber,
-          tenantId: normalized.tenantId,
-        },
+        tenantId: normalized.tenantId,
+        idType: normalized.idType,
+        idNumber: normalized.idNumber,
       },
     });
 
@@ -177,6 +177,90 @@ export class CustomersService {
     };
 
     return this.upsertClient(clientDto);
+  }
+
+  async resolveMinorCustomer(
+    tenantId: string,
+    dto: ResolveMinorCustomerDto,
+  ): Promise<{ id: string }> {
+    const normalizedIdNumber = normalizeIdentification(
+      dto.idType,
+      dto.idNumber,
+    );
+    const validationResult = validateIdentification(
+      dto.idType,
+      normalizedIdNumber,
+    );
+    if (!validationResult.isValid) {
+      throw new ConflictException(
+        validationResult.errorMessage || "Número de identificación inválido",
+      );
+    }
+
+    const normalizedFullName = String(dto.fullName || "").trim();
+    const normalizedIdType = String(dto.idType || "").trim();
+    const identityWhere = {
+      tenantId,
+      idType: normalizedIdType,
+      idNumber: normalizedIdNumber,
+    };
+    const existingCustomer = await this.prisma.client.findFirst({
+      where: identityWhere,
+      select: {
+        id: true,
+        fullName: true,
+      },
+    });
+
+    if (existingCustomer) {
+      if (
+        this.normalizeNameForComparison(existingCustomer.fullName) !==
+        this.normalizeNameForComparison(normalizedFullName)
+      ) {
+        throw new ConflictException(
+          `Ya existe un cliente con esta identificación pero el nombre no coincide. Cliente existente: "${existingCustomer.fullName}".`,
+        );
+      }
+      return { id: existingCustomer.id };
+    }
+
+    try {
+      const createdCustomer = await this.prisma.client.create({
+        data: {
+          fullName: normalizedFullName,
+          idType: normalizedIdType,
+          idNumber: normalizedIdNumber,
+          email: null,
+          dateOfBirth: dto.dateOfBirth ? new Date(dto.dateOfBirth) : null,
+          tenantId,
+        },
+        select: {
+          id: true,
+        },
+      });
+      return createdCustomer;
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      ) {
+        const concurrentCustomer = await this.prisma.client.findFirst({
+          where: identityWhere,
+          select: {
+            id: true,
+            fullName: true,
+          },
+        });
+        if (
+          concurrentCustomer &&
+          this.normalizeNameForComparison(concurrentCustomer.fullName) ===
+            this.normalizeNameForComparison(normalizedFullName)
+        ) {
+          return { id: concurrentCustomer.id };
+        }
+      }
+      throw error;
+    }
   }
 
   /**
@@ -912,12 +996,11 @@ export class CustomersService {
     }
 
     // Check if customer exists with this idNumber
-    const existingCustomer = await this.prisma.client.findUnique({
+    const existingCustomer = await this.prisma.client.findFirst({
       where: {
-        idNumber_tenantId: {
-          idNumber: normalizedIdNumber,
-          tenantId: tenantId,
-        },
+        tenantId,
+        idType: String(dto.idType || "").trim() || null,
+        idNumber: normalizedIdNumber,
       },
       select: {
         id: true,

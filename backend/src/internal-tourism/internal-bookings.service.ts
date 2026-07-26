@@ -244,30 +244,32 @@ export class InternalBookingsService {
         { year: 'numeric', month: 'short', day: 'numeric' },
       );
 
-      await this.emailService.sendEmail({
-        tenantId,
-        to: client.email,
-        subject: `Reserva Confirmada: ${trip.name}`,
-        template: 'booking-confirmation',
-        templateData: {
-          recipientName: client.fullName,
-          clientEmail: client.email,
-          tripCode: trip.tripCode,
-          tripName: trip.name,
-          destination: trip.destination,
-          departureDate: formattedDepartureDate,
-          returnDate: formattedReturnDate,
-          participantCount: booking.participantCount,
-          totalAmount: Number(booking.totalAmount),
-          currency: booking.currency,
-          bookingCode: booking.bookingCode,
-        },
-        triggeredBy: {
-          userId,
-          email: 'system@internal-tourism',
-          fullName: userName,
-        },
-      });
+      if (client.email) {
+        await this.emailService.sendEmail({
+          tenantId,
+          to: client.email,
+          subject: `Reserva Confirmada: ${trip.name}`,
+          template: 'booking-confirmation',
+          templateData: {
+            recipientName: client.fullName,
+            clientEmail: client.email,
+            tripCode: trip.tripCode,
+            tripName: trip.name,
+            destination: trip.destination,
+            departureDate: formattedDepartureDate,
+            returnDate: formattedReturnDate,
+            participantCount: booking.participantCount,
+            totalAmount: Number(booking.totalAmount),
+            currency: booking.currency,
+            bookingCode: booking.bookingCode,
+          },
+          triggeredBy: {
+            userId,
+            email: 'system@internal-tourism',
+            fullName: userName,
+          },
+        });
+      }
     } catch (emailError) {
       // Log pero no fallar - la reserva ya fue creada
       console.error('Error sending booking confirmation email:', emailError);
@@ -455,7 +457,7 @@ export class InternalBookingsService {
         },
       });
 
-      if (bookingWithRelations) {
+      if (bookingWithRelations?.client.email) {
         const formattedDepartureDate = new Date(
           bookingWithRelations.internalTrip.departureDate,
         ).toLocaleDateString('es-CR', {
@@ -562,29 +564,31 @@ export class InternalBookingsService {
         { year: 'numeric', month: 'short', day: 'numeric' },
       );
 
-      await this.emailService.sendEmail({
-        tenantId,
-        to: booking.client.email,
-        subject: `Reserva Cancelada: ${booking.internalTrip.name}`,
-        template: 'trip-cancelled',
-        templateData: {
-          recipientName: booking.client.fullName,
-          bookingCode: booking.bookingCode,
-          tripName: booking.internalTrip.name,
-          destination: booking.internalTrip.destination,
-          departureDate: formattedDepartureDate,
-          returnDate: formattedReturnDate,
-          totalAmount: Number(booking.totalAmount),
-          paidAmount: Number(booking.paidAmount),
-          refundAmount: Number(booking.paidAmount), // A reembolsar
-          currency: booking.currency,
-        },
-        triggeredBy: {
-          userId: userId || 'system',
-          email: 'system@internal-tourism',
-          fullName: userName || 'Sistema',
-        },
-      });
+      if (booking.client.email) {
+        await this.emailService.sendEmail({
+          tenantId,
+          to: booking.client.email,
+          subject: `Reserva Cancelada: ${booking.internalTrip.name}`,
+          template: 'trip-cancelled',
+          templateData: {
+            recipientName: booking.client.fullName,
+            bookingCode: booking.bookingCode,
+            tripName: booking.internalTrip.name,
+            destination: booking.internalTrip.destination,
+            departureDate: formattedDepartureDate,
+            returnDate: formattedReturnDate,
+            totalAmount: Number(booking.totalAmount),
+            paidAmount: Number(booking.paidAmount),
+            refundAmount: Number(booking.paidAmount), // A reembolsar
+            currency: booking.currency,
+          },
+          triggeredBy: {
+            userId: userId || 'system',
+            email: 'system@internal-tourism',
+            fullName: userName || 'Sistema',
+          },
+        });
+      }
     } catch (emailError) {
       // Log pero no fallar - la cancelación ya fue realizada
       console.error('Error sending booking cancellation email:', emailError);

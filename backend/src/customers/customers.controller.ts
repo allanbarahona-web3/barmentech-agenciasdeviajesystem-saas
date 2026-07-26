@@ -12,6 +12,7 @@ import { CustomerProfileDto } from "./dto/customer-profile.dto";
 import { CreateCustomerDto } from "./dto/create-customer.dto";
 import { UpdateCustomerDto } from "./dto/update-customer.dto";
 import { ValidateCustomerIdentityDto } from "./dto/validate-customer-identity.dto";
+import { ResolveMinorCustomerDto } from "./dto/resolve-minor-customer.dto";
 import { CustomerIdentityValidationResultDto } from "./dto/customer-identity-validation-result.dto";
 import { UploadCustomerDocumentDto } from "./dto/upload-customer-document.dto";
 import { CreateCustomerNoteDto } from "./dto/create-customer-note.dto";
@@ -123,6 +124,19 @@ export class CustomersController {
     @Body() dto: CreateCustomerDto
   ): Promise<Client> {
     return this.customersService.createCustomer(req.user.tenantId, dto);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(...CUSTOMER_ACCESS_ROLES)
+  @Post("resolve-minor")
+  resolveMinorCustomer(
+    @Req()
+    req: {
+      user: { id: string; email: string; fullName: string; tenantId: string };
+    },
+    @Body() dto: ResolveMinorCustomerDto,
+  ): Promise<{ id: string }> {
+    return this.customersService.resolveMinorCustomer(req.user.tenantId, dto);
   }
 
   /**
@@ -374,4 +388,3 @@ export class CustomersController {
     );
   }
 }
-

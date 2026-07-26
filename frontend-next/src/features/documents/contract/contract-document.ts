@@ -67,7 +67,7 @@ export const buildContractPdfHtml = (
         <ul>${state.minors
           .map(
             (minor) =>
-              `<li><strong>Menor:</strong> ${v(minor.minorName)}, documento de identidad número ${v(minor.minorId)}. <strong>Tutor legal que autoriza:</strong> ${v(minor.tutorName)}, ${v(minor.tutorIdType)} número ${v(minor.tutorId)}. <strong>Acompañante responsable en el viaje:</strong> ${v(minor.travelingWith)}.</li>`,
+              `<li><strong>Menor:</strong> ${v(minor.minorName)}, documento de identidad número ${v(minor.minorId)}.${minor.travelsWithParent ? "" : ` <strong>Tutor legal que autoriza:</strong> ${v(minor.tutorName)}, ${v(minor.tutorIdType)} número ${v(minor.tutorId)}.`} <strong>Acompañante responsable en el viaje:</strong> ${v(minor.travelingWith)}.</li>`,
           )
           .join("")}</ul>
         <p>La autorización y consentimiento de representación de menor de edad se incorpora como anexo obligatorio de este Contrato.</p>

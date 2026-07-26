@@ -144,7 +144,7 @@ export function CustomerLookupStep({
         clientFullName: updatedCustomer.fullName,
         clientIdType: (updatedCustomer.idType || 'Cedula') as 'Cedula' | 'Pasaporte' | 'DIMEX',
         clientIdNumber: updatedCustomer.idNumber,
-        clientEmail: updatedCustomer.email,
+        clientEmail: updatedCustomer.email || '',
         clientPhone: updatedCustomer.phone || '',
         clientAddress: updatedCustomer.address || '',
         emergencyContactName: updatedCustomer.emergencyContactName || '',

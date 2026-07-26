@@ -264,6 +264,9 @@ export class InternalToursService {
 
       // Enviar email a cada cliente con reserva activa
       for (const booking of trip.bookings) {
+        if (!booking.client.email) {
+          continue;
+        }
         try {
           await this.emailService.sendEmail({
             tenantId,
