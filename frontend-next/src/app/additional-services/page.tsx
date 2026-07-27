@@ -5,7 +5,11 @@ import { LoadingSpinner } from '@/components/loading-spinner';
 import { CustomerSearchSelector } from '@/features/customers/components';
 import {
   getClientActiveTravels,
+  getTravelContext,
   type ActiveTravelSelection,
+  type TravelContext,
+  type TravelContextParticipant,
+  type TravelParticipantRole,
 } from '@/lib/additional-services-workspace-api';
 import type { CustomerListItem } from '@/lib/customers-api';
 
@@ -20,6 +24,87 @@ function formatDateRange(startDate: string, endDate: string) {
   )}`;
 }
 
+const PARTICIPANT_GROUPS: Array<{
+  role: TravelParticipantRole;
+  title: string;
+}> = [
+  { role: 'HOLDER', title: '👤 Titular' },
+  { role: 'COMPANION', title: '👥 Acompañantes' },
+  { role: 'MINOR', title: '🧒 Menores' },
+];
+
+function participantRoleLabel(role: TravelParticipantRole) {
+  if (role === 'HOLDER') return 'Titular';
+  if (role === 'COMPANION') return 'Acompañante';
+  return 'Menor';
+}
+
+function travelTypeLabel(travelType: ActiveTravelSelection['travelType']) {
+  return travelType === 'INTERNATIONAL' ? 'Internacional' : 'Interno';
+}
+
+function ParticipantCard({
+  participant,
+  selected,
+  onToggle,
+}: {
+  participant: TravelContextParticipant;
+  selected: boolean;
+  onToggle: () => void;
+}) {
+  const isHolder = participant.participantRole === 'HOLDER';
+
+  return (
+    <label
+      style={{
+        padding: '14px 16px',
+        border: selected
+          ? '2px solid #4f46e5'
+          : isHolder
+            ? '1px solid #93c5fd'
+            : '1px solid #dbe4f0',
+        borderRadius: '12px',
+        background: selected ? '#eef2ff' : isHolder ? '#eff6ff' : '#fff',
+        cursor: 'pointer',
+        display: 'flex',
+        gap: '12px',
+        alignItems: 'start',
+      }}
+    >
+      <input
+        type="checkbox"
+        checked={selected}
+        onChange={onToggle}
+        aria-label={`Seleccionar ${participant.fullName}`}
+        style={{ width: '18px', height: '18px', marginTop: '2px' }}
+      />
+      <div style={{ minWidth: 0 }}>
+        <strong style={{ color: '#172554' }}>{participant.fullName}</strong>
+        <div style={{ color: '#64748b', fontSize: '13px', marginTop: '5px' }}>
+          {participantRoleLabel(participant.participantRole)}
+        </div>
+        {isHolder && (
+          <div
+            style={{
+              color: '#1d4ed8',
+              fontSize: '12px',
+              fontWeight: 600,
+              marginTop: '4px',
+            }}
+          >
+            Responsable del viaje
+          </div>
+        )}
+        {participant.identification && (
+          <div style={{ color: '#64748b', fontSize: '13px', marginTop: '3px' }}>
+            Identificación: {participant.identification}
+          </div>
+        )}
+      </div>
+    </label>
+  );
+}
+
 export default function AdditionalServicesPage() {
   const [selectedCustomer, setSelectedCustomer] =
     useState<CustomerListItem | null>(null);
@@ -28,6 +113,12 @@ export default function AdditionalServicesPage() {
     useState<ActiveTravelSelection | null>(null);
   const [loadingTravels, setLoadingTravels] = useState(false);
   const [travelError, setTravelError] = useState<string | null>(null);
+  const [travelContext, setTravelContext] = useState<TravelContext | null>(null);
+  const [loadingContext, setLoadingContext] = useState(false);
+  const [contextError, setContextError] = useState<string | null>(null);
+  const [selectedParticipantIds, setSelectedParticipantIds] = useState<
+    Set<string>
+  >(new Set());
 
   useEffect(() => {
     if (!selectedCustomer) return;
@@ -57,12 +148,46 @@ export default function AdditionalServicesPage() {
     };
   }, [selectedCustomer]);
 
+  useEffect(() => {
+    if (!selectedTravel) return;
+
+    let cancelled = false;
+    void getTravelContext(
+      selectedTravel.travelType,
+      selectedTravel.travelId,
+    )
+      .then((context) => {
+        if (!cancelled) setTravelContext(context);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setTravelContext(null);
+          setContextError(
+            error instanceof Error
+              ? error.message
+              : 'No fue posible cargar el contexto del viaje.',
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingContext(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedTravel]);
+
   function selectCustomer(customer: CustomerListItem) {
     setSelectedCustomer(customer);
     setTravels([]);
     setSelectedTravel(null);
     setTravelError(null);
     setLoadingTravels(true);
+    setTravelContext(null);
+    setContextError(null);
+    setLoadingContext(false);
+    setSelectedParticipantIds(new Set());
   }
 
   function clearCustomer() {
@@ -71,6 +196,30 @@ export default function AdditionalServicesPage() {
     setSelectedTravel(null);
     setTravelError(null);
     setLoadingTravels(false);
+    setTravelContext(null);
+    setContextError(null);
+    setLoadingContext(false);
+    setSelectedParticipantIds(new Set());
+  }
+
+  function selectTravel(travel: ActiveTravelSelection) {
+    setSelectedTravel(travel);
+    setTravelContext(null);
+    setContextError(null);
+    setLoadingContext(true);
+    setSelectedParticipantIds(new Set());
+  }
+
+  function toggleParticipant(clientId: string) {
+    setSelectedParticipantIds((current) => {
+      const next = new Set(current);
+      if (next.has(clientId)) {
+        next.delete(clientId);
+      } else {
+        next.add(clientId);
+      }
+      return next;
+    });
   }
 
   return (
@@ -146,7 +295,7 @@ export default function AdditionalServicesPage() {
                     <button
                       type="button"
                       key={`${travel.travelType}:${travel.travelId}`}
-                      onClick={() => setSelectedTravel(travel)}
+                      onClick={() => selectTravel(travel)}
                       aria-pressed={isSelected}
                       style={{
                         padding: '18px',
@@ -190,6 +339,162 @@ export default function AdditionalServicesPage() {
                 })}
               </div>
             )}
+          </section>
+        )}
+
+        {selectedTravel && (
+          <section className="form-section-card" style={{ marginTop: 0 }}>
+            <h2 className="section-title">Contexto del viaje</h2>
+            {loadingContext ? (
+              <LoadingSpinner message="Cargando contexto del viaje..." />
+            ) : contextError ? (
+              <div
+                role="alert"
+                style={{
+                  padding: '14px',
+                  borderRadius: '10px',
+                  background: '#fee2e2',
+                  color: '#991b1b',
+                }}
+              >
+                {contextError}
+              </div>
+            ) : travelContext ? (
+              <div style={{ display: 'grid', gap: '24px' }}>
+                <div>
+                  <h3
+                    style={{
+                      fontSize: '18px',
+                      color: '#172554',
+                      marginBottom: '14px',
+                    }}
+                  >
+                    Resumen del viaje
+                  </h3>
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
+                      gap: '14px',
+                      padding: '18px',
+                      background: '#f8fafc',
+                      borderRadius: '14px',
+                    }}
+                  >
+                    <div>
+                      <small style={{ color: '#64748b' }}>Viaje</small>
+                      <div style={{ color: '#172554', fontWeight: 600 }}>
+                        {travelContext.displayName}
+                      </div>
+                    </div>
+                    <div>
+                      <small style={{ color: '#64748b' }}>Tipo</small>
+                      <div style={{ color: '#172554', fontWeight: 600 }}>
+                        {travelTypeLabel(travelContext.travelType)}
+                      </div>
+                    </div>
+                    <div>
+                      <small style={{ color: '#64748b' }}>Destino</small>
+                      <div style={{ color: '#172554', fontWeight: 600 }}>
+                        {travelContext.destination}
+                      </div>
+                    </div>
+                    <div>
+                      <small style={{ color: '#64748b' }}>Fechas</small>
+                      <div style={{ color: '#172554', fontWeight: 600 }}>
+                        {formatDateRange(
+                          travelContext.startDate,
+                          travelContext.endDate,
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <h3
+                    style={{
+                      fontSize: '18px',
+                      color: '#172554',
+                      marginBottom: '14px',
+                    }}
+                  >
+                    Participantes
+                  </h3>
+                  {travelContext.participants.length === 0 ? (
+                    <div
+                      style={{
+                        padding: '28px',
+                        textAlign: 'center',
+                        color: '#64748b',
+                        background: '#f8fafc',
+                        borderRadius: '12px',
+                      }}
+                    >
+                      Este viaje no tiene participantes registrados.
+                    </div>
+                  ) : (
+                    <div style={{ display: 'grid', gap: '20px' }}>
+                      {PARTICIPANT_GROUPS.map((group) => {
+                        const participants = travelContext.participants.filter(
+                          (participant) =>
+                            participant.participantRole === group.role,
+                        );
+                        if (participants.length === 0) return null;
+
+                        return (
+                          <div key={group.role}>
+                            <h4
+                              style={{
+                                color: '#475569',
+                                fontSize: '14px',
+                                marginBottom: '10px',
+                              }}
+                            >
+                              {group.title}
+                            </h4>
+                            <div
+                              style={{
+                                display: 'grid',
+                                gridTemplateColumns:
+                                  'repeat(auto-fit, minmax(220px, 1fr))',
+                                gap: '12px',
+                              }}
+                            >
+                              {participants.map((participant) => (
+                                <ParticipantCard
+                                  key={participant.clientId}
+                                  participant={participant}
+                                  selected={selectedParticipantIds.has(
+                                    participant.clientId,
+                                  )}
+                                  onToggle={() =>
+                                    toggleParticipant(participant.clientId)
+                                  }
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {travelContext.participants.length > 0 && (
+                    <div
+                      style={{
+                        marginTop: '20px',
+                        paddingTop: '16px',
+                        borderTop: '1px solid #e2e8f0',
+                        color: '#172554',
+                        fontWeight: 700,
+                      }}
+                    >
+                      Participantes seleccionados: {selectedParticipantIds.size}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : null}
           </section>
         )}
       </div>

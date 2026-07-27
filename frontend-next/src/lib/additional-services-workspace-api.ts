@@ -12,6 +12,26 @@ export interface ActiveTravelSelection {
   status: string;
 }
 
+export type TravelParticipantRole = 'HOLDER' | 'COMPANION' | 'MINOR';
+
+export interface TravelContextParticipant {
+  clientId: string;
+  fullName: string;
+  participantRole: TravelParticipantRole;
+  identification?: string | null;
+}
+
+export interface TravelContext {
+  travelId: string;
+  travelType: ActiveTravelType;
+  displayName: string;
+  destination: string;
+  startDate: string;
+  endDate: string;
+  status: string;
+  participants: TravelContextParticipant[];
+}
+
 interface ActiveInternationalTravelResponse {
   travelId: string;
   travelType: 'INTERNATIONAL';
@@ -69,5 +89,16 @@ export async function getClientActiveTravels(
   ].sort(
     (left, right) =>
       new Date(left.startDate).getTime() - new Date(right.startDate).getTime(),
+  );
+}
+
+export function getTravelContext(
+  travelType: ActiveTravelType,
+  travelId: string,
+): Promise<TravelContext> {
+  return apiGet<TravelContext>(
+    `/travel-context/${encodeURIComponent(travelType)}/${encodeURIComponent(
+      travelId,
+    )}`,
   );
 }
