@@ -10,12 +10,97 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTravelPackageDto } from './dto/create-travel-package.dto';
 import { UpdateTravelPackageDto } from './dto/update-travel-package.dto';
+import { ClientActiveTravelPackageDto } from './dto/client-active-travel-package.dto';
+import {
+  TravelPackageParticipantRead,
+  TravelPackageParticipantsRepository,
+} from './repositories/travel-package-participants.repository';
+import {
+  TravelContextDto,
+  TravelContextType,
+} from '../travel-context/dto/travel-context.dto';
+import { mapTravelContext } from '../travel-context/travel-context.mapper';
 
 @Injectable()
 export class TravelPackagesService {
   private readonly logger = new Logger(TravelPackagesService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private readonly travelPackageParticipantsRepository: TravelPackageParticipantsRepository,
+  ) {}
+
+  getParticipantRoster(
+    tenantId: string,
+    travelPackageId: string,
+  ): Promise<TravelPackageParticipantRead[]> {
+    return this.travelPackageParticipantsRepository.findRosterByTravelPackage(
+      tenantId,
+      travelPackageId,
+    );
+  }
+
+  async getActiveTravelPackagesByClient(
+    tenantId: string,
+    clientId: string,
+  ): Promise<ClientActiveTravelPackageDto[]> {
+    const participations =
+      await this.travelPackageParticipantsRepository.findActiveTravelPackagesByClient(
+        tenantId,
+        clientId,
+      );
+
+    return participations.map(({ role, travelPackage }) => ({
+      travelId: travelPackage.id,
+      travelType: TravelContextType.INTERNATIONAL,
+      name: travelPackage.name,
+      destination: travelPackage.destination,
+      departureDate: travelPackage.departureDate,
+      returnDate: travelPackage.returnDate,
+      status: travelPackage.status,
+      participantRole: role,
+    }));
+  }
+
+  async getTravelContext(
+    tenantId: string,
+    travelPackageId: string,
+  ): Promise<TravelContextDto | null> {
+    const travelPackage = await this.prisma.travelPackage.findFirst({
+      where: {
+        id: travelPackageId,
+        tenantId,
+      },
+      select: {
+        id: true,
+        name: true,
+        destination: true,
+        departureDate: true,
+        returnDate: true,
+        status: true,
+      },
+    });
+
+    if (!travelPackage) {
+      return null;
+    }
+
+    const participants = await this.getParticipantRoster(
+      tenantId,
+      travelPackageId,
+    );
+
+    return mapTravelContext({
+      travelId: travelPackage.id,
+      travelType: TravelContextType.INTERNATIONAL,
+      displayName: travelPackage.name,
+      destination: travelPackage.destination,
+      startDate: travelPackage.departureDate,
+      endDate: travelPackage.returnDate,
+      status: travelPackage.status,
+      participants,
+    });
+  }
 
   private generateAlphaNumeric(length = 6): string {
     const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';

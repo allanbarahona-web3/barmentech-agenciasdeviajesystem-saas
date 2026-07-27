@@ -4,6 +4,11 @@ import { EmailService } from '../email/email.service';
 import { InternalToursService } from './internal-tours.service';
 import { CreateInternalBookingDto } from './dto';
 import { Decimal } from '@prisma/client/runtime/library';
+import {
+  TravelContextDto,
+  TravelContextType,
+} from '../travel-context/dto/travel-context.dto';
+import { mapTravelContext } from '../travel-context/travel-context.mapper';
 
 @Injectable()
 export class InternalBookingsService {
@@ -302,9 +307,17 @@ export class InternalBookingsService {
       where.internalTripId = options.internalTripId;
     }
     if (options?.clientId) {
-      where.clientId = options.clientId;
-    }
-    if (options?.status) {
+      where.participants = {
+        some: {
+          tenantId,
+          clientId: options.clientId,
+        },
+      };
+      where.status =
+        options.status && options.status !== 'CANCELLED'
+          ? options.status
+          : { not: 'CANCELLED' };
+    } else if (options?.status) {
       where.status = options.status;
     }
 
@@ -322,10 +335,68 @@ export class InternalBookingsService {
 
     return bookings.map((b) => ({
       ...b,
+      travelId: b.id,
+      travelType: TravelContextType.INTERNAL,
       totalAmount: Number(b.totalAmount),
       paidAmount: Number(b.paidAmount),
       pendingAmount: Number(b.pendingAmount),
     }));
+  }
+
+  async getTravelContext(
+    tenantId: string,
+    bookingId: string,
+  ): Promise<TravelContextDto | null> {
+    const booking = await this.prisma.internalTourBooking.findFirst({
+      where: {
+        id: bookingId,
+        tenantId,
+      },
+      select: {
+        id: true,
+        internalTrip: {
+          select: {
+            name: true,
+            destination: true,
+            departureDate: true,
+            returnDate: true,
+            status: true,
+          },
+        },
+        participants: {
+          where: {
+            tenantId,
+          },
+          select: {
+            clientId: true,
+            role: true,
+            client: {
+              select: {
+                fullName: true,
+              },
+            },
+          },
+          orderBy: {
+            createdAt: 'asc',
+          },
+        },
+      },
+    });
+
+    if (!booking) {
+      return null;
+    }
+
+    return mapTravelContext({
+      travelId: booking.id,
+      travelType: TravelContextType.INTERNAL,
+      displayName: booking.internalTrip.name,
+      destination: booking.internalTrip.destination,
+      startDate: booking.internalTrip.departureDate,
+      endDate: booking.internalTrip.returnDate,
+      status: booking.internalTrip.status,
+      participants: booking.participants,
+    });
   }
 
   /**

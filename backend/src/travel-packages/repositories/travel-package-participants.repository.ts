@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { PrismaService } from '../../prisma/prisma.service';
 
 export type TravelPackageParticipantRoleValue =
   | 'HOLDER'
@@ -12,8 +13,89 @@ export interface TravelPackageParticipantWrite {
   role: TravelPackageParticipantRoleValue;
 }
 
+export interface TravelPackageParticipantRead {
+  clientId: string;
+  role: TravelPackageParticipantRoleValue;
+  client: {
+    fullName: string;
+  };
+}
+
+export interface ClientActiveTravelPackageParticipantRead {
+  role: TravelPackageParticipantRoleValue;
+  travelPackage: {
+    id: string;
+    name: string;
+    destination: string;
+    departureDate: Date;
+    returnDate: Date;
+    status: string;
+  };
+}
+
 @Injectable()
 export class TravelPackageParticipantsRepository {
+  constructor(private readonly prisma: PrismaService) {}
+
+  async findRosterByTravelPackage(
+    tenantId: string,
+    travelPackageId: string,
+  ): Promise<TravelPackageParticipantRead[]> {
+    return this.prisma.travelPackageParticipant.findMany({
+      where: {
+        tenantId,
+        travelPackageId,
+      },
+      select: {
+        clientId: true,
+        role: true,
+        client: {
+          select: {
+            fullName: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: 'asc',
+      },
+    });
+  }
+
+  async findActiveTravelPackagesByClient(
+    tenantId: string,
+    clientId: string,
+  ): Promise<ClientActiveTravelPackageParticipantRead[]> {
+    return this.prisma.travelPackageParticipant.findMany({
+      where: {
+        tenantId,
+        clientId,
+        travelPackage: {
+          status: {
+            notIn: ['COMPLETED', 'CANCELLED'],
+          },
+        },
+      },
+      select: {
+        role: true,
+        travelPackage: {
+          select: {
+            id: true,
+            name: true,
+            destination: true,
+            departureDate: true,
+            returnDate: true,
+            status: true,
+          },
+        },
+      },
+      orderBy: {
+        travelPackage: {
+          departureDate: 'asc',
+        },
+      },
+    });
+  }
+
   async findClients(
     tx: any,
     tenantId: string,

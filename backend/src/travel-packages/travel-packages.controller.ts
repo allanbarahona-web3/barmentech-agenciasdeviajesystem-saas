@@ -47,6 +47,18 @@ export class TravelPackagesController {
     return this.travelPackagesService.findAvailable(req.user.tenantId, travelType);
   }
 
+  @Get('client/:clientId/active')
+  @Roles(UserRole.ADMIN, UserRole.AGENT, UserRole.OPERACIONES)
+  findActiveByClient(
+    @Param('clientId') clientId: string,
+    @Request() req: any,
+  ) {
+    return this.travelPackagesService.getActiveTravelPackagesByClient(
+      req.user.tenantId,
+      clientId,
+    );
+  }
+
   @Get('code/:packageCode')
   @Roles(UserRole.ADMIN, UserRole.AGENT, UserRole.OPERACIONES)
   findByCode(
