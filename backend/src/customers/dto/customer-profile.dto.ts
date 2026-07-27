@@ -16,4 +16,18 @@ export class CustomerProfileDto {
   statistics!: CustomerStatisticsDto;
   documents!: any[];
   notes!: any[];
+  participationRole?: "MINOR";
+  currentTrip?: {
+    id: string | null;
+    name: string;
+    destination: string;
+    startDate: Date | null;
+    endDate: Date | null;
+  };
+  currentContract?: CustomerContractItemDto;
+  responsibleAdult?: {
+    clientId: string;
+    fullName: string;
+    participationRole: "HOLDER" | "COMPANION";
+  } | null;
 }

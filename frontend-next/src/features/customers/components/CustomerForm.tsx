@@ -3,6 +3,7 @@
 import { ID_TYPE_OPTIONS, MARITAL_STATUS_OPTIONS, NATIONALITY_OPTIONS } from '@/features/contracts-form/constants';
 
 interface CustomerFormProps {
+  title?: string;
   customer: {
     fullName: string;
     idNumber: string;
@@ -46,6 +47,7 @@ function formatDate(dateString: string) {
 }
 
 export function CustomerForm({
+  title = 'Información del Cliente',
   customer,
   isEditMode,
   editForm,
@@ -58,7 +60,7 @@ export function CustomerForm({
     <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', padding: '24px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
         <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#1f2937' }}>
-          📋 Información del Cliente
+          📋 {title}
         </h2>
         {!isEditMode ? (
           <button

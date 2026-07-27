@@ -15,5 +15,14 @@ export class CustomerContractItemDto {
   createdAt!: Date;
   startDate!: Date | null;
   endDate!: Date | null;
-  role!: 'HOLDER' | 'COMPANION';
+  role!: 'HOLDER' | 'COMPANION' | 'MINOR';
+  responsibleMinors?: Array<{
+    clientId: string;
+    fullName: string;
+  }>;
+  participants!: Array<{
+    clientId: string;
+    fullName: string;
+    participationRole: 'HOLDER' | 'COMPANION' | 'MINOR';
+  }>;
 }

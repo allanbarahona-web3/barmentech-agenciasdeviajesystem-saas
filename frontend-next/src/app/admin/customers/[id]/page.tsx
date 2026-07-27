@@ -71,6 +71,10 @@ export default function CustomerProfilePage() {
   const [viewerOpen, setViewerOpen] = useState(false);
   const [viewerHtml, setViewerHtml] = useState('');
   const [busyContractId, setBusyContractId] = useState<string>('');
+  const [expandedMinorResponsibilitiesContractId, setExpandedMinorResponsibilitiesContractId] = useState<string | null>(null);
+  const minorResponsibilitiesRef = useRef<HTMLDivElement>(null);
+  const [expandedParticipantsContractId, setExpandedParticipantsContractId] = useState<string | null>(null);
+  const participantsDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     loadProfile();
@@ -94,6 +98,38 @@ export default function CustomerProfilePage() {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [viewerOpen]);
+
+  useEffect(() => {
+    if (!expandedMinorResponsibilitiesContractId) return;
+
+    const handleOutsideClick = (event: MouseEvent) => {
+      if (
+        minorResponsibilitiesRef.current &&
+        !minorResponsibilitiesRef.current.contains(event.target as Node)
+      ) {
+        setExpandedMinorResponsibilitiesContractId(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [expandedMinorResponsibilitiesContractId]);
+
+  useEffect(() => {
+    if (!expandedParticipantsContractId) return;
+
+    const handleOutsideClick = (event: MouseEvent) => {
+      if (
+        participantsDropdownRef.current &&
+        !participantsDropdownRef.current.contains(event.target as Node)
+      ) {
+        setExpandedParticipantsContractId(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [expandedParticipantsContractId]);
 
   async function loadProfile() {
     try {
@@ -151,6 +187,22 @@ export default function CustomerProfilePage() {
       hour: '2-digit',
       minute: '2-digit',
     });
+  }
+
+  function formatParticipationRole(role: 'HOLDER' | 'COMPANION' | 'MINOR') {
+    if (role === 'HOLDER') return 'Titular';
+    if (role === 'MINOR') return 'Menor';
+    return 'Acompañante';
+  }
+
+  function getInitials(fullName: string) {
+    return fullName
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase())
+      .join('');
   }
 
   const closeViewer = () => {
@@ -720,6 +772,7 @@ export default function CustomerProfilePage() {
   }
 
   const { customer, contracts, financialSummary, statistics, documents } = profile;
+  const isMinor = profile.participationRole === 'MINOR';
 
   return (
     <main className="app-shell">
@@ -743,14 +796,62 @@ export default function CustomerProfilePage() {
         }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-          <div>
-            <h1 style={{ fontSize: '28px', fontWeight: 'bold', color: 'white', marginBottom: '8px' }}>
-              {customer.fullName}
-            </h1>
-            <p style={{ color: 'rgba(255,255,255,0.9)', fontSize: '14px' }}>
-              {customer.idNumber} • {customer.email}
-            </p>
-          </div>
+          {isMinor ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+              <div
+                aria-hidden="true"
+                style={{
+                  width: '56px',
+                  height: '56px',
+                  borderRadius: '50%',
+                  background: 'rgba(255,255,255,0.18)',
+                  border: '1px solid rgba(255,255,255,0.3)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '30px',
+                  flexShrink: 0,
+                }}
+              >
+                🧒
+              </div>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginBottom: '8px' }}>
+                  <span style={{ color: 'white', fontSize: '14px', fontWeight: '700' }}>
+                    Minor Passenger
+                  </span>
+                  <span
+                    style={{
+                      padding: '4px 10px',
+                      borderRadius: '999px',
+                      background: 'rgba(255,255,255,0.2)',
+                      border: '1px solid rgba(255,255,255,0.35)',
+                      color: 'white',
+                      fontSize: '12px',
+                      fontWeight: '600',
+                    }}
+                  >
+                    Under Adult Responsibility
+                  </span>
+                </div>
+                <h1 style={{ fontSize: '28px', fontWeight: 'bold', color: 'white', marginBottom: '8px' }}>
+                  {customer.fullName}
+                </h1>
+                <p style={{ color: 'rgba(255,255,255,0.9)', fontSize: '14px' }}>
+                  {customer.idNumber} • {customer.email}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <h1 style={{ fontSize: '28px', fontWeight: 'bold', color: 'white', marginBottom: '8px' }}>
+                {customer.fullName}
+              </h1>
+              <p style={{ color: 'rgba(255,255,255,0.9)', fontSize: '14px' }}>
+                {customer.idNumber} • {customer.email}
+              </p>
+            </div>
+          )}
           <button
             onClick={() => router.back()}
             style={{
@@ -773,9 +874,57 @@ export default function CustomerProfilePage() {
         </div>
       </div>
 
+      {isMinor && profile.responsibleAdult && (
+        <section
+          aria-labelledby="responsible-adult-heading"
+          style={{
+            background: 'white',
+            border: '2px solid #c4b5fd',
+            borderRadius: '12px',
+            boxShadow: '0 4px 6px rgba(0,0,0,0.08)',
+            padding: '24px',
+            marginBottom: '30px',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '20px' }}>
+            <div>
+              <h2 id="responsible-adult-heading" style={{ fontSize: '20px', fontWeight: '600', color: '#1f2937', marginBottom: '14px' }}>
+                👤 Responsible Adult
+              </h2>
+              <div style={{ fontSize: '18px', fontWeight: '700', color: '#111827', marginBottom: '6px' }}>
+                {profile.responsibleAdult.fullName}
+              </div>
+              <div style={{ fontSize: '14px', color: '#6b7280' }}>
+                Participation Role: {formatParticipationRole(profile.responsibleAdult.participationRole)}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => router.push(`/admin/customers/${encodeURIComponent(profile.responsibleAdult!.clientId)}`)}
+              style={{
+                padding: '10px 18px',
+                background: '#667eea',
+                color: 'white',
+                border: 'none',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: '600',
+                transition: 'all 0.2s',
+              }}
+              onMouseEnter={(event) => (event.currentTarget.style.background = '#5568d3')}
+              onMouseLeave={(event) => (event.currentTarget.style.background = '#667eea')}
+            >
+              View Profile
+            </button>
+          </div>
+        </section>
+      )}
+
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px', marginBottom: '30px' }}>
         {/* Section 1: Customer Information */}
         <CustomerForm
+          title={isMinor ? 'Información del Pasajero' : undefined}
           customer={customer}
           isEditMode={false}
           editForm={{
@@ -899,7 +1048,8 @@ export default function CustomerProfilePage() {
         </div>
 
         {/* Section 3: Financial Summary */}
-        <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', padding: '24px' }}>
+        {!isMinor && (
+          <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', padding: '24px' }}>
           <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#1f2937', marginBottom: '20px' }}>
             💰 Resumen Financiero
           </h2>
@@ -1062,7 +1212,8 @@ export default function CustomerProfilePage() {
               </div>
             )}
           </div>
-        </div>
+          </div>
+        )}
       </div>
 
       {/* Notas Operativas Section - Full Width */}
@@ -1630,7 +1781,16 @@ export default function CustomerProfilePage() {
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <table style={{ width: '100%', minWidth: '1180px', tableLayout: 'fixed', borderCollapse: 'collapse' }}>
+              <colgroup>
+                <col style={{ width: isMinor ? '20%' : '18%' }} />
+                <col style={{ width: isMinor ? '16%' : '15%' }} />
+                <col style={{ width: isMinor ? '21%' : '19%' }} />
+                <col style={{ width: isMinor ? '18%' : '17%' }} />
+                <col style={{ width: isMinor ? '14%' : '13%' }} />
+                <col style={{ width: isMinor ? '11%' : '10%' }} />
+                {!isMinor && <col style={{ width: '8%' }} />}
+              </colgroup>
               <thead>
                 <tr style={{ background: 'linear-gradient(to right, #f9fafb, #f3f4f6)', borderBottom: '2px solid #e5e7eb' }}>
                   <th style={{ padding: '14px 16px', textAlign: 'left', fontSize: '13px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
@@ -1645,15 +1805,17 @@ export default function CustomerProfilePage() {
                   <th style={{ padding: '14px 16px', textAlign: 'left', fontSize: '13px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                     Fechas del Viaje
                   </th>
-                  <th style={{ padding: '14px 16px', textAlign: 'left', fontSize: '13px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  <th style={{ padding: '14px 16px', textAlign: 'center', fontSize: '13px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                     Participantes
                   </th>
                   <th style={{ padding: '14px 16px', textAlign: 'left', fontSize: '13px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                     Creado
                   </th>
-                  <th style={{ padding: '14px 16px', textAlign: 'center', fontSize: '13px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                    Acciones
-                  </th>
+                  {!isMinor && (
+                    <th style={{ padding: '14px 16px', textAlign: 'center', fontSize: '13px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      Acciones
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -1693,12 +1855,151 @@ export default function CustomerProfilePage() {
                           borderRadius: '6px',
                           fontSize: '12px',
                           fontWeight: '600',
-                          background: contract.role === 'HOLDER' ? '#dbeafe' : '#fef3c7',
-                          color: contract.role === 'HOLDER' ? '#1e40af' : '#92400e',
+                          background: contract.role === 'HOLDER' ? '#dbeafe' : contract.role === 'MINOR' ? '#ede9fe' : '#fef3c7',
+                          color: contract.role === 'HOLDER' ? '#1e40af' : contract.role === 'MINOR' ? '#6d28d9' : '#92400e',
                         }}
                       >
-                        {contract.role === 'HOLDER' ? 'Titular' : 'Acompañante'}
+                        {formatParticipationRole(contract.role)}
                       </span>
+                      {contract.responsibleMinors && contract.responsibleMinors.length > 0 && (
+                        <div
+                          ref={
+                            expandedMinorResponsibilitiesContractId === contract.id
+                              ? minorResponsibilitiesRef
+                              : undefined
+                          }
+                          style={{
+                            marginTop: '10px',
+                            paddingTop: '10px',
+                            borderTop: '1px solid #e5e7eb',
+                            minWidth: '185px',
+                          }}
+                        >
+                          <button
+                            type="button"
+                            aria-expanded={expandedMinorResponsibilitiesContractId === contract.id}
+                            onClick={() =>
+                              setExpandedMinorResponsibilitiesContractId((currentId) =>
+                                currentId === contract.id ? null : contract.id
+                              )
+                            }
+                            style={{
+                              width: '100%',
+                              padding: 0,
+                              border: 'none',
+                              background: 'transparent',
+                              color: '#374151',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              gap: '8px',
+                              textAlign: 'left',
+                              fontSize: '11px',
+                              fontWeight: '700',
+                              lineHeight: '1.35',
+                            }}
+                          >
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                              <span aria-hidden="true" style={{ color: '#ef4444', fontSize: '14px' }}>♥</span>
+                              Responsable de pasajeros menores
+                            </span>
+                            <span
+                              aria-hidden="true"
+                              style={{
+                                color: '#6b7280',
+                                fontSize: '13px',
+                                transform:
+                                  expandedMinorResponsibilitiesContractId === contract.id
+                                    ? 'rotate(180deg)'
+                                    : 'rotate(0deg)',
+                                transition: 'transform 0.2s ease',
+                                flexShrink: 0,
+                              }}
+                            >
+                              ⌄
+                            </span>
+                          </button>
+
+                          {expandedMinorResponsibilitiesContractId === contract.id && (
+                            <div
+                              style={{
+                                marginTop: '10px',
+                                padding: '12px',
+                                border: '1px solid #e5e7eb',
+                                borderRadius: '10px',
+                                background: 'white',
+                                boxShadow: '0 8px 20px rgba(15, 23, 42, 0.12)',
+                              }}
+                            >
+                              <div style={{ fontSize: '12px', fontWeight: '700', color: '#4b5563', marginBottom: '6px' }}>
+                                Pasajeros menores ({contract.responsibleMinors.length})
+                              </div>
+                              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                {contract.responsibleMinors.map((minor, index) => (
+                                  <button
+                                    key={minor.clientId}
+                                    type="button"
+                                    onClick={() => {
+                                      setExpandedMinorResponsibilitiesContractId(null);
+                                      router.push(`/admin/customers/${encodeURIComponent(minor.clientId)}`);
+                                    }}
+                                    aria-label={`Ver perfil de ${minor.fullName}`}
+                                    style={{
+                                      width: '100%',
+                                      padding: '9px 4px',
+                                      border: 'none',
+                                      borderTop: index > 0 ? '1px solid #e5e7eb' : 'none',
+                                      background: 'transparent',
+                                      color: '#374151',
+                                      cursor: 'pointer',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '9px',
+                                      textAlign: 'left',
+                                    }}
+                                    onMouseEnter={(event) => (event.currentTarget.style.background = '#f9fafb')}
+                                    onMouseLeave={(event) => (event.currentTarget.style.background = 'transparent')}
+                                  >
+                                    <span
+                                      aria-hidden="true"
+                                      style={{
+                                        width: '28px',
+                                        height: '28px',
+                                        borderRadius: '50%',
+                                        background: '#ede9fe',
+                                        color: '#7c3aed',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        flexShrink: 0,
+                                        fontSize: '10px',
+                                        fontWeight: '800',
+                                      }}
+                                    >
+                                      {getInitials(minor.fullName)}
+                                    </span>
+                                    <span
+                                      style={{
+                                        flex: 1,
+                                        minWidth: 0,
+                                        overflow: 'hidden',
+                                        textOverflow: 'ellipsis',
+                                        whiteSpace: 'nowrap',
+                                        fontSize: '12px',
+                                        fontWeight: '700',
+                                      }}
+                                    >
+                                      {minor.fullName}
+                                    </span>
+                                    <span aria-hidden="true" style={{ color: '#6b7280', fontSize: '16px' }}>›</span>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </td>
                     <td style={{ padding: '14px 16px', fontSize: '14px', color: '#4b5563' }}>
                       {contract.travelName}
@@ -1708,32 +2009,174 @@ export default function CustomerProfilePage() {
                         ? `${formatBusinessDate(contract.startDate)} - ${formatBusinessDate(contract.endDate)}`
                         : 'Fechas no disponibles'}
                     </td>
-                    <td style={{ padding: '14px 16px', fontSize: '14px', color: '#6b7280', textAlign: 'center' }}>
-                      {contract.participantCount}
+                    <td style={{ padding: '14px 16px', fontSize: '14px', color: '#6b7280', textAlign: 'center', verticalAlign: 'top' }}>
+                      {contract.participants.length > 0 ? (
+                        <div
+                          ref={
+                            expandedParticipantsContractId === contract.id
+                              ? participantsDropdownRef
+                              : undefined
+                          }
+                          style={{
+                            width: '100%',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            textAlign: 'left',
+                          }}
+                        >
+                          <button
+                            type="button"
+                            aria-expanded={expandedParticipantsContractId === contract.id}
+                            aria-label={`Ver ${contract.participantCount} participantes`}
+                            onClick={() =>
+                              setExpandedParticipantsContractId((currentId) =>
+                                currentId === contract.id ? null : contract.id
+                              )
+                            }
+                            style={{
+                              margin: '0 auto',
+                              padding: '4px 8px',
+                              border: 'none',
+                              borderRadius: '6px',
+                              background: 'transparent',
+                              color: '#4f46e5',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '5px',
+                              fontSize: '14px',
+                              fontWeight: '700',
+                            }}
+                            onMouseEnter={(event) => (event.currentTarget.style.background = '#eef2ff')}
+                            onMouseLeave={(event) => (event.currentTarget.style.background = 'transparent')}
+                          >
+                            {contract.participantCount}
+                            <span
+                              aria-hidden="true"
+                              style={{
+                                color: '#6b7280',
+                                fontSize: '12px',
+                                transform:
+                                  expandedParticipantsContractId === contract.id
+                                    ? 'rotate(180deg)'
+                                    : 'rotate(0deg)',
+                                transition: 'transform 0.2s ease',
+                              }}
+                            >
+                              ⌄
+                            </span>
+                          </button>
+
+                          {expandedParticipantsContractId === contract.id && (
+                            <div
+                              style={{
+                                marginTop: '8px',
+                                width: '250px',
+                                maxWidth: 'min(250px, 80vw)',
+                                padding: '8px 12px',
+                                border: '1px solid #e5e7eb',
+                                borderRadius: '10px',
+                                background: 'white',
+                                boxShadow: '0 8px 20px rgba(15, 23, 42, 0.12)',
+                              }}
+                            >
+                              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                {contract.participants.map((participant, index) => (
+                                  <button
+                                    key={`${contract.id}-${participant.clientId}`}
+                                    type="button"
+                                    onClick={() => {
+                                      setExpandedParticipantsContractId(null);
+                                      router.push(`/admin/customers/${encodeURIComponent(participant.clientId)}`);
+                                    }}
+                                    aria-label={`Ver perfil de ${participant.fullName}`}
+                                    style={{
+                                      width: '100%',
+                                      padding: '9px 2px',
+                                      border: 'none',
+                                      borderTop: index > 0 ? '1px solid #e5e7eb' : 'none',
+                                      background: 'transparent',
+                                      color: '#374151',
+                                      cursor: 'pointer',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '8px',
+                                      textAlign: 'left',
+                                    }}
+                                    onMouseEnter={(event) => (event.currentTarget.style.background = '#f9fafb')}
+                                    onMouseLeave={(event) => (event.currentTarget.style.background = 'transparent')}
+                                  >
+                                    {participant.participationRole === 'MINOR' && (
+                                      <span aria-hidden="true" style={{ fontSize: '16px', flexShrink: 0 }}>
+                                        👶
+                                      </span>
+                                    )}
+                                    <span
+                                      style={{
+                                        flexShrink: 0,
+                                        fontSize: '11px',
+                                        fontWeight: '700',
+                                        color:
+                                          participant.participationRole === 'HOLDER'
+                                            ? '#1e40af'
+                                            : participant.participationRole === 'MINOR'
+                                              ? '#6d28d9'
+                                              : '#92400e',
+                                      }}
+                                    >
+                                      {formatParticipationRole(participant.participationRole)}:
+                                    </span>
+                                    <span
+                                      style={{
+                                        flex: 1,
+                                        minWidth: 0,
+                                        overflow: 'hidden',
+                                        textOverflow: 'ellipsis',
+                                        whiteSpace: 'nowrap',
+                                        fontSize: '12px',
+                                        fontWeight: '700',
+                                        color: '#374151',
+                                      }}
+                                    >
+                                      {participant.fullName}
+                                    </span>
+                                    <span aria-hidden="true" style={{ color: '#6b7280', fontSize: '16px' }}>›</span>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        contract.participantCount
+                      )}
                     </td>
                     <td style={{ padding: '14px 16px', fontSize: '13px', color: '#9ca3af' }}>
                       {formatDateTime(contract.createdAt)}
                     </td>
-                    <td style={{ padding: '14px 16px', textAlign: 'center' }}>
-                      <Link
-                        href={`/billing/${encodeURIComponent(contract.id)}`}
-                        style={{
-                          display: 'inline-block',
-                          padding: '6px 12px',
-                          background: '#10b981',
-                          color: 'white',
-                          borderRadius: '6px',
-                          fontSize: '12px',
-                          fontWeight: '600',
-                          textDecoration: 'none',
-                          transition: 'all 0.2s',
-                        }}
-                        onMouseEnter={(e) => (e.currentTarget.style.background = '#059669')}
-                        onMouseLeave={(e) => (e.currentTarget.style.background = '#10b981')}
-                      >
-                        Open Account
-                      </Link>
-                    </td>
+                    {!isMinor && (
+                      <td style={{ padding: '14px 16px', textAlign: 'center' }}>
+                        <Link
+                          href={`/billing/${encodeURIComponent(contract.id)}`}
+                          style={{
+                            display: 'inline-block',
+                            padding: '6px 12px',
+                            background: '#10b981',
+                            color: 'white',
+                            borderRadius: '6px',
+                            fontSize: '12px',
+                            fontWeight: '600',
+                            textDecoration: 'none',
+                            transition: 'all 0.2s',
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = '#059669')}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = '#10b981')}
+                        >
+                          Open Account
+                        </Link>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -2304,7 +2747,7 @@ export default function CustomerProfilePage() {
                     <option value="">Seleccione un contrato</option>
                     {contracts.filter(c => c.status !== 'DRAFT').map((contract) => (
                       <option key={contract.id} value={contract.id}>
-                        {contract.contractNumber} - {contract.travelName} ({contract.role === 'HOLDER' ? 'Titular' : 'Acompañante'})
+                        {contract.contractNumber} - {contract.travelName} ({formatParticipationRole(contract.role)})
                       </option>
                     ))}
                   </select>
@@ -2327,7 +2770,7 @@ export default function CustomerProfilePage() {
                         if (!contract) return null;
                         return (
                           <>
-                            <strong>Rol:</strong> {contract.role === 'HOLDER' ? 'Titular' : 'Acompañante'}
+                            <strong>Rol:</strong> {formatParticipationRole(contract.role)}
                             <br />
                             <strong>Pasajero:</strong> {profile.customer.fullName}
                           </>

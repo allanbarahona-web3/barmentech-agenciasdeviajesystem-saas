@@ -102,7 +102,16 @@ export interface CustomerContractItem {
   createdAt: string;
   startDate: string | null;
   endDate: string | null;
-  role: 'HOLDER' | 'COMPANION';
+  role: 'HOLDER' | 'COMPANION' | 'MINOR';
+  responsibleMinors?: Array<{
+    clientId: string;
+    fullName: string;
+  }>;
+  participants: Array<{
+    clientId: string;
+    fullName: string;
+    participationRole: 'HOLDER' | 'COMPANION' | 'MINOR';
+  }>;
 }
 
 export interface CustomerFinancialSummary {
@@ -144,6 +153,20 @@ export interface CustomerProfile {
   statistics: CustomerStatistics;
   documents: CustomerDocument[];
   notes: CustomerNote[];
+  participationRole?: 'MINOR';
+  currentTrip?: {
+    id: string | null;
+    name: string;
+    destination: string;
+    startDate: string | null;
+    endDate: string | null;
+  };
+  currentContract?: CustomerContractItem;
+  responsibleAdult?: {
+    clientId: string;
+    fullName: string;
+    participationRole: 'HOLDER' | 'COMPANION';
+  } | null;
 }
 
 export interface UpdateCustomerDto {

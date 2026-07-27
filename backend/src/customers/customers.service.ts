@@ -565,7 +565,14 @@ export class CustomersService {
         endDate: true,
         travelPackage: {
           select: {
+            id: true,
             name: true,
+          },
+        },
+        client: {
+          select: {
+            id: true,
+            fullName: true,
           },
         },
       },
@@ -595,7 +602,14 @@ export class CustomersService {
         endDate: true,
         travelPackage: {
           select: {
+            id: true,
             name: true,
+          },
+        },
+        client: {
+          select: {
+            id: true,
+            fullName: true,
           },
         },
       },
@@ -604,18 +618,14 @@ export class CustomersService {
       },
     });
 
-    // Filter contracts where customer appears as companion
-    const companionContracts = allTenantContracts.filter((contract) => {
-      const payload = contract.payload as any;
-      const companions = Array.isArray(payload?.companions) ? payload.companions : [];
-      
-      return companions.some(
-        (companion: any) => companion?.selectedCustomerId === customerId
-      );
-    });
+    // Filter contracts where customer appears as a companion or Minor passenger.
+    const passengerContracts = allTenantContracts.filter(
+      (contract) =>
+        this.resolveContractParticipation(contract, customerId) !== null,
+    );
 
     // Merge both lists
-    const contracts = [...holderContracts, ...companionContracts].sort(
+    const contracts = [...holderContracts, ...passengerContracts].sort(
       (a, b) => b.createdAt.getTime() - a.createdAt.getTime()
     );
 
@@ -793,24 +803,19 @@ export class CustomersService {
     };
 
     const contractDtos: CustomerContractItemDto[] = contracts.map((c) => {
-      // Determine customer's participation role
-      let role: 'HOLDER' | 'COMPANION' = 'HOLDER';
-      
-      // If contract.clientId matches customerId, they are the HOLDER
-      // Otherwise, check payload companions for selectedCustomerId
-      if (c.clientId !== customerId) {
-        const payload = c.payload as any;
-        const companions = Array.isArray(payload?.companions) ? payload.companions : [];
-        
-        const isCompanion = companions.some(
-          (companion: any) => companion?.selectedCustomerId === customerId
-        );
-        
-        if (isCompanion) {
-          role = 'COMPANION';
-        }
-      }
-      
+      const participation = this.resolveContractParticipation(c, customerId);
+      const role = participation?.role || "HOLDER";
+      const responsibleMinors =
+        role === "MINOR"
+          ? []
+          : this.resolveResponsibleMinors(
+              c,
+              customerId,
+              customer.fullName,
+              role,
+            );
+      const participants = this.resolveContractParticipants(c);
+
       return {
         id: c.id,
         contractNumber: c.contractNumber,
@@ -823,8 +828,65 @@ export class CustomersService {
         startDate: c.startDate,
         endDate: c.endDate,
         role,
+        ...(responsibleMinors.length > 0 ? { responsibleMinors } : {}),
+        participants,
       };
     });
+
+    const currentMinorContractIndex =
+      contractDtos[0]?.role === "MINOR" ? 0 : -1;
+    const currentMinorContract =
+      currentMinorContractIndex >= 0
+        ? contracts[currentMinorContractIndex]
+        : null;
+    const currentMinorParticipation = currentMinorContract
+      ? this.resolveContractParticipation(currentMinorContract, customerId)
+      : null;
+
+    let minorProfileFields: Partial<CustomerProfileDto> = {};
+    if (
+      currentMinorContract &&
+      currentMinorParticipation?.role === "MINOR"
+    ) {
+      const responsibleReference = this.resolveResponsibleAdultReference(
+        currentMinorContract,
+        currentMinorParticipation.minor,
+      );
+      const responsibleCustomer = responsibleReference
+        ? await this.prisma.client.findFirst({
+            where: {
+              id: responsibleReference.clientId,
+              tenantId,
+            },
+            select: {
+              id: true,
+              fullName: true,
+            },
+          })
+        : null;
+
+      minorProfileFields = {
+        participationRole: "MINOR",
+        currentTrip: {
+          id: currentMinorContract.travelPackage?.id || null,
+          name:
+            currentMinorContract.travelPackage?.name ||
+            currentMinorContract.destination,
+          destination: currentMinorContract.destination,
+          startDate: currentMinorContract.startDate,
+          endDate: currentMinorContract.endDate,
+        },
+        currentContract: contractDtos[currentMinorContractIndex],
+        responsibleAdult:
+          responsibleReference && responsibleCustomer
+            ? {
+                clientId: responsibleCustomer.id,
+                fullName: responsibleCustomer.fullName,
+                participationRole: responsibleReference.participationRole,
+              }
+            : null,
+      };
+    }
 
     const financialSummary: CustomerFinancialSummaryDto = {
       totalContractedAmount,
@@ -860,6 +922,7 @@ export class CustomersService {
       statistics,
       documents: customerDocuments,
       notes: customerNotes,
+      ...minorProfileFields,
     };
   }
 
@@ -1089,6 +1152,237 @@ export class CustomersService {
       .trim()
       .toLowerCase()
       .replace(/\s+/g, " ");
+  }
+
+  private resolveContractParticipation(
+    contract: {
+      clientId: string;
+      payload: unknown;
+    },
+    customerId: string,
+  ):
+    | { role: "HOLDER"; minor?: never }
+    | { role: "COMPANION"; minor?: never }
+    | { role: "MINOR"; minor: any }
+    | null {
+    if (contract.clientId === customerId) {
+      return { role: "HOLDER" };
+    }
+
+    const payload =
+      contract.payload &&
+      typeof contract.payload === "object" &&
+      !Array.isArray(contract.payload)
+        ? (contract.payload as Record<string, unknown>)
+        : {};
+    const companions = Array.isArray(payload.companions)
+      ? payload.companions
+      : [];
+    if (
+      companions.some(
+        (companion: any) =>
+          String(companion?.selectedCustomerId || "").trim() === customerId,
+      )
+    ) {
+      return { role: "COMPANION" };
+    }
+
+    const minors = Array.isArray(payload.minors) ? payload.minors : [];
+    const minor = minors.find(
+      (item: any) =>
+        String(item?.selectedCustomerId || "").trim() === customerId,
+    );
+
+    return minor ? { role: "MINOR", minor } : null;
+  }
+
+  private resolveResponsibleAdultReference(
+    contract: {
+      clientId: string;
+      client?: { fullName?: string | null } | null;
+      payload: unknown;
+    },
+    minor: any,
+  ): {
+    clientId: string;
+    participationRole: "HOLDER" | "COMPANION";
+  } | null {
+    const responsibleName = this.normalizeNameForComparison(
+      minor?.travelingWith,
+    );
+    if (!responsibleName) {
+      return null;
+    }
+
+    const payload =
+      contract.payload &&
+      typeof contract.payload === "object" &&
+      !Array.isArray(contract.payload)
+        ? (contract.payload as Record<string, any>)
+        : {};
+    const holderName =
+      contract.client?.fullName ||
+      payload.clientFullName ||
+      payload.fullName ||
+      "";
+    if (
+      this.normalizeNameForComparison(holderName) === responsibleName
+    ) {
+      return {
+        clientId: contract.clientId,
+        participationRole: "HOLDER",
+      };
+    }
+
+    const companions = Array.isArray(payload.companions)
+      ? payload.companions
+      : [];
+    const responsibleCompanion = companions.find(
+      (companion: any) =>
+        this.normalizeNameForComparison(companion?.fullName) ===
+        responsibleName,
+    );
+    const companionClientId = String(
+      responsibleCompanion?.selectedCustomerId || "",
+    ).trim();
+
+    return companionClientId
+      ? {
+          clientId: companionClientId,
+          participationRole: "COMPANION",
+        }
+      : null;
+  }
+
+  private resolveResponsibleMinors(
+    contract: {
+      clientId: string;
+      client?: { fullName?: string | null } | null;
+      payload: unknown;
+    },
+    customerId: string,
+    customerFullName: string,
+    role: "HOLDER" | "COMPANION",
+  ): Array<{ clientId: string; fullName: string }> {
+    const payload =
+      contract.payload &&
+      typeof contract.payload === "object" &&
+      !Array.isArray(contract.payload)
+        ? (contract.payload as Record<string, any>)
+        : {};
+    const responsibleNames = new Set<string>([
+      this.normalizeNameForComparison(customerFullName),
+    ]);
+
+    if (role === "HOLDER") {
+      responsibleNames.add(
+        this.normalizeNameForComparison(contract.client?.fullName || ""),
+      );
+      responsibleNames.add(
+        this.normalizeNameForComparison(payload.clientFullName || ""),
+      );
+    } else {
+      const companions = Array.isArray(payload.companions)
+        ? payload.companions
+        : [];
+      const currentCompanion = companions.find(
+        (companion: any) =>
+          String(companion?.selectedCustomerId || "").trim() === customerId,
+      );
+      responsibleNames.add(
+        this.normalizeNameForComparison(currentCompanion?.fullName || ""),
+      );
+    }
+    responsibleNames.delete("");
+
+    const minors = Array.isArray(payload.minors) ? payload.minors : [];
+    const uniqueMinors = new Map<
+      string,
+      { clientId: string; fullName: string }
+    >();
+    minors.forEach((minor: any) => {
+      const clientId = String(minor?.selectedCustomerId || "").trim();
+      const fullName = String(
+        minor?.minorName || minor?.name || minor?.fullName || "",
+      ).trim();
+      const responsibleName = this.normalizeNameForComparison(
+        minor?.travelingWith,
+      );
+      if (
+        clientId &&
+        fullName &&
+        responsibleNames.has(responsibleName)
+      ) {
+        uniqueMinors.set(clientId, { clientId, fullName });
+      }
+    });
+
+    return Array.from(uniqueMinors.values());
+  }
+
+  private resolveContractParticipants(contract: {
+    clientId: string;
+    client?: { fullName?: string | null } | null;
+    payload: unknown;
+  }): Array<{
+    clientId: string;
+    fullName: string;
+    participationRole: "HOLDER" | "COMPANION" | "MINOR";
+  }> {
+    const payload =
+      contract.payload &&
+      typeof contract.payload === "object" &&
+      !Array.isArray(contract.payload)
+        ? (contract.payload as Record<string, any>)
+        : {};
+    const participants: Array<{
+      clientId: string;
+      fullName: string;
+      participationRole: "HOLDER" | "COMPANION" | "MINOR";
+    }> = [];
+    const holderName = String(
+      contract.client?.fullName || payload.clientFullName || "",
+    ).trim();
+
+    if (contract.clientId && holderName) {
+      participants.push({
+        clientId: contract.clientId,
+        fullName: holderName,
+        participationRole: "HOLDER",
+      });
+    }
+
+    const companions = Array.isArray(payload.companions)
+      ? payload.companions
+      : [];
+    companions.forEach((companion: any) => {
+      const clientId = String(companion?.selectedCustomerId || "").trim();
+      const fullName = String(companion?.fullName || "").trim();
+      if (clientId && fullName) {
+        participants.push({
+          clientId,
+          fullName,
+          participationRole: "COMPANION",
+        });
+      }
+    });
+
+    const minors = Array.isArray(payload.minors) ? payload.minors : [];
+    minors.forEach((minor: any) => {
+      const clientId = String(minor?.selectedCustomerId || "").trim();
+      const fullName = String(
+        minor?.minorName || minor?.name || minor?.fullName || "",
+      ).trim();
+      if (clientId && fullName) {
+        participants.push({
+          clientId,
+          fullName,
+          participationRole: "MINOR",
+        });
+      }
+    });
+
+    return participants;
   }
 
   private normalizeClientData(
