@@ -202,6 +202,16 @@ export function VerticalNav() {
           },
         ]
       : []),
+
+    ...(isAdmin || role === "AGENT" || role === "OPERACIONES"
+      ? [
+          {
+            href: "/additional-services",
+            label: "Adicionales",
+            icon: "➕",
+          },
+        ]
+      : []),
     
     // 💰 Menú Finanzas (Admin/Contador/Facturacion)
     ...(isAdminOrContador || role === "FACTURACION_COBROS"
