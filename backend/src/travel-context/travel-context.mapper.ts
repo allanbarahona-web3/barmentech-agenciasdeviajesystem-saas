@@ -11,6 +11,7 @@ export interface TravelContextParticipantSource {
   client: {
     fullName: string;
   };
+  operationalNotes?: string[];
 }
 
 export function mapTravelContextParticipants(
@@ -20,6 +21,7 @@ export function mapTravelContextParticipants(
     clientId: participant.clientId,
     fullName: participant.client.fullName,
     participantRole: participant.role,
+    operationalNotes: participant.operationalNotes ?? [],
   }));
 }
 
@@ -31,6 +33,7 @@ export interface TravelContextSource {
   startDate: Date;
   endDate: Date;
   status: string;
+  contractNumber?: string | null;
   participants: TravelContextParticipantSource[];
 }
 
@@ -43,6 +46,7 @@ export function mapTravelContext(source: TravelContextSource): TravelContextDto 
     startDate: source.startDate,
     endDate: source.endDate,
     status: source.status,
+    contractNumber: source.contractNumber ?? null,
     participants: mapTravelContextParticipants(source.participants),
   };
 }

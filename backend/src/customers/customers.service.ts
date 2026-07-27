@@ -18,6 +18,7 @@ import { CustomerIdentityValidationResultDto } from "./dto/customer-identity-val
 import { CustomerDocumentsService } from "./documents/customer-documents.service";
 import { CustomerNotesService } from "./notes/customer-notes.service";
 import { normalizeIdentification, validateIdentification } from "./utils/normalize-identification";
+import { resolveContractParticipation } from "../contracts/contract-participation";
 
 /**
  * CustomersService
@@ -621,7 +622,7 @@ export class CustomersService {
     // Filter contracts where customer appears as a companion or Minor passenger.
     const passengerContracts = allTenantContracts.filter(
       (contract) =>
-        this.resolveContractParticipation(contract, customerId) !== null,
+        resolveContractParticipation(contract, customerId) !== null,
     );
 
     // Merge both lists
@@ -803,7 +804,7 @@ export class CustomersService {
     };
 
     const contractDtos: CustomerContractItemDto[] = contracts.map((c) => {
-      const participation = this.resolveContractParticipation(c, customerId);
+      const participation = resolveContractParticipation(c, customerId);
       const role = participation?.role || "HOLDER";
       const responsibleMinors =
         role === "MINOR"
@@ -840,7 +841,7 @@ export class CustomersService {
         ? contracts[currentMinorContractIndex]
         : null;
     const currentMinorParticipation = currentMinorContract
-      ? this.resolveContractParticipation(currentMinorContract, customerId)
+      ? resolveContractParticipation(currentMinorContract, customerId)
       : null;
 
     let minorProfileFields: Partial<CustomerProfileDto> = {};
@@ -1152,48 +1153,6 @@ export class CustomersService {
       .trim()
       .toLowerCase()
       .replace(/\s+/g, " ");
-  }
-
-  private resolveContractParticipation(
-    contract: {
-      clientId: string;
-      payload: unknown;
-    },
-    customerId: string,
-  ):
-    | { role: "HOLDER"; minor?: never }
-    | { role: "COMPANION"; minor?: never }
-    | { role: "MINOR"; minor: any }
-    | null {
-    if (contract.clientId === customerId) {
-      return { role: "HOLDER" };
-    }
-
-    const payload =
-      contract.payload &&
-      typeof contract.payload === "object" &&
-      !Array.isArray(contract.payload)
-        ? (contract.payload as Record<string, unknown>)
-        : {};
-    const companions = Array.isArray(payload.companions)
-      ? payload.companions
-      : [];
-    if (
-      companions.some(
-        (companion: any) =>
-          String(companion?.selectedCustomerId || "").trim() === customerId,
-      )
-    ) {
-      return { role: "COMPANION" };
-    }
-
-    const minors = Array.isArray(payload.minors) ? payload.minors : [];
-    const minor = minors.find(
-      (item: any) =>
-        String(item?.selectedCustomerId || "").trim() === customerId,
-    );
-
-    return minor ? { role: "MINOR", minor } : null;
   }
 
   private resolveResponsibleAdultReference(

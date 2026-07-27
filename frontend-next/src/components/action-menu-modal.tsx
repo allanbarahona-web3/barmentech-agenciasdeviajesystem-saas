@@ -8,6 +8,7 @@ type ActionMenuModalProps = {
   onSelectMigration: () => void;
   onSelectInternalTrips?: () => void;
   onSelectCustomers?: () => void;
+  onSelectAdditionalServices: () => void;
   onSelectQuote: () => void;
   onSelectCustom: () => void;
 };
@@ -17,7 +18,8 @@ export function ActionMenuModal({
   onSelectTrips, 
   onSelectMigration, 
   onSelectInternalTrips,
-  onSelectCustomers 
+  onSelectCustomers,
+  onSelectAdditionalServices,
 }: ActionMenuModalProps) {
   useEffect(() => {
     if (isOpen) {
@@ -56,6 +58,8 @@ export function ActionMenuModal({
           boxShadow: "0 20px 60px rgba(0, 0, 0, 0.3)",
           maxWidth: 500,
           width: "90%",
+          maxHeight: "90vh",
+          overflowY: "auto",
           padding: "40px",
           animation: "slideUp 0.3s ease-out",
         }}
@@ -236,7 +240,44 @@ export function ActionMenuModal({
             </button>
           )}
 
-          {/* Opción 5: Cotización - DISABLED */}
+          {/* Opción 5: Servicios Adicionales - HABILITADA */}
+          <button
+            onClick={onSelectAdditionalServices}
+            style={{
+              padding: "20px 24px",
+              background: "linear-gradient(135deg, #06b6d4 0%, #0891b2 100%)",
+              color: "white",
+              border: "none",
+              borderRadius: 12,
+              fontSize: "1.05rem",
+              fontWeight: 600,
+              cursor: "pointer",
+              textAlign: "left",
+              display: "flex",
+              alignItems: "center",
+              gap: 16,
+              boxShadow: "0 4px 12px rgba(6, 182, 212, 0.3)",
+              transition: "transform 0.2s, box-shadow 0.2s",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = "translateY(-2px)";
+              e.currentTarget.style.boxShadow = "0 8px 20px rgba(6, 182, 212, 0.4)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = "translateY(0)";
+              e.currentTarget.style.boxShadow = "0 4px 12px rgba(6, 182, 212, 0.3)";
+            }}
+          >
+            <span style={{ fontSize: "2rem" }}>🧳</span>
+            <div>
+              <div style={{ fontWeight: 700 }}>Adicionales</div>
+              <div style={{ fontSize: "0.85rem", opacity: 0.9, marginTop: 4 }}>
+                Gestionar servicios adicionales para pasajeros
+              </div>
+            </div>
+          </button>
+
+          {/* Opción 6: Cotización - DISABLED */}
           <button
             disabled
             style={{
@@ -262,7 +303,7 @@ export function ActionMenuModal({
             </div>
           </button>
 
-          {/* Opción 6: Viaje Personalizado - DISABLED */}
+          {/* Opción 7: Viaje Personalizado - DISABLED */}
           <button
             disabled
             style={{

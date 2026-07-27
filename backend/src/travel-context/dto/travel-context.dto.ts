@@ -8,6 +8,7 @@ export class TravelContextParticipantDto {
   clientId!: string;
   fullName!: string;
   participantRole!: TravelContextParticipantRole;
+  operationalNotes!: string[];
 }
 
 export class TravelContextDto {
@@ -18,5 +19,6 @@ export class TravelContextDto {
   startDate!: Date;
   endDate!: Date;
   status!: string;
+  contractNumber!: string | null;
   participants!: TravelContextParticipantDto[];
 }

@@ -3,6 +3,7 @@ import {
   Get,
   Param,
   ParseEnumPipe,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -24,12 +25,14 @@ export class TravelContextController {
     @Param('travelType', new ParseEnumPipe(TravelContextType))
     travelType: TravelContextType,
     @Param('travelId') travelId: string,
+    @Query('clientId') clientId: string | undefined,
     @Tenant() tenant: ResolvedTenant,
   ) {
     return this.travelContextService.getTravelContext(
       tenant.id,
       travelType,
       travelId,
+      clientId,
     );
   }
 }

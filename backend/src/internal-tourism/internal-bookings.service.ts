@@ -386,7 +386,6 @@ export class InternalBookingsService {
     if (!booking) {
       return null;
     }
-
     return mapTravelContext({
       travelId: booking.id,
       travelType: TravelContextType.INTERNAL,

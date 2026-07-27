@@ -11,9 +11,13 @@ describe('TravelContextService', () => {
     const internalBookingsService = {
       getTravelContext: jest.fn(),
     };
+    const contractNotesService = {
+      enrichTravelContext: jest.fn().mockResolvedValue(international),
+    };
     const service = new TravelContextService(
       travelPackagesService as any,
       internalBookingsService as any,
+      contractNotesService as any,
     );
 
     await expect(
@@ -27,6 +31,11 @@ describe('TravelContextService', () => {
       'tenant-1',
       'travel-1',
     );
+    expect(contractNotesService.enrichTravelContext).toHaveBeenCalledWith(
+      'tenant-1',
+      international,
+      undefined,
+    );
     expect(internalBookingsService.getTravelContext).not.toHaveBeenCalled();
   });
 
@@ -38,9 +47,13 @@ describe('TravelContextService', () => {
     const internalBookingsService = {
       getTravelContext: jest.fn().mockResolvedValue(internal),
     };
+    const contractNotesService = {
+      enrichTravelContext: jest.fn().mockResolvedValue(internal),
+    };
     const service = new TravelContextService(
       travelPackagesService as any,
       internalBookingsService as any,
+      contractNotesService as any,
     );
 
     await expect(
@@ -60,9 +73,11 @@ describe('TravelContextService', () => {
   it('rejects an invalid travel type as a bad request', async () => {
     const travelPackagesService = { getTravelContext: jest.fn() };
     const internalBookingsService = { getTravelContext: jest.fn() };
+    const contractNotesService = { enrichTravelContext: jest.fn() };
     const service = new TravelContextService(
       travelPackagesService as any,
       internalBookingsService as any,
+      contractNotesService as any,
     );
 
     await expect(
@@ -77,9 +92,11 @@ describe('TravelContextService', () => {
       getTravelContext: jest.fn().mockResolvedValue(null),
     };
     const internalBookingsService = { getTravelContext: jest.fn() };
+    const contractNotesService = { enrichTravelContext: jest.fn() };
     const service = new TravelContextService(
       travelPackagesService as any,
       internalBookingsService as any,
+      contractNotesService as any,
     );
 
     await expect(

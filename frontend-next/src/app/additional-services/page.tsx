@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { ContractReference } from '@/components/additional-services-context-header';
 import { LoadingSpinner } from '@/components/loading-spinner';
 import { CustomerSearchSelector } from '@/features/customers/components';
 import {
@@ -11,6 +13,10 @@ import {
   type TravelContextParticipant,
   type TravelParticipantRole,
 } from '@/lib/additional-services-workspace-api';
+import {
+  setAdditionalServicesWorkflowContext,
+  setSelectedAdditionalServicesParticipants,
+} from '@/lib/additional-services-temporary-store';
 import type { CustomerListItem } from '@/lib/customers-api';
 
 function formatDateRange(startDate: string, endDate: string) {
@@ -155,6 +161,7 @@ export default function AdditionalServicesPage() {
     void getTravelContext(
       selectedTravel.travelType,
       selectedTravel.travelId,
+      selectedCustomer?.id ?? '',
     )
       .then((context) => {
         if (!cancelled) setTravelContext(context);
@@ -176,7 +183,7 @@ export default function AdditionalServicesPage() {
     return () => {
       cancelled = true;
     };
-  }, [selectedTravel]);
+  }, [selectedCustomer, selectedTravel]);
 
   function selectCustomer(customer: CustomerListItem) {
     setSelectedCustomer(customer);
@@ -408,6 +415,9 @@ export default function AdditionalServicesPage() {
                         )}
                       </div>
                     </div>
+                    <ContractReference
+                      contractNumber={travelContext.contractNumber}
+                    />
                   </div>
                 </div>
 
@@ -485,11 +495,55 @@ export default function AdditionalServicesPage() {
                         marginTop: '20px',
                         paddingTop: '16px',
                         borderTop: '1px solid #e2e8f0',
-                        color: '#172554',
-                        fontWeight: 700,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '16px',
+                        flexWrap: 'wrap',
                       }}
                     >
-                      Participantes seleccionados: {selectedParticipantIds.size}
+                      <span style={{ color: '#172554', fontWeight: 700 }}>
+                        Participantes seleccionados:{' '}
+                        {selectedParticipantIds.size}
+                      </span>
+                      {selectedParticipantIds.size > 0 && (
+                        <Link
+                          href="/additional-services/catalog"
+                          className="btn-primary"
+                          onClick={() => {
+                            setSelectedAdditionalServicesParticipants(
+                              selectedParticipantIds,
+                            );
+                            setAdditionalServicesWorkflowContext({
+                              travelName: travelContext.displayName,
+                              contractNumber: travelContext.contractNumber,
+                              selectedParticipants:
+                                travelContext.participants
+                                  .filter((participant) =>
+                                    selectedParticipantIds.has(
+                                      participant.clientId,
+                                    ),
+                                  )
+                                  .map((participant) => ({
+                                    participantId: participant.clientId,
+                                    fullName: participant.fullName,
+                                    operationalNotes:
+                                      participant.operationalNotes,
+                                  })),
+                            });
+                          }}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            padding: '12px 20px',
+                            borderRadius: '10px',
+                            textDecoration: 'none',
+                          }}
+                        >
+                          Continuar al catálogo
+                        </Link>
+                      )}
                     </div>
                   )}
                 </div>

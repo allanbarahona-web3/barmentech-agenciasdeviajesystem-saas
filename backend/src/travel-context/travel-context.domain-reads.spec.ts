@@ -41,11 +41,13 @@ describe('Travel context domain reads', () => {
       startDate: departureDate,
       endDate: returnDate,
       status: 'OPEN',
+      contractNumber: null,
       participants: [
         {
           clientId: 'client-1',
           fullName: 'Juan Holder',
           participantRole: 'HOLDER',
+          operationalNotes: [],
         },
       ],
     });
@@ -65,6 +67,7 @@ describe('Travel context domain reads', () => {
     const returnDate = new Date('2027-03-05');
     const findFirst = jest.fn().mockResolvedValue({
       id: 'booking-1',
+      clientId: 'client-2',
       internalTrip: {
         name: 'Internal trip',
         destination: 'Arenal',
@@ -96,11 +99,13 @@ describe('Travel context domain reads', () => {
       startDate: departureDate,
       endDate: returnDate,
       status: 'OPEN',
+      contractNumber: null,
       participants: [
         {
           clientId: 'client-2',
           fullName: 'Esteban Minor',
           participantRole: 'MINOR',
+          operationalNotes: [],
         },
       ],
     });

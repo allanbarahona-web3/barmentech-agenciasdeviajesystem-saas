@@ -19,6 +19,7 @@ export interface TravelContextParticipant {
   fullName: string;
   participantRole: TravelParticipantRole;
   identification?: string | null;
+  operationalNotes: string[];
 }
 
 export interface TravelContext {
@@ -29,6 +30,7 @@ export interface TravelContext {
   startDate: string;
   endDate: string;
   status: string;
+  contractNumber: string | null;
   participants: TravelContextParticipant[];
 }
 
@@ -95,10 +97,12 @@ export async function getClientActiveTravels(
 export function getTravelContext(
   travelType: ActiveTravelType,
   travelId: string,
+  clientId: string,
 ): Promise<TravelContext> {
   return apiGet<TravelContext>(
     `/travel-context/${encodeURIComponent(travelType)}/${encodeURIComponent(
       travelId,
     )}`,
+    { params: { clientId } },
   );
 }

@@ -9,18 +9,21 @@ import {
   TravelContextDto,
   TravelContextType,
 } from './dto/travel-context.dto';
+import { ContractNotesService } from '../contracts/notes/contract-notes.service';
 
 @Injectable()
 export class TravelContextService {
   constructor(
     private readonly travelPackagesService: TravelPackagesService,
     private readonly internalBookingsService: InternalBookingsService,
+    private readonly contractNotesService: ContractNotesService,
   ) {}
 
   async getTravelContext(
     tenantId: string,
     travelType: TravelContextType,
     travelId: string,
+    clientId?: string,
   ): Promise<TravelContextDto> {
     let context: TravelContextDto | null;
 
@@ -42,7 +45,11 @@ export class TravelContextService {
     }
 
     if (context) {
-      return context;
+      return this.contractNotesService.enrichTravelContext(
+        tenantId,
+        context,
+        clientId,
+      );
     }
 
     throw new NotFoundException('Travel context not found');

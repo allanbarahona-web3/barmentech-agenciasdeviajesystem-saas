@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, type ReactNode } from "react";
 
 export type ConfirmModalProps = {
   isOpen: boolean;
   title: string;
-  message: string;
+  message: ReactNode;
   confirmText?: string;
   cancelText?: string;
   showCancel?: boolean;
@@ -57,7 +57,7 @@ export function ConfirmModal({
         </div>
         
         <div className="confirm-modal-body">
-          <p className="confirm-modal-message">{message}</p>
+          <div className="confirm-modal-message">{message}</div>
         </div>
         
         <div className="confirm-modal-footer">

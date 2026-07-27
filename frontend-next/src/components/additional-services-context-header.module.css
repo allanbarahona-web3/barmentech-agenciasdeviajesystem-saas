@@ -1,0 +1,130 @@
+.context {
+  margin-bottom: 24px;
+  padding: 18px 20px;
+  border: 1px solid rgba(15, 48, 101, 0.13);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.05);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.travelName {
+  margin: 0 0 8px;
+  color: #172554;
+  font-size: 18px;
+}
+
+.contract {
+  color: #475569;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.copyButton {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.copyButton:hover {
+  background: #dbeafe;
+}
+
+.copyIcon {
+  width: 15px;
+  height: 15px;
+}
+
+.participantContext {
+  margin-top: 14px;
+}
+
+.participantLabel {
+  display: block;
+  margin-bottom: 6px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.participantNames {
+  display: grid;
+  gap: 3px;
+}
+
+.selectedParticipantName {
+  color: #172554;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.notesButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.notesIcon {
+  width: 17px;
+  height: 17px;
+}
+
+.notesList {
+  max-height: 55vh;
+  overflow-y: auto;
+  display: grid;
+  gap: 16px;
+}
+
+.participant {
+  padding-bottom: 16px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.participant:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.participantName {
+  margin: 0 0 8px;
+  color: #172554;
+  font-size: 16px;
+}
+
+.noteItems {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.empty {
+  margin: 0;
+  color: #64748b;
+}
+
+@media (max-width: 640px) {
+  .context {
+    align-items: stretch;
+  }
+
+  .notesButton {
+    width: 100%;
+    justify-content: center;
+  }
+}

@@ -89,7 +89,6 @@ export class TravelPackagesService {
       tenantId,
       travelPackageId,
     );
-
     return mapTravelContext({
       travelId: travelPackage.id,
       travelType: TravelContextType.INTERNATIONAL,

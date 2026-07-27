@@ -1,5 +1,10 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { resolveContractParticipation } from '../contract-participation';
+import {
+  TravelContextDto,
+  TravelContextType,
+} from '../../travel-context/dto/travel-context.dto';
 
 @Injectable()
 export class ContractNotesService {
@@ -74,47 +79,31 @@ export class ContractNotesService {
       throw new NotFoundException('Contrato no encontrado');
     }
 
-    let passengerType: 'HOLDER' | 'COMPANION';
-    let passengerIndex: number | null = null;
-    let passengerName: string;
-
-    // Check if customer is the holder
-    if (contract.clientId === customerId) {
-      passengerType = 'HOLDER';
-      passengerIndex = null;
-      passengerName = contract.client.fullName;
-    } else {
-      // Check if customer is a companion
-      const payload = contract.payload as any;
-      const companions = Array.isArray(payload?.companions) ? payload.companions : [];
-      
-      let found = false;
-      for (let index = 0; index < companions.length; index++) {
-        const companion = companions[index];
-        if (companion?.selectedCustomerId === customerId) {
-          passengerType = 'COMPANION';
-          passengerIndex = index;
-          passengerName = companion.fullName || companion.name || `Acompañante ${index + 1}`;
-          found = true;
-          break;
-        }
-      }
-
-      if (!found) {
-        throw new ForbiddenException(
-          'El cliente no participa en este contrato. No se puede crear una nota operativa.',
-        );
-      }
+    const participation = resolveContractParticipation(contract, customerId);
+    if (!participation) {
+      throw new ForbiddenException(
+        'El cliente no participa en este contrato. No se puede crear una nota operativa.',
+      );
     }
+    const passenger = participation.passenger;
+    const passengerName =
+      participation.role === 'HOLDER'
+        ? contract.client.fullName
+        : String(
+            passenger?.fullName ??
+              passenger?.minorName ??
+              passenger?.name ??
+              '',
+          ).trim();
 
     // Create the note with resolved passenger identity
     const contractNote = await this.prisma.contractNote.create({
       data: {
         contractId,
         tenantId,
-        passengerType: passengerType!,
-        passengerIndex,
-        passengerName: passengerName!,
+        passengerType: participation.role,
+        passengerIndex: participation.passengerIndex,
+        passengerName,
         note,
         status: 'ACTIVE',
         createdByUserId,
@@ -155,17 +144,16 @@ export class ContractNotesService {
    * Role-aware filtering:
    * - Returns only notes that belong to this customer's participation
    * - If customer is HOLDER: returns HOLDER notes only
-   * - If customer is COMPANION: returns COMPANION notes matching their passengerIndex only
+   * - Returns notes matching the resolved role and passenger index
    */
   async listCustomerOperationalNotes(tenantId: string, customerId: string) {
-    // Get all contracts where customer is HOLDER
-    const holderContracts = await this.prisma.contract.findMany({
+    const contracts = await this.prisma.contract.findMany({
       where: {
         tenantId,
-        clientId: customerId,
       },
       select: {
         id: true,
+        clientId: true,
         contractNumber: true,
         destination: true,
         startDate: true,
@@ -174,77 +162,30 @@ export class ContractNotesService {
       },
     });
 
-    // Get all contracts where customer might be COMPANION
-    const allTenantContracts = await this.prisma.contract.findMany({
-      where: {
-        tenantId,
-        clientId: { not: customerId }, // Exclude holder contracts already fetched
-      },
-      select: {
-        id: true,
-        contractNumber: true,
-        destination: true,
-        startDate: true,
-        endDate: true,
-        payload: true,
-      },
-    });
-
-    // Resolve participation for each contract
-    const participations: Array<{
-      contractId: string;
-      role: 'HOLDER' | 'COMPANION';
-      passengerIndex: number | null;
-    }> = [];
-
-    // Process holder contracts
-    holderContracts.forEach((contract) => {
-      participations.push({
-        contractId: contract.id,
-        role: 'HOLDER',
-        passengerIndex: null,
-      });
-    });
-
-    // Process potential companion contracts
-    allTenantContracts.forEach((contract) => {
-      const payload = contract.payload as any;
-      const companions = Array.isArray(payload?.companions) ? payload.companions : [];
-      
-      companions.forEach((companion: any, index: number) => {
-        if (companion?.selectedCustomerId === customerId) {
-          participations.push({
-            contractId: contract.id,
-            role: 'COMPANION',
-            passengerIndex: index,
-          });
-        }
-      });
+    const participations = contracts.flatMap((contract) => {
+      const participation = resolveContractParticipation(contract, customerId);
+      return participation
+        ? [
+            {
+              contractId: contract.id,
+              role: participation.role,
+              passengerIndex: participation.passengerIndex,
+            },
+          ]
+        : [];
     });
 
     if (participations.length === 0) {
       return [];
     }
 
-    // Build filter conditions for each participation
-    const noteFilters = participations.map((participation) => {
-      if (participation.role === 'HOLDER') {
-        return {
-          contractId: participation.contractId,
-          passengerType: 'HOLDER',
-        };
-      } else {
-        // COMPANION
-        return {
-          contractId: participation.contractId,
-          passengerType: 'COMPANION',
-          passengerIndex: participation.passengerIndex,
-        };
-      }
-    });
+    const noteFilters = participations.map((participation) => ({
+      contractId: participation.contractId,
+      passengerType: participation.role,
+      passengerIndex: participation.passengerIndex,
+    }));
 
-    // Fetch notes matching any of the participation filters
-    const notes = await this.prisma.contractNote.findMany({
+    return this.prisma.contractNote.findMany({
       where: {
         tenantId,
         status: 'ACTIVE',
@@ -264,8 +205,144 @@ export class ContractNotesService {
         createdAt: 'desc',
       },
     });
+  }
 
-    return notes;
+  async enrichTravelContext(
+    tenantId: string,
+    context: TravelContextDto,
+    selectedClientId?: string,
+  ): Promise<TravelContextDto> {
+    let internalTripId: string | null = null;
+    if (context.travelType === TravelContextType.INTERNAL) {
+      const booking = await this.prisma.internalTourBooking.findFirst({
+        where: {
+          id: context.travelId,
+          tenantId,
+        },
+        select: {
+          internalTripId: true,
+        },
+      });
+      internalTripId = booking?.internalTripId ?? null;
+    }
+
+    const contracts = await this.prisma.contract.findMany({
+      where: {
+        tenantId,
+      },
+      select: {
+        id: true,
+        clientId: true,
+        contractNumber: true,
+        travelPackageId: true,
+        internalTripId: true,
+        payload: true,
+        createdAt: true,
+        notes: {
+          where: {
+            status: 'ACTIVE',
+          },
+          select: {
+            passengerType: true,
+            passengerIndex: true,
+            note: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    const travelContracts = contracts.filter((contract) =>
+      this.contractMatchesTravel(
+        contract,
+        context.travelType,
+        context.travelId,
+        internalTripId,
+      ),
+    );
+    const selectedContract = selectedClientId
+      ? travelContracts.find(
+          (contract) =>
+            resolveContractParticipation(contract, selectedClientId) !== null,
+        )
+      : undefined;
+
+    return {
+      ...context,
+      contractNumber: selectedContract?.contractNumber ?? null,
+      participants: context.participants.map((participant) => {
+        const participantContract = travelContracts.find(
+          (contract) =>
+            resolveContractParticipation(contract, participant.clientId) !==
+            null,
+        );
+        if (!participantContract) {
+          return {
+            ...participant,
+            operationalNotes: [],
+          };
+        }
+
+        const participation = resolveContractParticipation(
+          participantContract,
+          participant.clientId,
+        );
+        if (!participation) {
+          return {
+            ...participant,
+            operationalNotes: [],
+          };
+        }
+
+        return {
+          ...participant,
+          operationalNotes: participantContract.notes
+            .filter(
+              (note) =>
+                note.passengerType === participation.role &&
+                (note.passengerIndex ?? null) ===
+                  participation.passengerIndex,
+            )
+            .map((note) => note.note),
+        };
+      }),
+    };
+  }
+
+  private contractMatchesTravel(
+    contract: {
+      travelPackageId: string | null;
+      internalTripId: string | null;
+      payload: unknown;
+    },
+    travelType: TravelContextType,
+    travelId: string,
+    internalTripId: string | null,
+  ): boolean {
+    const payload =
+      contract.payload &&
+      typeof contract.payload === 'object' &&
+      !Array.isArray(contract.payload)
+        ? (contract.payload as Record<string, unknown>)
+        : {};
+
+    if (travelType === TravelContextType.INTERNATIONAL) {
+      return (
+        contract.travelPackageId === travelId ||
+        String(payload.travelPackageId ?? '').trim() === travelId
+      );
+    }
+
+    if (!internalTripId) {
+      return false;
+    }
+
+    return (
+      contract.internalTripId === internalTripId ||
+      String(payload.internalTripId ?? '').trim() === internalTripId
+    );
   }
 
   /**
