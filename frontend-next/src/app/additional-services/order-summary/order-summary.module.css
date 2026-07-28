@@ -4,6 +4,10 @@
   margin: 0 auto;
 }
 
+.pricingPage {
+  max-width: 1480px;
+}
+
 .header {
   margin-bottom: 24px;
 }
@@ -64,7 +68,7 @@
 }
 
 .actionHead {
-  width: 12%;
+  width: 10.66%;
   text-align: center;
 }
 
@@ -92,6 +96,10 @@
 .participantCell,
 .serviceCell,
 .summaryCell,
+.commercialCell,
+.urlCell,
+.costCell,
+.currencyCell,
 .actionCell {
   min-height: 64px;
   padding: 16px 18px;
@@ -112,12 +120,58 @@
 }
 
 .summaryCell {
-  width: 24%;
+  width: 28%;
 }
 
 .actionCell {
-  width: 12%;
+  width: 10.66%;
   text-align: center;
+}
+
+.pricingTable {
+  min-width: 100%;
+}
+
+.pricingTable .participantCell {
+  width: 14%;
+}
+
+.pricingTable .serviceCell {
+  width: 11%;
+}
+
+.pricingTable .actionCell,
+.pricingTable .actionHead {
+  width: 8%;
+}
+
+.commercialCell {
+  width: 17%;
+}
+
+.urlCell {
+  width: 22%;
+}
+
+.costCell,
+.currencyCell {
+  width: 10%;
+}
+
+.commercialInput {
+  width: 100%;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+  color: #172554;
+  font: inherit;
+}
+
+.commercialInput:focus {
+  border-color: #2563eb;
+  outline: 2px solid rgba(37, 99, 235, 0.16);
 }
 
 .editButton,
@@ -261,6 +315,10 @@
   .participantCell,
   .serviceCell,
   .summaryCell,
+  .commercialCell,
+  .urlCell,
+  .costCell,
+  .currencyCell,
   .actionCell {
     display: block;
     width: 100%;
@@ -278,6 +336,10 @@
   .participantCell,
   .serviceCell,
   .summaryCell,
+  .commercialCell,
+  .urlCell,
+  .costCell,
+  .currencyCell,
   .actionCell {
     min-height: 0;
     padding: 10px 0;
@@ -288,6 +350,10 @@
   .participantCell::before,
   .serviceCell::before,
   .summaryCell::before,
+  .commercialCell::before,
+  .urlCell::before,
+  .costCell::before,
+  .currencyCell::before,
   .actionCell::before {
     width: 112px;
     color: #64748b;
@@ -302,6 +368,11 @@
 
   .actionCell:last-child {
     border-bottom: 0;
+  }
+
+  .commercialInput {
+    width: calc(100% - 116px);
+    vertical-align: middle;
   }
 
   .editButton,

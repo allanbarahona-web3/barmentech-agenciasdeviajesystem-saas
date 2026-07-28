@@ -7,6 +7,7 @@ import { AdditionalServicesContextHeader } from '@/components/additional-service
 import {
   addTemporaryBaggageLine,
   cancelTemporaryAdditionalServiceLineEdit,
+  getTemporaryAdditionalServiceEditReturnPath,
   getTemporaryAdditionalServiceLineBeingEdited,
   replaceTemporaryAdditionalServiceLine,
   type BaggageType,
@@ -64,7 +65,7 @@ export default function BaggageAdditionalFormPage() {
         baggageTypes: [...baggageTypes],
         notes: notes.trim(),
       });
-      router.push('/additional-services/order-summary');
+      router.push(getTemporaryAdditionalServiceEditReturnPath());
       return;
     }
 

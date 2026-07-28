@@ -7,6 +7,7 @@ import { AdditionalServicesContextHeader } from '@/components/additional-service
 import {
   addTemporaryInsuranceLine,
   cancelTemporaryAdditionalServiceLineEdit,
+  getTemporaryAdditionalServiceEditReturnPath,
   getSelectedAdditionalServicesParticipants,
   getTemporaryAdditionalServiceLineBeingEdited,
   replaceTemporaryAdditionalServiceLine,
@@ -99,7 +100,7 @@ export default function InsuranceAdditionalFormPage() {
         currency: TENANT_CURRENCY,
         notes: notes.trim(),
       });
-      router.push('/additional-services/order-summary');
+      router.push(getTemporaryAdditionalServiceEditReturnPath());
       return;
     }
 

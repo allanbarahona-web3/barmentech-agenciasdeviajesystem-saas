@@ -8,6 +8,7 @@ import { AdditionalServicesContextHeader } from '@/components/additional-service
 import {
   addTemporaryFlightTicketLine,
   cancelTemporaryAdditionalServiceLineEdit,
+  getTemporaryAdditionalServiceEditReturnPath,
   getSelectedAdditionalServicesParticipants,
   getTemporaryAdditionalServiceLineBeingEdited,
   replaceTemporaryAdditionalServiceLine,
@@ -158,7 +159,7 @@ export default function FlightTicketsAdditionalFormPage() {
 
     if (editingLine) {
       replaceTemporaryAdditionalServiceLine(editingLine, updatedLine);
-      router.push('/additional-services/order-summary');
+      router.push(getTemporaryAdditionalServiceEditReturnPath());
       return;
     }
 

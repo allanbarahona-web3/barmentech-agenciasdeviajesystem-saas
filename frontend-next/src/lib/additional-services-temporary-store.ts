@@ -153,6 +153,15 @@ export type TemporaryAdditionalServiceLine =
   | TemporaryTravelExtensionLine
   | TemporaryTripReductionLine;
 
+export type TemporaryLineCurrency = 'USD' | 'CRC';
+
+export interface TemporaryLineSourcing {
+  supplierId: string | null;
+  providerUrl: string;
+  cost: number | null;
+  currency: TemporaryLineCurrency | null;
+}
+
 let selectedParticipantIds: string[] = [];
 let workflowContext: AdditionalServicesWorkflowContext | null = null;
 const temporaryBaggageLines: TemporaryBaggageLine[] = [];
@@ -167,10 +176,15 @@ const temporaryEventTicketLines: TemporaryEventTicketLine[] = [];
 const temporaryTravelExtensionLines: TemporaryTravelExtensionLine[] = [];
 const temporaryTripReductionLines: TemporaryTripReductionLine[] = [];
 const temporaryLineIds = new WeakMap<TemporaryAdditionalServiceLine, string>();
+const temporaryLineSourcing = new WeakMap<
+  TemporaryAdditionalServiceLine,
+  TemporaryLineSourcing
+>();
 const temporaryAdditionalServiceLineOrder: TemporaryAdditionalServiceLine[] =
   [];
 let temporaryLineSequence = 0;
 let temporaryLineBeingEdited: TemporaryAdditionalServiceLine | null = null;
+let temporaryLineEditReturnPath = '/additional-services/order-summary';
 
 function registerTemporaryLine<T extends TemporaryAdditionalServiceLine>(
   collection: T[],
@@ -375,8 +389,10 @@ export function removeTemporaryAdditionalServiceLine(
 
 export function startEditingTemporaryAdditionalServiceLine(
   line: TemporaryAdditionalServiceLine,
+  returnPath = '/additional-services/order-summary',
 ) {
   temporaryLineBeingEdited = line;
+  temporaryLineEditReturnPath = returnPath;
 }
 
 export function getTemporaryAdditionalServiceLineBeingEdited<
@@ -405,6 +421,10 @@ export function replaceTemporaryAdditionalServiceLine(
       }
       const id = getTemporaryAdditionalServiceLineId(currentLine);
       temporaryLineIds.set(updatedLine, id);
+      const sourcing = temporaryLineSourcing.get(currentLine);
+      if (sourcing) {
+        temporaryLineSourcing.set(updatedLine, sourcing);
+      }
       temporaryLineBeingEdited = null;
       return;
     }
@@ -413,4 +433,32 @@ export function replaceTemporaryAdditionalServiceLine(
 
 export function cancelTemporaryAdditionalServiceLineEdit() {
   temporaryLineBeingEdited = null;
+  temporaryLineEditReturnPath = '/additional-services/order-summary';
+}
+
+export function getTemporaryAdditionalServiceEditReturnPath() {
+  return temporaryLineEditReturnPath;
+}
+
+export function getTemporaryAdditionalServiceLineSourcing(
+  line: TemporaryAdditionalServiceLine,
+): TemporaryLineSourcing {
+  return (
+    temporaryLineSourcing.get(line) ?? {
+      supplierId: null,
+      providerUrl: '',
+      cost: null,
+      currency: null,
+    }
+  );
+}
+
+export function updateTemporaryAdditionalServiceLineSourcing(
+  line: TemporaryAdditionalServiceLine,
+  changes: Partial<TemporaryLineSourcing>,
+) {
+  temporaryLineSourcing.set(line, {
+    ...getTemporaryAdditionalServiceLineSourcing(line),
+    ...changes,
+  });
 }

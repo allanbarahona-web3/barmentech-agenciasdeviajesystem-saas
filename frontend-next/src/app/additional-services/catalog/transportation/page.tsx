@@ -7,6 +7,7 @@ import { AdditionalServicesContextHeader } from '@/components/additional-service
 import {
   addTemporaryTransportationLine,
   cancelTemporaryAdditionalServiceLineEdit,
+  getTemporaryAdditionalServiceEditReturnPath,
   getSelectedAdditionalServicesParticipants,
   getTemporaryAdditionalServiceLineBeingEdited,
   replaceTemporaryAdditionalServiceLine,
@@ -85,7 +86,7 @@ export default function TransportationAdditionalFormPage() {
         serviceDate,
         notes: notes.trim(),
       });
-      router.push('/additional-services/order-summary');
+      router.push(getTemporaryAdditionalServiceEditReturnPath());
       return;
     }
 

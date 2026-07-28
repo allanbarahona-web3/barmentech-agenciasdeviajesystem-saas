@@ -7,6 +7,7 @@ import { AdditionalServicesContextHeader } from '@/components/additional-service
 import {
   addTemporaryLodgingLine,
   cancelTemporaryAdditionalServiceLineEdit,
+  getTemporaryAdditionalServiceEditReturnPath,
   getSelectedAdditionalServicesParticipants,
   getTemporaryAdditionalServiceLineBeingEdited,
   replaceTemporaryAdditionalServiceLine,
@@ -56,7 +57,7 @@ export default function LodgingAdditionalFormPage() {
         lodgingType,
         notes: notes.trim(),
       });
-      router.push('/additional-services/order-summary');
+      router.push(getTemporaryAdditionalServiceEditReturnPath());
       return;
     }
 
