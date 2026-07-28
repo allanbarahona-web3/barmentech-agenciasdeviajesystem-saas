@@ -245,6 +245,11 @@ export interface AdditionalServicesRepository {
     id: string,
   ): Promise<AdditionalServiceCatalogRecord | null>;
 
+  findAdditionalServiceCatalogByCode(
+    tenantId: string,
+    code: string,
+  ): Promise<AdditionalServiceCatalogRecord | null>;
+
   findAdditionalServiceCatalogs(
     tenantId: string,
   ): Promise<AdditionalServiceCatalogAdminRecord[]>;

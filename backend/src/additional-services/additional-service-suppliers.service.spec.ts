@@ -41,6 +41,7 @@ describe("AdditionalServicesService suppliers", () => {
       findById: jest.fn(),
       findByTravel: jest.fn(),
       findAdditionalServiceCatalogById: jest.fn(),
+      findAdditionalServiceCatalogByCode: jest.fn(),
       findAdditionalServiceCatalogs: jest.fn(),
       findAdditionalServiceCatalogCodes: jest.fn(),
       createAdditionalServiceCatalogItems: jest.fn(),

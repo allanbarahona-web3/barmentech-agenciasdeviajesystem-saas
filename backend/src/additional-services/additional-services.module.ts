@@ -1,31 +1,37 @@
 import { Module } from "@nestjs/common";
 import { AdditionalServicesService } from "./additional-services.service";
-import {
-  ADDITIONAL_SERVICES_REPOSITORY,
-  PrismaAdditionalServicesRepository,
-} from "./repositories";
 import { AdditionalServiceCatalogController } from "./additional-service-catalog.controller";
 import { AdditionalServicePricingConfigurationsController } from "./additional-service-pricing-configurations.controller";
 import { CatalogBootstrapService } from "./catalog-bootstrap.service";
 import { AdditionalServiceSuppliersController } from "./additional-service-suppliers.controller";
 import { SupplierRequestNotificationService } from "./supplier-request-notification.service";
+import { AdditionalServicesPersistenceModule } from "./infrastructure/additional-services-persistence.module";
+import { AdditionalServicesPricingEngineModule } from "./infrastructure/additional-services-pricing-engine.module";
+import { AdditionalServicesPricingController } from "./additional-services-pricing.controller";
+import { AdditionalServicesPricingService } from "./additional-services-pricing.service";
 
 @Module({
+  imports: [
+    AdditionalServicesPersistenceModule,
+    AdditionalServicesPricingEngineModule,
+  ],
   controllers: [
     AdditionalServiceCatalogController,
     AdditionalServicePricingConfigurationsController,
+    AdditionalServicesPricingController,
     AdditionalServiceSuppliersController,
   ],
   providers: [
-    PrismaAdditionalServicesRepository,
-    {
-      provide: ADDITIONAL_SERVICES_REPOSITORY,
-      useExisting: PrismaAdditionalServicesRepository,
-    },
     AdditionalServicesService,
+    AdditionalServicesPricingService,
     CatalogBootstrapService,
     SupplierRequestNotificationService,
   ],
-  exports: [AdditionalServicesService, CatalogBootstrapService],
+  exports: [
+    AdditionalServicesPersistenceModule,
+    AdditionalServicesPricingEngineModule,
+    AdditionalServicesService,
+    CatalogBootstrapService,
+  ],
 })
 export class AdditionalServicesModule {}

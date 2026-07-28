@@ -158,6 +158,13 @@ export class PrismaAdditionalServicesRepository
     return this.findCatalogById(this.client, id);
   }
 
+  findAdditionalServiceCatalogByCode(
+    tenantId: string,
+    code: string,
+  ): Promise<AdditionalServiceCatalogRecord | null> {
+    return this.findCatalogByCode(this.client, tenantId, code);
+  }
+
   findAdditionalServiceCatalogs(
     tenantId: string,
   ): Promise<AdditionalServiceCatalogAdminRecord[]> {
@@ -288,6 +295,8 @@ export class PrismaAdditionalServicesRepository
       },
       findAdditionalServiceCatalogById: (id) =>
         this.findCatalogById(client, id),
+      findAdditionalServiceCatalogByCode: (tenantId, code) =>
+        this.findCatalogByCode(client, tenantId, code),
       findAdditionalServiceCatalogs: (tenantId) =>
         this.findCatalogs(client, tenantId),
       findAdditionalServiceCatalogCodes: (tenantId) =>
@@ -383,6 +392,23 @@ export class PrismaAdditionalServicesRepository
   ): Promise<AdditionalServiceCatalogRecord | null> {
     return (await client.additionalServiceCatalog.findFirst({
       where: { id },
+      select: {
+        id: true,
+        tenantId: true,
+        code: true,
+        name: true,
+        isActive: true,
+      },
+    })) as AdditionalServiceCatalogRecord | null;
+  }
+
+  private async findCatalogByCode(
+    client: AdditionalServicesPrismaClient,
+    tenantId: string,
+    code: string,
+  ): Promise<AdditionalServiceCatalogRecord | null> {
+    return (await client.additionalServiceCatalog.findFirst({
+      where: { tenantId, code },
       select: {
         id: true,
         tenantId: true,

@@ -1,4 +1,5 @@
 import type { Airport } from '@/shared/airports';
+import type { AdditionalServicePricingBreakdown } from '@/lib/additional-services-pricing-api';
 
 export type BaggageType =
   | 'CARRY_ON'
@@ -199,6 +200,10 @@ const temporaryLineIds = new WeakMap<TemporaryAdditionalServiceLine, string>();
 const temporaryLineSourcing = new WeakMap<
   TemporaryAdditionalServiceLine,
   TemporaryLineSourcing
+>();
+let temporaryLinePricing = new Map<
+  string,
+  AdditionalServicePricingBreakdown
 >();
 const temporaryAdditionalServiceLineOrder: TemporaryAdditionalServiceLine[] =
   [];
@@ -452,6 +457,7 @@ export function replaceTemporaryAdditionalServiceLine(
       }
       const id = getTemporaryAdditionalServiceLineId(currentLine);
       temporaryLineIds.set(updatedLine, id);
+      temporaryLinePricing.delete(id);
       const sourcing = temporaryLineSourcing.get(currentLine);
       if (sourcing) {
         temporaryLineSourcing.set(updatedLine, sourcing);
@@ -492,4 +498,26 @@ export function updateTemporaryAdditionalServiceLineSourcing(
     ...getTemporaryAdditionalServiceLineSourcing(line),
     ...changes,
   });
+  temporaryLinePricing.delete(getTemporaryAdditionalServiceLineId(line));
+}
+
+export function setTemporaryAdditionalServiceLinePricing(
+  results: ReadonlyArray<{
+    line: TemporaryAdditionalServiceLine;
+    breakdown: AdditionalServicePricingBreakdown;
+  }>,
+) {
+  const nextPricing = new Map<string, AdditionalServicePricingBreakdown>();
+  results.forEach(({ line, breakdown }) => {
+    nextPricing.set(getTemporaryAdditionalServiceLineId(line), breakdown);
+  });
+  temporaryLinePricing = nextPricing;
+}
+
+export function getTemporaryAdditionalServiceLinePricing(
+  line: TemporaryAdditionalServiceLine,
+) {
+  return (
+    temporaryLinePricing.get(getTemporaryAdditionalServiceLineId(line)) ?? null
+  );
 }
