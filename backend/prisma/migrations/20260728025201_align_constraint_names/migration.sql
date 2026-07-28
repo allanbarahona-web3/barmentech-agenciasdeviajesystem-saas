@@ -1,0 +1,5 @@
+-- RenameForeignKey
+ALTER TABLE "additional_service_pricing_configurations" RENAME CONSTRAINT "additional_service_pricing_configurations_additionalServiceCata" TO "additional_service_pricing_configurations_additionalServic_fkey";
+
+-- RenameIndex
+ALTER INDEX "additional_service_pricing_configurations_tenantId_additionalSe" RENAME TO "additional_service_pricing_configurations_tenantId_addition_key";

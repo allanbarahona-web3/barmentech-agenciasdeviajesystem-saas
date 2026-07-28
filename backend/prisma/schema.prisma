@@ -8,14 +8,14 @@ datasource db {
 }
 
 model Tenant {
-  id                                 String                              @id @default(cuid())
-  name                               String                              @unique
-  subdomain                          String?                             @unique
-  contractPrefix                     String                              @unique
-  isActive                           Boolean                             @default(true)
-  createdAt                          DateTime                            @default(now())
-  updatedAt                          DateTime                            @updatedAt
-  customDomain                       String?                             @unique
+  id                                 String                                  @id @default(cuid())
+  name                               String                                  @unique
+  subdomain                          String?                                 @unique
+  contractPrefix                     String                                  @unique
+  isActive                           Boolean                                 @default(true)
+  createdAt                          DateTime                                @default(now())
+  updatedAt                          DateTime                                @updatedAt
+  customDomain                       String?                                 @unique
   emailLogoUrl                       String?
   logoUrl                            String?
   primaryColor                       String?
@@ -30,23 +30,23 @@ model Tenant {
   representativePowers               String?
   representativeTitle                String?
   planExpiresAt                      DateTime?
-  planType                           String?                             @default("FREE")
+  planType                           String?                                 @default("FREE")
   suspendReason                      String?
   suspendedAt                        DateTime?
-  businessAddress                    String?                             @map("business_address")
-  contactEmail                       String?                             @map("contact_email")
-  contactPhone                       String?                             @map("contact_phone")
-  contactWhatsApp                    String?                             @map("contact_whatsapp")
-  emailVerified                      Boolean                             @default(false)
-  emailQuotaDaily                    Int                                 @default(1000) @map("email_quota_daily")
-  emailQuotaMonthly                  Int                                 @default(30000) @map("email_quota_monthly")
-  emailsSentMonth                    Int                                 @default(0) @map("emails_sent_month")
-  emailsSentToday                    Int                                 @default(0) @map("emails_sent_today")
+  businessAddress                    String?                                 @map("business_address")
+  contactEmail                       String?                                 @map("contact_email")
+  contactPhone                       String?                                 @map("contact_phone")
+  contactWhatsApp                    String?                                 @map("contact_whatsapp")
+  emailVerified                      Boolean                                 @default(false)
+  emailQuotaDaily                    Int                                     @default(1000) @map("email_quota_daily")
+  emailQuotaMonthly                  Int                                     @default(30000) @map("email_quota_monthly")
+  emailsSentMonth                    Int                                     @default(0) @map("emails_sent_month")
+  emailsSentToday                    Int                                     @default(0) @map("emails_sent_today")
   fromEmail                          String?
-  lastEmailResetDate                 DateTime?                           @map("last_email_reset_date")
-  preferredCurrency                  String                              @default("CRC") @map("preferred_currency")
+  lastEmailResetDate                 DateTime?                               @map("last_email_reset_date")
+  preferredCurrency                  String                                  @default("CRC") @map("preferred_currency")
   replyToEmail                       String?
-  websiteUrl                         String?                             @map("website_url")
+  websiteUrl                         String?                                 @map("website_url")
   billingAuditLogs                   BillingAuditLog[]
   billingClientBalances              BillingClientBalance[]
   billingCreditNotes                 BillingCreditNote[]
@@ -84,6 +84,9 @@ model Tenant {
   additionalServiceOrders            AdditionalServiceOrder[]
   additionalServiceOrderLines        AdditionalServiceOrderLine[]
   additionalServiceOrderParticipants AdditionalServiceOrderParticipant[]
+  additionalServiceCatalogItems      AdditionalServiceCatalog[]
+  additionalServicePricingConfigs    AdditionalServicePricingConfiguration[]
+  suppliers                          Supplier[]
 
   @@map("tenants")
 }
@@ -1196,6 +1199,66 @@ enum AdditionalServiceCurrency {
 enum AdditionalServiceMarginType {
   FIXED
   PERCENTAGE
+}
+
+model AdditionalServiceCatalog {
+  id                    String                                  @id @default(cuid())
+  tenantId              String
+  code                  String
+  name                  String
+  description           String?
+  icon                  String?
+  color                 String?
+  displayOrder          Int                                     @default(0)
+  isActive              Boolean                                 @default(true)
+  createdAt             DateTime                                @default(now())
+  updatedAt             DateTime                                @updatedAt
+  tenant                Tenant                                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  pricingConfigurations AdditionalServicePricingConfiguration[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@index([tenantId, isActive])
+  @@index([tenantId, displayOrder])
+  @@map("additional_service_catalogs")
+}
+
+model Supplier {
+  id               String   @id @default(cuid())
+  tenantId         String
+  name             String
+  website          String?
+  supplierType     String?
+  supplierCategory String?
+  notes            String?
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  tenant           Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@index([tenantId, isActive])
+  @@map("suppliers")
+}
+
+model AdditionalServicePricingConfiguration {
+  id                         String                      @id @default(cuid())
+  tenantId                   String
+  additionalServiceCatalogId String
+  marginType                 AdditionalServiceMarginType
+  marginValue                Decimal                     @db.Decimal(14, 4)
+  taxPercentage              Decimal                     @db.Decimal(7, 4)
+  isActive                   Boolean                     @default(true)
+  createdAt                  DateTime                    @default(now())
+  updatedAt                  DateTime                    @updatedAt
+  tenant                     Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  additionalServiceCatalog   AdditionalServiceCatalog    @relation(fields: [additionalServiceCatalogId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, additionalServiceCatalogId])
+  @@index([tenantId])
+  @@index([tenantId, isActive])
+  @@map("additional_service_pricing_configurations")
 }
 
 model AdditionalServiceOrder {
