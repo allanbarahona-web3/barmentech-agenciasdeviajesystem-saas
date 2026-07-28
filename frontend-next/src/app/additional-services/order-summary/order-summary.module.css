@@ -1,0 +1,326 @@
+.page {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.header {
+  margin-bottom: 24px;
+}
+
+.title {
+  margin: 0 0 8px;
+  color: #172554;
+  font-size: 28px;
+}
+
+.subtitle,
+.empty {
+  margin: 0;
+  color: #64748b;
+}
+
+.empty {
+  padding: 32px 20px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 12px;
+  background: #f8fafc;
+  text-align: center;
+}
+
+.table {
+  width: 100%;
+  min-width: 820px;
+  border-collapse: separate;
+  border-spacing: 0;
+  color: #172554;
+  table-layout: fixed;
+}
+
+.tableHeader {
+  background: #1e3a5f !important;
+}
+
+.headerRow {
+  border: 0;
+}
+
+.headerRow:hover {
+  background: transparent;
+}
+
+.tableHead,
+.actionHead {
+  height: 52px;
+  padding: 0 18px;
+  color: #fff !important;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.025em;
+}
+
+.tableHead:first-child {
+  border-radius: 10px 0 0;
+}
+
+.actionHead {
+  width: 12%;
+  text-align: center;
+}
+
+.actionHead:last-child {
+  border-radius: 0 10px 0 0;
+}
+
+.tableBody {
+  background: #fff;
+}
+
+.tableRow {
+  border-bottom: 1px solid #e2e8f0;
+  transition: background 150ms ease;
+}
+
+.tableRow:hover {
+  background: #f8fafc;
+}
+
+.tableRow:last-child {
+  border-bottom: 0;
+}
+
+.participantCell,
+.serviceCell,
+.summaryCell,
+.actionCell {
+  min-height: 64px;
+  padding: 16px 18px;
+  border-bottom: 1px solid #e2e8f0;
+  color: #334155;
+  line-height: 1.45;
+}
+
+.participantCell {
+  width: 24%;
+  color: #172554;
+  font-weight: 700;
+}
+
+.serviceCell {
+  width: 16%;
+  font-weight: 600;
+}
+
+.summaryCell {
+  width: 24%;
+}
+
+.actionCell {
+  width: 12%;
+  text-align: center;
+}
+
+.editButton,
+.removeButton,
+.notesButton,
+.backButton,
+.continueButton {
+  border-radius: 8px;
+  font-weight: 700;
+  box-shadow: none;
+}
+
+.editButton {
+  border: 1px solid #2563eb !important;
+  background: #eff6ff !important;
+  color: #1d4ed8 !important;
+}
+
+.editButton:hover {
+  background: #dbeafe !important;
+}
+
+.notesButton {
+  width: 38px;
+  height: 38px;
+  border: 1px solid #c7d2fe !important;
+  background: #eef2ff !important;
+  color: #4338ca !important;
+}
+
+.notesButton:hover {
+  background: #e0e7ff !important;
+}
+
+.notesButton svg {
+  width: 18px;
+  height: 18px;
+}
+
+.removeButton {
+  border: 1px solid #fecaca !important;
+  background: #fff1f2 !important;
+  color: #b91c1c !important;
+}
+
+.removeButton:hover {
+  background: #ffe4e6 !important;
+}
+
+.actions {
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.actions a {
+  text-decoration: none;
+}
+
+.backButton {
+  border: 1px solid #cbd5e1 !important;
+  background: #fff !important;
+  color: #334155 !important;
+}
+
+.backButton:hover {
+  border-color: #94a3b8 !important;
+  background: #f8fafc !important;
+}
+
+.continueButton {
+  background: #2563eb !important;
+  color: #fff !important;
+}
+
+.continueButton:hover {
+  background: #1d4ed8 !important;
+}
+
+.notesDetail {
+  display: grid;
+  gap: 18px;
+}
+
+.notesContext {
+  margin: 0;
+  padding: 14px;
+  border-radius: 10px;
+  background: #f8fafc;
+  display: grid;
+  gap: 12px;
+}
+
+.notesContext div {
+  display: grid;
+  gap: 3px;
+}
+
+.notesContext dt {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.notesContext dd {
+  margin: 0;
+  color: #172554;
+  font-weight: 700;
+}
+
+.notesText {
+  max-height: 45vh;
+  overflow-y: auto;
+  padding: 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+  color: #334155;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 760px) {
+  .table {
+    min-width: 0;
+  }
+
+  .tableHeader {
+    display: none;
+  }
+
+  .tableBody,
+  .tableRow,
+  .participantCell,
+  .serviceCell,
+  .summaryCell,
+  .actionCell {
+    display: block;
+    width: 100%;
+  }
+
+  .tableRow {
+    margin-bottom: 16px;
+    padding: 10px 16px;
+    border: 1px solid #dbe4f0;
+    border-radius: 12px;
+    background: #fff;
+    box-shadow: 0 3px 10px rgba(15, 23, 42, 0.05);
+  }
+
+  .participantCell,
+  .serviceCell,
+  .summaryCell,
+  .actionCell {
+    min-height: 0;
+    padding: 10px 0;
+    border-bottom: 1px solid #eef2f7;
+    text-align: left;
+  }
+
+  .participantCell::before,
+  .serviceCell::before,
+  .summaryCell::before,
+  .actionCell::before {
+    width: 112px;
+    color: #64748b;
+    content: attr(data-label);
+    display: inline-block;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.025em;
+    text-transform: uppercase;
+    vertical-align: middle;
+  }
+
+  .actionCell:last-child {
+    border-bottom: 0;
+  }
+
+  .editButton,
+  .removeButton,
+  .notesButton {
+    min-width: 96px;
+  }
+}
+
+@media (max-width: 640px) {
+  .title {
+    font-size: 24px;
+  }
+
+  .actions {
+    flex-direction: column-reverse;
+  }
+
+  .actions > * {
+    width: 100%;
+  }
+}

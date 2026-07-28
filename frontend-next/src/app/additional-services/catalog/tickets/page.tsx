@@ -7,9 +7,13 @@ import { AirportSearchField } from '@/components/airport-search-field';
 import { AdditionalServicesContextHeader } from '@/components/additional-services-context-header';
 import {
   addTemporaryFlightTicketLine,
+  cancelTemporaryAdditionalServiceLineEdit,
   getSelectedAdditionalServicesParticipants,
+  getTemporaryAdditionalServiceLineBeingEdited,
+  replaceTemporaryAdditionalServiceLine,
   type FlightTripType,
 } from '@/lib/additional-services-temporary-store';
+import { useTemporaryAdditionalServiceEditCleanup } from '@/lib/use-temporary-additional-service-edit-cleanup';
 import type { Airport } from '@/shared/airports';
 import { formatBusinessDate } from '@/shared/regional';
 import styles from '../baggage/baggage-form.module.css';
@@ -46,20 +50,32 @@ const TRIP_TYPE_OPTIONS: Array<{
 ];
 
 export default function FlightTicketsAdditionalFormPage() {
+  useTemporaryAdditionalServiceEditCleanup();
   const router = useRouter();
   const [selectedParticipantIds] = useState(() =>
     getSelectedAdditionalServicesParticipants(),
   );
-  const [tripType, setTripType] = useState<FlightTripType | null>(null);
-  const [originAirport, setOriginAirport] = useState<Airport | null>(null);
-  const [destinationAirport, setDestinationAirport] =
-    useState<Airport | null>(null);
-  const [departureDate, setDepartureDate] = useState('');
-  const [returnDate, setReturnDate] = useState('');
-  const [quantity, setQuantity] = useState(() =>
-    String(Math.max(1, selectedParticipantIds.length)),
+  const [editingLine] = useState(() =>
+    getTemporaryAdditionalServiceLineBeingEdited('FLIGHT_TICKET'),
   );
-  const [notes, setNotes] = useState('');
+  const [tripType, setTripType] = useState<FlightTripType | null>(
+    () => editingLine?.tripType ?? null,
+  );
+  const [originAirport, setOriginAirport] = useState<Airport | null>(
+    () => editingLine?.originAirport ?? null,
+  );
+  const [destinationAirport, setDestinationAirport] =
+    useState<Airport | null>(() => editingLine?.destinationAirport ?? null);
+  const [departureDate, setDepartureDate] = useState(
+    () => editingLine?.departureDate ?? '',
+  );
+  const [returnDate, setReturnDate] = useState(
+    () => editingLine?.returnDate ?? '',
+  );
+  const [quantity, setQuantity] = useState(() =>
+    String(editingLine?.quantity ?? Math.max(1, selectedParticipantIds.length)),
+  );
+  const [notes, setNotes] = useState(() => editingLine?.notes ?? '');
   const [validationError, setValidationError] =
     useState<ValidationError | null>(null);
 
@@ -128,17 +144,28 @@ export default function FlightTicketsAdditionalFormPage() {
       return;
     }
 
+    const updatedLine = {
+      participantId: editingLine?.participantId ?? '',
+      serviceType: 'FLIGHT_TICKET' as const,
+      tripType,
+      originAirport,
+      destinationAirport,
+      departureDate,
+      returnDate: tripType === 'ROUND_TRIP' ? returnDate : null,
+      quantity: numericQuantity,
+      notes: notes.trim(),
+    };
+
+    if (editingLine) {
+      replaceTemporaryAdditionalServiceLine(editingLine, updatedLine);
+      router.push('/additional-services/order-summary');
+      return;
+    }
+
     selectedParticipantIds.forEach((participantId) => {
       addTemporaryFlightTicketLine({
+        ...updatedLine,
         participantId,
-        serviceType: 'FLIGHT_TICKET',
-        tripType,
-        originAirport,
-        destinationAirport,
-        departureDate,
-        returnDate: tripType === 'ROUND_TRIP' ? returnDate : null,
-        quantity: numericQuantity,
-        notes: notes.trim(),
       });
     });
 
@@ -312,13 +339,18 @@ export default function FlightTicketsAdditionalFormPage() {
 
               <div className={styles.actions}>
                 <Link
-                  href="/additional-services/catalog"
+                  href={
+                    editingLine
+                      ? '/additional-services/order-summary'
+                      : '/additional-services/catalog'
+                  }
+                  onClick={cancelTemporaryAdditionalServiceLineEdit}
                   className={`btn-secondary ${styles.actionLink}`}
                 >
                   Cancelar
                 </Link>
                 <button type="submit" className="btn-primary">
-                  Agregar a la orden
+                  {editingLine ? 'Guardar cambios' : 'Agregar a la orden'}
                 </button>
               </div>
             </form>

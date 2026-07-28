@@ -6,8 +6,12 @@ import { useRouter } from 'next/navigation';
 import { AdditionalServicesContextHeader } from '@/components/additional-services-context-header';
 import {
   addTemporaryEventTicketLine,
+  cancelTemporaryAdditionalServiceLineEdit,
   getSelectedAdditionalServicesParticipants,
+  getTemporaryAdditionalServiceLineBeingEdited,
+  replaceTemporaryAdditionalServiceLine,
 } from '@/lib/additional-services-temporary-store';
+import { useTemporaryAdditionalServiceEditCleanup } from '@/lib/use-temporary-additional-service-edit-cleanup';
 import { formatBusinessDate } from '@/shared/regional';
 import styles from '../baggage/baggage-form.module.css';
 
@@ -27,16 +31,24 @@ const inputStyle = {
 };
 
 export default function EventTicketsAdditionalFormPage() {
+  useTemporaryAdditionalServiceEditCleanup();
   const router = useRouter();
   const [selectedParticipantIds] = useState(() =>
     getSelectedAdditionalServicesParticipants(),
   );
-  const [eventName, setEventName] = useState('');
-  const [serviceDate, setServiceDate] = useState('');
-  const [quantity, setQuantity] = useState(() =>
-    String(Math.max(1, selectedParticipantIds.length)),
+  const [editingLine] = useState(() =>
+    getTemporaryAdditionalServiceLineBeingEdited('EVENT_TICKET'),
   );
-  const [notes, setNotes] = useState('');
+  const [eventName, setEventName] = useState(
+    () => editingLine?.eventName ?? '',
+  );
+  const [serviceDate, setServiceDate] = useState(
+    () => editingLine?.serviceDate ?? '',
+  );
+  const [quantity, setQuantity] = useState(() =>
+    String(editingLine?.quantity ?? Math.max(1, selectedParticipantIds.length)),
+  );
+  const [notes, setNotes] = useState(() => editingLine?.notes ?? '');
   const [validationError, setValidationError] =
     useState<ValidationError | null>(null);
 
@@ -72,14 +84,25 @@ export default function EventTicketsAdditionalFormPage() {
       return;
     }
 
+    const updatedLine = {
+      participantId: editingLine?.participantId ?? '',
+      serviceType: 'EVENT_TICKET' as const,
+      eventName: eventName.trim(),
+      serviceDate,
+      quantity: numericQuantity,
+      notes: notes.trim(),
+    };
+
+    if (editingLine) {
+      replaceTemporaryAdditionalServiceLine(editingLine, updatedLine);
+      router.push('/additional-services/order-summary');
+      return;
+    }
+
     selectedParticipantIds.forEach((participantId) => {
       addTemporaryEventTicketLine({
+        ...updatedLine,
         participantId,
-        serviceType: 'EVENT_TICKET',
-        eventName: eventName.trim(),
-        serviceDate,
-        quantity: numericQuantity,
-        notes: notes.trim(),
       });
     });
 
@@ -185,13 +208,18 @@ export default function EventTicketsAdditionalFormPage() {
 
               <div className={styles.actions}>
                 <Link
-                  href="/additional-services/catalog"
+                  href={
+                    editingLine
+                      ? '/additional-services/order-summary'
+                      : '/additional-services/catalog'
+                  }
+                  onClick={cancelTemporaryAdditionalServiceLineEdit}
                   className={`btn-secondary ${styles.actionLink}`}
                 >
                   Cancelar
                 </Link>
                 <button type="submit" className="btn-primary">
-                  Agregar a la orden
+                  {editingLine ? 'Guardar cambios' : 'Agregar a la orden'}
                 </button>
               </div>
             </form>

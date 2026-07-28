@@ -6,9 +6,13 @@ import { useRouter } from 'next/navigation';
 import { AdditionalServicesContextHeader } from '@/components/additional-services-context-header';
 import {
   addTemporaryBaggageLine,
+  cancelTemporaryAdditionalServiceLineEdit,
+  getTemporaryAdditionalServiceLineBeingEdited,
+  replaceTemporaryAdditionalServiceLine,
   type BaggageType,
   getSelectedAdditionalServicesParticipants,
 } from '@/lib/additional-services-temporary-store';
+import { useTemporaryAdditionalServiceEditCleanup } from '@/lib/use-temporary-additional-service-edit-cleanup';
 import styles from './baggage-form.module.css';
 
 const BAGGAGE_OPTIONS: Array<{ value: BaggageType; label: string }> = [
@@ -18,12 +22,18 @@ const BAGGAGE_OPTIONS: Array<{ value: BaggageType; label: string }> = [
 ];
 
 export default function BaggageAdditionalFormPage() {
+  useTemporaryAdditionalServiceEditCleanup();
   const router = useRouter();
   const [selectedParticipantIds] = useState(() =>
     getSelectedAdditionalServicesParticipants(),
   );
-  const [baggageTypes, setBaggageTypes] = useState<BaggageType[]>([]);
-  const [notes, setNotes] = useState('');
+  const [editingLine] = useState(() =>
+    getTemporaryAdditionalServiceLineBeingEdited('BAGGAGE'),
+  );
+  const [baggageTypes, setBaggageTypes] = useState<BaggageType[]>(
+    () => editingLine?.baggageTypes ?? [],
+  );
+  const [notes, setNotes] = useState(() => editingLine?.notes ?? '');
   const [validationError, setValidationError] = useState<string | null>(null);
 
   function toggleBaggageType(type: BaggageType) {
@@ -44,6 +54,17 @@ export default function BaggageAdditionalFormPage() {
 
     if (baggageTypes.length === 0) {
       setValidationError('Seleccione al menos un tipo de equipaje.');
+      return;
+    }
+
+    if (editingLine) {
+      replaceTemporaryAdditionalServiceLine(editingLine, {
+        participantId: editingLine.participantId,
+        serviceType: 'BAGGAGE',
+        baggageTypes: [...baggageTypes],
+        notes: notes.trim(),
+      });
+      router.push('/additional-services/order-summary');
       return;
     }
 
@@ -112,13 +133,18 @@ export default function BaggageAdditionalFormPage() {
 
               <div className={styles.actions}>
                 <Link
-                  href="/additional-services/catalog"
+                  href={
+                    editingLine
+                      ? '/additional-services/order-summary'
+                      : '/additional-services/catalog'
+                  }
+                  onClick={cancelTemporaryAdditionalServiceLineEdit}
                   className={`btn-secondary ${styles.actionLink}`}
                 >
                   Cancelar
                 </Link>
                 <button type="submit" className="btn-primary">
-                  Agregar a la orden
+                  {editingLine ? 'Guardar cambios' : 'Agregar a la orden'}
                 </button>
               </div>
             </form>

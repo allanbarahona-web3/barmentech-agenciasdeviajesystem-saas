@@ -70,9 +70,13 @@ export default function AdditionalServicesCatalogPage() {
             marginTop: '32px',
           }}
         >
-          <button type="button" className="btn-primary" disabled>
-            Review Order
-          </button>
+          <Link
+            href="/additional-services/order-summary"
+            className="btn-primary"
+            style={{ textDecoration: 'none' }}
+          >
+            Revisar orden
+          </Link>
         </div>
       </div>
     </main>

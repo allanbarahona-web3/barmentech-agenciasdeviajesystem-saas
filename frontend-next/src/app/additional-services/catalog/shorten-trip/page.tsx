@@ -6,8 +6,12 @@ import { useRouter } from 'next/navigation';
 import { AdditionalServicesContextHeader } from '@/components/additional-services-context-header';
 import {
   addTemporaryTripReductionLine,
+  cancelTemporaryAdditionalServiceLineEdit,
   getSelectedAdditionalServicesParticipants,
+  getTemporaryAdditionalServiceLineBeingEdited,
+  replaceTemporaryAdditionalServiceLine,
 } from '@/lib/additional-services-temporary-store';
+import { useTemporaryAdditionalServiceEditCleanup } from '@/lib/use-temporary-additional-service-edit-cleanup';
 import { formatBusinessDate } from '@/shared/regional';
 import styles from '../baggage/baggage-form.module.css';
 
@@ -27,15 +31,21 @@ const inputStyle = {
 };
 
 export default function TripReductionAdditionalFormPage() {
+  useTemporaryAdditionalServiceEditCleanup();
   const router = useRouter();
   const [selectedParticipantIds] = useState(() =>
     getSelectedAdditionalServicesParticipants(),
   );
-  const [newReturnDate, setNewReturnDate] = useState('');
-  const [quantity, setQuantity] = useState(() =>
-    String(Math.max(1, selectedParticipantIds.length)),
+  const [editingLine] = useState(() =>
+    getTemporaryAdditionalServiceLineBeingEdited('TRIP_REDUCTION'),
   );
-  const [notes, setNotes] = useState('');
+  const [newReturnDate, setNewReturnDate] = useState(
+    () => editingLine?.newReturnDate ?? '',
+  );
+  const [quantity, setQuantity] = useState(() =>
+    String(editingLine?.quantity ?? Math.max(1, selectedParticipantIds.length)),
+  );
+  const [notes, setNotes] = useState(() => editingLine?.notes ?? '');
   const [validationError, setValidationError] =
     useState<ValidationError | null>(null);
 
@@ -63,13 +73,24 @@ export default function TripReductionAdditionalFormPage() {
       return;
     }
 
+    const updatedLine = {
+      participantId: editingLine?.participantId ?? '',
+      serviceType: 'TRIP_REDUCTION' as const,
+      newReturnDate,
+      quantity: numericQuantity,
+      notes: notes.trim(),
+    };
+
+    if (editingLine) {
+      replaceTemporaryAdditionalServiceLine(editingLine, updatedLine);
+      router.push('/additional-services/order-summary');
+      return;
+    }
+
     selectedParticipantIds.forEach((participantId) => {
       addTemporaryTripReductionLine({
+        ...updatedLine,
         participantId,
-        serviceType: 'TRIP_REDUCTION',
-        newReturnDate,
-        quantity: numericQuantity,
-        notes: notes.trim(),
       });
     });
 
@@ -156,13 +177,18 @@ export default function TripReductionAdditionalFormPage() {
 
               <div className={styles.actions}>
                 <Link
-                  href="/additional-services/catalog"
+                  href={
+                    editingLine
+                      ? '/additional-services/order-summary'
+                      : '/additional-services/catalog'
+                  }
+                  onClick={cancelTemporaryAdditionalServiceLineEdit}
                   className={`btn-secondary ${styles.actionLink}`}
                 >
                   Cancelar
                 </Link>
                 <button type="submit" className="btn-primary">
-                  Agregar a la orden
+                  {editingLine ? 'Guardar cambios' : 'Agregar a la orden'}
                 </button>
               </div>
             </form>

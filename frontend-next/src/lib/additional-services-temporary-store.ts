@@ -140,6 +140,19 @@ export interface AdditionalServicesWorkflowContext {
   selectedParticipants: AdditionalServicesContextParticipant[];
 }
 
+export type TemporaryAdditionalServiceLine =
+  | TemporaryBaggageLine
+  | TemporaryLodgingLine
+  | TemporaryAccommodationTypeLine
+  | TemporaryInsuranceLine
+  | TemporaryTransportationLine
+  | TemporaryTourLine
+  | TemporaryFlightTicketLine
+  | TemporarySeatSelectionLine
+  | TemporaryEventTicketLine
+  | TemporaryTravelExtensionLine
+  | TemporaryTripReductionLine;
+
 let selectedParticipantIds: string[] = [];
 let workflowContext: AdditionalServicesWorkflowContext | null = null;
 const temporaryBaggageLines: TemporaryBaggageLine[] = [];
@@ -153,6 +166,21 @@ const temporarySeatSelectionLines: TemporarySeatSelectionLine[] = [];
 const temporaryEventTicketLines: TemporaryEventTicketLine[] = [];
 const temporaryTravelExtensionLines: TemporaryTravelExtensionLine[] = [];
 const temporaryTripReductionLines: TemporaryTripReductionLine[] = [];
+const temporaryLineIds = new WeakMap<TemporaryAdditionalServiceLine, string>();
+const temporaryAdditionalServiceLineOrder: TemporaryAdditionalServiceLine[] =
+  [];
+let temporaryLineSequence = 0;
+let temporaryLineBeingEdited: TemporaryAdditionalServiceLine | null = null;
+
+function registerTemporaryLine<T extends TemporaryAdditionalServiceLine>(
+  collection: T[],
+  line: T,
+) {
+  collection.push(line);
+  temporaryAdditionalServiceLineOrder.push(line);
+  temporaryLineSequence += 1;
+  temporaryLineIds.set(line, `temporary-line-${temporaryLineSequence}`);
+}
 
 export function setSelectedAdditionalServicesParticipants(
   participantIds: Iterable<string>,
@@ -193,7 +221,7 @@ export function getAdditionalServicesWorkflowContext() {
 }
 
 export function addTemporaryBaggageLine(line: TemporaryBaggageLine) {
-  temporaryBaggageLines.push(line);
+  registerTemporaryLine(temporaryBaggageLines, line);
 }
 
 export function getTemporaryBaggageLines() {
@@ -201,7 +229,7 @@ export function getTemporaryBaggageLines() {
 }
 
 export function addTemporaryLodgingLine(line: TemporaryLodgingLine) {
-  temporaryLodgingLines.push(line);
+  registerTemporaryLine(temporaryLodgingLines, line);
 }
 
 export function getTemporaryLodgingLines() {
@@ -211,7 +239,7 @@ export function getTemporaryLodgingLines() {
 export function addTemporaryAccommodationTypeLine(
   line: TemporaryAccommodationTypeLine,
 ) {
-  temporaryAccommodationTypeLines.push(line);
+  registerTemporaryLine(temporaryAccommodationTypeLines, line);
 }
 
 export function getTemporaryAccommodationTypeLines() {
@@ -219,7 +247,7 @@ export function getTemporaryAccommodationTypeLines() {
 }
 
 export function addTemporaryInsuranceLine(line: TemporaryInsuranceLine) {
-  temporaryInsuranceLines.push(line);
+  registerTemporaryLine(temporaryInsuranceLines, line);
 }
 
 export function getTemporaryInsuranceLines() {
@@ -229,7 +257,7 @@ export function getTemporaryInsuranceLines() {
 export function addTemporaryTransportationLine(
   line: TemporaryTransportationLine,
 ) {
-  temporaryTransportationLines.push(line);
+  registerTemporaryLine(temporaryTransportationLines, line);
 }
 
 export function getTemporaryTransportationLines() {
@@ -237,7 +265,7 @@ export function getTemporaryTransportationLines() {
 }
 
 export function addTemporaryTourLine(line: TemporaryTourLine) {
-  temporaryTourLines.push(line);
+  registerTemporaryLine(temporaryTourLines, line);
 }
 
 export function getTemporaryTourLines() {
@@ -247,7 +275,7 @@ export function getTemporaryTourLines() {
 export function addTemporaryFlightTicketLine(
   line: TemporaryFlightTicketLine,
 ) {
-  temporaryFlightTicketLines.push(line);
+  registerTemporaryLine(temporaryFlightTicketLines, line);
 }
 
 export function getTemporaryFlightTicketLines() {
@@ -257,7 +285,7 @@ export function getTemporaryFlightTicketLines() {
 export function addTemporarySeatSelectionLine(
   line: TemporarySeatSelectionLine,
 ) {
-  temporarySeatSelectionLines.push(line);
+  registerTemporaryLine(temporarySeatSelectionLines, line);
 }
 
 export function getTemporarySeatSelectionLines() {
@@ -267,7 +295,7 @@ export function getTemporarySeatSelectionLines() {
 export function addTemporaryEventTicketLine(
   line: TemporaryEventTicketLine,
 ) {
-  temporaryEventTicketLines.push(line);
+  registerTemporaryLine(temporaryEventTicketLines, line);
 }
 
 export function getTemporaryEventTicketLines() {
@@ -277,7 +305,7 @@ export function getTemporaryEventTicketLines() {
 export function addTemporaryTravelExtensionLine(
   line: TemporaryTravelExtensionLine,
 ) {
-  temporaryTravelExtensionLines.push(line);
+  registerTemporaryLine(temporaryTravelExtensionLines, line);
 }
 
 export function getTemporaryTravelExtensionLines() {
@@ -287,9 +315,102 @@ export function getTemporaryTravelExtensionLines() {
 export function addTemporaryTripReductionLine(
   line: TemporaryTripReductionLine,
 ) {
-  temporaryTripReductionLines.push(line);
+  registerTemporaryLine(temporaryTripReductionLines, line);
 }
 
 export function getTemporaryTripReductionLines() {
   return [...temporaryTripReductionLines];
+}
+
+function getTemporaryLineCollections(): TemporaryAdditionalServiceLine[][] {
+  return [
+    temporaryBaggageLines,
+    temporaryLodgingLines,
+    temporaryAccommodationTypeLines,
+    temporaryInsuranceLines,
+    temporaryTransportationLines,
+    temporaryTourLines,
+    temporaryFlightTicketLines,
+    temporarySeatSelectionLines,
+    temporaryEventTicketLines,
+    temporaryTravelExtensionLines,
+    temporaryTripReductionLines,
+  ];
+}
+
+export function getTemporaryAdditionalServiceLines() {
+  return [...temporaryAdditionalServiceLineOrder];
+}
+
+export function getTemporaryAdditionalServiceLineId(
+  line: TemporaryAdditionalServiceLine,
+) {
+  let id = temporaryLineIds.get(line);
+  if (!id) {
+    temporaryLineSequence += 1;
+    id = `temporary-line-${temporaryLineSequence}`;
+    temporaryLineIds.set(line, id);
+  }
+  return id;
+}
+
+export function removeTemporaryAdditionalServiceLine(
+  line: TemporaryAdditionalServiceLine,
+) {
+  for (const collection of getTemporaryLineCollections()) {
+    const index = collection.indexOf(line);
+    if (index >= 0) {
+      collection.splice(index, 1);
+      const orderIndex = temporaryAdditionalServiceLineOrder.indexOf(line);
+      if (orderIndex >= 0) {
+        temporaryAdditionalServiceLineOrder.splice(orderIndex, 1);
+      }
+      if (temporaryLineBeingEdited === line) {
+        temporaryLineBeingEdited = null;
+      }
+      return;
+    }
+  }
+}
+
+export function startEditingTemporaryAdditionalServiceLine(
+  line: TemporaryAdditionalServiceLine,
+) {
+  temporaryLineBeingEdited = line;
+}
+
+export function getTemporaryAdditionalServiceLineBeingEdited<
+  T extends TemporaryAdditionalServiceLine['serviceType'],
+>(serviceType: T): Extract<TemporaryAdditionalServiceLine, { serviceType: T }> | null {
+  return temporaryLineBeingEdited?.serviceType === serviceType
+    ? (temporaryLineBeingEdited as Extract<
+        TemporaryAdditionalServiceLine,
+        { serviceType: T }
+      >)
+    : null;
+}
+
+export function replaceTemporaryAdditionalServiceLine(
+  currentLine: TemporaryAdditionalServiceLine,
+  updatedLine: TemporaryAdditionalServiceLine,
+) {
+  for (const collection of getTemporaryLineCollections()) {
+    const index = collection.indexOf(currentLine);
+    if (index >= 0) {
+      collection[index] = updatedLine;
+      const orderIndex =
+        temporaryAdditionalServiceLineOrder.indexOf(currentLine);
+      if (orderIndex >= 0) {
+        temporaryAdditionalServiceLineOrder[orderIndex] = updatedLine;
+      }
+      const id = getTemporaryAdditionalServiceLineId(currentLine);
+      temporaryLineIds.set(updatedLine, id);
+      temporaryLineBeingEdited = null;
+      return;
+    }
+  }
+}
+
+export function cancelTemporaryAdditionalServiceLineEdit() {
+  temporaryLineBeingEdited = null;
 }

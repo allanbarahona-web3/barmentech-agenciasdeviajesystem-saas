@@ -6,9 +6,13 @@ import { useRouter } from 'next/navigation';
 import { AdditionalServicesContextHeader } from '@/components/additional-services-context-header';
 import {
   addTemporaryAccommodationTypeLine,
+  cancelTemporaryAdditionalServiceLineEdit,
   type AccommodationType,
   getSelectedAdditionalServicesParticipants,
+  getTemporaryAdditionalServiceLineBeingEdited,
+  replaceTemporaryAdditionalServiceLine,
 } from '@/lib/additional-services-temporary-store';
+import { useTemporaryAdditionalServiceEditCleanup } from '@/lib/use-temporary-additional-service-edit-cleanup';
 import styles from '../baggage/baggage-form.module.css';
 
 const ACCOMMODATION_TYPE_OPTIONS: Array<{
@@ -22,13 +26,19 @@ const ACCOMMODATION_TYPE_OPTIONS: Array<{
 ];
 
 export default function AccommodationTypeAdditionalFormPage() {
+  useTemporaryAdditionalServiceEditCleanup();
   const router = useRouter();
   const [selectedParticipantIds] = useState(() =>
     getSelectedAdditionalServicesParticipants(),
   );
+  const [editingLine] = useState(() =>
+    getTemporaryAdditionalServiceLineBeingEdited('ACCOMMODATION_TYPE'),
+  );
   const [accommodationType, setAccommodationType] =
-    useState<AccommodationType | null>(null);
-  const [notes, setNotes] = useState('');
+    useState<AccommodationType | null>(
+      () => editingLine?.accommodationType ?? null,
+    );
+  const [notes, setNotes] = useState(() => editingLine?.notes ?? '');
   const [validationError, setValidationError] = useState<string | null>(null);
 
   function submitForm(event: FormEvent<HTMLFormElement>) {
@@ -40,6 +50,17 @@ export default function AccommodationTypeAdditionalFormPage() {
 
     if (!accommodationType) {
       setValidationError('Seleccione un tipo de acomodación.');
+      return;
+    }
+
+    if (editingLine) {
+      replaceTemporaryAdditionalServiceLine(editingLine, {
+        participantId: editingLine.participantId,
+        serviceType: 'ACCOMMODATION_TYPE',
+        accommodationType,
+        notes: notes.trim(),
+      });
+      router.push('/additional-services/order-summary');
       return;
     }
 
@@ -116,13 +137,18 @@ export default function AccommodationTypeAdditionalFormPage() {
 
               <div className={styles.actions}>
                 <Link
-                  href="/additional-services/catalog"
+                  href={
+                    editingLine
+                      ? '/additional-services/order-summary'
+                      : '/additional-services/catalog'
+                  }
+                  onClick={cancelTemporaryAdditionalServiceLineEdit}
                   className={`btn-secondary ${styles.actionLink}`}
                 >
                   Cancelar
                 </Link>
                 <button type="submit" className="btn-primary">
-                  Agregar a la orden
+                  {editingLine ? 'Guardar cambios' : 'Agregar a la orden'}
                 </button>
               </div>
             </form>

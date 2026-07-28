@@ -6,9 +6,13 @@ import { useRouter } from 'next/navigation';
 import { AdditionalServicesContextHeader } from '@/components/additional-services-context-header';
 import {
   addTemporaryTransportationLine,
+  cancelTemporaryAdditionalServiceLineEdit,
   getSelectedAdditionalServicesParticipants,
+  getTemporaryAdditionalServiceLineBeingEdited,
+  replaceTemporaryAdditionalServiceLine,
   type TransportationType,
 } from '@/lib/additional-services-temporary-store';
+import { useTemporaryAdditionalServiceEditCleanup } from '@/lib/use-temporary-additional-service-edit-cleanup';
 import { formatBusinessDate } from '@/shared/regional';
 import styles from '../baggage/baggage-form.module.css';
 
@@ -31,14 +35,22 @@ type ValidationError = {
 };
 
 export default function TransportationAdditionalFormPage() {
+  useTemporaryAdditionalServiceEditCleanup();
   const router = useRouter();
   const [selectedParticipantIds] = useState(() =>
     getSelectedAdditionalServicesParticipants(),
   );
+  const [editingLine] = useState(() =>
+    getTemporaryAdditionalServiceLineBeingEdited('TRANSPORTATION'),
+  );
   const [transportationType, setTransportationType] =
-    useState<TransportationType | null>(null);
-  const [serviceDate, setServiceDate] = useState('');
-  const [notes, setNotes] = useState('');
+    useState<TransportationType | null>(
+      () => editingLine?.transportationType ?? null,
+    );
+  const [serviceDate, setServiceDate] = useState(
+    () => editingLine?.serviceDate ?? '',
+  );
+  const [notes, setNotes] = useState(() => editingLine?.notes ?? '');
   const [validationError, setValidationError] =
     useState<ValidationError | null>(null);
 
@@ -62,6 +74,18 @@ export default function TransportationAdditionalFormPage() {
         field: 'serviceDate',
         message: 'Seleccione la fecha del servicio.',
       });
+      return;
+    }
+
+    if (editingLine) {
+      replaceTemporaryAdditionalServiceLine(editingLine, {
+        participantId: editingLine.participantId,
+        serviceType: 'TRANSPORTATION',
+        transportationType,
+        serviceDate,
+        notes: notes.trim(),
+      });
+      router.push('/additional-services/order-summary');
       return;
     }
 
@@ -170,13 +194,18 @@ export default function TransportationAdditionalFormPage() {
 
               <div className={styles.actions}>
                 <Link
-                  href="/additional-services/catalog"
+                  href={
+                    editingLine
+                      ? '/additional-services/order-summary'
+                      : '/additional-services/catalog'
+                  }
+                  onClick={cancelTemporaryAdditionalServiceLineEdit}
                   className={`btn-secondary ${styles.actionLink}`}
                 >
                   Cancelar
                 </Link>
                 <button type="submit" className="btn-primary">
-                  Agregar a la orden
+                  {editingLine ? 'Guardar cambios' : 'Agregar a la orden'}
                 </button>
               </div>
             </form>

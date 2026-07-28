@@ -6,9 +6,13 @@ import { useRouter } from 'next/navigation';
 import { AdditionalServicesContextHeader } from '@/components/additional-services-context-header';
 import {
   addTemporaryLodgingLine,
+  cancelTemporaryAdditionalServiceLineEdit,
   getSelectedAdditionalServicesParticipants,
+  getTemporaryAdditionalServiceLineBeingEdited,
+  replaceTemporaryAdditionalServiceLine,
   type LodgingType,
 } from '@/lib/additional-services-temporary-store';
+import { useTemporaryAdditionalServiceEditCleanup } from '@/lib/use-temporary-additional-service-edit-cleanup';
 import styles from '../baggage/baggage-form.module.css';
 
 const LODGING_OPTIONS: Array<{ value: LodgingType; label: string }> = [
@@ -19,12 +23,18 @@ const LODGING_OPTIONS: Array<{ value: LodgingType; label: string }> = [
 ];
 
 export default function LodgingAdditionalFormPage() {
+  useTemporaryAdditionalServiceEditCleanup();
   const router = useRouter();
   const [selectedParticipantIds] = useState(() =>
     getSelectedAdditionalServicesParticipants(),
   );
-  const [lodgingType, setLodgingType] = useState<LodgingType | null>(null);
-  const [notes, setNotes] = useState('');
+  const [editingLine] = useState(() =>
+    getTemporaryAdditionalServiceLineBeingEdited('LODGING'),
+  );
+  const [lodgingType, setLodgingType] = useState<LodgingType | null>(
+    () => editingLine?.lodgingType ?? null,
+  );
+  const [notes, setNotes] = useState(() => editingLine?.notes ?? '');
   const [validationError, setValidationError] = useState<string | null>(null);
 
   function submitForm(event: FormEvent<HTMLFormElement>) {
@@ -36,6 +46,17 @@ export default function LodgingAdditionalFormPage() {
 
     if (!lodgingType) {
       setValidationError('Seleccione un tipo de hospedaje.');
+      return;
+    }
+
+    if (editingLine) {
+      replaceTemporaryAdditionalServiceLine(editingLine, {
+        participantId: editingLine.participantId,
+        serviceType: 'LODGING',
+        lodgingType,
+        notes: notes.trim(),
+      });
+      router.push('/additional-services/order-summary');
       return;
     }
 
@@ -110,13 +131,18 @@ export default function LodgingAdditionalFormPage() {
 
               <div className={styles.actions}>
                 <Link
-                  href="/additional-services/catalog"
+                  href={
+                    editingLine
+                      ? '/additional-services/order-summary'
+                      : '/additional-services/catalog'
+                  }
+                  onClick={cancelTemporaryAdditionalServiceLineEdit}
                   className={`btn-secondary ${styles.actionLink}`}
                 >
                   Cancel
                 </Link>
                 <button type="submit" className="btn-primary">
-                  Add to Order
+                  {editingLine ? 'Guardar cambios' : 'Add to Order'}
                 </button>
               </div>
             </form>

@@ -6,9 +6,13 @@ import { useRouter } from 'next/navigation';
 import { AdditionalServicesContextHeader } from '@/components/additional-services-context-header';
 import {
   addTemporaryInsuranceLine,
+  cancelTemporaryAdditionalServiceLineEdit,
   getSelectedAdditionalServicesParticipants,
+  getTemporaryAdditionalServiceLineBeingEdited,
+  replaceTemporaryAdditionalServiceLine,
   type InsuranceCoverage,
 } from '@/lib/additional-services-temporary-store';
+import { useTemporaryAdditionalServiceEditCleanup } from '@/lib/use-temporary-additional-service-edit-cleanup';
 import sharedStyles from '../baggage/baggage-form.module.css';
 import styles from './insurance-form.module.css';
 
@@ -33,14 +37,24 @@ function formatCoverageAmount(value: string) {
 }
 
 export default function InsuranceAdditionalFormPage() {
+  useTemporaryAdditionalServiceEditCleanup();
   const router = useRouter();
   const [selectedParticipantIds] = useState(() =>
     getSelectedAdditionalServicesParticipants(),
   );
-  const [coverage, setCoverage] = useState<InsuranceCoverage | null>(null);
-  const [customCoverageDigits, setCustomCoverageDigits] = useState('');
+  const [editingLine] = useState(() =>
+    getTemporaryAdditionalServiceLineBeingEdited('INSURANCE'),
+  );
+  const [coverage, setCoverage] = useState<InsuranceCoverage | null>(
+    () => editingLine?.coverage ?? null,
+  );
+  const [customCoverageDigits, setCustomCoverageDigits] = useState(() =>
+    editingLine?.customCoverageAmount
+      ? String(editingLine.customCoverageAmount)
+      : '',
+  );
   const [editingCustomCoverage, setEditingCustomCoverage] = useState(false);
-  const [notes, setNotes] = useState('');
+  const [notes, setNotes] = useState(() => editingLine?.notes ?? '');
   const [validationError, setValidationError] = useState<string | null>(null);
 
   function selectCoverage(value: InsuranceCoverage) {
@@ -75,6 +89,19 @@ export default function InsuranceAdditionalFormPage() {
 
     const customCoverageAmount =
       coverage === 'OTHER' ? Number(customCoverageDigits) : null;
+
+    if (editingLine) {
+      replaceTemporaryAdditionalServiceLine(editingLine, {
+        participantId: editingLine.participantId,
+        serviceType: 'INSURANCE',
+        coverage,
+        customCoverageAmount,
+        currency: TENANT_CURRENCY,
+        notes: notes.trim(),
+      });
+      router.push('/additional-services/order-summary');
+      return;
+    }
 
     selectedParticipantIds.forEach((participantId) => {
       addTemporaryInsuranceLine({
@@ -193,13 +220,18 @@ export default function InsuranceAdditionalFormPage() {
 
               <div className={sharedStyles.actions}>
                 <Link
-                  href="/additional-services/catalog"
+                  href={
+                    editingLine
+                      ? '/additional-services/order-summary'
+                      : '/additional-services/catalog'
+                  }
+                  onClick={cancelTemporaryAdditionalServiceLineEdit}
                   className={`btn-secondary ${sharedStyles.actionLink}`}
                 >
                   Cancelar
                 </Link>
                 <button type="submit" className="btn-primary">
-                  Agregar a la orden
+                  {editingLine ? 'Guardar cambios' : 'Agregar a la orden'}
                 </button>
               </div>
             </form>

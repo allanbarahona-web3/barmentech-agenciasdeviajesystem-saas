@@ -6,9 +6,13 @@ import { useRouter } from 'next/navigation';
 import { AdditionalServicesContextHeader } from '@/components/additional-services-context-header';
 import {
   addTemporarySeatSelectionLine,
+  cancelTemporaryAdditionalServiceLineEdit,
   getSelectedAdditionalServicesParticipants,
+  getTemporaryAdditionalServiceLineBeingEdited,
+  replaceTemporaryAdditionalServiceLine,
   type SeatPreference,
 } from '@/lib/additional-services-temporary-store';
+import { useTemporaryAdditionalServiceEditCleanup } from '@/lib/use-temporary-additional-service-edit-cleanup';
 import styles from '../baggage/baggage-form.module.css';
 
 const SEAT_PREFERENCE_OPTIONS: Array<{
@@ -41,18 +45,24 @@ const inputStyle = {
 };
 
 export default function SeatSelectionAdditionalFormPage() {
+  useTemporaryAdditionalServiceEditCleanup();
   const router = useRouter();
   const [selectedParticipantIds] = useState(() =>
     getSelectedAdditionalServicesParticipants(),
   );
-  const [seatPreference, setSeatPreference] =
-    useState<SeatPreference | null>(null);
-  const [otherPreferenceDescription, setOtherPreferenceDescription] =
-    useState('');
-  const [quantity, setQuantity] = useState(() =>
-    String(Math.max(1, selectedParticipantIds.length)),
+  const [editingLine] = useState(() =>
+    getTemporaryAdditionalServiceLineBeingEdited('SEAT_SELECTION'),
   );
-  const [notes, setNotes] = useState('');
+  const [seatPreference, setSeatPreference] =
+    useState<SeatPreference | null>(
+      () => editingLine?.seatPreference ?? null,
+    );
+  const [otherPreferenceDescription, setOtherPreferenceDescription] =
+    useState(() => editingLine?.otherPreferenceDescription ?? '');
+  const [quantity, setQuantity] = useState(() =>
+    String(editingLine?.quantity ?? Math.max(1, selectedParticipantIds.length)),
+  );
+  const [notes, setNotes] = useState(() => editingLine?.notes ?? '');
   const [validationError, setValidationError] =
     useState<ValidationError | null>(null);
 
@@ -91,17 +101,28 @@ export default function SeatSelectionAdditionalFormPage() {
       return;
     }
 
+    const updatedLine = {
+      participantId: editingLine?.participantId ?? '',
+      serviceType: 'SEAT_SELECTION' as const,
+      seatPreference,
+      otherPreferenceDescription:
+        seatPreference === 'OTHER'
+          ? otherPreferenceDescription.trim()
+          : null,
+      quantity: numericQuantity,
+      notes: notes.trim(),
+    };
+
+    if (editingLine) {
+      replaceTemporaryAdditionalServiceLine(editingLine, updatedLine);
+      router.push('/additional-services/order-summary');
+      return;
+    }
+
     selectedParticipantIds.forEach((participantId) => {
       addTemporarySeatSelectionLine({
+        ...updatedLine,
         participantId,
-        serviceType: 'SEAT_SELECTION',
-        seatPreference,
-        otherPreferenceDescription:
-          seatPreference === 'OTHER'
-            ? otherPreferenceDescription.trim()
-            : null,
-        quantity: numericQuantity,
-        notes: notes.trim(),
       });
     });
 
@@ -219,13 +240,18 @@ export default function SeatSelectionAdditionalFormPage() {
 
               <div className={styles.actions}>
                 <Link
-                  href="/additional-services/catalog"
+                  href={
+                    editingLine
+                      ? '/additional-services/order-summary'
+                      : '/additional-services/catalog'
+                  }
+                  onClick={cancelTemporaryAdditionalServiceLineEdit}
                   className={`btn-secondary ${styles.actionLink}`}
                 >
                   Cancelar
                 </Link>
                 <button type="submit" className="btn-primary">
-                  Agregar a la orden
+                  {editingLine ? 'Guardar cambios' : 'Agregar a la orden'}
                 </button>
               </div>
             </form>
