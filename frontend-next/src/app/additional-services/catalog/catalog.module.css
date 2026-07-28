@@ -57,6 +57,18 @@
   outline-offset: 3px;
 }
 
+.disabledCard {
+  opacity: 0.55;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.disabledCard:hover {
+  border-color: rgba(15, 48, 101, 0.13);
+  box-shadow: none;
+  transform: none;
+}
+
 .icon {
   width: 42px;
   height: 42px;

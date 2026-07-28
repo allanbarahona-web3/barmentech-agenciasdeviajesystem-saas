@@ -32,6 +32,24 @@ export default function AdditionalServicesCatalogPage() {
         <div className={styles.grid}>
           {ADDITIONAL_SERVICE_CATEGORIES.map((category) => {
             const Icon = category.icon;
+            const cardContent = (
+              <>
+                <Icon className={styles.icon} aria-hidden="true" />
+                <span className={styles.cardTitle}>{category.title}</span>
+              </>
+            );
+
+            if (category.disabled) {
+              return (
+                <div
+                  key={category.slug}
+                  className={`${styles.card} ${styles.disabledCard}`}
+                  aria-disabled="true"
+                >
+                  {cardContent}
+                </div>
+              );
+            }
 
             return (
               <Link
@@ -39,11 +57,22 @@ export default function AdditionalServicesCatalogPage() {
                 href={`/additional-services/catalog/${category.slug}`}
                 className={styles.card}
               >
-                <Icon className={styles.icon} aria-hidden="true" />
-                <span className={styles.cardTitle}>{category.title}</span>
+                {cardContent}
               </Link>
             );
           })}
+        </div>
+
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'center',
+            marginTop: '32px',
+          }}
+        >
+          <button type="button" className="btn-primary" disabled>
+            Review Order
+          </button>
         </div>
       </div>
     </main>

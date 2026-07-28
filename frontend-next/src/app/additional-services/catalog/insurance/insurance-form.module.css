@@ -1,0 +1,32 @@
+.currencyField {
+  display: flex;
+  align-items: stretch;
+}
+
+.currencyCode {
+  padding: 12px 14px;
+  border: 1px solid #cbd5e1;
+  border-right: 0;
+  border-radius: 10px 0 0 10px;
+  background: #f1f5f9;
+  color: #334155;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+}
+
+.amountInput {
+  width: 100%;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid #cbd5e1;
+  border-radius: 0 10px 10px 0;
+  background: #fff;
+  color: #172554;
+  font: inherit;
+}
+
+.amountInput:focus {
+  outline: 2px solid rgba(79, 70, 229, 0.25);
+  border-color: #4f46e5;
+}
