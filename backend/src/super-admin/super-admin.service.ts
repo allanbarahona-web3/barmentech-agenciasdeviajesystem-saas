@@ -9,12 +9,16 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateTenantDto, UpdateTenantStatusDto, TenantStatusAction, UpdateTenantDto } from './dto';
 import { hash } from 'bcryptjs';
 import { UserRole } from '@prisma/client';
+import { CatalogBootstrapService } from '../additional-services';
 
 @Injectable()
 export class SuperAdminService {
   private readonly logger = new Logger(SuperAdminService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly catalogBootstrapService: CatalogBootstrapService,
+  ) {}
 
   /**
    * 📋 Listar todos los tenants de la plataforma
@@ -230,6 +234,8 @@ export class SuperAdminService {
 
         return { tenant, admin };
       });
+
+      await this.catalogBootstrapService.bootstrapTenant(result.tenant.id);
 
       this.logger.log(
         `✅ Tenant "${result.tenant.name}" creado exitosamente con admin ${result.admin.email}`,

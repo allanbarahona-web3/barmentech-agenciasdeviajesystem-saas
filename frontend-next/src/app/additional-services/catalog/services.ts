@@ -9,6 +9,7 @@ import {
   ShieldCheck,
   Ticket,
   Tickets,
+  Stamp,
   type LucideIcon,
   Map,
 } from 'lucide-react';
@@ -44,6 +45,11 @@ export const ADDITIONAL_SERVICE_CATEGORIES: AdditionalServiceCategory[] = [
   },
   { slug: 'extend-trip', title: 'Extender viaje', icon: CalendarPlus },
   { slug: 'shorten-trip', title: 'Acortar viaje', icon: CalendarMinus },
+  {
+    slug: 'visa-assistance',
+    title: 'Asistencia para Visas',
+    icon: Stamp,
+  },
 ];
 
 export function getAdditionalServiceCategory(slug: string) {

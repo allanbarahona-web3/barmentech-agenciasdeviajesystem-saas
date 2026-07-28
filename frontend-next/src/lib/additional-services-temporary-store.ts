@@ -128,6 +128,23 @@ export interface TemporaryTripReductionLine {
   notes: string;
 }
 
+export type VisaType =
+  | 'TOURISM'
+  | 'BUSINESS'
+  | 'STUDENT'
+  | 'WORK'
+  | 'TRANSIT'
+  | 'OTHER';
+
+export interface TemporaryVisaAssistanceLine {
+  participantId: string;
+  serviceType: 'VISA_ASSISTANCE';
+  destinationCountry: string;
+  visaType: VisaType;
+  expectedTravelDate: string | null;
+  notes: string;
+}
+
 export interface AdditionalServicesContextParticipant {
   participantId: string;
   fullName: string;
@@ -151,7 +168,8 @@ export type TemporaryAdditionalServiceLine =
   | TemporarySeatSelectionLine
   | TemporaryEventTicketLine
   | TemporaryTravelExtensionLine
-  | TemporaryTripReductionLine;
+  | TemporaryTripReductionLine
+  | TemporaryVisaAssistanceLine;
 
 export type TemporaryLineCurrency = 'USD' | 'CRC';
 
@@ -175,6 +193,7 @@ const temporarySeatSelectionLines: TemporarySeatSelectionLine[] = [];
 const temporaryEventTicketLines: TemporaryEventTicketLine[] = [];
 const temporaryTravelExtensionLines: TemporaryTravelExtensionLine[] = [];
 const temporaryTripReductionLines: TemporaryTripReductionLine[] = [];
+const temporaryVisaAssistanceLines: TemporaryVisaAssistanceLine[] = [];
 const temporaryLineIds = new WeakMap<TemporaryAdditionalServiceLine, string>();
 const temporaryLineSourcing = new WeakMap<
   TemporaryAdditionalServiceLine,
@@ -336,6 +355,16 @@ export function getTemporaryTripReductionLines() {
   return [...temporaryTripReductionLines];
 }
 
+export function addTemporaryVisaAssistanceLine(
+  line: TemporaryVisaAssistanceLine,
+) {
+  registerTemporaryLine(temporaryVisaAssistanceLines, line);
+}
+
+export function getTemporaryVisaAssistanceLines() {
+  return [...temporaryVisaAssistanceLines];
+}
+
 function getTemporaryLineCollections(): TemporaryAdditionalServiceLine[][] {
   return [
     temporaryBaggageLines,
@@ -349,6 +378,7 @@ function getTemporaryLineCollections(): TemporaryAdditionalServiceLine[][] {
     temporaryEventTicketLines,
     temporaryTravelExtensionLines,
     temporaryTripReductionLines,
+    temporaryVisaAssistanceLines,
   ];
 }
 

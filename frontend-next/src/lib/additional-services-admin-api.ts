@@ -1,0 +1,276 @@
+import { authenticatedFetch, getStoredToken } from "@/lib/auth-api";
+import { resolveApiBase } from "@/lib/runtime-config";
+
+export type AdditionalServiceMarginType = "FIXED" | "PERCENTAGE";
+
+export interface AdditionalServiceCatalogPricingConfiguration {
+  id: string;
+  marginType: AdditionalServiceMarginType;
+  marginValue: string;
+  taxPercentage: string;
+  isActive: boolean;
+}
+
+export interface AdditionalServiceAdminCatalogItem {
+  id: string;
+  code: string;
+  name: string;
+  isActive: boolean;
+  pricingConfiguration: AdditionalServiceCatalogPricingConfiguration | null;
+}
+
+export interface CreateAdditionalServicePricingConfigurationInput {
+  additionalServiceCatalogId: string;
+  marginType: AdditionalServiceMarginType;
+  marginValue: number;
+  taxPercentage: number;
+  isActive: boolean;
+}
+
+export interface UpdateAdditionalServicePricingConfigurationInput {
+  marginType: AdditionalServiceMarginType;
+  marginValue: number;
+  taxPercentage: number;
+}
+
+export interface AdditionalServiceSupplier {
+  id: string;
+  tenantId: string;
+  name: string;
+  website: string | null;
+  supplierType: string | null;
+  supplierCategory: string | null;
+  notes: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateAdditionalServiceSupplierInput {
+  name: string;
+  website?: string | null;
+  supplierType?: string;
+  supplierCategory?: string;
+  notes?: string;
+  isActive?: boolean;
+}
+
+export type UpdateAdditionalServiceSupplierInput =
+  Partial<CreateAdditionalServiceSupplierInput>;
+
+const readErrorMessage = async (
+  response: Response,
+  fallback: string,
+): Promise<string> => {
+  const payload = await response.json().catch(() => null);
+  const message =
+    payload && typeof payload === "object"
+      ? (payload as { message?: unknown }).message
+      : undefined;
+
+  if (Array.isArray(message)) {
+    return message.join(", ");
+  }
+
+  return typeof message === "string" && message.trim()
+    ? message
+    : fallback;
+};
+
+export async function getAdditionalServiceAdminCatalog(): Promise<
+  AdditionalServiceAdminCatalogItem[]
+> {
+  const apiBase = resolveApiBase();
+  const token = getStoredToken();
+
+  if (!apiBase) {
+    throw new Error("No hay API configurada.");
+  }
+
+  const response = await authenticatedFetch(
+    `${apiBase}/additional-services/catalog`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      await readErrorMessage(
+        response,
+        "No se pudo cargar la configuración de precios.",
+      ),
+    );
+  }
+
+  return response.json();
+}
+
+async function sendPricingConfigurationRequest(
+  path: string,
+  method: "POST" | "PATCH",
+  body: object,
+): Promise<AdditionalServiceCatalogPricingConfiguration> {
+  const apiBase = resolveApiBase();
+  const token = getStoredToken();
+
+  if (!apiBase) {
+    throw new Error("No hay API configurada.");
+  }
+
+  const response = await authenticatedFetch(`${apiBase}${path}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      await readErrorMessage(
+        response,
+        "No se pudo guardar la configuración de precios.",
+      ),
+    );
+  }
+
+  return response.json();
+}
+
+export function createAdditionalServicePricingConfiguration(
+  input: CreateAdditionalServicePricingConfigurationInput,
+): Promise<AdditionalServiceCatalogPricingConfiguration> {
+  return sendPricingConfigurationRequest(
+    "/additional-services/pricing-configurations",
+    "POST",
+    input,
+  );
+}
+
+export function updateAdditionalServicePricingConfiguration(
+  configurationId: string,
+  input: UpdateAdditionalServicePricingConfigurationInput,
+): Promise<AdditionalServiceCatalogPricingConfiguration> {
+  return sendPricingConfigurationRequest(
+    `/additional-services/pricing-configurations/${encodeURIComponent(
+      configurationId,
+    )}`,
+    "PATCH",
+    input,
+  );
+}
+
+export function updateAdditionalServicePricingConfigurationStatus(
+  configurationId: string,
+  isActive: boolean,
+): Promise<AdditionalServiceCatalogPricingConfiguration> {
+  return sendPricingConfigurationRequest(
+    `/additional-services/pricing-configurations/${encodeURIComponent(
+      configurationId,
+    )}/status`,
+    "PATCH",
+    { isActive },
+  );
+}
+
+export async function getAdditionalServiceSuppliers(): Promise<
+  AdditionalServiceSupplier[]
+> {
+  const apiBase = resolveApiBase();
+  const token = getStoredToken();
+
+  if (!apiBase) {
+    throw new Error("No hay API configurada.");
+  }
+
+  const response = await authenticatedFetch(
+    `${apiBase}/additional-services/suppliers`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      await readErrorMessage(
+        response,
+        "No se pudieron cargar los proveedores.",
+      ),
+    );
+  }
+
+  return response.json();
+}
+
+async function sendSupplierRequest(
+  path: string,
+  method: "POST" | "PATCH" | "DELETE",
+  body?: object,
+): Promise<AdditionalServiceSupplier> {
+  const apiBase = resolveApiBase();
+  const token = getStoredToken();
+
+  if (!apiBase) {
+    throw new Error("No hay API configurada.");
+  }
+
+  const response = await authenticatedFetch(`${apiBase}${path}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      await readErrorMessage(
+        response,
+        "No se pudo completar la operación del proveedor.",
+      ),
+    );
+  }
+
+  return response.json();
+}
+
+export function createAdditionalServiceSupplier(
+  input: CreateAdditionalServiceSupplierInput,
+): Promise<AdditionalServiceSupplier> {
+  return sendSupplierRequest(
+    "/additional-services/suppliers",
+    "POST",
+    input,
+  );
+}
+
+export function updateAdditionalServiceSupplier(
+  supplierId: string,
+  input: UpdateAdditionalServiceSupplierInput,
+): Promise<AdditionalServiceSupplier> {
+  return sendSupplierRequest(
+    `/additional-services/suppliers/${encodeURIComponent(supplierId)}`,
+    "PATCH",
+    input,
+  );
+}
+
+export function deleteAdditionalServiceSupplier(
+  supplierId: string,
+): Promise<AdditionalServiceSupplier> {
+  return sendSupplierRequest(
+    `/additional-services/suppliers/${encodeURIComponent(supplierId)}`,
+    "DELETE",
+  );
+}

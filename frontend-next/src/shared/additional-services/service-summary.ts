@@ -2,6 +2,7 @@ import type {
   TemporaryAdditionalServiceLine,
 } from '@/lib/additional-services-temporary-store';
 import { formatBusinessDate } from '@/shared/regional';
+import { getSpanishCountryName } from '@/shared/countries';
 
 const SERVICE_NAMES: Record<
   TemporaryAdditionalServiceLine['serviceType'],
@@ -18,6 +19,7 @@ const SERVICE_NAMES: Record<
   EVENT_TICKET: 'Boleto para evento',
   TRAVEL_EXTENSION: 'Extensión de viaje',
   TRIP_REDUCTION: 'Reducción de viaje',
+  VISA_ASSISTANCE: 'Asistencia para Visas',
 };
 
 const SERVICE_ROUTES: Record<
@@ -35,6 +37,7 @@ const SERVICE_ROUTES: Record<
   EVENT_TICKET: 'event-tickets',
   TRAVEL_EXTENSION: 'extend-trip',
   TRIP_REDUCTION: 'shorten-trip',
+  VISA_ASSISTANCE: 'visa-assistance',
 };
 
 const BAGGAGE_NAMES = {
@@ -76,6 +79,15 @@ const SEAT_NAMES = {
   EXTRA_LEGROOM: 'Espacio adicional para las piernas',
   NO_PREFERENCE: 'Sin preferencia',
   OTHER: 'Otra',
+};
+
+const VISA_TYPE_NAMES = {
+  TOURISM: 'Turismo',
+  BUSINESS: 'Negocios',
+  STUDENT: 'Estudiante',
+  WORK: 'Trabajo',
+  TRANSIT: 'Tránsito',
+  OTHER: 'Otro',
 };
 
 export function getAdditionalServiceName(
@@ -121,5 +133,11 @@ export function getAdditionalServiceSummary(
     case 'TRAVEL_EXTENSION':
     case 'TRIP_REDUCTION':
       return `Regreso: ${formatBusinessDate(line.newReturnDate)}`;
+    case 'VISA_ASSISTANCE':
+      return `${getSpanishCountryName(line.destinationCountry) ?? line.destinationCountry} · ${VISA_TYPE_NAMES[line.visaType]}${
+        line.expectedTravelDate
+          ? ` · ${formatBusinessDate(line.expectedTravelDate)}`
+          : ''
+      }`;
   }
 }

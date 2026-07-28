@@ -7,17 +7,41 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { randomBytes } from "crypto";
-import { CreateAdditionalServiceOrderDto } from "./dto";
+import {
+  CreateAdditionalServiceOrderDto,
+  CreateAdditionalServicePricingConfigurationDto,
+  CreateSupplierDto,
+  ListAdditionalServicePricingConfigurationsDto,
+  UpdateAdditionalServicePricingConfigurationDto,
+  UpdateSupplierDto,
+} from "./dto";
 import {
   ADDITIONAL_SERVICES_REPOSITORY,
   AdditionalServiceOrderRecord,
+  AdditionalServicePricingConfigurationRecord,
   AdditionalServicesRepository,
   CreateAdditionalServiceOrderData,
+  SupplierRecord,
+  UpdateSupplierData,
 } from "./repositories";
 
 export interface AdditionalServiceOrderActor {
   id: string;
   fullName: string;
+}
+
+export interface AdditionalServiceCatalogAdminItem {
+  id: string;
+  code: string;
+  name: string;
+  isActive: boolean;
+  pricingConfiguration: {
+    id: string;
+    marginType: AdditionalServicePricingConfigurationRecord["marginType"];
+    marginValue: string;
+    taxPercentage: string;
+    isActive: boolean;
+  } | null;
 }
 
 @Injectable()
@@ -29,6 +53,249 @@ export class AdditionalServicesService {
     @Inject(ADDITIONAL_SERVICES_REPOSITORY)
     private readonly repository: AdditionalServicesRepository,
   ) {}
+
+  async listAdditionalServiceCatalog(
+    tenantId: string,
+  ): Promise<AdditionalServiceCatalogAdminItem[]> {
+    const catalog =
+      await this.repository.findAdditionalServiceCatalogs(tenantId);
+
+    return catalog.map(
+      ({ id, code, name, isActive, pricingConfiguration }) => ({
+        id,
+        code,
+        name,
+        isActive,
+        pricingConfiguration,
+      }),
+    );
+  }
+
+  listPricingConfigurations(
+    tenantId: string,
+    filters: ListAdditionalServicePricingConfigurationsDto,
+  ): Promise<AdditionalServicePricingConfigurationRecord[]> {
+    return this.repository.findPricingConfigurations(tenantId, {
+      additionalServiceCatalogId: filters.additionalServiceCatalogId,
+      ...(filters.isActive && filters.isActive !== "all"
+        ? { isActive: filters.isActive === "true" }
+        : {}),
+    });
+  }
+
+  async getPricingConfiguration(
+    tenantId: string,
+    configurationId: string,
+  ): Promise<AdditionalServicePricingConfigurationRecord> {
+    const configuration =
+      await this.repository.findPricingConfigurationById(
+        tenantId,
+        configurationId,
+      );
+
+    if (!configuration) {
+      throw new NotFoundException(
+        "Configuración de precios no encontrada.",
+      );
+    }
+
+    return configuration;
+  }
+
+  async createPricingConfiguration(
+    tenantId: string,
+    dto: CreateAdditionalServicePricingConfigurationDto,
+  ): Promise<AdditionalServicePricingConfigurationRecord> {
+    await this.validatePricingValues(dto.marginValue, dto.taxPercentage);
+    await this.validateCatalogOwnership(
+      tenantId,
+      dto.additionalServiceCatalogId,
+    );
+
+    const existing =
+      await this.repository.findPricingConfigurationByCatalogId(
+        tenantId,
+        dto.additionalServiceCatalogId,
+      );
+
+    if (existing) {
+      throw new ConflictException(
+        "Ya existe una configuración de precios para este servicio adicional.",
+      );
+    }
+
+    try {
+      return await this.repository.createPricingConfiguration({
+        tenantId,
+        additionalServiceCatalogId: dto.additionalServiceCatalogId,
+        marginType: dto.marginType,
+        marginValue: dto.marginValue,
+        taxPercentage: dto.taxPercentage,
+        isActive: dto.isActive ?? true,
+      });
+    } catch (error) {
+      if (this.isUniqueConstraintViolation(error)) {
+        throw new ConflictException(
+          "Ya existe una configuración de precios para este servicio adicional.",
+        );
+      }
+
+      throw error;
+    }
+  }
+
+  async updatePricingConfiguration(
+    tenantId: string,
+    configurationId: string,
+    dto: UpdateAdditionalServicePricingConfigurationDto,
+  ): Promise<AdditionalServicePricingConfigurationRecord> {
+    await this.getPricingConfiguration(tenantId, configurationId);
+    await this.validatePricingValues(dto.marginValue, dto.taxPercentage);
+
+    return this.repository.updatePricingConfiguration(
+      tenantId,
+      configurationId,
+      dto,
+    );
+  }
+
+  async updatePricingConfigurationStatus(
+    tenantId: string,
+    configurationId: string,
+    isActive: boolean,
+  ): Promise<AdditionalServicePricingConfigurationRecord> {
+    await this.getPricingConfiguration(tenantId, configurationId);
+
+    return this.repository.updatePricingConfiguration(
+      tenantId,
+      configurationId,
+      { isActive },
+    );
+  }
+
+  listSuppliers(tenantId: string): Promise<SupplierRecord[]> {
+    return this.repository.findSuppliers(tenantId);
+  }
+
+  async getSupplier(
+    tenantId: string,
+    supplierId: string,
+  ): Promise<SupplierRecord> {
+    const supplier = await this.repository.findSupplierById(
+      tenantId,
+      supplierId,
+    );
+
+    if (!supplier) {
+      throw new NotFoundException("Proveedor no encontrado.");
+    }
+
+    return supplier;
+  }
+
+  async createSupplier(
+    tenantId: string,
+    dto: CreateSupplierDto,
+  ): Promise<SupplierRecord> {
+    const name = this.normalizeSupplierName(dto.name);
+    const duplicate = await this.repository.findSupplierByName(
+      tenantId,
+      name,
+    );
+
+    if (duplicate) {
+      throw new ConflictException(
+        "Ya existe un proveedor con este nombre.",
+      );
+    }
+
+    try {
+      return await this.repository.createSupplier({
+        tenantId,
+        name,
+        website: this.toNullableText(dto.website),
+        supplierType: this.toNullableText(dto.supplierType),
+        supplierCategory: this.toNullableText(dto.supplierCategory),
+        notes: this.toNullableText(dto.notes),
+        isActive: dto.isActive ?? true,
+      });
+    } catch (error) {
+      if (this.isUniqueConstraintViolation(error)) {
+        throw new ConflictException(
+          "Ya existe un proveedor con este nombre.",
+        );
+      }
+
+      throw error;
+    }
+  }
+
+  async updateSupplier(
+    tenantId: string,
+    supplierId: string,
+    dto: UpdateSupplierDto,
+  ): Promise<SupplierRecord> {
+    await this.getSupplier(tenantId, supplierId);
+
+    const data: UpdateSupplierData = {};
+    if (dto.name !== undefined) {
+      const name = this.normalizeSupplierName(dto.name);
+      const duplicate = await this.repository.findSupplierByName(
+        tenantId,
+        name,
+        supplierId,
+      );
+
+      if (duplicate) {
+        throw new ConflictException(
+          "Ya existe un proveedor con este nombre.",
+        );
+      }
+      data.name = name;
+    }
+    if (dto.website !== undefined) {
+      data.website = this.toNullableText(dto.website);
+    }
+    if (dto.supplierType !== undefined) {
+      data.supplierType = this.toNullableText(dto.supplierType);
+    }
+    if (dto.supplierCategory !== undefined) {
+      data.supplierCategory = this.toNullableText(dto.supplierCategory);
+    }
+    if (dto.notes !== undefined) {
+      data.notes = this.toNullableText(dto.notes);
+    }
+    if (dto.isActive !== undefined) {
+      data.isActive = dto.isActive;
+    }
+
+    try {
+      return await this.repository.updateSupplier(
+        tenantId,
+        supplierId,
+        data,
+      );
+    } catch (error) {
+      if (this.isUniqueConstraintViolation(error)) {
+        throw new ConflictException(
+          "Ya existe un proveedor con este nombre.",
+        );
+      }
+
+      throw error;
+    }
+  }
+
+  async deleteSupplier(
+    tenantId: string,
+    supplierId: string,
+  ): Promise<SupplierRecord> {
+    await this.getSupplier(tenantId, supplierId);
+
+    return this.repository.updateSupplier(tenantId, supplierId, {
+      isActive: false,
+    });
+  }
 
   async getOrder(
     tenantId: string,
@@ -110,6 +377,76 @@ export class AdditionalServicesService {
     throw new ConflictException(
       "No se pudo generar un número único para la orden de servicios adicionales.",
     );
+  }
+
+  private async validateCatalogOwnership(
+    tenantId: string,
+    additionalServiceCatalogId: string,
+  ): Promise<void> {
+    const catalog =
+      await this.repository.findAdditionalServiceCatalogById(
+        additionalServiceCatalogId,
+      );
+
+    if (!catalog) {
+      throw new NotFoundException(
+        "El servicio adicional seleccionado no existe.",
+      );
+    }
+
+    if (catalog.tenantId !== tenantId) {
+      throw new BadRequestException(
+        "El servicio adicional seleccionado no pertenece al tenant actual.",
+      );
+    }
+  }
+
+  private async validatePricingValues(
+    marginValue?: number,
+    taxPercentage?: number,
+  ): Promise<void> {
+    if (
+      marginValue !== undefined &&
+      (!Number.isFinite(marginValue) || marginValue < 0)
+    ) {
+      throw new BadRequestException(
+        "El valor del margen no puede ser negativo.",
+      );
+    }
+
+    if (
+      taxPercentage !== undefined &&
+      (!Number.isFinite(taxPercentage) || taxPercentage < 0)
+    ) {
+      throw new BadRequestException(
+        "El porcentaje de impuesto no puede ser negativo.",
+      );
+    }
+  }
+
+  private isUniqueConstraintViolation(error: unknown): boolean {
+    return (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      (error as { code?: unknown }).code === "P2002"
+    );
+  }
+
+  private toNullableText(value?: string | null): string | null {
+    const normalized = value?.trim();
+    return normalized ? normalized : null;
+  }
+
+  private normalizeSupplierName(value: string): string {
+    const name = value.trim();
+    if (!name) {
+      throw new BadRequestException(
+        "El nombre del proveedor es requerido.",
+      );
+    }
+
+    return name;
   }
 
   private async validateTravelReference(

@@ -48,6 +48,8 @@ export function VerticalNav() {
   const [finanzasOpen, setFinanzasOpen] = useState(false);
   const [empleadosOpen, setEmpleadosOpen] = useState(false);
   const [programarViajesOpen, setProgramarViajesOpen] = useState(false);
+  const [configuracionOperativaOpen, setConfiguracionOperativaOpen] = useState(false);
+  const [comercialOpen, setComercialOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
   const [logoutErrorModalOpen, setLogoutErrorModalOpen] = useState(false);
   const [logoutErrorMessage, setLogoutErrorMessage] = useState("");
@@ -66,7 +68,7 @@ export function VerticalNav() {
 
   useEffect(() => {
     if (!token) return;
-    
+
     // Skip data loading for SUPER_ADMIN
     if (session?.user?.role === "SUPER_ADMIN") return;
 
@@ -291,27 +293,62 @@ export function VerticalNav() {
         ]
       : []),
     
-    // Tipo de Cambio (Admin/Contador/Facturacion)
+    // Configuración Operativa (mantiene permisos existentes por opción)
     ...(isAdmin || isContador || role === "FACTURACION_COBROS"
       ? [
           {
-            href: "/admin/exchange-rate",
-            label: "Tipo de Cambio",
-            icon: "💱",
+            label: "Configuración",
+            icon: "⚙️",
             adminOnly: true,
-          },
+            items: [
+              {
+                href: "/admin/exchange-rate",
+                label: "Tipo de Cambio",
+                icon: "💱",
+                adminOnly: true,
+              },
+              ...(isAdmin
+                ? [
+                    {
+                      href: "/admin/bank-accounts",
+                      label: "Cuentas Bancarias",
+                      icon: "🏦",
+                      adminOnly: true,
+                    },
+                  ]
+                : []),
+            ],
+          } as NavGroup,
         ]
       : []),
-    
-    // Configuración adicional (solo Admin)
+
     ...(isAdmin
       ? [
           {
-            href: "/admin/bank-accounts",
-            label: "Cuentas Bancarias",
-            icon: "🏦",
+            label: "Comercial",
+            icon: "🤝",
             adminOnly: true,
-          },
+            items: [
+              {
+                href: "/admin/pricing-configurations",
+                label: "Margen Adicionales",
+                icon: "🧮",
+                adminOnly: true,
+              },
+              {
+                href: "/admin/suppliers",
+                label: "Proveedores",
+                icon: "🏢",
+                adminOnly: true,
+              },
+            ],
+          } as NavGroup,
+        ]
+      : []),
+
+    // Configuración adicional (solo Admin)
+    ...(isAdmin
+      ? [
           {
             label: "Programar Viajes",
             icon: "✈️",
@@ -487,13 +524,21 @@ export function VerticalNav() {
                 ? finanzasOpen 
                 : group.label === "Programar Viajes" 
                   ? programarViajesOpen 
-                  : empleadosOpen;
+                  : group.label === "Configuración"
+                    ? configuracionOperativaOpen
+                    : group.label === "Comercial"
+                      ? comercialOpen
+                    : empleadosOpen;
               
               const toggleOpen = group.label === "Finanzas" 
                 ? () => setFinanzasOpen(!finanzasOpen)
                 : group.label === "Programar Viajes"
                   ? () => setProgramarViajesOpen(!programarViajesOpen)
-                  : () => setEmpleadosOpen(!empleadosOpen);
+                  : group.label === "Configuración"
+                    ? () => setConfiguracionOperativaOpen(!configuracionOperativaOpen)
+                    : group.label === "Comercial"
+                      ? () => setComercialOpen(!comercialOpen)
+                    : () => setEmpleadosOpen(!empleadosOpen);
               
               return (
                 <div key={`group-${idx}`} className="vertical-nav-group">

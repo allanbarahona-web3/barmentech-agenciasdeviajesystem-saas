@@ -2,18 +2,29 @@ import { Injectable } from "@nestjs/common";
 import { Decimal } from "@prisma/client/runtime/library";
 import { PrismaService } from "../../prisma/prisma.service";
 import {
+  AdditionalServiceCatalogAdminRecord,
+  AdditionalServiceCatalogRecord,
   AdditionalServiceOrderRecord,
   AdditionalServiceParticipantRecord,
+  AdditionalServicePricingConfigurationFilters,
+  AdditionalServicePricingConfigurationRecord,
   AdditionalServicesRepository,
   AdditionalServiceTenantRecord,
   AdditionalServiceTravelRecord,
   AdditionalServiceTravelReference,
   CreateAdditionalServiceOrderData,
+  CreateAdditionalServiceCatalogItemData,
+  CreateAdditionalServicePricingConfigurationData,
+  CreateSupplierData,
+  SupplierRecord,
+  UpdateAdditionalServicePricingConfigurationData,
+  UpdateSupplierData,
 } from "./additional-services.repository.interface";
 
 interface AdditionalServicesPrismaClient {
   tenant: {
     findUnique(args: unknown): Promise<unknown>;
+    findMany(args: unknown): Promise<unknown>;
   };
   travelPackage: {
     findUnique(args: unknown): Promise<unknown>;
@@ -23,6 +34,23 @@ interface AdditionalServicesPrismaClient {
   };
   client: {
     findMany(args: unknown): Promise<unknown>;
+  };
+  additionalServiceCatalog: {
+    createMany(args: unknown): Promise<{ count: number }>;
+    findFirst(args: unknown): Promise<unknown>;
+    findMany(args: unknown): Promise<unknown>;
+  };
+  additionalServicePricingConfiguration: {
+    create(args: unknown): Promise<unknown>;
+    findFirst(args: unknown): Promise<unknown>;
+    findMany(args: unknown): Promise<unknown>;
+    update(args: unknown): Promise<unknown>;
+  };
+  supplier: {
+    create(args: unknown): Promise<unknown>;
+    findFirst(args: unknown): Promise<unknown>;
+    findMany(args: unknown): Promise<unknown>;
+    update(args: unknown): Promise<unknown>;
   };
   additionalServiceOrder: {
     create(args: unknown): Promise<unknown>;
@@ -61,6 +89,10 @@ export class PrismaAdditionalServicesRepository
     tenantId: string,
   ): Promise<AdditionalServiceTenantRecord | null> {
     return this.findTenant(this.client, tenantId);
+  }
+
+  findAllTenantIds(): Promise<string[]> {
+    return this.findTenantIds(this.client);
   }
 
   findTravelPackageById(
@@ -120,12 +152,111 @@ export class PrismaAdditionalServicesRepository
     return (orders as unknown[]).map((order) => this.toOrderRecord(order));
   }
 
+  findAdditionalServiceCatalogById(
+    id: string,
+  ): Promise<AdditionalServiceCatalogRecord | null> {
+    return this.findCatalogById(this.client, id);
+  }
+
+  findAdditionalServiceCatalogs(
+    tenantId: string,
+  ): Promise<AdditionalServiceCatalogAdminRecord[]> {
+    return this.findCatalogs(this.client, tenantId);
+  }
+
+  findAdditionalServiceCatalogCodes(tenantId: string): Promise<string[]> {
+    return this.findCatalogCodes(this.client, tenantId);
+  }
+
+  createAdditionalServiceCatalogItems(
+    tenantId: string,
+    items: readonly CreateAdditionalServiceCatalogItemData[],
+  ): Promise<number> {
+    return this.createCatalogItems(this.client, tenantId, items);
+  }
+
+  findPricingConfigurations(
+    tenantId: string,
+    filters?: AdditionalServicePricingConfigurationFilters,
+  ): Promise<AdditionalServicePricingConfigurationRecord[]> {
+    return this.findPricingConfigurationList(this.client, tenantId, filters);
+  }
+
+  findPricingConfigurationById(
+    tenantId: string,
+    id: string,
+  ): Promise<AdditionalServicePricingConfigurationRecord | null> {
+    return this.findPricingById(this.client, tenantId, id);
+  }
+
+  findPricingConfigurationByCatalogId(
+    tenantId: string,
+    additionalServiceCatalogId: string,
+  ): Promise<AdditionalServicePricingConfigurationRecord | null> {
+    return this.findPricingByCatalogId(
+      this.client,
+      tenantId,
+      additionalServiceCatalogId,
+    );
+  }
+
+  createPricingConfiguration(
+    data: CreateAdditionalServicePricingConfigurationData,
+  ): Promise<AdditionalServicePricingConfigurationRecord> {
+    return this.createPricing(this.client, data);
+  }
+
+  updatePricingConfiguration(
+    tenantId: string,
+    id: string,
+    data: UpdateAdditionalServicePricingConfigurationData,
+  ): Promise<AdditionalServicePricingConfigurationRecord> {
+    return this.updatePricing(this.client, tenantId, id, data);
+  }
+
+  findSuppliers(tenantId: string): Promise<SupplierRecord[]> {
+    return this.findSupplierList(this.client, tenantId);
+  }
+
+  findSupplierById(
+    tenantId: string,
+    id: string,
+  ): Promise<SupplierRecord | null> {
+    return this.findSupplier(this.client, tenantId, id);
+  }
+
+  findSupplierByName(
+    tenantId: string,
+    name: string,
+    excludeId?: string,
+  ): Promise<SupplierRecord | null> {
+    return this.findSupplierWithName(
+      this.client,
+      tenantId,
+      name,
+      excludeId,
+    );
+  }
+
+  createSupplier(data: CreateSupplierData): Promise<SupplierRecord> {
+    return this.insertSupplier(this.client, data);
+  }
+
+  updateSupplier(
+    tenantId: string,
+    id: string,
+    data: UpdateSupplierData,
+  ): Promise<SupplierRecord> {
+    return this.persistSupplier(this.client, tenantId, id, data);
+  }
+
   private scopedRepository(
     client: AdditionalServicesPrismaClient,
   ): AdditionalServicesRepository {
     const repository: AdditionalServicesRepository = {
       executeInTransaction: (work) => work(repository),
       findTenantById: (tenantId) => this.findTenant(client, tenantId),
+      findAllTenantIds: () => this.findTenantIds(client),
       findTravelPackageById: (id) => this.findTravelPackage(client, id),
       findInternalTripById: (id) => this.findInternalTrip(client, id),
       findParticipantsByIds: (ids) => this.findParticipants(client, ids),
@@ -155,6 +286,38 @@ export class PrismaAdditionalServicesRepository
           this.toOrderRecord(order),
         );
       },
+      findAdditionalServiceCatalogById: (id) =>
+        this.findCatalogById(client, id),
+      findAdditionalServiceCatalogs: (tenantId) =>
+        this.findCatalogs(client, tenantId),
+      findAdditionalServiceCatalogCodes: (tenantId) =>
+        this.findCatalogCodes(client, tenantId),
+      createAdditionalServiceCatalogItems: (tenantId, items) =>
+        this.createCatalogItems(client, tenantId, items),
+      findPricingConfigurations: (tenantId, filters) =>
+        this.findPricingConfigurationList(client, tenantId, filters),
+      findPricingConfigurationById: (tenantId, id) =>
+        this.findPricingById(client, tenantId, id),
+      findPricingConfigurationByCatalogId: (
+        tenantId,
+        additionalServiceCatalogId,
+      ) =>
+        this.findPricingByCatalogId(
+          client,
+          tenantId,
+          additionalServiceCatalogId,
+        ),
+      createPricingConfiguration: (data) => this.createPricing(client, data),
+      updatePricingConfiguration: (tenantId, id, data) =>
+        this.updatePricing(client, tenantId, id, data),
+      findSuppliers: (tenantId) => this.findSupplierList(client, tenantId),
+      findSupplierById: (tenantId, id) =>
+        this.findSupplier(client, tenantId, id),
+      findSupplierByName: (tenantId, name, excludeId) =>
+        this.findSupplierWithName(client, tenantId, name, excludeId),
+      createSupplier: (data) => this.insertSupplier(client, data),
+      updateSupplier: (tenantId, id, data) =>
+        this.persistSupplier(client, tenantId, id, data),
     };
 
     return repository;
@@ -168,6 +331,16 @@ export class PrismaAdditionalServicesRepository
       where: { id: tenantId },
       select: { id: true, contractPrefix: true },
     })) as AdditionalServiceTenantRecord | null;
+  }
+
+  private async findTenantIds(
+    client: AdditionalServicesPrismaClient,
+  ): Promise<string[]> {
+    const tenants = (await client.tenant.findMany({
+      select: { id: true },
+    })) as Array<{ id: string }>;
+
+    return tenants.map((tenant) => tenant.id);
   }
 
   private async findTravelPackage(
@@ -202,6 +375,283 @@ export class PrismaAdditionalServicesRepository
       where: { id: { in: ids } },
       select: { id: true, tenantId: true },
     })) as AdditionalServiceParticipantRecord[];
+  }
+
+  private async findCatalogById(
+    client: AdditionalServicesPrismaClient,
+    id: string,
+  ): Promise<AdditionalServiceCatalogRecord | null> {
+    return (await client.additionalServiceCatalog.findFirst({
+      where: { id },
+      select: {
+        id: true,
+        tenantId: true,
+        code: true,
+        name: true,
+        isActive: true,
+      },
+    })) as AdditionalServiceCatalogRecord | null;
+  }
+
+  private async findCatalogs(
+    client: AdditionalServicesPrismaClient,
+    tenantId: string,
+  ): Promise<AdditionalServiceCatalogAdminRecord[]> {
+    const catalog = (await client.additionalServiceCatalog.findMany({
+      where: { tenantId },
+      select: {
+        id: true,
+        tenantId: true,
+        code: true,
+        name: true,
+        isActive: true,
+        pricingConfigurations: {
+          where: { tenantId },
+          select: {
+            id: true,
+            marginType: true,
+            marginValue: true,
+            taxPercentage: true,
+            isActive: true,
+          },
+          take: 1,
+        },
+      },
+      orderBy: [{ displayOrder: "asc" }, { name: "asc" }],
+    })) as Array<
+      AdditionalServiceCatalogRecord & {
+        pricingConfigurations: Array<{
+          id: string;
+          marginType: NonNullable<
+            AdditionalServiceCatalogAdminRecord["pricingConfiguration"]
+          >["marginType"];
+          marginValue: unknown;
+          taxPercentage: unknown;
+          isActive: boolean;
+        }>;
+      }
+    >;
+
+    return catalog.map(({ pricingConfigurations, ...item }) => {
+      const pricingConfiguration = pricingConfigurations[0];
+
+      return {
+        ...item,
+        pricingConfiguration: pricingConfiguration
+          ? {
+              ...pricingConfiguration,
+              marginValue: String(pricingConfiguration.marginValue),
+              taxPercentage: String(pricingConfiguration.taxPercentage),
+            }
+          : null,
+      };
+    });
+  }
+
+  private async findCatalogCodes(
+    client: AdditionalServicesPrismaClient,
+    tenantId: string,
+  ): Promise<string[]> {
+    const catalog = (await client.additionalServiceCatalog.findMany({
+      where: { tenantId },
+      select: { code: true },
+    })) as Array<{ code: string }>;
+
+    return catalog.map((item) => item.code);
+  }
+
+  private async createCatalogItems(
+    client: AdditionalServicesPrismaClient,
+    tenantId: string,
+    items: readonly CreateAdditionalServiceCatalogItemData[],
+  ): Promise<number> {
+    if (items.length === 0) {
+      return 0;
+    }
+
+    const result = await client.additionalServiceCatalog.createMany({
+      data: items.map((item) => ({
+        tenantId,
+        code: item.code,
+        name: item.name,
+        displayOrder: item.displayOrder,
+        isActive: true,
+      })),
+      skipDuplicates: true,
+    });
+
+    return result.count;
+  }
+
+  private async findPricingConfigurationList(
+    client: AdditionalServicesPrismaClient,
+    tenantId: string,
+    filters?: AdditionalServicePricingConfigurationFilters,
+  ): Promise<AdditionalServicePricingConfigurationRecord[]> {
+    const configurations =
+      await client.additionalServicePricingConfiguration.findMany({
+        where: {
+          tenantId,
+          ...(filters?.additionalServiceCatalogId
+            ? {
+                additionalServiceCatalogId:
+                  filters.additionalServiceCatalogId,
+              }
+            : {}),
+          ...(filters?.isActive !== undefined
+            ? { isActive: filters.isActive }
+            : {}),
+        },
+        include: this.pricingConfigurationInclude(),
+        orderBy: [
+          { additionalServiceCatalog: { displayOrder: "asc" } },
+          { additionalServiceCatalog: { name: "asc" } },
+        ],
+      });
+
+    return (configurations as unknown[]).map((configuration) =>
+      this.toPricingConfigurationRecord(configuration),
+    );
+  }
+
+  private async findPricingById(
+    client: AdditionalServicesPrismaClient,
+    tenantId: string,
+    id: string,
+  ): Promise<AdditionalServicePricingConfigurationRecord | null> {
+    const configuration =
+      await client.additionalServicePricingConfiguration.findFirst({
+        where: { id, tenantId },
+        include: this.pricingConfigurationInclude(),
+      });
+
+    return configuration
+      ? this.toPricingConfigurationRecord(configuration)
+      : null;
+  }
+
+  private async findPricingByCatalogId(
+    client: AdditionalServicesPrismaClient,
+    tenantId: string,
+    additionalServiceCatalogId: string,
+  ): Promise<AdditionalServicePricingConfigurationRecord | null> {
+    const configuration =
+      await client.additionalServicePricingConfiguration.findFirst({
+        where: { tenantId, additionalServiceCatalogId },
+        include: this.pricingConfigurationInclude(),
+      });
+
+    return configuration
+      ? this.toPricingConfigurationRecord(configuration)
+      : null;
+  }
+
+  private async createPricing(
+    client: AdditionalServicesPrismaClient,
+    data: CreateAdditionalServicePricingConfigurationData,
+  ): Promise<AdditionalServicePricingConfigurationRecord> {
+    const configuration =
+      await client.additionalServicePricingConfiguration.create({
+        data: {
+          tenantId: data.tenantId,
+          additionalServiceCatalogId: data.additionalServiceCatalogId,
+          marginType: data.marginType,
+          marginValue: new Decimal(String(data.marginValue)),
+          taxPercentage: new Decimal(String(data.taxPercentage)),
+          isActive: data.isActive,
+        },
+        include: this.pricingConfigurationInclude(),
+      });
+
+    return this.toPricingConfigurationRecord(configuration);
+  }
+
+  private async updatePricing(
+    client: AdditionalServicesPrismaClient,
+    tenantId: string,
+    id: string,
+    data: UpdateAdditionalServicePricingConfigurationData,
+  ): Promise<AdditionalServicePricingConfigurationRecord> {
+    const configuration =
+      await client.additionalServicePricingConfiguration.update({
+        where: {
+          id,
+          tenantId,
+        },
+        data: {
+          ...(data.marginType !== undefined
+            ? { marginType: data.marginType }
+            : {}),
+          ...(data.marginValue !== undefined
+            ? { marginValue: new Decimal(String(data.marginValue)) }
+            : {}),
+          ...(data.taxPercentage !== undefined
+            ? { taxPercentage: new Decimal(String(data.taxPercentage)) }
+            : {}),
+          ...(data.isActive !== undefined
+            ? { isActive: data.isActive }
+            : {}),
+        },
+        include: this.pricingConfigurationInclude(),
+      });
+
+    return this.toPricingConfigurationRecord(configuration);
+  }
+
+  private async findSupplierList(
+    client: AdditionalServicesPrismaClient,
+    tenantId: string,
+  ): Promise<SupplierRecord[]> {
+    return (await client.supplier.findMany({
+      where: { tenantId },
+      orderBy: [{ isActive: "desc" }, { name: "asc" }],
+    })) as SupplierRecord[];
+  }
+
+  private async findSupplier(
+    client: AdditionalServicesPrismaClient,
+    tenantId: string,
+    id: string,
+  ): Promise<SupplierRecord | null> {
+    return (await client.supplier.findFirst({
+      where: { id, tenantId },
+    })) as SupplierRecord | null;
+  }
+
+  private async findSupplierWithName(
+    client: AdditionalServicesPrismaClient,
+    tenantId: string,
+    name: string,
+    excludeId?: string,
+  ): Promise<SupplierRecord | null> {
+    return (await client.supplier.findFirst({
+      where: {
+        tenantId,
+        name: { equals: name, mode: "insensitive" },
+        ...(excludeId ? { NOT: { id: excludeId } } : {}),
+      },
+    })) as SupplierRecord | null;
+  }
+
+  private async insertSupplier(
+    client: AdditionalServicesPrismaClient,
+    data: CreateSupplierData,
+  ): Promise<SupplierRecord> {
+    return (await client.supplier.create({
+      data,
+    })) as SupplierRecord;
+  }
+
+  private async persistSupplier(
+    client: AdditionalServicesPrismaClient,
+    tenantId: string,
+    id: string,
+    data: UpdateSupplierData,
+  ): Promise<SupplierRecord> {
+    return (await client.supplier.update({
+      where: { id, tenantId },
+      data,
+    })) as SupplierRecord;
   }
 
   private async createOrder(
@@ -285,6 +735,44 @@ export class PrismaAdditionalServicesRepository
           },
         },
       },
+    };
+  }
+
+  private pricingConfigurationInclude() {
+    return {
+      additionalServiceCatalog: {
+        select: {
+          id: true,
+          tenantId: true,
+          code: true,
+          name: true,
+          isActive: true,
+        },
+      },
+    };
+  }
+
+  private toPricingConfigurationRecord(
+    value: unknown,
+  ): AdditionalServicePricingConfigurationRecord {
+    const configuration = value as Record<string, unknown> & {
+      additionalServiceCatalog: AdditionalServiceCatalogRecord;
+    };
+
+    return {
+      id: String(configuration.id),
+      tenantId: String(configuration.tenantId),
+      additionalServiceCatalogId: String(
+        configuration.additionalServiceCatalogId,
+      ),
+      marginType:
+        configuration.marginType as AdditionalServicePricingConfigurationRecord["marginType"],
+      marginValue: String(configuration.marginValue),
+      taxPercentage: String(configuration.taxPercentage),
+      isActive: Boolean(configuration.isActive),
+      createdAt: configuration.createdAt as Date,
+      updatedAt: configuration.updatedAt as Date,
+      additionalServiceCatalog: configuration.additionalServiceCatalog,
     };
   }
 
