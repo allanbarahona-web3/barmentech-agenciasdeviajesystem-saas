@@ -179,9 +179,23 @@ export function updateAdditionalServicePricingConfigurationStatus(
   );
 }
 
-export async function getAdditionalServiceSuppliers(): Promise<
-  AdditionalServiceSupplier[]
-> {
+export interface AdditionalServiceSupplierListFilters {
+  activeOnly?: boolean;
+  travelType?: "INTERNATIONAL" | "INTERNAL";
+}
+
+export interface RequestNewSupplierInput {
+  supplierName: string;
+  website?: string;
+  notes?: string;
+  travelType: "INTERNATIONAL" | "INTERNAL";
+  additionalService: string;
+  orderId?: string;
+}
+
+export async function getAdditionalServiceSuppliers(
+  filters: AdditionalServiceSupplierListFilters = {},
+): Promise<AdditionalServiceSupplier[]> {
   const apiBase = resolveApiBase();
   const token = getStoredToken();
 
@@ -189,8 +203,19 @@ export async function getAdditionalServiceSuppliers(): Promise<
     throw new Error("No hay API configurada.");
   }
 
+  const query = new URLSearchParams();
+  if (filters.activeOnly) {
+    query.set("activeOnly", "true");
+  }
+  if (filters.travelType) {
+    query.set("travelType", filters.travelType);
+  }
+
+  const queryString = query.toString();
   const response = await authenticatedFetch(
-    `${apiBase}/additional-services/suppliers`,
+    `${apiBase}/additional-services/suppliers${
+      queryString ? `?${queryString}` : ""
+    }`,
     {
       method: "GET",
       headers: {
@@ -205,6 +230,40 @@ export async function getAdditionalServiceSuppliers(): Promise<
       await readErrorMessage(
         response,
         "No se pudieron cargar los proveedores.",
+      ),
+    );
+  }
+
+  return response.json();
+}
+
+export async function requestNewAdditionalServiceSupplier(
+  input: RequestNewSupplierInput,
+): Promise<{ notificationQueued: boolean }> {
+  const apiBase = resolveApiBase();
+  const token = getStoredToken();
+
+  if (!apiBase) {
+    throw new Error("No hay API configurada.");
+  }
+
+  const response = await authenticatedFetch(
+    `${apiBase}/additional-services/suppliers/requests`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(input),
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      await readErrorMessage(
+        response,
+        "No se pudo enviar la solicitud del proveedor.",
       ),
     );
   }

@@ -4,6 +4,7 @@ export * from "./additional-service-order-participant-base.dto";
 export * from "./create-additional-service-order.dto";
 export * from "./create-additional-service-pricing-configuration.dto";
 export * from "./list-additional-service-pricing-configurations.dto";
+export * from "./request-new-supplier.dto";
 export * from "./update-additional-service-pricing-configuration.dto";
 export * from "./update-additional-service-pricing-configuration-status.dto";
 export * from "./create-supplier.dto";

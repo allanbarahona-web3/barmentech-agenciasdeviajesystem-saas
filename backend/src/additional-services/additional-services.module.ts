@@ -8,6 +8,7 @@ import { AdditionalServiceCatalogController } from "./additional-service-catalog
 import { AdditionalServicePricingConfigurationsController } from "./additional-service-pricing-configurations.controller";
 import { CatalogBootstrapService } from "./catalog-bootstrap.service";
 import { AdditionalServiceSuppliersController } from "./additional-service-suppliers.controller";
+import { SupplierRequestNotificationService } from "./supplier-request-notification.service";
 
 @Module({
   controllers: [
@@ -23,6 +24,7 @@ import { AdditionalServiceSuppliersController } from "./additional-service-suppl
     },
     AdditionalServicesService,
     CatalogBootstrapService,
+    SupplierRequestNotificationService,
   ],
   exports: [AdditionalServicesService, CatalogBootstrapService],
 })

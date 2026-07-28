@@ -153,6 +153,7 @@ export interface AdditionalServicesContextParticipant {
 
 export interface AdditionalServicesWorkflowContext {
   travelName: string;
+  travelType: 'INTERNATIONAL' | 'INTERNAL';
   contractNumber: string | null;
   selectedParticipants: AdditionalServicesContextParticipant[];
 }

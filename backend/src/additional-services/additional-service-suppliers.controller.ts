@@ -6,18 +6,27 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Req,
   UseGuards,
 } from "@nestjs/common";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { Roles } from "../auth/roles.decorator";
 import { RolesGuard } from "../auth/roles.guard";
-import { CreateSupplierDto, UpdateSupplierDto } from "./dto";
+import {
+  CreateSupplierDto,
+  RequestNewSupplierDto,
+  UpdateSupplierDto,
+} from "./dto";
 import { AdditionalServicesService } from "./additional-services.service";
+import { SupplierRequestNotificationService } from "./supplier-request-notification.service";
 
 type AdminRequest = {
   user: {
     tenantId: string;
+    role: "ADMIN" | "AGENT" | "OPERACIONES";
+    id: string;
+    fullName: string;
   };
 };
 
@@ -27,11 +36,23 @@ type AdminRequest = {
 export class AdditionalServiceSuppliersController {
   constructor(
     private readonly additionalServicesService: AdditionalServicesService,
+    private readonly supplierRequestNotifications: SupplierRequestNotificationService,
   ) {}
 
   @Get()
-  list(@Req() req: AdminRequest) {
-    return this.additionalServicesService.listSuppliers(req.user.tenantId);
+  @Roles("ADMIN", "AGENT", "OPERACIONES")
+  list(
+    @Req() req: AdminRequest,
+    @Query("activeOnly") activeOnly?: string,
+    @Query("travelType") travelType?: string,
+  ) {
+    return this.additionalServicesService.listSuppliers(req.user.tenantId, {
+      activeOnly: req.user.role !== "ADMIN" || activeOnly === "true",
+      travelType:
+        travelType === "INTERNATIONAL" || travelType === "INTERNAL"
+          ? travelType
+          : undefined,
+    });
   }
 
   @Get(":id")
@@ -51,6 +72,29 @@ export class AdditionalServiceSuppliersController {
       req.user.tenantId,
       dto,
     );
+  }
+
+  @Post("requests")
+  @Roles("ADMIN", "AGENT", "OPERACIONES")
+  async requestNewSupplier(
+    @Req() req: AdminRequest,
+    @Body() dto: RequestNewSupplierDto,
+  ) {
+    await this.supplierRequestNotifications.notifyAdministration({
+      tenantId: req.user.tenantId,
+      requestedBy: {
+        id: req.user.id,
+        name: req.user.fullName,
+      },
+      supplierName: dto.supplierName.trim(),
+      website: dto.website?.trim() || null,
+      notes: dto.notes?.trim() || null,
+      travelType: dto.travelType,
+      additionalService: dto.additionalService.trim(),
+      orderId: dto.orderId?.trim() || null,
+    });
+
+    return { notificationQueued: true };
   }
 
   @Patch(":id")

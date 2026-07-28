@@ -44,6 +44,11 @@ export interface AdditionalServiceCatalogAdminItem {
   } | null;
 }
 
+export interface SupplierListFilters {
+  activeOnly?: boolean;
+  travelType?: "INTERNATIONAL" | "INTERNAL";
+}
+
 @Injectable()
 export class AdditionalServicesService {
   private readonly logger = new Logger(AdditionalServicesService.name);
@@ -173,8 +178,27 @@ export class AdditionalServicesService {
     );
   }
 
-  listSuppliers(tenantId: string): Promise<SupplierRecord[]> {
-    return this.repository.findSuppliers(tenantId);
+  async listSuppliers(
+    tenantId: string,
+    filters: SupplierListFilters = {},
+  ): Promise<SupplierRecord[]> {
+    const suppliers = await this.repository.findSuppliers(tenantId);
+    const matchingSupplierTypes =
+      filters.travelType === "INTERNATIONAL"
+        ? new Set(["INTERNATIONAL"])
+        : filters.travelType === "INTERNAL"
+          ? new Set(["INTERNAL", "NATIONAL"])
+          : null;
+
+    return suppliers.filter(
+      (supplier) =>
+        (!filters.activeOnly || supplier.isActive) &&
+        (!matchingSupplierTypes ||
+          (supplier.supplierType !== null &&
+            matchingSupplierTypes.has(
+              supplier.supplierType.trim().toUpperCase(),
+            ))),
+    );
   }
 
   async getSupplier(

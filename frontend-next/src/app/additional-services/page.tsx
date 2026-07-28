@@ -516,6 +516,7 @@ export default function AdditionalServicesPage() {
                             );
                             setAdditionalServicesWorkflowContext({
                               travelName: travelContext.displayName,
+                              travelType: travelContext.travelType,
                               contractNumber: travelContext.contractNumber,
                               selectedParticipants:
                                 travelContext.participants

@@ -67,6 +67,26 @@ describe("AdditionalServicesService suppliers", () => {
     expect(repository.findSuppliers).toHaveBeenCalledWith(tenantId);
   });
 
+  it("lists only active suppliers matching the requested travel type", async () => {
+    repository.findSuppliers.mockResolvedValue([
+      { ...supplier, supplierType: "International" },
+      {
+        ...supplier,
+        id: "supplier-2",
+        supplierType: "International",
+        isActive: false,
+      },
+      { ...supplier, id: "supplier-3", supplierType: "National" },
+    ]);
+
+    await expect(
+      service.listSuppliers(tenantId, {
+        activeOnly: true,
+        travelType: "INTERNATIONAL",
+      }),
+    ).resolves.toEqual([{ ...supplier, supplierType: "International" }]);
+  });
+
   it("rejects access to a supplier outside the tenant scope", async () => {
     repository.findSupplierById.mockResolvedValue(null);
 
