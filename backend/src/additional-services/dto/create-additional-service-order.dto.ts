@@ -1,10 +1,13 @@
 import { Type } from "class-transformer";
 import {
   ArrayMinSize,
+  Equals,
   IsArray,
   IsEnum,
+  IsInt,
   IsNotEmpty,
   IsNumber,
+  IsObject,
   IsOptional,
   IsString,
   IsUrl,
@@ -20,6 +23,14 @@ import {
 export class CreateAdditionalServiceOrderLineDto {
   @IsString()
   serviceCode!: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Equals(1)
+  serviceDetailsVersion!: 1;
+
+  @IsObject()
+  serviceDetails!: Record<string, unknown>;
 
   @IsString()
   supplierId!: string;

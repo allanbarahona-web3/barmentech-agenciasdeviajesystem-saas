@@ -27,6 +27,7 @@ import {
   SupplierRecord,
   UpdateSupplierData,
 } from "./repositories";
+import { normalizeAdditionalServiceDetails } from "./service-details";
 
 export interface AdditionalServiceOrderActor {
   id: string;
@@ -683,6 +684,11 @@ export class AdditionalServicesService {
         additionalServiceCatalogId: catalog.id,
         serviceCode: catalog.code,
         serviceName: catalog.name,
+        serviceDetailsVersion: line.serviceDetailsVersion,
+        serviceDetails: normalizeAdditionalServiceDetails(
+          catalog.code,
+          line.serviceDetails,
+        ),
         supplierId: supplier.id,
         supplierName: supplier.name,
         supplierCostUrl: this.toNullableText(line.supplierCostUrl) ?? undefined,

@@ -32,7 +32,7 @@ export const ADDITIONAL_SERVICE_CATEGORIES: AdditionalServiceCategory[] = [
   { slug: 'insurance', title: 'Seguro', icon: ShieldCheck },
   { slug: 'transportation', title: 'Transporte', icon: Bus },
   { slug: 'tours', title: 'Tours', icon: Map },
-  { slug: 'tickets', title: 'Boletos', icon: Ticket },
+  { slug: 'tickets', title: 'Boletos aéreos', icon: Ticket },
   {
     slug: 'event-tickets',
     title: 'Boletos para eventos',

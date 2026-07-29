@@ -4,6 +4,7 @@ import {
   AdditionalServiceOrderStatus,
   AdditionalServiceTravelType,
 } from "../enums";
+import type { AdditionalServiceDetails } from "../service-details";
 
 export interface AdditionalServiceOrderLineRecord {
   id: string;
@@ -12,6 +13,8 @@ export interface AdditionalServiceOrderLineRecord {
   additionalServiceCatalogId: string;
   serviceCode: string;
   serviceName: string;
+  serviceDetailsVersion: number | null;
+  serviceDetails: AdditionalServiceDetails | null;
   supplierId: string;
   supplierName: string;
   supplierCostUrl: string | null;
@@ -210,6 +213,8 @@ export interface CreateAdditionalServiceOrderLineData {
   additionalServiceCatalogId: string;
   serviceCode: string;
   serviceName: string;
+  serviceDetailsVersion: number;
+  serviceDetails: AdditionalServiceDetails;
   supplierId: string;
   supplierName: string;
   supplierCostUrl?: string;

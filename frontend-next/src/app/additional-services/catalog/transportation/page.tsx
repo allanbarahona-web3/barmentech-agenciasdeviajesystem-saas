@@ -35,7 +35,7 @@ const TRANSPORTATION_OPTIONS: Array<{
 ];
 
 type ValidationError = {
-  field: 'transportationType' | 'serviceDate';
+  field: 'transportationType' | 'serviceDate' | 'origin' | 'destination';
   message: string;
 };
 
@@ -57,6 +57,10 @@ export default function TransportationAdditionalFormPage() {
     );
   const [serviceDate, setServiceDate] = useState(
     () => editingLine?.serviceDate ?? '',
+  );
+  const [origin, setOrigin] = useState(() => editingLine?.origin ?? '');
+  const [destination, setDestination] = useState(
+    () => editingLine?.destination ?? '',
   );
   const [notes, setNotes] = useState(() => editingLine?.notes ?? '');
   const [validationError, setValidationError] =
@@ -85,12 +89,27 @@ export default function TransportationAdditionalFormPage() {
       return;
     }
 
+    if (!origin.trim()) {
+      setValidationError({ field: 'origin', message: 'Ingrese el origen.' });
+      return;
+    }
+
+    if (!destination.trim()) {
+      setValidationError({
+        field: 'destination',
+        message: 'Ingrese el destino.',
+      });
+      return;
+    }
+
     if (editingLine) {
       replaceTemporaryAdditionalServiceLine(editingLine, {
         participantId: editingLine.participantId,
         serviceType: 'TRANSPORTATION',
         transportationType,
         serviceDate,
+        origin: origin.trim(),
+        destination: destination.trim(),
         notes: notes.trim(),
       });
       router.push(getTemporaryAdditionalServiceEditReturnPath());
@@ -103,6 +122,8 @@ export default function TransportationAdditionalFormPage() {
         serviceType: 'TRANSPORTATION',
         transportationType,
         serviceDate,
+        origin: origin.trim(),
+        destination: destination.trim(),
         notes: notes.trim(),
       });
     });
@@ -184,6 +205,46 @@ export default function TransportationAdditionalFormPage() {
                   </small>
                 )}
                 {validationError?.field === 'serviceDate' && (
+                  <p className={styles.error} role="alert">
+                    {validationError.message}
+                  </p>
+                )}
+              </label>
+
+              <label className={styles.fieldGroup}>
+                <span className={styles.label}>
+                  Origen <span className={styles.required}>*</span>
+                </span>
+                <input
+                  className={styles.input}
+                  type="text"
+                  value={origin}
+                  onChange={(event) => {
+                    setOrigin(event.target.value);
+                    setValidationError(null);
+                  }}
+                />
+                {validationError?.field === 'origin' && (
+                  <p className={styles.error} role="alert">
+                    {validationError.message}
+                  </p>
+                )}
+              </label>
+
+              <label className={styles.fieldGroup}>
+                <span className={styles.label}>
+                  Destino <span className={styles.required}>*</span>
+                </span>
+                <input
+                  className={styles.input}
+                  type="text"
+                  value={destination}
+                  onChange={(event) => {
+                    setDestination(event.target.value);
+                    setValidationError(null);
+                  }}
+                />
+                {validationError?.field === 'destination' && (
                   <p className={styles.error} role="alert">
                     {validationError.message}
                   </p>

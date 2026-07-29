@@ -10,6 +10,8 @@ export interface TemporaryBaggageLine {
   participantId: string;
   serviceType: 'BAGGAGE';
   baggageTypes: BaggageType[];
+  pieceQuantity: number;
+  weightKg: number;
   notes: string;
 }
 
@@ -23,6 +25,8 @@ export interface TemporaryLodgingLine {
   participantId: string;
   serviceType: 'LODGING';
   lodgingType: LodgingType;
+  checkInDate: string;
+  checkOutDate: string;
   notes: string;
 }
 
@@ -60,6 +64,8 @@ export interface TemporaryTransportationLine {
   serviceType: 'TRANSPORTATION';
   transportationType: TransportationType;
   serviceDate: string;
+  origin: string;
+  destination: string;
   notes: string;
 }
 
@@ -110,6 +116,7 @@ export interface TemporaryEventTicketLine {
   eventName: string;
   serviceDate: string;
   quantity: number;
+  venueOrCity: string;
   notes: string;
 }
 

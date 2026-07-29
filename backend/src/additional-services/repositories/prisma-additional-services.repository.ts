@@ -861,6 +861,8 @@ export class PrismaAdditionalServicesRepository
       additionalServiceCatalogId: line.additionalServiceCatalogId,
       serviceCode: line.serviceCode,
       serviceName: line.serviceName,
+      serviceDetailsVersion: line.serviceDetailsVersion,
+      serviceDetails: line.serviceDetails,
       supplierId: line.supplierId,
       supplierName: line.supplierName,
       supplierCostUrl: line.supplierCostUrl ?? null,
@@ -1062,6 +1064,16 @@ export class PrismaAdditionalServicesRepository
         ),
         serviceCode: String(line.serviceCode),
         serviceName: String(line.serviceName),
+        serviceDetailsVersion:
+          typeof line.serviceDetailsVersion === "number"
+            ? line.serviceDetailsVersion
+            : null,
+        serviceDetails:
+          line.serviceDetails &&
+          typeof line.serviceDetails === "object" &&
+          !Array.isArray(line.serviceDetails)
+            ? line.serviceDetails as AdditionalServiceOrderRecord["lines"][number]["serviceDetails"]
+            : null,
         supplierId: String(line.supplierId),
         supplierName: String(line.supplierName),
         supplierCostUrl: this.nullableString(line.supplierCostUrl),

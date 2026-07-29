@@ -42,6 +42,12 @@ export default function LodgingAdditionalFormPage() {
   const [lodgingType, setLodgingType] = useState<LodgingType | null>(
     () => editingLine?.lodgingType ?? null,
   );
+  const [checkInDate, setCheckInDate] = useState(
+    () => editingLine?.checkInDate ?? '',
+  );
+  const [checkOutDate, setCheckOutDate] = useState(
+    () => editingLine?.checkOutDate ?? '',
+  );
   const [notes, setNotes] = useState(() => editingLine?.notes ?? '');
   const [validationError, setValidationError] = useState<string | null>(null);
 
@@ -57,11 +63,23 @@ export default function LodgingAdditionalFormPage() {
       return;
     }
 
+    if (!checkInDate || !checkOutDate) {
+      setValidationError('Seleccione las fechas de check-in y check-out.');
+      return;
+    }
+
+    if (checkOutDate <= checkInDate) {
+      setValidationError('La fecha de check-out debe ser posterior al check-in.');
+      return;
+    }
+
     if (editingLine) {
       replaceTemporaryAdditionalServiceLine(editingLine, {
         participantId: editingLine.participantId,
         serviceType: 'LODGING',
         lodgingType,
+        checkInDate,
+        checkOutDate,
         notes: notes.trim(),
       });
       router.push(getTemporaryAdditionalServiceEditReturnPath());
@@ -73,6 +91,8 @@ export default function LodgingAdditionalFormPage() {
         participantId,
         serviceType: 'LODGING',
         lodgingType,
+        checkInDate,
+        checkOutDate,
         notes: notes.trim(),
       });
     });
@@ -126,6 +146,42 @@ export default function LodgingAdditionalFormPage() {
                   </p>
                 )}
               </fieldset>
+
+              <label className={styles.fieldGroup}>
+                <span className={styles.label}>
+                  Fecha de check-in <span className={styles.required}>*</span>
+                </span>
+                <input
+                  className={styles.input}
+                  type="date"
+                  value={checkInDate}
+                  onChange={(event) => {
+                    setCheckInDate(event.target.value);
+                    setValidationError(null);
+                  }}
+                />
+              </label>
+
+              <label className={styles.fieldGroup}>
+                <span className={styles.label}>
+                  Fecha de check-out <span className={styles.required}>*</span>
+                </span>
+                <input
+                  className={styles.input}
+                  type="date"
+                  min={checkInDate || undefined}
+                  value={checkOutDate}
+                  onChange={(event) => {
+                    setCheckOutDate(event.target.value);
+                    setValidationError(null);
+                  }}
+                />
+                {validationError && (
+                  <p className={styles.error} role="alert">
+                    {validationError}
+                  </p>
+                )}
+              </label>
 
               <label className={styles.fieldGroup}>
                 <span className={styles.label}>Notes</span>

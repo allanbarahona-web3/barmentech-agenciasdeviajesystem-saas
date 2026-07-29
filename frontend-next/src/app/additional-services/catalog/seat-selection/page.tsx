@@ -192,7 +192,7 @@ export default function SeatSelectionAdditionalFormPage() {
               {seatPreference === 'OTHER' && (
                 <label className={styles.fieldGroup}>
                   <span className={styles.label}>
-                    Descripción de preferencia de asiento{' '}
+                    Custom Preference{' '}
                     <span className={styles.required}>*</span>
                   </span>
                   <input

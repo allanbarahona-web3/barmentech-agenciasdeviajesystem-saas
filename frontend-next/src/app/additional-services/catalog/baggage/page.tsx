@@ -41,6 +41,12 @@ export default function BaggageAdditionalFormPage() {
   const [baggageTypes, setBaggageTypes] = useState<BaggageType[]>(
     () => editingLine?.baggageTypes ?? [],
   );
+  const [pieceQuantity, setPieceQuantity] = useState(
+    () => String(editingLine?.pieceQuantity ?? ''),
+  );
+  const [weightKg, setWeightKg] = useState(
+    () => String(editingLine?.weightKg ?? ''),
+  );
   const [notes, setNotes] = useState(() => editingLine?.notes ?? '');
   const [validationError, setValidationError] = useState<string | null>(null);
 
@@ -65,11 +71,25 @@ export default function BaggageAdditionalFormPage() {
       return;
     }
 
+    const numericPieceQuantity = Number(pieceQuantity);
+    if (!Number.isInteger(numericPieceQuantity) || numericPieceQuantity < 1) {
+      setValidationError('Ingrese una cantidad de piezas entera mayor o igual a 1.');
+      return;
+    }
+
+    const numericWeightKg = Number(weightKg);
+    if (!Number.isFinite(numericWeightKg) || numericWeightKg <= 0) {
+      setValidationError('Ingrese un peso mayor que 0 kg.');
+      return;
+    }
+
     if (editingLine) {
       replaceTemporaryAdditionalServiceLine(editingLine, {
         participantId: editingLine.participantId,
         serviceType: 'BAGGAGE',
         baggageTypes: [...baggageTypes],
+        pieceQuantity: numericPieceQuantity,
+        weightKg: numericWeightKg,
         notes: notes.trim(),
       });
       router.push(getTemporaryAdditionalServiceEditReturnPath());
@@ -81,6 +101,8 @@ export default function BaggageAdditionalFormPage() {
         participantId,
         serviceType: 'BAGGAGE',
         baggageTypes: [...baggageTypes],
+        pieceQuantity: numericPieceQuantity,
+        weightKg: numericWeightKg,
         notes: notes.trim(),
       });
     });
@@ -128,6 +150,42 @@ export default function BaggageAdditionalFormPage() {
                   </p>
                 )}
               </fieldset>
+
+              <label className={styles.fieldGroup}>
+                <span className={styles.label}>
+                  Cantidad de piezas <span className={styles.required}>*</span>
+                </span>
+                <input
+                  className={styles.input}
+                  type="number"
+                  min="1"
+                  step="1"
+                  inputMode="numeric"
+                  value={pieceQuantity}
+                  onChange={(event) => {
+                    setPieceQuantity(event.target.value);
+                    setValidationError(null);
+                  }}
+                />
+              </label>
+
+              <label className={styles.fieldGroup}>
+                <span className={styles.label}>
+                  Peso (kg) <span className={styles.required}>*</span>
+                </span>
+                <input
+                  className={styles.input}
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  inputMode="decimal"
+                  value={weightKg}
+                  onChange={(event) => {
+                    setWeightKg(event.target.value);
+                    setValidationError(null);
+                  }}
+                />
+              </label>
 
               <label className={styles.fieldGroup}>
                 <span className={styles.label}>Observaciones</span>

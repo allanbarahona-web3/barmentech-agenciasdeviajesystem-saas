@@ -157,6 +157,12 @@ describe("AdditionalServicesService orders", () => {
         lines: [
           {
             serviceCode: "visa_assistance",
+            serviceDetailsVersion: 1,
+            serviceDetails: {
+              destinationCountry: "Estados Unidos",
+              visaType: "TOURISM",
+              expectedTravelDate: null,
+            },
             supplierId: "supplier-1",
             supplierCostUrl: "https://supplier.example/cost",
             supplierCost: 100,
@@ -205,6 +211,12 @@ describe("AdditionalServicesService orders", () => {
         totalSellingPrice: 67574,
         lines: [
           expect.objectContaining({
+            serviceDetailsVersion: 1,
+            serviceDetails: {
+              destinationCountry: "Estados Unidos",
+              visaType: "TOURISM",
+              expectedTravelDate: null,
+            },
             supplierCostInQuotationCurrency: 52000,
             exchangeRateId: "rate-1",
             exchangeRateType: "SELL",
@@ -349,6 +361,12 @@ describe("AdditionalServicesService orders", () => {
           lines: [
             {
               serviceCode: "VISA_ASSISTANCE",
+              serviceDetailsVersion: 1,
+              serviceDetails: {
+                destinationCountry: "Estados Unidos",
+                visaType: "TOURISM",
+                expectedTravelDate: null,
+              },
               supplierId: "supplier-1",
               supplierCost: 100,
               supplierCostCurrency: AdditionalServiceCurrency.USD,

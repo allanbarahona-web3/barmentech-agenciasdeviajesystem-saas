@@ -69,6 +69,21 @@
   flex: 0 0 auto;
 }
 
+.input {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: #fff;
+  color: #172554;
+  font: inherit;
+}
+
+.input:focus {
+  outline: 2px solid rgba(79, 70, 229, 0.25);
+  border-color: #4f46e5;
+}
+
 .textarea {
   width: 100%;
   min-height: 130px;

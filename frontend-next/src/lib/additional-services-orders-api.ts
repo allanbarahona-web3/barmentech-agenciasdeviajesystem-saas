@@ -1,11 +1,72 @@
 import { apiGet, apiPost } from '@/lib/api-client';
 import type {
+  BaggageType,
+  AccommodationType,
+  FlightTripType,
+  InsuranceCoverage,
+  LodgingType,
+  SeatPreference,
   TemporaryAdditionalServiceLine,
   TemporaryLineCurrency,
+  TransportationType,
+  VisaType,
 } from '@/lib/additional-services-temporary-store';
+import type { Airport } from '@/shared/airports';
+
+export type AdditionalServiceDetails =
+  | {
+      baggageTypes: BaggageType[];
+      pieceQuantity: number;
+      weightKg: number;
+    }
+  | {
+      lodgingType: LodgingType;
+      checkInDate: string;
+      checkOutDate: string;
+    }
+  | { accommodationType: AccommodationType }
+  | {
+      coverage: InsuranceCoverage;
+      customCoverageAmount: number | null;
+      currency: 'USD';
+    }
+  | {
+      transportationType: TransportationType;
+      serviceDate: string;
+      origin: string;
+      destination: string;
+    }
+  | { tourName: string; serviceDate: string }
+  | {
+      tripType: FlightTripType;
+      originAirport: Airport;
+      destinationAirport: Airport;
+      departureDate: string;
+      returnDate: string | null;
+      quantity: number;
+    }
+  | {
+      seatPreference: SeatPreference;
+      otherPreferenceDescription: string | null;
+      quantity: number;
+    }
+  | {
+      eventName: string;
+      serviceDate: string;
+      quantity: number;
+      venueOrCity: string;
+    }
+  | { newReturnDate: string; quantity: number }
+  | {
+      destinationCountry: string;
+      visaType: VisaType;
+      expectedTravelDate: string | null;
+    };
 
 export interface CreateAdditionalServiceOrderLineInput {
   serviceCode: TemporaryAdditionalServiceLine['serviceType'];
+  serviceDetailsVersion: 1;
+  serviceDetails: AdditionalServiceDetails;
   supplierId: string;
   supplierCostUrl?: string;
   supplierCost: number;
@@ -57,6 +118,8 @@ export interface AdditionalServiceOrderLine {
   id: string;
   serviceCode: string;
   serviceName: string;
+  serviceDetailsVersion: number | null;
+  serviceDetails: AdditionalServiceDetails | null;
   supplierId: string;
   supplierName: string;
   supplierCostUrl: string | null;

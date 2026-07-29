@@ -1316,6 +1316,8 @@ model AdditionalServiceOrderLine {
   additionalServiceCatalogId      String
   serviceCode                     String
   serviceName                     String
+  serviceDetailsVersion           Int?
+  serviceDetails                  Json?
   supplierId                      String
   supplierName                    String
   supplierCostUrl                 String?

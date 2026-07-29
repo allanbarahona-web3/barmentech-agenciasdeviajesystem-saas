@@ -21,7 +21,7 @@ import { formatBusinessDate } from '@/shared/regional';
 import styles from '../baggage/baggage-form.module.css';
 
 type ValidationError = {
-  field: 'eventName' | 'serviceDate' | 'quantity';
+  field: 'eventName' | 'serviceDate' | 'quantity' | 'venueOrCity';
   message: string;
 };
 
@@ -56,6 +56,9 @@ export default function EventTicketsAdditionalFormPage() {
   const [quantity, setQuantity] = useState(() =>
     String(editingLine?.quantity ?? Math.max(1, quotationParticipantIds.length)),
   );
+  const [venueOrCity, setVenueOrCity] = useState(
+    () => editingLine?.venueOrCity ?? '',
+  );
   const [notes, setNotes] = useState(() => editingLine?.notes ?? '');
   const [validationError, setValidationError] =
     useState<ValidationError | null>(null);
@@ -83,6 +86,14 @@ export default function EventTicketsAdditionalFormPage() {
       return;
     }
 
+    if (!venueOrCity.trim()) {
+      setValidationError({
+        field: 'venueOrCity',
+        message: 'Ingrese el recinto o la ciudad.',
+      });
+      return;
+    }
+
     const numericQuantity = Number(quantity);
     if (!Number.isInteger(numericQuantity) || numericQuantity < 1) {
       setValidationError({
@@ -98,6 +109,7 @@ export default function EventTicketsAdditionalFormPage() {
       eventName: eventName.trim(),
       serviceDate,
       quantity: numericQuantity,
+      venueOrCity: venueOrCity.trim(),
       notes: notes.trim(),
     };
 
@@ -150,6 +162,26 @@ export default function EventTicketsAdditionalFormPage() {
                   style={inputStyle}
                 />
                 {validationError?.field === 'eventName' && (
+                  <p className={styles.error} role="alert">
+                    {validationError.message}
+                  </p>
+                )}
+              </label>
+
+              <label className={styles.fieldGroup}>
+                <span className={styles.label}>
+                  Recinto / Ciudad <span className={styles.required}>*</span>
+                </span>
+                <input
+                  type="text"
+                  value={venueOrCity}
+                  onChange={(event) => {
+                    setVenueOrCity(event.target.value);
+                    setValidationError(null);
+                  }}
+                  style={inputStyle}
+                />
+                {validationError?.field === 'venueOrCity' && (
                   <p className={styles.error} role="alert">
                     {validationError.message}
                   </p>

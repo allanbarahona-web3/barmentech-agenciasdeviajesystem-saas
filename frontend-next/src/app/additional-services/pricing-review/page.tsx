@@ -15,7 +15,10 @@ import {
 } from '@/components/toast-notification';
 import { Button } from '@/components/ui/button';
 import { getAdditionalServiceSuppliers } from '@/lib/additional-services-admin-api';
-import { createAdditionalServiceOrder } from '@/lib/additional-services-orders-api';
+import {
+  createAdditionalServiceOrder,
+  type AdditionalServiceDetails,
+} from '@/lib/additional-services-orders-api';
 import {
   getAdditionalServicesQuotationCurrency,
   getAdditionalServicesWorkflowContext,
@@ -25,10 +28,81 @@ import {
   getTemporaryAdditionalServiceLineSourcing,
   getTemporaryAdditionalServiceLines,
   resetAdditionalServicesWorkflow,
+  type TemporaryAdditionalServiceLine,
 } from '@/lib/additional-services-temporary-store';
 import { getAdditionalServiceName } from '@/shared/additional-services';
 import styles from '../order-summary/order-summary.module.css';
 import reviewStyles from '@/components/additional-services-pricing-review.module.css';
+
+function getServiceDetails(
+  line: TemporaryAdditionalServiceLine,
+): AdditionalServiceDetails {
+  switch (line.serviceType) {
+    case 'BAGGAGE':
+      return {
+        baggageTypes: line.baggageTypes,
+        pieceQuantity: line.pieceQuantity,
+        weightKg: line.weightKg,
+      };
+    case 'LODGING':
+      return {
+        lodgingType: line.lodgingType,
+        checkInDate: line.checkInDate,
+        checkOutDate: line.checkOutDate,
+      };
+    case 'ACCOMMODATION_TYPE':
+      return { accommodationType: line.accommodationType };
+    case 'INSURANCE':
+      return {
+        coverage: line.coverage,
+        customCoverageAmount: line.customCoverageAmount,
+        currency: line.currency,
+      };
+    case 'TRANSPORTATION':
+      return {
+        transportationType: line.transportationType,
+        serviceDate: line.serviceDate,
+        origin: line.origin,
+        destination: line.destination,
+      };
+    case 'TOUR':
+      return { tourName: line.tourName, serviceDate: line.serviceDate };
+    case 'FLIGHT_TICKET':
+      return {
+        tripType: line.tripType,
+        originAirport: line.originAirport,
+        destinationAirport: line.destinationAirport,
+        departureDate: line.departureDate,
+        returnDate: line.returnDate,
+        quantity: line.quantity,
+      };
+    case 'SEAT_SELECTION':
+      return {
+        seatPreference: line.seatPreference,
+        otherPreferenceDescription: line.otherPreferenceDescription,
+        quantity: line.quantity,
+      };
+    case 'EVENT_TICKET':
+      return {
+        eventName: line.eventName,
+        serviceDate: line.serviceDate,
+        quantity: line.quantity,
+        venueOrCity: line.venueOrCity,
+      };
+    case 'TRAVEL_EXTENSION':
+    case 'TRIP_REDUCTION':
+      return {
+        newReturnDate: line.newReturnDate,
+        quantity: line.quantity,
+      };
+    case 'VISA_ASSISTANCE':
+      return {
+        destinationCountry: line.destinationCountry,
+        visaType: line.visaType,
+        expectedTravelDate: line.expectedTravelDate,
+      };
+  }
+}
 
 export default function AdditionalServicesPricingReviewPage() {
   const router = useRouter();
@@ -156,6 +230,8 @@ export default function AdditionalServicesPricingReviewPage() {
 
         return {
           serviceCode: line.serviceType,
+          serviceDetailsVersion: 1 as const,
+          serviceDetails: getServiceDetails(line),
           supplierId: sourcing.supplierId,
           supplierCostUrl: sourcing.providerUrl || undefined,
           supplierCost: sourcing.cost,
