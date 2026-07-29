@@ -1,0 +1,79 @@
+.assignment {
+  margin: 0;
+  padding: 18px;
+  border: 1px solid #dbe3ef;
+  border-radius: 12px;
+}
+
+.title {
+  padding: 0 6px;
+  color: #172554;
+  font-weight: 700;
+}
+
+.participants {
+  display: grid;
+  gap: 14px;
+}
+
+.participant {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.participantLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: #172554;
+  font-weight: 600;
+}
+
+.participantLabel input {
+  width: 17px;
+  height: 17px;
+}
+
+.notesButton {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #1d4ed8;
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 650;
+  text-align: right;
+}
+
+.notesButton:hover {
+  text-decoration: underline;
+}
+
+.noNotes {
+  color: #64748b;
+  font-size: 14px;
+  text-align: right;
+}
+
+.error {
+  margin: 12px 0 0;
+  color: #b91c1c;
+  font-size: 14px;
+}
+
+@media (max-width: 520px) {
+  .participant {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .notesButton,
+  .noNotes {
+    padding-left: 27px;
+    text-align: left;
+  }
+}

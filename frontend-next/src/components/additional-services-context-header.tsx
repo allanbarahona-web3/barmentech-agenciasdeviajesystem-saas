@@ -3,7 +3,10 @@
 import { useState } from 'react';
 import { ClipboardList, Copy } from 'lucide-react';
 import { ConfirmModal } from '@/components/confirm-modal';
-import { getAdditionalServicesWorkflowContext } from '@/lib/additional-services-temporary-store';
+import {
+  getAdditionalServicesWorkflowContext,
+  type AdditionalServicesContextParticipant,
+} from '@/lib/additional-services-temporary-store';
 import styles from './additional-services-context-header.module.css';
 
 export function ContractReference({
@@ -38,6 +41,31 @@ export function ContractReference({
         </button>
       )}
       {copied && <small>Copiado</small>}
+    </div>
+  );
+}
+
+export function AdditionalServicesOperationalNotes({
+  participants,
+}: {
+  participants: AdditionalServicesContextParticipant[];
+}) {
+  return (
+    <div className={styles.notesList}>
+      {participants.map((participant) => (
+        <section className={styles.participant} key={participant.participantId}>
+          <h3 className={styles.participantName}>{participant.fullName}</h3>
+          {participant.operationalNotes.length > 0 ? (
+            <ul className={styles.noteItems}>
+              {participant.operationalNotes.map((note, index) => (
+                <li key={`${participant.participantId}:${index}`}>{note}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className={styles.empty}>No tiene notas operativas.</p>
+          )}
+        </section>
+      ))}
     </div>
   );
 }
@@ -88,29 +116,9 @@ export function AdditionalServicesContextHeader() {
         isOpen={notesOpen}
         title="Notas operativas"
         message={
-          <div className={styles.notesList}>
-            {context.selectedParticipants.map((participant) => (
-              <section
-                className={styles.participant}
-                key={participant.participantId}
-              >
-                <h3 className={styles.participantName}>
-                  {participant.fullName}
-                </h3>
-                {participant.operationalNotes.length > 0 ? (
-                  <ul className={styles.noteItems}>
-                    {participant.operationalNotes.map((note, index) => (
-                      <li key={`${participant.participantId}:${index}`}>
-                        {note}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className={styles.empty}>No tiene notas operativas.</p>
-                )}
-              </section>
-            ))}
-          </div>
+          <AdditionalServicesOperationalNotes
+            participants={context.selectedParticipants}
+          />
         }
         confirmText="Cerrar"
         showCancel={false}

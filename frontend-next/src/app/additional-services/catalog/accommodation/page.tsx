@@ -5,6 +5,10 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { AdditionalServicesContextHeader } from '@/components/additional-services-context-header';
 import {
+  AdditionalServiceParticipantAssignment,
+  useAdditionalServiceParticipantAssignment,
+} from '@/components/additional-service-participant-assignment';
+import {
   addTemporaryLodgingLine,
   cancelTemporaryAdditionalServiceLineEdit,
   getTemporaryAdditionalServiceEditReturnPath,
@@ -26,11 +30,14 @@ const LODGING_OPTIONS: Array<{ value: LodgingType; label: string }> = [
 export default function LodgingAdditionalFormPage() {
   useTemporaryAdditionalServiceEditCleanup();
   const router = useRouter();
-  const [selectedParticipantIds] = useState(() =>
+  const [quotationParticipantIds] = useState(() =>
     getSelectedAdditionalServicesParticipants(),
   );
   const [editingLine] = useState(() =>
     getTemporaryAdditionalServiceLineBeingEdited('LODGING'),
+  );
+  const participantAssignment = useAdditionalServiceParticipantAssignment(
+    editingLine?.participantId,
   );
   const [lodgingType, setLodgingType] = useState<LodgingType | null>(
     () => editingLine?.lodgingType ?? null,
@@ -41,7 +48,7 @@ export default function LodgingAdditionalFormPage() {
   function submitForm(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (selectedParticipantIds.length === 0) {
+    if (!editingLine && !participantAssignment.validateSelection()) {
       return;
     }
 
@@ -61,7 +68,7 @@ export default function LodgingAdditionalFormPage() {
       return;
     }
 
-    selectedParticipantIds.forEach((participantId) => {
+    participantAssignment.selectedParticipantIds.forEach((participantId) => {
       addTemporaryLodgingLine({
         participantId,
         serviceType: 'LODGING',
@@ -84,7 +91,7 @@ export default function LodgingAdditionalFormPage() {
         </header>
 
         <section className="form-section-card" style={{ marginTop: 0 }}>
-          {selectedParticipantIds.length === 0 ? (
+          {quotationParticipantIds.length === 0 ? (
             <div className={styles.participantError} role="alert">
               Debe seleccionar un participante antes de configurar el
               hospedaje.
@@ -130,6 +137,10 @@ export default function LodgingAdditionalFormPage() {
                 />
               </label>
 
+              <AdditionalServiceParticipantAssignment
+                assignment={participantAssignment}
+                readOnly={Boolean(editingLine)}
+              />
               <div className={styles.actions}>
                 <Link
                   href={
@@ -149,7 +160,7 @@ export default function LodgingAdditionalFormPage() {
             </form>
           )}
 
-          {selectedParticipantIds.length === 0 && (
+          {quotationParticipantIds.length === 0 && (
             <div className={styles.actions}>
               <Link
                 href="/additional-services"

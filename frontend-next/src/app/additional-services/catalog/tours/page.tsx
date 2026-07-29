@@ -5,6 +5,10 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { AdditionalServicesContextHeader } from '@/components/additional-services-context-header';
 import {
+  AdditionalServiceParticipantAssignment,
+  useAdditionalServiceParticipantAssignment,
+} from '@/components/additional-service-participant-assignment';
+import {
   addTemporaryTourLine,
   cancelTemporaryAdditionalServiceLineEdit,
   getTemporaryAdditionalServiceEditReturnPath,
@@ -34,11 +38,14 @@ const inputStyle = {
 export default function TourAdditionalFormPage() {
   useTemporaryAdditionalServiceEditCleanup();
   const router = useRouter();
-  const [selectedParticipantIds] = useState(() =>
+  const [quotationParticipantIds] = useState(() =>
     getSelectedAdditionalServicesParticipants(),
   );
   const [editingLine] = useState(() =>
     getTemporaryAdditionalServiceLineBeingEdited('TOUR'),
+  );
+  const participantAssignment = useAdditionalServiceParticipantAssignment(
+    editingLine?.participantId,
   );
   const [tourName, setTourName] = useState(
     () => editingLine?.tourName ?? '',
@@ -53,7 +60,7 @@ export default function TourAdditionalFormPage() {
   function submitForm(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (selectedParticipantIds.length === 0) {
+    if (!editingLine && !participantAssignment.validateSelection()) {
       return;
     }
 
@@ -85,7 +92,7 @@ export default function TourAdditionalFormPage() {
       return;
     }
 
-    selectedParticipantIds.forEach((participantId) => {
+    participantAssignment.selectedParticipantIds.forEach((participantId) => {
       addTemporaryTourLine({
         participantId,
         serviceType: 'TOUR',
@@ -109,7 +116,7 @@ export default function TourAdditionalFormPage() {
         </header>
 
         <section className="form-section-card" style={{ marginTop: 0 }}>
-          {selectedParticipantIds.length === 0 ? (
+          {quotationParticipantIds.length === 0 ? (
             <div className={styles.participantError} role="alert">
               Debe seleccionar un participante antes de configurar el tour.
             </div>
@@ -170,6 +177,10 @@ export default function TourAdditionalFormPage() {
                 />
               </label>
 
+              <AdditionalServiceParticipantAssignment
+                assignment={participantAssignment}
+                readOnly={Boolean(editingLine)}
+              />
               <div className={styles.actions}>
                 <Link
                   href={
@@ -189,7 +200,7 @@ export default function TourAdditionalFormPage() {
             </form>
           )}
 
-          {selectedParticipantIds.length === 0 && (
+          {quotationParticipantIds.length === 0 && (
             <div className={styles.actions}>
               <Link
                 href="/additional-services"

@@ -5,6 +5,10 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { AdditionalServicesContextHeader } from '@/components/additional-services-context-header';
 import {
+  AdditionalServiceParticipantAssignment,
+  useAdditionalServiceParticipantAssignment,
+} from '@/components/additional-service-participant-assignment';
+import {
   addTemporarySeatSelectionLine,
   cancelTemporaryAdditionalServiceLineEdit,
   getTemporaryAdditionalServiceEditReturnPath,
@@ -48,11 +52,14 @@ const inputStyle = {
 export default function SeatSelectionAdditionalFormPage() {
   useTemporaryAdditionalServiceEditCleanup();
   const router = useRouter();
-  const [selectedParticipantIds] = useState(() =>
+  const [quotationParticipantIds] = useState(() =>
     getSelectedAdditionalServicesParticipants(),
   );
   const [editingLine] = useState(() =>
     getTemporaryAdditionalServiceLineBeingEdited('SEAT_SELECTION'),
+  );
+  const participantAssignment = useAdditionalServiceParticipantAssignment(
+    editingLine?.participantId,
   );
   const [seatPreference, setSeatPreference] =
     useState<SeatPreference | null>(
@@ -61,7 +68,7 @@ export default function SeatSelectionAdditionalFormPage() {
   const [otherPreferenceDescription, setOtherPreferenceDescription] =
     useState(() => editingLine?.otherPreferenceDescription ?? '');
   const [quantity, setQuantity] = useState(() =>
-    String(editingLine?.quantity ?? Math.max(1, selectedParticipantIds.length)),
+    String(editingLine?.quantity ?? Math.max(1, quotationParticipantIds.length)),
   );
   const [notes, setNotes] = useState(() => editingLine?.notes ?? '');
   const [validationError, setValidationError] =
@@ -70,7 +77,7 @@ export default function SeatSelectionAdditionalFormPage() {
   function submitForm(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (selectedParticipantIds.length === 0) {
+    if (!editingLine && !participantAssignment.validateSelection()) {
       return;
     }
 
@@ -120,7 +127,7 @@ export default function SeatSelectionAdditionalFormPage() {
       return;
     }
 
-    selectedParticipantIds.forEach((participantId) => {
+    participantAssignment.selectedParticipantIds.forEach((participantId) => {
       addTemporarySeatSelectionLine({
         ...updatedLine,
         participantId,
@@ -142,7 +149,7 @@ export default function SeatSelectionAdditionalFormPage() {
         </header>
 
         <section className="form-section-card" style={{ marginTop: 0 }}>
-          {selectedParticipantIds.length === 0 ? (
+          {quotationParticipantIds.length === 0 ? (
             <div className={styles.participantError} role="alert">
               Debe seleccionar un participante antes de configurar la
               selección de asiento.
@@ -239,6 +246,10 @@ export default function SeatSelectionAdditionalFormPage() {
                 />
               </label>
 
+              <AdditionalServiceParticipantAssignment
+                assignment={participantAssignment}
+                readOnly={Boolean(editingLine)}
+              />
               <div className={styles.actions}>
                 <Link
                   href={
@@ -258,7 +269,7 @@ export default function SeatSelectionAdditionalFormPage() {
             </form>
           )}
 
-          {selectedParticipantIds.length === 0 && (
+          {quotationParticipantIds.length === 0 && (
             <div className={styles.actions}>
               <Link
                 href="/additional-services"

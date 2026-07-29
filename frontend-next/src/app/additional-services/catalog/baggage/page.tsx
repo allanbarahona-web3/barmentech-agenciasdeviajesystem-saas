@@ -5,6 +5,10 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { AdditionalServicesContextHeader } from '@/components/additional-services-context-header';
 import {
+  AdditionalServiceParticipantAssignment,
+  useAdditionalServiceParticipantAssignment,
+} from '@/components/additional-service-participant-assignment';
+import {
   addTemporaryBaggageLine,
   cancelTemporaryAdditionalServiceLineEdit,
   getTemporaryAdditionalServiceEditReturnPath,
@@ -25,11 +29,14 @@ const BAGGAGE_OPTIONS: Array<{ value: BaggageType; label: string }> = [
 export default function BaggageAdditionalFormPage() {
   useTemporaryAdditionalServiceEditCleanup();
   const router = useRouter();
-  const [selectedParticipantIds] = useState(() =>
+  const [quotationParticipantIds] = useState(() =>
     getSelectedAdditionalServicesParticipants(),
   );
   const [editingLine] = useState(() =>
     getTemporaryAdditionalServiceLineBeingEdited('BAGGAGE'),
+  );
+  const participantAssignment = useAdditionalServiceParticipantAssignment(
+    editingLine?.participantId,
   );
   const [baggageTypes, setBaggageTypes] = useState<BaggageType[]>(
     () => editingLine?.baggageTypes ?? [],
@@ -49,7 +56,7 @@ export default function BaggageAdditionalFormPage() {
   function submitForm(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (selectedParticipantIds.length === 0) {
+    if (!editingLine && !participantAssignment.validateSelection()) {
       return;
     }
 
@@ -69,7 +76,7 @@ export default function BaggageAdditionalFormPage() {
       return;
     }
 
-    selectedParticipantIds.forEach((participantId) => {
+    participantAssignment.selectedParticipantIds.forEach((participantId) => {
       addTemporaryBaggageLine({
         participantId,
         serviceType: 'BAGGAGE',
@@ -92,7 +99,7 @@ export default function BaggageAdditionalFormPage() {
         </header>
 
         <section className="form-section-card" style={{ marginTop: 0 }}>
-          {selectedParticipantIds.length === 0 ? (
+          {quotationParticipantIds.length === 0 ? (
             <div className={styles.participantError} role="alert">
               Debe seleccionar un participante antes de configurar el equipaje.
             </div>
@@ -132,6 +139,10 @@ export default function BaggageAdditionalFormPage() {
                 />
               </label>
 
+              <AdditionalServiceParticipantAssignment
+                assignment={participantAssignment}
+                readOnly={Boolean(editingLine)}
+              />
               <div className={styles.actions}>
                 <Link
                   href={
@@ -151,7 +162,7 @@ export default function BaggageAdditionalFormPage() {
             </form>
           )}
 
-          {selectedParticipantIds.length === 0 && (
+          {quotationParticipantIds.length === 0 && (
             <div className={styles.actions}>
               <Link
                 href="/additional-services"

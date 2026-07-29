@@ -5,6 +5,10 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { AdditionalServicesContextHeader } from '@/components/additional-services-context-header';
 import {
+  AdditionalServiceParticipantAssignment,
+  useAdditionalServiceParticipantAssignment,
+} from '@/components/additional-service-participant-assignment';
+import {
   addTemporaryEventTicketLine,
   cancelTemporaryAdditionalServiceLineEdit,
   getTemporaryAdditionalServiceEditReturnPath,
@@ -34,11 +38,14 @@ const inputStyle = {
 export default function EventTicketsAdditionalFormPage() {
   useTemporaryAdditionalServiceEditCleanup();
   const router = useRouter();
-  const [selectedParticipantIds] = useState(() =>
+  const [quotationParticipantIds] = useState(() =>
     getSelectedAdditionalServicesParticipants(),
   );
   const [editingLine] = useState(() =>
     getTemporaryAdditionalServiceLineBeingEdited('EVENT_TICKET'),
+  );
+  const participantAssignment = useAdditionalServiceParticipantAssignment(
+    editingLine?.participantId,
   );
   const [eventName, setEventName] = useState(
     () => editingLine?.eventName ?? '',
@@ -47,7 +54,7 @@ export default function EventTicketsAdditionalFormPage() {
     () => editingLine?.serviceDate ?? '',
   );
   const [quantity, setQuantity] = useState(() =>
-    String(editingLine?.quantity ?? Math.max(1, selectedParticipantIds.length)),
+    String(editingLine?.quantity ?? Math.max(1, quotationParticipantIds.length)),
   );
   const [notes, setNotes] = useState(() => editingLine?.notes ?? '');
   const [validationError, setValidationError] =
@@ -56,7 +63,7 @@ export default function EventTicketsAdditionalFormPage() {
   function submitForm(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (selectedParticipantIds.length === 0) {
+    if (!editingLine && !participantAssignment.validateSelection()) {
       return;
     }
 
@@ -100,7 +107,7 @@ export default function EventTicketsAdditionalFormPage() {
       return;
     }
 
-    selectedParticipantIds.forEach((participantId) => {
+    participantAssignment.selectedParticipantIds.forEach((participantId) => {
       addTemporaryEventTicketLine({
         ...updatedLine,
         participantId,
@@ -122,7 +129,7 @@ export default function EventTicketsAdditionalFormPage() {
         </header>
 
         <section className="form-section-card" style={{ marginTop: 0 }}>
-          {selectedParticipantIds.length === 0 ? (
+          {quotationParticipantIds.length === 0 ? (
             <div className={styles.participantError} role="alert">
               Debe seleccionar un participante antes de configurar los
               boletos para eventos.
@@ -207,6 +214,10 @@ export default function EventTicketsAdditionalFormPage() {
                 />
               </label>
 
+              <AdditionalServiceParticipantAssignment
+                assignment={participantAssignment}
+                readOnly={Boolean(editingLine)}
+              />
               <div className={styles.actions}>
                 <Link
                   href={
@@ -226,7 +237,7 @@ export default function EventTicketsAdditionalFormPage() {
             </form>
           )}
 
-          {selectedParticipantIds.length === 0 && (
+          {quotationParticipantIds.length === 0 && (
             <div className={styles.actions}>
               <Link
                 href="/additional-services"

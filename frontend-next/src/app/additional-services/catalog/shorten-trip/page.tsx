@@ -5,6 +5,10 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { AdditionalServicesContextHeader } from '@/components/additional-services-context-header';
 import {
+  AdditionalServiceParticipantAssignment,
+  useAdditionalServiceParticipantAssignment,
+} from '@/components/additional-service-participant-assignment';
+import {
   addTemporaryTripReductionLine,
   cancelTemporaryAdditionalServiceLineEdit,
   getTemporaryAdditionalServiceEditReturnPath,
@@ -34,17 +38,20 @@ const inputStyle = {
 export default function TripReductionAdditionalFormPage() {
   useTemporaryAdditionalServiceEditCleanup();
   const router = useRouter();
-  const [selectedParticipantIds] = useState(() =>
+  const [quotationParticipantIds] = useState(() =>
     getSelectedAdditionalServicesParticipants(),
   );
   const [editingLine] = useState(() =>
     getTemporaryAdditionalServiceLineBeingEdited('TRIP_REDUCTION'),
   );
+  const participantAssignment = useAdditionalServiceParticipantAssignment(
+    editingLine?.participantId,
+  );
   const [newReturnDate, setNewReturnDate] = useState(
     () => editingLine?.newReturnDate ?? '',
   );
   const [quantity, setQuantity] = useState(() =>
-    String(editingLine?.quantity ?? Math.max(1, selectedParticipantIds.length)),
+    String(editingLine?.quantity ?? Math.max(1, quotationParticipantIds.length)),
   );
   const [notes, setNotes] = useState(() => editingLine?.notes ?? '');
   const [validationError, setValidationError] =
@@ -53,7 +60,7 @@ export default function TripReductionAdditionalFormPage() {
   function submitForm(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (selectedParticipantIds.length === 0) {
+    if (!editingLine && !participantAssignment.validateSelection()) {
       return;
     }
 
@@ -88,7 +95,7 @@ export default function TripReductionAdditionalFormPage() {
       return;
     }
 
-    selectedParticipantIds.forEach((participantId) => {
+    participantAssignment.selectedParticipantIds.forEach((participantId) => {
       addTemporaryTripReductionLine({
         ...updatedLine,
         participantId,
@@ -110,7 +117,7 @@ export default function TripReductionAdditionalFormPage() {
         </header>
 
         <section className="form-section-card" style={{ marginTop: 0 }}>
-          {selectedParticipantIds.length === 0 ? (
+          {quotationParticipantIds.length === 0 ? (
             <div className={styles.participantError} role="alert">
               Debe seleccionar un participante antes de configurar la
               reducción del viaje.
@@ -176,6 +183,10 @@ export default function TripReductionAdditionalFormPage() {
                 />
               </label>
 
+              <AdditionalServiceParticipantAssignment
+                assignment={participantAssignment}
+                readOnly={Boolean(editingLine)}
+              />
               <div className={styles.actions}>
                 <Link
                   href={
@@ -195,7 +206,7 @@ export default function TripReductionAdditionalFormPage() {
             </form>
           )}
 
-          {selectedParticipantIds.length === 0 && (
+          {quotationParticipantIds.length === 0 && (
             <div className={styles.actions}>
               <Link
                 href="/additional-services"
