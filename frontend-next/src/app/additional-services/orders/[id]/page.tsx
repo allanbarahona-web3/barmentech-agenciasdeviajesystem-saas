@@ -19,6 +19,7 @@ import {
   type AdditionalServiceOrderParticipant,
   type AdditionalServiceOrderParticipantRole,
 } from '@/lib/additional-services-orders-api';
+import { formatCommercialService } from '@/shared/additional-services';
 import styles from './quotation-preview.module.css';
 
 function formatCurrency(
@@ -252,43 +253,61 @@ export default function AdditionalServiceOrderPreviewPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {order.lines.map((line) => (
-                    <tr key={line.id}>
-                      <td>
-                        <strong>{line.serviceName}</strong>
-                      </td>
-                      <td>{line.supplierName}</td>
-                      <td>
-                        {line.participants
-                          .map((participant) => participant.fullName)
-                          .join(', ')}
-                      </td>
-                      <td>
-                        {formatCurrency(
-                          line.supplierCost,
-                          line.supplierCostCurrency,
-                        )}
-                      </td>
-                      <td>
-                        {formatCurrency(
-                          line.marginAmount,
-                          line.quotationCurrency,
-                        )}
-                      </td>
-                      <td>
-                        {formatCurrency(
-                          line.vatAmount,
-                          line.quotationCurrency,
-                        )}
-                      </td>
-                      <td className={styles.finalPrice}>
-                        {formatCurrency(
-                          line.finalSellingPrice,
-                          line.quotationCurrency,
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                  {order.lines.map((line) => {
+                    const commercialDescription = formatCommercialService({
+                      serviceCode: line.serviceCode,
+                      serviceDetailsVersion: line.serviceDetailsVersion,
+                      serviceDetails: line.serviceDetails,
+                    });
+
+                    return (
+                      <tr key={line.id}>
+                        <td className={styles.serviceDescription}>
+                          <strong>{commercialDescription.serviceLabel}</strong>
+                          <span>{commercialDescription.summary}</span>
+                          {commercialDescription.attributes.length > 0 && (
+                            <span className={styles.serviceAttributes}>
+                              {commercialDescription.attributes
+                                .map(
+                                  ({ label, value }) => `${label}: ${value}`,
+                                )
+                                .join(' · ')}
+                            </span>
+                          )}
+                        </td>
+                        <td>{line.supplierName}</td>
+                        <td>
+                          {line.participants
+                            .map((participant) => participant.fullName)
+                            .join(', ')}
+                        </td>
+                        <td>
+                          {formatCurrency(
+                            line.supplierCost,
+                            line.supplierCostCurrency,
+                          )}
+                        </td>
+                        <td>
+                          {formatCurrency(
+                            line.marginAmount,
+                            line.quotationCurrency,
+                          )}
+                        </td>
+                        <td>
+                          {formatCurrency(
+                            line.vatAmount,
+                            line.quotationCurrency,
+                          )}
+                        </td>
+                        <td className={styles.finalPrice}>
+                          {formatCurrency(
+                            line.finalSellingPrice,
+                            line.quotationCurrency,
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

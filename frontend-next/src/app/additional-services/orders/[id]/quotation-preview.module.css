@@ -246,6 +246,24 @@
   background: #f6f9fd;
 }
 
+.serviceDescription {
+  min-width: 240px;
+}
+
+.serviceDescription strong,
+.serviceDescription span {
+  display: block;
+}
+
+.serviceDescription > span {
+  margin-top: 3px;
+}
+
+.serviceAttributes {
+  color: #66758a;
+  font-size: 11px;
+}
+
 .finalPrice {
   color: #273db8 !important;
   font-size: 13px !important;
