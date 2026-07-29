@@ -12,7 +12,7 @@ export interface AdditionalServicePricingReviewEntry {
 
 function formatCurrency(
   value: number,
-  currency: AdditionalServicePricingBreakdown['costCurrency'],
+  currency: AdditionalServicePricingBreakdown['quotationCurrency'],
 ) {
   return new Intl.NumberFormat('es-CR', {
     style: 'currency',
@@ -30,7 +30,7 @@ function formatDecimal(value: number) {
 }
 
 interface PricingSummary {
-  currency: AdditionalServicePricingBreakdown['costCurrency'];
+  currency: AdditionalServicePricingBreakdown['quotationCurrency'];
   subtotal: number;
   vatAmount: number;
   finalSellingPrice: number;
@@ -44,8 +44,8 @@ export function AdditionalServicesPricingReview({
   const summaries = Array.from(
     entries.reduce<Map<PricingSummary['currency'], PricingSummary>>(
       (byCurrency, { breakdown }) => {
-        const summary = byCurrency.get(breakdown.costCurrency) ?? {
-          currency: breakdown.costCurrency,
+        const summary = byCurrency.get(breakdown.quotationCurrency) ?? {
+          currency: breakdown.quotationCurrency,
           subtotal: 0,
           vatAmount: 0,
           finalSellingPrice: 0,
@@ -54,7 +54,7 @@ export function AdditionalServicesPricingReview({
         summary.subtotal += breakdown.subtotal;
         summary.vatAmount += breakdown.vatAmount;
         summary.finalSellingPrice += breakdown.finalSellingPrice;
-        byCurrency.set(breakdown.costCurrency, summary);
+        byCurrency.set(breakdown.quotationCurrency, summary);
         return byCurrency;
       },
       new Map(),
@@ -83,7 +83,7 @@ export function AdditionalServicesPricingReview({
                     </p>
                   </div>
                   <span className={styles.currency}>
-                    {breakdown.costCurrency}
+                    {breakdown.quotationCurrency}
                   </span>
                 </header>
 
@@ -120,7 +120,7 @@ export function AdditionalServicesPricingReview({
                         ? `${formatDecimal(breakdown.marginValue)} %`
                         : formatCurrency(
                             breakdown.marginValue,
-                            breakdown.costCurrency,
+                            breakdown.quotationCurrency,
                           )}
                     </dd>
                   </div>
@@ -129,7 +129,7 @@ export function AdditionalServicesPricingReview({
                     <dd>
                       {formatCurrency(
                         breakdown.marginAmount,
-                        breakdown.costCurrency,
+                        breakdown.quotationCurrency,
                       )}
                     </dd>
                   </div>
@@ -138,7 +138,7 @@ export function AdditionalServicesPricingReview({
                     <dd>
                       {formatCurrency(
                         breakdown.subtotal,
-                        breakdown.costCurrency,
+                        breakdown.quotationCurrency,
                       )}
                     </dd>
                   </div>
@@ -151,7 +151,7 @@ export function AdditionalServicesPricingReview({
                     <dd>
                       {formatCurrency(
                         breakdown.vatAmount,
-                        breakdown.costCurrency,
+                        breakdown.quotationCurrency,
                       )}
                     </dd>
                   </div>
@@ -160,7 +160,7 @@ export function AdditionalServicesPricingReview({
                     <dd>
                       {formatCurrency(
                         breakdown.finalSellingPrice,
-                        breakdown.costCurrency,
+                        breakdown.quotationCurrency,
                       )}
                     </dd>
                   </div>

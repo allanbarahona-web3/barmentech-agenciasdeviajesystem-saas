@@ -43,6 +43,7 @@ export class AdditionalServicesPricingService {
       additionalServiceId: catalog.id,
       supplierCost: input.supplierCost,
       costCurrency: input.costCurrency,
+      quotationCurrency: input.quotationCurrency,
     });
   }
 }

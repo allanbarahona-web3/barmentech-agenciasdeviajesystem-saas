@@ -17,3 +17,12 @@ export class InvalidPricingInputError extends Error {
     this.name = "InvalidPricingInputError";
   }
 }
+
+export class ExchangeRateMissingError extends Error {
+  readonly code = "EXCHANGE_RATE_MISSING";
+
+  constructor(tenantId: string) {
+    super(`Current exchange rate is missing for tenant ${tenantId}.`);
+    this.name = "ExchangeRateMissingError";
+  }
+}

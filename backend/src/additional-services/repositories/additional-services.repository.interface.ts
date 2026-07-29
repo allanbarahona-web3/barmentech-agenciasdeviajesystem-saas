@@ -2,38 +2,49 @@ import {
   AdditionalServiceCurrency,
   AdditionalServiceMarginType,
   AdditionalServiceOrderStatus,
-  AdditionalServiceType,
+  AdditionalServiceTravelType,
 } from "../enums";
 
 export interface AdditionalServiceOrderLineRecord {
   id: string;
   tenantId: string;
   orderId: string;
-  serviceType: AdditionalServiceType;
-  detail: string;
-  notes: string;
-  serviceDate: Date | null;
-  quantity: number;
-  currency: AdditionalServiceCurrency;
-  exchangeRate: string;
-  cost: string;
-  salePrice: string;
+  additionalServiceCatalogId: string;
+  serviceCode: string;
+  serviceName: string;
+  supplierId: string;
+  supplierName: string;
+  supplierCostUrl: string | null;
+  supplierCost: string;
+  supplierCostCurrency: AdditionalServiceCurrency;
+  quotationCurrency: AdditionalServiceCurrency;
+  supplierCostInQuotationCurrency: string;
+  exchangeRateId: string | null;
+  exchangeRateDate: Date | null;
+  exchangeRateSource: string | null;
+  exchangeRateBuyRate: string | null;
+  exchangeRateSellRate: string | null;
+  exchangeRateType: "SELL" | null;
+  appliedExchangeRate: string;
   marginType: AdditionalServiceMarginType;
   marginValue: string;
-  taxPercentage: string;
-  taxAmount: string;
+  marginAmount: string;
   subtotal: string;
-  total: string;
-  supplierName: string | null;
-  sourceUrl: string | null;
+  vatPercentage: string;
+  vatAmount: string;
+  finalSellingPrice: string;
+  commercialNotes: string | null;
   participants: AdditionalServiceOrderParticipantDetails[];
   createdAt: Date;
   updatedAt: Date;
 }
 
 export interface AdditionalServiceOrderParticipantDetails {
-  clientId: string;
+  clientId: string | null;
   fullName: string;
+  identification: string;
+  email: string | null;
+  phone: string | null;
 }
 
 export interface AdditionalServiceOrderTravelDetails {
@@ -50,8 +61,14 @@ export interface AdditionalServiceOrderRecord {
   id: string;
   tenantId: string;
   orderNumber: string;
+  idempotencyKey: string;
   travelPackageId: string | null;
-  internalTripId: string | null;
+  internalBookingId: string | null;
+  travelType: AdditionalServiceTravelType;
+  quotationCurrency: AdditionalServiceCurrency;
+  commercialSubtotal: string;
+  totalVat: string;
+  totalSellingPrice: string;
   travel: AdditionalServiceOrderTravelDetails | null;
   status: AdditionalServiceOrderStatus;
   lines: AdditionalServiceOrderLineRecord[];
@@ -63,7 +80,7 @@ export interface AdditionalServiceOrderRecord {
 
 export interface AdditionalServiceTravelReference {
   travelPackageId?: string;
-  internalTripId?: string;
+  internalBookingId?: string;
 }
 
 export interface AdditionalServiceTenantRecord {
@@ -79,6 +96,10 @@ export interface AdditionalServiceTravelRecord {
 export interface AdditionalServiceParticipantRecord {
   id: string;
   tenantId: string;
+  fullName: string;
+  idNumber: string;
+  email: string | null;
+  phone: string | null;
 }
 
 export interface AdditionalServiceCatalogRecord {
@@ -175,32 +196,52 @@ export interface UpdateSupplierData {
 }
 
 export interface CreateAdditionalServiceOrderLineData {
-  serviceType: AdditionalServiceType;
-  detail: string;
-  notes: string;
-  serviceDate?: Date;
-  quantity: number;
-  currency: AdditionalServiceCurrency;
-  exchangeRate: number;
-  cost: number;
-  salePrice: number;
+  additionalServiceCatalogId: string;
+  serviceCode: string;
+  serviceName: string;
+  supplierId: string;
+  supplierName: string;
+  supplierCostUrl?: string;
+  supplierCost: number;
+  supplierCostCurrency: AdditionalServiceCurrency;
+  quotationCurrency: AdditionalServiceCurrency;
+  supplierCostInQuotationCurrency: number;
+  exchangeRateId: string | null;
+  exchangeRateDate: Date | null;
+  exchangeRateSource: string | null;
+  exchangeRateBuyRate: number | null;
+  exchangeRateSellRate: number | null;
+  exchangeRateType: "SELL" | null;
+  appliedExchangeRate: number;
   marginType: AdditionalServiceMarginType;
   marginValue: number;
-  taxPercentage: number;
-  taxAmount: number;
+  marginAmount: number;
   subtotal: number;
-  total: number;
-  supplierName?: string;
-  sourceUrl?: string;
-  participantClientIds: string[];
+  vatPercentage: number;
+  vatAmount: number;
+  finalSellingPrice: number;
+  commercialNotes?: string;
+  participants: Array<{
+    clientId: string;
+    fullName: string;
+    identification: string;
+    email: string | null;
+    phone: string | null;
+  }>;
 }
 
 export interface CreateAdditionalServiceOrderData
   extends AdditionalServiceTravelReference {
   tenantId: string;
   orderNumber: string;
+  idempotencyKey: string;
   createdByUserId: string;
   createdByName: string;
+  travelType: AdditionalServiceTravelType;
+  quotationCurrency: AdditionalServiceCurrency;
+  commercialSubtotal: number;
+  totalVat: number;
+  totalSellingPrice: number;
   lines: CreateAdditionalServiceOrderLineData[];
 }
 
@@ -219,13 +260,18 @@ export interface AdditionalServicesRepository {
     id: string,
   ): Promise<AdditionalServiceTravelRecord | null>;
 
-  findInternalTripById(
+  findInternalBookingById(
     id: string,
   ): Promise<AdditionalServiceTravelRecord | null>;
 
   findParticipantsByIds(
     ids: string[],
   ): Promise<AdditionalServiceParticipantRecord[]>;
+
+  findTravelParticipantIds(
+    tenantId: string,
+    travel: AdditionalServiceTravelReference,
+  ): Promise<string[]>;
 
   create(
     data: CreateAdditionalServiceOrderData,
@@ -234,6 +280,11 @@ export interface AdditionalServicesRepository {
   findById(
     tenantId: string,
     id: string,
+  ): Promise<AdditionalServiceOrderRecord | null>;
+
+  findByIdempotencyKey(
+    tenantId: string,
+    idempotencyKey: string,
   ): Promise<AdditionalServiceOrderRecord | null>;
 
   findByTravel(

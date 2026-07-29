@@ -9,6 +9,7 @@ import {
   AdditionalServicesRepository,
 } from "./repositories";
 import { AdditionalServicesService } from "./additional-services.service";
+import { PricingEngineService } from "../pricing-engine";
 
 describe("AdditionalServicesService pricing configurations", () => {
   const tenantId = "tenant-1";
@@ -45,10 +46,12 @@ describe("AdditionalServicesService pricing configurations", () => {
       findTenantById: jest.fn(),
       findAllTenantIds: jest.fn(),
       findTravelPackageById: jest.fn(),
-      findInternalTripById: jest.fn(),
+      findInternalBookingById: jest.fn(),
       findParticipantsByIds: jest.fn(),
+      findTravelParticipantIds: jest.fn(),
       create: jest.fn(),
       findById: jest.fn(),
+      findByIdempotencyKey: jest.fn(),
       findByTravel: jest.fn(),
       findAdditionalServiceCatalogById: jest.fn(),
       findAdditionalServiceCatalogByCode: jest.fn(),
@@ -66,7 +69,10 @@ describe("AdditionalServicesService pricing configurations", () => {
       createSupplier: jest.fn(),
       updateSupplier: jest.fn(),
     };
-    service = new AdditionalServicesService(repository);
+    service = new AdditionalServicesService(
+      repository,
+      { calculate: jest.fn() } as unknown as PricingEngineService,
+    );
   });
 
   it("lists only administration catalog fields for the current tenant", async () => {

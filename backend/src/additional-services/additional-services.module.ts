@@ -9,6 +9,7 @@ import { AdditionalServicesPersistenceModule } from "./infrastructure/additional
 import { AdditionalServicesPricingEngineModule } from "./infrastructure/additional-services-pricing-engine.module";
 import { AdditionalServicesPricingController } from "./additional-services-pricing.controller";
 import { AdditionalServicesPricingService } from "./additional-services-pricing.service";
+import { AdditionalServiceOrdersController } from "./additional-service-orders.controller";
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { AdditionalServicesPricingService } from "./additional-services-pricing.
     AdditionalServiceCatalogController,
     AdditionalServicePricingConfigurationsController,
     AdditionalServicesPricingController,
+    AdditionalServiceOrdersController,
     AdditionalServiceSuppliersController,
   ],
   providers: [

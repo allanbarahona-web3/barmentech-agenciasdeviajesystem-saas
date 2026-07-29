@@ -29,10 +29,16 @@ interface AdditionalServicesPrismaClient {
   travelPackage: {
     findUnique(args: unknown): Promise<unknown>;
   };
-  internalTrip: {
+  internalTourBooking: {
     findUnique(args: unknown): Promise<unknown>;
   };
   client: {
+    findMany(args: unknown): Promise<unknown>;
+  };
+  travelPackageParticipant: {
+    findMany(args: unknown): Promise<unknown>;
+  };
+  internalTourBookingParticipant: {
     findMany(args: unknown): Promise<unknown>;
   };
   additionalServiceCatalog: {
@@ -101,16 +107,23 @@ export class PrismaAdditionalServicesRepository
     return this.findTravelPackage(this.client, id);
   }
 
-  findInternalTripById(
+  findInternalBookingById(
     id: string,
   ): Promise<AdditionalServiceTravelRecord | null> {
-    return this.findInternalTrip(this.client, id);
+    return this.findInternalBooking(this.client, id);
   }
 
   findParticipantsByIds(
     ids: string[],
   ): Promise<AdditionalServiceParticipantRecord[]> {
     return this.findParticipants(this.client, ids);
+  }
+
+  findTravelParticipantIds(
+    tenantId: string,
+    travel: AdditionalServiceTravelReference,
+  ): Promise<string[]> {
+    return this.findTravelParticipants(this.client, tenantId, travel);
   }
 
   create(
@@ -131,6 +144,18 @@ export class PrismaAdditionalServicesRepository
     return order ? this.toOrderRecord(order) : null;
   }
 
+  async findByIdempotencyKey(
+    tenantId: string,
+    idempotencyKey: string,
+  ): Promise<AdditionalServiceOrderRecord | null> {
+    const order = await this.client.additionalServiceOrder.findFirst({
+      where: { tenantId, idempotencyKey },
+      include: this.orderInclude(),
+    });
+
+    return order ? this.toOrderRecord(order) : null;
+  }
+
   async findByTravel(
     tenantId: string,
     travel: AdditionalServiceTravelReference,
@@ -141,8 +166,8 @@ export class PrismaAdditionalServicesRepository
         ...(travel.travelPackageId
           ? { travelPackageId: travel.travelPackageId }
           : {}),
-        ...(travel.internalTripId
-          ? { internalTripId: travel.internalTripId }
+        ...(travel.internalBookingId
+          ? { internalBookingId: travel.internalBookingId }
           : {}),
       },
       include: this.orderInclude(),
@@ -265,12 +290,22 @@ export class PrismaAdditionalServicesRepository
       findTenantById: (tenantId) => this.findTenant(client, tenantId),
       findAllTenantIds: () => this.findTenantIds(client),
       findTravelPackageById: (id) => this.findTravelPackage(client, id),
-      findInternalTripById: (id) => this.findInternalTrip(client, id),
+      findInternalBookingById: (id) =>
+        this.findInternalBooking(client, id),
       findParticipantsByIds: (ids) => this.findParticipants(client, ids),
+      findTravelParticipantIds: (tenantId, travel) =>
+        this.findTravelParticipants(client, tenantId, travel),
       create: (data) => this.createOrder(client, data),
       findById: async (tenantId, id) => {
         const order = await client.additionalServiceOrder.findFirst({
           where: { id, tenantId },
+          include: this.orderInclude(),
+        });
+        return order ? this.toOrderRecord(order) : null;
+      },
+      findByIdempotencyKey: async (tenantId, idempotencyKey) => {
+        const order = await client.additionalServiceOrder.findFirst({
+          where: { tenantId, idempotencyKey },
           include: this.orderInclude(),
         });
         return order ? this.toOrderRecord(order) : null;
@@ -282,8 +317,8 @@ export class PrismaAdditionalServicesRepository
             ...(travel.travelPackageId
               ? { travelPackageId: travel.travelPackageId }
               : {}),
-            ...(travel.internalTripId
-              ? { internalTripId: travel.internalTripId }
+            ...(travel.internalBookingId
+              ? { internalBookingId: travel.internalBookingId }
               : {}),
           },
           include: this.orderInclude(),
@@ -362,11 +397,11 @@ export class PrismaAdditionalServicesRepository
     })) as AdditionalServiceTravelRecord | null;
   }
 
-  private async findInternalTrip(
+  private async findInternalBooking(
     client: AdditionalServicesPrismaClient,
     id: string,
   ): Promise<AdditionalServiceTravelRecord | null> {
-    return (await client.internalTrip.findUnique({
+    return (await client.internalTourBooking.findUnique({
       where: { id },
       select: { id: true, tenantId: true },
     })) as AdditionalServiceTravelRecord | null;
@@ -382,8 +417,41 @@ export class PrismaAdditionalServicesRepository
 
     return (await client.client.findMany({
       where: { id: { in: ids } },
-      select: { id: true, tenantId: true },
+      select: {
+        id: true,
+        tenantId: true,
+        fullName: true,
+        idNumber: true,
+        email: true,
+        phone: true,
+      },
     })) as AdditionalServiceParticipantRecord[];
+  }
+
+  private async findTravelParticipants(
+    client: AdditionalServicesPrismaClient,
+    tenantId: string,
+    travel: AdditionalServiceTravelReference,
+  ): Promise<string[]> {
+    const participants = travel.travelPackageId
+      ? await client.travelPackageParticipant.findMany({
+          where: {
+            tenantId,
+            travelPackageId: travel.travelPackageId,
+          },
+          select: { clientId: true },
+        })
+      : await client.internalTourBookingParticipant.findMany({
+          where: {
+            tenantId,
+            bookingId: travel.internalBookingId,
+          },
+          select: { clientId: true },
+        });
+
+    return (participants as Array<{ clientId: string }>).map(
+      ({ clientId }) => clientId,
+    );
   }
 
   private async findCatalogById(
@@ -688,34 +756,65 @@ export class PrismaAdditionalServicesRepository
       data: {
         tenantId: data.tenantId,
         orderNumber: data.orderNumber,
+        idempotencyKey: data.idempotencyKey,
         travelPackageId: data.travelPackageId ?? null,
-        internalTripId: data.internalTripId ?? null,
+        internalBookingId: data.internalBookingId ?? null,
+        travelType: data.travelType,
+        quotationCurrency: data.quotationCurrency,
+        commercialSubtotal: new Decimal(String(data.commercialSubtotal)),
+        totalVat: new Decimal(String(data.totalVat)),
+        totalSellingPrice: new Decimal(String(data.totalSellingPrice)),
         createdByUserId: data.createdByUserId,
         createdByName: data.createdByName,
         lines: {
           create: data.lines.map((line) => ({
             tenantId: data.tenantId,
-            serviceType: line.serviceType,
-            detail: line.detail,
-            notes: line.notes,
-            serviceDate: line.serviceDate ?? null,
-            quantity: line.quantity,
-            currency: line.currency,
-            exchangeRate: new Decimal(String(line.exchangeRate)),
-            cost: new Decimal(String(line.cost)),
-            salePrice: new Decimal(String(line.salePrice)),
+            additionalServiceCatalogId:
+              line.additionalServiceCatalogId,
+            serviceCode: line.serviceCode,
+            serviceName: line.serviceName,
+            supplierId: line.supplierId,
+            supplierName: line.supplierName,
+            supplierCostUrl: line.supplierCostUrl ?? null,
+            supplierCost: new Decimal(String(line.supplierCost)),
+            supplierCostCurrency: line.supplierCostCurrency,
+            quotationCurrency: line.quotationCurrency,
+            supplierCostInQuotationCurrency: new Decimal(
+              String(line.supplierCostInQuotationCurrency),
+            ),
+            exchangeRateId: line.exchangeRateId,
+            exchangeRateDate: line.exchangeRateDate,
+            exchangeRateSource: line.exchangeRateSource,
+            exchangeRateBuyRate:
+              line.exchangeRateBuyRate === null
+                ? null
+                : new Decimal(String(line.exchangeRateBuyRate)),
+            exchangeRateSellRate:
+              line.exchangeRateSellRate === null
+                ? null
+                : new Decimal(String(line.exchangeRateSellRate)),
+            exchangeRateType: line.exchangeRateType,
+            appliedExchangeRate: new Decimal(
+              String(line.appliedExchangeRate),
+            ),
             marginType: line.marginType,
             marginValue: new Decimal(String(line.marginValue)),
-            taxPercentage: new Decimal(String(line.taxPercentage)),
-            taxAmount: new Decimal(String(line.taxAmount)),
+            marginAmount: new Decimal(String(line.marginAmount)),
             subtotal: new Decimal(String(line.subtotal)),
-            total: new Decimal(String(line.total)),
-            supplierName: line.supplierName ?? null,
-            sourceUrl: line.sourceUrl ?? null,
+            vatPercentage: new Decimal(String(line.vatPercentage)),
+            vatAmount: new Decimal(String(line.vatAmount)),
+            finalSellingPrice: new Decimal(
+              String(line.finalSellingPrice),
+            ),
+            commercialNotes: line.commercialNotes ?? null,
             participants: {
-              create: line.participantClientIds.map((clientId) => ({
+              create: line.participants.map((participant) => ({
                 tenantId: data.tenantId,
-                clientId,
+                clientId: participant.clientId,
+                fullName: participant.fullName,
+                identification: participant.identification,
+                email: participant.email,
+                phone: participant.phone,
               })),
             },
           })),
@@ -739,14 +838,18 @@ export class PrismaAdditionalServicesRepository
           returnDate: true,
         },
       },
-      internalTrip: {
+      internalBooking: {
         select: {
           id: true,
-          tripCode: true,
-          name: true,
-          destination: true,
-          departureDate: true,
-          returnDate: true,
+          bookingCode: true,
+          internalTrip: {
+            select: {
+              name: true,
+              destination: true,
+              departureDate: true,
+              returnDate: true,
+            },
+          },
         },
       },
       lines: {
@@ -754,9 +857,10 @@ export class PrismaAdditionalServicesRepository
           participants: {
             select: {
               clientId: true,
-              client: {
-                select: { fullName: true },
-              },
+              fullName: true,
+              identification: true,
+              email: true,
+              phone: true,
             },
           },
         },
@@ -806,8 +910,11 @@ export class PrismaAdditionalServicesRepository
     const order = value as Record<string, unknown> & {
       lines: Array<Record<string, unknown> & {
         participants: Array<{
-          clientId: string;
-          client: { fullName: string };
+          clientId: string | null;
+          fullName: string;
+          identification: string;
+          email: string | null;
+          phone: string | null;
         }>;
       }>;
       travelPackage: {
@@ -818,13 +925,15 @@ export class PrismaAdditionalServicesRepository
         departureDate: Date;
         returnDate: Date;
       } | null;
-      internalTrip: {
+      internalBooking: {
         id: string;
-        tripCode: string;
-        name: string;
-        destination: string;
-        departureDate: Date;
-        returnDate: Date;
+        bookingCode: string;
+        internalTrip: {
+          name: string;
+          destination: string;
+          departureDate: Date;
+          returnDate: Date;
+        };
       } | null;
     };
 
@@ -832,41 +941,73 @@ export class PrismaAdditionalServicesRepository
       id: String(order.id),
       tenantId: String(order.tenantId),
       orderNumber: String(order.orderNumber),
+      idempotencyKey: String(order.idempotencyKey),
       travelPackageId: this.nullableString(order.travelPackageId),
-      internalTripId: this.nullableString(order.internalTripId),
+      internalBookingId: this.nullableString(order.internalBookingId),
+      travelType:
+        order.travelType as AdditionalServiceOrderRecord["travelType"],
+      quotationCurrency:
+        order.quotationCurrency as AdditionalServiceOrderRecord["quotationCurrency"],
+      commercialSubtotal: String(order.commercialSubtotal),
+      totalVat: String(order.totalVat),
+      totalSellingPrice: String(order.totalSellingPrice),
       travel: this.toTravelDetails(
         order.travelPackage,
-        order.internalTrip,
+        order.internalBooking,
       ),
       status: order.status as AdditionalServiceOrderRecord["status"],
       lines: order.lines.map((line) => ({
         id: String(line.id),
         tenantId: String(line.tenantId),
         orderId: String(line.orderId),
-        serviceType:
-          line.serviceType as AdditionalServiceOrderRecord["lines"][number]["serviceType"],
-        detail: String(line.detail),
-        notes: String(line.notes),
-        serviceDate:
-          line.serviceDate instanceof Date ? line.serviceDate : null,
-        quantity: Number(line.quantity),
-        currency:
-          line.currency as AdditionalServiceOrderRecord["lines"][number]["currency"],
-        exchangeRate: String(line.exchangeRate),
-        cost: String(line.cost),
-        salePrice: String(line.salePrice),
+        additionalServiceCatalogId: String(
+          line.additionalServiceCatalogId,
+        ),
+        serviceCode: String(line.serviceCode),
+        serviceName: String(line.serviceName),
+        supplierId: String(line.supplierId),
+        supplierName: String(line.supplierName),
+        supplierCostUrl: this.nullableString(line.supplierCostUrl),
+        supplierCost: String(line.supplierCost),
+        supplierCostCurrency:
+          line.supplierCostCurrency as AdditionalServiceOrderRecord["lines"][number]["supplierCostCurrency"],
+        quotationCurrency:
+          line.quotationCurrency as AdditionalServiceOrderRecord["lines"][number]["quotationCurrency"],
+        supplierCostInQuotationCurrency: String(
+          line.supplierCostInQuotationCurrency,
+        ),
+        exchangeRateId: this.nullableString(line.exchangeRateId),
+        exchangeRateDate:
+          line.exchangeRateDate instanceof Date
+            ? line.exchangeRateDate
+            : null,
+        exchangeRateSource: this.nullableString(line.exchangeRateSource),
+        exchangeRateBuyRate:
+          line.exchangeRateBuyRate === null
+            ? null
+            : String(line.exchangeRateBuyRate),
+        exchangeRateSellRate:
+          line.exchangeRateSellRate === null
+            ? null
+            : String(line.exchangeRateSellRate),
+        exchangeRateType:
+          line.exchangeRateType as AdditionalServiceOrderRecord["lines"][number]["exchangeRateType"],
+        appliedExchangeRate: String(line.appliedExchangeRate),
         marginType:
           line.marginType as AdditionalServiceOrderRecord["lines"][number]["marginType"],
         marginValue: String(line.marginValue),
-        taxPercentage: String(line.taxPercentage),
-        taxAmount: String(line.taxAmount),
+        marginAmount: String(line.marginAmount),
         subtotal: String(line.subtotal),
-        total: String(line.total),
-        supplierName: this.nullableString(line.supplierName),
-        sourceUrl: this.nullableString(line.sourceUrl),
+        vatPercentage: String(line.vatPercentage),
+        vatAmount: String(line.vatAmount),
+        finalSellingPrice: String(line.finalSellingPrice),
+        commercialNotes: this.nullableString(line.commercialNotes),
         participants: line.participants.map((participant) => ({
           clientId: participant.clientId,
-          fullName: participant.client.fullName,
+          fullName: participant.fullName,
+          identification: participant.identification,
+          email: participant.email,
+          phone: participant.phone,
         })),
         createdAt: line.createdAt as Date,
         updatedAt: line.updatedAt as Date,
@@ -891,13 +1032,15 @@ export class PrismaAdditionalServicesRepository
       departureDate: Date;
       returnDate: Date;
     } | null,
-    internalTrip: {
+    internalBooking: {
       id: string;
-      tripCode: string;
-      name: string;
-      destination: string;
-      departureDate: Date;
-      returnDate: Date;
+      bookingCode: string;
+      internalTrip: {
+        name: string;
+        destination: string;
+        departureDate: Date;
+        returnDate: Date;
+      };
     } | null,
   ): AdditionalServiceOrderRecord["travel"] {
     if (travelPackage) {
@@ -912,15 +1055,15 @@ export class PrismaAdditionalServicesRepository
       };
     }
 
-    if (internalTrip) {
+    if (internalBooking) {
       return {
         type: "INTERNAL_TRIP",
-        id: internalTrip.id,
-        code: internalTrip.tripCode,
-        name: internalTrip.name,
-        destination: internalTrip.destination,
-        departureDate: internalTrip.departureDate,
-        returnDate: internalTrip.returnDate,
+        id: internalBooking.id,
+        code: internalBooking.bookingCode,
+        name: internalBooking.internalTrip.name,
+        destination: internalBooking.internalTrip.destination,
+        departureDate: internalBooking.internalTrip.departureDate,
+        returnDate: internalBooking.internalTrip.returnDate,
       };
     }
 

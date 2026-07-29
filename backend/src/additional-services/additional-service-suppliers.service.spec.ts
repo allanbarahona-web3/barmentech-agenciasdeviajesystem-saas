@@ -8,6 +8,7 @@ import {
   SupplierRecord,
 } from "./repositories";
 import { AdditionalServicesService } from "./additional-services.service";
+import { PricingEngineService } from "../pricing-engine";
 
 describe("AdditionalServicesService suppliers", () => {
   const tenantId = "tenant-1";
@@ -35,10 +36,12 @@ describe("AdditionalServicesService suppliers", () => {
       findTenantById: jest.fn(),
       findAllTenantIds: jest.fn(),
       findTravelPackageById: jest.fn(),
-      findInternalTripById: jest.fn(),
+      findInternalBookingById: jest.fn(),
       findParticipantsByIds: jest.fn(),
+      findTravelParticipantIds: jest.fn(),
       create: jest.fn(),
       findById: jest.fn(),
+      findByIdempotencyKey: jest.fn(),
       findByTravel: jest.fn(),
       findAdditionalServiceCatalogById: jest.fn(),
       findAdditionalServiceCatalogByCode: jest.fn(),
@@ -56,7 +59,10 @@ describe("AdditionalServicesService suppliers", () => {
       createSupplier: jest.fn(),
       updateSupplier: jest.fn(),
     };
-    service = new AdditionalServicesService(repository);
+    service = new AdditionalServicesService(
+      repository,
+      { calculate: jest.fn() } as unknown as PricingEngineService,
+    );
   });
 
   it("lists suppliers for the authenticated tenant", async () => {

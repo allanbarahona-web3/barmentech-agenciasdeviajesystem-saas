@@ -1,0 +1,11 @@
+-- RenameForeignKey
+ALTER TABLE "additional_service_order_lines" RENAME CONSTRAINT "additional_service_order_lines_additionalServiceCatalogId_fkey" TO "additional_service_order_lines_additionalServiceCatalogId__fkey";
+
+-- RenameForeignKey
+ALTER TABLE "additional_service_order_lines" RENAME CONSTRAINT "additional_service_order_lines_orderId_fkey" TO "additional_service_order_lines_orderId_tenantId_fkey";
+
+-- RenameForeignKey
+ALTER TABLE "additional_service_order_lines" RENAME CONSTRAINT "additional_service_order_lines_supplierId_fkey" TO "additional_service_order_lines_supplierId_tenantId_fkey";
+
+-- RenameForeignKey
+ALTER TABLE "additional_service_order_participants" RENAME CONSTRAINT "additional_service_order_participants_lineId_fkey" TO "additional_service_order_participants_lineId_tenantId_fkey";

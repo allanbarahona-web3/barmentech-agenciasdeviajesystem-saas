@@ -2,29 +2,64 @@ import { Type } from "class-transformer";
 import {
   ArrayMinSize,
   IsArray,
+  IsEnum,
+  IsNotEmpty,
+  IsNumber,
   IsOptional,
   IsString,
+  IsUrl,
+  MaxLength,
+  Min,
   ValidateNested,
 } from "class-validator";
-import { AdditionalServiceOrderLineBaseDto } from "./additional-service-order-line-base.dto";
-import { AdditionalServiceOrderParticipantBaseDto } from "./additional-service-order-participant-base.dto";
+import {
+  AdditionalServiceCurrency,
+  AdditionalServiceTravelType,
+} from "../enums";
 
-export class CreateAdditionalServiceOrderLineDto extends AdditionalServiceOrderLineBaseDto {
+export class CreateAdditionalServiceOrderLineDto {
+  @IsString()
+  serviceCode!: string;
+
+  @IsString()
+  supplierId!: string;
+
+  @IsOptional()
+  @IsUrl()
+  supplierCostUrl?: string;
+
+  @Type(() => Number)
+  @IsNumber()
+  @Min(0)
+  supplierCost!: number;
+
+  @IsEnum(AdditionalServiceCurrency)
+  supplierCostCurrency!: AdditionalServiceCurrency;
+
+  @IsOptional()
+  @IsString()
+  commercialNotes?: string;
+
   @IsArray()
   @ArrayMinSize(1)
-  @ValidateNested({ each: true })
-  @Type(() => AdditionalServiceOrderParticipantBaseDto)
-  participants!: AdditionalServiceOrderParticipantBaseDto[];
+  @IsString({ each: true })
+  participantIds!: string[];
 }
 
 export class CreateAdditionalServiceOrderDto {
-  @IsOptional()
   @IsString()
-  travelPackageId?: string;
+  @IsNotEmpty()
+  @MaxLength(100)
+  idempotencyKey!: string;
 
-  @IsOptional()
   @IsString()
-  internalTripId?: string;
+  travelId!: string;
+
+  @IsEnum(AdditionalServiceTravelType)
+  travelType!: AdditionalServiceTravelType;
+
+  @IsEnum(AdditionalServiceCurrency)
+  quotationCurrency!: AdditionalServiceCurrency;
 
   @IsArray()
   @ArrayMinSize(1)

@@ -30,6 +30,15 @@ describe("AdditionalServicesPricingService", () => {
     const breakdown = {
       supplierCost: 100,
       costCurrency: "USD" as const,
+      quotationCurrency: "USD" as const,
+      supplierCostInQuotationCurrency: 100,
+      exchangeRateId: null,
+      exchangeRateDate: null,
+      exchangeRateSource: null,
+      exchangeRateBuyRate: null,
+      exchangeRateSellRate: null,
+      exchangeRateType: null,
+      appliedExchangeRate: 1,
       marginType: "PERCENTAGE" as const,
       marginValue: 15,
       marginAmount: 15,
@@ -52,6 +61,7 @@ describe("AdditionalServicesPricingService", () => {
         serviceCode: " visa_assistance ",
         supplierCost: 100,
         costCurrency: "USD",
+        quotationCurrency: "USD",
       }),
     ).resolves.toBe(breakdown);
     expect(
@@ -62,6 +72,7 @@ describe("AdditionalServicesPricingService", () => {
       additionalServiceId: "catalog-1",
       supplierCost: 100,
       costCurrency: "USD",
+      quotationCurrency: "USD",
     });
   });
 
@@ -73,6 +84,7 @@ describe("AdditionalServicesPricingService", () => {
         serviceCode: "UNKNOWN",
         supplierCost: 100,
         costCurrency: "USD",
+        quotationCurrency: "USD",
       }),
     ).rejects.toBeInstanceOf(NotFoundException);
     expect(pricingEngine.calculate).not.toHaveBeenCalled();
@@ -94,6 +106,7 @@ describe("AdditionalServicesPricingService", () => {
         serviceCode: "TOUR",
         supplierCost: 100,
         costCurrency: "USD",
+        quotationCurrency: "USD",
       }),
     ).rejects.toBe(pricingError);
   });

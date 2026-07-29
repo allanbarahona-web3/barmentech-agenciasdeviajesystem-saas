@@ -1,34 +1,53 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { AdditionalServicesContextHeader } from '@/components/additional-services-context-header';
 import {
   AdditionalServicesPricingReview,
   type AdditionalServicePricingReviewEntry,
 } from '@/components/additional-services-pricing-review';
 import { LoadingModal } from '@/components/loading-modal';
+import {
+  ToastNotification,
+  useToast,
+} from '@/components/toast-notification';
 import { Button } from '@/components/ui/button';
 import { getAdditionalServiceSuppliers } from '@/lib/additional-services-admin-api';
+import { createAdditionalServiceOrder } from '@/lib/additional-services-orders-api';
 import {
+  getAdditionalServicesQuotationCurrency,
   getAdditionalServicesWorkflowContext,
+  getOrCreateAdditionalServiceOrderIdempotencyKey,
   getTemporaryAdditionalServiceLineId,
   getTemporaryAdditionalServiceLinePricing,
   getTemporaryAdditionalServiceLineSourcing,
   getTemporaryAdditionalServiceLines,
+  resetAdditionalServicesWorkflow,
 } from '@/lib/additional-services-temporary-store';
 import { getAdditionalServiceName } from '@/shared/additional-services';
 import styles from '../order-summary/order-summary.module.css';
 import reviewStyles from '@/components/additional-services-pricing-review.module.css';
 
 export default function AdditionalServicesPricingReviewPage() {
+  const router = useRouter();
   const [lines] = useState(() => getTemporaryAdditionalServiceLines());
   const [context] = useState(() => getAdditionalServicesWorkflowContext());
+  const [quotationCurrency] = useState(() =>
+    getAdditionalServicesQuotationCurrency(),
+  );
+  const [idempotencyKey] = useState(() =>
+    getOrCreateAdditionalServiceOrderIdempotencyKey(),
+  );
   const [supplierNames, setSupplierNames] = useState<Map<string, string>>(
     () => new Map(),
   );
   const [suppliersLoading, setSuppliersLoading] = useState(true);
   const [suppliersError, setSuppliersError] = useState<string | null>(null);
+  const [creatingOrder, setCreatingOrder] = useState(false);
+  const submissionInProgress = useRef(false);
+  const { toasts, showError, dismissToast } = useToast();
 
   useEffect(() => {
     let cancelled = false;
@@ -108,12 +127,89 @@ export default function AdditionalServicesPricingReviewPage() {
     },
   );
 
+  async function continueToQuotation() {
+    if (submissionInProgress.current) {
+      return;
+    }
+
+    submissionInProgress.current = true;
+    setCreatingOrder(true);
+
+    try {
+      if (!context) {
+        throw new Error(
+          'No se encontró el contexto del viaje seleccionado.',
+        );
+      }
+
+      const orderLines = lines.map((line) => {
+        const sourcing = getTemporaryAdditionalServiceLineSourcing(line);
+        if (
+          !sourcing.supplierId ||
+          sourcing.cost === null ||
+          !sourcing.currency
+        ) {
+          throw new Error(
+            `La información comercial de ${getAdditionalServiceName(line)} está incompleta.`,
+          );
+        }
+
+        return {
+          serviceCode: line.serviceType,
+          supplierId: sourcing.supplierId,
+          supplierCostUrl: sourcing.providerUrl || undefined,
+          supplierCost: sourcing.cost,
+          supplierCostCurrency: sourcing.currency,
+          commercialNotes:
+            'notes' in line && line.notes ? line.notes : undefined,
+          participantIds: [line.participantId],
+        };
+      });
+
+      if (orderLines.length === 0) {
+        throw new Error('No hay servicios adicionales para guardar.');
+      }
+
+      const response = await createAdditionalServiceOrder({
+        idempotencyKey,
+        travelId: context.travelId,
+        travelType: context.travelType,
+        quotationCurrency,
+        lines: orderLines,
+      });
+
+      if (!response.orderId) {
+        throw new Error(
+          'El servidor no devolvió el identificador de la orden.',
+        );
+      }
+
+      resetAdditionalServicesWorkflow();
+      router.push(
+        `/additional-services/orders/${encodeURIComponent(response.orderId)}/quotation`,
+      );
+    } catch (error) {
+      showError(
+        error instanceof Error
+          ? error.message
+          : 'No se pudo crear la orden de servicios adicionales.',
+      );
+      submissionInProgress.current = false;
+      setCreatingOrder(false);
+    }
+  }
+
   return (
     <main className="app-shell">
+      <ToastNotification toasts={toasts} onDismiss={dismissToast} />
       <LoadingModal
-        isOpen={suppliersLoading}
+        isOpen={suppliersLoading || creatingOrder}
         state="loading"
-        loadingMessage="Cargando revisión de precios..."
+        loadingMessage={
+          creatingOrder
+            ? 'Guardando orden de servicios adicionales...'
+            : 'Cargando revisión de precios...'
+        }
       />
       <div className={`${styles.page} ${styles.pricingPage}`}>
         <AdditionalServicesContextHeader />
@@ -133,8 +229,10 @@ export default function AdditionalServicesPricingReviewPage() {
             <Button
               type="button"
               className={styles.continueButton}
-              disabled
-              title="Próximamente"
+              disabled={
+                suppliersLoading || creatingOrder || entries.length === 0
+              }
+              onClick={() => void continueToQuotation()}
             >
               Continuar
             </Button>

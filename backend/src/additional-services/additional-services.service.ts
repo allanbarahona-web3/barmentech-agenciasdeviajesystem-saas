@@ -7,6 +7,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { randomBytes } from "crypto";
+import { PricingEngineService } from "../pricing-engine";
 import {
   CreateAdditionalServiceOrderDto,
   CreateAdditionalServicePricingConfigurationDto,
@@ -18,9 +19,11 @@ import {
 import {
   ADDITIONAL_SERVICES_REPOSITORY,
   AdditionalServiceOrderRecord,
+  AdditionalServiceParticipantRecord,
   AdditionalServicePricingConfigurationRecord,
   AdditionalServicesRepository,
   CreateAdditionalServiceOrderData,
+  CreateAdditionalServiceOrderLineData,
   SupplierRecord,
   UpdateSupplierData,
 } from "./repositories";
@@ -57,6 +60,7 @@ export class AdditionalServicesService {
   constructor(
     @Inject(ADDITIONAL_SERVICES_REPOSITORY)
     private readonly repository: AdditionalServicesRepository,
+    private readonly pricingEngine: PricingEngineService,
   ) {}
 
   async listAdditionalServiceCatalog(
@@ -354,19 +358,66 @@ export class AdditionalServicesService {
               throw new NotFoundException("Tenant no encontrado.");
             }
 
-            await this.validateTravelReference(repository, tenantId, dto);
-            const participantIds = await this.validateLines(dto);
-            await this.validateParticipants(
+            const idempotencyKey = dto.idempotencyKey.trim();
+            const existing = await repository.findByIdempotencyKey(
+              tenantId,
+              idempotencyKey,
+            );
+            if (existing) {
+              return existing;
+            }
+
+            const travel = await this.validateTravelReference(
+              repository,
+              tenantId,
+              dto,
+            );
+            const { lines, participantIds } =
+              await this.validateAndResolveLines(
+                repository,
+                tenantId,
+                dto,
+              );
+            const participants = await this.validateParticipants(
               repository,
               tenantId,
               participantIds,
             );
+            await this.validateTravelParticipants(
+              repository,
+              tenantId,
+              travel,
+              participantIds,
+            );
+
+            const participantById = new Map(
+              participants.map((participant) => [
+                participant.id,
+                participant,
+              ]),
+            );
+            const snapshotLines: CreateAdditionalServiceOrderLineData[] =
+              lines.map(({ participantClientIds, ...line }) => ({
+                ...line,
+                participants: participantClientIds.map((clientId) => {
+                  const participant = participantById.get(clientId)!;
+                  return {
+                    clientId: participant.id,
+                    fullName: participant.fullName,
+                    identification: participant.idNumber,
+                    email: participant.email,
+                    phone: participant.phone,
+                  };
+                }),
+              }));
 
             return repository.create(
               this.toCreateData(
                 tenantId,
                 actor,
                 dto,
+                travel,
+                snapshotLines,
                 this.buildOrderNumber(tenant.contractPrefix),
               ),
             );
@@ -378,6 +429,16 @@ export class AdditionalServicesService {
         );
         return order;
       } catch (error) {
+        if (this.isIdempotencyCollision(error)) {
+          const existing = await this.repository.findByIdempotencyKey(
+            tenantId,
+            dto.idempotencyKey.trim(),
+          );
+          if (existing) {
+            return existing;
+          }
+        }
+
         if (
           this.isOrderNumberCollision(error) &&
           attempt < this.maxOrderNumberAttempts
@@ -477,19 +538,15 @@ export class AdditionalServicesService {
     repository: AdditionalServicesRepository,
     tenantId: string,
     dto: CreateAdditionalServiceOrderDto,
-  ): Promise<void> {
-    const hasTravelPackage = Boolean(dto.travelPackageId?.trim());
-    const hasInternalTrip = Boolean(dto.internalTripId?.trim());
-
-    if (hasTravelPackage === hasInternalTrip) {
-      throw new BadRequestException(
-        "Debe indicar exactamente una referencia de viaje: TravelPackage o InternalTrip.",
-      );
-    }
-
-    const travel = hasTravelPackage
-      ? await repository.findTravelPackageById(dto.travelPackageId!)
-      : await repository.findInternalTripById(dto.internalTripId!);
+  ): Promise<{
+    travelPackageId?: string;
+    internalBookingId?: string;
+  }> {
+    const travelId = dto.travelId.trim();
+    const travel =
+      dto.travelType === "INTERNATIONAL"
+        ? await repository.findTravelPackageById(travelId)
+        : await repository.findInternalBookingById(travelId);
 
     if (!travel) {
       throw new NotFoundException("El viaje referenciado no existe.");
@@ -500,11 +557,24 @@ export class AdditionalServicesService {
         "El viaje referenciado no pertenece al tenant actual.",
       );
     }
+
+    return dto.travelType === "INTERNATIONAL"
+      ? { travelPackageId: travelId }
+      : { internalBookingId: travelId };
   }
 
-  private async validateLines(
+  private async validateAndResolveLines(
+    repository: AdditionalServicesRepository,
+    tenantId: string,
     dto: CreateAdditionalServiceOrderDto,
-  ): Promise<string[]> {
+  ): Promise<{
+    lines: Array<
+      Omit<CreateAdditionalServiceOrderLineData, "participants"> & {
+        participantClientIds: string[];
+      }
+    >;
+    participantIds: string[];
+  }> {
     if (!Array.isArray(dto.lines) || dto.lines.length === 0) {
       throw new BadRequestException(
         "La orden debe contener al menos una línea.",
@@ -513,19 +583,17 @@ export class AdditionalServicesService {
 
     const participantIds = new Set<string>();
 
-    dto.lines.forEach((line, lineIndex) => {
+    const lines = await Promise.all(dto.lines.map(async (line, lineIndex) => {
       if (
-        !Array.isArray(line.participants) ||
-        line.participants.length === 0
+        !Array.isArray(line.participantIds) ||
+        line.participantIds.length === 0
       ) {
         throw new BadRequestException(
           `La línea ${lineIndex + 1} debe contener al menos un participante.`,
         );
       }
 
-      const lineParticipantIds = line.participants.map(
-        (participant) => participant.clientId,
-      );
+      const lineParticipantIds = line.participantIds.map((id) => id.trim());
 
       if (
         lineParticipantIds.some(
@@ -547,16 +615,80 @@ export class AdditionalServicesService {
       }
 
       lineParticipantIds.forEach((clientId) => participantIds.add(clientId));
-    });
 
-    return [...participantIds];
+      const serviceCode = line.serviceCode.trim().toUpperCase();
+      const catalog =
+        await repository.findAdditionalServiceCatalogByCode(
+          tenantId,
+          serviceCode,
+        );
+      if (!catalog?.isActive) {
+        throw new NotFoundException(
+          `El servicio adicional ${serviceCode} no existe o está inactivo.`,
+        );
+      }
+
+      const supplier = await repository.findSupplierById(
+        tenantId,
+        line.supplierId.trim(),
+      );
+      if (!supplier?.isActive) {
+        throw new NotFoundException(
+          `El proveedor de la línea ${lineIndex + 1} no existe o está inactivo.`,
+        );
+      }
+
+      const pricing = await this.pricingEngine.calculate({
+        tenantId,
+        additionalServiceId: catalog.id,
+        supplierCost: line.supplierCost,
+        costCurrency: line.supplierCostCurrency,
+        quotationCurrency: dto.quotationCurrency,
+      });
+
+      return {
+        additionalServiceCatalogId: catalog.id,
+        serviceCode: catalog.code,
+        serviceName: catalog.name,
+        supplierId: supplier.id,
+        supplierName: supplier.name,
+        supplierCostUrl: this.toNullableText(line.supplierCostUrl) ?? undefined,
+        supplierCost: pricing.supplierCost,
+        supplierCostCurrency:
+          pricing.costCurrency as CreateAdditionalServiceOrderLineData["supplierCostCurrency"],
+        quotationCurrency:
+          pricing.quotationCurrency as CreateAdditionalServiceOrderLineData["quotationCurrency"],
+        supplierCostInQuotationCurrency:
+          pricing.supplierCostInQuotationCurrency,
+        exchangeRateId: pricing.exchangeRateId,
+        exchangeRateDate: pricing.exchangeRateDate,
+        exchangeRateSource: pricing.exchangeRateSource,
+        exchangeRateBuyRate: pricing.exchangeRateBuyRate,
+        exchangeRateSellRate: pricing.exchangeRateSellRate,
+        exchangeRateType: pricing.exchangeRateType,
+        appliedExchangeRate: pricing.appliedExchangeRate,
+        marginType:
+          pricing.marginType as CreateAdditionalServiceOrderLineData["marginType"],
+        marginValue: pricing.marginValue,
+        marginAmount: pricing.marginAmount,
+        subtotal: pricing.subtotal,
+        vatPercentage: pricing.vatPercentage,
+        vatAmount: pricing.vatAmount,
+        finalSellingPrice: pricing.finalSellingPrice,
+        commercialNotes:
+          this.toNullableText(line.commercialNotes) ?? undefined,
+        participantClientIds: lineParticipantIds,
+      };
+    }));
+
+    return { lines, participantIds: [...participantIds] };
   }
 
   private async validateParticipants(
     repository: AdditionalServicesRepository,
     tenantId: string,
     participantIds: string[],
-  ): Promise<void> {
+  ): Promise<AdditionalServiceParticipantRecord[]> {
     const participants =
       await repository.findParticipantsByIds(participantIds);
     const foundIds = new Set(participants.map((participant) => participant.id));
@@ -577,45 +709,63 @@ export class AdditionalServicesService {
         `Los siguientes participantes no pertenecen al tenant actual: ${foreignTenantIds.join(", ")}.`,
       );
     }
+
+    return participants;
+  }
+
+  private async validateTravelParticipants(
+    repository: AdditionalServicesRepository,
+    tenantId: string,
+    travel: {
+      travelPackageId?: string;
+      internalBookingId?: string;
+    },
+    participantIds: string[],
+  ): Promise<void> {
+    const travelParticipantIds = new Set(
+      await repository.findTravelParticipantIds(
+        tenantId,
+        travel,
+      ),
+    );
+    const unrelatedParticipantIds = participantIds.filter(
+      (id) => !travelParticipantIds.has(id),
+    );
+
+    if (unrelatedParticipantIds.length > 0) {
+      throw new BadRequestException(
+        `Los siguientes participantes no pertenecen al viaje seleccionado: ${unrelatedParticipantIds.join(", ")}.`,
+      );
+    }
   }
 
   private toCreateData(
     tenantId: string,
     actor: AdditionalServiceOrderActor,
     dto: CreateAdditionalServiceOrderDto,
+    travel: {
+      travelPackageId?: string;
+      internalBookingId?: string;
+    },
+    lines: CreateAdditionalServiceOrderLineData[],
     orderNumber: string,
   ): CreateAdditionalServiceOrderData {
     return {
       tenantId,
       orderNumber,
-      travelPackageId: dto.travelPackageId,
-      internalTripId: dto.internalTripId,
+      idempotencyKey: dto.idempotencyKey.trim(),
+      ...travel,
+      travelType: dto.travelType,
+      quotationCurrency: dto.quotationCurrency,
+      commercialSubtotal: this.sumMoney(lines, (line) => line.subtotal),
+      totalVat: this.sumMoney(lines, (line) => line.vatAmount),
+      totalSellingPrice: this.sumMoney(
+        lines,
+        (line) => line.finalSellingPrice,
+      ),
       createdByUserId: actor.id,
       createdByName: actor.fullName,
-      lines: dto.lines.map((line) => ({
-        serviceType: line.serviceType,
-        detail: line.detail,
-        notes: line.notes,
-        serviceDate: line.serviceDate
-          ? new Date(line.serviceDate)
-          : undefined,
-        quantity: line.quantity,
-        currency: line.currency,
-        exchangeRate: line.exchangeRate,
-        cost: line.cost,
-        salePrice: line.salePrice,
-        marginType: line.marginType,
-        marginValue: line.marginValue,
-        taxPercentage: line.taxPercentage,
-        taxAmount: line.taxAmount,
-        subtotal: line.subtotal,
-        total: line.total,
-        supplierName: line.supplierName,
-        sourceUrl: line.sourceUrl,
-        participantClientIds: line.participants.map(
-          (participant) => participant.clientId,
-        ),
-      })),
+      lines,
     };
   }
 
@@ -635,6 +785,17 @@ export class AdditionalServicesService {
     const unique = randomBytes(2).toString("hex").toUpperCase();
 
     return `${prefix}-AS-${date}-${time}-${unique}`;
+  }
+
+  private sumMoney(
+    lines: CreateAdditionalServiceOrderLineData[],
+    select: (line: CreateAdditionalServiceOrderLineData) => number,
+  ): number {
+    const cents = lines.reduce(
+      (total, line) => total + Math.round(select(line) * 100),
+      0,
+    );
+    return cents / 100;
   }
 
   private pad(value: number, size = 2): string {
@@ -659,6 +820,24 @@ export class AdditionalServicesService {
     return (
       target === undefined ||
       String(target).toLowerCase().includes("ordernumber")
+    );
+  }
+
+  private isIdempotencyCollision(error: unknown): boolean {
+    if (typeof error !== "object" || error === null || !("code" in error)) {
+      return false;
+    }
+
+    const prismaError = error as {
+      code?: string;
+      meta?: { target?: unknown };
+    };
+
+    return (
+      String(prismaError.code) === "P2002" &&
+      String(prismaError.meta?.target)
+        .toLowerCase()
+        .includes("idempotencykey")
     );
   }
 }

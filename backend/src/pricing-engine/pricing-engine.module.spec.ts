@@ -1,5 +1,6 @@
 import { Test } from "@nestjs/testing";
 import { PRICING_CONFIGURATION_READER } from "./pricing-configuration-reader.interface";
+import { EXCHANGE_RATE_READER } from "./exchange-rate-reader.interface";
 import { PricingEngineModule } from "./pricing-engine.module";
 import { PricingEngineService } from "./pricing-engine.service";
 
@@ -12,6 +13,12 @@ describe("PricingEngineModule", () => {
             provide: PRICING_CONFIGURATION_READER,
             useValue: {
               findForAdditionalService: jest.fn(),
+            },
+          },
+          exchangeRateReaderProvider: {
+            provide: EXCHANGE_RATE_READER,
+            useValue: {
+              findCurrent: jest.fn(),
             },
           },
         }),

@@ -686,18 +686,19 @@ model BillingAuditLog {
 }
 
 model ExchangeRate {
-  id          String   @id @default(cuid())
-  date        DateTime @db.Date
-  buyRate     Decimal  @db.Decimal(10, 4)
-  sellRate    Decimal  @db.Decimal(10, 4)
-  source      String   @default("MANUAL")
-  setByUserId String
-  setByName   String
-  notes       String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  tenantId    String
-  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  id                          String                       @id @default(cuid())
+  date                        DateTime                     @db.Date
+  buyRate                     Decimal                      @db.Decimal(10, 4)
+  sellRate                    Decimal                      @db.Decimal(10, 4)
+  source                      String                       @default("MANUAL")
+  setByUserId                 String
+  setByName                   String
+  notes                       String?
+  createdAt                   DateTime                     @default(now())
+  updatedAt                   DateTime                     @updatedAt
+  tenantId                    String
+  tenant                      Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  additionalServiceOrderLines AdditionalServiceOrderLine[]
 
   @@unique([date, tenantId])
   @@index([date])
@@ -878,32 +879,31 @@ model EmployeeDocument {
 }
 
 model InternalTrip {
-  id                      String                   @id @default(cuid())
-  tripCode                String                   @unique
-  name                    String
-  destination             String
-  description             String?
-  departureDate           DateTime
-  returnDate              DateTime
-  departureTime           String?
-  returnTime              String?
-  capacity                Int
-  occupiedSlots           Int                      @default(0)
-  price                   Decimal                  @db.Decimal(12, 2)
-  currency                String
-  minReservation          Decimal?                 @db.Decimal(12, 2)
-  transportType           TransportType
-  itinerary               String
-  status                  String                   @default("OPEN")
-  createdByUserId         String
-  createdByName           String
-  createdAt               DateTime                 @default(now())
-  updatedAt               DateTime                 @updatedAt
-  tenantId                String
-  contracts               Contract[]
-  bookings                InternalTourBooking[]
-  tenant                  Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  additionalServiceOrders AdditionalServiceOrder[]
+  id              String                @id @default(cuid())
+  tripCode        String                @unique
+  name            String
+  destination     String
+  description     String?
+  departureDate   DateTime
+  returnDate      DateTime
+  departureTime   String?
+  returnTime      String?
+  capacity        Int
+  occupiedSlots   Int                   @default(0)
+  price           Decimal               @db.Decimal(12, 2)
+  currency        String
+  minReservation  Decimal?              @db.Decimal(12, 2)
+  transportType   TransportType
+  itinerary       String
+  status          String                @default("OPEN")
+  createdByUserId String
+  createdByName   String
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  tenantId        String
+  contracts       Contract[]
+  bookings        InternalTourBooking[]
+  tenant          Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([departureDate])
   @@index([tenantId])
@@ -913,28 +913,29 @@ model InternalTrip {
 }
 
 model InternalTourBooking {
-  id               String                           @id @default(cuid())
-  bookingCode      String                           @unique
-  internalTripId   String
-  clientId         String
-  participantCount Int
-  totalAmount      Decimal                          @db.Decimal(12, 2)
-  currency         String                           @default("CRC")
-  paidAmount       Decimal                          @default(0) @db.Decimal(12, 2)
-  pendingAmount    Decimal                          @db.Decimal(12, 2)
-  status           String                           @default("PENDING")
-  notes            String?
-  createdByUserId  String
-  createdByName    String
-  createdAt        DateTime                         @default(now())
-  updatedAt        DateTime                         @updatedAt
-  tenantId         String
-  payments         BillingPayment[]
-  client           Client                           @relation(fields: [clientId], references: [id])
-  internalTrip     InternalTrip                     @relation(fields: [internalTripId], references: [id])
-  tenant           Tenant                           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  invoice          InternalTourInvoice?
-  participants     InternalTourBookingParticipant[]
+  id                      String                           @id @default(cuid())
+  bookingCode             String                           @unique
+  internalTripId          String
+  clientId                String
+  participantCount        Int
+  totalAmount             Decimal                          @db.Decimal(12, 2)
+  currency                String                           @default("CRC")
+  paidAmount              Decimal                          @default(0) @db.Decimal(12, 2)
+  pendingAmount           Decimal                          @db.Decimal(12, 2)
+  status                  String                           @default("PENDING")
+  notes                   String?
+  createdByUserId         String
+  createdByName           String
+  createdAt               DateTime                         @default(now())
+  updatedAt               DateTime                         @updatedAt
+  tenantId                String
+  payments                BillingPayment[]
+  client                  Client                           @relation(fields: [clientId], references: [id])
+  internalTrip            InternalTrip                     @relation(fields: [internalTripId], references: [id])
+  tenant                  Tenant                           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  invoice                 InternalTourInvoice?
+  participants            InternalTourBookingParticipant[]
+  additionalServiceOrders AdditionalServiceOrder[]
 
   @@unique([internalTripId, clientId, tenantId])
   @@index([internalTripId])
@@ -1192,6 +1193,15 @@ enum AdditionalServiceOrderStatus {
   CANCELLED
 }
 
+enum AdditionalServiceExchangeRateType {
+  SELL
+}
+
+enum AdditionalServiceTravelType {
+  INTERNATIONAL
+  INTERNAL
+}
+
 enum AdditionalServiceCurrency {
   USD
   CRC
@@ -1216,8 +1226,10 @@ model AdditionalServiceCatalog {
   updatedAt             DateTime                                @updatedAt
   tenant                Tenant                                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   pricingConfigurations AdditionalServicePricingConfiguration[]
+  orderLines            AdditionalServiceOrderLine[]
 
   @@unique([tenantId, code])
+  @@unique([id, tenantId])
   @@index([tenantId])
   @@index([tenantId, isActive])
   @@index([tenantId, displayOrder])
@@ -1225,19 +1237,21 @@ model AdditionalServiceCatalog {
 }
 
 model Supplier {
-  id               String   @id @default(cuid())
-  tenantId         String
-  name             String
-  website          String?
-  supplierType     String?
-  supplierCategory String?
-  notes            String?
-  isActive         Boolean  @default(true)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-  tenant           Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  id                          String                       @id @default(cuid())
+  tenantId                    String
+  name                        String
+  website                     String?
+  supplierType                String?
+  supplierCategory            String?
+  notes                       String?
+  isActive                    Boolean                      @default(true)
+  createdAt                   DateTime                     @default(now())
+  updatedAt                   DateTime                     @updatedAt
+  tenant                      Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  additionalServiceOrderLines AdditionalServiceOrderLine[]
 
   @@unique([tenantId, name])
+  @@unique([id, tenantId])
   @@index([tenantId])
   @@index([tenantId, isActive])
   @@map("suppliers")
@@ -1263,73 +1277,99 @@ model AdditionalServicePricingConfiguration {
 }
 
 model AdditionalServiceOrder {
-  id              String                       @id @default(cuid())
-  tenantId        String
-  orderNumber     String
-  travelPackageId String?
-  internalTripId  String?
-  status          AdditionalServiceOrderStatus @default(DRAFT)
-  createdByUserId String
-  createdByName   String
-  createdAt       DateTime                     @default(now())
-  updatedAt       DateTime                     @updatedAt
-  tenant          Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  travelPackage   TravelPackage?               @relation(fields: [travelPackageId], references: [id], onDelete: Cascade)
-  internalTrip    InternalTrip?                @relation(fields: [internalTripId], references: [id], onDelete: Cascade)
-  lines           AdditionalServiceOrderLine[]
+  id                 String                       @id @default(cuid())
+  tenantId           String
+  orderNumber        String
+  idempotencyKey     String
+  travelPackageId    String?
+  internalBookingId  String?
+  travelType         AdditionalServiceTravelType
+  quotationCurrency  AdditionalServiceCurrency
+  commercialSubtotal Decimal                      @db.Decimal(18, 4)
+  totalVat           Decimal                      @db.Decimal(18, 4)
+  totalSellingPrice  Decimal                      @db.Decimal(18, 4)
+  status             AdditionalServiceOrderStatus @default(DRAFT)
+  createdByUserId    String
+  createdByName      String
+  createdAt          DateTime                     @default(now())
+  updatedAt          DateTime                     @updatedAt
+  tenant             Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  travelPackage      TravelPackage?               @relation(fields: [travelPackageId], references: [id], onDelete: SetNull)
+  internalBooking    InternalTourBooking?         @relation(fields: [internalBookingId], references: [id], onDelete: SetNull)
+  lines              AdditionalServiceOrderLine[]
 
   @@unique([tenantId, orderNumber])
+  @@unique([tenantId, idempotencyKey])
+  @@unique([id, tenantId])
   @@index([tenantId])
   @@index([travelPackageId])
-  @@index([internalTripId])
+  @@index([internalBookingId])
   @@index([status])
   @@index([createdAt])
   @@map("additional_service_orders")
 }
 
 model AdditionalServiceOrderLine {
-  id            String                              @id @default(cuid())
-  tenantId      String
-  orderId       String
-  serviceType   AdditionalServiceType
-  detail        String
-  notes         String
-  serviceDate   DateTime?
-  quantity      Int
-  currency      AdditionalServiceCurrency
-  exchangeRate  Decimal                             @db.Decimal(14, 6)
-  cost          Decimal                             @db.Decimal(14, 2)
-  salePrice     Decimal                             @db.Decimal(14, 2)
-  marginType    AdditionalServiceMarginType
-  marginValue   Decimal                             @db.Decimal(14, 4)
-  taxPercentage Decimal                             @db.Decimal(7, 4)
-  taxAmount     Decimal                             @db.Decimal(14, 2)
-  subtotal      Decimal                             @db.Decimal(14, 2)
-  total         Decimal                             @db.Decimal(14, 2)
-  supplierName  String?
-  sourceUrl     String?
-  createdAt     DateTime                            @default(now())
-  updatedAt     DateTime                            @updatedAt
-  tenant        Tenant                              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  order         AdditionalServiceOrder              @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  participants  AdditionalServiceOrderParticipant[]
+  id                              String                              @id @default(cuid())
+  tenantId                        String
+  orderId                         String
+  additionalServiceCatalogId      String
+  serviceCode                     String
+  serviceName                     String
+  supplierId                      String
+  supplierName                    String
+  supplierCostUrl                 String?
+  supplierCost                    Decimal                             @db.Decimal(18, 4)
+  supplierCostCurrency            AdditionalServiceCurrency
+  quotationCurrency               AdditionalServiceCurrency
+  supplierCostInQuotationCurrency Decimal                             @db.Decimal(18, 4)
+  exchangeRateId                  String?
+  exchangeRateDate                DateTime?                           @db.Date
+  exchangeRateSource              String?
+  exchangeRateBuyRate             Decimal?                            @db.Decimal(18, 8)
+  exchangeRateSellRate            Decimal?                            @db.Decimal(18, 8)
+  exchangeRateType                AdditionalServiceExchangeRateType?
+  appliedExchangeRate             Decimal                             @db.Decimal(18, 8)
+  marginType                      AdditionalServiceMarginType
+  marginValue                     Decimal                             @db.Decimal(18, 4)
+  marginAmount                    Decimal                             @db.Decimal(18, 4)
+  subtotal                        Decimal                             @db.Decimal(18, 4)
+  vatPercentage                   Decimal                             @db.Decimal(7, 4)
+  vatAmount                       Decimal                             @db.Decimal(18, 4)
+  finalSellingPrice               Decimal                             @db.Decimal(18, 4)
+  commercialNotes                 String?
+  createdAt                       DateTime                            @default(now())
+  updatedAt                       DateTime                            @updatedAt
+  tenant                          Tenant                              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  order                           AdditionalServiceOrder              @relation(fields: [orderId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  additionalServiceCatalog        AdditionalServiceCatalog            @relation(fields: [additionalServiceCatalogId, tenantId], references: [id, tenantId])
+  supplier                        Supplier                            @relation(fields: [supplierId, tenantId], references: [id, tenantId])
+  exchangeRate                    ExchangeRate?                       @relation(fields: [exchangeRateId], references: [id], onDelete: SetNull)
+  participants                    AdditionalServiceOrderParticipant[]
 
+  @@unique([id, tenantId])
   @@index([tenantId])
   @@index([orderId])
-  @@index([serviceType])
-  @@index([serviceDate])
+  @@index([additionalServiceCatalogId])
+  @@index([supplierId])
+  @@index([exchangeRateId])
+  @@index([serviceCode])
   @@map("additional_service_order_lines")
 }
 
 model AdditionalServiceOrderParticipant {
-  id        String                     @id @default(cuid())
-  tenantId  String
-  lineId    String
-  clientId  String
-  createdAt DateTime                   @default(now())
-  tenant    Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  line      AdditionalServiceOrderLine @relation(fields: [lineId], references: [id], onDelete: Cascade)
-  client    Client                     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  id             String                     @id @default(cuid())
+  tenantId       String
+  lineId         String
+  clientId       String?
+  fullName       String
+  identification String
+  email          String?
+  phone          String?
+  createdAt      DateTime                   @default(now())
+  tenant         Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  line           AdditionalServiceOrderLine @relation(fields: [lineId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  client         Client?                    @relation(fields: [clientId], references: [id], onDelete: SetNull)
 
   @@unique([lineId, clientId], map: "additional_service_order_participants_line_client_key")
   @@index([tenantId])

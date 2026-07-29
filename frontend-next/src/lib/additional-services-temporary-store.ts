@@ -153,6 +153,7 @@ export interface AdditionalServicesContextParticipant {
 }
 
 export interface AdditionalServicesWorkflowContext {
+  travelId: string;
   travelName: string;
   travelType: 'INTERNATIONAL' | 'INTERNAL';
   contractNumber: string | null;
@@ -184,6 +185,8 @@ export interface TemporaryLineSourcing {
 
 let selectedParticipantIds: string[] = [];
 let workflowContext: AdditionalServicesWorkflowContext | null = null;
+let orderIdempotencyKey: string | null = null;
+let quotationCurrency: TemporaryLineCurrency = 'USD';
 const temporaryBaggageLines: TemporaryBaggageLine[] = [];
 const temporaryLodgingLines: TemporaryLodgingLine[] = [];
 const temporaryAccommodationTypeLines: TemporaryAccommodationTypeLine[] = [];
@@ -196,8 +199,8 @@ const temporaryEventTicketLines: TemporaryEventTicketLine[] = [];
 const temporaryTravelExtensionLines: TemporaryTravelExtensionLine[] = [];
 const temporaryTripReductionLines: TemporaryTripReductionLine[] = [];
 const temporaryVisaAssistanceLines: TemporaryVisaAssistanceLine[] = [];
-const temporaryLineIds = new WeakMap<TemporaryAdditionalServiceLine, string>();
-const temporaryLineSourcing = new WeakMap<
+let temporaryLineIds = new WeakMap<TemporaryAdditionalServiceLine, string>();
+let temporaryLineSourcing = new WeakMap<
   TemporaryAdditionalServiceLine,
   TemporaryLineSourcing
 >();
@@ -215,6 +218,7 @@ function registerTemporaryLine<T extends TemporaryAdditionalServiceLine>(
   collection: T[],
   line: T,
 ) {
+  orderIdempotencyKey = null;
   collection.push(line);
   temporaryAdditionalServiceLineOrder.push(line);
   temporaryLineSequence += 1;
@@ -234,6 +238,7 @@ export function getSelectedAdditionalServicesParticipants() {
 export function setAdditionalServicesWorkflowContext(
   context: AdditionalServicesWorkflowContext,
 ) {
+  orderIdempotencyKey = null;
   workflowContext = {
     ...context,
     selectedParticipants: context.selectedParticipants.map((participant) => ({
@@ -241,6 +246,30 @@ export function setAdditionalServicesWorkflowContext(
       operationalNotes: [...(participant.operationalNotes ?? [])],
     })),
   };
+}
+
+export function getOrCreateAdditionalServiceOrderIdempotencyKey() {
+  if (!orderIdempotencyKey) {
+    orderIdempotencyKey = crypto.randomUUID();
+  }
+
+  return orderIdempotencyKey;
+}
+
+export function getAdditionalServicesQuotationCurrency() {
+  return quotationCurrency;
+}
+
+export function setAdditionalServicesQuotationCurrency(
+  currency: TemporaryLineCurrency,
+) {
+  if (quotationCurrency === currency) {
+    return;
+  }
+
+  quotationCurrency = currency;
+  orderIdempotencyKey = null;
+  temporaryLinePricing.clear();
 }
 
 export function getAdditionalServicesWorkflowContext() {
@@ -388,6 +417,30 @@ function getTemporaryLineCollections(): TemporaryAdditionalServiceLine[][] {
   ];
 }
 
+export function resetAdditionalServicesWorkflow() {
+  selectedParticipantIds = [];
+  workflowContext = null;
+  orderIdempotencyKey = null;
+  quotationCurrency = 'USD';
+
+  getTemporaryLineCollections().forEach((collection) => {
+    collection.length = 0;
+  });
+  temporaryAdditionalServiceLineOrder.length = 0;
+  temporaryLineIds = new WeakMap<TemporaryAdditionalServiceLine, string>();
+  temporaryLineSourcing = new WeakMap<
+    TemporaryAdditionalServiceLine,
+    TemporaryLineSourcing
+  >();
+  temporaryLinePricing = new Map<
+    string,
+    AdditionalServicePricingBreakdown
+  >();
+  temporaryLineSequence = 0;
+  temporaryLineBeingEdited = null;
+  temporaryLineEditReturnPath = '/additional-services/order-summary';
+}
+
 export function getTemporaryAdditionalServiceLines() {
   return [...temporaryAdditionalServiceLineOrder];
 }
@@ -410,6 +463,7 @@ export function removeTemporaryAdditionalServiceLine(
   for (const collection of getTemporaryLineCollections()) {
     const index = collection.indexOf(line);
     if (index >= 0) {
+      orderIdempotencyKey = null;
       collection.splice(index, 1);
       const orderIndex = temporaryAdditionalServiceLineOrder.indexOf(line);
       if (orderIndex >= 0) {
@@ -449,6 +503,7 @@ export function replaceTemporaryAdditionalServiceLine(
   for (const collection of getTemporaryLineCollections()) {
     const index = collection.indexOf(currentLine);
     if (index >= 0) {
+      orderIdempotencyKey = null;
       collection[index] = updatedLine;
       const orderIndex =
         temporaryAdditionalServiceLineOrder.indexOf(currentLine);
@@ -494,6 +549,7 @@ export function updateTemporaryAdditionalServiceLineSourcing(
   line: TemporaryAdditionalServiceLine,
   changes: Partial<TemporaryLineSourcing>,
 ) {
+  orderIdempotencyKey = null;
   temporaryLineSourcing.set(line, {
     ...getTemporaryAdditionalServiceLineSourcing(line),
     ...changes,

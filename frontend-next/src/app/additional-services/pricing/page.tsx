@@ -9,10 +9,13 @@ import { LoadingModal } from '@/components/loading-modal';
 import { Button } from '@/components/ui/button';
 import { calculateAdditionalServicePrice } from '@/lib/additional-services-pricing-api';
 import {
+  getAdditionalServicesQuotationCurrency,
   getAdditionalServicesWorkflowContext,
   getTemporaryAdditionalServiceLineSourcing,
   getTemporaryAdditionalServiceLines,
+  setAdditionalServicesQuotationCurrency,
   setTemporaryAdditionalServiceLinePricing,
+  type TemporaryLineCurrency,
 } from '@/lib/additional-services-temporary-store';
 import { getAdditionalServiceName } from '@/shared/additional-services';
 import styles from '../order-summary/order-summary.module.css';
@@ -21,6 +24,16 @@ export default function AdditionalServicesPricingPage() {
   const router = useRouter();
   const [calculating, setCalculating] = useState(false);
   const [calculationError, setCalculationError] = useState<string | null>(null);
+  const [quotationCurrency, setQuotationCurrency] =
+    useState<TemporaryLineCurrency>(() =>
+      getAdditionalServicesQuotationCurrency(),
+    );
+
+  function changeQuotationCurrency(currency: TemporaryLineCurrency) {
+    setQuotationCurrency(currency);
+    setAdditionalServicesQuotationCurrency(currency);
+    setCalculationError(null);
+  }
 
   async function continueToPricingReview() {
     if (calculating) {
@@ -50,6 +63,7 @@ export default function AdditionalServicesPricingPage() {
               serviceCode: line.serviceType,
               supplierCost: sourcing.cost,
               costCurrency: sourcing.currency,
+              quotationCurrency,
             });
             return { line, breakdown };
           } catch (error) {
@@ -99,6 +113,68 @@ export default function AdditionalServicesPricingPage() {
         </header>
 
         <section className="form-section-card" style={{ marginTop: 0 }}>
+          <fieldset
+            style={{
+              margin: '0 0 24px',
+              padding: '18px 20px',
+              border: '1px solid #dbe4f0',
+              borderRadius: '12px',
+              background: '#f8fafc',
+            }}
+          >
+            <legend
+              style={{
+                padding: '0 6px',
+                color: '#172554',
+                fontSize: '15px',
+                fontWeight: 700,
+              }}
+            >
+              Moneda de la cotización
+            </legend>
+            <div
+              style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: '12px',
+                marginTop: '4px',
+              }}
+            >
+              {(['USD', 'CRC'] as const).map((currency) => (
+                <label
+                  key={currency}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    minWidth: '96px',
+                    padding: '10px 14px',
+                    border:
+                      quotationCurrency === currency
+                        ? '2px solid #4f46e5'
+                        : '1px solid #cbd5e1',
+                    borderRadius: '10px',
+                    background:
+                      quotationCurrency === currency ? '#eef2ff' : '#fff',
+                    color: '#172554',
+                    fontWeight: 700,
+                    cursor: calculating ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  <input
+                    type="radio"
+                    name="quotationCurrency"
+                    value={currency}
+                    checked={quotationCurrency === currency}
+                    disabled={calculating}
+                    onChange={() => changeQuotationCurrency(currency)}
+                    style={{ width: '16px', height: '16px' }}
+                  />
+                  {currency}
+                </label>
+              ))}
+            </div>
+          </fieldset>
           <AdditionalServicesLinesTable mode="pricing" />
           {calculationError && (
             <p

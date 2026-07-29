@@ -5,6 +5,7 @@ import {
   HttpStatus,
 } from "@nestjs/common";
 import {
+  ExchangeRateMissingError,
   InvalidPricingInputError,
   PricingConfigurationMissingError,
 } from "../../pricing-engine";
@@ -12,6 +13,7 @@ import {
 @Catch(
   PricingConfigurationMissingError,
   InvalidPricingInputError,
+  ExchangeRateMissingError,
 )
 export class PricingEngineBusinessErrorFilter
   implements ExceptionFilter
@@ -19,7 +21,8 @@ export class PricingEngineBusinessErrorFilter
   catch(
     exception:
       | PricingConfigurationMissingError
-      | InvalidPricingInputError,
+      | InvalidPricingInputError
+      | ExchangeRateMissingError,
     host: ArgumentsHost,
   ): void {
     host

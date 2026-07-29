@@ -15,6 +15,7 @@ import {
 } from '@/lib/additional-services-workspace-api';
 import {
   setAdditionalServicesWorkflowContext,
+  resetAdditionalServicesWorkflow,
   setSelectedAdditionalServicesParticipants,
 } from '@/lib/additional-services-temporary-store';
 import type { CustomerListItem } from '@/lib/customers-api';
@@ -210,6 +211,13 @@ export default function AdditionalServicesPage() {
   }
 
   function selectTravel(travel: ActiveTravelSelection) {
+    const isDifferentTravel =
+      selectedTravel?.travelId !== travel.travelId ||
+      selectedTravel.travelType !== travel.travelType;
+    if (isDifferentTravel) {
+      resetAdditionalServicesWorkflow();
+    }
+
     setSelectedTravel(travel);
     setTravelContext(null);
     setContextError(null);
@@ -515,6 +523,7 @@ export default function AdditionalServicesPage() {
                               selectedParticipantIds,
                             );
                             setAdditionalServicesWorkflowContext({
+                              travelId: travelContext.travelId,
                               travelName: travelContext.displayName,
                               travelType: travelContext.travelType,
                               contractNumber: travelContext.contractNumber,

@@ -17,4 +17,7 @@ export class CalculateAdditionalServicePriceDto {
 
   @IsString()
   costCurrency!: PricingCurrency;
+
+  @IsString()
+  quotationCurrency!: PricingCurrency;
 }
