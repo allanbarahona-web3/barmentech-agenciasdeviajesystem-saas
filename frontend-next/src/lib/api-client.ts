@@ -3,9 +3,7 @@
  * Maneja JWT, multi-tenancy, y errores de forma centralizada
  */
 
-import { AUTH_TOKEN_KEY } from './runtime-config';
-
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+import { AUTH_TOKEN_KEY, resolveApiBase } from './runtime-config';
 
 interface FetchOptions extends RequestInit {
   params?: Record<string, string | number | boolean>;
@@ -17,7 +15,7 @@ function getToken(): string | null {
 }
 
 function buildUrl(path: string, params?: Record<string, any>): string {
-  const url = new URL(`${API_BASE_URL}${path}`);
+  const url = new URL(`${resolveApiBase()}${path}`);
 
   if (params) {
     Object.entries(params).forEach(([key, value]) => {
