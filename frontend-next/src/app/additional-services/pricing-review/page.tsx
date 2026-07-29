@@ -186,7 +186,7 @@ export default function AdditionalServicesPricingReviewPage() {
 
       resetAdditionalServicesWorkflow();
       router.push(
-        `/additional-services/orders/${encodeURIComponent(response.orderId)}/quotation`,
+        `/additional-services/orders/${encodeURIComponent(response.orderId)}`,
       );
     } catch (error) {
       showError(

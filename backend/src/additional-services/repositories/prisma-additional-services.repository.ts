@@ -11,6 +11,7 @@ import {
   AdditionalServicePricingConfigurationRecord,
   AdditionalServicesRepository,
   AdditionalServiceTenantRecord,
+  AdditionalServiceTravelParticipantRecord,
   AdditionalServiceTravelRecord,
   AdditionalServiceTravelReference,
   CreateAdditionalServiceOrderData,
@@ -126,11 +127,11 @@ export class PrismaAdditionalServicesRepository
     return this.findParticipants(this.client, ids);
   }
 
-  findTravelParticipantIds(
+  findTravelParticipants(
     tenantId: string,
     travel: AdditionalServiceTravelReference,
-  ): Promise<string[]> {
-    return this.findTravelParticipants(this.client, tenantId, travel);
+  ): Promise<AdditionalServiceTravelParticipantRecord[]> {
+    return this.loadTravelParticipants(this.client, tenantId, travel);
   }
 
   create(
@@ -325,8 +326,8 @@ export class PrismaAdditionalServicesRepository
       findInternalBookingById: (id) =>
         this.findInternalBooking(client, id),
       findParticipantsByIds: (ids) => this.findParticipants(client, ids),
-      findTravelParticipantIds: (tenantId, travel) =>
-        this.findTravelParticipants(client, tenantId, travel),
+      findTravelParticipants: (tenantId, travel) =>
+        this.loadTravelParticipants(client, tenantId, travel),
       create: (data) => this.createOrder(client, data),
       findById: async (tenantId, id) => {
         const order = await client.additionalServiceOrder.findFirst({
@@ -466,30 +467,28 @@ export class PrismaAdditionalServicesRepository
     })) as AdditionalServiceParticipantRecord[];
   }
 
-  private async findTravelParticipants(
+  private async loadTravelParticipants(
     client: AdditionalServicesPrismaClient,
     tenantId: string,
     travel: AdditionalServiceTravelReference,
-  ): Promise<string[]> {
+  ): Promise<AdditionalServiceTravelParticipantRecord[]> {
     const participants = travel.travelPackageId
       ? await client.travelPackageParticipant.findMany({
           where: {
             tenantId,
             travelPackageId: travel.travelPackageId,
           },
-          select: { clientId: true },
+          select: { clientId: true, role: true },
         })
       : await client.internalTourBookingParticipant.findMany({
           where: {
             tenantId,
             bookingId: travel.internalBookingId,
           },
-          select: { clientId: true },
+          select: { clientId: true, role: true },
         });
 
-    return (participants as Array<{ clientId: string }>).map(
-      ({ clientId }) => clientId,
-    );
+    return participants as AdditionalServiceTravelParticipantRecord[];
   }
 
   private async findCatalogById(
@@ -904,6 +903,7 @@ export class PrismaAdditionalServicesRepository
           tenantId: data.tenantId,
           lineId: line.id,
           clientId: participant.clientId,
+          role: participant.role,
           fullName: participant.fullName,
           identification: participant.identification,
           email: participant.email,
@@ -1007,6 +1007,7 @@ export class PrismaAdditionalServicesRepository
       lines: Array<Record<string, unknown> & {
         participants: Array<{
           clientId: string | null;
+          role: AdditionalServiceOrderRecord["lines"][number]["participants"][number]["role"];
           fullName: string;
           identification: string;
           email: string | null;
@@ -1100,6 +1101,7 @@ export class PrismaAdditionalServicesRepository
         commercialNotes: this.nullableString(line.commercialNotes),
         participants: line.participants.map((participant) => ({
           clientId: participant.clientId,
+          role: participant.role,
           fullName: participant.fullName,
           identification: participant.identification,
           email: participant.email,

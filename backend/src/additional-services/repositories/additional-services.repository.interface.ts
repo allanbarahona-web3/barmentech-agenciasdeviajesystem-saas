@@ -41,6 +41,7 @@ export interface AdditionalServiceOrderLineRecord {
 
 export interface AdditionalServiceOrderParticipantDetails {
   clientId: string | null;
+  role: AdditionalServiceParticipantRole;
   fullName: string;
   identification: string;
   email: string | null;
@@ -100,6 +101,16 @@ export interface AdditionalServiceParticipantRecord {
   idNumber: string;
   email: string | null;
   phone: string | null;
+}
+
+export type AdditionalServiceParticipantRole =
+  | "HOLDER"
+  | "COMPANION"
+  | "MINOR";
+
+export interface AdditionalServiceTravelParticipantRecord {
+  clientId: string;
+  role: AdditionalServiceParticipantRole;
 }
 
 export interface AdditionalServiceCatalogRecord {
@@ -223,6 +234,7 @@ export interface CreateAdditionalServiceOrderLineData {
   commercialNotes?: string;
   participants: Array<{
     clientId: string;
+    role: AdditionalServiceParticipantRole;
     fullName: string;
     identification: string;
     email: string | null;
@@ -268,10 +280,10 @@ export interface AdditionalServicesRepository {
     ids: string[],
   ): Promise<AdditionalServiceParticipantRecord[]>;
 
-  findTravelParticipantIds(
+  findTravelParticipants(
     tenantId: string,
     travel: AdditionalServiceTravelReference,
-  ): Promise<string[]>;
+  ): Promise<AdditionalServiceTravelParticipantRecord[]>;
 
   create(
     data: CreateAdditionalServiceOrderData,

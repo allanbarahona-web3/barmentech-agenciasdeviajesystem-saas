@@ -1358,18 +1358,19 @@ model AdditionalServiceOrderLine {
 }
 
 model AdditionalServiceOrderParticipant {
-  id             String                     @id @default(cuid())
+  id             String                       @id @default(cuid())
   tenantId       String
   lineId         String
   clientId       String?
+  role           TravelPackageParticipantRole
   fullName       String
   identification String
   email          String?
   phone          String?
-  createdAt      DateTime                   @default(now())
-  tenant         Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  line           AdditionalServiceOrderLine @relation(fields: [lineId, tenantId], references: [id, tenantId], onDelete: Cascade)
-  client         Client?                    @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  createdAt      DateTime                     @default(now())
+  tenant         Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  line           AdditionalServiceOrderLine   @relation(fields: [lineId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  client         Client?                      @relation(fields: [clientId], references: [id], onDelete: SetNull)
 
   @@unique([lineId, clientId], map: "additional_service_order_participants_line_client_key")
   @@index([tenantId])

@@ -26,7 +26,7 @@ describe("AdditionalServicesService orders", () => {
       findTravelPackageById: jest.fn(),
       findInternalBookingById: jest.fn(),
       findParticipantsByIds: jest.fn(),
-      findTravelParticipantIds: jest.fn(),
+      findTravelParticipants: jest.fn(),
       create: jest.fn(),
       findById: jest.fn(),
       findByIdempotencyKey: jest.fn(),
@@ -102,7 +102,9 @@ describe("AdditionalServicesService orders", () => {
         phone: "8888-8888",
       },
     ]);
-    repository.findTravelParticipantIds.mockResolvedValue(["client-1"]);
+    repository.findTravelParticipants.mockResolvedValue([
+      { clientId: "client-1", role: "COMPANION" },
+    ]);
     pricingEngine.calculateMany.mockResolvedValue([{
       supplierCost: 100,
       costCurrency: AdditionalServiceCurrency.USD,
@@ -213,6 +215,7 @@ describe("AdditionalServicesService orders", () => {
             participants: [
               {
                 clientId: "client-1",
+                role: "COMPANION",
                 fullName: "Customer One",
                 identification: "1-1111-1111",
                 email: "customer@example.com",
@@ -300,7 +303,9 @@ describe("AdditionalServicesService orders", () => {
         phone: null,
       },
     ]);
-    repository.findTravelParticipantIds.mockResolvedValue(["client-1"]);
+    repository.findTravelParticipants.mockResolvedValue([
+      { clientId: "client-1", role: "HOLDER" },
+    ]);
     pricingEngine.calculateMany.mockResolvedValue([
       {
         supplierCost: 100,

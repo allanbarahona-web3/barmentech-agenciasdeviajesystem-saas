@@ -48,7 +48,7 @@ describe("AdditionalServicesService pricing configurations", () => {
       findTravelPackageById: jest.fn(),
       findInternalBookingById: jest.fn(),
       findParticipantsByIds: jest.fn(),
-      findTravelParticipantIds: jest.fn(),
+      findTravelParticipants: jest.fn(),
       create: jest.fn(),
       findById: jest.fn(),
       findByIdempotencyKey: jest.fn(),

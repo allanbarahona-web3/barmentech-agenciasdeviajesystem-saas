@@ -368,7 +368,7 @@ export class AdditionalServicesService {
       dto,
     );
     const { lines, participantIds } = resolvedLines;
-    const [participants] = await Promise.all([
+    const [participants, travelParticipantRoles] = await Promise.all([
       this.validateParticipants(
         this.repository,
         tenantId,
@@ -394,6 +394,7 @@ export class AdditionalServicesService {
           const participant = participantById.get(clientId)!;
           return {
             clientId: participant.id,
+            role: travelParticipantRoles.get(clientId)!,
             fullName: participant.fullName,
             identification: participant.idNumber,
             email: participant.email,
@@ -753,15 +754,20 @@ export class AdditionalServicesService {
       internalBookingId?: string;
     },
     participantIds: string[],
-  ): Promise<void> {
-    const travelParticipantIds = new Set(
-      await repository.findTravelParticipantIds(
+  ) {
+    const travelParticipants =
+      await repository.findTravelParticipants(
         tenantId,
         travel,
-      ),
+      );
+    const travelParticipantRoles = new Map(
+      travelParticipants.map((participant) => [
+        participant.clientId,
+        participant.role,
+      ]),
     );
     const unrelatedParticipantIds = participantIds.filter(
-      (id) => !travelParticipantIds.has(id),
+      (id) => !travelParticipantRoles.has(id),
     );
 
     if (unrelatedParticipantIds.length > 0) {
@@ -769,6 +775,8 @@ export class AdditionalServicesService {
         `Los siguientes participantes no pertenecen al viaje seleccionado: ${unrelatedParticipantIds.join(", ")}.`,
       );
     }
+
+    return travelParticipantRoles;
   }
 
   private toCreateData(
