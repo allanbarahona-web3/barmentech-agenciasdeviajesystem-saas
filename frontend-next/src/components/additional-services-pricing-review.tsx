@@ -29,6 +29,13 @@ function formatDecimal(value: number) {
   }).format(value);
 }
 
+function formatFixedMarginValue(value: number) {
+  return new Intl.NumberFormat('es-CR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
 interface PricingSummary {
   currency: AdditionalServicePricingBreakdown['quotationCurrency'];
   subtotal: number;
@@ -118,10 +125,7 @@ export function AdditionalServicesPricingReview({
                     <dd>
                       {breakdown.marginType === 'PERCENTAGE'
                         ? `${formatDecimal(breakdown.marginValue)} %`
-                        : formatCurrency(
-                            breakdown.marginValue,
-                            breakdown.quotationCurrency,
-                          )}
+                        : formatFixedMarginValue(breakdown.marginValue)}
                     </dd>
                   </div>
                   <div>

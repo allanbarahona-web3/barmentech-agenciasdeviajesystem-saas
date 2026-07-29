@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import { randomUUID } from "crypto";
 import { Decimal } from "@prisma/client/runtime/library";
 import { PrismaService } from "../../prisma/prisma.service";
 import {
@@ -62,6 +63,12 @@ interface AdditionalServicesPrismaClient {
     create(args: unknown): Promise<unknown>;
     findFirst(args: unknown): Promise<unknown>;
     findMany(args: unknown): Promise<unknown>;
+  };
+  additionalServiceOrderLine: {
+    createMany(args: unknown): Promise<{ count: number }>;
+  };
+  additionalServiceOrderParticipant: {
+    createMany(args: unknown): Promise<{ count: number }>;
   };
 }
 
@@ -190,6 +197,13 @@ export class PrismaAdditionalServicesRepository
     return this.findCatalogByCode(this.client, tenantId, code);
   }
 
+  findAdditionalServiceCatalogsByCodes(
+    tenantId: string,
+    codes: string[],
+  ): Promise<AdditionalServiceCatalogRecord[]> {
+    return this.findCatalogsByCodes(this.client, tenantId, codes);
+  }
+
   findAdditionalServiceCatalogs(
     tenantId: string,
   ): Promise<AdditionalServiceCatalogAdminRecord[]> {
@@ -232,6 +246,17 @@ export class PrismaAdditionalServicesRepository
     );
   }
 
+  findPricingConfigurationsByCatalogIds(
+    tenantId: string,
+    additionalServiceCatalogIds: string[],
+  ): Promise<AdditionalServicePricingConfigurationRecord[]> {
+    return this.findPricingByCatalogIds(
+      this.client,
+      tenantId,
+      additionalServiceCatalogIds,
+    );
+  }
+
   createPricingConfiguration(
     data: CreateAdditionalServicePricingConfigurationData,
   ): Promise<AdditionalServicePricingConfigurationRecord> {
@@ -255,6 +280,13 @@ export class PrismaAdditionalServicesRepository
     id: string,
   ): Promise<SupplierRecord | null> {
     return this.findSupplier(this.client, tenantId, id);
+  }
+
+  findSuppliersByIds(
+    tenantId: string,
+    ids: string[],
+  ): Promise<SupplierRecord[]> {
+    return this.loadSuppliersByIds(this.client, tenantId, ids);
   }
 
   findSupplierByName(
@@ -332,6 +364,8 @@ export class PrismaAdditionalServicesRepository
         this.findCatalogById(client, id),
       findAdditionalServiceCatalogByCode: (tenantId, code) =>
         this.findCatalogByCode(client, tenantId, code),
+      findAdditionalServiceCatalogsByCodes: (tenantId, codes) =>
+        this.findCatalogsByCodes(client, tenantId, codes),
       findAdditionalServiceCatalogs: (tenantId) =>
         this.findCatalogs(client, tenantId),
       findAdditionalServiceCatalogCodes: (tenantId) =>
@@ -351,12 +385,16 @@ export class PrismaAdditionalServicesRepository
           tenantId,
           additionalServiceCatalogId,
         ),
+      findPricingConfigurationsByCatalogIds: (tenantId, catalogIds) =>
+        this.findPricingByCatalogIds(client, tenantId, catalogIds),
       createPricingConfiguration: (data) => this.createPricing(client, data),
       updatePricingConfiguration: (tenantId, id, data) =>
         this.updatePricing(client, tenantId, id, data),
       findSuppliers: (tenantId) => this.findSupplierList(client, tenantId),
       findSupplierById: (tenantId, id) =>
         this.findSupplier(client, tenantId, id),
+      findSuppliersByIds: (tenantId, ids) =>
+        this.loadSuppliersByIds(client, tenantId, ids),
       findSupplierByName: (tenantId, name, excludeId) =>
         this.findSupplierWithName(client, tenantId, name, excludeId),
       createSupplier: (data) => this.insertSupplier(client, data),
@@ -485,6 +523,23 @@ export class PrismaAdditionalServicesRepository
         isActive: true,
       },
     })) as AdditionalServiceCatalogRecord | null;
+  }
+
+  private async findCatalogsByCodes(
+    client: AdditionalServicesPrismaClient,
+    tenantId: string,
+    codes: string[],
+  ): Promise<AdditionalServiceCatalogRecord[]> {
+    return (await client.additionalServiceCatalog.findMany({
+      where: { tenantId, code: { in: codes } },
+      select: {
+        id: true,
+        tenantId: true,
+        code: true,
+        name: true,
+        isActive: true,
+      },
+    })) as AdditionalServiceCatalogRecord[];
   }
 
   private async findCatalogs(
@@ -640,6 +695,27 @@ export class PrismaAdditionalServicesRepository
       : null;
   }
 
+  private async findPricingByCatalogIds(
+    client: AdditionalServicesPrismaClient,
+    tenantId: string,
+    additionalServiceCatalogIds: string[],
+  ): Promise<AdditionalServicePricingConfigurationRecord[]> {
+    const configurations =
+      await client.additionalServicePricingConfiguration.findMany({
+        where: {
+          tenantId,
+          additionalServiceCatalogId: {
+            in: additionalServiceCatalogIds,
+          },
+        },
+        include: this.pricingConfigurationInclude(),
+      });
+
+    return (configurations as unknown[]).map((configuration) =>
+      this.toPricingConfigurationRecord(configuration),
+    );
+  }
+
   private async createPricing(
     client: AdditionalServicesPrismaClient,
     data: CreateAdditionalServicePricingConfigurationData,
@@ -712,6 +788,16 @@ export class PrismaAdditionalServicesRepository
     })) as SupplierRecord | null;
   }
 
+  private async loadSuppliersByIds(
+    client: AdditionalServicesPrismaClient,
+    tenantId: string,
+    ids: string[],
+  ): Promise<SupplierRecord[]> {
+    return (await client.supplier.findMany({
+      where: { tenantId, id: { in: ids } },
+    })) as SupplierRecord[];
+  }
+
   private async findSupplierWithName(
     client: AdditionalServicesPrismaClient,
     tenantId: string,
@@ -752,7 +838,7 @@ export class PrismaAdditionalServicesRepository
     client: AdditionalServicesPrismaClient,
     data: CreateAdditionalServiceOrderData,
   ): Promise<AdditionalServiceOrderRecord> {
-    const order = await client.additionalServiceOrder.create({
+    const order = (await client.additionalServiceOrder.create({
       data: {
         tenantId: data.tenantId,
         orderNumber: data.orderNumber,
@@ -766,64 +852,74 @@ export class PrismaAdditionalServicesRepository
         totalSellingPrice: new Decimal(String(data.totalSellingPrice)),
         createdByUserId: data.createdByUserId,
         createdByName: data.createdByName,
-        lines: {
-          create: data.lines.map((line) => ({
-            tenantId: data.tenantId,
-            additionalServiceCatalogId:
-              line.additionalServiceCatalogId,
-            serviceCode: line.serviceCode,
-            serviceName: line.serviceName,
-            supplierId: line.supplierId,
-            supplierName: line.supplierName,
-            supplierCostUrl: line.supplierCostUrl ?? null,
-            supplierCost: new Decimal(String(line.supplierCost)),
-            supplierCostCurrency: line.supplierCostCurrency,
-            quotationCurrency: line.quotationCurrency,
-            supplierCostInQuotationCurrency: new Decimal(
-              String(line.supplierCostInQuotationCurrency),
-            ),
-            exchangeRateId: line.exchangeRateId,
-            exchangeRateDate: line.exchangeRateDate,
-            exchangeRateSource: line.exchangeRateSource,
-            exchangeRateBuyRate:
-              line.exchangeRateBuyRate === null
-                ? null
-                : new Decimal(String(line.exchangeRateBuyRate)),
-            exchangeRateSellRate:
-              line.exchangeRateSellRate === null
-                ? null
-                : new Decimal(String(line.exchangeRateSellRate)),
-            exchangeRateType: line.exchangeRateType,
-            appliedExchangeRate: new Decimal(
-              String(line.appliedExchangeRate),
-            ),
-            marginType: line.marginType,
-            marginValue: new Decimal(String(line.marginValue)),
-            marginAmount: new Decimal(String(line.marginAmount)),
-            subtotal: new Decimal(String(line.subtotal)),
-            vatPercentage: new Decimal(String(line.vatPercentage)),
-            vatAmount: new Decimal(String(line.vatAmount)),
-            finalSellingPrice: new Decimal(
-              String(line.finalSellingPrice),
-            ),
-            commercialNotes: line.commercialNotes ?? null,
-            participants: {
-              create: line.participants.map((participant) => ({
-                tenantId: data.tenantId,
-                clientId: participant.clientId,
-                fullName: participant.fullName,
-                identification: participant.identification,
-                email: participant.email,
-                phone: participant.phone,
-              })),
-            },
-          })),
-        },
       },
+      select: { id: true },
+    })) as { id: string };
+    const lines = data.lines.map((line) => ({
+      id: randomUUID(),
+      tenantId: data.tenantId,
+      orderId: order.id,
+      additionalServiceCatalogId: line.additionalServiceCatalogId,
+      serviceCode: line.serviceCode,
+      serviceName: line.serviceName,
+      supplierId: line.supplierId,
+      supplierName: line.supplierName,
+      supplierCostUrl: line.supplierCostUrl ?? null,
+      supplierCost: new Decimal(String(line.supplierCost)),
+      supplierCostCurrency: line.supplierCostCurrency,
+      quotationCurrency: line.quotationCurrency,
+      supplierCostInQuotationCurrency: new Decimal(
+        String(line.supplierCostInQuotationCurrency),
+      ),
+      exchangeRateId: line.exchangeRateId,
+      exchangeRateDate: line.exchangeRateDate,
+      exchangeRateSource: line.exchangeRateSource,
+      exchangeRateBuyRate:
+        line.exchangeRateBuyRate === null
+          ? null
+          : new Decimal(String(line.exchangeRateBuyRate)),
+      exchangeRateSellRate:
+        line.exchangeRateSellRate === null
+          ? null
+          : new Decimal(String(line.exchangeRateSellRate)),
+      exchangeRateType: line.exchangeRateType,
+      appliedExchangeRate: new Decimal(String(line.appliedExchangeRate)),
+      marginType: line.marginType,
+      marginValue: new Decimal(String(line.marginValue)),
+      marginAmount: new Decimal(String(line.marginAmount)),
+      subtotal: new Decimal(String(line.subtotal)),
+      vatPercentage: new Decimal(String(line.vatPercentage)),
+      vatAmount: new Decimal(String(line.vatAmount)),
+      finalSellingPrice: new Decimal(String(line.finalSellingPrice)),
+      commercialNotes: line.commercialNotes ?? null,
+      participants: line.participants,
+    }));
+
+    await client.additionalServiceOrderLine.createMany({
+      data: lines.map(({ participants, ...line }) => line),
+    });
+    await client.additionalServiceOrderParticipant.createMany({
+      data: lines.flatMap((line) =>
+        line.participants.map((participant) => ({
+          tenantId: data.tenantId,
+          lineId: line.id,
+          clientId: participant.clientId,
+          fullName: participant.fullName,
+          identification: participant.identification,
+          email: participant.email,
+          phone: participant.phone,
+        })),
+      ),
+    });
+    const persistedOrder = await client.additionalServiceOrder.findFirst({
+      where: { id: order.id, tenantId: data.tenantId },
       include: this.orderInclude(),
     });
+    if (!persistedOrder) {
+      throw new Error("Persisted additional service order could not be read.");
+    }
 
-    return this.toOrderRecord(order);
+    return this.toOrderRecord(persistedOrder);
   }
 
   private orderInclude() {

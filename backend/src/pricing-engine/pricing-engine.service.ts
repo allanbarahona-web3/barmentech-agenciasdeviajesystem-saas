@@ -4,6 +4,7 @@ import {
   PricingConfigurationReader,
 } from "./pricing-configuration-reader.interface";
 import {
+  CurrentExchangeRate,
   EXCHANGE_RATE_READER,
   ExchangeRateReader,
 } from "./exchange-rate-reader.interface";
@@ -15,6 +16,7 @@ import {
 import {
   PricingBreakdown,
   PricingCalculationInput,
+  PricingConfiguration,
 } from "./pricing-engine.types";
 
 @Injectable()
@@ -46,18 +48,95 @@ export class PricingEngineService {
       );
     }
 
+    const exchangeRate = this.requiresExchangeRate(input, configuration)
+      ? await this.getCurrentExchangeRate(input.tenantId)
+      : null;
+
+    return this.calculateResolved(input, configuration, exchangeRate);
+  }
+
+  async calculateMany(
+    inputs: PricingCalculationInput[],
+  ): Promise<PricingBreakdown[]> {
+    if (inputs.length === 0) {
+      return [];
+    }
+
+    inputs.forEach((input) => this.validateInput(input));
+    const tenantId = inputs[0].tenantId;
+    if (inputs.some((input) => input.tenantId !== tenantId)) {
+      throw new InvalidPricingInputError(
+        "All pricing inputs must belong to the same tenant.",
+      );
+    }
+
+    const configurations =
+      await this.configurationReader.findForAdditionalServices(
+        tenantId,
+        [...new Set(inputs.map((input) => input.additionalServiceId))],
+      );
+    const resolved = inputs.map((input) => {
+      const configuration = configurations.get(input.additionalServiceId);
+      if (!configuration?.isActive) {
+        throw new PricingConfigurationMissingError(
+          input.additionalServiceId,
+        );
+      }
+      return { input, configuration };
+    });
+    const exchangeRate = resolved.some(({ input, configuration }) =>
+      this.requiresExchangeRate(input, configuration),
+    )
+      ? await this.getCurrentExchangeRate(tenantId)
+      : null;
+
+    return resolved.map(({ input, configuration }) =>
+      this.calculateResolved(input, configuration, exchangeRate),
+    );
+  }
+
+  private calculateResolved(
+    input: PricingCalculationInput,
+    configuration: PricingConfiguration,
+    exchangeRate: CurrentExchangeRate | null,
+  ): PricingBreakdown {
     const supplierCost = this.roundMoney(input.supplierCost);
-    const conversion = await this.convertSupplierCost(
+    let conversion = this.convertSupplierCost(
       input.tenantId,
       supplierCost,
       input.costCurrency,
       input.quotationCurrency,
+      exchangeRate,
     );
     const marginValue = configuration.marginValue;
+
+    if (
+      configuration.marginType === "FIXED" &&
+      input.quotationCurrency === "CRC" &&
+      conversion.exchangeRateSellRate === null
+    ) {
+      if (!exchangeRate) {
+        throw new ExchangeRateMissingError(input.tenantId);
+      }
+      conversion = {
+        ...conversion,
+        exchangeRateId: exchangeRate.id,
+        exchangeRateDate: exchangeRate.date,
+        exchangeRateSource: exchangeRate.source,
+        exchangeRateBuyRate: exchangeRate.buyRate,
+        exchangeRateSellRate: exchangeRate.sellRate,
+        exchangeRateType:
+          PricingEngineService.ADDITIONAL_SERVICE_EXCHANGE_RATE_TYPE,
+      };
+    }
+
     const marginAmount = this.roundMoney(
       configuration.marginType === "PERCENTAGE"
         ? conversion.amount * (marginValue / 100)
-        : marginValue,
+        : marginValue *
+          (input.quotationCurrency === "CRC"
+            ? conversion.exchangeRateSellRate!
+            : 1),
     );
     const subtotal = this.roundMoney(conversion.amount + marginAmount);
     const vatAmount = this.roundMoney(
@@ -85,6 +164,19 @@ export class PricingEngineService {
       vatAmount,
       finalSellingPrice,
     };
+  }
+
+  private requiresExchangeRate(
+    input: PricingCalculationInput,
+    configuration: {
+      marginType: "FIXED" | "PERCENTAGE";
+    },
+  ): boolean {
+    return (
+      input.costCurrency !== input.quotationCurrency ||
+      (configuration.marginType === "FIXED" &&
+        input.quotationCurrency === "CRC")
+    );
   }
 
   private validateInput(input: PricingCalculationInput): void {
@@ -116,11 +208,12 @@ export class PricingEngineService {
     }
   }
 
-  private async convertSupplierCost(
+  private convertSupplierCost(
     tenantId: string,
     supplierCost: number,
     costCurrency: "USD" | "CRC",
     quotationCurrency: "USD" | "CRC",
+    exchangeRate: CurrentExchangeRate | null,
   ) {
     if (costCurrency === quotationCurrency) {
       return {
@@ -135,9 +228,7 @@ export class PricingEngineService {
       };
     }
 
-    const exchangeRate =
-      await this.exchangeRateReader.findCurrent(tenantId);
-    if (!exchangeRate || exchangeRate.sellRate <= 0) {
+    if (!exchangeRate) {
       throw new ExchangeRateMissingError(tenantId);
     }
 
@@ -163,6 +254,16 @@ export class PricingEngineService {
         PricingEngineService.ADDITIONAL_SERVICE_EXCHANGE_RATE_TYPE,
       appliedExchangeRate,
     };
+  }
+
+  private async getCurrentExchangeRate(tenantId: string) {
+    const exchangeRate =
+      await this.exchangeRateReader.findCurrent(tenantId);
+    if (!exchangeRate || exchangeRate.sellRate <= 0) {
+      throw new ExchangeRateMissingError(tenantId);
+    }
+
+    return exchangeRate;
   }
 
   private roundMoney(value: number): number {

@@ -15,7 +15,7 @@ import { AdditionalServicesService } from "./additional-services.service";
 describe("AdditionalServicesService orders", () => {
   const tenantId = "tenant-1";
   let repository: jest.Mocked<AdditionalServicesRepository>;
-  let pricingEngine: jest.Mocked<Pick<PricingEngineService, "calculate">>;
+  let pricingEngine: jest.Mocked<Pick<PricingEngineService, "calculateMany">>;
   let service: AdditionalServicesService;
 
   beforeEach(() => {
@@ -33,16 +33,19 @@ describe("AdditionalServicesService orders", () => {
       findByTravel: jest.fn(),
       findAdditionalServiceCatalogById: jest.fn(),
       findAdditionalServiceCatalogByCode: jest.fn(),
+      findAdditionalServiceCatalogsByCodes: jest.fn(),
       findAdditionalServiceCatalogs: jest.fn(),
       findAdditionalServiceCatalogCodes: jest.fn(),
       createAdditionalServiceCatalogItems: jest.fn(),
       findPricingConfigurations: jest.fn(),
       findPricingConfigurationById: jest.fn(),
       findPricingConfigurationByCatalogId: jest.fn(),
+      findPricingConfigurationsByCatalogIds: jest.fn(),
       createPricingConfiguration: jest.fn(),
       updatePricingConfiguration: jest.fn(),
       findSuppliers: jest.fn(),
       findSupplierById: jest.fn(),
+      findSuppliersByIds: jest.fn(),
       findSupplierByName: jest.fn(),
       createSupplier: jest.fn(),
       updateSupplier: jest.fn(),
@@ -50,7 +53,7 @@ describe("AdditionalServicesService orders", () => {
     repository.executeInTransaction.mockImplementation((work) =>
       work(repository),
     );
-    pricingEngine = { calculate: jest.fn() };
+    pricingEngine = { calculateMany: jest.fn() };
     service = new AdditionalServicesService(
       repository,
       pricingEngine as unknown as PricingEngineService,
@@ -66,25 +69,29 @@ describe("AdditionalServicesService orders", () => {
       id: "travel-1",
       tenantId,
     });
-    repository.findAdditionalServiceCatalogByCode.mockResolvedValue({
-      id: "catalog-1",
-      tenantId,
-      code: "VISA_ASSISTANCE",
-      name: "Visa Assistance",
-      isActive: true,
-    });
-    repository.findSupplierById.mockResolvedValue({
-      id: "supplier-1",
-      tenantId,
-      name: "Supplier One",
-      website: null,
-      supplierType: "INTERNATIONAL",
-      supplierCategory: null,
-      notes: null,
-      isActive: true,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
+    repository.findAdditionalServiceCatalogsByCodes.mockResolvedValue([
+      {
+        id: "catalog-1",
+        tenantId,
+        code: "VISA_ASSISTANCE",
+        name: "Visa Assistance",
+        isActive: true,
+      },
+    ]);
+    repository.findSuppliersByIds.mockResolvedValue([
+      {
+        id: "supplier-1",
+        tenantId,
+        name: "Supplier One",
+        website: null,
+        supplierType: "INTERNATIONAL",
+        supplierCategory: null,
+        notes: null,
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ]);
     repository.findParticipantsByIds.mockResolvedValue([
       {
         id: "client-1",
@@ -96,7 +103,7 @@ describe("AdditionalServicesService orders", () => {
       },
     ]);
     repository.findTravelParticipantIds.mockResolvedValue(["client-1"]);
-    pricingEngine.calculate.mockResolvedValue({
+    pricingEngine.calculateMany.mockResolvedValue([{
       supplierCost: 100,
       costCurrency: AdditionalServiceCurrency.USD,
       quotationCurrency: AdditionalServiceCurrency.CRC,
@@ -115,7 +122,7 @@ describe("AdditionalServicesService orders", () => {
       vatPercentage: 13,
       vatAmount: 7774,
       finalSellingPrice: 67574,
-    });
+    }]);
     repository.create.mockImplementation(async (data) => ({
       id: "order-1",
       tenantId,
@@ -159,13 +166,34 @@ describe("AdditionalServicesService orders", () => {
       },
     );
 
-    expect(pricingEngine.calculate).toHaveBeenCalledWith({
-      tenantId,
-      additionalServiceId: "catalog-1",
-      supplierCost: 100,
-      costCurrency: AdditionalServiceCurrency.USD,
-      quotationCurrency: AdditionalServiceCurrency.CRC,
-    });
+    expect(pricingEngine.calculateMany).toHaveBeenCalledWith([
+      {
+        tenantId,
+        additionalServiceId: "catalog-1",
+        supplierCost: 100,
+        costCurrency: AdditionalServiceCurrency.USD,
+        quotationCurrency: AdditionalServiceCurrency.CRC,
+      },
+    ]);
+    expect(
+      repository.findAdditionalServiceCatalogsByCodes,
+    ).toHaveBeenCalledTimes(1);
+    expect(repository.findSuppliersByIds).toHaveBeenCalledTimes(1);
+    expect(
+      repository.findAdditionalServiceCatalogByCode,
+    ).not.toHaveBeenCalled();
+    expect(repository.findSupplierById).not.toHaveBeenCalled();
+    expect(repository.findByIdempotencyKey).toHaveBeenCalledTimes(2);
+    expect(
+      repository.findTravelPackageById.mock.invocationCallOrder[0],
+    ).toBeLessThan(
+      repository.executeInTransaction.mock.invocationCallOrder[0],
+    );
+    expect(
+      pricingEngine.calculateMany.mock.invocationCallOrder[0],
+    ).toBeLessThan(
+      repository.executeInTransaction.mock.invocationCallOrder[0],
+    );
     expect(repository.create).toHaveBeenCalledWith(
       expect.objectContaining({
         idempotencyKey: "workflow-1",
@@ -222,8 +250,110 @@ describe("AdditionalServicesService orders", () => {
       ),
     ).resolves.toBe(existing);
 
-    expect(pricingEngine.calculate).not.toHaveBeenCalled();
+    expect(pricingEngine.calculateMany).not.toHaveBeenCalled();
     expect(repository.create).not.toHaveBeenCalled();
+  });
+
+  it("returns the winning order after a concurrent idempotency collision", async () => {
+    const existing = {
+      id: "order-winner",
+      status: AdditionalServiceOrderStatus.DRAFT,
+    } as AdditionalServiceOrderRecord;
+    repository.findTenantById.mockResolvedValue({
+      id: tenantId,
+      contractPrefix: "ACME",
+    });
+    repository.findTravelPackageById.mockResolvedValue({
+      id: "travel-1",
+      tenantId,
+    });
+    repository.findAdditionalServiceCatalogsByCodes.mockResolvedValue([
+      {
+        id: "catalog-1",
+        tenantId,
+        code: "VISA_ASSISTANCE",
+        name: "Visa Assistance",
+        isActive: true,
+      },
+    ]);
+    repository.findSuppliersByIds.mockResolvedValue([
+      {
+        id: "supplier-1",
+        tenantId,
+        name: "Supplier One",
+        website: null,
+        supplierType: "INTERNATIONAL",
+        supplierCategory: null,
+        notes: null,
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ]);
+    repository.findParticipantsByIds.mockResolvedValue([
+      {
+        id: "client-1",
+        tenantId,
+        fullName: "Customer One",
+        idNumber: "1-1111-1111",
+        email: null,
+        phone: null,
+      },
+    ]);
+    repository.findTravelParticipantIds.mockResolvedValue(["client-1"]);
+    pricingEngine.calculateMany.mockResolvedValue([
+      {
+        supplierCost: 100,
+        costCurrency: AdditionalServiceCurrency.USD,
+        quotationCurrency: AdditionalServiceCurrency.USD,
+        supplierCostInQuotationCurrency: 100,
+        exchangeRateId: null,
+        exchangeRateDate: null,
+        exchangeRateSource: null,
+        exchangeRateBuyRate: null,
+        exchangeRateSellRate: null,
+        exchangeRateType: null,
+        appliedExchangeRate: 1,
+        marginType: AdditionalServiceMarginType.FIXED,
+        marginValue: 15,
+        marginAmount: 15,
+        subtotal: 115,
+        vatPercentage: 13,
+        vatAmount: 14.95,
+        finalSellingPrice: 129.95,
+      },
+    ]);
+    repository.findByIdempotencyKey
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(existing);
+    repository.create.mockRejectedValue({
+      code: "P2002",
+      meta: { target: ["tenantId", "idempotencyKey"] },
+    });
+
+    await expect(
+      service.createOrder(
+        tenantId,
+        { id: "user-1", fullName: "Agent One" },
+        {
+          idempotencyKey: "concurrent-workflow",
+          travelId: "travel-1",
+          travelType: AdditionalServiceTravelType.INTERNATIONAL,
+          quotationCurrency: AdditionalServiceCurrency.USD,
+          lines: [
+            {
+              serviceCode: "VISA_ASSISTANCE",
+              supplierId: "supplier-1",
+              supplierCost: 100,
+              supplierCostCurrency: AdditionalServiceCurrency.USD,
+              participantIds: ["client-1"],
+            },
+          ],
+        },
+      ),
+    ).resolves.toBe(existing);
+    expect(repository.create).toHaveBeenCalledTimes(1);
   });
 
   it("reads an order using the authenticated tenant scope", async () => {

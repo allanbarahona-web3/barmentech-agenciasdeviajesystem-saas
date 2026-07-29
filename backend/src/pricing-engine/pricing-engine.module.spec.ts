@@ -13,6 +13,7 @@ describe("PricingEngineModule", () => {
             provide: PRICING_CONFIGURATION_READER,
             useValue: {
               findForAdditionalService: jest.fn(),
+              findForAdditionalServices: jest.fn(),
             },
           },
           exchangeRateReaderProvider: {

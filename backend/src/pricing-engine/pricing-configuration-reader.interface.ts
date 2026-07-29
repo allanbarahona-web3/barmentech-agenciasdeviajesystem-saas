@@ -9,4 +9,9 @@ export interface PricingConfigurationReader {
     tenantId: string,
     additionalServiceId: string,
   ): Promise<PricingConfiguration | null>;
+
+  findForAdditionalServices(
+    tenantId: string,
+    additionalServiceIds: string[],
+  ): Promise<Map<string, PricingConfiguration>>;
 }

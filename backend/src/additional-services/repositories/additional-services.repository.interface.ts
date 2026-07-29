@@ -301,6 +301,11 @@ export interface AdditionalServicesRepository {
     code: string,
   ): Promise<AdditionalServiceCatalogRecord | null>;
 
+  findAdditionalServiceCatalogsByCodes(
+    tenantId: string,
+    codes: string[],
+  ): Promise<AdditionalServiceCatalogRecord[]>;
+
   findAdditionalServiceCatalogs(
     tenantId: string,
   ): Promise<AdditionalServiceCatalogAdminRecord[]>;
@@ -327,6 +332,11 @@ export interface AdditionalServicesRepository {
     additionalServiceCatalogId: string,
   ): Promise<AdditionalServicePricingConfigurationRecord | null>;
 
+  findPricingConfigurationsByCatalogIds(
+    tenantId: string,
+    additionalServiceCatalogIds: string[],
+  ): Promise<AdditionalServicePricingConfigurationRecord[]>;
+
   createPricingConfiguration(
     data: CreateAdditionalServicePricingConfigurationData,
   ): Promise<AdditionalServicePricingConfigurationRecord>;
@@ -343,6 +353,11 @@ export interface AdditionalServicesRepository {
     tenantId: string,
     id: string,
   ): Promise<SupplierRecord | null>;
+
+  findSuppliersByIds(
+    tenantId: string,
+    ids: string[],
+  ): Promise<SupplierRecord[]>;
 
   findSupplierByName(
     tenantId: string,

@@ -345,6 +345,63 @@ export class AdditionalServicesService {
     actor: AdditionalServiceOrderActor,
     dto: CreateAdditionalServiceOrderDto,
   ): Promise<AdditionalServiceOrderRecord> {
+    const idempotencyKey = dto.idempotencyKey.trim();
+    const [tenant, existingOrder] = await Promise.all([
+      this.repository.findTenantById(tenantId),
+      this.repository.findByIdempotencyKey(tenantId, idempotencyKey),
+    ]);
+    if (!tenant) {
+      throw new NotFoundException("Tenant no encontrado.");
+    }
+    if (existingOrder) {
+      return existingOrder;
+    }
+
+    const travel = await this.validateTravelReference(
+      this.repository,
+      tenantId,
+      dto,
+    );
+    const resolvedLines = await this.validateAndResolveLines(
+      this.repository,
+      tenantId,
+      dto,
+    );
+    const { lines, participantIds } = resolvedLines;
+    const [participants] = await Promise.all([
+      this.validateParticipants(
+        this.repository,
+        tenantId,
+        participantIds,
+      ),
+      this.validateTravelParticipants(
+        this.repository,
+        tenantId,
+        travel,
+        participantIds,
+      ),
+    ]);
+    const participantById = new Map(
+      participants.map((participant) => [
+        participant.id,
+        participant,
+      ]),
+    );
+    const snapshotLines: CreateAdditionalServiceOrderLineData[] =
+      lines.map(({ participantClientIds, ...line }) => ({
+        ...line,
+        participants: participantClientIds.map((clientId) => {
+          const participant = participantById.get(clientId)!;
+          return {
+            clientId: participant.id,
+            fullName: participant.fullName,
+            identification: participant.idNumber,
+            email: participant.email,
+            phone: participant.phone,
+          };
+        }),
+      }));
+
     for (
       let attempt = 1;
       attempt <= this.maxOrderNumberAttempts;
@@ -353,12 +410,6 @@ export class AdditionalServicesService {
       try {
         const order = await this.repository.executeInTransaction(
           async (repository) => {
-            const tenant = await repository.findTenantById(tenantId);
-            if (!tenant) {
-              throw new NotFoundException("Tenant no encontrado.");
-            }
-
-            const idempotencyKey = dto.idempotencyKey.trim();
             const existing = await repository.findByIdempotencyKey(
               tenantId,
               idempotencyKey,
@@ -366,50 +417,6 @@ export class AdditionalServicesService {
             if (existing) {
               return existing;
             }
-
-            const travel = await this.validateTravelReference(
-              repository,
-              tenantId,
-              dto,
-            );
-            const { lines, participantIds } =
-              await this.validateAndResolveLines(
-                repository,
-                tenantId,
-                dto,
-              );
-            const participants = await this.validateParticipants(
-              repository,
-              tenantId,
-              participantIds,
-            );
-            await this.validateTravelParticipants(
-              repository,
-              tenantId,
-              travel,
-              participantIds,
-            );
-
-            const participantById = new Map(
-              participants.map((participant) => [
-                participant.id,
-                participant,
-              ]),
-            );
-            const snapshotLines: CreateAdditionalServiceOrderLineData[] =
-              lines.map(({ participantClientIds, ...line }) => ({
-                ...line,
-                participants: participantClientIds.map((clientId) => {
-                  const participant = participantById.get(clientId)!;
-                  return {
-                    clientId: participant.id,
-                    fullName: participant.fullName,
-                    identification: participant.idNumber,
-                    email: participant.email,
-                    phone: participant.phone,
-                  };
-                }),
-              }));
 
             return repository.create(
               this.toCreateData(
@@ -582,8 +589,7 @@ export class AdditionalServicesService {
     }
 
     const participantIds = new Set<string>();
-
-    const lines = await Promise.all(dto.lines.map(async (line, lineIndex) => {
+    const normalizedLines = dto.lines.map((line, lineIndex) => {
       if (
         !Array.isArray(line.participantIds) ||
         line.participantIds.length === 0
@@ -616,36 +622,62 @@ export class AdditionalServicesService {
 
       lineParticipantIds.forEach((clientId) => participantIds.add(clientId));
 
-      const serviceCode = line.serviceCode.trim().toUpperCase();
-      const catalog =
-        await repository.findAdditionalServiceCatalogByCode(
-          tenantId,
-          serviceCode,
-        );
-      if (!catalog?.isActive) {
-        throw new NotFoundException(
-          `El servicio adicional ${serviceCode} no existe o está inactivo.`,
-        );
-      }
-
-      const supplier = await repository.findSupplierById(
+      return {
+        line,
+        lineIndex,
+        lineParticipantIds,
+        serviceCode: line.serviceCode.trim().toUpperCase(),
+        supplierId: line.supplierId.trim(),
+      };
+    });
+    const [catalogs, suppliers] = await Promise.all([
+      repository.findAdditionalServiceCatalogsByCodes(
         tenantId,
-        line.supplierId.trim(),
-      );
-      if (!supplier?.isActive) {
-        throw new NotFoundException(
-          `El proveedor de la línea ${lineIndex + 1} no existe o está inactivo.`,
-        );
-      }
+        [...new Set(normalizedLines.map(({ serviceCode }) => serviceCode))],
+      ),
+      repository.findSuppliersByIds(
+        tenantId,
+        [...new Set(normalizedLines.map(({ supplierId }) => supplierId))],
+      ),
+    ]);
+    const catalogByCode = new Map(
+      catalogs.map((catalog) => [catalog.code, catalog]),
+    );
+    const supplierById = new Map(
+      suppliers.map((supplier) => [supplier.id, supplier]),
+    );
+    const resolvedEntities = normalizedLines.map(
+      ({ line, lineIndex, lineParticipantIds, serviceCode, supplierId }) => {
+        const catalog = catalogByCode.get(serviceCode);
+        if (!catalog?.isActive) {
+          throw new NotFoundException(
+            `El servicio adicional ${serviceCode} no existe o está inactivo.`,
+          );
+        }
 
-      const pricing = await this.pricingEngine.calculate({
+        const supplier = supplierById.get(supplierId);
+        if (!supplier?.isActive) {
+          throw new NotFoundException(
+            `El proveedor de la línea ${lineIndex + 1} no existe o está inactivo.`,
+          );
+        }
+
+        return { line, catalog, supplier, lineParticipantIds };
+      },
+    );
+    const pricingResults = await this.pricingEngine.calculateMany(
+      resolvedEntities.map(({ line, catalog }) => ({
         tenantId,
         additionalServiceId: catalog.id,
         supplierCost: line.supplierCost,
         costCurrency: line.supplierCostCurrency,
         quotationCurrency: dto.quotationCurrency,
-      });
+      })),
+    );
 
+    const lines = resolvedEntities.map((resolved, index) => {
+      const { line, catalog, supplier, lineParticipantIds } = resolved;
+      const pricing = pricingResults[index];
       return {
         additionalServiceCatalogId: catalog.id,
         serviceCode: catalog.code,
@@ -679,7 +711,7 @@ export class AdditionalServicesService {
           this.toNullableText(line.commercialNotes) ?? undefined,
         participantClientIds: lineParticipantIds,
       };
-    }));
+    });
 
     return { lines, participantIds: [...participantIds] };
   }

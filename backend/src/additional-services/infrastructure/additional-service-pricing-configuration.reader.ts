@@ -38,4 +38,27 @@ export class AdditionalServicePricingConfigurationReader
       isActive: configuration.isActive,
     };
   }
+
+  async findForAdditionalServices(
+    tenantId: string,
+    additionalServiceIds: string[],
+  ): Promise<Map<string, PricingConfiguration>> {
+    const configurations =
+      await this.additionalServicesRepository.findPricingConfigurationsByCatalogIds(
+        tenantId,
+        additionalServiceIds,
+      );
+
+    return new Map(
+      configurations.map((configuration) => [
+        configuration.additionalServiceCatalogId,
+        {
+          marginType: configuration.marginType,
+          marginValue: Number(configuration.marginValue),
+          vatPercentage: Number(configuration.taxPercentage),
+          isActive: configuration.isActive,
+        },
+      ]),
+    );
+  }
 }
