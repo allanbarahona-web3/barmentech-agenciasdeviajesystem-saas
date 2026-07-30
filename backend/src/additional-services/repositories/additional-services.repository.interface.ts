@@ -66,6 +66,7 @@ export interface AdditionalServiceOrderRecord {
   tenantId: string;
   orderNumber: string;
   idempotencyKey: string;
+  quoteCustomerId: string | null;
   travelPackageId: string | null;
   internalBookingId: string | null;
   travelType: AdditionalServiceTravelType;
@@ -80,6 +81,41 @@ export interface AdditionalServiceOrderRecord {
   createdByName: string;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface AdditionalServiceOrderDashboardQuery {
+  page: number;
+  pageSize: number;
+  orderNumber?: string;
+  customerId?: string;
+  customer?: string;
+  travelId?: string;
+  travelNumber?: string;
+  travelType?: AdditionalServiceTravelType;
+  createdFrom?: Date;
+  createdTo?: Date;
+  status?: AdditionalServiceOrderStatus;
+}
+
+export interface AdditionalServiceOrderDashboardItemRecord {
+  id: string;
+  orderNumber: string;
+  customerName: string | null;
+  travelId: string | null;
+  travelName: string | null;
+  travelType: AdditionalServiceTravelType;
+  createdAt: Date;
+  totalAmount: string;
+  currency: AdditionalServiceCurrency;
+  status: AdditionalServiceOrderStatus;
+}
+
+export interface AdditionalServiceOrderDashboardPageRecord {
+  orders: AdditionalServiceOrderDashboardItemRecord[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
 }
 
 export interface AdditionalServiceTravelReference {
@@ -252,6 +288,7 @@ export interface CreateAdditionalServiceOrderData
   tenantId: string;
   orderNumber: string;
   idempotencyKey: string;
+  quoteCustomerId: string;
   createdByUserId: string;
   createdByName: string;
   travelType: AdditionalServiceTravelType;
@@ -308,6 +345,11 @@ export interface AdditionalServicesRepository {
     tenantId: string,
     travel: AdditionalServiceTravelReference,
   ): Promise<AdditionalServiceOrderRecord[]>;
+
+  findOrderDashboardPage(
+    tenantId: string,
+    query: AdditionalServiceOrderDashboardQuery,
+  ): Promise<AdditionalServiceOrderDashboardPageRecord>;
 
   findAdditionalServiceCatalogById(
     id: string,

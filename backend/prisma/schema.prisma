@@ -295,6 +295,7 @@ model Client {
   notes                                CustomerNote[]
   assignedTo                           User?                               @relation("CustomerAssignedTo", fields: [assignedToUserId], references: [id])
   additionalServiceOrderParticipations AdditionalServiceOrderParticipant[]
+  additionalServiceQuoteOrders         AdditionalServiceOrder[]            @relation("AdditionalServiceQuoteCustomer")
 
   @@unique([tenantId, idType, idNumber])
   @@index([fullName])
@@ -1281,6 +1282,7 @@ model AdditionalServiceOrder {
   tenantId           String
   orderNumber        String
   idempotencyKey     String
+  quoteCustomerId    String?
   travelPackageId    String?
   internalBookingId  String?
   travelType         AdditionalServiceTravelType
@@ -1294,6 +1296,7 @@ model AdditionalServiceOrder {
   createdAt          DateTime                     @default(now())
   updatedAt          DateTime                     @updatedAt
   tenant             Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  quoteCustomer      Client?                      @relation("AdditionalServiceQuoteCustomer", fields: [quoteCustomerId], references: [id], onDelete: SetNull)
   travelPackage      TravelPackage?               @relation(fields: [travelPackageId], references: [id], onDelete: SetNull)
   internalBooking    InternalTourBooking?         @relation(fields: [internalBookingId], references: [id], onDelete: SetNull)
   lines              AdditionalServiceOrderLine[]
@@ -1302,6 +1305,7 @@ model AdditionalServiceOrder {
   @@unique([tenantId, idempotencyKey])
   @@unique([id, tenantId])
   @@index([tenantId])
+  @@index([quoteCustomerId])
   @@index([travelPackageId])
   @@index([internalBookingId])
   @@index([status])

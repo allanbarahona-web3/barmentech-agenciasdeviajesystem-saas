@@ -9,13 +9,16 @@ import {
 import { randomBytes } from "crypto";
 import { PricingEngineService } from "../pricing-engine";
 import {
+  AdditionalServiceOrderDashboardResponseDto,
   CreateAdditionalServiceOrderDto,
   CreateAdditionalServicePricingConfigurationDto,
   CreateSupplierDto,
   ListAdditionalServicePricingConfigurationsDto,
+  ListAdditionalServiceOrdersDto,
   UpdateAdditionalServicePricingConfigurationDto,
   UpdateSupplierDto,
 } from "./dto";
+import { DateUtils } from "../common/utils/date.utils";
 import {
   ADDITIONAL_SERVICES_REPOSITORY,
   AdditionalServiceOrderRecord,
@@ -341,6 +344,38 @@ export class AdditionalServicesService {
     return order;
   }
 
+  async listOrderDashboard(
+    tenantId: string,
+    dto: ListAdditionalServiceOrdersDto,
+  ): Promise<AdditionalServiceOrderDashboardResponseDto> {
+    const createdFrom = dto.createdFrom
+      ? DateUtils.getCostaRicaStartOfDay(dto.createdFrom)
+      : undefined;
+    const createdTo = dto.createdTo
+      ? DateUtils.getCostaRicaEndOfDay(dto.createdTo)
+      : undefined;
+
+    if (createdFrom && createdTo && createdFrom > createdTo) {
+      throw new BadRequestException(
+        "La fecha inicial no puede ser posterior a la fecha final.",
+      );
+    }
+
+    return this.repository.findOrderDashboardPage(tenantId, {
+      page: dto.page ?? 1,
+      pageSize: dto.pageSize ?? 20,
+      orderNumber: this.toNullableText(dto.orderNumber) ?? undefined,
+      customerId: this.toNullableText(dto.customerId) ?? undefined,
+      customer: this.toNullableText(dto.customer) ?? undefined,
+      travelId: this.toNullableText(dto.travelId) ?? undefined,
+      travelNumber: this.toNullableText(dto.travelNumber) ?? undefined,
+      travelType: dto.travelType,
+      createdFrom,
+      createdTo,
+      status: dto.status,
+    });
+  }
+
   async createOrder(
     tenantId: string,
     actor: AdditionalServiceOrderActor,
@@ -369,19 +404,28 @@ export class AdditionalServicesService {
       dto,
     );
     const { lines, participantIds } = resolvedLines;
+    const quoteCustomerId = dto.quoteCustomerId.trim();
+    const customerAndParticipantIds = [
+      ...new Set([...participantIds, quoteCustomerId]),
+    ];
     const [participants, travelParticipantRoles] = await Promise.all([
       this.validateParticipants(
         this.repository,
         tenantId,
-        participantIds,
+        customerAndParticipantIds,
       ),
       this.validateTravelParticipants(
         this.repository,
         tenantId,
         travel,
-        participantIds,
+        customerAndParticipantIds,
       ),
     ]);
+    if (!travelParticipantRoles.has(quoteCustomerId)) {
+      throw new BadRequestException(
+        "El cliente de la cotización no pertenece al viaje seleccionado.",
+      );
+    }
     const participantById = new Map(
       participants.map((participant) => [
         participant.id,
@@ -800,6 +844,7 @@ export class AdditionalServicesService {
       tenantId,
       orderNumber,
       idempotencyKey: dto.idempotencyKey.trim(),
+      quoteCustomerId: dto.quoteCustomerId.trim(),
       ...travel,
       travelType: dto.travelType,
       quotationCurrency: dto.quotationCurrency,

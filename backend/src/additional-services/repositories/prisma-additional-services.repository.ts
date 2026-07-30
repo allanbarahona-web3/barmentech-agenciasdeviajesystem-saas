@@ -5,6 +5,8 @@ import { PrismaService } from "../../prisma/prisma.service";
 import {
   AdditionalServiceCatalogAdminRecord,
   AdditionalServiceCatalogRecord,
+  AdditionalServiceOrderDashboardPageRecord,
+  AdditionalServiceOrderDashboardQuery,
   AdditionalServiceOrderRecord,
   AdditionalServiceParticipantRecord,
   AdditionalServicePricingConfigurationFilters,
@@ -61,6 +63,7 @@ interface AdditionalServicesPrismaClient {
     update(args: unknown): Promise<unknown>;
   };
   additionalServiceOrder: {
+    count(args: unknown): Promise<number>;
     create(args: unknown): Promise<unknown>;
     findFirst(args: unknown): Promise<unknown>;
     findMany(args: unknown): Promise<unknown>;
@@ -183,6 +186,13 @@ export class PrismaAdditionalServicesRepository
     });
 
     return (orders as unknown[]).map((order) => this.toOrderRecord(order));
+  }
+
+  findOrderDashboardPage(
+    tenantId: string,
+    query: AdditionalServiceOrderDashboardQuery,
+  ): Promise<AdditionalServiceOrderDashboardPageRecord> {
+    return this.loadOrderDashboardPage(this.client, tenantId, query);
   }
 
   findAdditionalServiceCatalogById(
@@ -361,6 +371,8 @@ export class PrismaAdditionalServicesRepository
           this.toOrderRecord(order),
         );
       },
+      findOrderDashboardPage: (tenantId, query) =>
+        this.loadOrderDashboardPage(client, tenantId, query),
       findAdditionalServiceCatalogById: (id) =>
         this.findCatalogById(client, id),
       findAdditionalServiceCatalogByCode: (tenantId, code) =>
@@ -842,6 +854,7 @@ export class PrismaAdditionalServicesRepository
         tenantId: data.tenantId,
         orderNumber: data.orderNumber,
         idempotencyKey: data.idempotencyKey,
+        quoteCustomerId: data.quoteCustomerId,
         travelPackageId: data.travelPackageId ?? null,
         internalBookingId: data.internalBookingId ?? null,
         travelType: data.travelType,
@@ -922,6 +935,191 @@ export class PrismaAdditionalServicesRepository
     }
 
     return this.toOrderRecord(persistedOrder);
+  }
+
+  private async loadOrderDashboardPage(
+    client: AdditionalServicesPrismaClient,
+    tenantId: string,
+    query: AdditionalServiceOrderDashboardQuery,
+  ): Promise<AdditionalServiceOrderDashboardPageRecord> {
+    const where: Record<string, unknown> = { tenantId };
+
+    if (query.orderNumber) {
+      where.orderNumber = {
+        contains: query.orderNumber,
+        mode: "insensitive",
+      };
+    }
+    if (query.customerId) {
+      where.quoteCustomerId = query.customerId;
+    }
+    if (query.customer) {
+      where.quoteCustomer = {
+        is: {
+          OR: [
+            { fullName: { contains: query.customer, mode: "insensitive" } },
+            { idNumber: { contains: query.customer, mode: "insensitive" } },
+          ],
+        },
+      };
+    }
+    if (query.travelId) {
+      if (query.travelType === "INTERNATIONAL") {
+        where.travelPackageId = query.travelId;
+        where.travelType = query.travelType;
+      } else if (query.travelType === "INTERNAL") {
+        where.internalBookingId = query.travelId;
+        where.travelType = query.travelType;
+      } else {
+        where.OR = [
+          { travelPackageId: query.travelId },
+          { internalBookingId: query.travelId },
+        ];
+      }
+    } else if (query.travelType) {
+      where.travelType = query.travelType;
+    }
+    if (query.travelNumber) {
+      where.AND = [
+        {
+          OR: [
+            {
+              travelPackage: {
+                is: {
+                  OR: [
+                    {
+                      packageCode: {
+                        contains: query.travelNumber,
+                        mode: "insensitive",
+                      },
+                    },
+                    {
+                      contracts: {
+                        some: {
+                          contractNumber: {
+                            contains: query.travelNumber,
+                            mode: "insensitive",
+                          },
+                        },
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+            {
+              internalBooking: {
+                is: {
+                  bookingCode: {
+                    contains: query.travelNumber,
+                    mode: "insensitive",
+                  },
+                },
+              },
+            },
+          ],
+        },
+      ];
+    }
+    if (query.status) {
+      where.status = query.status;
+    }
+    if (query.createdFrom || query.createdTo) {
+      where.createdAt = {
+        ...(query.createdFrom ? { gte: query.createdFrom } : {}),
+        ...(query.createdTo ? { lte: query.createdTo } : {}),
+      };
+    }
+
+    const skip = (query.page - 1) * query.pageSize;
+    const [rawOrders, total] = await Promise.all([
+      client.additionalServiceOrder.findMany({
+        where,
+        select: {
+          id: true,
+          orderNumber: true,
+          quoteCustomer: {
+            select: {
+              fullName: true,
+            },
+          },
+          travelPackageId: true,
+          internalBookingId: true,
+          travelType: true,
+          quotationCurrency: true,
+          totalSellingPrice: true,
+          status: true,
+          createdAt: true,
+          travelPackage: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          internalBooking: {
+            select: {
+              id: true,
+              internalTrip: {
+                select: {
+                  name: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        skip,
+        take: query.pageSize,
+      }),
+      client.additionalServiceOrder.count({ where }),
+    ]);
+
+    const orders = rawOrders as Array<{
+      id: string;
+      orderNumber: string;
+      quoteCustomer: { fullName: string } | null;
+      travelPackageId: string | null;
+      internalBookingId: string | null;
+      travelType: AdditionalServiceOrderDashboardPageRecord["orders"][number]["travelType"];
+      quotationCurrency: AdditionalServiceOrderDashboardPageRecord["orders"][number]["currency"];
+      totalSellingPrice: unknown;
+      status: AdditionalServiceOrderDashboardPageRecord["orders"][number]["status"];
+      createdAt: Date;
+      travelPackage: {
+        id: string;
+        name: string;
+      } | null;
+      internalBooking: {
+        id: string;
+        internalTrip: {
+          name: string;
+        };
+      } | null;
+    }>;
+    return {
+      orders: orders.map((order) => ({
+        id: order.id,
+        orderNumber: order.orderNumber,
+        customerName: order.quoteCustomer?.fullName ?? null,
+        travelId:
+          order.travelType === "INTERNATIONAL"
+            ? order.travelPackageId
+            : order.internalBookingId,
+        travelName:
+          order.travelType === "INTERNATIONAL"
+            ? order.travelPackage?.name ?? null
+            : order.internalBooking?.internalTrip.name ?? null,
+        travelType: order.travelType,
+        createdAt: order.createdAt,
+        totalAmount: String(order.totalSellingPrice),
+        currency: order.quotationCurrency,
+        status: order.status,
+      })),
+      total,
+      page: query.page,
+      pageSize: query.pageSize,
+      totalPages: Math.ceil(total / query.pageSize),
+    };
   }
 
   private orderInclude() {
@@ -1041,6 +1239,7 @@ export class PrismaAdditionalServicesRepository
       tenantId: String(order.tenantId),
       orderNumber: String(order.orderNumber),
       idempotencyKey: String(order.idempotencyKey),
+      quoteCustomerId: this.nullableString(order.quoteCustomerId),
       travelPackageId: this.nullableString(order.travelPackageId),
       internalBookingId: this.nullableString(order.internalBookingId),
       travelType:

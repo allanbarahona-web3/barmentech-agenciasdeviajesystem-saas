@@ -1,5 +1,8 @@
 import { BadRequestException } from "@nestjs/common";
+import { plainToInstance } from "class-transformer";
+import { validate } from "class-validator";
 import { PricingEngineService } from "../pricing-engine";
+import { CreateAdditionalServiceOrderDto } from "./dto";
 import {
   AdditionalServiceCurrency,
   AdditionalServiceMarginType,
@@ -31,6 +34,7 @@ describe("AdditionalServicesService orders", () => {
       findById: jest.fn(),
       findByIdempotencyKey: jest.fn(),
       findByTravel: jest.fn(),
+      findOrderDashboardPage: jest.fn(),
       findAdditionalServiceCatalogById: jest.fn(),
       findAdditionalServiceCatalogByCode: jest.fn(),
       findAdditionalServiceCatalogsByCodes: jest.fn(),
@@ -58,6 +62,130 @@ describe("AdditionalServicesService orders", () => {
       repository,
       pricingEngine as unknown as PricingEngineService,
     );
+  });
+
+  it("requires a non-empty quoteCustomerId for new orders", async () => {
+    const dto = plainToInstance(CreateAdditionalServiceOrderDto, {
+      idempotencyKey: "workflow-1",
+      travelId: "travel-1",
+      travelType: AdditionalServiceTravelType.INTERNATIONAL,
+      quoteCustomerId: "   ",
+      quotationCurrency: AdditionalServiceCurrency.USD,
+      lines: [{}],
+    });
+
+    const errors = await validate(dto);
+
+    expect(errors.some(({ property }) => property === "quoteCustomerId")).toBe(
+      true,
+    );
+  });
+
+  it("accepts an internal-travel companion as quote customer", async () => {
+    repository.findTenantById.mockResolvedValue({
+      id: tenantId,
+      contractPrefix: "ACME",
+    });
+    repository.findByIdempotencyKey.mockResolvedValue(null);
+    repository.findParticipantsByIds.mockResolvedValue([
+      {
+        id: "client-2",
+        tenantId,
+        fullName: "Paying Companion",
+        idNumber: "2-2222-2222",
+        email: null,
+        phone: null,
+      },
+    ]);
+    repository.findTravelParticipants.mockResolvedValue([
+      { clientId: "client-2", role: "COMPANION" },
+    ]);
+    repository.create.mockResolvedValue({
+      id: "order-1",
+      quoteCustomerId: "client-2",
+      status: AdditionalServiceOrderStatus.DRAFT,
+    } as AdditionalServiceOrderRecord);
+    const serviceInternals = service as unknown as {
+      validateTravelReference: () => Promise<{ internalBookingId: string }>;
+      validateAndResolveLines: () => Promise<{
+        lines: never[];
+        participantIds: string[];
+      }>;
+    };
+    jest
+      .spyOn(serviceInternals, "validateTravelReference")
+      .mockResolvedValue({ internalBookingId: "booking-1" });
+    jest
+      .spyOn(serviceInternals, "validateAndResolveLines")
+      .mockResolvedValue({ lines: [], participantIds: [] });
+
+    await service.createOrder(
+      tenantId,
+      { id: "user-1", fullName: "Agent One" },
+      {
+        idempotencyKey: "workflow-internal",
+        travelId: "booking-1",
+        travelType: AdditionalServiceTravelType.INTERNAL,
+        quoteCustomerId: "client-2",
+        quotationCurrency: AdditionalServiceCurrency.CRC,
+        lines: [],
+      },
+    );
+
+    expect(repository.findTravelParticipants).toHaveBeenCalledWith(tenantId, {
+      internalBookingId: "booking-1",
+    });
+    expect(repository.create).toHaveBeenCalledWith(
+      expect.objectContaining({ quoteCustomerId: "client-2" }),
+    );
+  });
+
+  it("rejects a quote customer who is unrelated to the selected travel", async () => {
+    repository.findTenantById.mockResolvedValue({
+      id: tenantId,
+      contractPrefix: "ACME",
+    });
+    repository.findByIdempotencyKey.mockResolvedValue(null);
+    repository.findParticipantsByIds.mockResolvedValue([
+      {
+        id: "unrelated-client",
+        tenantId,
+        fullName: "Unrelated Customer",
+        idNumber: "3-3333-3333",
+        email: null,
+        phone: null,
+      },
+    ]);
+    repository.findTravelParticipants.mockResolvedValue([]);
+    const serviceInternals = service as unknown as {
+      validateTravelReference: () => Promise<{ travelPackageId: string }>;
+      validateAndResolveLines: () => Promise<{
+        lines: never[];
+        participantIds: string[];
+      }>;
+    };
+    jest
+      .spyOn(serviceInternals, "validateTravelReference")
+      .mockResolvedValue({ travelPackageId: "travel-1" });
+    jest
+      .spyOn(serviceInternals, "validateAndResolveLines")
+      .mockResolvedValue({ lines: [], participantIds: [] });
+
+    await expect(
+      service.createOrder(
+        tenantId,
+        { id: "user-1", fullName: "Agent One" },
+        {
+          idempotencyKey: "workflow-unrelated",
+          travelId: "travel-1",
+          travelType: AdditionalServiceTravelType.INTERNATIONAL,
+          quoteCustomerId: "unrelated-client",
+          quotationCurrency: AdditionalServiceCurrency.USD,
+          lines: [],
+        },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(repository.create).not.toHaveBeenCalled();
   });
 
   it("calculates and persists an official backend pricing snapshot", async () => {
@@ -101,9 +229,18 @@ describe("AdditionalServicesService orders", () => {
         email: "customer@example.com",
         phone: "8888-8888",
       },
+      {
+        id: "client-2",
+        tenantId,
+        fullName: "Paying Companion",
+        idNumber: "2-2222-2222",
+        email: null,
+        phone: null,
+      },
     ]);
     repository.findTravelParticipants.mockResolvedValue([
-      { clientId: "client-1", role: "COMPANION" },
+      { clientId: "client-1", role: "HOLDER" },
+      { clientId: "client-2", role: "COMPANION" },
     ]);
     pricingEngine.calculateMany.mockResolvedValue([{
       supplierCost: 100,
@@ -130,6 +267,7 @@ describe("AdditionalServicesService orders", () => {
       tenantId,
       orderNumber: data.orderNumber,
       idempotencyKey: data.idempotencyKey,
+      quoteCustomerId: data.quoteCustomerId,
       travelPackageId: "travel-1",
       internalBookingId: null,
       travelType: AdditionalServiceTravelType.INTERNATIONAL,
@@ -153,6 +291,7 @@ describe("AdditionalServicesService orders", () => {
         idempotencyKey: "workflow-1",
         travelId: "travel-1",
         travelType: AdditionalServiceTravelType.INTERNATIONAL,
+        quoteCustomerId: "client-2",
         quotationCurrency: AdditionalServiceCurrency.CRC,
         lines: [
           {
@@ -192,6 +331,17 @@ describe("AdditionalServicesService orders", () => {
     ).not.toHaveBeenCalled();
     expect(repository.findSupplierById).not.toHaveBeenCalled();
     expect(repository.findByIdempotencyKey).toHaveBeenCalledTimes(2);
+    expect(repository.findParticipantsByIds).toHaveBeenCalledWith([
+      "client-1",
+      "client-2",
+    ]);
+    expect(repository.findTravelParticipants).toHaveBeenCalledWith(
+      tenantId,
+      { travelPackageId: "travel-1" },
+    );
+    expect(repository.create).toHaveBeenCalledWith(
+      expect.objectContaining({ quoteCustomerId: "client-2" }),
+    );
     expect(
       repository.findTravelPackageById.mock.invocationCallOrder[0],
     ).toBeLessThan(
@@ -227,7 +377,7 @@ describe("AdditionalServicesService orders", () => {
             participants: [
               {
                 clientId: "client-1",
-                role: "COMPANION",
+                role: "HOLDER",
                 fullName: "Customer One",
                 identification: "1-1111-1111",
                 email: "customer@example.com",
@@ -259,6 +409,7 @@ describe("AdditionalServicesService orders", () => {
           idempotencyKey: "workflow-1",
           travelId: "travel-1",
           travelType: AdditionalServiceTravelType.INTERNATIONAL,
+          quoteCustomerId: "client-1",
           quotationCurrency: AdditionalServiceCurrency.USD,
           lines: [{}] as never,
         },
@@ -357,6 +508,7 @@ describe("AdditionalServicesService orders", () => {
           idempotencyKey: "concurrent-workflow",
           travelId: "travel-1",
           travelType: AdditionalServiceTravelType.INTERNATIONAL,
+          quoteCustomerId: "client-1",
           quotationCurrency: AdditionalServiceCurrency.USD,
           lines: [
             {
@@ -395,6 +547,64 @@ describe("AdditionalServicesService orders", () => {
     );
   });
 
+  it("lists a tenant-scoped paginated dashboard read model", async () => {
+    const dashboardPage = {
+      orders: [
+        {
+          id: "order-1",
+          orderNumber: "ACME-AS-1",
+          customerName: "Customer One",
+          travelId: "travel-1",
+          travelName: "Miami",
+          travelType: AdditionalServiceTravelType.INTERNATIONAL,
+          createdAt: new Date("2026-07-30T12:00:00.000Z"),
+          totalAmount: "129.9500",
+          currency: AdditionalServiceCurrency.USD,
+          status: AdditionalServiceOrderStatus.DRAFT,
+        },
+      ],
+      total: 1,
+      page: 2,
+      pageSize: 10,
+      totalPages: 1,
+    };
+    repository.findOrderDashboardPage.mockResolvedValue(dashboardPage);
+
+    await expect(
+      service.listOrderDashboard(tenantId, {
+        page: 2,
+        pageSize: 10,
+        orderNumber: "  ACME-AS  ",
+        customerId: "  client-1  ",
+        customer: "  Customer One  ",
+        travelId: "  travel-1  ",
+        travelNumber: "  CTR-100  ",
+        travelType: AdditionalServiceTravelType.INTERNATIONAL,
+        createdFrom: "2026-07-01",
+        createdTo: "2026-07-30",
+        status: AdditionalServiceOrderStatus.DRAFT,
+      }),
+    ).resolves.toBe(dashboardPage);
+
+    expect(repository.findOrderDashboardPage).toHaveBeenCalledWith(
+      tenantId,
+      {
+        page: 2,
+        pageSize: 10,
+        orderNumber: "ACME-AS",
+        customerId: "client-1",
+        customer: "Customer One",
+        travelId: "travel-1",
+        travelNumber: "CTR-100",
+        travelType: AdditionalServiceTravelType.INTERNATIONAL,
+        createdFrom: expect.any(Date),
+        createdTo: expect.any(Date),
+        status: AdditionalServiceOrderStatus.DRAFT,
+      },
+    );
+    expect(repository.findById).not.toHaveBeenCalled();
+  });
+
   it("rejects a travel belonging to another tenant", async () => {
     repository.findTenantById.mockResolvedValue({
       id: tenantId,
@@ -413,6 +623,7 @@ describe("AdditionalServicesService orders", () => {
           idempotencyKey: "workflow-2",
           travelId: "travel-1",
           travelType: AdditionalServiceTravelType.INTERNATIONAL,
+          quoteCustomerId: "client-1",
           quotationCurrency: AdditionalServiceCurrency.USD,
           lines: [{}] as never,
         },

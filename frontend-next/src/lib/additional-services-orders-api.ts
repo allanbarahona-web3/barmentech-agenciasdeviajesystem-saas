@@ -82,6 +82,7 @@ export interface CreateAdditionalServiceOrderInput {
   idempotencyKey: string;
   travelId: string;
   travelType: 'INTERNATIONAL' | 'INTERNAL';
+  quoteCustomerId: string;
   quotationCurrency: TemporaryLineCurrency;
   lines: CreateAdditionalServiceOrderLineInput[];
 }

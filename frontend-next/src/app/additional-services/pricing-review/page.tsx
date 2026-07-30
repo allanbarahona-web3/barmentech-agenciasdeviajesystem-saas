@@ -21,6 +21,7 @@ import {
 } from '@/lib/additional-services-orders-api';
 import {
   getAdditionalServicesQuotationCurrency,
+  getAdditionalServicesQuoteCustomerId,
   getAdditionalServicesWorkflowContext,
   getOrCreateAdditionalServiceOrderIdempotencyKey,
   getTemporaryAdditionalServiceLineId,
@@ -112,6 +113,9 @@ export default function AdditionalServicesPricingReviewPage() {
   const [context] = useState(() => getAdditionalServicesWorkflowContext());
   const [quotationCurrency] = useState(() =>
     getAdditionalServicesQuotationCurrency(),
+  );
+  const [quoteCustomerId] = useState(() =>
+    getAdditionalServicesQuoteCustomerId(),
   );
   const [idempotencyKey] = useState(() =>
     getOrCreateAdditionalServiceOrderIdempotencyKey(),
@@ -217,6 +221,9 @@ export default function AdditionalServicesPricingReviewPage() {
           'No se encontró el contexto del viaje seleccionado.',
         );
       }
+      if (!quoteCustomerId) {
+        throw new Error('Seleccione el cliente de la cotización.');
+      }
 
       const orderLines = lines.map((line) => {
         const sourcing = getTemporaryAdditionalServiceLineSourcing(line);
@@ -252,6 +259,7 @@ export default function AdditionalServicesPricingReviewPage() {
         idempotencyKey,
         travelId: context.travelId,
         travelType: context.travelType,
+        quoteCustomerId,
         quotationCurrency,
         lines: orderLines,
       });

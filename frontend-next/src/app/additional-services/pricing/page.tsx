@@ -10,10 +10,12 @@ import { Button } from '@/components/ui/button';
 import { calculateAdditionalServicePrice } from '@/lib/additional-services-pricing-api';
 import {
   getAdditionalServicesQuotationCurrency,
+  getAdditionalServicesQuoteCustomerId,
   getAdditionalServicesWorkflowContext,
   getTemporaryAdditionalServiceLineSourcing,
   getTemporaryAdditionalServiceLines,
   setAdditionalServicesQuotationCurrency,
+  setAdditionalServicesQuoteCustomerId,
   setTemporaryAdditionalServiceLinePricing,
   type TemporaryLineCurrency,
 } from '@/lib/additional-services-temporary-store';
@@ -60,10 +62,19 @@ export default function AdditionalServicesPricingPage() {
     useState<TemporaryLineCurrency>(() =>
       getAdditionalServicesQuotationCurrency(),
     );
+  const [quoteCustomerId, setQuoteCustomerId] = useState<string>(() =>
+    getAdditionalServicesQuoteCustomerId() ?? '',
+  );
 
   function changeQuotationCurrency(currency: TemporaryLineCurrency) {
     setQuotationCurrency(currency);
     setAdditionalServicesQuotationCurrency(currency);
+    setCalculationError(null);
+  }
+
+  function changeQuoteCustomer(customerId: string) {
+    setQuoteCustomerId(customerId);
+    setAdditionalServicesQuoteCustomerId(customerId || null);
     setCalculationError(null);
   }
 
@@ -85,6 +96,10 @@ export default function AdditionalServicesPricingPage() {
     );
 
     try {
+      if (!quoteCustomerId) {
+        throw new Error('Seleccione el cliente de la cotización.');
+      }
+
       const results = await Promise.all(
         lines.map(async (line) => {
           const sourcing =
@@ -151,6 +166,49 @@ export default function AdditionalServicesPricingPage() {
         </header>
 
         <section className="form-section-card" style={{ marginTop: 0 }}>
+          <div style={{ marginBottom: '24px' }}>
+            <label
+              htmlFor="quoteCustomerId"
+              style={{
+                display: 'block',
+                marginBottom: '8px',
+                color: '#172554',
+                fontSize: '15px',
+                fontWeight: 700,
+              }}
+            >
+              Cliente de la cotización
+            </label>
+            <select
+              id="quoteCustomerId"
+              name="quoteCustomerId"
+              value={quoteCustomerId}
+              disabled={calculating}
+              required
+              onChange={(event) => changeQuoteCustomer(event.target.value)}
+              style={{
+                width: '100%',
+                minHeight: '44px',
+                padding: '10px 12px',
+                border: '1px solid #cbd5e1',
+                borderRadius: '10px',
+                background: '#fff',
+                color: '#172554',
+              }}
+            >
+              <option value="">Seleccione un cliente</option>
+              {getAdditionalServicesWorkflowContext()?.eligibleQuoteCustomers.map(
+                (customer) => (
+                  <option
+                    key={customer.participantId}
+                    value={customer.participantId}
+                  >
+                    {customer.fullName}
+                  </option>
+                ),
+              )}
+            </select>
+          </div>
           <fieldset
             style={{
               margin: '0 0 24px',

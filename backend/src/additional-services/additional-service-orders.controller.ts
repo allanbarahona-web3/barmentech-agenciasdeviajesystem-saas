@@ -4,6 +4,7 @@ import {
   Get,
   Param,
   Post,
+  Query,
   Req,
   UseFilters,
   UseGuards,
@@ -11,7 +12,11 @@ import {
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { Roles } from "../auth/roles.decorator";
 import { RolesGuard } from "../auth/roles.guard";
-import { CreateAdditionalServiceOrderDto } from "./dto";
+import {
+  AdditionalServiceOrderDashboardResponseDto,
+  CreateAdditionalServiceOrderDto,
+  ListAdditionalServiceOrdersDto,
+} from "./dto";
 import { AdditionalServicesService } from "./additional-services.service";
 import { PricingEngineBusinessErrorFilter } from "./infrastructure/pricing-engine-business-error.filter";
 
@@ -50,6 +55,17 @@ export class AdditionalServiceOrdersController {
       orderId: order.id,
       status: order.status,
     };
+  }
+
+  @Get()
+  list(
+    @Req() req: OrderRequest,
+    @Query() query: ListAdditionalServiceOrdersDto,
+  ): Promise<AdditionalServiceOrderDashboardResponseDto> {
+    return this.additionalServicesService.listOrderDashboard(
+      req.user.tenantId,
+      query,
+    );
   }
 
   @Get(":orderId")

@@ -540,6 +540,13 @@ export default function AdditionalServicesPage() {
                                     operationalNotes:
                                       participant.operationalNotes,
                                   })),
+                              eligibleQuoteCustomers:
+                                travelContext.participants.map((participant) => ({
+                                  participantId: participant.clientId,
+                                  fullName: participant.fullName,
+                                  operationalNotes:
+                                    participant.operationalNotes,
+                                })),
                             });
                           }}
                           style={{

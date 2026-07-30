@@ -1,4 +1,4 @@
-import { Type } from "class-transformer";
+import { Transform, Type } from "class-transformer";
 import {
   ArrayMinSize,
   Equals,
@@ -65,6 +65,11 @@ export class CreateAdditionalServiceOrderDto {
 
   @IsString()
   travelId!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @Transform(({ value }) => (typeof value === "string" ? value.trim() : value))
+  quoteCustomerId!: string;
 
   @IsEnum(AdditionalServiceTravelType)
   travelType!: AdditionalServiceTravelType;

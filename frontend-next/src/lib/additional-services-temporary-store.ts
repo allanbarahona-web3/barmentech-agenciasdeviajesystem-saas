@@ -169,6 +169,7 @@ export interface AdditionalServicesWorkflowContext {
   travelType: 'INTERNATIONAL' | 'INTERNAL';
   contractNumber: string | null;
   selectedParticipants: AdditionalServicesContextParticipant[];
+  eligibleQuoteCustomers: AdditionalServicesContextParticipant[];
 }
 
 export type TemporaryAdditionalServiceLine =
@@ -198,6 +199,7 @@ let selectedParticipantIds: string[] = [];
 let workflowContext: AdditionalServicesWorkflowContext | null = null;
 let orderIdempotencyKey: string | null = null;
 let quotationCurrency: TemporaryLineCurrency = 'USD';
+let quoteCustomerId: string | null = null;
 const temporaryBaggageLines: TemporaryBaggageLine[] = [];
 const temporaryLodgingLines: TemporaryLodgingLine[] = [];
 const temporaryAccommodationTypeLines: TemporaryAccommodationTypeLine[] = [];
@@ -250,9 +252,14 @@ export function setAdditionalServicesWorkflowContext(
   context: AdditionalServicesWorkflowContext,
 ) {
   orderIdempotencyKey = null;
+  quoteCustomerId = null;
   workflowContext = {
     ...context,
     selectedParticipants: context.selectedParticipants.map((participant) => ({
+      ...participant,
+      operationalNotes: [...(participant.operationalNotes ?? [])],
+    })),
+    eligibleQuoteCustomers: context.eligibleQuoteCustomers.map((participant) => ({
       ...participant,
       operationalNotes: [...(participant.operationalNotes ?? [])],
     })),
@@ -269,6 +276,19 @@ export function getOrCreateAdditionalServiceOrderIdempotencyKey() {
 
 export function getAdditionalServicesQuotationCurrency() {
   return quotationCurrency;
+}
+
+export function getAdditionalServicesQuoteCustomerId() {
+  return quoteCustomerId;
+}
+
+export function setAdditionalServicesQuoteCustomerId(customerId: string | null) {
+  if (quoteCustomerId === customerId) {
+    return;
+  }
+
+  quoteCustomerId = customerId;
+  orderIdempotencyKey = null;
 }
 
 export function setAdditionalServicesQuotationCurrency(
@@ -291,6 +311,12 @@ export function getAdditionalServicesWorkflowContext() {
   return {
     ...workflowContext,
     selectedParticipants: workflowContext.selectedParticipants.map(
+      (participant) => ({
+        ...participant,
+        operationalNotes: [...(participant.operationalNotes ?? [])],
+      }),
+    ),
+    eligibleQuoteCustomers: workflowContext.eligibleQuoteCustomers.map(
       (participant) => ({
         ...participant,
         operationalNotes: [...(participant.operationalNotes ?? [])],
@@ -433,6 +459,7 @@ export function resetAdditionalServicesWorkflow() {
   workflowContext = null;
   orderIdempotencyKey = null;
   quotationCurrency = 'USD';
+  quoteCustomerId = null;
 
   getTemporaryLineCollections().forEach((collection) => {
     collection.length = 0;
