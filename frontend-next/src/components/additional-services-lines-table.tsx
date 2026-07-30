@@ -181,10 +181,11 @@ function CommercialFields({
       <TableCell className={styles.urlCell} data-label="URL del costo">
         <input
           className={styles.commercialInput}
-          type="text"
+          type="url"
+          inputMode="url"
           value={sourcing.providerUrl}
           aria-label="URL del costo"
-          placeholder="https://"
+          placeholder="https://proveedor.com/costo"
           onChange={(event) =>
             updateSourcing({ providerUrl: event.target.value })
           }

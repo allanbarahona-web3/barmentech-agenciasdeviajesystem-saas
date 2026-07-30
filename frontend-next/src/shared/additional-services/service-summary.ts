@@ -6,11 +6,13 @@ import { getSpanishCountryName } from '@/shared/countries';
 import {
   ACCOMMODATION_NAMES,
   BAGGAGE_NAMES,
+  BAGGAGE_TRIP_SCOPE_NAMES,
   INSURANCE_COVERAGE_NAMES,
   LODGING_NAMES,
   SEAT_NAMES,
   SERVICE_NAMES,
   TRANSPORTATION_NAMES,
+  TRIP_TYPE_NAMES,
   VISA_TYPE_NAMES,
 } from './commercial-service-labels';
 
@@ -49,7 +51,9 @@ export function getAdditionalServiceSummary(
 ): string {
   switch (line.serviceType) {
     case 'BAGGAGE':
-      return line.baggageTypes.map((type) => BAGGAGE_NAMES[type]).join(' · ');
+      return `${line.baggageTypes
+        .map((type) => BAGGAGE_NAMES[type])
+        .join(' · ')} · ${BAGGAGE_TRIP_SCOPE_NAMES[line.tripScope]}`;
     case 'LODGING':
       return LODGING_NAMES[line.lodgingType];
     case 'ACCOMMODATION_TYPE':
@@ -60,7 +64,7 @@ export function getAdditionalServiceSummary(
       }
       return `USD ${(line.customCoverageAmount ?? 0).toLocaleString('en-US')}`;
     case 'TRANSPORTATION':
-      return `${TRANSPORTATION_NAMES[line.transportationType]} · ${formatBusinessDate(line.serviceDate)}`;
+      return `${TRANSPORTATION_NAMES[line.transportationType]} · ${TRIP_TYPE_NAMES[line.tripType]} · ${formatBusinessDate(line.serviceDate)}`;
     case 'TOUR':
       return `${line.tourName} · ${formatBusinessDate(line.serviceDate)}`;
     case 'FLIGHT_TICKET':

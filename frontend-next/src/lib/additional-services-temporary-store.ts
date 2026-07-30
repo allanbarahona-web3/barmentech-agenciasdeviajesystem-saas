@@ -6,10 +6,13 @@ export type BaggageType =
   | 'HAND_BAGGAGE'
   | 'CHECKED_BAGGAGE';
 
+export type BaggageTripScope = 'SINGLE_TRIP' | 'MULTIPLE_TRIPS';
+
 export interface TemporaryBaggageLine {
   participantId: string;
   serviceType: 'BAGGAGE';
   baggageTypes: BaggageType[];
+  tripScope: BaggageTripScope;
   pieceQuantity: number;
   weightKg: number;
   notes: string;
@@ -59,10 +62,13 @@ export type TransportationType =
   | 'SHUTTLE_BUS'
   | 'PRIVATE_TRANSPORT';
 
+export type FlightTripType = 'ONE_WAY' | 'ROUND_TRIP';
+
 export interface TemporaryTransportationLine {
   participantId: string;
   serviceType: 'TRANSPORTATION';
   transportationType: TransportationType;
+  tripType: FlightTripType;
   serviceDate: string;
   origin: string;
   destination: string;
@@ -76,8 +82,6 @@ export interface TemporaryTourLine {
   serviceDate: string;
   notes: string;
 }
-
-export type FlightTripType = 'ONE_WAY' | 'ROUND_TRIP';
 
 export interface TemporaryFlightTicketLine {
   participantId: string;

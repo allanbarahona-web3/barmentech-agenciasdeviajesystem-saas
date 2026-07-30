@@ -20,6 +20,38 @@ import {
 import { getAdditionalServiceName } from '@/shared/additional-services';
 import styles from '../order-summary/order-summary.module.css';
 
+function isValidOptionalSupplierCostUrl(value: string) {
+  const normalizedValue = value.trim();
+  if (!normalizedValue) {
+    return true;
+  }
+
+  try {
+    const url = new URL(normalizedValue);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      return false;
+    }
+
+    const hostname = url.hostname;
+    const isIpv4 =
+      /^\d{1,3}(?:\.\d{1,3}){3}$/.test(hostname) &&
+      hostname.split('.').every((part) => Number(part) <= 255);
+    const isIpv6 = hostname.startsWith('[') && hostname.endsWith(']');
+    const domainParts = hostname.split('.');
+    const isDomain =
+      domainParts.length >= 2 &&
+      domainParts.every(
+        (part) =>
+          /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i.test(part),
+      ) &&
+      domainParts[domainParts.length - 1].length >= 2;
+
+    return isIpv4 || isIpv6 || isDomain;
+  } catch {
+    return false;
+  }
+}
+
 export default function AdditionalServicesPricingPage() {
   const router = useRouter();
   const [calculating, setCalculating] = useState(false);
@@ -59,6 +91,12 @@ export default function AdditionalServicesPricingPage() {
             getTemporaryAdditionalServiceLineSourcing(line);
 
           try {
+            if (!isValidOptionalSupplierCostUrl(sourcing.providerUrl)) {
+              throw new Error(
+                'La URL del costo debe ser una dirección HTTP o HTTPS válida, o dejarse vacía.',
+              );
+            }
+
             const breakdown = await calculateAdditionalServicePrice({
               serviceCode: line.serviceType,
               supplierCost: sourcing.cost,

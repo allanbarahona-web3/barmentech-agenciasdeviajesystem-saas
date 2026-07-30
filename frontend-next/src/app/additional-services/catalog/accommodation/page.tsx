@@ -21,9 +21,9 @@ import { useTemporaryAdditionalServiceEditCleanup } from '@/lib/use-temporary-ad
 import styles from '../baggage/baggage-form.module.css';
 
 const LODGING_OPTIONS: Array<{ value: LodgingType; label: string }> = [
-  { value: 'HOTEL_WITH_BREAKFAST', label: 'Hotel with Breakfast' },
-  { value: 'HOTEL_WITHOUT_BREAKFAST', label: 'Hotel without Breakfast' },
-  { value: 'HOSTEL', label: 'Hostel' },
+  { value: 'HOTEL_WITH_BREAKFAST', label: 'Hotel con desayuno' },
+  { value: 'HOTEL_WITHOUT_BREAKFAST', label: 'Hotel sin desayuno' },
+  { value: 'HOSTEL', label: 'Hostal' },
   { value: 'AIRBNB', label: 'Airbnb' },
 ];
 
@@ -64,12 +64,12 @@ export default function LodgingAdditionalFormPage() {
     }
 
     if (!checkInDate || !checkOutDate) {
-      setValidationError('Seleccione las fechas de check-in y check-out.');
+      setValidationError('Seleccione las fechas de ingreso y salida.');
       return;
     }
 
     if (checkOutDate <= checkInDate) {
-      setValidationError('La fecha de check-out debe ser posterior al check-in.');
+      setValidationError('La fecha de salida debe ser posterior a la fecha de ingreso.');
       return;
     }
 
@@ -149,7 +149,7 @@ export default function LodgingAdditionalFormPage() {
 
               <label className={styles.fieldGroup}>
                 <span className={styles.label}>
-                  Fecha de check-in <span className={styles.required}>*</span>
+                  Fecha de ingreso <span className={styles.required}>*</span>
                 </span>
                 <input
                   className={styles.input}
@@ -164,7 +164,7 @@ export default function LodgingAdditionalFormPage() {
 
               <label className={styles.fieldGroup}>
                 <span className={styles.label}>
-                  Fecha de check-out <span className={styles.required}>*</span>
+                  Fecha de salida <span className={styles.required}>*</span>
                 </span>
                 <input
                   className={styles.input}
@@ -184,7 +184,7 @@ export default function LodgingAdditionalFormPage() {
               </label>
 
               <label className={styles.fieldGroup}>
-                <span className={styles.label}>Notes</span>
+                <span className={styles.label}>Observaciones</span>
                 <textarea
                   className={styles.textarea}
                   value={notes}
@@ -207,10 +207,10 @@ export default function LodgingAdditionalFormPage() {
                   onClick={cancelTemporaryAdditionalServiceLineEdit}
                   className={`btn-secondary ${styles.actionLink}`}
                 >
-                  Cancel
+                  Cancelar
                 </Link>
                 <button type="submit" className="btn-primary">
-                  {editingLine ? 'Guardar cambios' : 'Add to Order'}
+                  {editingLine ? 'Guardar cambios' : 'Agregar a la orden'}
                 </button>
               </div>
             </form>

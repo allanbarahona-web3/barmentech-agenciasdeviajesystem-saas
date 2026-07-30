@@ -29,6 +29,11 @@ export const BAGGAGE_NAMES: Record<BaggageType, string> = {
   CHECKED_BAGGAGE: 'Equipaje documentado',
 };
 
+export const BAGGAGE_TRIP_SCOPE_NAMES = {
+  SINGLE_TRIP: 'Un solo trayecto',
+  MULTIPLE_TRIPS: 'Múltiples trayectos',
+} as const;
+
 export const LODGING_NAMES: Record<LodgingType, string> = {
   HOTEL_WITH_BREAKFAST: 'Hotel con desayuno',
   HOTEL_WITHOUT_BREAKFAST: 'Hotel sin desayuno',
@@ -60,6 +65,11 @@ export const TRANSPORTATION_NAMES: Record<TransportationType, string> = {
   SHUTTLE_BUS: 'Buseta',
   PRIVATE_TRANSPORT: 'Transporte privado',
 };
+
+export const TRIP_TYPE_NAMES = {
+  ONE_WAY: 'Solo ida',
+  ROUND_TRIP: 'Ida y vuelta',
+} as const;
 
 export const SEAT_NAMES: Record<SeatPreference, string> = {
   WINDOW: 'Ventana',

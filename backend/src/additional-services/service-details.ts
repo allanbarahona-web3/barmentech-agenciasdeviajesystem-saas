@@ -154,6 +154,12 @@ export function normalizeAdditionalServiceDetails(
       }
       return {
         baggageTypes: [...new Set(baggageTypes as string[])],
+        tripScope: choice(
+          details,
+          "tripScope",
+          ["SINGLE_TRIP", "MULTIPLE_TRIPS"],
+          serviceCode,
+        ),
         pieceQuantity: number(details, "pieceQuantity", serviceCode, true),
         weightKg: number(details, "weightKg", serviceCode),
       };
@@ -222,6 +228,12 @@ export function normalizeAdditionalServiceDetails(
             "SHUTTLE_BUS",
             "PRIVATE_TRANSPORT",
           ],
+          serviceCode,
+        ),
+        tripType: choice(
+          details,
+          "tripType",
+          ["ONE_WAY", "ROUND_TRIP"],
           serviceCode,
         ),
         serviceDate: date(details, "serviceDate", serviceCode),

@@ -4,6 +4,7 @@ describe("normalizeAdditionalServiceDetails", () => {
   it.each([
     ["BAGGAGE", {
       baggageTypes: ["CARRY_ON"],
+      tripScope: "SINGLE_TRIP",
       pieceQuantity: 1,
       weightKg: 10,
     }],
@@ -20,6 +21,7 @@ describe("normalizeAdditionalServiceDetails", () => {
     }],
     ["TRANSPORTATION", {
       transportationType: "PRIVATE_TRANSPORT",
+      tripType: "ROUND_TRIP",
       serviceDate: "2026-08-02",
       origin: "Airport",
       destination: "Hotel",
@@ -74,5 +76,25 @@ describe("normalizeAdditionalServiceDetails", () => {
         uiExpanded: true,
       }),
     ).toEqual(details);
+  });
+
+  it.each([
+    ["BAGGAGE", {
+      baggageTypes: ["CARRY_ON"],
+      tripScope: "ALL_TRIPS",
+      pieceQuantity: 1,
+      weightKg: 10,
+    }],
+    ["TRANSPORTATION", {
+      transportationType: "PRIVATE_TRANSPORT",
+      tripType: "MULTI_CITY",
+      serviceDate: "2026-08-02",
+      origin: "Airport",
+      destination: "Hotel",
+    }],
+  ])("rejects an unsupported enum value for %s", (serviceCode, details) => {
+    expect(() =>
+      normalizeAdditionalServiceDetails(serviceCode, details),
+    ).toThrow();
   });
 });

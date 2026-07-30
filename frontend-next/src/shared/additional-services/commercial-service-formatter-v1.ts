@@ -3,10 +3,12 @@ import { formatBusinessDate } from '@/shared/regional';
 import {
   ACCOMMODATION_NAMES,
   BAGGAGE_NAMES,
+  BAGGAGE_TRIP_SCOPE_NAMES,
   INSURANCE_COVERAGE_NAMES,
   LODGING_NAMES,
   SEAT_NAMES,
   TRANSPORTATION_NAMES,
+  TRIP_TYPE_NAMES,
   VISA_TYPE_NAMES,
 } from './commercial-service-labels';
 import type {
@@ -96,12 +98,17 @@ export function formatCommercialServiceV1(
         : [];
       const pieceQuantity = positiveNumber(details, 'pieceQuantity');
       const weightKg = positiveNumber(details, 'weightKg');
+      const tripScope = labelFromMap(
+        BAGGAGE_TRIP_SCOPE_NAMES,
+        text(details, 'tripScope'),
+      );
       if (!baggageTypes.length || pieceQuantity === null || weightKg === null) {
         return invalid(serviceCode, serviceLabel);
       }
       summary = baggageTypes.join(' · ');
       formattedAttributes = attributes(
         attribute('baggageTypes', 'Tipo de equipaje', baggageTypes.join(', ')),
+        attribute('tripScope', 'Alcance', tripScope),
         attribute(
           'pieceQuantity',
           'Cantidad',
@@ -169,15 +176,20 @@ export function formatCommercialServiceV1(
         TRANSPORTATION_NAMES,
         text(details, 'transportationType'),
       );
+      const tripType = labelFromMap(
+        TRIP_TYPE_NAMES,
+        text(details, 'tripType'),
+      );
       const serviceDate = text(details, 'serviceDate');
       const origin = text(details, 'origin');
       const destination = text(details, 'destination');
       if (!transportationType || !serviceDate || !origin || !destination) {
         return invalid(serviceCode, serviceLabel);
       }
-      summary = `${transportationType} · ${origin} → ${destination}`;
+      summary = `${transportationType}${tripType ? ` · ${tripType}` : ''} · ${origin} → ${destination}`;
       formattedAttributes = attributes(
         attribute('transportationType', 'Tipo', transportationType),
+        attribute('tripType', 'Tipo de viaje', tripType),
         attribute('origin', 'Origen', origin),
         attribute('destination', 'Destino', destination),
         attribute('serviceDate', 'Fecha', formatBusinessDate(serviceDate)),

@@ -41,6 +41,7 @@ function getServiceDetails(
     case 'BAGGAGE':
       return {
         baggageTypes: line.baggageTypes,
+        tripScope: line.tripScope,
         pieceQuantity: line.pieceQuantity,
         weightKg: line.weightKg,
       };
@@ -61,6 +62,7 @@ function getServiceDetails(
     case 'TRANSPORTATION':
       return {
         transportationType: line.transportationType,
+        tripType: line.tripType,
         serviceDate: line.serviceDate,
         origin: line.origin,
         destination: line.destination,
@@ -233,7 +235,7 @@ export default function AdditionalServicesPricingReviewPage() {
           serviceDetailsVersion: 1 as const,
           serviceDetails: getServiceDetails(line),
           supplierId: sourcing.supplierId,
-          supplierCostUrl: sourcing.providerUrl || undefined,
+          supplierCostUrl: sourcing.providerUrl.trim() || undefined,
           supplierCost: sourcing.cost,
           supplierCostCurrency: sourcing.currency,
           commercialNotes:

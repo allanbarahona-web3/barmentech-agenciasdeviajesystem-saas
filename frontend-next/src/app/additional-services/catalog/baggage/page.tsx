@@ -14,6 +14,7 @@ import {
   getTemporaryAdditionalServiceEditReturnPath,
   getTemporaryAdditionalServiceLineBeingEdited,
   replaceTemporaryAdditionalServiceLine,
+  type BaggageTripScope,
   type BaggageType,
   getSelectedAdditionalServicesParticipants,
 } from '@/lib/additional-services-temporary-store';
@@ -24,6 +25,14 @@ const BAGGAGE_OPTIONS: Array<{ value: BaggageType; label: string }> = [
   { value: 'CARRY_ON', label: 'Carry On' },
   { value: 'HAND_BAGGAGE', label: 'Equipaje de Mano' },
   { value: 'CHECKED_BAGGAGE', label: 'Equipaje Documentado' },
+];
+
+const TRIP_SCOPE_OPTIONS: Array<{
+  value: BaggageTripScope;
+  label: string;
+}> = [
+  { value: 'SINGLE_TRIP', label: 'Un solo trayecto' },
+  { value: 'MULTIPLE_TRIPS', label: 'Múltiples trayectos' },
 ];
 
 export default function BaggageAdditionalFormPage() {
@@ -40,6 +49,9 @@ export default function BaggageAdditionalFormPage() {
   );
   const [baggageTypes, setBaggageTypes] = useState<BaggageType[]>(
     () => editingLine?.baggageTypes ?? [],
+  );
+  const [tripScope, setTripScope] = useState<BaggageTripScope | null>(
+    () => editingLine?.tripScope ?? null,
   );
   const [pieceQuantity, setPieceQuantity] = useState(
     () => String(editingLine?.pieceQuantity ?? ''),
@@ -71,6 +83,11 @@ export default function BaggageAdditionalFormPage() {
       return;
     }
 
+    if (!tripScope) {
+      setValidationError('Seleccione el alcance del equipaje.');
+      return;
+    }
+
     const numericPieceQuantity = Number(pieceQuantity);
     if (!Number.isInteger(numericPieceQuantity) || numericPieceQuantity < 1) {
       setValidationError('Ingrese una cantidad de piezas entera mayor o igual a 1.');
@@ -88,6 +105,7 @@ export default function BaggageAdditionalFormPage() {
         participantId: editingLine.participantId,
         serviceType: 'BAGGAGE',
         baggageTypes: [...baggageTypes],
+        tripScope,
         pieceQuantity: numericPieceQuantity,
         weightKg: numericWeightKg,
         notes: notes.trim(),
@@ -101,6 +119,7 @@ export default function BaggageAdditionalFormPage() {
         participantId,
         serviceType: 'BAGGAGE',
         baggageTypes: [...baggageTypes],
+        tripScope,
         pieceQuantity: numericPieceQuantity,
         weightKg: numericWeightKg,
         notes: notes.trim(),
@@ -149,6 +168,31 @@ export default function BaggageAdditionalFormPage() {
                     {validationError}
                   </p>
                 )}
+              </fieldset>
+
+              <fieldset className={styles.fieldGroup}>
+                <legend className={styles.label}>
+                  Alcance del equipaje{' '}
+                  <span className={styles.required}>*</span>
+                </legend>
+                <div className={styles.options}>
+                  {TRIP_SCOPE_OPTIONS.map((option) => (
+                    <label className={styles.option} key={option.value}>
+                      <input
+                        className={styles.checkbox}
+                        type="radio"
+                        name="tripScope"
+                        value={option.value}
+                        checked={tripScope === option.value}
+                        onChange={() => {
+                          setTripScope(option.value);
+                          setValidationError(null);
+                        }}
+                      />
+                      {option.label}
+                    </label>
+                  ))}
+                </div>
               </fieldset>
 
               <label className={styles.fieldGroup}>

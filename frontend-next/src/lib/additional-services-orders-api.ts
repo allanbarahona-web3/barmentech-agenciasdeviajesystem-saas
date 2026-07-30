@@ -1,6 +1,7 @@
 import { apiGet, apiPost } from '@/lib/api-client';
 import type {
   BaggageType,
+  BaggageTripScope,
   AccommodationType,
   FlightTripType,
   InsuranceCoverage,
@@ -16,6 +17,7 @@ import type { Airport } from '@/shared/airports';
 export type AdditionalServiceDetails =
   | {
       baggageTypes: BaggageType[];
+      tripScope: BaggageTripScope;
       pieceQuantity: number;
       weightKg: number;
     }
@@ -32,6 +34,7 @@ export type AdditionalServiceDetails =
     }
   | {
       transportationType: TransportationType;
+      tripType: FlightTripType;
       serviceDate: string;
       origin: string;
       destination: string;

@@ -15,6 +15,7 @@ import {
   getSelectedAdditionalServicesParticipants,
   getTemporaryAdditionalServiceLineBeingEdited,
   replaceTemporaryAdditionalServiceLine,
+  type FlightTripType,
   type TransportationType,
 } from '@/lib/additional-services-temporary-store';
 import { useTemporaryAdditionalServiceEditCleanup } from '@/lib/use-temporary-additional-service-edit-cleanup';
@@ -34,8 +35,21 @@ const TRANSPORTATION_OPTIONS: Array<{
   { value: 'PRIVATE_TRANSPORT', label: 'Transporte privado' },
 ];
 
+const TRIP_TYPE_OPTIONS: Array<{
+  value: FlightTripType;
+  label: string;
+}> = [
+  { value: 'ONE_WAY', label: 'Solo ida' },
+  { value: 'ROUND_TRIP', label: 'Ida y vuelta' },
+];
+
 type ValidationError = {
-  field: 'transportationType' | 'serviceDate' | 'origin' | 'destination';
+  field:
+    | 'transportationType'
+    | 'tripType'
+    | 'serviceDate'
+    | 'origin'
+    | 'destination';
   message: string;
 };
 
@@ -55,6 +69,9 @@ export default function TransportationAdditionalFormPage() {
     useState<TransportationType | null>(
       () => editingLine?.transportationType ?? null,
     );
+  const [tripType, setTripType] = useState<FlightTripType | null>(
+    () => editingLine?.tripType ?? null,
+  );
   const [serviceDate, setServiceDate] = useState(
     () => editingLine?.serviceDate ?? '',
   );
@@ -77,6 +94,14 @@ export default function TransportationAdditionalFormPage() {
       setValidationError({
         field: 'transportationType',
         message: 'Seleccione un tipo de transporte.',
+      });
+      return;
+    }
+
+    if (!tripType) {
+      setValidationError({
+        field: 'tripType',
+        message: 'Seleccione el tipo de viaje.',
       });
       return;
     }
@@ -107,6 +132,7 @@ export default function TransportationAdditionalFormPage() {
         participantId: editingLine.participantId,
         serviceType: 'TRANSPORTATION',
         transportationType,
+        tripType,
         serviceDate,
         origin: origin.trim(),
         destination: destination.trim(),
@@ -121,6 +147,7 @@ export default function TransportationAdditionalFormPage() {
         participantId,
         serviceType: 'TRANSPORTATION',
         transportationType,
+        tripType,
         serviceDate,
         origin: origin.trim(),
         destination: destination.trim(),
@@ -172,6 +199,35 @@ export default function TransportationAdditionalFormPage() {
                   ))}
                 </div>
                 {validationError?.field === 'transportationType' && (
+                  <p className={styles.error} role="alert">
+                    {validationError.message}
+                  </p>
+                )}
+              </fieldset>
+
+              <fieldset className={styles.fieldGroup}>
+                <legend className={styles.label}>
+                  Tipo de viaje <span className={styles.required}>*</span>
+                </legend>
+                <div className={styles.options}>
+                  {TRIP_TYPE_OPTIONS.map((option) => (
+                    <label className={styles.option} key={option.value}>
+                      <input
+                        className={styles.checkbox}
+                        type="radio"
+                        name="tripType"
+                        value={option.value}
+                        checked={tripType === option.value}
+                        onChange={() => {
+                          setTripType(option.value);
+                          setValidationError(null);
+                        }}
+                      />
+                      {option.label}
+                    </label>
+                  ))}
+                </div>
+                {validationError?.field === 'tripType' && (
                   <p className={styles.error} role="alert">
                     {validationError.message}
                   </p>
