@@ -70,6 +70,7 @@ export interface TemporaryTransportationLine {
   transportationType: TransportationType;
   tripType: FlightTripType;
   serviceDate: string;
+  returnDate: string | null;
   origin: string;
   destination: string;
   notes: string;

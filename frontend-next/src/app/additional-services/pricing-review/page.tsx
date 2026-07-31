@@ -272,7 +272,7 @@ export default function AdditionalServicesPricingReviewPage() {
 
       resetAdditionalServicesWorkflow();
       router.push(
-        `/additional-services/orders/${encodeURIComponent(response.orderId)}`,
+        `/additional-services/orders/${encodeURIComponent(response.orderId)}?created=true`,
       );
     } catch (error) {
       showError(

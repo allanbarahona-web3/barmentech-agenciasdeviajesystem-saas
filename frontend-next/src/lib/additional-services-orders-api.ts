@@ -98,6 +98,44 @@ export type AdditionalServiceOrderParticipantRole =
   | 'MINOR';
 
 export type AdditionalServiceOrderCurrency = 'USD' | 'CRC';
+export type AdditionalServiceOrderStatus =
+  | 'DRAFT'
+  | 'REQUESTED'
+  | 'CONFIRMED'
+  | 'CANCELLED';
+export type AdditionalServiceOrderTravelType = 'INTERNATIONAL' | 'INTERNAL';
+
+export interface AdditionalServiceOrderDashboardItem {
+  id: string;
+  orderNumber: string;
+  customerName: string | null;
+  travelId: string | null;
+  travelName: string | null;
+  travelType: AdditionalServiceOrderTravelType;
+  createdAt: string;
+  totalAmount: string;
+  currency: AdditionalServiceOrderCurrency;
+  status: AdditionalServiceOrderStatus;
+}
+
+export interface AdditionalServiceOrdersDashboardResponse {
+  orders: AdditionalServiceOrderDashboardItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+export interface ListAdditionalServiceOrdersParams {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  travelNumber?: string;
+  travelType?: AdditionalServiceOrderTravelType;
+  createdFrom?: string;
+  createdTo?: string;
+  status?: AdditionalServiceOrderStatus;
+}
 
 export interface AdditionalServiceOrderParticipant {
   clientId: string | null;
@@ -167,6 +205,30 @@ export function createAdditionalServiceOrder(
   return apiPost<CreateAdditionalServiceOrderResponse>(
     '/additional-services/orders',
     input,
+  );
+}
+
+export function getAdditionalServiceOrders(
+  params: ListAdditionalServiceOrdersParams,
+  signal?: AbortSignal,
+): Promise<AdditionalServiceOrdersDashboardResponse> {
+  return apiGet<AdditionalServiceOrdersDashboardResponse>(
+    '/additional-services/orders',
+    {
+      params: {
+        ...(params.page ? { page: params.page } : {}),
+        ...(params.pageSize ? { pageSize: params.pageSize } : {}),
+        ...(params.search ? { search: params.search } : {}),
+        ...(params.travelNumber
+          ? { travelNumber: params.travelNumber }
+          : {}),
+        ...(params.travelType ? { travelType: params.travelType } : {}),
+        ...(params.createdFrom ? { createdFrom: params.createdFrom } : {}),
+        ...(params.createdTo ? { createdTo: params.createdTo } : {}),
+        ...(params.status ? { status: params.status } : {}),
+      },
+      signal,
+    },
   );
 }
 

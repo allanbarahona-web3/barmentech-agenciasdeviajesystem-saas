@@ -29,15 +29,7 @@ export class ListAdditionalServiceOrdersDto {
 
   @IsOptional()
   @IsString()
-  orderNumber?: string;
-
-  @IsOptional()
-  @IsString()
-  customerId?: string;
-
-  @IsOptional()
-  @IsString()
-  customer?: string;
+  search?: string;
 
   @IsOptional()
   @IsString()

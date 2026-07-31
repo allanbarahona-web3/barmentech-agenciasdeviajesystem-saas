@@ -364,9 +364,7 @@ export class AdditionalServicesService {
     return this.repository.findOrderDashboardPage(tenantId, {
       page: dto.page ?? 1,
       pageSize: dto.pageSize ?? 20,
-      orderNumber: this.toNullableText(dto.orderNumber) ?? undefined,
-      customerId: this.toNullableText(dto.customerId) ?? undefined,
-      customer: this.toNullableText(dto.customer) ?? undefined,
+      search: this.toNullableText(dto.search) ?? undefined,
       travelId: this.toNullableText(dto.travelId) ?? undefined,
       travelNumber: this.toNullableText(dto.travelNumber) ?? undefined,
       travelType: dto.travelType,
@@ -381,6 +379,7 @@ export class AdditionalServicesService {
     actor: AdditionalServiceOrderActor,
     dto: CreateAdditionalServiceOrderDto,
   ): Promise<AdditionalServiceOrderRecord> {
+    this.logger.debug("CREATE ORDER START");
     const idempotencyKey = dto.idempotencyKey.trim();
     const [tenant, existingOrder] = await Promise.all([
       this.repository.findTenantById(tenantId),
@@ -390,6 +389,7 @@ export class AdditionalServicesService {
       throw new NotFoundException("Tenant no encontrado.");
     }
     if (existingOrder) {
+      this.logger.debug("CREATE ORDER END");
       return existingOrder;
     }
 
@@ -480,6 +480,7 @@ export class AdditionalServicesService {
         this.logger.log(
           `Additional service order created: ${order.orderNumber}`,
         );
+        this.logger.debug("CREATE ORDER END");
         return order;
       } catch (error) {
         if (this.isIdempotencyCollision(error)) {
@@ -488,6 +489,7 @@ export class AdditionalServicesService {
             dto.idempotencyKey.trim(),
           );
           if (existing) {
+            this.logger.debug("CREATE ORDER END");
             return existing;
           }
         }

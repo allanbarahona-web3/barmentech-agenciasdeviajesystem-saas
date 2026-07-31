@@ -1,9 +1,12 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useParams } from 'next/navigation';
+import Link from 'next/link';
+import { useParams, useSearchParams } from 'next/navigation';
 import {
+  BarChart3,
   CalendarDays,
+  CircleCheck,
   FileText,
   MapPin,
   ReceiptText,
@@ -63,7 +66,9 @@ function participantKey(participant: AdditionalServiceOrderParticipant) {
 
 export default function AdditionalServiceOrderPreviewPage() {
   const params = useParams<{ id: string }>();
+  const searchParams = useSearchParams();
   const orderId = params.id;
+  const isCreationCompletion = searchParams.get('created') === 'true';
   const [order, setOrder] = useState<AdditionalServiceOrder | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -140,6 +145,33 @@ export default function AdditionalServiceOrderPreviewPage() {
   return (
     <main className="app-shell">
       <div className={styles.page}>
+        {isCreationCompletion && (
+          <section
+            className={styles.successBanner}
+            role="status"
+            aria-labelledby="creation-success-title"
+          >
+            <CircleCheck aria-hidden="true" />
+            <div className={styles.successBannerContent}>
+              <h2 id="creation-success-title">
+                Orden creada correctamente
+              </h2>
+              <p>
+                La orden se guardó con éxito. Puede revisar su información
+                antes de continuar.
+              </p>
+            </div>
+            <div className={styles.successBannerActions}>
+              <Button asChild type="button" className={styles.dashboardButton}>
+                <Link href="/additional-services/orders">
+                  <BarChart3 aria-hidden="true" />
+                  Ir al panel de órdenes
+                </Link>
+              </Button>
+            </div>
+          </section>
+        )}
+
         <header className={styles.pageHeader}>
           <div>
             <p className={styles.eyebrow}>Cotización de servicios adicionales</p>
@@ -151,17 +183,19 @@ export default function AdditionalServiceOrderPreviewPage() {
               Revisión comercial basada en la orden persistida.
             </p>
           </div>
-          <div className={styles.actions} aria-label="Acciones futuras">
-            <Button type="button" variant="outline" disabled>
-              Editar
-            </Button>
-            <Button type="button" variant="outline" disabled>
-              Generar PDF comercial
-            </Button>
-            <Button type="button" disabled>
-              Enviar para aprobación
-            </Button>
-          </div>
+          {!isCreationCompletion && (
+            <div className={styles.actions} aria-label="Acciones futuras">
+              <Button type="button" variant="outline" disabled>
+                Editar
+              </Button>
+              <Button type="button" variant="outline" disabled>
+                Generar PDF comercial
+              </Button>
+              <Button type="button" disabled>
+                Enviar para aprobación
+              </Button>
+            </div>
+          )}
         </header>
 
         <section className={styles.headerCard} aria-labelledby="order-data">

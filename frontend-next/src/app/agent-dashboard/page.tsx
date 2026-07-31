@@ -90,7 +90,7 @@ export default function AgentDashboardPage() {
         onSelectMigration={() => router.push("/trips?travelType=MIGRATION")}
         onSelectInternalTrips={() => router.push("/internal-trips-available")}
         onSelectCustomers={() => router.push("/admin/customers")}
-        onSelectAdditionalServices={() => router.push("/additional-services")}
+        onSelectAdditionalServices={() => router.push("/additional-services/orders")}
         onSelectQuote={() => {
           console.log("Cotización seleccionada (futuro)");
         }}

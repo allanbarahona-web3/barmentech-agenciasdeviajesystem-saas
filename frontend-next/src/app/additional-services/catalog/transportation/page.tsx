@@ -48,6 +48,7 @@ type ValidationError = {
     | 'transportationType'
     | 'tripType'
     | 'serviceDate'
+    | 'returnDate'
     | 'origin'
     | 'destination';
   message: string;
@@ -74,6 +75,9 @@ export default function TransportationAdditionalFormPage() {
   );
   const [serviceDate, setServiceDate] = useState(
     () => editingLine?.serviceDate ?? '',
+  );
+  const [returnDate, setReturnDate] = useState(
+    () => editingLine?.returnDate ?? '',
   );
   const [origin, setOrigin] = useState(() => editingLine?.origin ?? '');
   const [destination, setDestination] = useState(
@@ -109,7 +113,27 @@ export default function TransportationAdditionalFormPage() {
     if (!serviceDate) {
       setValidationError({
         field: 'serviceDate',
-        message: 'Seleccione la fecha del servicio.',
+        message: 'Seleccione la fecha de salida.',
+      });
+      return;
+    }
+
+    if (tripType === 'ROUND_TRIP' && !returnDate) {
+      setValidationError({
+        field: 'returnDate',
+        message: 'Seleccione la fecha de regreso.',
+      });
+      return;
+    }
+
+    if (
+      tripType === 'ROUND_TRIP' &&
+      returnDate &&
+      returnDate < serviceDate
+    ) {
+      setValidationError({
+        field: 'returnDate',
+        message: 'La fecha de regreso no puede ser anterior a la fecha de salida.',
       });
       return;
     }
@@ -134,6 +158,7 @@ export default function TransportationAdditionalFormPage() {
         transportationType,
         tripType,
         serviceDate,
+        returnDate: tripType === 'ROUND_TRIP' ? returnDate : null,
         origin: origin.trim(),
         destination: destination.trim(),
         notes: notes.trim(),
@@ -149,6 +174,7 @@ export default function TransportationAdditionalFormPage() {
         transportationType,
         tripType,
         serviceDate,
+        returnDate: tripType === 'ROUND_TRIP' ? returnDate : null,
         origin: origin.trim(),
         destination: destination.trim(),
         notes: notes.trim(),
@@ -220,6 +246,7 @@ export default function TransportationAdditionalFormPage() {
                         checked={tripType === option.value}
                         onChange={() => {
                           setTripType(option.value);
+                          setReturnDate('');
                           setValidationError(null);
                         }}
                       />
@@ -236,7 +263,7 @@ export default function TransportationAdditionalFormPage() {
 
               <label className={styles.fieldGroup}>
                 <span className={styles.label}>
-                  Fecha del servicio <span className={styles.required}>*</span>
+                  Fecha de salida <span className={styles.required}>*</span>
                 </span>
                 <input
                   type="date"
@@ -266,6 +293,43 @@ export default function TransportationAdditionalFormPage() {
                   </p>
                 )}
               </label>
+
+              {tripType === 'ROUND_TRIP' && (
+                <label className={styles.fieldGroup}>
+                  <span className={styles.label}>
+                    Fecha de regreso{' '}
+                    <span className={styles.required}>*</span>
+                  </span>
+                  <input
+                    type="date"
+                    min={serviceDate || undefined}
+                    value={returnDate}
+                    onChange={(event) => {
+                      setReturnDate(event.target.value);
+                      setValidationError(null);
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '12px 14px',
+                      border: '1px solid #cbd5e1',
+                      borderRadius: '10px',
+                      background: '#fff',
+                      color: '#172554',
+                      font: 'inherit',
+                    }}
+                  />
+                  {returnDate && (
+                    <small className={styles.subtitle}>
+                      Fecha seleccionada: {formatBusinessDate(returnDate)}
+                    </small>
+                  )}
+                  {validationError?.field === 'returnDate' && (
+                    <p className={styles.error} role="alert">
+                      {validationError.message}
+                    </p>
+                  )}
+                </label>
+              )}
 
               <label className={styles.fieldGroup}>
                 <span className={styles.label}>

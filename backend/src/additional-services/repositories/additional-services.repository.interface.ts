@@ -86,9 +86,7 @@ export interface AdditionalServiceOrderRecord {
 export interface AdditionalServiceOrderDashboardQuery {
   page: number;
   pageSize: number;
-  orderNumber?: string;
-  customerId?: string;
-  customer?: string;
+  search?: string;
   travelId?: string;
   travelNumber?: string;
   travelType?: AdditionalServiceTravelType;

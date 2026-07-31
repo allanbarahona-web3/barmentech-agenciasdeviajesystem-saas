@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, Logger } from "@nestjs/common";
 import { randomUUID } from "crypto";
 import { Decimal } from "@prisma/client/runtime/library";
 import { PrismaService } from "../../prisma/prisma.service";
@@ -82,10 +82,18 @@ interface AdditionalServicesPrismaRoot extends AdditionalServicesPrismaClient {
   ): Promise<T>;
 }
 
+interface CreateOrderTransactionDebugContext {
+  startedAt: number;
+  currentStep: string;
+}
+
 @Injectable()
 export class PrismaAdditionalServicesRepository
   implements AdditionalServicesRepository
 {
+  private readonly logger = new Logger(
+    PrismaAdditionalServicesRepository.name,
+  );
   private readonly client: AdditionalServicesPrismaRoot;
 
   constructor(prisma: PrismaService) {
@@ -94,12 +102,45 @@ export class PrismaAdditionalServicesRepository
     this.client = prisma as unknown as AdditionalServicesPrismaRoot;
   }
 
-  executeInTransaction<T>(
+  async executeInTransaction<T>(
     work: (repository: AdditionalServicesRepository) => Promise<T>,
   ): Promise<T> {
-    return this.client.$transaction((client) =>
-      work(this.scopedRepository(client)),
-    );
+    const debugContext: CreateOrderTransactionDebugContext = {
+      startedAt: 0,
+      currentStep: "Transaction START",
+    };
+
+    try {
+      const result = await this.client.$transaction(async (client) => {
+        debugContext.startedAt = Date.now();
+        this.logger.debug("Transaction START - elapsedMs=0");
+        return work(
+          this.scopedRepository(client, debugContext),
+        );
+      });
+      this.logger.debug(
+        `Transaction END - elapsedMs=${Date.now() - debugContext.startedAt}`,
+      );
+      return result;
+    } catch (error) {
+      const prismaCode =
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error
+          ? String(error.code)
+          : "unknown";
+      const elapsedMs = debugContext.startedAt
+        ? Date.now() - debugContext.startedAt
+        : 0;
+      this.logger.error({
+        message: "Additional Services create-order transaction failed",
+        failingStep: debugContext.currentStep,
+        elapsedMs,
+        prismaCode,
+        error,
+      });
+      throw error;
+    }
   }
 
   findTenantById(
@@ -327,6 +368,7 @@ export class PrismaAdditionalServicesRepository
 
   private scopedRepository(
     client: AdditionalServicesPrismaClient,
+    debugContext?: CreateOrderTransactionDebugContext,
   ): AdditionalServicesRepository {
     const repository: AdditionalServicesRepository = {
       executeInTransaction: (work) => work(repository),
@@ -338,7 +380,7 @@ export class PrismaAdditionalServicesRepository
       findParticipantsByIds: (ids) => this.findParticipants(client, ids),
       findTravelParticipants: (tenantId, travel) =>
         this.loadTravelParticipants(client, tenantId, travel),
-      create: (data) => this.createOrder(client, data),
+      create: (data) => this.createOrder(client, data, debugContext),
       findById: async (tenantId, id) => {
         const order = await client.additionalServiceOrder.findFirst({
           where: { id, tenantId },
@@ -347,10 +389,18 @@ export class PrismaAdditionalServicesRepository
         return order ? this.toOrderRecord(order) : null;
       },
       findByIdempotencyKey: async (tenantId, idempotencyKey) => {
+        this.logTransactionStepBefore(
+          debugContext,
+          "STEP 1 - Transaction idempotency lookup",
+        );
         const order = await client.additionalServiceOrder.findFirst({
           where: { tenantId, idempotencyKey },
           include: this.orderInclude(),
         });
+        this.logTransactionStepAfter(
+          debugContext,
+          "STEP 1 - Transaction idempotency lookup",
+        );
         return order ? this.toOrderRecord(order) : null;
       },
       findByTravel: async (tenantId, travel) => {
@@ -848,7 +898,12 @@ export class PrismaAdditionalServicesRepository
   private async createOrder(
     client: AdditionalServicesPrismaClient,
     data: CreateAdditionalServiceOrderData,
+    debugContext?: CreateOrderTransactionDebugContext,
   ): Promise<AdditionalServiceOrderRecord> {
+    this.logTransactionStepBefore(
+      debugContext,
+      "STEP 2 - Order INSERT",
+    );
     const order = (await client.additionalServiceOrder.create({
       data: {
         tenantId: data.tenantId,
@@ -867,6 +922,10 @@ export class PrismaAdditionalServicesRepository
       },
       select: { id: true },
     })) as { id: string };
+    this.logTransactionStepAfter(
+      debugContext,
+      "STEP 2 - Order INSERT",
+    );
     const lines = data.lines.map((line) => ({
       id: randomUUID(),
       tenantId: data.tenantId,
@@ -909,9 +968,21 @@ export class PrismaAdditionalServicesRepository
       participants: line.participants,
     }));
 
+    this.logTransactionStepBefore(
+      debugContext,
+      "STEP 3 - Order lines bulk insert",
+    );
     await client.additionalServiceOrderLine.createMany({
       data: lines.map(({ participants, ...line }) => line),
     });
+    this.logTransactionStepAfter(
+      debugContext,
+      "STEP 3 - Order lines bulk insert",
+    );
+    this.logTransactionStepBefore(
+      debugContext,
+      "STEP 4 - Line participants bulk insert",
+    );
     await client.additionalServiceOrderParticipant.createMany({
       data: lines.flatMap((line) =>
         line.participants.map((participant) => ({
@@ -926,15 +997,52 @@ export class PrismaAdditionalServicesRepository
         })),
       ),
     });
+    this.logTransactionStepAfter(
+      debugContext,
+      "STEP 4 - Line participants bulk insert",
+    );
+    this.logTransactionStepBefore(
+      debugContext,
+      "STEP 5 - Read persisted order",
+    );
     const persistedOrder = await client.additionalServiceOrder.findFirst({
       where: { id: order.id, tenantId: data.tenantId },
       include: this.orderInclude(),
     });
+    this.logTransactionStepAfter(
+      debugContext,
+      "STEP 5 - Read persisted order",
+    );
     if (!persistedOrder) {
       throw new Error("Persisted additional service order could not be read.");
     }
 
     return this.toOrderRecord(persistedOrder);
+  }
+
+  private logTransactionStepBefore(
+    debugContext: CreateOrderTransactionDebugContext | undefined,
+    step: string,
+  ): void {
+    if (!debugContext) {
+      return;
+    }
+    debugContext.currentStep = step;
+    this.logger.debug(
+      `${step} - before - elapsedMs=${Date.now() - debugContext.startedAt}`,
+    );
+  }
+
+  private logTransactionStepAfter(
+    debugContext: CreateOrderTransactionDebugContext | undefined,
+    step: string,
+  ): void {
+    if (!debugContext) {
+      return;
+    }
+    this.logger.debug(
+      `${step} - after - elapsedMs=${Date.now() - debugContext.startedAt}`,
+    );
   }
 
   private async loadOrderDashboardPage(
@@ -943,25 +1051,39 @@ export class PrismaAdditionalServicesRepository
     query: AdditionalServiceOrderDashboardQuery,
   ): Promise<AdditionalServiceOrderDashboardPageRecord> {
     const where: Record<string, unknown> = { tenantId };
+    const andConditions: Record<string, unknown>[] = [];
 
-    if (query.orderNumber) {
-      where.orderNumber = {
-        contains: query.orderNumber,
-        mode: "insensitive",
-      };
-    }
-    if (query.customerId) {
-      where.quoteCustomerId = query.customerId;
-    }
-    if (query.customer) {
-      where.quoteCustomer = {
-        is: {
-          OR: [
-            { fullName: { contains: query.customer, mode: "insensitive" } },
-            { idNumber: { contains: query.customer, mode: "insensitive" } },
-          ],
-        },
-      };
+    if (query.search) {
+      andConditions.push({
+        OR: [
+          {
+            orderNumber: {
+              contains: query.search,
+              mode: "insensitive",
+            },
+          },
+          {
+            quoteCustomer: {
+              is: {
+                fullName: {
+                  contains: query.search,
+                  mode: "insensitive",
+                },
+              },
+            },
+          },
+          {
+            quoteCustomer: {
+              is: {
+                idNumber: {
+                  contains: query.search,
+                  mode: "insensitive",
+                },
+              },
+            },
+          },
+        ],
+      });
     }
     if (query.travelId) {
       if (query.travelType === "INTERNATIONAL") {
@@ -971,55 +1093,58 @@ export class PrismaAdditionalServicesRepository
         where.internalBookingId = query.travelId;
         where.travelType = query.travelType;
       } else {
-        where.OR = [
-          { travelPackageId: query.travelId },
-          { internalBookingId: query.travelId },
-        ];
+        andConditions.push({
+          OR: [
+            { travelPackageId: query.travelId },
+            { internalBookingId: query.travelId },
+          ],
+        });
       }
     } else if (query.travelType) {
       where.travelType = query.travelType;
     }
     if (query.travelNumber) {
-      where.AND = [
-        {
-          OR: [
-            {
-              travelPackage: {
-                is: {
-                  OR: [
-                    {
-                      packageCode: {
-                        contains: query.travelNumber,
-                        mode: "insensitive",
-                      },
+      andConditions.push({
+        OR: [
+          {
+            travelPackage: {
+              is: {
+                OR: [
+                  {
+                    packageCode: {
+                      contains: query.travelNumber,
+                      mode: "insensitive",
                     },
-                    {
-                      contracts: {
-                        some: {
-                          contractNumber: {
-                            contains: query.travelNumber,
-                            mode: "insensitive",
-                          },
+                  },
+                  {
+                    contracts: {
+                      some: {
+                        contractNumber: {
+                          contains: query.travelNumber,
+                          mode: "insensitive",
                         },
                       },
                     },
-                  ],
-                },
-              },
-            },
-            {
-              internalBooking: {
-                is: {
-                  bookingCode: {
-                    contains: query.travelNumber,
-                    mode: "insensitive",
                   },
+                ],
+              },
+            },
+          },
+          {
+            internalBooking: {
+              is: {
+                bookingCode: {
+                  contains: query.travelNumber,
+                  mode: "insensitive",
                 },
               },
             },
-          ],
-        },
-      ];
+          },
+        ],
+      });
+    }
+    if (andConditions.length > 0) {
+      where.AND = andConditions;
     }
     if (query.status) {
       where.status = query.status;

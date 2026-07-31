@@ -59,14 +59,17 @@ describe("PrismaAdditionalServicesRepository dashboard", () => {
     const repository = new PrismaAdditionalServicesRepository(
       prisma as unknown as PrismaService,
     );
+    const createdFrom = new Date("2026-07-01T06:00:00.000Z");
+    const createdTo = new Date("2026-07-31T05:59:59.999Z");
 
     const result = await repository.findOrderDashboardPage("tenant-1", {
       page: 1,
       pageSize: 20,
-      customerId: "client-2",
-      customer: "2-2222",
+      search: "2-2222",
       travelNumber: "CTR-100",
       status: AdditionalServiceOrderStatus.DRAFT,
+      createdFrom,
+      createdTo,
     });
 
     const orderQuery = findMany.mock.calls[0][0];
@@ -80,26 +83,37 @@ describe("PrismaAdditionalServicesRepository dashboard", () => {
       expect.objectContaining({
         where: {
           tenantId: "tenant-1",
-          quoteCustomerId: "client-2",
-          quoteCustomer: {
-            is: {
+          AND: [
+            {
               OR: [
                 {
-                  fullName: {
+                  orderNumber: {
                     contains: "2-2222",
                     mode: "insensitive",
                   },
                 },
                 {
-                  idNumber: {
-                    contains: "2-2222",
-                    mode: "insensitive",
+                  quoteCustomer: {
+                    is: {
+                      fullName: {
+                        contains: "2-2222",
+                        mode: "insensitive",
+                      },
+                    },
+                  },
+                },
+                {
+                  quoteCustomer: {
+                    is: {
+                      idNumber: {
+                        contains: "2-2222",
+                        mode: "insensitive",
+                      },
+                    },
                   },
                 },
               ],
             },
-          },
-          AND: [
             {
               OR: [
                 {
@@ -140,6 +154,10 @@ describe("PrismaAdditionalServicesRepository dashboard", () => {
             },
           ],
           status: AdditionalServiceOrderStatus.DRAFT,
+          createdAt: {
+            gte: createdFrom,
+            lte: createdTo,
+          },
         },
         skip: 0,
         take: 20,

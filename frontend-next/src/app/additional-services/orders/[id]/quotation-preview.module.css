@@ -5,6 +5,71 @@
   color: #172033;
 }
 
+.successBanner {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 24px;
+  padding: 22px 18px;
+  border: 1px solid #b9e8cf;
+  border-radius: 12px;
+  background: linear-gradient(90deg, #f8fdf9 0%, #f4fbf7 100%);
+  color: #18743d;
+  box-shadow: 0 3px 12px rgba(22, 101, 52, 0.04);
+}
+
+.successBanner > svg {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 40px;
+  padding: 7px;
+  border-radius: 999px;
+  background: #218a4b;
+  color: #fff;
+  stroke-width: 3;
+}
+
+.successBannerContent {
+  flex: 1;
+}
+
+.successBannerContent h2 {
+  margin: 0;
+  color: #176c39;
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.successBannerContent p {
+  margin: 7px 0 0;
+  color: #4f8b68;
+  font-size: 12px;
+}
+
+.successBannerActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+
+.successBannerActions svg {
+  width: 16px;
+  height: 16px;
+}
+
+.dashboardButton {
+  border-color: #3676df;
+  background: linear-gradient(135deg, #3478e5, #2762cf);
+  color: #fff;
+  box-shadow: 0 3px 8px rgba(39, 98, 207, 0.2);
+}
+
+.dashboardButton:hover {
+  border-color: #2865d2;
+  background: linear-gradient(135deg, #2f70da, #2259bd);
+  color: #fff;
+}
+
 .pageHeader {
   display: flex;
   align-items: flex-end;
@@ -382,6 +447,16 @@
 }
 
 @media (max-width: 760px) {
+  .successBanner {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .successBannerActions {
+    width: 100%;
+    padding-left: 38px;
+  }
+
   .pageHeader {
     align-items: stretch;
     flex-direction: column;
@@ -397,6 +472,14 @@
 }
 
 @media (max-width: 520px) {
+  .successBannerActions {
+    padding-left: 0;
+  }
+
+  .successBannerActions > * {
+    flex: 1;
+  }
+
   .headerGrid {
     grid-template-columns: 1fr;
   }

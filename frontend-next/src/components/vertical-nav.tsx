@@ -50,6 +50,7 @@ export function VerticalNav() {
   const [programarViajesOpen, setProgramarViajesOpen] = useState(false);
   const [configuracionOperativaOpen, setConfiguracionOperativaOpen] = useState(false);
   const [comercialOpen, setComercialOpen] = useState(false);
+  const [adicionalesOpen, setAdicionalesOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
   const [logoutErrorModalOpen, setLogoutErrorModalOpen] = useState(false);
   const [logoutErrorMessage, setLogoutErrorMessage] = useState("");
@@ -208,10 +209,21 @@ export function VerticalNav() {
     ...(isAdmin || role === "AGENT" || role === "OPERACIONES"
       ? [
           {
-            href: "/additional-services",
             label: "Adicionales",
             icon: "➕",
-          },
+            items: [
+              {
+                href: "/additional-services",
+                label: "Nueva Orden",
+                icon: "➕",
+              },
+              {
+                href: "/additional-services/orders",
+                label: "Órdenes",
+                icon: "📋",
+              },
+            ],
+          } as NavGroup,
         ]
       : []),
     
@@ -518,6 +530,10 @@ export function VerticalNav() {
               const group = element;
               const totalBadge = group.items.reduce((sum, item) => sum + (item.badge || 0), 0);
               const isAnyActive = group.items.some(item => isActive(item.href));
+              const activeItemHref = group.items
+                .filter((item) => isActive(item.href))
+                .sort((left, right) => right.href.length - left.href.length)[0]
+                ?.href;
               
               // Determinar qué estado usar según el grupo
               const isOpen = group.label === "Finanzas" 
@@ -528,6 +544,8 @@ export function VerticalNav() {
                     ? configuracionOperativaOpen
                     : group.label === "Comercial"
                       ? comercialOpen
+                      : group.label === "Adicionales"
+                        ? adicionalesOpen
                     : empleadosOpen;
               
               const toggleOpen = group.label === "Finanzas" 
@@ -538,6 +556,8 @@ export function VerticalNav() {
                     ? () => setConfiguracionOperativaOpen(!configuracionOperativaOpen)
                     : group.label === "Comercial"
                       ? () => setComercialOpen(!comercialOpen)
+                      : group.label === "Adicionales"
+                        ? () => setAdicionalesOpen(!adicionalesOpen)
                     : () => setEmpleadosOpen(!empleadosOpen);
               
               return (
@@ -560,7 +580,7 @@ export function VerticalNav() {
                         <Link
                           key={item.href}
                           href={item.href}
-                          className={`vertical-nav-item vertical-nav-subitem${isActive(item.href) ? " vertical-nav-item-active" : ""}`}
+                          className={`vertical-nav-item vertical-nav-subitem${activeItemHref === item.href ? " vertical-nav-item-active" : ""}`}
                         >
                           <span className="vertical-nav-icon">{item.icon}</span>
                           <span className="vertical-nav-label">{item.label}</span>

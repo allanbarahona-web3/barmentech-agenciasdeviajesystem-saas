@@ -541,12 +541,18 @@ export default function AdditionalServicesPage() {
                                       participant.operationalNotes,
                                   })),
                               eligibleQuoteCustomers:
-                                travelContext.participants.map((participant) => ({
-                                  participantId: participant.clientId,
-                                  fullName: participant.fullName,
-                                  operationalNotes:
-                                    participant.operationalNotes,
-                                })),
+                                travelContext.participants
+                                  .filter((participant) =>
+                                    selectedParticipantIds.has(
+                                      participant.clientId,
+                                    ),
+                                  )
+                                  .map((participant) => ({
+                                    participantId: participant.clientId,
+                                    fullName: participant.fullName,
+                                    operationalNotes:
+                                      participant.operationalNotes,
+                                  })),
                             });
                           }}
                           style={{

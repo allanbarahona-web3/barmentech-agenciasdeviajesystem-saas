@@ -63,6 +63,13 @@ export async function fetchApi(
 
     return response;
   } catch (error) {
+    if (
+      fetchOptions.signal?.aborted ||
+      (error instanceof Error && error.name === 'AbortError')
+    ) {
+      throw error;
+    }
+
     console.error('API Error:', error);
     throw error;
   }

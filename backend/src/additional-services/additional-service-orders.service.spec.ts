@@ -574,9 +574,7 @@ describe("AdditionalServicesService orders", () => {
       service.listOrderDashboard(tenantId, {
         page: 2,
         pageSize: 10,
-        orderNumber: "  ACME-AS  ",
-        customerId: "  client-1  ",
-        customer: "  Customer One  ",
+        search: "  Customer One  ",
         travelId: "  travel-1  ",
         travelNumber: "  CTR-100  ",
         travelType: AdditionalServiceTravelType.INTERNATIONAL,
@@ -591,9 +589,7 @@ describe("AdditionalServicesService orders", () => {
       {
         page: 2,
         pageSize: 10,
-        orderNumber: "ACME-AS",
-        customerId: "client-1",
-        customer: "Customer One",
+        search: "Customer One",
         travelId: "travel-1",
         travelNumber: "CTR-100",
         travelType: AdditionalServiceTravelType.INTERNATIONAL,
