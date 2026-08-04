@@ -64,8 +64,6 @@ export class TenantService {
     * 3. localhost:3001 → tenant configurable (fallback para desarrollo)
    */
   async resolveTenant(host: string): Promise<ResolvedTenant> {
-    this.logger.debug(`Resolviendo tenant para host: ${host}`);
-
     // Extraer dominio limpio (sin puerto)
     const cleanHost = host.split(':')[0].toLowerCase();
 
@@ -75,7 +73,6 @@ export class TenantService {
     });
 
     if (tenant) {
-      this.logger.debug(`✅ Tenant resuelto por customDomain: ${tenant.name}`);
       return tenant;
     }
 
@@ -83,16 +80,12 @@ export class TenantService {
     const subdomainMatch = cleanHost.match(/^([^.]+)\./);
     if (subdomainMatch) {
       const subdomain = subdomainMatch[1];
-      this.logger.debug(`🔍 Intentando resolver subdomain: ${subdomain}`);
       tenant = await this.prisma.tenant.findUnique({
         where: { subdomain },
       });
 
       if (tenant) {
-        this.logger.debug(`✅ Tenant resuelto por subdomain: ${tenant.name} (${subdomain})`);
         return tenant;
-      } else {
-        this.logger.warn(`⚠️  Subdomain '${subdomain}' no existe en la base de datos`);
       }
     }
 
@@ -103,9 +96,6 @@ export class TenantService {
         this.configService.get<string>('DEFAULT_TENANT_SUBDOMAIN', '').trim().toLowerCase();
 
       if (preferredSubdomain) {
-        this.logger.warn(
-          `⚠️  Localhost sin subdomain detectado, usando tenant por config: ${preferredSubdomain}`,
-        );
         tenant = await this.prisma.tenant.findUnique({
           where: { subdomain: preferredSubdomain },
         });
@@ -120,8 +110,8 @@ export class TenantService {
       }
 
       // Fallback final: primer tenant activo en orden de creación
-      this.logger.warn(
-        `⚠️  Localhost sin subdomain detectado, usando primer tenant activo disponible`,
+      this.logger.debug(
+        'Fallback local: usando el primer tenant activo.',
       );
       tenant = await this.prisma.tenant.findFirst({
         where: { isActive: true },
@@ -134,7 +124,6 @@ export class TenantService {
     }
 
     // No se pudo resolver
-    this.logger.error(`❌ No se pudo resolver tenant para host: ${host}`);
     throw new NotFoundException(
       `No se encontró un tenant para el dominio: ${cleanHost}`,
     );

@@ -255,7 +255,9 @@ export default function AdditionalServiceOrdersDashboardPage() {
         <header className={styles.header}>
           <div>
             <p className={styles.eyebrow}>Espacio comercial</p>
-            <h1 className={styles.title}>Additional Service Orders</h1>
+            <h1 className={styles.title}>
+              Órdenes de servicios adicionales
+            </h1>
             <p className={styles.subtitle}>
               Consulte y dé seguimiento a las órdenes de servicios adicionales.
             </p>
@@ -278,7 +280,7 @@ export default function AdditionalServiceOrdersDashboardPage() {
                 className={`${styles.input} ${styles.searchInput}`}
                 type="search"
                 value={searchInput}
-                placeholder="Search by customer, identification or order number"
+                placeholder="Buscar por cliente, identificación o número de orden"
                 onChange={(event) => setSearchInput(event.target.value)}
               />
             </div>

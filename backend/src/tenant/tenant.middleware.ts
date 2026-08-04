@@ -26,21 +26,12 @@ export class TenantMiddleware implements NestMiddleware {
   constructor(private tenantService: TenantService) {}
 
   async use(req: Request, res: Response, next: NextFunction) {
-const origin = req.get('origin');
-
-const host = origin
-  ? new URL(origin).hostname
-  : (req.get('host') || 'localhost');
+    const origin = req.get('origin');
+    const host = origin
+      ? new URL(origin).hostname
+      : (req.get('host') || 'localhost');
     //const origin = req.get('origin');
     //const host = req.get('host') || 'localhost';
-     this.logger.warn(`HOST RECIBIDO: ${host}`);
-  this.logger.warn(`ORIGIN: ${req.get('origin') || 'N/A'}`);
-  this.logger.warn(`X-FORWARDED-HOST: ${req.get('x-forwarded-host') || 'N/A'}`);
-  console.log('====================');
-console.log('HOST:', host);
-console.log('ORIGIN:', req.get('origin'));
-console.log('XFH:', req.get('x-forwarded-host'));
-console.log('====================');
 
     const clientTimeZone = String(req.get('x-client-timezone') || '').trim();
     const clientUtcOffsetRaw = String(req.get('x-client-utc-offset-minutes') || '').trim();
@@ -61,14 +52,6 @@ console.log('====================');
       async () => {
         try {
           // Resolver tenant desde el dominio
-          this.logger.warn('====================');
-this.logger.warn(`PATH: ${req.originalUrl}`);
-this.logger.warn(`METHOD: ${req.method}`);
-this.logger.warn(`HOST: ${req.get('host')}`);
-this.logger.warn(`ORIGIN: ${req.get('origin') || 'N/A'}`);
-this.logger.warn(`REFERER: ${req.get('referer') || 'N/A'}`);
-this.logger.warn(`X-FORWARDED-HOST: ${req.get('x-forwarded-host') || 'N/A'}`);
-this.logger.warn(`HOST FINAL USADO: ${host}`);
           const tenant = await this.tenantService.resolveTenant(host);
           
 
@@ -104,10 +87,6 @@ this.logger.warn(`HOST FINAL USADO: ${host}`);
 
           // Adjuntar tenant al request
           req.tenant = tenant;
-
-          this.logger.debug(
-            `✅ Tenant resuelto: ${tenant.name} (${tenant.subdomain})`,
-          );
           next();
         } catch (error) {
           // Si ya es un error de autorización, propagarlo
