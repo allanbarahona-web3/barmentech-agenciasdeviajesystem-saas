@@ -856,6 +856,14 @@ export class AdditionalServicesService {
         lines,
         (line) => line.finalSellingPrice,
       ),
+      paymentConditionType: dto.paymentConditionType ?? null,
+      paymentTerm: this.toNullableText(dto.paymentTerm),
+      quotationValidUntil: dto.quotationValidUntil
+        ? new Date(dto.quotationValidUntil)
+        : null,
+      commercialObservations: this.toNullableText(
+        dto.commercialObservations,
+      ),
       createdByUserId: actor.id,
       createdByName: actor.fullName,
       lines,

@@ -3,6 +3,7 @@ import {
   AdditionalServiceCurrency,
   AdditionalServiceMarginType,
   AdditionalServiceTravelType,
+  PaymentConditionType,
 } from "../enums";
 import type { CreateAdditionalServiceOrderData } from "./additional-services.repository.interface";
 import { PrismaAdditionalServicesRepository } from "./prisma-additional-services.repository";
@@ -36,6 +37,10 @@ describe("PrismaAdditionalServicesRepository quote customer persistence", () => 
       commercialSubtotal: 100,
       totalVat: 13,
       totalSellingPrice: 113,
+      paymentConditionType: PaymentConditionType.CREDIT,
+      paymentTerm: "30 days",
+      quotationValidUntil: new Date("2026-08-31T23:59:59.999Z"),
+      commercialObservations: "Commercial conditions apply.",
       createdByUserId: "user-1",
       createdByName: "Agent One",
       lines: [
@@ -90,6 +95,10 @@ describe("PrismaAdditionalServicesRepository quote customer persistence", () => 
       expect.objectContaining({
         data: expect.objectContaining({
           quoteCustomerId: "quote-customer",
+          paymentConditionType: PaymentConditionType.CREDIT,
+          paymentTerm: "30 days",
+          quotationValidUntil: new Date("2026-08-31T23:59:59.999Z"),
+          commercialObservations: "Commercial conditions apply.",
         }),
       }),
     );

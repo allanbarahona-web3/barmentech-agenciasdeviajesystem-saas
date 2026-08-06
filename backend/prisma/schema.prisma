@@ -1194,6 +1194,12 @@ enum AdditionalServiceOrderStatus {
   CANCELLED
 }
 
+enum PaymentConditionType {
+  CASH
+  CREDIT
+  DEPOSIT
+}
+
 enum AdditionalServiceExchangeRateType {
   SELL
 }
@@ -1278,28 +1284,32 @@ model AdditionalServicePricingConfiguration {
 }
 
 model AdditionalServiceOrder {
-  id                 String                       @id @default(cuid())
-  tenantId           String
-  orderNumber        String
-  idempotencyKey     String
-  quoteCustomerId    String?
-  travelPackageId    String?
-  internalBookingId  String?
-  travelType         AdditionalServiceTravelType
-  quotationCurrency  AdditionalServiceCurrency
-  commercialSubtotal Decimal                      @db.Decimal(18, 4)
-  totalVat           Decimal                      @db.Decimal(18, 4)
-  totalSellingPrice  Decimal                      @db.Decimal(18, 4)
-  status             AdditionalServiceOrderStatus @default(DRAFT)
-  createdByUserId    String
-  createdByName      String
-  createdAt          DateTime                     @default(now())
-  updatedAt          DateTime                     @updatedAt
-  tenant             Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  quoteCustomer      Client?                      @relation("AdditionalServiceQuoteCustomer", fields: [quoteCustomerId], references: [id], onDelete: SetNull)
-  travelPackage      TravelPackage?               @relation(fields: [travelPackageId], references: [id], onDelete: SetNull)
-  internalBooking    InternalTourBooking?         @relation(fields: [internalBookingId], references: [id], onDelete: SetNull)
-  lines              AdditionalServiceOrderLine[]
+  id                     String                       @id @default(cuid())
+  tenantId               String
+  orderNumber            String
+  idempotencyKey         String
+  quoteCustomerId        String?
+  travelPackageId        String?
+  internalBookingId      String?
+  travelType             AdditionalServiceTravelType
+  quotationCurrency      AdditionalServiceCurrency
+  commercialSubtotal     Decimal                      @db.Decimal(18, 4)
+  totalVat               Decimal                      @db.Decimal(18, 4)
+  totalSellingPrice      Decimal                      @db.Decimal(18, 4)
+  paymentConditionType   PaymentConditionType?
+  paymentTerm            String?
+  quotationValidUntil    DateTime?
+  commercialObservations String?
+  status                 AdditionalServiceOrderStatus @default(DRAFT)
+  createdByUserId        String
+  createdByName          String
+  createdAt              DateTime                     @default(now())
+  updatedAt              DateTime                     @updatedAt
+  tenant                 Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  quoteCustomer          Client?                      @relation("AdditionalServiceQuoteCustomer", fields: [quoteCustomerId], references: [id], onDelete: SetNull)
+  travelPackage          TravelPackage?               @relation(fields: [travelPackageId], references: [id], onDelete: SetNull)
+  internalBooking        InternalTourBooking?         @relation(fields: [internalBookingId], references: [id], onDelete: SetNull)
+  lines                  AdditionalServiceOrderLine[]
 
   @@unique([tenantId, orderNumber])
   @@unique([tenantId, idempotencyKey])

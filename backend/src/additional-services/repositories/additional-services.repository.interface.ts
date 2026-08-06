@@ -3,6 +3,7 @@ import {
   AdditionalServiceMarginType,
   AdditionalServiceOrderStatus,
   AdditionalServiceTravelType,
+  PaymentConditionType,
 } from "../enums";
 import type { AdditionalServiceDetails } from "../service-details";
 
@@ -74,6 +75,10 @@ export interface AdditionalServiceOrderRecord {
   commercialSubtotal: string;
   totalVat: string;
   totalSellingPrice: string;
+  paymentConditionType: PaymentConditionType | null;
+  paymentTerm: string | null;
+  quotationValidUntil: Date | null;
+  commercialObservations: string | null;
   travel: AdditionalServiceOrderTravelDetails | null;
   status: AdditionalServiceOrderStatus;
   lines: AdditionalServiceOrderLineRecord[];
@@ -294,6 +299,10 @@ export interface CreateAdditionalServiceOrderData
   commercialSubtotal: number;
   totalVat: number;
   totalSellingPrice: number;
+  paymentConditionType: PaymentConditionType | null;
+  paymentTerm: string | null;
+  quotationValidUntil: Date | null;
+  commercialObservations: string | null;
   lines: CreateAdditionalServiceOrderLineData[];
 }
 

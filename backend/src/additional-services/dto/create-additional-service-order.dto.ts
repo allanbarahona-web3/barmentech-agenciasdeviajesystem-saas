@@ -3,6 +3,7 @@ import {
   ArrayMinSize,
   Equals,
   IsArray,
+  IsDateString,
   IsEnum,
   IsInt,
   IsNotEmpty,
@@ -18,6 +19,7 @@ import {
 import {
   AdditionalServiceCurrency,
   AdditionalServiceTravelType,
+  PaymentConditionType,
 } from "../enums";
 
 export class CreateAdditionalServiceOrderLineDto {
@@ -76,6 +78,22 @@ export class CreateAdditionalServiceOrderDto {
 
   @IsEnum(AdditionalServiceCurrency)
   quotationCurrency!: AdditionalServiceCurrency;
+
+  @IsOptional()
+  @IsEnum(PaymentConditionType)
+  paymentConditionType?: PaymentConditionType;
+
+  @IsOptional()
+  @IsString()
+  paymentTerm?: string;
+
+  @IsOptional()
+  @IsDateString()
+  quotationValidUntil?: string;
+
+  @IsOptional()
+  @IsString()
+  commercialObservations?: string;
 
   @IsArray()
   @ArrayMinSize(1)

@@ -917,6 +917,10 @@ export class PrismaAdditionalServicesRepository
         commercialSubtotal: new Decimal(String(data.commercialSubtotal)),
         totalVat: new Decimal(String(data.totalVat)),
         totalSellingPrice: new Decimal(String(data.totalSellingPrice)),
+        paymentConditionType: data.paymentConditionType,
+        paymentTerm: data.paymentTerm,
+        quotationValidUntil: data.quotationValidUntil,
+        commercialObservations: data.commercialObservations,
         createdByUserId: data.createdByUserId,
         createdByName: data.createdByName,
       },
@@ -1374,6 +1378,17 @@ export class PrismaAdditionalServicesRepository
       commercialSubtotal: String(order.commercialSubtotal),
       totalVat: String(order.totalVat),
       totalSellingPrice: String(order.totalSellingPrice),
+      paymentConditionType:
+        (order.paymentConditionType as AdditionalServiceOrderRecord["paymentConditionType"]) ??
+        null,
+      paymentTerm: this.nullableString(order.paymentTerm),
+      quotationValidUntil:
+        order.quotationValidUntil instanceof Date
+          ? order.quotationValidUntil
+          : null,
+      commercialObservations: this.nullableString(
+        order.commercialObservations,
+      ),
       travel: this.toTravelDetails(
         order.travelPackage,
         order.internalBooking,

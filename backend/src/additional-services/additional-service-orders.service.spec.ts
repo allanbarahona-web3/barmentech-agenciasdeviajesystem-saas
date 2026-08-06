@@ -8,6 +8,7 @@ import {
   AdditionalServiceMarginType,
   AdditionalServiceOrderStatus,
   AdditionalServiceTravelType,
+  PaymentConditionType,
 } from "./enums";
 import {
   AdditionalServiceOrderRecord,
@@ -275,6 +276,10 @@ describe("AdditionalServicesService orders", () => {
       commercialSubtotal: "59800",
       totalVat: "7774",
       totalSellingPrice: "67574",
+      paymentConditionType: data.paymentConditionType,
+      paymentTerm: data.paymentTerm,
+      quotationValidUntil: data.quotationValidUntil,
+      commercialObservations: data.commercialObservations,
       travel: null,
       status: AdditionalServiceOrderStatus.DRAFT,
       lines: [],
@@ -293,6 +298,10 @@ describe("AdditionalServicesService orders", () => {
         travelType: AdditionalServiceTravelType.INTERNATIONAL,
         quoteCustomerId: "client-2",
         quotationCurrency: AdditionalServiceCurrency.CRC,
+        paymentConditionType: PaymentConditionType.CREDIT,
+        paymentTerm: "30 days",
+        quotationValidUntil: "2026-08-31T23:59:59.999Z",
+        commercialObservations: "Commercial conditions apply.",
         lines: [
           {
             serviceCode: "visa_assistance",
@@ -359,6 +368,10 @@ describe("AdditionalServicesService orders", () => {
         commercialSubtotal: 59800,
         totalVat: 7774,
         totalSellingPrice: 67574,
+        paymentConditionType: PaymentConditionType.CREDIT,
+        paymentTerm: "30 days",
+        quotationValidUntil: new Date("2026-08-31T23:59:59.999Z"),
+        commercialObservations: "Commercial conditions apply.",
         lines: [
           expect.objectContaining({
             serviceDetailsVersion: 1,
