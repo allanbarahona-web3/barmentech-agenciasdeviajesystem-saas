@@ -19,6 +19,7 @@ import {
   getAdditionalServiceOrder,
   type AdditionalServiceOrder,
   type AdditionalServiceOrderCurrency,
+  type AdditionalServicePaymentConditionType,
   type AdditionalServiceOrderParticipant,
   type AdditionalServiceOrderParticipantRole,
 } from '@/lib/additional-services-orders-api';
@@ -42,6 +43,28 @@ function formatDate(value: string) {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(new Date(value));
+}
+
+function formatDateOnly(value: string) {
+  return new Intl.DateTimeFormat('es-CR', {
+    dateStyle: 'medium',
+    timeZone: 'America/Costa_Rica',
+  }).format(new Date(value));
+}
+
+function paymentConditionLabel(
+  condition: AdditionalServicePaymentConditionType | null,
+) {
+  if (!condition) {
+    return 'No especificada';
+  }
+
+  const labels: Record<AdditionalServicePaymentConditionType, string> = {
+    CASH: 'Contado',
+    CREDIT: 'Crédito',
+    DEPOSIT: 'Depósito',
+  };
+  return labels[condition];
 }
 
 function roleLabel(role: AdditionalServiceOrderParticipantRole) {
@@ -230,6 +253,37 @@ export default function AdditionalServiceOrderPreviewPage() {
             <div>
               <dt>Estado</dt>
               <dd>Borrador</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section
+          className={styles.headerCard}
+          aria-labelledby="commercial-conditions"
+        >
+          <h2 id="commercial-conditions">Condiciones comerciales</h2>
+          <dl className={styles.headerGrid}>
+            <div>
+              <dt>Condición de pago</dt>
+              <dd>{paymentConditionLabel(order.paymentConditionType)}</dd>
+            </div>
+            <div>
+              <dt>Plazo de pago</dt>
+              <dd>{order.paymentTerm ?? 'No especificado'}</dd>
+            </div>
+            <div>
+              <dt>Cotización válida hasta</dt>
+              <dd>
+                {order.quotationValidUntil
+                  ? formatDateOnly(order.quotationValidUntil)
+                  : 'No especificada'}
+              </dd>
+            </div>
+            <div className={styles.commercialObservations}>
+              <dt>Observaciones comerciales</dt>
+              <dd>
+                {order.commercialObservations ?? 'Sin observaciones'}
+              </dd>
             </div>
           </dl>
         </section>

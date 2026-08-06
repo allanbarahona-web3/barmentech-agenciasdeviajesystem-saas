@@ -189,6 +189,18 @@ export type TemporaryAdditionalServiceLine =
 
 export type TemporaryLineCurrency = 'USD' | 'CRC';
 
+export type AdditionalServicePaymentConditionType =
+  | 'CASH'
+  | 'CREDIT'
+  | 'DEPOSIT';
+
+export interface AdditionalServicesCommercialConditions {
+  paymentConditionType: AdditionalServicePaymentConditionType | null;
+  paymentTerm: string;
+  quotationValidUntil: string;
+  commercialObservations: string;
+}
+
 export interface TemporaryLineSourcing {
   supplierId: string | null;
   providerUrl: string;
@@ -201,6 +213,12 @@ let workflowContext: AdditionalServicesWorkflowContext | null = null;
 let orderIdempotencyKey: string | null = null;
 let quotationCurrency: TemporaryLineCurrency = 'USD';
 let quoteCustomerId: string | null = null;
+let commercialConditions: AdditionalServicesCommercialConditions = {
+  paymentConditionType: null,
+  paymentTerm: '',
+  quotationValidUntil: '',
+  commercialObservations: '',
+};
 const temporaryBaggageLines: TemporaryBaggageLine[] = [];
 const temporaryLodgingLines: TemporaryLodgingLine[] = [];
 const temporaryAccommodationTypeLines: TemporaryAccommodationTypeLine[] = [];
@@ -302,6 +320,29 @@ export function setAdditionalServicesQuotationCurrency(
   quotationCurrency = currency;
   orderIdempotencyKey = null;
   temporaryLinePricing.clear();
+}
+
+export function getAdditionalServicesCommercialConditions(): AdditionalServicesCommercialConditions {
+  return { ...commercialConditions };
+}
+
+export function setAdditionalServicesCommercialConditions(
+  conditions: AdditionalServicesCommercialConditions,
+) {
+  if (
+    commercialConditions.paymentConditionType ===
+      conditions.paymentConditionType &&
+    commercialConditions.paymentTerm === conditions.paymentTerm &&
+    commercialConditions.quotationValidUntil ===
+      conditions.quotationValidUntil &&
+    commercialConditions.commercialObservations ===
+      conditions.commercialObservations
+  ) {
+    return;
+  }
+
+  commercialConditions = { ...conditions };
+  orderIdempotencyKey = null;
 }
 
 export function getAdditionalServicesWorkflowContext() {
@@ -461,6 +502,12 @@ export function resetAdditionalServicesWorkflow() {
   orderIdempotencyKey = null;
   quotationCurrency = 'USD';
   quoteCustomerId = null;
+  commercialConditions = {
+    paymentConditionType: null,
+    paymentTerm: '',
+    quotationValidUntil: '',
+    commercialObservations: '',
+  };
 
   getTemporaryLineCollections().forEach((collection) => {
     collection.length = 0;

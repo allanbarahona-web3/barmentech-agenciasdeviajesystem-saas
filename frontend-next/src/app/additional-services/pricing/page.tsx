@@ -9,14 +9,17 @@ import { LoadingModal } from '@/components/loading-modal';
 import { Button } from '@/components/ui/button';
 import { calculateAdditionalServicePrice } from '@/lib/additional-services-pricing-api';
 import {
+  getAdditionalServicesCommercialConditions,
   getAdditionalServicesQuotationCurrency,
   getAdditionalServicesQuoteCustomerId,
   getAdditionalServicesWorkflowContext,
   getTemporaryAdditionalServiceLineSourcing,
   getTemporaryAdditionalServiceLines,
+  setAdditionalServicesCommercialConditions,
   setAdditionalServicesQuotationCurrency,
   setAdditionalServicesQuoteCustomerId,
   setTemporaryAdditionalServiceLinePricing,
+  type AdditionalServicesCommercialConditions,
   type TemporaryLineCurrency,
 } from '@/lib/additional-services-temporary-store';
 import { getAdditionalServiceName } from '@/shared/additional-services';
@@ -65,6 +68,10 @@ export default function AdditionalServicesPricingPage() {
   const [quoteCustomerId, setQuoteCustomerId] = useState<string>(() =>
     getAdditionalServicesQuoteCustomerId() ?? '',
   );
+  const [commercialConditions, setCommercialConditions] =
+    useState<AdditionalServicesCommercialConditions>(() =>
+      getAdditionalServicesCommercialConditions(),
+    );
 
   function changeQuotationCurrency(currency: TemporaryLineCurrency) {
     setQuotationCurrency(currency);
@@ -75,6 +82,18 @@ export default function AdditionalServicesPricingPage() {
   function changeQuoteCustomer(customerId: string) {
     setQuoteCustomerId(customerId);
     setAdditionalServicesQuoteCustomerId(customerId || null);
+    setCalculationError(null);
+  }
+
+  function changeCommercialConditions(
+    changes: Partial<AdditionalServicesCommercialConditions>,
+  ) {
+    const nextConditions = {
+      ...commercialConditions,
+      ...changes,
+    };
+    setCommercialConditions(nextConditions);
+    setAdditionalServicesCommercialConditions(nextConditions);
     setCalculationError(null);
   }
 
@@ -269,6 +288,160 @@ export default function AdditionalServicesPricingPage() {
                   {currency}
                 </label>
               ))}
+            </div>
+          </fieldset>
+          <fieldset
+            style={{
+              margin: '0 0 24px',
+              padding: '18px 20px',
+              border: '1px solid #dbe4f0',
+              borderRadius: '12px',
+              background: '#f8fafc',
+            }}
+          >
+            <legend
+              style={{
+                padding: '0 6px',
+                color: '#172554',
+                fontSize: '15px',
+                fontWeight: 700,
+              }}
+            >
+              Condiciones comerciales
+            </legend>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                gap: '16px',
+                marginTop: '6px',
+              }}
+            >
+              <label
+                htmlFor="paymentConditionType"
+                style={{ display: 'grid', gap: '7px', color: '#172554' }}
+              >
+                <span style={{ fontSize: '13px', fontWeight: 700 }}>
+                  Condición de pago
+                </span>
+                <select
+                  id="paymentConditionType"
+                  value={commercialConditions.paymentConditionType ?? ''}
+                  disabled={calculating}
+                  onChange={(event) =>
+                    changeCommercialConditions({
+                      paymentConditionType:
+                        (event.target.value || null) as
+                          AdditionalServicesCommercialConditions['paymentConditionType'],
+                    })
+                  }
+                  style={{
+                    minHeight: '44px',
+                    padding: '10px 12px',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '10px',
+                    background: '#fff',
+                    color: '#172554',
+                  }}
+                >
+                  <option value="">Seleccione una condición</option>
+                  <option value="CASH">Contado</option>
+                  <option value="CREDIT">Crédito</option>
+                  <option value="DEPOSIT">Depósito</option>
+                </select>
+              </label>
+
+              <label
+                htmlFor="paymentTerm"
+                style={{ display: 'grid', gap: '7px', color: '#172554' }}
+              >
+                <span style={{ fontSize: '13px', fontWeight: 700 }}>
+                  Plazo de pago
+                </span>
+                <input
+                  id="paymentTerm"
+                  type="text"
+                  value={commercialConditions.paymentTerm}
+                  disabled={calculating}
+                  placeholder="Inmediato, 15 días, 30 días..."
+                  onChange={(event) =>
+                    changeCommercialConditions({
+                      paymentTerm: event.target.value,
+                    })
+                  }
+                  style={{
+                    minHeight: '44px',
+                    padding: '10px 12px',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '10px',
+                    background: '#fff',
+                    color: '#172554',
+                  }}
+                />
+              </label>
+
+              <label
+                htmlFor="quotationValidUntil"
+                style={{ display: 'grid', gap: '7px', color: '#172554' }}
+              >
+                <span style={{ fontSize: '13px', fontWeight: 700 }}>
+                  Cotización válida hasta
+                </span>
+                <input
+                  id="quotationValidUntil"
+                  type="date"
+                  value={commercialConditions.quotationValidUntil}
+                  disabled={calculating}
+                  onChange={(event) =>
+                    changeCommercialConditions({
+                      quotationValidUntil: event.target.value,
+                    })
+                  }
+                  style={{
+                    minHeight: '44px',
+                    padding: '10px 12px',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '10px',
+                    background: '#fff',
+                    color: '#172554',
+                  }}
+                />
+              </label>
+
+              <label
+                htmlFor="commercialObservations"
+                style={{
+                  display: 'grid',
+                  gridColumn: '1 / -1',
+                  gap: '7px',
+                  color: '#172554',
+                }}
+              >
+                <span style={{ fontSize: '13px', fontWeight: 700 }}>
+                  Observaciones comerciales
+                </span>
+                <textarea
+                  id="commercialObservations"
+                  value={commercialConditions.commercialObservations}
+                  disabled={calculating}
+                  rows={3}
+                  placeholder="Agregue observaciones aplicables a la cotización"
+                  onChange={(event) =>
+                    changeCommercialConditions({
+                      commercialObservations: event.target.value,
+                    })
+                  }
+                  style={{
+                    padding: '10px 12px',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '10px',
+                    background: '#fff',
+                    color: '#172554',
+                    font: 'inherit',
+                    resize: 'vertical',
+                  }}
+                />
+              </label>
             </div>
           </fieldset>
           <AdditionalServicesLinesTable mode="pricing" />

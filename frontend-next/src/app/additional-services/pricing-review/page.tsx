@@ -20,6 +20,7 @@ import {
   type AdditionalServiceDetails,
 } from '@/lib/additional-services-orders-api';
 import {
+  getAdditionalServicesCommercialConditions,
   getAdditionalServicesQuotationCurrency,
   getAdditionalServicesQuoteCustomerId,
   getAdditionalServicesWorkflowContext,
@@ -116,6 +117,9 @@ export default function AdditionalServicesPricingReviewPage() {
   );
   const [quoteCustomerId] = useState(() =>
     getAdditionalServicesQuoteCustomerId(),
+  );
+  const [commercialConditions] = useState(() =>
+    getAdditionalServicesCommercialConditions(),
   );
   const [idempotencyKey] = useState(() =>
     getOrCreateAdditionalServiceOrderIdempotencyKey(),
@@ -261,6 +265,15 @@ export default function AdditionalServicesPricingReviewPage() {
         travelType: context.travelType,
         quoteCustomerId,
         quotationCurrency,
+        paymentConditionType:
+          commercialConditions.paymentConditionType ?? undefined,
+        paymentTerm:
+          commercialConditions.paymentTerm.trim() || undefined,
+        quotationValidUntil: commercialConditions.quotationValidUntil
+          ? `${commercialConditions.quotationValidUntil}T23:59:59.999-06:00`
+          : undefined,
+        commercialObservations:
+          commercialConditions.commercialObservations.trim() || undefined,
         lines: orderLines,
       });
 

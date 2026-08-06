@@ -84,6 +84,10 @@ export interface CreateAdditionalServiceOrderInput {
   travelType: 'INTERNATIONAL' | 'INTERNAL';
   quoteCustomerId: string;
   quotationCurrency: TemporaryLineCurrency;
+  paymentConditionType?: AdditionalServicePaymentConditionType;
+  paymentTerm?: string;
+  quotationValidUntil?: string;
+  commercialObservations?: string;
   lines: CreateAdditionalServiceOrderLineInput[];
 }
 
@@ -98,6 +102,10 @@ export type AdditionalServiceOrderParticipantRole =
   | 'MINOR';
 
 export type AdditionalServiceOrderCurrency = 'USD' | 'CRC';
+export type AdditionalServicePaymentConditionType =
+  | 'CASH'
+  | 'CREDIT'
+  | 'DEPOSIT';
 export type AdditionalServiceOrderStatus =
   | 'DRAFT'
   | 'REQUESTED'
@@ -190,6 +198,10 @@ export interface AdditionalServiceOrder {
   commercialSubtotal: string;
   totalVat: string;
   totalSellingPrice: string;
+  paymentConditionType: AdditionalServicePaymentConditionType | null;
+  paymentTerm: string | null;
+  quotationValidUntil: string | null;
+  commercialObservations: string | null;
   travel: AdditionalServiceOrderTravel | null;
   status: 'DRAFT';
   lines: AdditionalServiceOrderLine[];

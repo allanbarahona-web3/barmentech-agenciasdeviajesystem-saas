@@ -183,6 +183,14 @@
   height: 13px;
 }
 
+.commercialObservations {
+  grid-column: 1 / -1;
+}
+
+.commercialObservations dd {
+  white-space: pre-wrap;
+}
+
 .section {
   margin-bottom: 20px;
   overflow: hidden;
