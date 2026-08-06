@@ -9,6 +9,7 @@ import {
   AdditionalServiceOrderStatus,
   AdditionalServiceTravelType,
   PaymentConditionType,
+  PaymentTermUnit,
 } from "./enums";
 import {
   AdditionalServiceOrderRecord,
@@ -80,6 +81,58 @@ describe("AdditionalServicesService orders", () => {
     expect(errors.some(({ property }) => property === "quoteCustomerId")).toBe(
       true,
     );
+  });
+
+  it("requires a structured payment term for credit orders", async () => {
+    const dto = plainToInstance(CreateAdditionalServiceOrderDto, {
+      idempotencyKey: "workflow-credit",
+      travelId: "travel-1",
+      travelType: AdditionalServiceTravelType.INTERNATIONAL,
+      quoteCustomerId: "client-1",
+      quotationCurrency: AdditionalServiceCurrency.USD,
+      paymentConditionType: PaymentConditionType.CREDIT,
+      lines: [{}],
+    });
+
+    const errors = await validate(dto);
+
+    expect(errors.some(({ property }) => property === "paymentTermValue")).toBe(
+      true,
+    );
+    expect(errors.some(({ property }) => property === "paymentTermUnit")).toBe(
+      true,
+    );
+  });
+
+  it("clears payment term values for cash orders", () => {
+    const serviceInternals = service as unknown as {
+      toCreateData: (...args: unknown[]) => {
+        paymentTermValue: number | null;
+        paymentTermUnit: PaymentTermUnit | null;
+      };
+    };
+
+    const result = serviceInternals.toCreateData(
+      tenantId,
+      { id: "user-1", fullName: "Agent One" },
+      {
+        idempotencyKey: "workflow-cash",
+        travelId: "travel-1",
+        travelType: AdditionalServiceTravelType.INTERNATIONAL,
+        quoteCustomerId: "client-1",
+        quotationCurrency: AdditionalServiceCurrency.USD,
+        paymentConditionType: PaymentConditionType.CASH,
+        paymentTermValue: 30,
+        paymentTermUnit: PaymentTermUnit.DAYS,
+        lines: [],
+      },
+      { travelPackageId: "travel-1" },
+      [],
+      "ACME-AS-1",
+    );
+
+    expect(result.paymentTermValue).toBeNull();
+    expect(result.paymentTermUnit).toBeNull();
   });
 
   it("accepts an internal-travel companion as quote customer", async () => {
@@ -277,7 +330,8 @@ describe("AdditionalServicesService orders", () => {
       totalVat: "7774",
       totalSellingPrice: "67574",
       paymentConditionType: data.paymentConditionType,
-      paymentTerm: data.paymentTerm,
+      paymentTermValue: data.paymentTermValue,
+      paymentTermUnit: data.paymentTermUnit,
       quotationValidUntil: data.quotationValidUntil,
       commercialObservations: data.commercialObservations,
       travel: null,
@@ -299,7 +353,8 @@ describe("AdditionalServicesService orders", () => {
         quoteCustomerId: "client-2",
         quotationCurrency: AdditionalServiceCurrency.CRC,
         paymentConditionType: PaymentConditionType.CREDIT,
-        paymentTerm: "30 days",
+        paymentTermValue: 30,
+        paymentTermUnit: PaymentTermUnit.DAYS,
         quotationValidUntil: "2026-08-31T23:59:59.999Z",
         commercialObservations: "Commercial conditions apply.",
         lines: [
@@ -369,7 +424,8 @@ describe("AdditionalServicesService orders", () => {
         totalVat: 7774,
         totalSellingPrice: 67574,
         paymentConditionType: PaymentConditionType.CREDIT,
-        paymentTerm: "30 days",
+        paymentTermValue: 30,
+        paymentTermUnit: PaymentTermUnit.DAYS,
         quotationValidUntil: new Date("2026-08-31T23:59:59.999Z"),
         commercialObservations: "Commercial conditions apply.",
         lines: [

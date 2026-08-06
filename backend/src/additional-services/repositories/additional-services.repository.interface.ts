@@ -4,6 +4,7 @@ import {
   AdditionalServiceOrderStatus,
   AdditionalServiceTravelType,
   PaymentConditionType,
+  PaymentTermUnit,
 } from "../enums";
 import type { AdditionalServiceDetails } from "../service-details";
 
@@ -76,7 +77,8 @@ export interface AdditionalServiceOrderRecord {
   totalVat: string;
   totalSellingPrice: string;
   paymentConditionType: PaymentConditionType | null;
-  paymentTerm: string | null;
+  paymentTermValue: number | null;
+  paymentTermUnit: PaymentTermUnit | null;
   quotationValidUntil: Date | null;
   commercialObservations: string | null;
   travel: AdditionalServiceOrderTravelDetails | null;
@@ -300,7 +302,8 @@ export interface CreateAdditionalServiceOrderData
   totalVat: number;
   totalSellingPrice: number;
   paymentConditionType: PaymentConditionType | null;
-  paymentTerm: string | null;
+  paymentTermValue: number | null;
+  paymentTermUnit: PaymentTermUnit | null;
   quotationValidUntil: Date | null;
   commercialObservations: string | null;
   lines: CreateAdditionalServiceOrderLineData[];

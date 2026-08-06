@@ -1197,7 +1197,11 @@ enum AdditionalServiceOrderStatus {
 enum PaymentConditionType {
   CASH
   CREDIT
-  DEPOSIT
+}
+
+enum PaymentTermUnit {
+  DAYS
+  MONTHS
 }
 
 enum AdditionalServiceExchangeRateType {
@@ -1297,7 +1301,8 @@ model AdditionalServiceOrder {
   totalVat               Decimal                      @db.Decimal(18, 4)
   totalSellingPrice      Decimal                      @db.Decimal(18, 4)
   paymentConditionType   PaymentConditionType?
-  paymentTerm            String?
+  paymentTermValue       Int?
+  paymentTermUnit        PaymentTermUnit?
   quotationValidUntil    DateTime?
   commercialObservations String?
   status                 AdditionalServiceOrderStatus @default(DRAFT)

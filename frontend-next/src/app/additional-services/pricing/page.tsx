@@ -25,6 +25,33 @@ import {
 import { getAdditionalServiceName } from '@/shared/additional-services';
 import styles from '../order-summary/order-summary.module.css';
 
+const PAYMENT_TERM_OPTIONS = [
+  { key: '15_DAYS', label: '15 días', value: 15, unit: 'DAYS' },
+  { key: '30_DAYS', label: '30 días', value: 30, unit: 'DAYS' },
+  { key: '45_DAYS', label: '45 días', value: 45, unit: 'DAYS' },
+] as const;
+type PaymentTermOption = '' | (typeof PAYMENT_TERM_OPTIONS)[number]['key'] | 'OTHER';
+type CustomPaymentTermUnit = 'DAYS' | 'MONTHS';
+
+function initialPaymentTermOption(
+  conditions: AdditionalServicesCommercialConditions,
+): PaymentTermOption {
+  if (
+    conditions.paymentTermValue === null ||
+    conditions.paymentTermUnit === null
+  ) {
+    return '';
+  }
+
+  return (
+    PAYMENT_TERM_OPTIONS.find(
+      (option) =>
+        option.value === conditions.paymentTermValue &&
+        option.unit === conditions.paymentTermUnit,
+    )?.key ?? 'OTHER'
+  );
+}
+
 function isValidOptionalSupplierCostUrl(value: string) {
   const normalizedValue = value.trim();
   if (!normalizedValue) {
@@ -72,6 +99,19 @@ export default function AdditionalServicesPricingPage() {
     useState<AdditionalServicesCommercialConditions>(() =>
       getAdditionalServicesCommercialConditions(),
     );
+  const [paymentTermOption, setPaymentTermOption] =
+    useState<PaymentTermOption>(() =>
+      initialPaymentTermOption(getAdditionalServicesCommercialConditions()),
+    );
+  const initialCommercialConditions =
+    getAdditionalServicesCommercialConditions();
+  const [customPaymentTermAmount, setCustomPaymentTermAmount] = useState(
+    initialCommercialConditions.paymentTermValue?.toString() ?? '',
+  );
+  const [customPaymentTermUnit, setCustomPaymentTermUnit] =
+    useState<CustomPaymentTermUnit>(
+      initialCommercialConditions.paymentTermUnit ?? 'DAYS',
+    );
 
   function changeQuotationCurrency(currency: TemporaryLineCurrency) {
     setQuotationCurrency(currency);
@@ -83,6 +123,39 @@ export default function AdditionalServicesPricingPage() {
     setQuoteCustomerId(customerId);
     setAdditionalServicesQuoteCustomerId(customerId || null);
     setCalculationError(null);
+  }
+
+  function changePaymentCondition(
+    paymentConditionType:
+      AdditionalServicesCommercialConditions['paymentConditionType'],
+  ) {
+    if (paymentConditionType === 'CASH') {
+      setPaymentTermOption('');
+      setCustomPaymentTermAmount('');
+      changeCommercialConditions({
+        paymentConditionType,
+        paymentTermValue: null,
+        paymentTermUnit: null,
+      });
+      return;
+    }
+
+    if (paymentConditionType !== 'CREDIT') {
+      setPaymentTermOption('');
+      setCustomPaymentTermAmount('');
+      changeCommercialConditions({
+        paymentConditionType,
+        paymentTermValue: null,
+        paymentTermUnit: null,
+      });
+      return;
+    }
+
+    changeCommercialConditions({
+      paymentConditionType,
+      paymentTermValue: null,
+      paymentTermUnit: null,
+    });
   }
 
   function changeCommercialConditions(
@@ -117,6 +190,13 @@ export default function AdditionalServicesPricingPage() {
     try {
       if (!quoteCustomerId) {
         throw new Error('Seleccione el cliente de la cotización.');
+      }
+      if (
+        commercialConditions.paymentConditionType === 'CREDIT' &&
+        (commercialConditions.paymentTermValue === null ||
+          commercialConditions.paymentTermUnit === null)
+      ) {
+        throw new Error('Seleccione el plazo de pago del crédito.');
       }
 
       const results = await Promise.all(
@@ -329,11 +409,10 @@ export default function AdditionalServicesPricingPage() {
                   value={commercialConditions.paymentConditionType ?? ''}
                   disabled={calculating}
                   onChange={(event) =>
-                    changeCommercialConditions({
-                      paymentConditionType:
-                        (event.target.value || null) as
-                          AdditionalServicesCommercialConditions['paymentConditionType'],
-                    })
+                    changePaymentCondition(
+                      (event.target.value || null) as
+                        AdditionalServicesCommercialConditions['paymentConditionType'],
+                    )
                   }
                   style={{
                     minHeight: '44px',
@@ -347,7 +426,6 @@ export default function AdditionalServicesPricingPage() {
                   <option value="">Seleccione una condición</option>
                   <option value="CASH">Contado</option>
                   <option value="CREDIT">Crédito</option>
-                  <option value="DEPOSIT">Depósito</option>
                 </select>
               </label>
 
@@ -358,17 +436,34 @@ export default function AdditionalServicesPricingPage() {
                 <span style={{ fontSize: '13px', fontWeight: 700 }}>
                   Plazo de pago
                 </span>
-                <input
+                <select
                   id="paymentTerm"
-                  type="text"
-                  value={commercialConditions.paymentTerm}
-                  disabled={calculating}
-                  placeholder="Inmediato, 15 días, 30 días..."
-                  onChange={(event) =>
-                    changeCommercialConditions({
-                      paymentTerm: event.target.value,
-                    })
+                  value={paymentTermOption}
+                  disabled={
+                    calculating ||
+                    commercialConditions.paymentConditionType !== 'CREDIT'
                   }
+                  onChange={(event) => {
+                    const option = event.target.value as PaymentTermOption;
+                    setPaymentTermOption(option);
+                    if (option === 'OTHER') {
+                      setCustomPaymentTermAmount('');
+                      setCustomPaymentTermUnit('DAYS');
+                      changeCommercialConditions({
+                        paymentTermValue: null,
+                        paymentTermUnit: null,
+                      });
+                      return;
+                    }
+
+                    const predefinedTerm = PAYMENT_TERM_OPTIONS.find(
+                      (term) => term.key === option,
+                    );
+                    changeCommercialConditions({
+                      paymentTermValue: predefinedTerm?.value ?? null,
+                      paymentTermUnit: predefinedTerm?.unit ?? null,
+                    });
+                  }}
                   style={{
                     minHeight: '44px',
                     padding: '10px 12px',
@@ -377,8 +472,108 @@ export default function AdditionalServicesPricingPage() {
                     background: '#fff',
                     color: '#172554',
                   }}
-                />
+                >
+                  <option value="">
+                    {commercialConditions.paymentConditionType === 'CREDIT'
+                      ? 'Seleccione un plazo'
+                      : 'No aplica'}
+                  </option>
+                  {PAYMENT_TERM_OPTIONS.map((option) => (
+                    <option key={option.key} value={option.key}>
+                      {option.label}
+                    </option>
+                  ))}
+                  <option value="OTHER">Otro</option>
+                </select>
               </label>
+
+              {paymentTermOption === 'OTHER' && (
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'minmax(120px, 1fr) minmax(130px, 1fr)',
+                    gap: '10px',
+                    color: '#172554',
+                  }}
+                >
+                  <label
+                    htmlFor="customPaymentTermAmount"
+                    style={{ display: 'grid', gap: '7px' }}
+                  >
+                    <span style={{ fontSize: '13px', fontWeight: 700 }}>
+                      Cantidad
+                    </span>
+                    <input
+                      id="customPaymentTermAmount"
+                      type="number"
+                      min="1"
+                      step="1"
+                      inputMode="numeric"
+                      required
+                      value={customPaymentTermAmount}
+                      disabled={calculating}
+                      placeholder="Ej.: 50"
+                      onChange={(event) => {
+                        const amount = event.target.value;
+                        if (amount && !/^[1-9]\d*$/.test(amount)) {
+                          return;
+                        }
+                        setCustomPaymentTermAmount(amount);
+                        changeCommercialConditions({
+                          paymentTermValue: amount ? Number(amount) : null,
+                          paymentTermUnit: amount
+                            ? customPaymentTermUnit
+                            : null,
+                        });
+                      }}
+                      style={{
+                        minHeight: '44px',
+                        padding: '10px 12px',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: '10px',
+                        background: '#fff',
+                        color: '#172554',
+                      }}
+                    />
+                  </label>
+                  <label
+                    htmlFor="customPaymentTermUnit"
+                    style={{ display: 'grid', gap: '7px' }}
+                  >
+                    <span style={{ fontSize: '13px', fontWeight: 700 }}>
+                      Unidad
+                    </span>
+                    <select
+                      id="customPaymentTermUnit"
+                      value={customPaymentTermUnit}
+                      disabled={calculating}
+                      onChange={(event) => {
+                        const unit = event.target.value as CustomPaymentTermUnit;
+                        setCustomPaymentTermUnit(unit);
+                        changeCommercialConditions({
+                          paymentTermValue: customPaymentTermAmount
+                            ? Number(customPaymentTermAmount)
+                            : null,
+                          paymentTermUnit: customPaymentTermAmount
+                            ? unit
+                            : null,
+                        });
+                      }}
+                      style={{
+                        minHeight: '44px',
+                        padding: '10px 12px',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: '10px',
+                        background: '#fff',
+                        color: '#172554',
+                      }}
+                    >
+                      <option value="DAYS">Días</option>
+                      <option value="MONTHS">Meses</option>
+                    </select>
+                  </label>
+                </div>
+              )}
 
               <label
                 htmlFor="quotationValidUntil"

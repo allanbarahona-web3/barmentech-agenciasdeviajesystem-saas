@@ -85,7 +85,8 @@ export interface CreateAdditionalServiceOrderInput {
   quoteCustomerId: string;
   quotationCurrency: TemporaryLineCurrency;
   paymentConditionType?: AdditionalServicePaymentConditionType;
-  paymentTerm?: string;
+  paymentTermValue?: number;
+  paymentTermUnit?: AdditionalServicePaymentTermUnit;
   quotationValidUntil?: string;
   commercialObservations?: string;
   lines: CreateAdditionalServiceOrderLineInput[];
@@ -104,8 +105,8 @@ export type AdditionalServiceOrderParticipantRole =
 export type AdditionalServiceOrderCurrency = 'USD' | 'CRC';
 export type AdditionalServicePaymentConditionType =
   | 'CASH'
-  | 'CREDIT'
-  | 'DEPOSIT';
+  | 'CREDIT';
+export type AdditionalServicePaymentTermUnit = 'DAYS' | 'MONTHS';
 export type AdditionalServiceOrderStatus =
   | 'DRAFT'
   | 'REQUESTED'
@@ -199,7 +200,8 @@ export interface AdditionalServiceOrder {
   totalVat: string;
   totalSellingPrice: string;
   paymentConditionType: AdditionalServicePaymentConditionType | null;
-  paymentTerm: string | null;
+  paymentTermValue: number | null;
+  paymentTermUnit: AdditionalServicePaymentTermUnit | null;
   quotationValidUntil: string | null;
   commercialObservations: string | null;
   travel: AdditionalServiceOrderTravel | null;

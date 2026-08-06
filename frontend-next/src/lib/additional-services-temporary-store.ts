@@ -191,12 +191,13 @@ export type TemporaryLineCurrency = 'USD' | 'CRC';
 
 export type AdditionalServicePaymentConditionType =
   | 'CASH'
-  | 'CREDIT'
-  | 'DEPOSIT';
+  | 'CREDIT';
+export type AdditionalServicePaymentTermUnit = 'DAYS' | 'MONTHS';
 
 export interface AdditionalServicesCommercialConditions {
   paymentConditionType: AdditionalServicePaymentConditionType | null;
-  paymentTerm: string;
+  paymentTermValue: number | null;
+  paymentTermUnit: AdditionalServicePaymentTermUnit | null;
   quotationValidUntil: string;
   commercialObservations: string;
 }
@@ -215,7 +216,8 @@ let quotationCurrency: TemporaryLineCurrency = 'USD';
 let quoteCustomerId: string | null = null;
 let commercialConditions: AdditionalServicesCommercialConditions = {
   paymentConditionType: null,
-  paymentTerm: '',
+  paymentTermValue: null,
+  paymentTermUnit: null,
   quotationValidUntil: '',
   commercialObservations: '',
 };
@@ -332,7 +334,8 @@ export function setAdditionalServicesCommercialConditions(
   if (
     commercialConditions.paymentConditionType ===
       conditions.paymentConditionType &&
-    commercialConditions.paymentTerm === conditions.paymentTerm &&
+    commercialConditions.paymentTermValue === conditions.paymentTermValue &&
+    commercialConditions.paymentTermUnit === conditions.paymentTermUnit &&
     commercialConditions.quotationValidUntil ===
       conditions.quotationValidUntil &&
     commercialConditions.commercialObservations ===
@@ -504,7 +507,8 @@ export function resetAdditionalServicesWorkflow() {
   quoteCustomerId = null;
   commercialConditions = {
     paymentConditionType: null,
-    paymentTerm: '',
+    paymentTermValue: null,
+    paymentTermUnit: null,
     quotationValidUntil: '',
     commercialObservations: '',
   };

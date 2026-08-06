@@ -20,6 +20,7 @@ import {
   type AdditionalServiceOrder,
   type AdditionalServiceOrderCurrency,
   type AdditionalServicePaymentConditionType,
+  type AdditionalServicePaymentTermUnit,
   type AdditionalServiceOrderParticipant,
   type AdditionalServiceOrderParticipantRole,
 } from '@/lib/additional-services-orders-api';
@@ -62,9 +63,23 @@ function paymentConditionLabel(
   const labels: Record<AdditionalServicePaymentConditionType, string> = {
     CASH: 'Contado',
     CREDIT: 'Crédito',
-    DEPOSIT: 'Depósito',
   };
   return labels[condition];
+}
+
+function paymentTermLabel(
+  value: number | null,
+  unit: AdditionalServicePaymentTermUnit | null,
+) {
+  if (value === null || unit === null) {
+    return 'No especificado';
+  }
+
+  if (unit === 'MONTHS') {
+    return `${value} ${value === 1 ? 'mes' : 'meses'}`;
+  }
+
+  return `${value} ${value === 1 ? 'día' : 'días'}`;
 }
 
 function roleLabel(role: AdditionalServiceOrderParticipantRole) {
@@ -269,7 +284,12 @@ export default function AdditionalServiceOrderPreviewPage() {
             </div>
             <div>
               <dt>Plazo de pago</dt>
-              <dd>{order.paymentTerm ?? 'No especificado'}</dd>
+              <dd>
+                {paymentTermLabel(
+                  order.paymentTermValue,
+                  order.paymentTermUnit,
+                )}
+              </dd>
             </div>
             <div>
               <dt>Cotización válida hasta</dt>

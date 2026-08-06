@@ -267,8 +267,10 @@ export default function AdditionalServicesPricingReviewPage() {
         quotationCurrency,
         paymentConditionType:
           commercialConditions.paymentConditionType ?? undefined,
-        paymentTerm:
-          commercialConditions.paymentTerm.trim() || undefined,
+        paymentTermValue:
+          commercialConditions.paymentTermValue ?? undefined,
+        paymentTermUnit:
+          commercialConditions.paymentTermUnit ?? undefined,
         quotationValidUntil: commercialConditions.quotationValidUntil
           ? `${commercialConditions.quotationValidUntil}T23:59:59.999-06:00`
           : undefined,

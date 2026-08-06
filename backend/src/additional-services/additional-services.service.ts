@@ -31,6 +31,7 @@ import {
   UpdateSupplierData,
 } from "./repositories";
 import { normalizeAdditionalServiceDetails } from "./service-details";
+import { PaymentConditionType } from "./enums";
 
 export interface AdditionalServiceOrderActor {
   id: string;
@@ -857,7 +858,14 @@ export class AdditionalServicesService {
         (line) => line.finalSellingPrice,
       ),
       paymentConditionType: dto.paymentConditionType ?? null,
-      paymentTerm: this.toNullableText(dto.paymentTerm),
+      paymentTermValue:
+        dto.paymentConditionType === PaymentConditionType.CREDIT
+          ? (dto.paymentTermValue ?? null)
+          : null,
+      paymentTermUnit:
+        dto.paymentConditionType === PaymentConditionType.CREDIT
+          ? (dto.paymentTermUnit ?? null)
+          : null,
       quotationValidUntil: dto.quotationValidUntil
         ? new Date(dto.quotationValidUntil)
         : null,

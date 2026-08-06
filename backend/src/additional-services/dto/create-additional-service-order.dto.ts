@@ -14,12 +14,14 @@ import {
   IsUrl,
   MaxLength,
   Min,
+  ValidateIf,
   ValidateNested,
 } from "class-validator";
 import {
   AdditionalServiceCurrency,
   AdditionalServiceTravelType,
   PaymentConditionType,
+  PaymentTermUnit,
 } from "../enums";
 
 export class CreateAdditionalServiceOrderLineDto {
@@ -83,9 +85,23 @@ export class CreateAdditionalServiceOrderDto {
   @IsEnum(PaymentConditionType)
   paymentConditionType?: PaymentConditionType;
 
-  @IsOptional()
-  @IsString()
-  paymentTerm?: string;
+  @ValidateIf(
+    (dto: CreateAdditionalServiceOrderDto) =>
+      dto.paymentConditionType === PaymentConditionType.CREDIT ||
+      dto.paymentTermValue !== undefined,
+  )
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  paymentTermValue?: number;
+
+  @ValidateIf(
+    (dto: CreateAdditionalServiceOrderDto) =>
+      dto.paymentConditionType === PaymentConditionType.CREDIT ||
+      dto.paymentTermUnit !== undefined,
+  )
+  @IsEnum(PaymentTermUnit)
+  paymentTermUnit?: PaymentTermUnit;
 
   @IsOptional()
   @IsDateString()

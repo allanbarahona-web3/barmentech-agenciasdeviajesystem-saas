@@ -918,7 +918,8 @@ export class PrismaAdditionalServicesRepository
         totalVat: new Decimal(String(data.totalVat)),
         totalSellingPrice: new Decimal(String(data.totalSellingPrice)),
         paymentConditionType: data.paymentConditionType,
-        paymentTerm: data.paymentTerm,
+        paymentTermValue: data.paymentTermValue,
+        paymentTermUnit: data.paymentTermUnit,
         quotationValidUntil: data.quotationValidUntil,
         commercialObservations: data.commercialObservations,
         createdByUserId: data.createdByUserId,
@@ -1381,7 +1382,13 @@ export class PrismaAdditionalServicesRepository
       paymentConditionType:
         (order.paymentConditionType as AdditionalServiceOrderRecord["paymentConditionType"]) ??
         null,
-      paymentTerm: this.nullableString(order.paymentTerm),
+      paymentTermValue:
+        typeof order.paymentTermValue === "number"
+          ? order.paymentTermValue
+          : null,
+      paymentTermUnit:
+        (order.paymentTermUnit as AdditionalServiceOrderRecord["paymentTermUnit"]) ??
+        null,
       quotationValidUntil:
         order.quotationValidUntil instanceof Date
           ? order.quotationValidUntil
