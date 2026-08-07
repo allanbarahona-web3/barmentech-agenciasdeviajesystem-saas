@@ -7,12 +7,14 @@ import {
 import type { AdditionalServiceOrderRecord } from "./repositories";
 import { commercialProposalTemplate } from "./templates";
 import { TenantService } from "../tenant/tenant.service";
+import { DocumentPdfService } from "../documents/document-pdf.service";
 
 @Injectable()
 export class CommercialProposalPdfService {
   constructor(
     private readonly mapper: CommercialProposalPdfMapper,
     private readonly tenantService: TenantService,
+    private readonly documentPdfService: DocumentPdfService,
   ) {}
 
   async prepareDocument(
@@ -33,5 +35,17 @@ export class CommercialProposalPdfService {
 
   renderHtml(document: CommercialProposalPdfDto): string {
     return commercialProposalTemplate(document);
+  }
+
+  async renderPdf(
+    order: AdditionalServiceOrderRecord,
+    tenantId: string,
+  ): Promise<Buffer> {
+    const document = await this.prepareDocument(order, tenantId);
+    const html = this.renderHtml(document);
+    const { pdfBuffer } = await this.documentPdfService.renderDocumentToBuffer(
+      html,
+    );
+    return pdfBuffer;
   }
 }

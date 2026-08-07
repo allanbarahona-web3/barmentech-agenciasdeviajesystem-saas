@@ -87,8 +87,32 @@ model Tenant {
   additionalServiceCatalogItems      AdditionalServiceCatalog[]
   additionalServicePricingConfigs    AdditionalServicePricingConfiguration[]
   suppliers                          Supplier[]
+  generatedDocuments                 GeneratedDocument[]
 
   @@map("tenants")
+}
+
+model GeneratedDocument {
+  id           String   @id @default(cuid())
+  tenantId     String
+  ownerType    String
+  ownerId      String
+  documentType String
+  variant      String
+  version      Int      @default(1)
+  objectKey    String   @unique
+  fileName     String
+  mimeType     String
+  size         Int
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, ownerType, ownerId, documentType, variant, version])
+  @@index([tenantId, ownerType, ownerId])
+  @@index([tenantId, documentType])
+  @@index([tenantId, createdAt])
+  @@map("generated_documents")
 }
 
 model User {

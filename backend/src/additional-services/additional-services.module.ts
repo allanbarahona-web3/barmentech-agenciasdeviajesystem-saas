@@ -12,11 +12,13 @@ import { AdditionalServicesPricingService } from "./additional-services-pricing.
 import { AdditionalServiceOrdersController } from "./additional-service-orders.controller";
 import { CommercialProposalPdfMapper } from "./commercial-proposal-pdf.mapper";
 import { CommercialProposalPdfService } from "./commercial-proposal-pdf.service";
+import { DocumentsModule } from "../documents/documents.module";
 
 @Module({
   imports: [
     AdditionalServicesPersistenceModule,
     AdditionalServicesPricingEngineModule,
+    DocumentsModule,
   ],
   controllers: [
     AdditionalServiceCatalogController,
