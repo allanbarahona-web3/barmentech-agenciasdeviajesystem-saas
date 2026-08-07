@@ -18,7 +18,8 @@ export interface CompanyInfo {
 export interface DocumentMetadata {
   documentNumber: string;
   issuedAt: string;
-  agentName?: string | null;
+  documentNumberLabel: string;
+  additionalItems?: Array<{ label: string; value: string }>;
 }
 
 /**
@@ -45,13 +46,17 @@ export const documentHeader = (
   const companyMeta = metaParts.length > 0 ? metaParts.join(" &nbsp;|&nbsp; ") + "<br />" : "";
 
   const docMetaParts: string[] = [
-    `Contrato N.° <strong>${escapeHtml(metadata.documentNumber)}</strong>`,
+    `${escapeHtml(metadata.documentNumberLabel)} <strong>${escapeHtml(metadata.documentNumber)}</strong>`,
     `Emitido: <strong>${escapeHtml(metadata.issuedAt)}</strong>`,
   ];
 
-  if (metadata.agentName) {
-    docMetaParts.push(`Agente: <strong>${escapeHtml(metadata.agentName)}</strong>`);
-  }
+  metadata.additionalItems?.forEach((item) => {
+    if (item.value) {
+      docMetaParts.push(
+        `${escapeHtml(item.label)}: <strong>${escapeHtml(item.value)}</strong>`,
+      );
+    }
+  });
 
   const docMeta = docMetaParts.join(" &nbsp;|&nbsp; ");
 
@@ -74,7 +79,7 @@ export const documentHeader = (
  * Generate document title section
  */
 export const documentTitle = (title: string): string =>
-  `<h2 class="contract-title">${escapeHtml(title)}</h2>`;
+  `<h2 class="doc-title">${escapeHtml(title)}</h2>`;
 
 /**
  * Generate document metadata table
@@ -88,7 +93,7 @@ export const documentMetadataTable = (metadata: Record<string, string>): string 
     .join("\n  ");
 
   return `
-<table class="contract-meta">
+<table class="doc-metadata">
   ${rows}
 </table>`;
 };

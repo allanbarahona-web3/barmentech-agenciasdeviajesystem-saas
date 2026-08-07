@@ -85,7 +85,7 @@ html, body {
   text-align: center;
 }
 
-.contract-title {
+.doc-title {
   font-size: 11pt;
   font-weight: 700;
   text-align: center;
@@ -94,19 +94,19 @@ html, body {
   margin: 12pt 0 8pt;
 }
 
-.contract-meta {
+.doc-metadata {
   width: 100%;
   border-collapse: collapse;
   font-size: 9.5pt;
   margin-bottom: 10pt;
 }
 
-.contract-meta td {
+.doc-metadata td {
   padding: 2pt 6pt;
   vertical-align: top;
 }
 
-.contract-meta td:first-child {
+.doc-metadata td:first-child {
   font-weight: 700;
   white-space: nowrap;
   width: 44mm;
@@ -292,6 +292,21 @@ html, body {
 .annex-sig-line {
   font-size: 10pt;
   margin-bottom: 3pt !important;
+}
+
+.doc-footer {
+  margin-top: 18pt;
+  padding-top: 8pt;
+  border-top: 0.75pt solid #555;
+  color: #333;
+  font-size: 8.5pt;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.doc-footer strong,
+.doc-footer span {
+  display: block;
 }
 
 @media print {

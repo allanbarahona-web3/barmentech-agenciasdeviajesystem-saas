@@ -153,8 +153,14 @@ export class DocumentGenerationService {
       companyInfo,
       {
         documentNumber: contractData.contractNumber,
+        documentNumberLabel: "Contrato N.°",
         issuedAt: this.formatDateDisplay(payload.issuedAt || new Date().toISOString().slice(0, 10)),
-        agentName: String(payload.generatedByAgentName || ""),
+        additionalItems: [
+          {
+            label: "Agente",
+            value: String(payload.generatedByAgentName || ""),
+          },
+        ],
       },
     );
 
@@ -250,8 +256,14 @@ export class DocumentGenerationService {
       companyInfo,
       {
         documentNumber: contractData.contractNumber,
+        documentNumberLabel: "Contrato N.°",
         issuedAt: this.formatDateDisplay(payload.issuedAt || new Date().toISOString().slice(0, 10)),
-        agentName: String(payload.generatedByAgentName || ""),
+        additionalItems: [
+          {
+            label: "Agente",
+            value: String(payload.generatedByAgentName || ""),
+          },
+        ],
       },
     );
 

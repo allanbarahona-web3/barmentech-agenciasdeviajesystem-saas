@@ -10,6 +10,8 @@ import { AdditionalServicesPricingEngineModule } from "./infrastructure/addition
 import { AdditionalServicesPricingController } from "./additional-services-pricing.controller";
 import { AdditionalServicesPricingService } from "./additional-services-pricing.service";
 import { AdditionalServiceOrdersController } from "./additional-service-orders.controller";
+import { CommercialProposalPdfMapper } from "./commercial-proposal-pdf.mapper";
+import { CommercialProposalPdfService } from "./commercial-proposal-pdf.service";
 
 @Module({
   imports: [
@@ -28,12 +30,15 @@ import { AdditionalServiceOrdersController } from "./additional-service-orders.c
     AdditionalServicesPricingService,
     CatalogBootstrapService,
     SupplierRequestNotificationService,
+    CommercialProposalPdfMapper,
+    CommercialProposalPdfService,
   ],
   exports: [
     AdditionalServicesPersistenceModule,
     AdditionalServicesPricingEngineModule,
     AdditionalServicesService,
     CatalogBootstrapService,
+    CommercialProposalPdfService,
   ],
 })
 export class AdditionalServicesModule {}

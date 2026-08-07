@@ -35,6 +35,9 @@ export {
 
 export type { CompanyInfo, DocumentMetadata } from "./document-header";
 
+// Footer components
+export { documentFooter } from "./document-footer";
+
 // Signature components
 export {
   signaturePage,
