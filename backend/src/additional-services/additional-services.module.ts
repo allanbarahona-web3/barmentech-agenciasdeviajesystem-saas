@@ -17,6 +17,8 @@ import { GeneratedDocumentsModule } from "../generated-documents";
 import { StorageModule } from "../storage/storage.module";
 import { EmailModule } from "../email/email.module";
 import { CommercialProposalEmailService } from "./commercial-proposal-email.service";
+import { CommercialProposalApprovalService } from "./commercial-proposal-approval.service";
+import { CommercialProposalPublicController } from "./commercial-proposal-public.controller";
 
 @Module({
   imports: [
@@ -33,6 +35,7 @@ import { CommercialProposalEmailService } from "./commercial-proposal-email.serv
     AdditionalServicesPricingController,
     AdditionalServiceOrdersController,
     AdditionalServiceSuppliersController,
+    CommercialProposalPublicController,
   ],
   providers: [
     AdditionalServicesService,
@@ -42,6 +45,7 @@ import { CommercialProposalEmailService } from "./commercial-proposal-email.serv
     CommercialProposalPdfMapper,
     CommercialProposalPdfService,
     CommercialProposalEmailService,
+    CommercialProposalApprovalService,
   ],
   exports: [
     AdditionalServicesPersistenceModule,

@@ -93,26 +93,45 @@ model Tenant {
 }
 
 model GeneratedDocument {
-  id           String   @id @default(cuid())
+  id           String                         @id @default(cuid())
   tenantId     String
   ownerType    String
   ownerId      String
   documentType String
   variant      String
-  version      Int      @default(1)
-  objectKey    String   @unique
+  version      Int                            @default(1)
+  objectKey    String                         @unique
   fileName     String
   mimeType     String
   size         Int
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt    DateTime                       @default(now())
+  updatedAt    DateTime                       @updatedAt
+  tenant       Tenant                         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  accessTokens GeneratedDocumentAccessToken[]
 
   @@unique([tenantId, ownerType, ownerId, documentType, variant, version])
   @@index([tenantId, ownerType, ownerId])
   @@index([tenantId, documentType])
   @@index([tenantId, createdAt])
   @@map("generated_documents")
+}
+
+model GeneratedDocumentAccessToken {
+  id                  String            @id @default(cuid())
+  generatedDocumentId String
+  purpose             String
+  tokenHash           String            @unique
+  isActive            Boolean           @default(true)
+  expiresAt           DateTime?
+  usedAt              DateTime?
+  revokedAt           DateTime?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  generatedDocument   GeneratedDocument @relation(fields: [generatedDocumentId], references: [id], onDelete: Cascade)
+
+  @@index([generatedDocumentId, purpose, isActive])
+  @@index([expiresAt])
+  @@map("generated_document_access_tokens")
 }
 
 model User {
@@ -1321,36 +1340,40 @@ model AdditionalServicePricingConfiguration {
 }
 
 model AdditionalServiceOrder {
-  id                     String                       @id @default(cuid())
-  tenantId               String
-  orderNumber            String
-  idempotencyKey         String
-  quoteCustomerId        String?
-  travelPackageId        String?
-  internalBookingId      String?
-  travelType             AdditionalServiceTravelType
-  quotationCurrency      AdditionalServiceCurrency
-  commercialSubtotal     Decimal                      @db.Decimal(18, 4)
-  totalVat               Decimal                      @db.Decimal(18, 4)
-  totalSellingPrice      Decimal                      @db.Decimal(18, 4)
-  paymentConditionType   PaymentConditionType?
-  paymentTermValue       Int?
-  paymentTermUnit        PaymentTermUnit?
-  quotationValidUntil    DateTime?
-  commercialObservations String?
-  status                 AdditionalServiceOrderStatus @default(DRAFT)
-  commercialStatus       CommercialProposalStatus?    @default(DRAFT)
-  proposalSentAt         DateTime?
-  proposalSentToEmail    String?
-  createdByUserId        String
-  createdByName          String
-  createdAt              DateTime                     @default(now())
-  updatedAt              DateTime                     @updatedAt
-  tenant                 Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  quoteCustomer          Client?                      @relation("AdditionalServiceQuoteCustomer", fields: [quoteCustomerId], references: [id], onDelete: SetNull)
-  travelPackage          TravelPackage?               @relation(fields: [travelPackageId], references: [id], onDelete: SetNull)
-  internalBooking        InternalTourBooking?         @relation(fields: [internalBookingId], references: [id], onDelete: SetNull)
-  lines                  AdditionalServiceOrderLine[]
+  id                        String                       @id @default(cuid())
+  tenantId                  String
+  orderNumber               String
+  idempotencyKey            String
+  quoteCustomerId           String?
+  travelPackageId           String?
+  internalBookingId         String?
+  travelType                AdditionalServiceTravelType
+  quotationCurrency         AdditionalServiceCurrency
+  commercialSubtotal        Decimal                      @db.Decimal(18, 4)
+  totalVat                  Decimal                      @db.Decimal(18, 4)
+  totalSellingPrice         Decimal                      @db.Decimal(18, 4)
+  paymentConditionType      PaymentConditionType?
+  paymentTermValue          Int?
+  paymentTermUnit           PaymentTermUnit?
+  quotationValidUntil       DateTime?
+  commercialObservations    String?
+  status                    AdditionalServiceOrderStatus @default(DRAFT)
+  commercialStatus          CommercialProposalStatus?    @default(DRAFT)
+  proposalSentAt            DateTime?
+  proposalSentToEmail       String?
+  proposalApprovedAt        DateTime?
+  proposalApprovalMethod    String?
+  proposalApprovedIp        String?
+  proposalApprovedUserAgent String?
+  createdByUserId           String
+  createdByName             String
+  createdAt                 DateTime                     @default(now())
+  updatedAt                 DateTime                     @updatedAt
+  tenant                    Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  quoteCustomer             Client?                      @relation("AdditionalServiceQuoteCustomer", fields: [quoteCustomerId], references: [id], onDelete: SetNull)
+  travelPackage             TravelPackage?               @relation(fields: [travelPackageId], references: [id], onDelete: SetNull)
+  internalBooking           InternalTourBooking?         @relation(fields: [internalBookingId], references: [id], onDelete: SetNull)
+  lines                     AdditionalServiceOrderLine[]
 
   @@unique([tenantId, orderNumber])
   @@unique([tenantId, idempotencyKey])

@@ -37,6 +37,7 @@ export function VerticalNav() {
   const pathname = usePathname();
   const isPublicPage =
   pathname.startsWith("/sign-contract") ||
+  pathname.startsWith("/commercial-proposals") ||
   pathname.startsWith("/reset-password");
   const [showCalculator, setShowCalculator] = useState(false);
   const [showSupportModal, setShowSupportModal] = useState(false);

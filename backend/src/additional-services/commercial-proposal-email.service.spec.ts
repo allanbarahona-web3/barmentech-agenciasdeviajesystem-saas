@@ -1,8 +1,11 @@
 import { EmailService } from "../email/email.service";
 import {
+  GeneratedDocumentAccessService,
   GeneratedDocumentRecord,
   GeneratedDocumentsService,
 } from "../generated-documents";
+import { TenantService } from "../tenant/tenant.service";
+import { ConfigService } from "@nestjs/config";
 import { CommercialProposalEmailService } from "./commercial-proposal-email.service";
 import {
   AdditionalServiceOrderStatus,
@@ -125,11 +128,31 @@ function setup() {
   const email = {
     sendEmail: jest.fn(),
   } as unknown as jest.Mocked<EmailService>;
+  const access = {
+    issue: jest.fn().mockResolvedValue("approval-token"),
+    revoke: jest.fn(),
+  } as unknown as jest.Mocked<GeneratedDocumentAccessService>;
+  const tenantService = {
+    getTenantConfig: jest.fn().mockResolvedValue({ subdomain: "acme" }),
+  } as unknown as jest.Mocked<TenantService>;
+  const configService = {
+    get: jest.fn((key: string) =>
+      key === "PUBLIC_APP_BASE_URL" ? "https://app.example.com" : "",
+    ),
+  } as unknown as jest.Mocked<ConfigService>;
   return {
     repository,
     documents,
     email,
-    service: new CommercialProposalEmailService(repository, documents, email),
+    access,
+    service: new CommercialProposalEmailService(
+      repository,
+      documents,
+      email,
+      access,
+      tenantService,
+      configService,
+    ),
   };
 }
 

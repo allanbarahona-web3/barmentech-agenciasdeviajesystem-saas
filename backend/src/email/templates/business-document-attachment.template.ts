@@ -5,6 +5,8 @@ export interface BusinessDocumentAttachmentData {
   documentLabel: string;
   documentNumber: string;
   message: string;
+  actionUrl?: string;
+  actionLabel?: string;
   tenantName: string;
   tenantLogo?: string;
   contactEmail?: string;
@@ -49,6 +51,14 @@ export function businessDocumentAttachmentTemplate(
         El documento PDF se encuentra adjunto a este correo.
       </div>
     `,
+    ...(data.actionUrl
+      ? {
+          cta: {
+            text: escapeHtml(data.actionLabel || "Ver documento"),
+            url: data.actionUrl,
+          },
+        }
+      : {}),
     footer: {
       contactEmail: data.contactEmail,
       contactWhatsApp: data.contactWhatsApp,

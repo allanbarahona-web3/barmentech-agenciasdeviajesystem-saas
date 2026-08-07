@@ -5,6 +5,7 @@ import {
   GENERATED_DOCUMENTS_REPOSITORY,
 } from "./generated-documents.repository.interface";
 import { PrismaGeneratedDocumentsRepository } from "./prisma-generated-documents.repository";
+import { GeneratedDocumentAccessService } from "./generated-document-access.service";
 
 @Module({
   imports: [StorageModule],
@@ -15,7 +16,12 @@ import { PrismaGeneratedDocumentsRepository } from "./prisma-generated-documents
       useExisting: PrismaGeneratedDocumentsRepository,
     },
     GeneratedDocumentsService,
+    GeneratedDocumentAccessService,
   ],
-  exports: [GeneratedDocumentsService, GENERATED_DOCUMENTS_REPOSITORY],
+  exports: [
+    GeneratedDocumentsService,
+    GeneratedDocumentAccessService,
+    GENERATED_DOCUMENTS_REPOSITORY,
+  ],
 })
 export class GeneratedDocumentsModule {}
