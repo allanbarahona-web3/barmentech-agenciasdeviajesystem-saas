@@ -8,6 +8,7 @@ import {
   CalendarDays,
   CircleCheck,
   FileText,
+  ExternalLink,
   MapPin,
   ReceiptText,
   Users,
@@ -17,12 +18,14 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   getAdditionalServiceOrder,
+  getCommercialProposalPreview,
   type AdditionalServiceOrder,
   type AdditionalServiceOrderCurrency,
   type AdditionalServicePaymentConditionType,
   type AdditionalServicePaymentTermUnit,
   type AdditionalServiceOrderParticipant,
   type AdditionalServiceOrderParticipantRole,
+  type CommercialProposalPreview,
 } from '@/lib/additional-services-orders-api';
 import { formatCommercialService } from '@/shared/additional-services';
 import styles from './quotation-preview.module.css';
@@ -110,6 +113,10 @@ export default function AdditionalServiceOrderPreviewPage() {
   const [order, setOrder] = useState<AdditionalServiceOrder | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [proposal, setProposal] = useState<CommercialProposalPreview | null>(
+    null,
+  );
+  const [proposalError, setProposalError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -132,6 +139,26 @@ export default function AdditionalServiceOrderPreviewPage() {
       .finally(() => {
         if (!cancelled) {
           setLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [orderId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void getCommercialProposalPreview(orderId)
+      .then((persistedProposal) => {
+        if (!cancelled) {
+          setProposal(persistedProposal);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setProposalError("No se pudo consultar el PDF comercial.");
         }
       });
 
@@ -221,8 +248,17 @@ export default function AdditionalServiceOrderPreviewPage() {
               Revisión comercial basada en la orden persistida.
             </p>
           </div>
-          {!isCreationCompletion && (
-            <div className={styles.actions} aria-label="Acciones futuras">
+          <div className={styles.actions} aria-label="Acciones de la orden">
+            {proposal && (
+              <Button asChild type="button" variant="outline">
+                <a href={proposal.url} target="_blank" rel="noreferrer">
+                  <ExternalLink aria-hidden="true" />
+                  Ver PDF
+                </a>
+              </Button>
+            )}
+            {!isCreationCompletion && (
+              <>
               <Button type="button" variant="outline" disabled>
                 Editar
               </Button>
@@ -232,9 +268,16 @@ export default function AdditionalServiceOrderPreviewPage() {
               <Button type="button" disabled>
                 Enviar para aprobación
               </Button>
-            </div>
-          )}
+              </>
+            )}
+          </div>
         </header>
+
+        {proposalError && (
+          <p className={styles.proposalError} role="status">
+            {proposalError}
+          </p>
+        )}
 
         <section className={styles.headerCard} aria-labelledby="order-data">
           <h2 id="order-data">Información de la orden</h2>

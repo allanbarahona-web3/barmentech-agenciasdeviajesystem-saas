@@ -19,6 +19,7 @@ import {
 } from "./dto";
 import { AdditionalServicesService } from "./additional-services.service";
 import { PricingEngineBusinessErrorFilter } from "./infrastructure/pricing-engine-business-error.filter";
+import { CommercialProposalPdfService } from "./commercial-proposal-pdf.service";
 
 type OrderRequest = {
   user: {
@@ -35,6 +36,7 @@ type OrderRequest = {
 export class AdditionalServiceOrdersController {
   constructor(
     private readonly additionalServicesService: AdditionalServicesService,
+    private readonly commercialProposalPdfService: CommercialProposalPdfService,
   ) {}
 
   @Post()
@@ -65,6 +67,21 @@ export class AdditionalServiceOrdersController {
     return this.additionalServicesService.listOrderDashboard(
       req.user.tenantId,
       query,
+    );
+  }
+
+  @Get(":orderId/commercial-proposal")
+  async getCommercialProposal(
+    @Req() req: OrderRequest,
+    @Param("orderId") orderId: string,
+  ) {
+    const order = await this.additionalServicesService.getOrder(
+      req.user.tenantId,
+      orderId,
+    );
+    return this.commercialProposalPdfService.getPersistedPreview(
+      order,
+      req.user.tenantId,
     );
   }
 

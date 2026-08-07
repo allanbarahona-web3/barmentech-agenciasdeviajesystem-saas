@@ -23,7 +23,7 @@ describe("GeneratedDocumentsService", () => {
 
   it("normalizes open business identifiers and registers metadata only", async () => {
     const { service, repository } = setup();
-    repository.create.mockResolvedValue(record);
+    repository.upsert.mockResolvedValue(record);
 
     await expect(
       service.registerMetadata({
@@ -39,7 +39,7 @@ describe("GeneratedDocumentsService", () => {
       }),
     ).resolves.toBe(record);
 
-    expect(repository.create).toHaveBeenCalledWith({
+    expect(repository.upsert).toHaveBeenCalledWith({
       tenantId: "tenant-1",
       ownerType: "SALES_ORDER",
       ownerId: "owner-1",
@@ -70,7 +70,7 @@ describe("GeneratedDocumentsService", () => {
         size: -1,
       }),
     ).toThrow(BadRequestException);
-    expect(repository.create).not.toHaveBeenCalled();
+    expect(repository.upsert).not.toHaveBeenCalled();
   });
 
   it("retrieves content through StorageService after a tenant-scoped lookup", async () => {
@@ -103,7 +103,7 @@ describe("GeneratedDocumentsService", () => {
 
 function setup() {
   const repository = {
-    create: jest.fn(),
+    upsert: jest.fn(),
     findById: jest.fn(),
     findByOwner: jest.fn(),
     findLatest: jest.fn(),

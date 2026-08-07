@@ -46,7 +46,13 @@ export class GeneratedDocumentsService {
     if (!Number.isInteger(normalized.size) || normalized.size < 0) {
       throw new BadRequestException("size must be a non-negative integer.");
     }
-    return this.repository.create(normalized);
+    return this.repository.upsert(normalized);
+  }
+
+  register(
+    data: RegisterGeneratedDocumentData,
+  ): Promise<GeneratedDocumentRecord> {
+    return this.registerMetadata(data);
   }
 
   findByOwner(
@@ -105,6 +111,9 @@ export class GeneratedDocumentsService {
       ...(reference.variant
         ? { variant: this.identifier(reference.variant, "variant") }
         : {}),
+      ...(reference.version !== undefined
+        ? { version: this.positiveInteger(reference.version, "version") }
+        : {}),
     };
   }
 
@@ -124,5 +133,12 @@ export class GeneratedDocumentsService {
       );
     }
     return normalized;
+  }
+
+  private positiveInteger(value: number, field: string): number {
+    if (!Number.isInteger(value) || value < 1) {
+      throw new BadRequestException(`${field} must be a positive integer.`);
+    }
+    return value;
   }
 }

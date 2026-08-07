@@ -17,6 +17,7 @@ export const GENERATED_DOCUMENT_TYPES = {
 } as const;
 
 export const GENERATED_DOCUMENT_VARIANTS = {
+  GENERATED: "GENERATED",
   ORIGINAL: "ORIGINAL",
   SIGNED: "SIGNED",
   CORRECTED: "CORRECTED",
@@ -57,4 +58,5 @@ export interface GeneratedDocumentOwnerReference {
   ownerId: string;
   documentType?: string;
   variant?: string;
+  version?: number;
 }

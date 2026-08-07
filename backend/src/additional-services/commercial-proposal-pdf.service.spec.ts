@@ -4,6 +4,9 @@ import type { CommercialProposalPdfDto } from "./dto";
 import type { AdditionalServiceOrderRecord } from "./repositories";
 import { TenantService } from "../tenant/tenant.service";
 import { DocumentPdfService } from "../documents/document-pdf.service";
+import { ConfigService } from "@nestjs/config";
+import { GeneratedDocumentsService } from "../generated-documents";
+import { StorageService } from "../storage/storage.service";
 import {
   AdditionalServiceCurrency,
   PaymentConditionType,
@@ -35,6 +38,9 @@ describe("CommercialProposalPdfService", () => {
       mapper,
       tenantService,
       documentPdfService,
+      {} as StorageService,
+      {} as GeneratedDocumentsService,
+      {} as ConfigService,
     );
 
     await expect(service.prepareDocument(order, "tenant-auth-id")).resolves.toBe(
@@ -76,6 +82,9 @@ describe("CommercialProposalPdfService", () => {
       mapper,
       tenantService,
       documentPdfService,
+      {} as StorageService,
+      {} as GeneratedDocumentsService,
+      {} as ConfigService,
     );
 
     await expect(service.renderPdf(order, "tenant-auth-id")).resolves.toBe(
@@ -91,6 +100,170 @@ describe("CommercialProposalPdfService", () => {
     expect(html).toContain("Totales");
     expect(html).toContain("Condiciones comerciales");
     expect(html).toContain('class="doc-footer"');
+  });
+
+  it("uploads and registers one deterministic GENERATED proposal", async () => {
+    const order = {
+      id: "order-1",
+      tenantId: "tenant-1",
+      orderNumber: "AS 2026/0042",
+    } as AdditionalServiceOrderRecord;
+    const pdfBuffer = Buffer.from("proposal-pdf");
+    const storedDocument = { id: "document-1" };
+    const tenantService = {
+      getTenantConfig: jest.fn().mockResolvedValue({ subdomain: "acme-travel" }),
+    } as unknown as TenantService;
+    const storageService = {
+      uploadObject: jest.fn().mockResolvedValue(undefined),
+    } as unknown as StorageService;
+    const generatedDocumentsService = {
+      register: jest.fn().mockResolvedValue(storedDocument),
+    } as unknown as GeneratedDocumentsService;
+    const configService = {
+      get: jest.fn().mockReturnValue("production"),
+    } as unknown as ConfigService;
+    const service = new CommercialProposalPdfService(
+      {} as CommercialProposalPdfMapper,
+      tenantService,
+      {} as DocumentPdfService,
+      storageService,
+      generatedDocumentsService,
+      configService,
+    );
+    jest.spyOn(service, "renderPdf").mockResolvedValue(pdfBuffer);
+
+    await expect(service.persist(order, "tenant-1")).resolves.toBe(
+      storedDocument,
+    );
+
+    const objectKey =
+      "production/acme-travel/additional-services/proposals/AS-2026-0042/proposal.pdf";
+    expect(storageService.uploadObject).toHaveBeenCalledWith({
+      objectKey,
+      contentType: "application/pdf",
+      body: pdfBuffer,
+    });
+    expect(generatedDocumentsService.register).toHaveBeenCalledWith({
+      tenantId: "tenant-1",
+      ownerType: "ADDITIONAL_SERVICE_ORDER",
+      ownerId: "order-1",
+      documentType: "COMMERCIAL_PROPOSAL",
+      variant: "GENERATED",
+      objectKey,
+      fileName: "proposal.pdf",
+      mimeType: "application/pdf",
+      size: pdfBuffer.length,
+    });
+  });
+
+  it("rejects persistence across tenant boundaries before rendering", async () => {
+    const service = new CommercialProposalPdfService(
+      {} as CommercialProposalPdfMapper,
+      {} as TenantService,
+      {} as DocumentPdfService,
+      {} as StorageService,
+      {} as GeneratedDocumentsService,
+      {} as ConfigService,
+    );
+    const renderPdf = jest.spyOn(service, "renderPdf");
+
+    await expect(
+      service.persist(
+        {
+          id: "order-1",
+          tenantId: "tenant-2",
+          orderNumber: "AS-1",
+        } as AdditionalServiceOrderRecord,
+        "tenant-1",
+      ),
+    ).rejects.toThrow("authenticated tenant");
+    expect(renderPdf).not.toHaveBeenCalled();
+  });
+
+  it("returns a safe signed preview for the persisted version-1 document", async () => {
+    const document = {
+      id: "document-1",
+      tenantId: "tenant-1",
+      ownerType: "ADDITIONAL_SERVICE_ORDER",
+      ownerId: "order-1",
+      documentType: "COMMERCIAL_PROPOSAL",
+      variant: "GENERATED",
+      version: 1,
+      objectKey: "production/acme/proposal.pdf",
+      fileName: "proposal.pdf",
+      mimeType: "application/pdf",
+      size: 2048,
+      createdAt: new Date("2026-08-06T12:00:00.000Z"),
+      updatedAt: new Date("2026-08-06T12:30:00.000Z"),
+    };
+    const generatedDocumentsService = {
+      findLatest: jest.fn().mockResolvedValue(document),
+      getSignedUrl: jest.fn().mockResolvedValue("https://signed.example/pdf"),
+    } as unknown as GeneratedDocumentsService;
+    const service = new CommercialProposalPdfService(
+      {} as CommercialProposalPdfMapper,
+      {} as TenantService,
+      {} as DocumentPdfService,
+      {} as StorageService,
+      generatedDocumentsService,
+      {} as ConfigService,
+    );
+
+    const result = await service.getPersistedPreview(
+      {
+        id: "order-1",
+        tenantId: "tenant-1",
+      } as AdditionalServiceOrderRecord,
+      "tenant-1",
+    );
+
+    expect(generatedDocumentsService.findLatest).toHaveBeenCalledWith({
+      tenantId: "tenant-1",
+      ownerType: "ADDITIONAL_SERVICE_ORDER",
+      ownerId: "order-1",
+      documentType: "COMMERCIAL_PROPOSAL",
+      variant: "GENERATED",
+      version: 1,
+    });
+    expect(generatedDocumentsService.getSignedUrl).toHaveBeenCalledWith(
+      "tenant-1",
+      "document-1",
+      900,
+    );
+    expect(result).toEqual({
+      id: "document-1",
+      fileName: "proposal.pdf",
+      mimeType: "application/pdf",
+      size: 2048,
+      createdAt: document.createdAt,
+      updatedAt: document.updatedAt,
+      url: "https://signed.example/pdf",
+      expiresInSeconds: 900,
+    });
+    expect(result).not.toHaveProperty("objectKey");
+  });
+
+  it("returns a clear not-found state when no persisted proposal exists", async () => {
+    const generatedDocumentsService = {
+      findLatest: jest.fn().mockResolvedValue(null),
+      getSignedUrl: jest.fn(),
+    } as unknown as GeneratedDocumentsService;
+    const service = new CommercialProposalPdfService(
+      {} as CommercialProposalPdfMapper,
+      {} as TenantService,
+      {} as DocumentPdfService,
+      {} as StorageService,
+      generatedDocumentsService,
+      {} as ConfigService,
+    );
+
+    await expect(
+      service.getPersistedPreview(
+        { id: "order-1", tenantId: "tenant-1" } as AdditionalServiceOrderRecord,
+        "tenant-1",
+      ),
+    ).rejects.toThrow("No persisted commercial proposal PDF");
+    expect(generatedDocumentsService.getSignedUrl).not.toHaveBeenCalled();
   });
 });
 

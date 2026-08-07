@@ -13,12 +13,16 @@ import { AdditionalServiceOrdersController } from "./additional-service-orders.c
 import { CommercialProposalPdfMapper } from "./commercial-proposal-pdf.mapper";
 import { CommercialProposalPdfService } from "./commercial-proposal-pdf.service";
 import { DocumentsModule } from "../documents/documents.module";
+import { GeneratedDocumentsModule } from "../generated-documents";
+import { StorageModule } from "../storage/storage.module";
 
 @Module({
   imports: [
     AdditionalServicesPersistenceModule,
     AdditionalServicesPricingEngineModule,
     DocumentsModule,
+    GeneratedDocumentsModule,
+    StorageModule,
   ],
   controllers: [
     AdditionalServiceCatalogController,

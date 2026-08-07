@@ -1,4 +1,4 @@
-import { apiGet, apiPost } from '@/lib/api-client';
+import { apiGet, apiPost, fetchApi } from '@/lib/api-client';
 import type {
   BaggageType,
   BaggageTripScope,
@@ -213,6 +213,17 @@ export interface AdditionalServiceOrder {
   updatedAt: string;
 }
 
+export interface CommercialProposalPreview {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  size: number;
+  createdAt: string;
+  updatedAt: string;
+  url: string;
+  expiresInSeconds: number;
+}
+
 export function createAdditionalServiceOrder(
   input: CreateAdditionalServiceOrderInput,
 ): Promise<CreateAdditionalServiceOrderResponse> {
@@ -252,4 +263,23 @@ export function getAdditionalServiceOrder(
   return apiGet<AdditionalServiceOrder>(
     `/additional-services/orders/${encodeURIComponent(orderId)}`,
   );
+}
+
+export async function getCommercialProposalPreview(
+  orderId: string,
+): Promise<CommercialProposalPreview | null> {
+  const response = await fetchApi(
+    `/additional-services/orders/${encodeURIComponent(orderId)}/commercial-proposal`,
+    { method: 'GET' },
+  );
+  if (response.status === 404) {
+    return null;
+  }
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(
+      error.message || `API Error: ${response.statusText}`,
+    );
+  }
+  return response.json();
 }

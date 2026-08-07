@@ -9,7 +9,7 @@ export const GENERATED_DOCUMENTS_REPOSITORY = Symbol(
 );
 
 export interface GeneratedDocumentsRepository {
-  create(
+  upsert(
     data: Required<RegisterGeneratedDocumentData>,
   ): Promise<GeneratedDocumentRecord>;
   findById(
