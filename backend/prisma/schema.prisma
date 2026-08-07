@@ -1218,6 +1218,15 @@ enum AdditionalServiceOrderStatus {
   CANCELLED
 }
 
+enum CommercialProposalStatus {
+  DRAFT
+  PDF_GENERATED
+  SENT
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
 enum PaymentConditionType {
   CASH
   CREDIT
@@ -1330,6 +1339,9 @@ model AdditionalServiceOrder {
   quotationValidUntil    DateTime?
   commercialObservations String?
   status                 AdditionalServiceOrderStatus @default(DRAFT)
+  commercialStatus       CommercialProposalStatus?    @default(DRAFT)
+  proposalSentAt         DateTime?
+  proposalSentToEmail    String?
   createdByUserId        String
   createdByName          String
   createdAt              DateTime                     @default(now())

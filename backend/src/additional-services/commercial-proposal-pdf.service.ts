@@ -1,5 +1,6 @@
 import {
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
@@ -22,6 +23,11 @@ import {
   GeneratedDocumentsService,
 } from "../generated-documents";
 import { StorageService } from "../storage/storage.service";
+import { CommercialProposalStatus } from "./enums";
+import {
+  ADDITIONAL_SERVICES_REPOSITORY,
+  AdditionalServicesRepository,
+} from "./repositories";
 
 @Injectable()
 export class CommercialProposalPdfService {
@@ -32,6 +38,8 @@ export class CommercialProposalPdfService {
     private readonly storageService: StorageService,
     private readonly generatedDocumentsService: GeneratedDocumentsService,
     private readonly configService: ConfigService,
+    @Inject(ADDITIONAL_SERVICES_REPOSITORY)
+    private readonly additionalServicesRepository: AdditionalServicesRepository,
   ) {}
 
   async prepareDocument(
@@ -92,7 +100,7 @@ export class CommercialProposalPdfService {
       body: pdfBuffer,
     });
 
-    return this.generatedDocumentsService.register({
+    const document = await this.generatedDocumentsService.register({
       tenantId,
       ownerType: GENERATED_DOCUMENT_OWNER_TYPES.ADDITIONAL_SERVICE_ORDER,
       ownerId: order.id,
@@ -103,6 +111,18 @@ export class CommercialProposalPdfService {
       mimeType: "application/pdf",
       size: pdfBuffer.length,
     });
+    if (
+      order.commercialStatus === null ||
+      order.commercialStatus === undefined ||
+      order.commercialStatus === CommercialProposalStatus.DRAFT
+    ) {
+      await this.additionalServicesRepository.updateOrderDelivery(
+        tenantId,
+        order.id,
+        { commercialStatus: CommercialProposalStatus.PDF_GENERATED },
+      );
+    }
+    return document;
   }
 
   async getPersistedPreview(

@@ -41,6 +41,7 @@ describe("AdditionalServicesService suppliers", () => {
       findTravelParticipants: jest.fn(),
       create: jest.fn(),
       findById: jest.fn(),
+      updateOrderDelivery: jest.fn(),
       findByIdempotencyKey: jest.fn(),
       findByTravel: jest.fn(),
       findOrderDashboardPage: jest.fn(),

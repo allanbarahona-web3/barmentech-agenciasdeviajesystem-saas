@@ -22,6 +22,7 @@ import { creditNoteApprovedTemplate } from './templates/credit-note-approved.tem
 import { contractAccountStatementTemplate } from './templates/contract-account-statement.template';
 import { receiptApprovedTemplate } from './templates/receipt-approved.template';
 import { invoiceInitialTemplate } from './templates/invoice-initial.template';
+import { businessDocumentAttachmentTemplate } from './templates/business-document-attachment.template';
 
 // Contract templates
 import { contractPdfAttachmentTemplate } from './templates/contract-pdf-attachment.template';
@@ -366,6 +367,9 @@ export class EmailService {
     data: Record<string, any>,
   ): Promise<string> {
     switch (template) {
+      case 'business-document-attachment':
+        return businessDocumentAttachmentTemplate(data as any);
+
       case 'exchange-rate-history':
         return exchangeRateHistoryTemplate(data as any);
 

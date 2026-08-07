@@ -15,6 +15,8 @@ import { CommercialProposalPdfService } from "./commercial-proposal-pdf.service"
 import { DocumentsModule } from "../documents/documents.module";
 import { GeneratedDocumentsModule } from "../generated-documents";
 import { StorageModule } from "../storage/storage.module";
+import { EmailModule } from "../email/email.module";
+import { CommercialProposalEmailService } from "./commercial-proposal-email.service";
 
 @Module({
   imports: [
@@ -23,6 +25,7 @@ import { StorageModule } from "../storage/storage.module";
     DocumentsModule,
     GeneratedDocumentsModule,
     StorageModule,
+    EmailModule,
   ],
   controllers: [
     AdditionalServiceCatalogController,
@@ -38,6 +41,7 @@ import { StorageModule } from "../storage/storage.module";
     SupplierRequestNotificationService,
     CommercialProposalPdfMapper,
     CommercialProposalPdfService,
+    CommercialProposalEmailService,
   ],
   exports: [
     AdditionalServicesPersistenceModule,

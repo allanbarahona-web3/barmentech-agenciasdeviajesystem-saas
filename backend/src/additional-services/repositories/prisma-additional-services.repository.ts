@@ -67,6 +67,7 @@ interface AdditionalServicesPrismaClient {
     create(args: unknown): Promise<unknown>;
     findFirst(args: unknown): Promise<unknown>;
     findMany(args: unknown): Promise<unknown>;
+    update(args: unknown): Promise<unknown>;
   };
   additionalServiceOrderLine: {
     createMany(args: unknown): Promise<{ count: number }>;
@@ -194,6 +195,25 @@ export class PrismaAdditionalServicesRepository
     });
 
     return order ? this.toOrderRecord(order) : null;
+  }
+
+  async updateOrderDelivery(
+    tenantId: string,
+    id: string,
+    data: {
+      commercialStatus: NonNullable<
+        AdditionalServiceOrderRecord["commercialStatus"]
+      >;
+      proposalSentAt?: Date | null;
+      proposalSentToEmail?: string | null;
+    },
+  ): Promise<AdditionalServiceOrderRecord> {
+    const order = await this.client.additionalServiceOrder.update({
+      where: { id_tenantId: { id, tenantId } },
+      data,
+      include: this.orderInclude(),
+    });
+    return this.toOrderRecord(order);
   }
 
   async findByIdempotencyKey(
@@ -387,6 +407,14 @@ export class PrismaAdditionalServicesRepository
           include: this.orderInclude(),
         });
         return order ? this.toOrderRecord(order) : null;
+      },
+      updateOrderDelivery: async (tenantId, id, data) => {
+        const order = await client.additionalServiceOrder.update({
+          where: { id_tenantId: { id, tenantId } },
+          data,
+          include: this.orderInclude(),
+        });
+        return this.toOrderRecord(order);
       },
       findByIdempotencyKey: async (tenantId, idempotencyKey) => {
         this.logTransactionStepBefore(
@@ -1401,6 +1429,12 @@ export class PrismaAdditionalServicesRepository
         order.internalBooking,
       ),
       status: order.status as AdditionalServiceOrderRecord["status"],
+      commercialStatus:
+        (order.commercialStatus as AdditionalServiceOrderRecord["commercialStatus"]) ??
+        null,
+      proposalSentAt:
+        order.proposalSentAt instanceof Date ? order.proposalSentAt : null,
+      proposalSentToEmail: this.nullableString(order.proposalSentToEmail),
       lines: order.lines.map((line) => ({
         id: String(line.id),
         tenantId: String(line.tenantId),

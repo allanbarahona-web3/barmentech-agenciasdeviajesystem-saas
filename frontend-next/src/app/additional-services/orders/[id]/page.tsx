@@ -9,6 +9,8 @@ import {
   CircleCheck,
   FileText,
   ExternalLink,
+  LoaderCircle,
+  Mail,
   MapPin,
   ReceiptText,
   Users,
@@ -19,6 +21,7 @@ import { Button } from '@/components/ui/button';
 import {
   getAdditionalServiceOrder,
   getCommercialProposalPreview,
+  sendCommercialProposal,
   type AdditionalServiceOrder,
   type AdditionalServiceOrderCurrency,
   type AdditionalServicePaymentConditionType,
@@ -98,6 +101,33 @@ function travelTypeLabel(type: AdditionalServiceOrder['travelType']) {
   return type === 'INTERNATIONAL' ? 'Internacional' : 'Interno';
 }
 
+function orderStatusLabel(status: AdditionalServiceOrder['status']) {
+  const labels: Record<AdditionalServiceOrder['status'], string> = {
+    DRAFT: 'Borrador',
+    REQUESTED: 'Solicitada',
+    CONFIRMED: 'Confirmada',
+    CANCELLED: 'Cancelada',
+  };
+  return labels[status];
+}
+
+function commercialStatusLabel(
+  status: AdditionalServiceOrder['commercialStatus'],
+) {
+  const labels: Record<
+    NonNullable<AdditionalServiceOrder['commercialStatus']>,
+    string
+  > = {
+    DRAFT: 'Propuesta en borrador',
+    PDF_GENERATED: 'Propuesta generada',
+    SENT: 'Propuesta enviada',
+    APPROVED: 'Propuesta aprobada',
+    REJECTED: 'Propuesta rechazada',
+    EXPIRED: 'Propuesta vencida',
+  };
+  return status ? labels[status] : 'Sin propuesta';
+}
+
 function participantKey(participant: AdditionalServiceOrderParticipant) {
   return (
     participant.clientId ??
@@ -117,6 +147,8 @@ export default function AdditionalServiceOrderPreviewPage() {
     null,
   );
   const [proposalError, setProposalError] = useState<string | null>(null);
+  const [sendingProposal, setSendingProposal] = useState(false);
+  const [deliveryMessage, setDeliveryMessage] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -180,6 +212,35 @@ export default function AdditionalServiceOrderPreviewPage() {
     return [...persistedParticipants.values()];
   }, [order]);
 
+  async function handleSendProposal() {
+    if (!order || sendingProposal) return;
+    setSendingProposal(true);
+    setProposalError(null);
+    setDeliveryMessage(null);
+    try {
+      const delivery = await sendCommercialProposal(order.id);
+      setOrder((current) =>
+        current
+          ? {
+              ...current,
+              commercialStatus: delivery.commercialStatus,
+              proposalSentAt: delivery.sentAt,
+              proposalSentToEmail: delivery.recipientEmail,
+            }
+          : current,
+      );
+      setDeliveryMessage(`Propuesta enviada a ${delivery.recipientEmail}.`);
+    } catch (requestError) {
+      setProposalError(
+        requestError instanceof Error
+          ? requestError.message
+          : 'No se pudo enviar la propuesta comercial.',
+      );
+    } finally {
+      setSendingProposal(false);
+    }
+  }
+
   if (loading) {
     return (
       <main className="app-shell">
@@ -242,7 +303,10 @@ export default function AdditionalServiceOrderPreviewPage() {
             <p className={styles.eyebrow}>Cotización de servicios adicionales</p>
             <div className={styles.titleRow}>
               <h1>{order.orderNumber}</h1>
-              <Badge variant="secondary">Borrador</Badge>
+              <Badge variant="secondary">{orderStatusLabel(order.status)}</Badge>
+              <Badge variant="outline">
+                {commercialStatusLabel(order.commercialStatus)}
+              </Badge>
             </div>
             <p className={styles.subtitle}>
               Revisión comercial basada en la orden persistida.
@@ -255,6 +319,20 @@ export default function AdditionalServiceOrderPreviewPage() {
                   <ExternalLink aria-hidden="true" />
                   Ver PDF
                 </a>
+              </Button>
+            )}
+            {proposal && order.commercialStatus === 'PDF_GENERATED' && (
+              <Button
+                type="button"
+                onClick={handleSendProposal}
+                disabled={sendingProposal}
+              >
+                {sendingProposal ? (
+                  <LoaderCircle className={styles.spin} aria-hidden="true" />
+                ) : (
+                  <Mail aria-hidden="true" />
+                )}
+                {sendingProposal ? 'Enviando...' : 'Enviar propuesta'}
               </Button>
             )}
             {!isCreationCompletion && (
@@ -276,6 +354,11 @@ export default function AdditionalServiceOrderPreviewPage() {
         {proposalError && (
           <p className={styles.proposalError} role="status">
             {proposalError}
+          </p>
+        )}
+        {deliveryMessage && (
+          <p className={styles.deliveryMessage} role="status">
+            {deliveryMessage}
           </p>
         )}
 
@@ -310,7 +393,7 @@ export default function AdditionalServiceOrderPreviewPage() {
             </div>
             <div>
               <dt>Estado</dt>
-              <dd>Borrador</dd>
+              <dd>{orderStatusLabel(order.status)}</dd>
             </div>
           </dl>
         </section>

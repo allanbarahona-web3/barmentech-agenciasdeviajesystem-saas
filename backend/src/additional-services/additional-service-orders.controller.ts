@@ -20,11 +20,13 @@ import {
 import { AdditionalServicesService } from "./additional-services.service";
 import { PricingEngineBusinessErrorFilter } from "./infrastructure/pricing-engine-business-error.filter";
 import { CommercialProposalPdfService } from "./commercial-proposal-pdf.service";
+import { CommercialProposalEmailService } from "./commercial-proposal-email.service";
 
 type OrderRequest = {
   user: {
     id: string;
     fullName: string;
+    email: string;
     tenantId: string;
   };
 };
@@ -37,6 +39,7 @@ export class AdditionalServiceOrdersController {
   constructor(
     private readonly additionalServicesService: AdditionalServicesService,
     private readonly commercialProposalPdfService: CommercialProposalPdfService,
+    private readonly commercialProposalEmailService: CommercialProposalEmailService,
   ) {}
 
   @Post()
@@ -57,6 +60,26 @@ export class AdditionalServiceOrdersController {
       orderId: order.id,
       status: order.status,
     };
+  }
+
+  @Post(":orderId/commercial-proposal/send")
+  async sendCommercialProposal(
+    @Req() req: OrderRequest,
+    @Param("orderId") orderId: string,
+  ) {
+    const order = await this.additionalServicesService.getOrder(
+      req.user.tenantId,
+      orderId,
+    );
+    return this.commercialProposalEmailService.send(
+      order,
+      req.user.tenantId,
+      {
+        userId: req.user.id,
+        email: req.user.email,
+        fullName: req.user.fullName,
+      },
+    );
   }
 
   @Get()

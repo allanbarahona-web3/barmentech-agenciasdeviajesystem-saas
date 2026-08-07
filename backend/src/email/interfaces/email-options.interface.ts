@@ -73,6 +73,7 @@ export interface EmailAttachment {
  * Templates disponibles en el sistema
  */
 export type EmailTemplate =
+  | 'business-document-attachment'
   // Exchange Rate
   | 'exchange-rate-history'
   

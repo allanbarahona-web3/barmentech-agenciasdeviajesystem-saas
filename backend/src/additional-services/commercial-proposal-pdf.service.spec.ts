@@ -2,6 +2,7 @@ import { CommercialProposalPdfMapper } from "./commercial-proposal-pdf.mapper";
 import { CommercialProposalPdfService } from "./commercial-proposal-pdf.service";
 import type { CommercialProposalPdfDto } from "./dto";
 import type { AdditionalServiceOrderRecord } from "./repositories";
+import type { AdditionalServicesRepository } from "./repositories";
 import { TenantService } from "../tenant/tenant.service";
 import { DocumentPdfService } from "../documents/document-pdf.service";
 import { ConfigService } from "@nestjs/config";
@@ -9,6 +10,8 @@ import { GeneratedDocumentsService } from "../generated-documents";
 import { StorageService } from "../storage/storage.service";
 import {
   AdditionalServiceCurrency,
+  AdditionalServiceOrderStatus,
+  CommercialProposalStatus,
   PaymentConditionType,
 } from "./enums";
 
@@ -41,6 +44,7 @@ describe("CommercialProposalPdfService", () => {
       {} as StorageService,
       {} as GeneratedDocumentsService,
       {} as ConfigService,
+      {} as AdditionalServicesRepository,
     );
 
     await expect(service.prepareDocument(order, "tenant-auth-id")).resolves.toBe(
@@ -85,6 +89,7 @@ describe("CommercialProposalPdfService", () => {
       {} as StorageService,
       {} as GeneratedDocumentsService,
       {} as ConfigService,
+      {} as AdditionalServicesRepository,
     );
 
     await expect(service.renderPdf(order, "tenant-auth-id")).resolves.toBe(
@@ -107,6 +112,8 @@ describe("CommercialProposalPdfService", () => {
       id: "order-1",
       tenantId: "tenant-1",
       orderNumber: "AS 2026/0042",
+      status: AdditionalServiceOrderStatus.DRAFT,
+      commercialStatus: CommercialProposalStatus.DRAFT,
     } as AdditionalServiceOrderRecord;
     const pdfBuffer = Buffer.from("proposal-pdf");
     const storedDocument = { id: "document-1" };
@@ -122,6 +129,9 @@ describe("CommercialProposalPdfService", () => {
     const configService = {
       get: jest.fn().mockReturnValue("production"),
     } as unknown as ConfigService;
+    const repository = {
+      updateOrderDelivery: jest.fn().mockResolvedValue(order),
+    } as unknown as AdditionalServicesRepository;
     const service = new CommercialProposalPdfService(
       {} as CommercialProposalPdfMapper,
       tenantService,
@@ -129,6 +139,7 @@ describe("CommercialProposalPdfService", () => {
       storageService,
       generatedDocumentsService,
       configService,
+      repository,
     );
     jest.spyOn(service, "renderPdf").mockResolvedValue(pdfBuffer);
 
@@ -154,6 +165,11 @@ describe("CommercialProposalPdfService", () => {
       mimeType: "application/pdf",
       size: pdfBuffer.length,
     });
+    expect(repository.updateOrderDelivery).toHaveBeenCalledWith(
+      "tenant-1",
+      "order-1",
+      { commercialStatus: CommercialProposalStatus.PDF_GENERATED },
+    );
   });
 
   it("rejects persistence across tenant boundaries before rendering", async () => {
@@ -164,6 +180,7 @@ describe("CommercialProposalPdfService", () => {
       {} as StorageService,
       {} as GeneratedDocumentsService,
       {} as ConfigService,
+      {} as AdditionalServicesRepository,
     );
     const renderPdf = jest.spyOn(service, "renderPdf");
 
@@ -207,6 +224,7 @@ describe("CommercialProposalPdfService", () => {
       {} as StorageService,
       generatedDocumentsService,
       {} as ConfigService,
+      {} as AdditionalServicesRepository,
     );
 
     const result = await service.getPersistedPreview(
@@ -255,6 +273,7 @@ describe("CommercialProposalPdfService", () => {
       {} as StorageService,
       generatedDocumentsService,
       {} as ConfigService,
+      {} as AdditionalServicesRepository,
     );
 
     await expect(

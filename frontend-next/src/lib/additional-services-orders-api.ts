@@ -113,6 +113,13 @@ export type AdditionalServiceOrderStatus =
   | 'CONFIRMED'
   | 'CANCELLED';
 export type AdditionalServiceOrderTravelType = 'INTERNATIONAL' | 'INTERNAL';
+export type CommercialProposalStatus =
+  | 'DRAFT'
+  | 'PDF_GENERATED'
+  | 'SENT'
+  | 'APPROVED'
+  | 'REJECTED'
+  | 'EXPIRED';
 
 export interface AdditionalServiceOrderDashboardItem {
   id: string;
@@ -205,7 +212,10 @@ export interface AdditionalServiceOrder {
   quotationValidUntil: string | null;
   commercialObservations: string | null;
   travel: AdditionalServiceOrderTravel | null;
-  status: 'DRAFT';
+  status: AdditionalServiceOrderStatus;
+  commercialStatus: CommercialProposalStatus | null;
+  proposalSentAt: string | null;
+  proposalSentToEmail: string | null;
   lines: AdditionalServiceOrderLine[];
   createdByUserId: string;
   createdByName: string;
@@ -222,6 +232,13 @@ export interface CommercialProposalPreview {
   updatedAt: string;
   url: string;
   expiresInSeconds: number;
+}
+
+export interface CommercialProposalDeliveryResult {
+  documentId: string;
+  commercialStatus: 'SENT';
+  sentAt: string;
+  recipientEmail: string;
 }
 
 export function createAdditionalServiceOrder(
@@ -282,4 +299,12 @@ export async function getCommercialProposalPreview(
     );
   }
   return response.json();
+}
+
+export function sendCommercialProposal(
+  orderId: string,
+): Promise<CommercialProposalDeliveryResult> {
+  return apiPost<CommercialProposalDeliveryResult>(
+    `/additional-services/orders/${encodeURIComponent(orderId)}/commercial-proposal/send`,
+  );
 }

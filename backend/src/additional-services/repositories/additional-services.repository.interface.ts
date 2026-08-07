@@ -2,6 +2,7 @@ import {
   AdditionalServiceCurrency,
   AdditionalServiceMarginType,
   AdditionalServiceOrderStatus,
+  CommercialProposalStatus,
   AdditionalServiceTravelType,
   PaymentConditionType,
   PaymentTermUnit,
@@ -83,6 +84,9 @@ export interface AdditionalServiceOrderRecord {
   commercialObservations: string | null;
   travel: AdditionalServiceOrderTravelDetails | null;
   status: AdditionalServiceOrderStatus;
+  commercialStatus?: CommercialProposalStatus | null;
+  proposalSentAt?: Date | null;
+  proposalSentToEmail?: string | null;
   lines: AdditionalServiceOrderLineRecord[];
   createdByUserId: string;
   createdByName: string;
@@ -345,6 +349,16 @@ export interface AdditionalServicesRepository {
     tenantId: string,
     id: string,
   ): Promise<AdditionalServiceOrderRecord | null>;
+
+  updateOrderDelivery(
+    tenantId: string,
+    id: string,
+    data: {
+      commercialStatus: CommercialProposalStatus;
+      proposalSentAt?: Date | null;
+      proposalSentToEmail?: string | null;
+    },
+  ): Promise<AdditionalServiceOrderRecord>;
 
   findByIdempotencyKey(
     tenantId: string,
