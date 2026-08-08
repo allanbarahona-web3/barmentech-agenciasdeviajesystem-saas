@@ -64,6 +64,8 @@ describe("CommercialProposalApprovalService", () => {
         commercialStatus: CommercialProposalStatus.APPROVED,
         proposalApprovedAt: expect.any(Date),
         proposalApprovalMethod: "EMAIL_LINK",
+        proposalApprovedByUserId: null,
+        proposalApprovedByName: null,
         proposalApprovedIp: "203.0.113.10",
         proposalApprovedUserAgent: "Customer Browser",
       },
@@ -79,9 +81,22 @@ describe("CommercialProposalApprovalService", () => {
       select: { name: true, logoUrl: true },
     });
   });
+
+  it("cannot approve by email after an in-person approval won", async () => {
+    const { service, transactionTokenUpdate } = setup(
+      CommercialProposalStatus.APPROVED,
+    );
+
+    await expect(
+      service.approve("token", "203.0.113.10", "Customer Browser"),
+    ).rejects.toThrow("cannot be approved");
+    expect(transactionTokenUpdate).not.toHaveBeenCalled();
+  });
 });
 
-function setup() {
+function setup(
+  commercialStatus: CommercialProposalStatus = CommercialProposalStatus.SENT,
+) {
   const access = {
     id: "access-1",
     generatedDocument: {
@@ -123,7 +138,7 @@ function setup() {
       findFirst: jest.fn().mockResolvedValue({
         id: "order-1",
         orderNumber: "AS-1",
-        commercialStatus: CommercialProposalStatus.SENT,
+        commercialStatus,
       }),
     },
     $transaction: transaction,

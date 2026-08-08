@@ -102,6 +102,48 @@
   line-height: 1.05;
 }
 
+.operationalStatusBadge {
+  border-color: #93a4ba;
+  background: #eef2f7;
+  color: #334155;
+  font-weight: 750;
+}
+
+.commercialStatusDraft {
+  border-color: #e5b94f;
+  background: #fff4cc;
+  color: #7a4a00;
+  font-weight: 750;
+}
+
+.commercialStatusGenerated {
+  border-color: #67a9e8;
+  background: #e7f2ff;
+  color: #0f548f;
+  font-weight: 750;
+}
+
+.commercialStatusSent {
+  border-color: #9584df;
+  background: #efedff;
+  color: #4f3da3;
+  font-weight: 750;
+}
+
+.commercialStatusApproved {
+  border-color: #55b982;
+  background: #dcf6e7;
+  color: #12613a;
+  font-weight: 800;
+}
+
+.commercialStatusClosed {
+  border-color: #e48888;
+  background: #fee7e7;
+  color: #982121;
+  font-weight: 750;
+}
+
 .subtitle {
   margin: 10px 0 0;
   color: #718096;
@@ -120,6 +162,31 @@
   height: 16px;
 }
 
+.pdfButton {
+  border-color: #2563eb;
+  background: #2563eb;
+  color: #fff;
+}
+
+.pdfButton:hover {
+  border-color: #1d4ed8;
+  background: #1d4ed8;
+  color: #fff;
+}
+
+.inPersonApprovalButton {
+  border-color: #15803d;
+  background: #15803d;
+  color: #fff;
+  box-shadow: 0 3px 8px rgba(21, 128, 61, 0.22);
+}
+
+.inPersonApprovalButton:hover {
+  border-color: #166534;
+  background: #166534;
+  color: #fff;
+}
+
 .proposalError {
   margin: -12px 0 20px;
   color: #9f1239;
@@ -130,6 +197,94 @@
   margin: -12px 0 20px;
   color: #166534;
   font-size: 12px;
+}
+
+.sendForm {
+  display: grid;
+  gap: 16px;
+  text-align: left;
+}
+
+.sendField {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+}
+
+.sendField > span {
+  color: #435269;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.sendField input,
+.readOnlyEmail {
+  width: 100%;
+  min-height: 42px;
+  padding: 10px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  color: #172b4d;
+  font: inherit;
+  font-size: 13px;
+}
+
+.sendField input:focus {
+  border-color: #2563eb;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.readOnlyEmail {
+  background: #f1f5f9;
+  font-weight: 650;
+}
+
+.sendError {
+  margin: 0;
+  color: #b42318;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.approvalConfirmation {
+  display: grid;
+  gap: 14px;
+  text-align: left;
+}
+
+.approvalConfirmation p {
+  margin: 0;
+  color: #526175;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.approvalConfirmation dl {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 12px;
+  border-radius: 8px;
+  background: #f1f5f9;
+}
+
+.approvalConfirmation dl div {
+  display: grid;
+  grid-template-columns: 100px 1fr;
+  gap: 10px;
+}
+
+.approvalConfirmation dt {
+  color: #718096;
+  font-size: 12px;
+}
+
+.approvalConfirmation dd {
+  margin: 0;
+  color: #172b4d;
+  font-size: 13px;
+  font-weight: 750;
 }
 
 .spin {

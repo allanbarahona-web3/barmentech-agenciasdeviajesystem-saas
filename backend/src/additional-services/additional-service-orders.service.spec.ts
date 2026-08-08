@@ -8,6 +8,7 @@ import {
   AdditionalServiceMarginType,
   AdditionalServiceOrderStatus,
   AdditionalServiceTravelType,
+  CommercialProposalStatus,
   PaymentConditionType,
   PaymentTermUnit,
 } from "./enums";
@@ -323,6 +324,7 @@ describe("AdditionalServicesService orders", () => {
       orderNumber: data.orderNumber,
       idempotencyKey: data.idempotencyKey,
       quoteCustomerId: data.quoteCustomerId,
+      quoteCustomer: null,
       travelPackageId: "travel-1",
       internalBookingId: null,
       travelType: AdditionalServiceTravelType.INTERNATIONAL,
@@ -631,6 +633,7 @@ describe("AdditionalServicesService orders", () => {
           totalAmount: "129.9500",
           currency: AdditionalServiceCurrency.USD,
           status: AdditionalServiceOrderStatus.DRAFT,
+          commercialStatus: CommercialProposalStatus.APPROVED,
         },
       ],
       total: 1,

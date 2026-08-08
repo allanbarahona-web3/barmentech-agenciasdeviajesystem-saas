@@ -28,8 +28,10 @@ import {
   type AdditionalServiceOrdersDashboardResponse,
   type AdditionalServiceOrderStatus,
   type AdditionalServiceOrderTravelType,
+  type CommercialProposalStatus,
 } from '@/lib/additional-services-orders-api';
 import styles from './orders-dashboard.module.css';
+import { commercialProposalStatusLabel } from '@/shared/commercial-proposal-status';
 
 const PAGE_SIZE = 20;
 
@@ -44,10 +46,6 @@ const STATUS_OPTIONS: Array<{
   { value: 'CONFIRMED', label: 'Confirmada' },
   { value: 'CANCELLED', label: 'Cancelada' },
 ];
-
-const STATUS_LABELS = Object.fromEntries(
-  STATUS_OPTIONS.map(({ value, label }) => [value, label]),
-) as Record<AdditionalServiceOrderStatus, string>;
 
 const TRAVEL_TYPE_LABELS: Record<AdditionalServiceOrderTravelType, string> = {
   INTERNATIONAL: 'Internacional',
@@ -95,15 +93,12 @@ function formatAmount(value: string) {
     : value;
 }
 
-function statusBadgeClass(status: AdditionalServiceOrderStatus) {
-  if (status === 'CONFIRMED') {
-    return styles.statusConfirmed;
-  }
-  if (status === 'CANCELLED') {
-    return styles.statusCancelled;
-  }
-  if (status === 'REQUESTED') {
-    return styles.statusRequested;
+function commercialStatusBadgeClass(status: CommercialProposalStatus | null) {
+  if (status === 'APPROVED') return styles.commercialApproved;
+  if (status === 'SENT') return styles.commercialSent;
+  if (status === 'PDF_GENERATED') return styles.commercialGenerated;
+  if (status === 'REJECTED' || status === 'EXPIRED') {
+    return styles.commercialClosed;
   }
   return styles.statusDraft;
 }
@@ -320,7 +315,7 @@ export default function AdditionalServiceOrdersDashboardPage() {
           </div>
 
           <div className={styles.field}>
-            <label htmlFor="status-filter">Estado</label>
+            <label htmlFor="status-filter">Estado operativo</label>
             <select
               id="status-filter"
               className={styles.select}
@@ -516,9 +511,13 @@ export default function AdditionalServiceOrdersDashboardPage() {
                       <TableCell className={styles.status}>
                         <Badge
                           variant="outline"
-                          className={statusBadgeClass(order.status)}
+                          className={commercialStatusBadgeClass(
+                            order.commercialStatus,
+                          )}
                         >
-                          {STATUS_LABELS[order.status]}
+                          {commercialProposalStatusLabel(
+                            order.commercialStatus,
+                          )}
                         </Badge>
                       </TableCell>
                       <TableCell>

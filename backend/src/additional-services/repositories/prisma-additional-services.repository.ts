@@ -1207,6 +1207,7 @@ export class PrismaAdditionalServicesRepository
           quotationCurrency: true,
           totalSellingPrice: true,
           status: true,
+          commercialStatus: true,
           createdAt: true,
           travelPackage: {
             select: {
@@ -1242,6 +1243,7 @@ export class PrismaAdditionalServicesRepository
       quotationCurrency: AdditionalServiceOrderDashboardPageRecord["orders"][number]["currency"];
       totalSellingPrice: unknown;
       status: AdditionalServiceOrderDashboardPageRecord["orders"][number]["status"];
+      commercialStatus: AdditionalServiceOrderDashboardPageRecord["orders"][number]["commercialStatus"];
       createdAt: Date;
       travelPackage: {
         id: string;
@@ -1272,6 +1274,7 @@ export class PrismaAdditionalServicesRepository
         totalAmount: String(order.totalSellingPrice),
         currency: order.quotationCurrency,
         status: order.status,
+        commercialStatus: order.commercialStatus,
       })),
       total,
       page: query.page,
@@ -1282,6 +1285,12 @@ export class PrismaAdditionalServicesRepository
 
   private orderInclude() {
     return {
+      quoteCustomer: {
+        select: {
+          fullName: true,
+          email: true,
+        },
+      },
       travelPackage: {
         select: {
           id: true,
@@ -1372,6 +1381,10 @@ export class PrismaAdditionalServicesRepository
           phone: string | null;
         }>;
       }>;
+      quoteCustomer: {
+        fullName: string;
+        email: string | null;
+      } | null;
       travelPackage: {
         id: string;
         packageCode: string;
@@ -1398,6 +1411,12 @@ export class PrismaAdditionalServicesRepository
       orderNumber: String(order.orderNumber),
       idempotencyKey: String(order.idempotencyKey),
       quoteCustomerId: this.nullableString(order.quoteCustomerId),
+      quoteCustomer: order.quoteCustomer
+        ? {
+            fullName: order.quoteCustomer.fullName,
+            email: order.quoteCustomer.email,
+          }
+        : null,
       travelPackageId: this.nullableString(order.travelPackageId),
       internalBookingId: this.nullableString(order.internalBookingId),
       travelType:
@@ -1435,6 +1454,19 @@ export class PrismaAdditionalServicesRepository
       proposalSentAt:
         order.proposalSentAt instanceof Date ? order.proposalSentAt : null,
       proposalSentToEmail: this.nullableString(order.proposalSentToEmail),
+      proposalApprovedAt:
+        order.proposalApprovedAt instanceof Date
+          ? order.proposalApprovedAt
+          : null,
+      proposalApprovalMethod: this.nullableString(
+        order.proposalApprovalMethod,
+      ),
+      proposalApprovedByUserId: this.nullableString(
+        order.proposalApprovedByUserId,
+      ),
+      proposalApprovedByName: this.nullableString(
+        order.proposalApprovedByName,
+      ),
       lines: order.lines.map((line) => ({
         id: String(line.id),
         tenantId: String(line.tenantId),

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
@@ -16,12 +17,15 @@ import {
   AdditionalServiceOrderDashboardResponseDto,
   CreateAdditionalServiceOrderDto,
   ListAdditionalServiceOrdersDto,
+  SendCommercialProposalDto,
 } from "./dto";
 import { AdditionalServicesService } from "./additional-services.service";
 import { PricingEngineBusinessErrorFilter } from "./infrastructure/pricing-engine-business-error.filter";
 import { CommercialProposalPdfService } from "./commercial-proposal-pdf.service";
 import { CommercialProposalEmailService } from "./commercial-proposal-email.service";
 import { SalesOrderConversionService } from "../sales-orders/sales-order-conversion.service";
+import { CommercialProposalStatus } from "./enums";
+import { CommercialProposalInPersonApprovalService } from "./commercial-proposal-in-person-approval.service";
 
 type OrderRequest = {
   user: {
@@ -42,6 +46,7 @@ export class AdditionalServiceOrdersController {
     private readonly commercialProposalPdfService: CommercialProposalPdfService,
     private readonly commercialProposalEmailService: CommercialProposalEmailService,
     private readonly salesOrderConversionService: SalesOrderConversionService,
+    private readonly inPersonApprovalService: CommercialProposalInPersonApprovalService,
   ) {}
 
   @Post()
@@ -64,6 +69,22 @@ export class AdditionalServiceOrdersController {
     };
   }
 
+  @Post(":orderId/commercial-proposal/approve-in-person")
+  async approveCommercialProposalInPerson(
+    @Req() req: OrderRequest,
+    @Param("orderId") orderId: string,
+  ) {
+    const order = await this.additionalServicesService.getOrder(
+      req.user.tenantId,
+      orderId,
+    );
+    return this.inPersonApprovalService.approve(
+      order,
+      req.user.tenantId,
+      { id: req.user.id, fullName: req.user.fullName },
+    );
+  }
+
   @Post(":orderId/convert-to-sales-order")
   convertToSalesOrder(
     @Req() req: OrderRequest,
@@ -80,6 +101,7 @@ export class AdditionalServiceOrdersController {
   async sendCommercialProposal(
     @Req() req: OrderRequest,
     @Param("orderId") orderId: string,
+    @Body() input: SendCommercialProposalDto,
   ) {
     const order = await this.additionalServicesService.getOrder(
       req.user.tenantId,
@@ -93,7 +115,29 @@ export class AdditionalServiceOrdersController {
         email: req.user.email,
         fullName: req.user.fullName,
       },
+      input?.cc,
     );
+  }
+
+  @Post(":orderId/commercial-proposal")
+  async generateCommercialProposal(
+    @Req() req: OrderRequest,
+    @Param("orderId") orderId: string,
+  ) {
+    const order = await this.additionalServicesService.getOrder(
+      req.user.tenantId,
+      orderId,
+    );
+    if (order.commercialStatus !== CommercialProposalStatus.DRAFT) {
+      throw new BadRequestException(
+        "El PDF comercial solo puede generarse para una propuesta en borrador.",
+      );
+    }
+    const document = await this.commercialProposalPdfService.persist(
+      order,
+      req.user.tenantId,
+    );
+    return { documentId: document.id };
   }
 
   @Get()

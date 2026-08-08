@@ -17,6 +17,7 @@ import {
 import { ConfigService } from "@nestjs/config";
 import { TenantService } from "../tenant/tenant.service";
 import { getPublicAppBaseUrl } from "../common/utils/tenant-url.util";
+import { isEmail } from "class-validator";
 import { CommercialProposalStatus } from "./enums";
 import {
   ADDITIONAL_SERVICES_REPOSITORY,
@@ -53,6 +54,7 @@ export class CommercialProposalEmailService {
     order: AdditionalServiceOrderRecord,
     tenantId: string,
     actor: CommercialProposalEmailActor,
+    cc?: string,
   ): Promise<CommercialProposalDeliveryResult> {
     if (order.tenantId !== tenantId) {
       throw new NotFoundException(
@@ -65,12 +67,26 @@ export class CommercialProposalEmailService {
       );
     }
 
-    const customer = this.findCustomer(order);
+    if (!order.quoteCustomerId || !order.quoteCustomer) {
+      throw new BadRequestException(
+        "La propuesta comercial no tiene un cliente de cotización persistido.",
+      );
+    }
+    const customer = order.quoteCustomer;
     const recipientEmail = customer.email?.trim().toLowerCase();
     if (!recipientEmail) {
       throw new BadRequestException(
         "El cliente no tiene un correo electrónico disponible.",
       );
+    }
+    if (!isEmail(recipientEmail)) {
+      throw new BadRequestException(
+        "El cliente no tiene un correo electrónico válido.",
+      );
+    }
+    const normalizedCc = cc?.trim().toLowerCase() || undefined;
+    if (normalizedCc && !isEmail(normalizedCc)) {
+      throw new BadRequestException("El correo CC no es válido.");
     }
 
     const document = await this.generatedDocumentsService.findLatest({
@@ -105,6 +121,7 @@ export class CommercialProposalEmailService {
     const result = await this.emailService.sendEmail({
       tenantId,
       to: recipientEmail,
+      ...(normalizedCc ? { cc: normalizedCc } : {}),
       subject: "Propuesta comercial {{documentNumber}} - {{tenantName}}",
       template: "business-document-attachment",
       templateData: {
@@ -147,14 +164,4 @@ export class CommercialProposalEmailService {
     };
   }
 
-  private findCustomer(order: AdditionalServiceOrderRecord) {
-    const participants = order.lines.flatMap((line) => line.participants);
-    return (
-      participants.find((participant) => participant.role === "HOLDER") ??
-      participants[0] ?? {
-        fullName: "Cliente",
-        email: null,
-      }
-    );
-  }
 }

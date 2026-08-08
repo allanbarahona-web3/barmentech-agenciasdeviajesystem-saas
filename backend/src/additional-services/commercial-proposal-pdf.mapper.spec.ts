@@ -18,6 +18,8 @@ describe("CommercialProposalPdfMapper", () => {
       legalId: "3-101-123456",
       contactEmail: "ventas@example.com",
       contactPhone: "+506 2222-2222",
+      businessAddress: "San José, Costa Rica",
+      primaryColor: "#123456",
       logoSrc: "https://example.com/logo.png",
     });
 
@@ -27,6 +29,8 @@ describe("CommercialProposalPdfMapper", () => {
         legalId: "3-101-123456",
         contactEmail: "ventas@example.com",
         contactPhone: "+506 2222-2222",
+        businessAddress: "San José, Costa Rica",
+        primaryColor: "#123456",
         logoSrc: "https://example.com/logo.png",
       },
       proposalNumber: "AS-2026-0042",
@@ -51,8 +55,8 @@ describe("CommercialProposalPdfMapper", () => {
         {
           name: "Equipaje adicional",
           details: [
-            { label: "Tipos de equipaje", value: "CHECKED_BAGGAGE" },
-            { label: "Trayectos", value: "SINGLE_TRIP" },
+            { label: "Tipo de equipaje", value: "Equipaje documentado" },
+            { label: "Alcance", value: "Un trayecto" },
             { label: "Cantidad de piezas", value: "1" },
             { label: "Peso por pieza (kg)", value: "23" },
           ],
@@ -98,6 +102,44 @@ describe("CommercialProposalPdfMapper", () => {
       "createdByUserId",
     ].forEach((field) => expect(serialized).not.toContain(`\"${field}\"`));
   });
+
+  it.each([
+    [
+      "BAGGAGE",
+      { baggageTypes: ["CARRY_ON", "HAND_BAGGAGE", "CHECKED_BAGGAGE"], tripScope: "MULTIPLE_TRIPS", pieceQuantity: 2, weightKg: 10 },
+      ["Equipaje de mano", "Artículo personal", "Equipaje documentado", "Múltiples trayectos"],
+    ],
+    ["LODGING", { lodgingType: "HOTEL_WITH_BREAKFAST", checkInDate: "2026-10-01", checkOutDate: "2026-10-10" }, ["Hotel con desayuno", "01/10/2026"]],
+    ["ACCOMMODATION_TYPE", { accommodationType: "QUADRUPLE" }, ["Habitación cuádruple"]],
+    ["INSURANCE", { coverage: "USD_60000", customCoverageAmount: null, currency: "USD" }, ["USD 60.000"]],
+    ["TRANSPORTATION", { transportationType: "PRIVATE_TRANSPORT", tripType: "ROUND_TRIP", serviceDate: "2026-10-01", origin: "San José", destination: "Liberia" }, ["Transporte privado", "Ida y regreso"]],
+    ["FLIGHT_TICKET", { tripType: "ONE_WAY", originAirport: { iata: "SJO", name: "Juan Santamaría", city: "Alajuela", country: "Costa Rica" }, destinationAirport: { iata: "MAD", name: "Barajas", city: "Madrid", country: "España" }, departureDate: "2026-10-01", returnDate: null, quantity: 1 }, ["Solo ida", "01/10/2026"]],
+    ["SEAT_SELECTION", { seatPreference: "EXTRA_LEGROOM", otherPreferenceDescription: null, quantity: 1 }, ["Espacio adicional para las piernas"]],
+    ["VISA_ASSISTANCE", { destinationCountry: "España", visaType: "TOURISM", expectedTravelDate: "2026-10-01" }, ["Turismo", "01/10/2026"]],
+  ])("translates customer-facing values for %s", (serviceCode, serviceDetails, expectedLabels) => {
+    const order = buildOrder();
+    order.lines[0].serviceCode = serviceCode;
+    order.lines[0].serviceDetails = serviceDetails;
+
+    const values = mapper
+      .map(order, {
+        name: "Viajes Ejemplo",
+        legalId: null,
+        contactEmail: null,
+        contactPhone: null,
+        businessAddress: null,
+        primaryColor: null,
+        logoSrc: null,
+      })
+      .services[0].details.map((detail) => detail.value);
+
+    expectedLabels.forEach((expected) =>
+      expect(values.join(" | ")).toContain(expected),
+    );
+    expect(values.join(" ")).not.toMatch(
+      /CARRY_ON|HAND_BAGGAGE|CHECKED_BAGGAGE|MULTIPLE_TRIPS|HOTEL_WITH_BREAKFAST|QUADRUPLE|USD_60000|PRIVATE_TRANSPORT|ROUND_TRIP|ONE_WAY|EXTRA_LEGROOM|TOURISM/,
+    );
+  });
 });
 
 function buildOrder(): AdditionalServiceOrderRecord {
@@ -107,6 +149,10 @@ function buildOrder(): AdditionalServiceOrderRecord {
     orderNumber: "AS-2026-0042",
     idempotencyKey: "internal-idempotency-key",
     quoteCustomerId: "internal-customer-id",
+    quoteCustomer: {
+      fullName: "Ana Cliente",
+      email: "ana@example.com",
+    },
     travelPackageId: "internal-package-id",
     internalBookingId: null,
     travelType: AdditionalServiceTravelType.INTERNATIONAL,

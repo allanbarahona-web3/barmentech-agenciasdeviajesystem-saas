@@ -1372,6 +1372,8 @@ model AdditionalServiceOrder {
   proposalApprovalMethod    String?
   proposalApprovedIp        String?
   proposalApprovedUserAgent String?
+  proposalApprovedByUserId  String?
+  proposalApprovedByName    String?
   createdByUserId           String
   createdByName             String
   createdAt                 DateTime                     @default(now())

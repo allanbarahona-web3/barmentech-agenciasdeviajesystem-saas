@@ -91,6 +91,8 @@ export class CommercialProposalApprovalService {
           commercialStatus: CommercialProposalStatus.APPROVED,
           proposalApprovedAt: approvedAt,
           proposalApprovalMethod: "EMAIL_LINK",
+          proposalApprovedByUserId: null,
+          proposalApprovedByName: null,
           proposalApprovedIp: this.truncate(ip, 128),
           proposalApprovedUserAgent: this.truncate(userAgent, 1024),
         },

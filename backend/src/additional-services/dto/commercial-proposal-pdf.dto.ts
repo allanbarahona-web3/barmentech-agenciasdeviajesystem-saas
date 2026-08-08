@@ -11,6 +11,8 @@ export class CommercialProposalPdfCompanyDto {
   legalId!: string | null;
   contactEmail!: string | null;
   contactPhone!: string | null;
+  businessAddress!: string | null;
+  primaryColor!: string | null;
   logoSrc!: string | null;
 }
 

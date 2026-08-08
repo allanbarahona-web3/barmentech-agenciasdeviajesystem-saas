@@ -2754,6 +2754,11 @@ body:has(.vertical-nav) .app-shell {
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
 }
 
+.confirm-modal-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 .confirm-modal-btn-cancel {
   background: #f3f4f6;
   color: #374151;

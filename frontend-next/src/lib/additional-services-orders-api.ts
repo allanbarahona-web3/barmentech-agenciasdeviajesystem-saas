@@ -132,6 +132,7 @@ export interface AdditionalServiceOrderDashboardItem {
   totalAmount: string;
   currency: AdditionalServiceOrderCurrency;
   status: AdditionalServiceOrderStatus;
+  commercialStatus: CommercialProposalStatus | null;
 }
 
 export interface AdditionalServiceOrdersDashboardResponse {
@@ -199,6 +200,10 @@ export interface AdditionalServiceOrderLine {
 export interface AdditionalServiceOrder {
   id: string;
   orderNumber: string;
+  quoteCustomer: {
+    fullName: string;
+    email: string | null;
+  } | null;
   travelPackageId: string | null;
   internalBookingId: string | null;
   travelType: 'INTERNATIONAL' | 'INTERNAL';
@@ -251,6 +256,17 @@ export interface CommercialProposalDeliveryResult {
   commercialStatus: 'SENT';
   sentAt: string;
   recipientEmail: string;
+}
+
+export interface CommercialProposalGenerationResult {
+  documentId: string;
+}
+
+export interface InPersonCommercialProposalApprovalResult {
+  proposalNumber: string;
+  commercialStatus: 'APPROVED';
+  approvedAt: string;
+  approvalMethod: 'IN_PERSON';
 }
 
 export function createAdditionalServiceOrder(
@@ -315,9 +331,27 @@ export async function getCommercialProposalPreview(
 
 export function sendCommercialProposal(
   orderId: string,
+  input: { cc?: string } = {},
 ): Promise<CommercialProposalDeliveryResult> {
   return apiPost<CommercialProposalDeliveryResult>(
     `/additional-services/orders/${encodeURIComponent(orderId)}/commercial-proposal/send`,
+    input,
+  );
+}
+
+export function generateCommercialProposal(
+  orderId: string,
+): Promise<CommercialProposalGenerationResult> {
+  return apiPost<CommercialProposalGenerationResult>(
+    `/additional-services/orders/${encodeURIComponent(orderId)}/commercial-proposal`,
+  );
+}
+
+export function approveCommercialProposalInPerson(
+  orderId: string,
+): Promise<InPersonCommercialProposalApprovalResult> {
+  return apiPost<InPersonCommercialProposalApprovalResult>(
+    `/additional-services/orders/${encodeURIComponent(orderId)}/commercial-proposal/approve-in-person`,
   );
 }
 

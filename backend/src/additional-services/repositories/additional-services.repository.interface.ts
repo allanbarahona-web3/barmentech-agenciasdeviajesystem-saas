@@ -70,6 +70,10 @@ export interface AdditionalServiceOrderRecord {
   orderNumber: string;
   idempotencyKey: string;
   quoteCustomerId: string | null;
+  quoteCustomer: {
+    fullName: string;
+    email: string | null;
+  } | null;
   travelPackageId: string | null;
   internalBookingId: string | null;
   travelType: AdditionalServiceTravelType;
@@ -87,6 +91,10 @@ export interface AdditionalServiceOrderRecord {
   commercialStatus?: CommercialProposalStatus | null;
   proposalSentAt?: Date | null;
   proposalSentToEmail?: string | null;
+  proposalApprovedAt?: Date | null;
+  proposalApprovalMethod?: string | null;
+  proposalApprovedByUserId?: string | null;
+  proposalApprovedByName?: string | null;
   lines: AdditionalServiceOrderLineRecord[];
   createdByUserId: string;
   createdByName: string;
@@ -117,6 +125,7 @@ export interface AdditionalServiceOrderDashboardItemRecord {
   totalAmount: string;
   currency: AdditionalServiceCurrency;
   status: AdditionalServiceOrderStatus;
+  commercialStatus: CommercialProposalStatus | null;
 }
 
 export interface AdditionalServiceOrderDashboardPageRecord {

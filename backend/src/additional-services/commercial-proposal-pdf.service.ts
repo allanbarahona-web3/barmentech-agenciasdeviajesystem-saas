@@ -52,6 +52,8 @@ export class CommercialProposalPdfService {
       legalId: settings.legalId,
       contactEmail: settings.contactEmail,
       contactPhone: settings.contactPhone,
+      businessAddress: settings.businessAddress,
+      primaryColor: settings.primaryColor,
       logoSrc: settings.logoUrl,
     };
 

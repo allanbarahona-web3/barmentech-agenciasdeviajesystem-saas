@@ -2,6 +2,7 @@ import {
   AdditionalServiceCurrency,
   AdditionalServiceOrderStatus,
   AdditionalServiceTravelType,
+  CommercialProposalStatus,
 } from "../enums";
 
 export class AdditionalServiceOrderDashboardItemDto {
@@ -15,6 +16,7 @@ export class AdditionalServiceOrderDashboardItemDto {
   totalAmount!: string;
   currency!: AdditionalServiceCurrency;
   status!: AdditionalServiceOrderStatus;
+  commercialStatus!: CommercialProposalStatus | null;
 }
 
 export class AdditionalServiceOrderDashboardResponseDto {

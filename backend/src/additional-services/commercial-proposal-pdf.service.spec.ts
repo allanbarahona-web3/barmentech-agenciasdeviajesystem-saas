@@ -56,6 +56,8 @@ describe("CommercialProposalPdfService", () => {
       legalId: "3-101-123456",
       contactEmail: "ventas@example.com",
       contactPhone: "+506 2222-2222",
+      businessAddress: "San José",
+      primaryColor: "#123456",
       logoSrc: "https://example.com/logo.png",
     });
   });
@@ -72,7 +74,9 @@ describe("CommercialProposalPdfService", () => {
         name: document.company.name,
         legalId: document.company.legalId,
         contactEmail: document.company.contactEmail,
-        contactPhone: document.company.contactPhone,
+      contactPhone: document.company.contactPhone,
+        businessAddress: document.company.businessAddress,
+        primaryColor: document.company.primaryColor,
         logoUrl: document.company.logoSrc,
       }),
     } as unknown as TenantService;
@@ -102,9 +106,9 @@ describe("CommercialProposalPdfService", () => {
     expect(html).toContain(document.proposalNumber);
     expect(html).toContain(document.customer.fullName);
     expect(html).toContain(document.services[0].name);
-    expect(html).toContain("Totales");
-    expect(html).toContain("Condiciones comerciales");
-    expect(html).toContain('class="doc-footer"');
+    expect(html).toContain("TOTAL");
+    expect(html).toContain("CONDICIONES COMERCIALES");
+    expect(html).toContain('class="quote-footer"');
   });
 
   it("uploads and registers one deterministic GENERATED proposal", async () => {
@@ -293,6 +297,8 @@ function buildDocument(): CommercialProposalPdfDto {
       legalId: "3-101-123456",
       contactEmail: "ventas@example.com",
       contactPhone: "+506 2222-2222",
+      businessAddress: "San José, Costa Rica",
+      primaryColor: "#245a9b",
       logoSrc: null,
     },
     proposalNumber: "AS-2026-0042",

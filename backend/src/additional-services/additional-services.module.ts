@@ -20,6 +20,7 @@ import { CommercialProposalEmailService } from "./commercial-proposal-email.serv
 import { CommercialProposalApprovalService } from "./commercial-proposal-approval.service";
 import { CommercialProposalPublicController } from "./commercial-proposal-public.controller";
 import { SalesOrdersModule } from "../sales-orders/sales-orders.module";
+import { CommercialProposalInPersonApprovalService } from "./commercial-proposal-in-person-approval.service";
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { SalesOrdersModule } from "../sales-orders/sales-orders.module";
     CommercialProposalPdfService,
     CommercialProposalEmailService,
     CommercialProposalApprovalService,
+    CommercialProposalInPersonApprovalService,
   ],
   exports: [
     AdditionalServicesPersistenceModule,

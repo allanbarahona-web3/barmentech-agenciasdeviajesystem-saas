@@ -3,6 +3,7 @@ import {
   AdditionalServiceCurrency,
   AdditionalServiceOrderStatus,
   AdditionalServiceTravelType,
+  CommercialProposalStatus,
 } from "../enums";
 import { PrismaAdditionalServicesRepository } from "./prisma-additional-services.repository";
 
@@ -19,6 +20,7 @@ describe("PrismaAdditionalServicesRepository dashboard", () => {
         quotationCurrency: AdditionalServiceCurrency.USD,
         totalSellingPrice: "150.0000",
         status: AdditionalServiceOrderStatus.DRAFT,
+        commercialStatus: CommercialProposalStatus.APPROVED,
         createdAt: new Date("2026-07-30T12:00:00.000Z"),
         travelPackage: { id: "travel-1", name: "Miami" },
         internalBooking: null,
@@ -33,6 +35,7 @@ describe("PrismaAdditionalServicesRepository dashboard", () => {
         quotationCurrency: AdditionalServiceCurrency.CRC,
         totalSellingPrice: "50000.0000",
         status: AdditionalServiceOrderStatus.CONFIRMED,
+        commercialStatus: CommercialProposalStatus.SENT,
         createdAt: new Date("2026-07-29T12:00:00.000Z"),
         travelPackage: { id: "travel-1", name: "Miami" },
         internalBooking: null,
@@ -47,6 +50,7 @@ describe("PrismaAdditionalServicesRepository dashboard", () => {
         quotationCurrency: AdditionalServiceCurrency.USD,
         totalSellingPrice: "10.0000",
         status: AdditionalServiceOrderStatus.DRAFT,
+        commercialStatus: CommercialProposalStatus.DRAFT,
         createdAt: new Date("2026-07-28T12:00:00.000Z"),
         travelPackage: { id: "travel-1", name: "Miami" },
         internalBooking: null,
@@ -76,6 +80,7 @@ describe("PrismaAdditionalServicesRepository dashboard", () => {
     expect(orderQuery).not.toHaveProperty("include");
     expect(orderQuery.select).not.toHaveProperty("lines");
     expect(orderQuery.select).not.toHaveProperty("serviceDetails");
+    expect(orderQuery.select.commercialStatus).toBe(true);
     expect(orderQuery.select.quoteCustomer).toEqual({
       select: { fullName: true },
     });
@@ -169,6 +174,11 @@ describe("PrismaAdditionalServicesRepository dashboard", () => {
       "Paying Companion",
       "Different Customer",
       null,
+    ]);
+    expect(result.orders.map(({ commercialStatus }) => commercialStatus)).toEqual([
+      CommercialProposalStatus.APPROVED,
+      CommercialProposalStatus.SENT,
+      CommercialProposalStatus.DRAFT,
     ]);
   });
 });

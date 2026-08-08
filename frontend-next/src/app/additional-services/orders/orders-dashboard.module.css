@@ -239,6 +239,30 @@
   color: #a32222;
 }
 
+.commercialGenerated {
+  border-color: #7db6f0;
+  background: #e7f2ff;
+  color: #12558f;
+}
+
+.commercialSent {
+  border-color: #9b8ce8;
+  background: #f0edff;
+  color: #5542a8;
+}
+
+.commercialApproved {
+  border-color: #72c69a;
+  background: #e3f7eb;
+  color: #17663b;
+}
+
+.commercialClosed {
+  border-color: #ef9999;
+  background: #feeaea;
+  color: #a32222;
+}
+
 .actionButton {
   border-color: #1d5f9f;
   background: #1d5f9f;

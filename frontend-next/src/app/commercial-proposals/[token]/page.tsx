@@ -17,6 +17,7 @@ export default function CommercialProposalApprovalPage() {
   const [loading, setLoading] = useState(true);
   const [approving, setApproving] = useState(false);
   const [approved, setApproved] = useState(false);
+  const [finished, setFinished] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -58,6 +59,11 @@ export default function CommercialProposalApprovalPage() {
     } finally {
       setApproving(false);
     }
+  }
+
+  function closeApproval() {
+    window.close();
+    window.setTimeout(() => setFinished(true), 150);
   }
 
   if (loading) {
@@ -106,11 +112,20 @@ export default function CommercialProposalApprovalPage() {
         )}
       </header>
 
-      {approved ? (
+      {approved && finished ? (
+        <section className={styles.success} role="status">
+          <CheckCircle2 aria-hidden="true" />
+          <h2>Proceso finalizado</h2>
+          <p>Puede cerrar esta pestaña.</p>
+        </section>
+      ) : approved ? (
         <section className={styles.success} role="status">
           <CheckCircle2 aria-hidden="true" />
           <h2>Propuesta aprobada</h2>
-          <p>Su aceptación fue registrada correctamente.</p>
+          <p>La cotización fue aprobada correctamente.</p>
+          <Button type="button" onClick={closeApproval}>
+            Cerrar
+          </Button>
         </section>
       ) : (
         <section className={styles.viewer} aria-label="Documento de propuesta">

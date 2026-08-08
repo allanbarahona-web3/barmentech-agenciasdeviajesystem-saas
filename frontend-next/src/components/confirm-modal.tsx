@@ -10,6 +10,8 @@ export type ConfirmModalProps = {
   cancelText?: string;
   showCancel?: boolean;
   confirmVariant?: "primary" | "danger" | "warning";
+  isLoading?: boolean;
+  confirmDisabled?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 };
@@ -22,6 +24,8 @@ export function ConfirmModal({
   cancelText = "Cancelar",
   showCancel = true,
   confirmVariant = "primary",
+  isLoading = false,
+  confirmDisabled = false,
   onConfirm,
   onCancel,
 }: ConfirmModalProps) {
@@ -31,13 +35,13 @@ export function ConfirmModal({
 
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        onCancel();
+        if (!isLoading) onCancel();
       }
     };
 
     window.addEventListener("keydown", handleEscape);
     return () => window.removeEventListener("keydown", handleEscape);
-  }, [isOpen, onCancel]);
+  }, [isLoading, isOpen, onCancel]);
 
   if (!isOpen) return null;
 
@@ -47,7 +51,12 @@ export function ConfirmModal({
     "confirm-modal-btn-primary";
 
   return (
-    <div className="confirm-modal-overlay" onClick={onCancel}>
+    <div
+      className="confirm-modal-overlay"
+      onClick={() => {
+        if (!isLoading) onCancel();
+      }}
+    >
       <div 
         className="confirm-modal-container" 
         onClick={(e) => e.stopPropagation()}
@@ -66,6 +75,7 @@ export function ConfirmModal({
               type="button"
               className="confirm-modal-btn confirm-modal-btn-cancel"
               onClick={onCancel}
+              disabled={isLoading}
             >
               {cancelText}
             </button>
@@ -74,6 +84,7 @@ export function ConfirmModal({
             type="button"
             className={`confirm-modal-btn ${confirmButtonClass}`}
             onClick={onConfirm}
+            disabled={isLoading || confirmDisabled}
           >
             {confirmText}
           </button>

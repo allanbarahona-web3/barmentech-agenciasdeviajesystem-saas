@@ -13,16 +13,17 @@ describe("commercialProposalTemplate", () => {
 
     expect(html).toContain("<!DOCTYPE html>");
     expect(html).toContain("Viajes &amp; Compañía");
-    expect(html).toContain("Propuesta N.° <strong>AS-2026-0042</strong>");
-    expect(html).toContain("Información de la propuesta");
+    expect(html).toContain("COTIZACIÓN");
+    expect(html).toContain("AS-2026-0042");
     expect(html).toContain("Ana &lt;Cliente&gt;");
     expect(html).toContain("Europa 2026");
     expect(html).toContain("Equipaje adicional");
-    expect(html).toContain("CHECKED_BAGGAGE");
+    expect(html).toContain("Equipaje documentado");
+    expect(html).not.toContain("CHECKED_BAGGAGE");
     expect(html).toContain("Sujeto a disponibilidad.");
-    expect(html).toContain("Condiciones comerciales");
+    expect(html).toContain("CONDICIONES COMERCIALES");
     expect(html).toContain("15 días");
-    expect(html).toContain('<footer class="doc-footer">');
+    expect(html).toContain('<footer class="quote-footer">');
 
     const body = html.slice(html.indexOf("<body>"));
     [
@@ -49,7 +50,7 @@ describe("commercialProposalTemplate", () => {
 
     const html = commercialProposalTemplate(proposal);
 
-    expect(html).not.toContain('class="section-heading">Viaje</h3>');
+    expect(html).toContain("Sin viaje asociado");
     expect(html).not.toContain("Plazo de pago");
     expect(html).toContain("Contado");
   });
@@ -62,6 +63,8 @@ function buildProposal(): CommercialProposalPdfDto {
       legalId: "3-101-123456",
       contactEmail: "ventas@example.com",
       contactPhone: "+506 2222-2222",
+      businessAddress: "San José, Costa Rica",
+      primaryColor: "#123456",
       logoSrc: "https://example.com/logo.png",
     },
     proposalNumber: "AS-2026-0042",
@@ -86,7 +89,7 @@ function buildProposal(): CommercialProposalPdfDto {
       {
         name: "Equipaje adicional",
         details: [
-          { label: "Tipos de equipaje", value: "CHECKED_BAGGAGE" },
+          { label: "Tipo de equipaje", value: "Equipaje documentado" },
           { label: "Peso", value: "23 kg" },
         ],
         participants: [

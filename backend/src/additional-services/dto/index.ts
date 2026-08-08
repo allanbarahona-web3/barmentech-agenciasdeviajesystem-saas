@@ -11,3 +11,4 @@ export * from "./update-additional-service-pricing-configuration.dto";
 export * from "./update-additional-service-pricing-configuration-status.dto";
 export * from "./create-supplier.dto";
 export * from "./update-supplier.dto";
+export * from "./send-commercial-proposal.dto";

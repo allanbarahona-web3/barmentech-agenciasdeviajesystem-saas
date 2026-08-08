@@ -18,73 +18,161 @@ type DetailDescriptor = {
   format?: (value: unknown) => string;
 };
 
+const BAGGAGE_LABELS: Readonly<Record<string, string>> = {
+  CARRY_ON: "Equipaje de mano",
+  HAND_BAGGAGE: "Artículo personal",
+  CHECKED_BAGGAGE: "Equipaje documentado",
+};
+
+const TRIP_SCOPE_LABELS: Readonly<Record<string, string>> = {
+  SINGLE_TRIP: "Un trayecto",
+  MULTIPLE_TRIPS: "Múltiples trayectos",
+};
+
+const LODGING_LABELS: Readonly<Record<string, string>> = {
+  HOTEL_WITH_BREAKFAST: "Hotel con desayuno",
+  HOTEL_WITHOUT_BREAKFAST: "Hotel sin desayuno",
+  HOSTEL: "Hostal",
+  AIRBNB: "Airbnb",
+};
+
+const ACCOMMODATION_LABELS: Readonly<Record<string, string>> = {
+  SINGLE: "Habitación sencilla",
+  DOUBLE: "Habitación doble",
+  TRIPLE: "Habitación triple",
+  QUADRUPLE: "Habitación cuádruple",
+};
+
+const INSURANCE_LABELS: Readonly<Record<string, string>> = {
+  USD_35000: "USD 35.000",
+  USD_60000: "USD 60.000",
+  OTHER: "Otra cobertura",
+};
+
+const TRANSPORTATION_LABELS: Readonly<Record<string, string>> = {
+  AIRPLANE: "Avión",
+  UBER: "Uber",
+  TAXI: "Taxi",
+  TRAIN: "Tren",
+  FERRY: "Ferry",
+  SHUTTLE_BUS: "Buseta",
+  PRIVATE_TRANSPORT: "Transporte privado",
+};
+
+const TRIP_TYPE_LABELS: Readonly<Record<string, string>> = {
+  ONE_WAY: "Solo ida",
+  ROUND_TRIP: "Ida y regreso",
+};
+
+const SEAT_LABELS: Readonly<Record<string, string>> = {
+  WINDOW: "Ventana",
+  AISLE: "Pasillo",
+  MIDDLE: "Centro",
+  EXIT_ROW: "Fila de salida",
+  FRONT_CABIN: "Parte delantera de la cabina",
+  EXTRA_LEGROOM: "Espacio adicional para las piernas",
+  NO_PREFERENCE: "Sin preferencia",
+  OTHER: "Otra preferencia",
+};
+
+const VISA_LABELS: Readonly<Record<string, string>> = {
+  TOURISM: "Turismo",
+  BUSINESS: "Negocios",
+  STUDENT: "Estudiante",
+  WORK: "Trabajo",
+  TRANSIT: "Tránsito",
+  OTHER: "Otro",
+};
+
 const DETAIL_DESCRIPTORS: Readonly<Record<string, readonly DetailDescriptor[]>> = {
   BAGGAGE: [
-    { key: "baggageTypes", label: "Tipos de equipaje", format: joinValues },
-    { key: "tripScope", label: "Trayectos" },
+    { key: "baggageTypes", label: "Tipo de equipaje", format: (value) => joinLabels(value, BAGGAGE_LABELS) },
+    { key: "tripScope", label: "Alcance", format: (value) => label(value, TRIP_SCOPE_LABELS) },
     { key: "pieceQuantity", label: "Cantidad de piezas" },
     { key: "weightKg", label: "Peso por pieza (kg)" },
   ],
   LODGING: [
-    { key: "lodgingType", label: "Tipo de hospedaje" },
-    { key: "checkInDate", label: "Entrada" },
-    { key: "checkOutDate", label: "Salida" },
+    { key: "lodgingType", label: "Tipo de hospedaje", format: (value) => label(value, LODGING_LABELS) },
+    { key: "checkInDate", label: "Entrada", format: formatBusinessDate },
+    { key: "checkOutDate", label: "Salida", format: formatBusinessDate },
   ],
   ACCOMMODATION_TYPE: [
-    { key: "accommodationType", label: "Tipo de habitación" },
+    { key: "accommodationType", label: "Tipo de habitación", format: (value) => label(value, ACCOMMODATION_LABELS) },
   ],
   INSURANCE: [
-    { key: "coverage", label: "Cobertura" },
+    { key: "coverage", label: "Cobertura", format: (value) => label(value, INSURANCE_LABELS) },
     { key: "customCoverageAmount", label: "Monto de cobertura" },
     { key: "currency", label: "Moneda de cobertura" },
   ],
   TRANSPORTATION: [
-    { key: "transportationType", label: "Tipo de transporte" },
-    { key: "tripType", label: "Tipo de trayecto" },
-    { key: "serviceDate", label: "Fecha del servicio" },
+    { key: "transportationType", label: "Tipo de transporte", format: (value) => label(value, TRANSPORTATION_LABELS) },
+    { key: "tripType", label: "Tipo de trayecto", format: (value) => label(value, TRIP_TYPE_LABELS) },
+    { key: "serviceDate", label: "Fecha del servicio", format: formatBusinessDate },
     { key: "origin", label: "Origen" },
     { key: "destination", label: "Destino" },
   ],
   TOUR: [
     { key: "tourName", label: "Tour" },
-    { key: "serviceDate", label: "Fecha del servicio" },
+    { key: "serviceDate", label: "Fecha del servicio", format: formatBusinessDate },
   ],
   FLIGHT_TICKET: [
-    { key: "tripType", label: "Tipo de vuelo" },
+    { key: "tripType", label: "Tipo de vuelo", format: (value) => label(value, TRIP_TYPE_LABELS) },
     { key: "originAirport", label: "Aeropuerto de origen", format: formatAirport },
     { key: "destinationAirport", label: "Aeropuerto de destino", format: formatAirport },
-    { key: "departureDate", label: "Fecha de salida" },
-    { key: "returnDate", label: "Fecha de regreso" },
+    { key: "departureDate", label: "Fecha de salida", format: formatBusinessDate },
+    { key: "returnDate", label: "Fecha de regreso", format: formatBusinessDate },
     { key: "quantity", label: "Cantidad" },
   ],
   SEAT_SELECTION: [
-    { key: "seatPreference", label: "Preferencia de asiento" },
+    { key: "seatPreference", label: "Preferencia de asiento", format: (value) => label(value, SEAT_LABELS) },
     { key: "otherPreferenceDescription", label: "Detalle de preferencia" },
     { key: "quantity", label: "Cantidad" },
   ],
   EVENT_TICKET: [
     { key: "eventName", label: "Evento" },
-    { key: "serviceDate", label: "Fecha del evento" },
+    { key: "serviceDate", label: "Fecha del evento", format: formatBusinessDate },
     { key: "quantity", label: "Cantidad" },
     { key: "venueOrCity", label: "Lugar" },
   ],
   TRAVEL_EXTENSION: [
-    { key: "newReturnDate", label: "Nueva fecha de regreso" },
+    { key: "newReturnDate", label: "Nueva fecha de regreso", format: formatBusinessDate },
     { key: "quantity", label: "Cantidad" },
   ],
   TRIP_REDUCTION: [
-    { key: "newReturnDate", label: "Nueva fecha de regreso" },
+    { key: "newReturnDate", label: "Nueva fecha de regreso", format: formatBusinessDate },
     { key: "quantity", label: "Cantidad" },
   ],
   VISA_ASSISTANCE: [
     { key: "destinationCountry", label: "País de destino" },
-    { key: "visaType", label: "Tipo de visa" },
-    { key: "expectedTravelDate", label: "Fecha estimada de viaje" },
+    { key: "visaType", label: "Tipo de visa", format: (value) => label(value, VISA_LABELS) },
+    { key: "expectedTravelDate", label: "Fecha estimada de viaje", format: formatBusinessDate },
   ],
 };
 
-function joinValues(value: unknown): string {
-  return Array.isArray(value) ? value.map(String).join(", ") : String(value);
+function label(value: unknown, labels: Readonly<Record<string, string>>): string {
+  const key = String(value);
+  return labels[key] ?? humanizeUnknownValue(key);
+}
+
+function joinLabels(
+  value: unknown,
+  labels: Readonly<Record<string, string>>,
+): string {
+  const values = Array.isArray(value) ? value : [value];
+  return values.map((item) => label(item, labels)).join(", ");
+}
+
+function humanizeUnknownValue(value: string): string {
+  return value
+    .toLocaleLowerCase("es")
+    .replace(/[_-]+/g, " ")
+    .replace(/^./, (character) => character.toLocaleUpperCase("es"));
+}
+
+function formatBusinessDate(value: unknown): string {
+  const text = String(value);
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(text);
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : text;
 }
 
 function formatAirport(value: unknown): string {

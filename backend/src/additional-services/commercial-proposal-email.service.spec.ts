@@ -75,6 +75,60 @@ describe("CommercialProposalEmailService", () => {
     );
   });
 
+  it("sends an optional CC without changing the persisted primary recipient", async () => {
+    const { service, repository, documents, email } = setup();
+    documents.findLatest.mockResolvedValue(documentRecord());
+    documents.download.mockResolvedValue(Buffer.from("pdf"));
+    email.sendEmail.mockResolvedValue({ success: true, emailId: "email-1" });
+
+    await service.send(
+      orderRecord(),
+      "tenant-1",
+      { userId: "user-1", email: "agent@example.com", fullName: "Agent" },
+      " Copy@Example.com ",
+    );
+
+    expect(email.sendEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: "customer@example.com",
+        cc: "copy@example.com",
+      }),
+    );
+    expect(repository.updateOrderDelivery).toHaveBeenCalledWith(
+      "tenant-1",
+      "order-1",
+      expect.objectContaining({ proposalSentToEmail: "customer@example.com" }),
+    );
+  });
+
+  it("does not use CC when the persisted quote customer has no email", async () => {
+    const { service, email } = setup();
+    await expect(
+      service.send(
+        orderRecord({
+          quoteCustomer: { fullName: "Customer Name", email: null },
+        }),
+        "tenant-1",
+        { userId: "user-1", email: "agent@example.com", fullName: "Agent" },
+        "copy@example.com",
+      ),
+    ).rejects.toThrow("no tiene un correo electrónico");
+    expect(email.sendEmail).not.toHaveBeenCalled();
+  });
+
+  it("rejects an invalid optional CC", async () => {
+    const { service, email } = setup();
+    await expect(
+      service.send(
+        orderRecord(),
+        "tenant-1",
+        { userId: "user-1", email: "agent@example.com", fullName: "Agent" },
+        "not-an-email",
+      ),
+    ).rejects.toThrow("CC no es válido");
+    expect(email.sendEmail).not.toHaveBeenCalled();
+  });
+
   it("rejects an order that is not ready for delivery", async () => {
     const { service, documents, email } = setup();
     await expect(
@@ -163,6 +217,11 @@ function orderRecord(
     id: "order-1",
     tenantId: "tenant-1",
     orderNumber: "AS-2026-0042",
+    quoteCustomerId: "customer-1",
+    quoteCustomer: {
+      fullName: "Customer Name",
+      email: " Customer@Example.com ",
+    },
     status: AdditionalServiceOrderStatus.DRAFT,
     commercialStatus: CommercialProposalStatus.PDF_GENERATED,
     lines: [

@@ -16,11 +16,14 @@ import {
   Users,
 } from 'lucide-react';
 import { LoadingModal } from '@/components/loading-modal';
+import { ConfirmModal } from '@/components/confirm-modal';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   getAdditionalServiceOrder,
   getCommercialProposalPreview,
+  generateCommercialProposal,
+  approveCommercialProposalInPerson,
   sendCommercialProposal,
   convertToSalesOrder,
   type AdditionalServiceOrder,
@@ -33,6 +36,7 @@ import {
 } from '@/lib/additional-services-orders-api';
 import { formatCommercialService } from '@/shared/additional-services';
 import styles from './quotation-preview.module.css';
+import { commercialProposalStatusLabel } from '@/shared/commercial-proposal-status';
 
 function formatCurrency(
   value: string,
@@ -102,31 +106,22 @@ function travelTypeLabel(type: AdditionalServiceOrder['travelType']) {
   return type === 'INTERNATIONAL' ? 'Internacional' : 'Interno';
 }
 
-function orderStatusLabel(status: AdditionalServiceOrder['status']) {
-  const labels: Record<AdditionalServiceOrder['status'], string> = {
-    DRAFT: 'Borrador',
-    REQUESTED: 'Solicitada',
-    CONFIRMED: 'Confirmada',
-    CANCELLED: 'Cancelada',
-  };
-  return labels[status];
-}
-
 function commercialStatusLabel(
   status: AdditionalServiceOrder['commercialStatus'],
 ) {
-  const labels: Record<
-    NonNullable<AdditionalServiceOrder['commercialStatus']>,
-    string
-  > = {
-    DRAFT: 'Propuesta en borrador',
-    PDF_GENERATED: 'Propuesta generada',
-    SENT: 'Propuesta enviada',
-    APPROVED: 'Propuesta aprobada',
-    REJECTED: 'Propuesta rechazada',
-    EXPIRED: 'Propuesta vencida',
-  };
-  return status ? labels[status] : 'Sin propuesta';
+  return commercialProposalStatusLabel(status);
+}
+
+function commercialStatusBadgeClass(
+  status: AdditionalServiceOrder['commercialStatus'],
+) {
+  if (status === 'APPROVED') return styles.commercialStatusApproved;
+  if (status === 'SENT') return styles.commercialStatusSent;
+  if (status === 'PDF_GENERATED') return styles.commercialStatusGenerated;
+  if (status === 'REJECTED' || status === 'EXPIRED') {
+    return styles.commercialStatusClosed;
+  }
+  return styles.commercialStatusDraft;
 }
 
 function participantKey(participant: AdditionalServiceOrderParticipant) {
@@ -149,8 +144,17 @@ export default function AdditionalServiceOrderPreviewPage() {
   );
   const [proposalError, setProposalError] = useState<string | null>(null);
   const [sendingProposal, setSendingProposal] = useState(false);
+  const [sendModalOpen, setSendModalOpen] = useState(false);
+  const [ccEmail, setCcEmail] = useState('');
+  const [sendModalError, setSendModalError] = useState<string | null>(null);
+  const [generatingProposal, setGeneratingProposal] = useState(false);
   const [deliveryMessage, setDeliveryMessage] = useState<string | null>(null);
   const [converting, setConverting] = useState(false);
+  const [conversionModalOpen, setConversionModalOpen] = useState(false);
+  const [conversionError, setConversionError] = useState<string | null>(null);
+  const [approvalModalOpen, setApprovalModalOpen] = useState(false);
+  const [approvingInPerson, setApprovingInPerson] = useState(false);
+  const [approvalError, setApprovalError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -214,26 +218,39 @@ export default function AdditionalServiceOrderPreviewPage() {
     return [...persistedParticipants.values()];
   }, [order]);
 
+  function openSendModal() {
+    setCcEmail('');
+    setSendModalError(null);
+    setSendModalOpen(true);
+  }
+
   async function handleSendProposal() {
     if (!order || sendingProposal) return;
+    const primaryEmail = order.quoteCustomer?.email?.trim();
+    if (!primaryEmail) {
+      setSendModalError(
+        'El cliente de la cotización no tiene un correo electrónico registrado.',
+      );
+      return;
+    }
+    const normalizedCc = ccEmail.trim();
+    if (normalizedCc && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedCc)) {
+      setSendModalError('Ingrese un correo CC válido.');
+      return;
+    }
     setSendingProposal(true);
-    setProposalError(null);
+    setSendModalError(null);
     setDeliveryMessage(null);
     try {
-      const delivery = await sendCommercialProposal(order.id);
-      setOrder((current) =>
-        current
-          ? {
-              ...current,
-              commercialStatus: delivery.commercialStatus,
-              proposalSentAt: delivery.sentAt,
-              proposalSentToEmail: delivery.recipientEmail,
-            }
-          : current,
-      );
+      const delivery = await sendCommercialProposal(order.id, {
+        ...(normalizedCc ? { cc: normalizedCc } : {}),
+      });
+      const persistedOrder = await getAdditionalServiceOrder(order.id);
+      setOrder(persistedOrder);
+      setSendModalOpen(false);
       setDeliveryMessage(`Propuesta enviada a ${delivery.recipientEmail}.`);
     } catch (requestError) {
-      setProposalError(
+      setSendModalError(
         requestError instanceof Error
           ? requestError.message
           : 'No se pudo enviar la propuesta comercial.',
@@ -243,22 +260,71 @@ export default function AdditionalServiceOrderPreviewPage() {
     }
   }
 
+  async function handleGenerateProposal() {
+    if (!order || generatingProposal) return;
+    setGeneratingProposal(true);
+    setProposalError(null);
+    setDeliveryMessage(null);
+    try {
+      await generateCommercialProposal(order.id);
+      const [persistedOrder, persistedProposal] = await Promise.all([
+        getAdditionalServiceOrder(order.id),
+        getCommercialProposalPreview(order.id),
+      ]);
+      setOrder(persistedOrder);
+      setProposal(persistedProposal);
+      setDeliveryMessage('PDF comercial generado correctamente.');
+    } catch (requestError) {
+      setProposalError(
+        requestError instanceof Error
+          ? requestError.message
+          : 'No se pudo generar el PDF comercial.',
+      );
+    } finally {
+      setGeneratingProposal(false);
+    }
+  }
+
   async function handleConvertToSalesOrder() {
     if (!order || converting || order.salesOrder) return;
-    if (!window.confirm('¿Desea convertir esta propuesta aprobada en una orden de venta?')) return;
     setConverting(true);
-    setProposalError(null);
+    setConversionError(null);
     try {
       const salesOrder = await convertToSalesOrder(order.id);
       setOrder((current) => current ? { ...current, salesOrder } : current);
+      setConversionModalOpen(false);
+      setDeliveryMessage(
+        `Orden de Venta ${salesOrder.orderNumber} creada correctamente.`,
+      );
     } catch (requestError) {
-      setProposalError(
+      setConversionError(
         requestError instanceof Error
           ? requestError.message
           : 'No se pudo crear la orden de venta.',
       );
     } finally {
       setConverting(false);
+    }
+  }
+
+  async function handleApproveInPerson() {
+    if (!order || approvingInPerson) return;
+    setApprovingInPerson(true);
+    setApprovalError(null);
+    try {
+      await approveCommercialProposalInPerson(order.id);
+      const persistedOrder = await getAdditionalServiceOrder(order.id);
+      setOrder(persistedOrder);
+      setApprovalModalOpen(false);
+      setDeliveryMessage('Aprobación presencial registrada correctamente.');
+    } catch (requestError) {
+      setApprovalError(
+        requestError instanceof Error
+          ? requestError.message
+          : 'No se pudo registrar la aprobación presencial.',
+      );
+    } finally {
+      setApprovingInPerson(false);
     }
   }
 
@@ -324,9 +390,11 @@ export default function AdditionalServiceOrderPreviewPage() {
             <p className={styles.eyebrow}>Cotización de servicios adicionales</p>
             <div className={styles.titleRow}>
               <h1>{order.orderNumber}</h1>
-              <Badge variant="secondary">{orderStatusLabel(order.status)}</Badge>
-              <Badge variant="outline">
-                {commercialStatusLabel(order.commercialStatus)}
+              <Badge
+                variant="outline"
+                className={commercialStatusBadgeClass(order.commercialStatus)}
+              >
+                Estado: {commercialStatusLabel(order.commercialStatus)}
               </Badge>
             </div>
             <p className={styles.subtitle}>
@@ -334,8 +402,24 @@ export default function AdditionalServiceOrderPreviewPage() {
             </p>
           </div>
           <div className={styles.actions} aria-label="Acciones de la orden">
+            {order.commercialStatus === 'DRAFT' && (
+              <Button
+                type="button"
+                onClick={handleGenerateProposal}
+                disabled={generatingProposal}
+              >
+                {generatingProposal ? (
+                  <LoaderCircle className={styles.spin} aria-hidden="true" />
+                ) : (
+                  <FileText aria-hidden="true" />
+                )}
+                {generatingProposal
+                  ? 'Generando...'
+                  : 'Generar PDF comercial'}
+              </Button>
+            )}
             {proposal && (
-              <Button asChild type="button" variant="outline">
+              <Button asChild type="button" className={styles.pdfButton}>
                 <a href={proposal.url} target="_blank" rel="noreferrer">
                   <ExternalLink aria-hidden="true" />
                   Ver PDF
@@ -345,7 +429,7 @@ export default function AdditionalServiceOrderPreviewPage() {
             {proposal && order.commercialStatus === 'PDF_GENERATED' && (
               <Button
                 type="button"
-                onClick={handleSendProposal}
+                onClick={openSendModal}
                 disabled={sendingProposal}
               >
                 {sendingProposal ? (
@@ -356,10 +440,27 @@ export default function AdditionalServiceOrderPreviewPage() {
                 {sendingProposal ? 'Enviando...' : 'Enviar propuesta'}
               </Button>
             )}
+            {(order.commercialStatus === 'PDF_GENERATED' ||
+              order.commercialStatus === 'SENT') && (
+              <Button
+                type="button"
+                className={styles.inPersonApprovalButton}
+                onClick={() => {
+                  setApprovalError(null);
+                  setApprovalModalOpen(true);
+                }}
+              >
+                <CircleCheck aria-hidden="true" />
+                Registrar aprobación presencial
+              </Button>
+            )}
             {order.commercialStatus === 'APPROVED' && !order.salesOrder && (
               <Button
                 type="button"
-                onClick={handleConvertToSalesOrder}
+                onClick={() => {
+                  setConversionError(null);
+                  setConversionModalOpen(true);
+                }}
                 disabled={converting}
               >
                 {converting ? (
@@ -369,19 +470,6 @@ export default function AdditionalServiceOrderPreviewPage() {
                 )}
                 {converting ? 'Convirtiendo...' : 'Convertir en orden de venta'}
               </Button>
-            )}
-            {!isCreationCompletion && (
-              <>
-              <Button type="button" variant="outline" disabled>
-                Editar
-              </Button>
-              <Button type="button" variant="outline" disabled>
-                Generar PDF comercial
-              </Button>
-              <Button type="button" disabled>
-                Enviar para aprobación
-              </Button>
-              </>
             )}
           </div>
         </header>
@@ -398,10 +486,159 @@ export default function AdditionalServiceOrderPreviewPage() {
         )}
         {order.salesOrder && (
           <p className={styles.deliveryMessage} role="status">
-            Esta propuesta ya fue convertida en la orden de venta{' '}
+            Convertida en Orden de Venta{' '}
             <strong>{order.salesOrder.orderNumber}</strong>.
           </p>
         )}
+
+        <ConfirmModal
+          isOpen={conversionModalOpen}
+          title="Convertir en orden de venta"
+          confirmText={converting ? 'Convirtiendo...' : 'Confirmar conversión'}
+          cancelText="Cancelar"
+          isLoading={converting}
+          onCancel={() => {
+            setConversionModalOpen(false);
+            setConversionError(null);
+          }}
+          onConfirm={() => void handleConvertToSalesOrder()}
+          message={
+            <div className={styles.approvalConfirmation}>
+              <p>
+                ¿Desea convertir esta propuesta aprobada en una orden de venta?
+              </p>
+              <dl>
+                <div>
+                  <dt>Cotización</dt>
+                  <dd>{order.orderNumber}</dd>
+                </div>
+                <div>
+                  <dt>Cliente</dt>
+                  <dd>{order.quoteCustomer?.fullName ?? 'No disponible'}</dd>
+                </div>
+                <div>
+                  <dt>Total</dt>
+                  <dd>
+                    {formatCurrency(
+                      order.totalSellingPrice,
+                      order.quotationCurrency,
+                    )}
+                  </dd>
+                </div>
+              </dl>
+              <p>
+                La propuesta permanecerá como evidencia histórica y la Orden
+                de Venta se creará únicamente al confirmar esta acción.
+              </p>
+              {conversionError && (
+                <p className={styles.sendError} role="alert">
+                  {conversionError}
+                </p>
+              )}
+            </div>
+          }
+        />
+
+        <ConfirmModal
+          isOpen={sendModalOpen}
+          title="Enviar propuesta"
+          confirmText={sendingProposal ? 'Enviando...' : 'Enviar propuesta'}
+          cancelText="Cancelar"
+          isLoading={sendingProposal}
+          confirmDisabled={!order.quoteCustomer?.email}
+          onCancel={() => {
+            setSendModalOpen(false);
+            setSendModalError(null);
+          }}
+          onConfirm={() => void handleSendProposal()}
+          message={
+            <div className={styles.sendForm}>
+              <div className={styles.sendField}>
+                <span>Para</span>
+                <div className={styles.readOnlyEmail}>
+                  {order.quoteCustomer?.email ?? 'Correo no registrado'}
+                </div>
+                {!order.quoteCustomer?.email && (
+                  <p className={styles.sendError}>
+                    El cliente debe tener un correo electrónico registrado para enviar la propuesta.
+                  </p>
+                )}
+              </div>
+              <label className={styles.sendField} htmlFor="proposal-cc-email">
+                <span>CC (opcional)</span>
+                <input
+                  id="proposal-cc-email"
+                  type="email"
+                  value={ccEmail}
+                  placeholder="copia@email.com"
+                  autoComplete="email"
+                  disabled={sendingProposal}
+                  onChange={(event) => {
+                    setCcEmail(event.target.value);
+                    setSendModalError(null);
+                  }}
+                />
+              </label>
+              {sendModalError && (
+                <p className={styles.sendError} role="alert">
+                  {sendModalError}
+                </p>
+              )}
+            </div>
+          }
+        />
+
+        <ConfirmModal
+          isOpen={approvalModalOpen}
+          title="Registrar aprobación presencial"
+          confirmText={
+            approvingInPerson ? 'Registrando...' : 'Confirmar aprobación'
+          }
+          cancelText="Cancelar"
+          isLoading={approvingInPerson}
+          onCancel={() => {
+            setApprovalModalOpen(false);
+            setApprovalError(null);
+          }}
+          onConfirm={() => void handleApproveInPerson()}
+          message={
+            <div className={styles.approvalConfirmation}>
+              <p>
+                Confirme que el cliente revisó y aceptó esta cotización
+                presencialmente.
+              </p>
+              <dl>
+                <div>
+                  <dt>Cotización</dt>
+                  <dd>{order.orderNumber}</dd>
+                </div>
+                <div>
+                  <dt>Cliente</dt>
+                  <dd>{order.quoteCustomer?.fullName ?? 'No disponible'}</dd>
+                </div>
+                <div>
+                  <dt>Total</dt>
+                  <dd>
+                    {formatCurrency(
+                      order.totalSellingPrice,
+                      order.quotationCurrency,
+                    )}
+                  </dd>
+                </div>
+              </dl>
+              <p>
+                Esta acción registrará la cotización como aprobada y permitirá
+                continuar con la Orden de Venta. La conversión no se realizará
+                automáticamente.
+              </p>
+              {approvalError && (
+                <p className={styles.sendError} role="alert">
+                  {approvalError}
+                </p>
+              )}
+            </div>
+          }
+        />
 
         <section className={styles.headerCard} aria-labelledby="order-data">
           <h2 id="order-data">Información de la orden</h2>
@@ -434,7 +671,7 @@ export default function AdditionalServiceOrderPreviewPage() {
             </div>
             <div>
               <dt>Estado</dt>
-              <dd>{orderStatusLabel(order.status)}</dd>
+              <dd>{commercialStatusLabel(order.commercialStatus)}</dd>
             </div>
           </dl>
         </section>
