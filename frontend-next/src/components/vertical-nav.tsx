@@ -227,6 +227,16 @@ export function VerticalNav() {
           } as NavGroup,
         ]
       : []),
+
+    ...(isAdmin || role === "AGENT" || role === "OPERACIONES"
+      ? [
+          {
+            href: "/sales-orders",
+            label: "Órdenes de Venta",
+            icon: "🧾",
+          },
+        ]
+      : []),
     
     // 💰 Menú Finanzas (Admin/Contador/Facturacion)
     ...(isAdminOrContador || role === "FACTURACION_COBROS"

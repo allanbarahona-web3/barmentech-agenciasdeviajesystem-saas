@@ -1,0 +1,282 @@
+.page {
+  width: 100%;
+  max-width: 1500px;
+  margin: 0 auto;
+  color: #172033;
+}
+
+.header {
+  margin-bottom: 24px;
+}
+
+.eyebrow {
+  margin: 0 0 7px;
+  color: #315f9b;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.title {
+  margin: 0;
+  color: #102344;
+  font-size: clamp(28px, 3.2vw, 38px);
+  font-weight: 800;
+  letter-spacing: -0.025em;
+}
+
+.subtitle {
+  margin: 9px 0 0;
+  color: #718096;
+  font-size: 13px;
+}
+
+.filters,
+.tableCard {
+  border: 1px solid #dfe5ed;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 3px 12px rgba(15, 23, 42, 0.04);
+}
+
+.filters {
+  display: grid;
+  grid-template-columns: minmax(300px, 2fr) repeat(3, minmax(160px, 1fr));
+  gap: 14px;
+  margin-bottom: 20px;
+  padding: 18px;
+}
+
+.field {
+  display: grid;
+  gap: 7px;
+}
+
+.field label {
+  color: #526175;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.input,
+.select {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid #ccd5e2;
+  border-radius: 9px;
+  background: #fff;
+  color: #172b4d;
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+}
+
+.input {
+  padding: 9px 12px;
+}
+
+.searchInput {
+  padding-left: 38px;
+}
+
+.select {
+  padding: 9px 32px 9px 12px;
+}
+
+.input:focus,
+.select:focus {
+  border-color: #426fa8;
+  box-shadow: 0 0 0 3px rgba(66, 111, 168, 0.12);
+}
+
+.searchControl {
+  position: relative;
+}
+
+.searchControl svg {
+  position: absolute;
+  top: 50%;
+  left: 12px;
+  width: 16px;
+  height: 16px;
+  color: #718096;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.tableCard {
+  overflow: hidden;
+}
+
+.tableHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e8ecf1;
+}
+
+.tableHeading h2 {
+  margin: 0;
+  color: #172b4d;
+  font-size: 16px;
+}
+
+.tableHeading span,
+.secondaryText {
+  color: #718096;
+  font-size: 12px;
+}
+
+.table {
+  min-width: 1180px;
+}
+
+.table th {
+  height: auto;
+  padding: 12px 14px;
+  background: #21466f;
+  color: #f8fbff;
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.025em;
+  text-transform: uppercase;
+}
+
+.table td {
+  padding: 13px 14px;
+  color: #334155;
+  font-size: 12px;
+}
+
+.orderNumber {
+  color: #163f70;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.numeric {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.status {
+  white-space: nowrap;
+}
+
+.createdBadge {
+  border-color: #72c69a;
+  background: #e3f7eb;
+  color: #17663b;
+  font-weight: 750;
+}
+
+.actionButton {
+  border-color: #1d5f9f;
+  background: #1d5f9f;
+  color: #fff;
+}
+
+.actionButton:hover {
+  border-color: #164c81;
+  background: #164c81;
+  color: #fff;
+}
+
+.state {
+  display: grid;
+  min-height: 300px;
+  padding: 48px 20px;
+  place-items: center;
+  text-align: center;
+}
+
+.stateIcon {
+  display: grid;
+  width: 54px;
+  height: 54px;
+  margin: 0 auto 14px;
+  place-items: center;
+  border-radius: 14px;
+  background: #eef4fb;
+  color: #315f9b;
+}
+
+.stateIcon svg {
+  width: 25px;
+  height: 25px;
+}
+
+.state h3 {
+  margin: 0 0 7px;
+  color: #172b4d;
+  font-size: 17px;
+}
+
+.state p {
+  max-width: 500px;
+  margin: 0 0 18px;
+  color: #718096;
+  font-size: 13px;
+}
+
+.error {
+  color: #b42318;
+}
+
+.skeleton {
+  display: block;
+  height: 13px;
+  border-radius: 5px;
+  background: linear-gradient(90deg, #eef1f5 25%, #f8fafc 50%, #eef1f5 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px;
+  border-top: 1px solid #e8ecf1;
+}
+
+.pagination p {
+  margin: 0;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.paginationActions {
+  display: flex;
+  gap: 8px;
+}
+
+@keyframes shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+@media (max-width: 1050px) {
+  .filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 680px) {
+  .filters {
+    grid-template-columns: 1fr;
+  }
+
+  .pagination {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .paginationActions > * {
+    flex: 1;
+  }
+}
