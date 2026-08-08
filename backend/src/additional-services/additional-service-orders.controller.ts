@@ -21,6 +21,7 @@ import { AdditionalServicesService } from "./additional-services.service";
 import { PricingEngineBusinessErrorFilter } from "./infrastructure/pricing-engine-business-error.filter";
 import { CommercialProposalPdfService } from "./commercial-proposal-pdf.service";
 import { CommercialProposalEmailService } from "./commercial-proposal-email.service";
+import { SalesOrderConversionService } from "../sales-orders/sales-order-conversion.service";
 
 type OrderRequest = {
   user: {
@@ -40,6 +41,7 @@ export class AdditionalServiceOrdersController {
     private readonly additionalServicesService: AdditionalServicesService,
     private readonly commercialProposalPdfService: CommercialProposalPdfService,
     private readonly commercialProposalEmailService: CommercialProposalEmailService,
+    private readonly salesOrderConversionService: SalesOrderConversionService,
   ) {}
 
   @Post()
@@ -60,6 +62,18 @@ export class AdditionalServiceOrdersController {
       orderId: order.id,
       status: order.status,
     };
+  }
+
+  @Post(":orderId/convert-to-sales-order")
+  convertToSalesOrder(
+    @Req() req: OrderRequest,
+    @Param("orderId") orderId: string,
+  ) {
+    return this.salesOrderConversionService.convertAdditionalServiceOrder(
+      req.user.tenantId,
+      orderId,
+      { id: req.user.id, fullName: req.user.fullName },
+    );
   }
 
   @Post(":orderId/commercial-proposal/send")
@@ -109,13 +123,18 @@ export class AdditionalServiceOrdersController {
   }
 
   @Get(":orderId")
-  getById(
+  async getById(
     @Req() req: OrderRequest,
     @Param("orderId") orderId: string,
   ) {
-    return this.additionalServicesService.getOrder(
+    const order = await this.additionalServicesService.getOrder(
       req.user.tenantId,
       orderId,
     );
+    const salesOrder = await this.salesOrderConversionService.findByAdditionalServiceOrder(
+      req.user.tenantId,
+      orderId,
+    );
+    return { ...order, salesOrder };
   }
 }

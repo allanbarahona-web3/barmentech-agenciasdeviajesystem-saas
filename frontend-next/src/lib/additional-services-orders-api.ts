@@ -221,6 +221,18 @@ export interface AdditionalServiceOrder {
   createdByName: string;
   createdAt: string;
   updatedAt: string;
+  salesOrder: SalesOrderSummary | null;
+}
+
+export interface SalesOrderSummary {
+  id: string;
+  orderNumber: string;
+  status: 'CREATED';
+  currency: AdditionalServiceOrderCurrency;
+  commercialSubtotal: string;
+  totalVat: string;
+  total: string;
+  createdAt: string;
 }
 
 export interface CommercialProposalPreview {
@@ -306,5 +318,13 @@ export function sendCommercialProposal(
 ): Promise<CommercialProposalDeliveryResult> {
   return apiPost<CommercialProposalDeliveryResult>(
     `/additional-services/orders/${encodeURIComponent(orderId)}/commercial-proposal/send`,
+  );
+}
+
+export function convertToSalesOrder(
+  orderId: string,
+): Promise<SalesOrderSummary> {
+  return apiPost<SalesOrderSummary>(
+    `/additional-services/orders/${encodeURIComponent(orderId)}/convert-to-sales-order`,
   );
 }

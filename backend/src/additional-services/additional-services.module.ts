@@ -19,6 +19,7 @@ import { EmailModule } from "../email/email.module";
 import { CommercialProposalEmailService } from "./commercial-proposal-email.service";
 import { CommercialProposalApprovalService } from "./commercial-proposal-approval.service";
 import { CommercialProposalPublicController } from "./commercial-proposal-public.controller";
+import { SalesOrdersModule } from "../sales-orders/sales-orders.module";
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { CommercialProposalPublicController } from "./commercial-proposal-public
     GeneratedDocumentsModule,
     StorageModule,
     EmailModule,
+    SalesOrdersModule,
   ],
   controllers: [
     AdditionalServiceCatalogController,

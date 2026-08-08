@@ -88,6 +88,8 @@ model Tenant {
   additionalServicePricingConfigs    AdditionalServicePricingConfiguration[]
   suppliers                          Supplier[]
   generatedDocuments                 GeneratedDocument[]
+  salesOrders                        SalesOrder[]
+  salesOrderLines                    SalesOrderLine[]
 
   @@map("tenants")
 }
@@ -1256,6 +1258,11 @@ enum PaymentTermUnit {
   MONTHS
 }
 
+enum Currency {
+  USD
+  CRC
+}
+
 enum AdditionalServiceExchangeRateType {
   SELL
 }
@@ -1457,6 +1464,63 @@ model AdditionalServiceOrderParticipant {
   @@index([lineId])
   @@index([clientId])
   @@map("additional_service_order_participants")
+}
+
+model SalesOrder {
+  id                     String                @id @default(cuid())
+  tenantId               String
+  orderNumber            String
+  status                 String                @default("CREATED")
+  sourceType             String
+  sourceId               String
+  customerId             String?
+  customerName           String
+  customerEmail          String?
+  currency               Currency
+  commercialSubtotal     Decimal               @db.Decimal(18, 4)
+  totalVat               Decimal               @db.Decimal(18, 4)
+  total                  Decimal               @db.Decimal(18, 4)
+  paymentConditionType   PaymentConditionType?
+  paymentTermValue       Int?
+  paymentTermUnit        PaymentTermUnit?
+  commercialObservations String?
+  createdByUserId        String
+  createdByName          String
+  createdAt              DateTime              @default(now())
+  updatedAt              DateTime              @updatedAt
+  tenant                 Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  lines                  SalesOrderLine[]
+
+  @@unique([tenantId, orderNumber])
+  @@unique([tenantId, sourceType, sourceId])
+  @@unique([id, tenantId])
+  @@index([tenantId])
+  @@index([customerId])
+  @@map("sales_orders")
+}
+
+model SalesOrderLine {
+  id                    String     @id @default(cuid())
+  tenantId              String
+  salesOrderId          String
+  serviceCode           String
+  serviceName           String
+  serviceDetailsVersion Int?
+  serviceDetails        Json?
+  commercialNotes       String?
+  subtotal              Decimal    @db.Decimal(18, 4)
+  vatPercentage         Decimal    @db.Decimal(7, 4)
+  vatAmount             Decimal    @db.Decimal(18, 4)
+  total                 Decimal    @db.Decimal(18, 4)
+  participants          Json
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+  tenant                Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  salesOrder            SalesOrder @relation(fields: [salesOrderId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([salesOrderId])
+  @@map("sales_order_lines")
 }
 
 enum PayrollFrequency {

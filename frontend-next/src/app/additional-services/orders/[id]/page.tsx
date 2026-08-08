@@ -22,6 +22,7 @@ import {
   getAdditionalServiceOrder,
   getCommercialProposalPreview,
   sendCommercialProposal,
+  convertToSalesOrder,
   type AdditionalServiceOrder,
   type AdditionalServiceOrderCurrency,
   type AdditionalServicePaymentConditionType,
@@ -149,6 +150,7 @@ export default function AdditionalServiceOrderPreviewPage() {
   const [proposalError, setProposalError] = useState<string | null>(null);
   const [sendingProposal, setSendingProposal] = useState(false);
   const [deliveryMessage, setDeliveryMessage] = useState<string | null>(null);
+  const [converting, setConverting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -238,6 +240,25 @@ export default function AdditionalServiceOrderPreviewPage() {
       );
     } finally {
       setSendingProposal(false);
+    }
+  }
+
+  async function handleConvertToSalesOrder() {
+    if (!order || converting || order.salesOrder) return;
+    if (!window.confirm('¿Desea convertir esta propuesta aprobada en una orden de venta?')) return;
+    setConverting(true);
+    setProposalError(null);
+    try {
+      const salesOrder = await convertToSalesOrder(order.id);
+      setOrder((current) => current ? { ...current, salesOrder } : current);
+    } catch (requestError) {
+      setProposalError(
+        requestError instanceof Error
+          ? requestError.message
+          : 'No se pudo crear la orden de venta.',
+      );
+    } finally {
+      setConverting(false);
     }
   }
 
@@ -335,6 +356,20 @@ export default function AdditionalServiceOrderPreviewPage() {
                 {sendingProposal ? 'Enviando...' : 'Enviar propuesta'}
               </Button>
             )}
+            {order.commercialStatus === 'APPROVED' && !order.salesOrder && (
+              <Button
+                type="button"
+                onClick={handleConvertToSalesOrder}
+                disabled={converting}
+              >
+                {converting ? (
+                  <LoaderCircle className={styles.spin} aria-hidden="true" />
+                ) : (
+                  <ReceiptText aria-hidden="true" />
+                )}
+                {converting ? 'Convirtiendo...' : 'Convertir en orden de venta'}
+              </Button>
+            )}
             {!isCreationCompletion && (
               <>
               <Button type="button" variant="outline" disabled>
@@ -359,6 +394,12 @@ export default function AdditionalServiceOrderPreviewPage() {
         {deliveryMessage && (
           <p className={styles.deliveryMessage} role="status">
             {deliveryMessage}
+          </p>
+        )}
+        {order.salesOrder && (
+          <p className={styles.deliveryMessage} role="status">
+            Esta propuesta ya fue convertida en la orden de venta{' '}
+            <strong>{order.salesOrder.orderNumber}</strong>.
           </p>
         )}
 
