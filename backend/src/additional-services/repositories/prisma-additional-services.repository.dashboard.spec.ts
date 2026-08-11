@@ -8,7 +8,7 @@ import {
 import { PrismaAdditionalServicesRepository } from "./prisma-additional-services.repository";
 
 describe("PrismaAdditionalServicesRepository dashboard", () => {
-  it("uses quoteCustomer in one minimal tenant-scoped page query", async () => {
+  it("adds tenant-scoped Sales Order identity to dashboard rows", async () => {
     const findMany = jest.fn().mockResolvedValue([
       {
         id: "order-1",
@@ -35,7 +35,7 @@ describe("PrismaAdditionalServicesRepository dashboard", () => {
         quotationCurrency: AdditionalServiceCurrency.CRC,
         totalSellingPrice: "50000.0000",
         status: AdditionalServiceOrderStatus.CONFIRMED,
-        commercialStatus: CommercialProposalStatus.SENT,
+        commercialStatus: CommercialProposalStatus.APPROVED,
         createdAt: new Date("2026-07-29T12:00:00.000Z"),
         travelPackage: { id: "travel-1", name: "Miami" },
         internalBooking: null,
@@ -57,8 +57,16 @@ describe("PrismaAdditionalServicesRepository dashboard", () => {
       },
     ]);
     const count = jest.fn().mockResolvedValue(3);
+    const findSalesOrders = jest.fn().mockResolvedValue([
+      {
+        id: "sales-order-1",
+        orderNumber: "SO-2026-000005",
+        sourceId: "order-1",
+      },
+    ]);
     const prisma = {
       additionalServiceOrder: { findMany, count },
+      salesOrder: { findMany: findSalesOrders },
     };
     const repository = new PrismaAdditionalServicesRepository(
       prisma as unknown as PrismaService,
@@ -170,6 +178,19 @@ describe("PrismaAdditionalServicesRepository dashboard", () => {
       }),
     );
     expect(count).toHaveBeenCalledWith({ where: orderQuery.where });
+    expect(findSalesOrders).toHaveBeenCalledTimes(1);
+    expect(findSalesOrders).toHaveBeenCalledWith({
+      where: {
+        tenantId: "tenant-1",
+        sourceType: "ADDITIONAL_SERVICE_ORDER",
+        sourceId: { in: ["order-1", "order-2", "historical-order"] },
+      },
+      select: {
+        id: true,
+        orderNumber: true,
+        sourceId: true,
+      },
+    });
     expect(result.orders.map(({ customerName }) => customerName)).toEqual([
       "Paying Companion",
       "Different Customer",
@@ -177,8 +198,13 @@ describe("PrismaAdditionalServicesRepository dashboard", () => {
     ]);
     expect(result.orders.map(({ commercialStatus }) => commercialStatus)).toEqual([
       CommercialProposalStatus.APPROVED,
-      CommercialProposalStatus.SENT,
+      CommercialProposalStatus.APPROVED,
       CommercialProposalStatus.DRAFT,
+    ]);
+    expect(result.orders.map(({ salesOrder }) => salesOrder)).toEqual([
+      { id: "sales-order-1", orderNumber: "SO-2026-000005" },
+      null,
+      null,
     ]);
   });
 });

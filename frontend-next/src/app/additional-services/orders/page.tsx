@@ -106,7 +106,7 @@ function commercialStatusBadgeClass(status: CommercialProposalStatus | null) {
 function LoadingRows() {
   return Array.from({ length: 6 }, (_, rowIndex) => (
     <TableRow key={rowIndex}>
-      {Array.from({ length: 9 }, (_, cellIndex) => (
+      {Array.from({ length: 10 }, (_, cellIndex) => (
         <TableCell key={cellIndex}>
           <span
             className={styles.skeleton}
@@ -454,6 +454,7 @@ export default function AdditionalServiceOrdersDashboardPage() {
                   <TableHead className={styles.numeric}>Total</TableHead>
                   <TableHead>Moneda</TableHead>
                   <TableHead>Estado</TableHead>
+                  <TableHead>Orden de Venta</TableHead>
                   <TableHead>Acciones</TableHead>
                 </TableRow>
               </TableHeader>
@@ -519,6 +520,26 @@ export default function AdditionalServiceOrdersDashboardPage() {
                             order.commercialStatus,
                           )}
                         </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {order.commercialStatus !== 'APPROVED' ? (
+                          <span className={styles.muted}>—</span>
+                        ) : order.salesOrder ? (
+                          <Link
+                            className={styles.salesOrderLink}
+                            href={`/sales-orders/${encodeURIComponent(order.salesOrder.id)}`}
+                            onClick={(event) => event.stopPropagation()}
+                          >
+                            {order.salesOrder.orderNumber}
+                          </Link>
+                        ) : (
+                          <Badge
+                            variant="outline"
+                            className={styles.pendingConversionBadge}
+                          >
+                            Pendiente
+                          </Badge>
+                        )}
                       </TableCell>
                       <TableCell>
                         <Button

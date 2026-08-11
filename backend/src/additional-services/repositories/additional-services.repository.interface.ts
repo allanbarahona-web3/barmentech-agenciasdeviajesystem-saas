@@ -126,6 +126,10 @@ export interface AdditionalServiceOrderDashboardItemRecord {
   currency: AdditionalServiceCurrency;
   status: AdditionalServiceOrderStatus;
   commercialStatus: CommercialProposalStatus | null;
+  salesOrder: {
+    id: string;
+    orderNumber: string;
+  } | null;
 }
 
 export interface AdditionalServiceOrderDashboardPageRecord {

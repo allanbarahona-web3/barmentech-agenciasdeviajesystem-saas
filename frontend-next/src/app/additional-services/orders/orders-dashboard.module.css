@@ -175,6 +175,24 @@
   background: #e1efff;
 }
 
+.salesOrderLink {
+  color: #163f70;
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.salesOrderLink:hover {
+  color: #0f2f55;
+}
+
+.pendingConversionBadge {
+  border-color: #f2c66d;
+  background: #fff8e6;
+  color: #855b0b;
+  white-space: nowrap;
+}
+
 .orderNumber {
   color: #163f70;
   font-weight: 800;

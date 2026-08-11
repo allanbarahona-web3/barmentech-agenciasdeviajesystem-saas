@@ -17,6 +17,10 @@ export class AdditionalServiceOrderDashboardItemDto {
   currency!: AdditionalServiceCurrency;
   status!: AdditionalServiceOrderStatus;
   commercialStatus!: CommercialProposalStatus | null;
+  salesOrder!: {
+    id: string;
+    orderNumber: string;
+  } | null;
 }
 
 export class AdditionalServiceOrderDashboardResponseDto {

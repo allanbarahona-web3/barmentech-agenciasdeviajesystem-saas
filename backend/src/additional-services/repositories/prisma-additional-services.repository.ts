@@ -75,6 +75,9 @@ interface AdditionalServicesPrismaClient {
   additionalServiceOrderParticipant: {
     createMany(args: unknown): Promise<{ count: number }>;
   };
+  salesOrder: {
+    findMany(args: unknown): Promise<unknown>;
+  };
 }
 
 interface AdditionalServicesPrismaRoot extends AdditionalServicesPrismaClient {
@@ -1256,6 +1259,31 @@ export class PrismaAdditionalServicesRepository
         };
       } | null;
     }>;
+    const salesOrders = orders.length
+      ? ((await client.salesOrder.findMany({
+          where: {
+            tenantId,
+            sourceType: "ADDITIONAL_SERVICE_ORDER",
+            sourceId: { in: orders.map((order) => order.id) },
+          },
+          select: {
+            id: true,
+            orderNumber: true,
+            sourceId: true,
+          },
+        })) as Array<{
+          id: string;
+          orderNumber: string;
+          sourceId: string;
+        }>)
+      : [];
+    const salesOrderBySourceId = new Map(
+      salesOrders.map(({ sourceId, id, orderNumber }) => [
+        sourceId,
+        { id, orderNumber },
+      ]),
+    );
+
     return {
       orders: orders.map((order) => ({
         id: order.id,
@@ -1275,6 +1303,7 @@ export class PrismaAdditionalServicesRepository
         currency: order.quotationCurrency,
         status: order.status,
         commercialStatus: order.commercialStatus,
+        salesOrder: salesOrderBySourceId.get(order.id) ?? null,
       })),
       total,
       page: query.page,
