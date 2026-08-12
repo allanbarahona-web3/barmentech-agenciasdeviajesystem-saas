@@ -101,6 +101,7 @@ model Tenant {
   fiscalIssuerEconomicActivities   FiscalIssuerEconomicActivity[]
   billingOutboxEvents              BillingOutboxEvent[]
   accountReceivables               AccountReceivable[]
+  payments                         Payment[]
 
   @@map("tenants")
 }
@@ -1903,6 +1904,42 @@ model AccountReceivable {
   @@index([tenantId, recognizedAt])
   @@index([tenantId, sourceNumber])
   @@map("account_receivables")
+}
+
+enum PaymentStatus {
+  RECEIVED
+  PARTIALLY_ALLOCATED
+  FULLY_ALLOCATED
+  CANCELLED
+}
+
+model Payment {
+  id                            String        @id @default(cuid())
+  tenantId                      String
+  registrationDeduplicationKey  String        @db.VarChar(200)
+  customerId                    String?
+  payerDisplayName              String
+  payerIdentificationType       String?       @db.VarChar(4)
+  payerIdentificationNumber     String?       @db.VarChar(30)
+  currencyCode                  String        @db.VarChar(3)
+  receivedAmount                Decimal       @db.Decimal(18, 4)
+  availableAmount               Decimal       @db.Decimal(18, 4)
+  receivedAt                    DateTime
+  paymentMethod                 String        @db.VarChar(50)
+  externalReference             String?       @db.VarChar(150)
+  description                   String?       @db.VarChar(500)
+  status                        PaymentStatus @default(RECEIVED)
+  cancelledAt                   DateTime?
+  createdAt                     DateTime      @default(now())
+  updatedAt                     DateTime      @updatedAt
+  tenant                        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, registrationDeduplicationKey])
+  @@index([tenantId, status, receivedAt])
+  @@index([tenantId, customerId])
+  @@index([tenantId, receivedAt])
+  @@index([tenantId, externalReference])
+  @@map("payments")
 }
 
 enum PayrollFrequency {
