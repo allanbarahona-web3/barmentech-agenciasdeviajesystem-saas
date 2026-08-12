@@ -1713,6 +1713,7 @@ model BillingLineTaxExemption {
   tenant                      Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   billingLineTax              BillingLineTax @relation(fields: [billingLineTaxId, tenantId], references: [id, tenantId], onDelete: Cascade)
 
+  @@unique([billingLineTaxId, tenantId])
   @@index([tenantId])
   @@map("billing_line_tax_exemptions")
 }
@@ -1990,6 +1991,7 @@ model PaymentAllocationReversal {
 
   @@unique([tenantId, reversalDeduplicationKey])
   @@unique([tenantId, paymentAllocationId])
+  @@unique([paymentAllocationId, tenantId])
   @@index([tenantId, reversedAt])
   @@map("payment_allocation_reversals")
 }
