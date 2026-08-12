@@ -1568,6 +1568,11 @@ enum BillingMode {
   ELECTRONIC_PROVIDER
 }
 
+enum BillingDocumentSourceRole {
+  PRIMARY
+  ADJUSTMENT
+}
+
 enum BillingDocumentLifecycleStatus {
   DRAFT
   CONFIRMED
@@ -1607,6 +1612,8 @@ model BillingDocument {
   sourceType                 String?                        @db.VarChar(50)
   sourceId                   String?                        @db.VarChar(100)
   sourceNumber               String?                        @db.VarChar(100)
+  sourceRole                 BillingDocumentSourceRole      @default(PRIMARY)
+  creationDeduplicationKey   String?                        @db.VarChar(200)
   schemaVersion              String                         @db.VarChar(20)
   countryCode                String                         @default("CR") @db.VarChar(2)
   currencyCode               String                         @db.VarChar(3)
@@ -1656,6 +1663,7 @@ model BillingDocument {
   @@unique([tenantId, internalNumber])
   @@unique([tenantId, fiscalNumber])
   @@unique([tenantId, haciendaKey])
+  @@unique([tenantId, creationDeduplicationKey])
   @@unique([id, tenantId])
   @@index([tenantId, lifecycleStatus])
   @@index([tenantId, documentTypeCode])
