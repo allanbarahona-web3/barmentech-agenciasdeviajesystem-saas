@@ -100,6 +100,7 @@ model Tenant {
   fiscalIssuers                    FiscalIssuer[]
   fiscalIssuerEconomicActivities   FiscalIssuerEconomicActivity[]
   billingOutboxEvents              BillingOutboxEvent[]
+  accountReceivables               AccountReceivable[]
 
   @@map("tenants")
 }
@@ -1862,6 +1863,46 @@ model BillingOutboxEvent {
   @@index([tenantId, createdAt])
   @@index([lockedAt])
   @@map("billing_outbox_events")
+}
+
+enum AccountReceivableStatus {
+  OPEN
+  PARTIALLY_SETTLED
+  SETTLED
+  CANCELLED
+}
+
+model AccountReceivable {
+  id                       String                  @id @default(cuid())
+  tenantId                 String
+  sourceType               String                  @db.VarChar(100)
+  sourceId                 String                  @db.VarChar(100)
+  sourceNumber             String?                 @db.VarChar(100)
+  sourceDocumentType       String?                 @db.VarChar(50)
+  customerId               String?
+  debtorDisplayName        String
+  debtorIdentificationType String?                 @db.VarChar(4)
+  debtorIdentificationNumber String?               @db.VarChar(30)
+  currencyCode             String                  @db.VarChar(3)
+  originalAmount           Decimal                 @db.Decimal(18, 4)
+  outstandingAmount        Decimal                 @db.Decimal(18, 4)
+  dueDate                  DateTime                 @db.Date
+  paymentTermDays          Int?
+  status                   AccountReceivableStatus @default(OPEN)
+  recognizedAt             DateTime                 @default(now())
+  settledAt                DateTime?
+  cancelledAt              DateTime?
+  createdAt                DateTime                 @default(now())
+  updatedAt                DateTime                 @updatedAt
+  tenant                   Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, sourceType, sourceId])
+  @@index([tenantId, status, dueDate])
+  @@index([tenantId, customerId])
+  @@index([tenantId, dueDate])
+  @@index([tenantId, recognizedAt])
+  @@index([tenantId, sourceNumber])
+  @@map("account_receivables")
 }
 
 enum PayrollFrequency {
