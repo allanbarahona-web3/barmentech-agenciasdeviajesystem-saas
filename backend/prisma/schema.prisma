@@ -102,6 +102,7 @@ model Tenant {
   billingOutboxEvents              BillingOutboxEvent[]
   accountReceivables               AccountReceivable[]
   payments                         Payment[]
+  paymentAllocations               PaymentAllocation[]
 
   @@map("tenants")
 }
@@ -1896,8 +1897,10 @@ model AccountReceivable {
   createdAt                DateTime                 @default(now())
   updatedAt                DateTime                 @updatedAt
   tenant                   Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  paymentAllocations       PaymentAllocation[]
 
   @@unique([tenantId, sourceType, sourceId])
+  @@unique([id, tenantId])
   @@index([tenantId, status, dueDate])
   @@index([tenantId, customerId])
   @@index([tenantId, dueDate])
@@ -1933,13 +1936,42 @@ model Payment {
   createdAt                     DateTime      @default(now())
   updatedAt                     DateTime      @updatedAt
   tenant                        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  allocations                   PaymentAllocation[]
 
   @@unique([tenantId, registrationDeduplicationKey])
+  @@unique([id, tenantId])
   @@index([tenantId, status, receivedAt])
   @@index([tenantId, customerId])
   @@index([tenantId, receivedAt])
   @@index([tenantId, externalReference])
   @@map("payments")
+}
+
+enum PaymentAllocationStatus {
+  ACTIVE
+  REVERSED
+}
+
+model PaymentAllocation {
+  id                         String                  @id @default(cuid())
+  tenantId                   String
+  paymentId                  String
+  accountReceivableId        String
+  allocationDeduplicationKey String                  @db.VarChar(200)
+  amount                     Decimal                 @db.Decimal(18, 4)
+  status                     PaymentAllocationStatus @default(ACTIVE)
+  allocatedAt                DateTime
+  createdAt                  DateTime                @default(now())
+  updatedAt                  DateTime                @updatedAt
+  tenant                     Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  payment                    Payment                 @relation(fields: [paymentId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  accountReceivable          AccountReceivable       @relation(fields: [accountReceivableId, tenantId], references: [id, tenantId], onDelete: Restrict)
+
+  @@unique([tenantId, allocationDeduplicationKey])
+  @@index([tenantId, paymentId, status])
+  @@index([tenantId, accountReceivableId, status])
+  @@index([tenantId, allocatedAt])
+  @@map("payment_allocations")
 }
 
 enum PayrollFrequency {
