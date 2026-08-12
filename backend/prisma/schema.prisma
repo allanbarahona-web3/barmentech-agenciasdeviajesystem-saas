@@ -99,6 +99,7 @@ model Tenant {
   billingConfiguration             TenantBillingConfiguration?
   fiscalIssuers                    FiscalIssuer[]
   fiscalIssuerEconomicActivities   FiscalIssuerEconomicActivity[]
+  billingOutboxEvents              BillingOutboxEvent[]
 
   @@map("tenants")
 }
@@ -1820,6 +1821,47 @@ model FiscalIssuerEconomicActivity {
   @@index([tenantId])
   @@index([fiscalIssuerId, displayOrder])
   @@map("fiscal_issuer_economic_activities")
+}
+
+enum BillingOutboxStatus {
+  PENDING
+  PROCESSING
+  PROCESSED
+  FAILED
+}
+
+model BillingOutboxEvent {
+  id               String              @id @default(cuid())
+  tenantId         String
+  eventType        String              @db.VarChar(150)
+  eventVersion     Int                 @default(1)
+  aggregateType    String              @db.VarChar(100)
+  aggregateId      String              @db.VarChar(100)
+  correlationId    String?             @db.VarChar(100)
+  causationId      String?             @db.VarChar(100)
+  deduplicationKey String?             @db.VarChar(200)
+  payload          Json
+  status           BillingOutboxStatus @default(PENDING)
+  availableAt      DateTime            @default(now())
+  attemptCount     Int                 @default(0)
+  maximumAttempts  Int                 @default(5)
+  lockedAt         DateTime?
+  lockedBy         String?             @db.VarChar(100)
+  processedAt      DateTime?
+  lastAttemptAt    DateTime?
+  lastError        String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  tenant           Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, deduplicationKey])
+  @@index([tenantId, status, availableAt])
+  @@index([status, availableAt])
+  @@index([tenantId, aggregateType, aggregateId])
+  @@index([tenantId, eventType])
+  @@index([tenantId, createdAt])
+  @@index([lockedAt])
+  @@map("billing_outbox_events")
 }
 
 enum PayrollFrequency {
