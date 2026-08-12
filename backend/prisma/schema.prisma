@@ -329,6 +329,10 @@ model Client {
   city                                 String?
   country                              String?
   postalCode                           String?
+  provinceCode                         String?                             @db.VarChar(1)
+  cantonCode                           String?                             @db.VarChar(2)
+  districtCode                         String?                             @db.VarChar(2)
+  neighborhoodCode                     String?                             @db.VarChar(2)
   secondaryEmail                       String?
   secondaryPhone                       String?
   emergencyContactRelationship         String?
