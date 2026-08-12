@@ -100,6 +100,7 @@ model Tenant {
   billingConfiguration               TenantBillingConfiguration?
   fiscalIssuers                      FiscalIssuer[]
   fiscalIssuerEconomicActivities     FiscalIssuerEconomicActivity[]
+  billingDocumentNumberSequences     BillingDocumentNumberSequence[]
   billingOutboxEvents                BillingOutboxEvent[]
   accountReceivables                 AccountReceivable[]
   payments                           Payment[]
@@ -1630,6 +1631,8 @@ model BillingDocument {
   issuerIdentificationType   String                         @db.VarChar(4)
   issuerIdentification       String                         @db.VarChar(30)
   issuerEconomicActivityCode String?                        @db.VarChar(10)
+  issuerEstablishmentCode    String?                        @db.VarChar(3)
+  issuerTerminalCode         String?                        @db.VarChar(5)
   issuerEmail                String?
   issuerPhone                String?
   issuerAddressSnapshot      Json?
@@ -1836,11 +1839,30 @@ model FiscalIssuer {
   updatedAt              DateTime                       @updatedAt
   tenant                 Tenant                         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   economicActivities     FiscalIssuerEconomicActivity[]
+  billingDocumentNumberSequences BillingDocumentNumberSequence[]
 
   @@unique([id, tenantId])
   @@index([tenantId, isActive])
   @@index([tenantId, identificationNumber])
   @@map("fiscal_issuers")
+}
+
+model BillingDocumentNumberSequence {
+  id                     String       @id @default(cuid())
+  tenantId               String
+  fiscalIssuerId         String
+  establishmentCode      String       @db.VarChar(3)
+  terminalCode           String       @db.VarChar(5)
+  documentTypeCode       String       @db.VarChar(4)
+  startingSequenceNumber BigInt
+  nextSequenceNumber     BigInt
+  createdAt              DateTime     @default(now())
+  updatedAt              DateTime     @updatedAt
+  tenant                 Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  fiscalIssuer           FiscalIssuer @relation(fields: [fiscalIssuerId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "billing_document_number_sequences_fiscalIssuer_tenant_fkey")
+
+  @@unique([tenantId, fiscalIssuerId, establishmentCode, terminalCode, documentTypeCode], map: "billing_document_number_sequences_scope_key")
+  @@map("billing_document_number_sequences")
 }
 
 model FiscalIssuerEconomicActivity {
