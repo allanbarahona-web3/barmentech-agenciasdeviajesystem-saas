@@ -1622,12 +1622,14 @@ model BillingDocument {
   issuerName                 String
   issuerIdentificationType   String                         @db.VarChar(4)
   issuerIdentification       String                         @db.VarChar(30)
+  issuerEconomicActivityCode String?                        @db.VarChar(10)
   issuerEmail                String?
   issuerPhone                String?
   issuerAddressSnapshot      Json?
   receiverName               String?
   receiverIdentificationType String?                        @db.VarChar(4)
   receiverIdentification     String?                        @db.VarChar(30)
+  receiverEconomicActivityCode String?                      @db.VarChar(10)
   receiverEmail              String?
   receiverPhone              String?
   receiverAddressSnapshot    Json?
