@@ -86,6 +86,7 @@ model Tenant {
   additionalServiceOrderParticipants AdditionalServiceOrderParticipant[]
   additionalServiceCatalogItems      AdditionalServiceCatalog[]
   additionalServicePricingConfigs    AdditionalServicePricingConfiguration[]
+  additionalServiceFiscalProfiles    AdditionalServiceFiscalProfile[]
   suppliers                          Supplier[]
   generatedDocuments                 GeneratedDocument[]
   salesOrders                        SalesOrder[]
@@ -1310,6 +1311,7 @@ model AdditionalServiceCatalog {
   updatedAt             DateTime                                @updatedAt
   tenant                Tenant                                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   pricingConfigurations AdditionalServicePricingConfiguration[]
+  fiscalProfile         AdditionalServiceFiscalProfile?
   orderLines            AdditionalServiceOrderLine[]
 
   @@unique([tenantId, code])
@@ -1358,6 +1360,25 @@ model AdditionalServicePricingConfiguration {
   @@index([tenantId])
   @@index([tenantId, isActive])
   @@map("additional_service_pricing_configurations")
+}
+
+model AdditionalServiceFiscalProfile {
+  id                         String                   @id @default(cuid())
+  tenantId                   String
+  additionalServiceCatalogId String
+  cabysCode                  String                   @db.VarChar(13)
+  unitOfMeasureCode          String                   @db.VarChar(20)
+  taxCode                    String?                  @db.VarChar(4)
+  taxRateCode                String?                  @db.VarChar(4)
+  taxPercentage              Decimal?                 @db.Decimal(7, 4)
+  isActive                   Boolean                  @default(false)
+  createdAt                  DateTime                 @default(now())
+  updatedAt                  DateTime                 @updatedAt
+  tenant                     Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  additionalServiceCatalog   AdditionalServiceCatalog @relation(fields: [additionalServiceCatalogId, tenantId], references: [id, tenantId], onDelete: Restrict)
+
+  @@unique([additionalServiceCatalogId, tenantId])
+  @@map("additional_service_fiscal_profiles")
 }
 
 model AdditionalServiceOrder {
