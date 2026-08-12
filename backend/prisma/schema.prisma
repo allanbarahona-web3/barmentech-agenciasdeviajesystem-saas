@@ -90,6 +90,12 @@ model Tenant {
   generatedDocuments                 GeneratedDocument[]
   salesOrders                        SalesOrder[]
   salesOrderLines                    SalesOrderLine[]
+  billingDocuments                  BillingDocument[]
+  billingDocumentLines              BillingDocumentLine[]
+  billingLineTaxes                  BillingLineTax[]
+  billingLineTaxExemptions          BillingLineTaxExemption[]
+  billingDocumentReferences         BillingDocumentReference[]
+  billingDocumentPaymentMethods     BillingDocumentPaymentMethod[]
 
   @@map("tenants")
 }
@@ -1523,6 +1529,226 @@ model SalesOrderLine {
   @@index([tenantId])
   @@index([salesOrderId])
   @@map("sales_order_lines")
+}
+
+enum BillingMode {
+  EXTERNAL_REGISTRATION
+  ELECTRONIC_PROVIDER
+}
+
+enum BillingDocumentLifecycleStatus {
+  DRAFT
+  CONFIRMED
+  SUBMITTED
+  CANCELLED
+}
+
+enum BillingProviderStatus {
+  NOT_SUBMITTED
+  PENDING
+  PROCESSED
+  FAILED
+}
+
+enum BillingTaxAuthorityStatus {
+  NOT_SUBMITTED
+  PROCESSING
+  ACCEPTED
+  REJECTED
+}
+
+enum BillingArtifactStatus {
+  NOT_GENERATED
+  PENDING
+  AVAILABLE
+  FAILED
+}
+
+model BillingDocument {
+  id                       String                          @id @default(cuid())
+  tenantId                 String
+  documentTypeCode         String                          @db.VarChar(4)
+  billingMode              BillingMode
+  internalNumber           String                          @db.VarChar(50)
+  fiscalNumber             String?                         @db.VarChar(50)
+  haciendaKey              String?                         @db.VarChar(50)
+  sourceType               String?                         @db.VarChar(50)
+  sourceId                 String?                         @db.VarChar(100)
+  sourceNumber             String?                         @db.VarChar(100)
+  schemaVersion            String                          @db.VarChar(20)
+  countryCode              String                          @default("CR") @db.VarChar(2)
+  currencyCode             String                          @db.VarChar(3)
+  exchangeRate             Decimal?                        @db.Decimal(18, 8)
+  issuedAt                 DateTime?
+  paymentConditionCode     String?                         @db.VarChar(4)
+  creditTermDays           Int?
+  dueDate                  DateTime?                       @db.Date
+  lifecycleStatus          BillingDocumentLifecycleStatus @default(DRAFT)
+  providerStatus           BillingProviderStatus          @default(NOT_SUBMITTED)
+  taxAuthorityStatus       BillingTaxAuthorityStatus      @default(NOT_SUBMITTED)
+  artifactStatus           BillingArtifactStatus          @default(NOT_GENERATED)
+  issuerName               String
+  issuerIdentificationType String                           @db.VarChar(4)
+  issuerIdentification     String                          @db.VarChar(30)
+  issuerEmail              String?
+  issuerPhone              String?
+  issuerAddressSnapshot    Json?
+  receiverName             String?
+  receiverIdentificationType String?                       @db.VarChar(4)
+  receiverIdentification   String?                         @db.VarChar(30)
+  receiverEmail            String?
+  receiverPhone            String?
+  receiverAddressSnapshot  Json?
+  grossSubtotal            Decimal                         @db.Decimal(18, 4)
+  discountTotal            Decimal                         @db.Decimal(18, 4)
+  taxableTotal             Decimal                         @db.Decimal(18, 4)
+  exemptTotal              Decimal                         @db.Decimal(18, 4)
+  exoneratedTotal          Decimal                         @db.Decimal(18, 4)
+  grossTaxTotal            Decimal                         @db.Decimal(18, 4)
+  exoneratedTaxTotal       Decimal                         @db.Decimal(18, 4)
+  netTaxTotal              Decimal                         @db.Decimal(18, 4)
+  total                    Decimal                         @db.Decimal(18, 4)
+  confirmedAt              DateTime?
+  submittedAt              DateTime?
+  createdBy                String?
+  createdAt                DateTime                        @default(now())
+  updatedAt                DateTime                        @updatedAt
+  tenant                   Tenant                          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  lines                    BillingDocumentLine[]
+  references               BillingDocumentReference[]     @relation("BillingDocumentReferences")
+  referencedBy             BillingDocumentReference[]     @relation("ReferencedBillingDocuments")
+  paymentMethods           BillingDocumentPaymentMethod[]
+
+  @@unique([tenantId, internalNumber])
+  @@unique([tenantId, fiscalNumber])
+  @@unique([tenantId, haciendaKey])
+  @@unique([id, tenantId])
+  @@index([tenantId, lifecycleStatus])
+  @@index([tenantId, documentTypeCode])
+  @@index([tenantId, sourceType, sourceId])
+  @@map("billing_documents")
+}
+
+model BillingDocumentLine {
+  id                    String          @id @default(cuid())
+  tenantId              String
+  billingDocumentId     String
+  lineNumber            Int
+  cabysCode             String?         @db.VarChar(13)
+  itemCode              String?         @db.VarChar(50)
+  description           String
+  quantity              Decimal         @db.Decimal(18, 4)
+  unitOfMeasureCode     String           @db.VarChar(20)
+  unitPrice             Decimal         @db.Decimal(18, 4)
+  grossAmount           Decimal         @db.Decimal(18, 4)
+  discountAmount        Decimal         @db.Decimal(18, 4)
+  discountCode          String?          @db.VarChar(4)
+  discountReason        String?
+  taxableBase           Decimal         @db.Decimal(18, 4)
+  taxAmount             Decimal         @db.Decimal(18, 4)
+  exoneratedTaxAmount   Decimal         @db.Decimal(18, 4)
+  netTaxAmount          Decimal         @db.Decimal(18, 4)
+  lineSubtotal          Decimal         @db.Decimal(18, 4)
+  lineTotal             Decimal         @db.Decimal(18, 4)
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+  tenant                Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  billingDocument       BillingDocument @relation(fields: [billingDocumentId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  taxes                 BillingLineTax[]
+
+  @@unique([billingDocumentId, lineNumber])
+  @@unique([id, tenantId])
+  @@index([tenantId])
+  @@map("billing_document_lines")
+}
+
+model BillingLineTax {
+  id                    String                  @id @default(cuid())
+  tenantId              String
+  billingDocumentLineId String
+  taxOrder              Int
+  taxCode               String                  @db.VarChar(4)
+  rateCode              String                  @db.VarChar(4)
+  ratePercentage        Decimal                 @db.Decimal(7, 4)
+  taxableBase           Decimal                 @db.Decimal(18, 4)
+  taxAmount             Decimal                 @db.Decimal(18, 4)
+  calculationFactor     Decimal?                @db.Decimal(18, 8)
+  netTaxAmount          Decimal                 @db.Decimal(18, 4)
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+  tenant                Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  billingDocumentLine   BillingDocumentLine     @relation(fields: [billingDocumentLineId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  exemption             BillingLineTaxExemption?
+
+  @@unique([billingDocumentLineId, taxOrder])
+  @@unique([id, tenantId])
+  @@index([tenantId])
+  @@map("billing_line_taxes")
+}
+
+model BillingLineTaxExemption {
+  id                          String         @id @default(cuid())
+  tenantId                    String
+  billingLineTaxId            String         @unique
+  documentTypeCode            String         @db.VarChar(4)
+  documentNumber              String         @db.VarChar(50)
+  legalArticle                String?        @db.VarChar(20)
+  legalSection                String?        @db.VarChar(20)
+  issuingInstitutionCode      String?        @db.VarChar(4)
+  issuingInstitutionName      String?
+  otherInstitutionDescription String?
+  issueDate                   DateTime       @db.Date
+  exemptedPercentage          Decimal        @db.Decimal(7, 4)
+  exemptedAmount              Decimal        @db.Decimal(18, 4)
+  createdAt                   DateTime       @default(now())
+  updatedAt                   DateTime       @updatedAt
+  tenant                      Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  billingLineTax              BillingLineTax @relation(fields: [billingLineTaxId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("billing_line_tax_exemptions")
+}
+
+model BillingDocumentReference {
+  id                          String           @id @default(cuid())
+  tenantId                    String
+  billingDocumentId           String
+  referencedBillingDocumentId String?
+  referenceOrder              Int
+  externalDocumentKey         String?          @db.VarChar(50)
+  externalDocumentNumber      String?          @db.VarChar(50)
+  referencedDocumentTypeCode  String           @db.VarChar(4)
+  reasonCode                  String           @db.VarChar(4)
+  reasonDescription           String?
+  referenceDate               DateTime         @db.Date
+  createdAt                   DateTime         @default(now())
+  updatedAt                   DateTime         @updatedAt
+  tenant                      Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  billingDocument             BillingDocument  @relation("BillingDocumentReferences", fields: [billingDocumentId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  referencedBillingDocument   BillingDocument? @relation("ReferencedBillingDocuments", fields: [referencedBillingDocumentId, tenantId], references: [id, tenantId], onDelete: Restrict)
+
+  @@unique([billingDocumentId, referenceOrder])
+  @@index([tenantId])
+  @@index([referencedBillingDocumentId, tenantId])
+  @@map("billing_document_references")
+}
+
+model BillingDocumentPaymentMethod {
+  id                    String          @id @default(cuid())
+  tenantId              String
+  billingDocumentId     String
+  paymentMethodOrder    Int
+  paymentMethodCode     String          @db.VarChar(4)
+  description           String?
+  declaredAmount        Decimal?        @db.Decimal(18, 4)
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+  tenant                Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  billingDocument       BillingDocument @relation(fields: [billingDocumentId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([billingDocumentId, paymentMethodOrder])
+  @@index([tenantId])
+  @@map("billing_document_payment_methods")
 }
 
 enum PayrollFrequency {
