@@ -1313,6 +1313,7 @@ model AdditionalServiceCatalog {
   pricingConfigurations AdditionalServicePricingConfiguration[]
   fiscalProfile         AdditionalServiceFiscalProfile?
   orderLines            AdditionalServiceOrderLine[]
+  salesOrderLines       SalesOrderLine[]
 
   @@unique([tenantId, code])
   @@unique([id, tenantId])
@@ -1537,23 +1538,25 @@ model SalesOrder {
 }
 
 model SalesOrderLine {
-  id                    String     @id @default(cuid())
-  tenantId              String
-  salesOrderId          String
-  serviceCode           String
-  serviceName           String
-  serviceDetailsVersion Int?
-  serviceDetails        Json?
-  commercialNotes       String?
-  subtotal              Decimal    @db.Decimal(18, 4)
-  vatPercentage         Decimal    @db.Decimal(7, 4)
-  vatAmount             Decimal    @db.Decimal(18, 4)
-  total                 Decimal    @db.Decimal(18, 4)
-  participants          Json
-  createdAt             DateTime   @default(now())
-  updatedAt             DateTime   @updatedAt
-  tenant                Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  salesOrder            SalesOrder @relation(fields: [salesOrderId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  id                         String                    @id @default(cuid())
+  tenantId                   String
+  salesOrderId               String
+  additionalServiceCatalogId String?
+  serviceCode                String
+  serviceName                String
+  serviceDetailsVersion      Int?
+  serviceDetails             Json?
+  commercialNotes            String?
+  subtotal                   Decimal                   @db.Decimal(18, 4)
+  vatPercentage              Decimal                   @db.Decimal(7, 4)
+  vatAmount                  Decimal                   @db.Decimal(18, 4)
+  total                      Decimal                   @db.Decimal(18, 4)
+  participants               Json
+  createdAt                  DateTime                  @default(now())
+  updatedAt                  DateTime                  @updatedAt
+  tenant                     Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  salesOrder                 SalesOrder                @relation(fields: [salesOrderId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  additionalServiceCatalog   AdditionalServiceCatalog? @relation(fields: [additionalServiceCatalogId, tenantId], references: [id, tenantId], onDelete: Restrict)
 
   @@index([tenantId])
   @@index([salesOrderId])
