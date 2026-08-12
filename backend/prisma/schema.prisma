@@ -96,6 +96,9 @@ model Tenant {
   billingLineTaxExemptions          BillingLineTaxExemption[]
   billingDocumentReferences         BillingDocumentReference[]
   billingDocumentPaymentMethods     BillingDocumentPaymentMethod[]
+  billingConfiguration             TenantBillingConfiguration?
+  fiscalIssuers                    FiscalIssuer[]
+  fiscalIssuerEconomicActivities   FiscalIssuerEconomicActivity[]
 
   @@map("tenants")
 }
@@ -1749,6 +1752,74 @@ model BillingDocumentPaymentMethod {
   @@unique([billingDocumentId, paymentMethodOrder])
   @@index([tenantId])
   @@map("billing_document_payment_methods")
+}
+
+model TenantBillingConfiguration {
+  id                          String   @id @default(cuid())
+  tenantId                    String   @unique
+  billingEnabled              Boolean  @default(false)
+  externalRegistrationEnabled Boolean @default(false)
+  electronicIssuanceEnabled   Boolean  @default(false)
+  countryCode                 String   @default("CR") @db.VarChar(2)
+  defaultCurrencyCode         String   @default("CRC") @db.VarChar(3)
+  fiscalTimezone              String   @default("America/Costa_Rica") @db.VarChar(100)
+  fiscalSchemaVersion         String   @default("4.4") @db.VarChar(20)
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
+  tenant                      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("tenant_billing_configurations")
+}
+
+model FiscalIssuer {
+  id                       String                         @id @default(cuid())
+  tenantId                 String
+  displayName              String
+  isActive                 Boolean                        @default(false)
+  legalName                String
+  identificationTypeCode   String                         @db.VarChar(4)
+  identificationNumber     String                         @db.VarChar(30)
+  commercialName           String?
+  countryCode              String                         @default("CR") @db.VarChar(2)
+  email                    String
+  phoneCountryCode         String?                        @db.VarChar(4)
+  phoneNumber              String?                        @db.VarChar(20)
+  provinceCode             String                         @db.VarChar(2)
+  cantonCode               String                         @db.VarChar(2)
+  districtCode             String                         @db.VarChar(2)
+  neighborhoodCode         String?                        @db.VarChar(2)
+  otherAddressDetails      String
+  defaultCurrencyCode      String?                        @db.VarChar(3)
+  establishmentCode        String?                        @db.VarChar(3)
+  terminalCode             String?                        @db.VarChar(5)
+  createdAt                DateTime                       @default(now())
+  updatedAt                DateTime                       @updatedAt
+  tenant                   Tenant                         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  economicActivities       FiscalIssuerEconomicActivity[]
+
+  @@unique([id, tenantId])
+  @@index([tenantId, isActive])
+  @@index([tenantId, identificationNumber])
+  @@map("fiscal_issuers")
+}
+
+model FiscalIssuerEconomicActivity {
+  id                   String       @id @default(cuid())
+  tenantId             String
+  fiscalIssuerId       String
+  economicActivityCode String       @db.VarChar(10)
+  description          String?
+  isPrimary            Boolean      @default(false)
+  displayOrder         Int          @default(0)
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+  tenant               Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  fiscalIssuer         FiscalIssuer @relation(fields: [fiscalIssuerId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([fiscalIssuerId, economicActivityCode])
+  @@index([tenantId])
+  @@index([fiscalIssuerId, displayOrder])
+  @@map("fiscal_issuer_economic_activities")
 }
 
 enum PayrollFrequency {
