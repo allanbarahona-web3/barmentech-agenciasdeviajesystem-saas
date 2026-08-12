@@ -1,0 +1,23 @@
+-- RenameForeignKey
+ALTER TABLE "billing_document_payment_methods" RENAME CONSTRAINT "billing_document_payment_methods_billingDocumentId_tenantId_fke" TO "billing_document_payment_methods_billingDocumentId_tenantI_fkey";
+
+-- RenameForeignKey
+ALTER TABLE "billing_document_references" RENAME CONSTRAINT "billing_document_references_referencedBillingDocumentId_tenantI" TO "billing_document_references_referencedBillingDocumentId_te_fkey";
+
+-- RenameIndex
+ALTER INDEX "billing_document_payment_methods_billingDocumentId_paymentMetho" RENAME TO "billing_document_payment_methods_billingDocumentId_paymentM_key";
+
+-- RenameIndex
+ALTER INDEX "billing_document_references_billingDocumentId_referenceOrder_ke" RENAME TO "billing_document_references_billingDocumentId_referenceOrde_key";
+
+-- RenameIndex
+ALTER INDEX "billing_document_references_referencedBillingDocumentId_tenantI" RENAME TO "billing_document_references_referencedBillingDocumentId_ten_idx";
+
+-- RenameIndex
+ALTER INDEX "fiscal_issuer_economic_activities_fiscalIssuerId_displayOrder_i" RENAME TO "fiscal_issuer_economic_activities_fiscalIssuerId_displayOrd_idx";
+
+-- RenameIndex
+ALTER INDEX "fiscal_issuer_economic_activities_fiscalIssuerId_economicActivi" RENAME TO "fiscal_issuer_economic_activities_fiscalIssuerId_economicAc_key";
+
+-- RenameIndex
+ALTER INDEX "payment_allocation_reversals_tenantId_reversalDeduplicationKey_" RENAME TO "payment_allocation_reversals_tenantId_reversalDeduplication_key";
