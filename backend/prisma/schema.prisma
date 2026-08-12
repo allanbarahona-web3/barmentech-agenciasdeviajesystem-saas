@@ -103,6 +103,7 @@ model Tenant {
   accountReceivables               AccountReceivable[]
   payments                         Payment[]
   paymentAllocations               PaymentAllocation[]
+  paymentAllocationReversals       PaymentAllocationReversal[]
 
   @@map("tenants")
 }
@@ -1966,12 +1967,31 @@ model PaymentAllocation {
   tenant                     Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   payment                    Payment                 @relation(fields: [paymentId, tenantId], references: [id, tenantId], onDelete: Restrict)
   accountReceivable          AccountReceivable       @relation(fields: [accountReceivableId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  reversal                   PaymentAllocationReversal?
 
   @@unique([tenantId, allocationDeduplicationKey])
+  @@unique([id, tenantId])
   @@index([tenantId, paymentId, status])
   @@index([tenantId, accountReceivableId, status])
   @@index([tenantId, allocatedAt])
   @@map("payment_allocations")
+}
+
+model PaymentAllocationReversal {
+  id                       String            @id @default(cuid())
+  tenantId                 String
+  paymentAllocationId      String
+  reversalDeduplicationKey String            @db.VarChar(200)
+  reason                   String            @db.VarChar(500)
+  reversedAt               DateTime
+  createdAt                DateTime          @default(now())
+  tenant                   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  paymentAllocation        PaymentAllocation @relation(fields: [paymentAllocationId, tenantId], references: [id, tenantId], onDelete: Restrict)
+
+  @@unique([tenantId, reversalDeduplicationKey])
+  @@unique([tenantId, paymentAllocationId])
+  @@index([tenantId, reversedAt])
+  @@map("payment_allocation_reversals")
 }
 
 enum PayrollFrequency {
