@@ -40,19 +40,23 @@ import { AdditionalServiceFiscalProfileModal } from "./additional-service-fiscal
 const fiscalReadinessPresentation = {
   ABSENT: {
     label: "Sin perfil fiscal",
-    className: "border-amber-300 bg-amber-100 text-amber-800",
+    className:
+      "border-amber-400 !bg-amber-100 !text-amber-900 hover:!bg-amber-100 dark:border-amber-400 dark:!bg-amber-100 dark:!text-amber-900",
   },
   INACTIVE: {
     label: "Perfil fiscal inactivo",
-    className: "border-orange-200 bg-orange-50 text-orange-700",
+    className:
+      "border-orange-300 !bg-orange-50 !text-orange-800 hover:!bg-orange-50 dark:border-orange-300 dark:!bg-orange-50 dark:!text-orange-800",
   },
   READY: {
     label: "Listo para facturar",
-    className: "border-green-200 bg-green-50 text-green-700",
+    className:
+      "border-green-300 !bg-green-50 !text-green-800 hover:!bg-green-50 dark:border-green-300 dark:!bg-green-50 dark:!text-green-800",
   },
   INVALID: {
     label: "Configuración fiscal inválida",
-    className: "border-red-200 bg-red-50 text-red-700",
+    className:
+      "border-red-300 !bg-red-50 !text-red-800 hover:!bg-red-50 dark:border-red-300 dark:!bg-red-50 dark:!text-red-800",
   },
 } as const;
 
