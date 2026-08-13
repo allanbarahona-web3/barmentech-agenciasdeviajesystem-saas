@@ -11,6 +11,7 @@ import {
   CirclePause,
   Hourglass,
   PencilLine,
+  ReceiptText,
   SlidersHorizontal,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -34,6 +35,26 @@ import {
   type AdditionalServiceCatalogPricingConfiguration,
   type AdditionalServiceMarginType,
 } from "@/lib/additional-services-admin-api";
+import { AdditionalServiceFiscalProfileModal } from "./additional-service-fiscal-profile-modal";
+
+const fiscalReadinessPresentation = {
+  ABSENT: {
+    label: "Sin perfil fiscal",
+    className: "border-amber-300 bg-amber-100 text-amber-800",
+  },
+  INACTIVE: {
+    label: "Perfil fiscal inactivo",
+    className: "border-orange-200 bg-orange-50 text-orange-700",
+  },
+  READY: {
+    label: "Listo para facturar",
+    className: "border-green-200 bg-green-50 text-green-700",
+  },
+  INVALID: {
+    label: "Configuración fiscal inválida",
+    className: "border-red-200 bg-red-50 text-red-700",
+  },
+} as const;
 
 const marginTypeLabels: Record<
   AdditionalServiceCatalogPricingConfiguration["marginType"],
@@ -74,6 +95,8 @@ export default function PricingConfigurationsPage() {
   );
   const [loadError, setLoadError] = useState("");
   const [selectedItem, setSelectedItem] =
+    useState<AdditionalServiceAdminCatalogItem | null>(null);
+  const [selectedFiscalItem, setSelectedFiscalItem] =
     useState<AdditionalServiceAdminCatalogItem | null>(null);
   const [form, setForm] =
     useState<PricingConfigurationFormState>(emptyForm);
@@ -144,6 +167,21 @@ export default function PricingConfigurationsPage() {
     setSelectedItem(null);
     setForm(emptyForm);
     setFormError("");
+  };
+
+  const handleFiscalSaved = async (message: string) => {
+    setSelectedFiscalItem(null);
+    showSuccess(message);
+    try {
+      const refreshedCatalog = await getAdditionalServiceAdminCatalog();
+      setCatalog(refreshedCatalog);
+    } catch (error) {
+      showError(
+        error instanceof Error
+          ? error.message
+          : "El perfil se guardó, pero no se pudo actualizar el catálogo.",
+      );
+    }
   };
 
   const handleSave = async () => {
@@ -396,6 +434,12 @@ export default function PricingConfigurationsPage() {
         onConfirm={() => void handleSave()}
         onCancel={closeConfigurationModal}
       />
+      <AdditionalServiceFiscalProfileModal
+        item={selectedFiscalItem}
+        onClose={() => setSelectedFiscalItem(null)}
+        onSaved={handleFiscalSaved}
+        onError={showError}
+      />
 
       <div>
         <header className="mb-[30px] flex items-center justify-between gap-4">
@@ -450,19 +494,22 @@ export default function PricingConfigurationsPage() {
           ) : (
             <>
               <div className="history-table-wrap">
-                <table className="history-table table-fixed">
+                <table className="history-table min-w-[1180px] table-fixed">
                   <thead>
                     <tr>
-                      <th className="w-[40%]">Servicio</th>
-                      <th className="w-[15%] text-center">Margen</th>
-                      <th className="w-[15%] text-center">Impuesto</th>
-                      <th className="w-[15%] text-center">Estado</th>
-                      <th className="w-[15%] text-center">Acciones</th>
+                      <th className="w-[22%]">Servicio</th>
+                      <th className="w-[11%] text-center">Margen</th>
+                      <th className="w-[10%] text-center">Impuesto</th>
+                      <th className="w-[12%] text-center">Estado precio</th>
+                      <th className="w-[20%] text-center">Fiscal</th>
+                      <th className="w-[25%] text-center">Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
                     {visibleCatalog.map((item) => {
                       const configuration = item.pricingConfiguration;
+                      const fiscalPresentation =
+                        fiscalReadinessPresentation[item.fiscalReadiness.status];
 
                       return (
                         <tr key={item.id}>
@@ -541,8 +588,17 @@ export default function PricingConfigurationsPage() {
                                 : "Pendiente"}
                             </Badge>
                           </td>
+                          <td className="text-center">
+                            <Badge
+                              variant="outline"
+                              className={`whitespace-normal text-center ${fiscalPresentation.className}`}
+                              title={item.fiscalReadiness.issues.join(", ") || undefined}
+                            >
+                              {fiscalPresentation.label}
+                            </Badge>
+                          </td>
                           <td>
-                            <div className="flex justify-center">
+                            <div className="flex flex-wrap justify-center gap-2">
                               <Button
                                 type="button"
                                 variant="outline"
@@ -566,6 +622,18 @@ export default function PricingConfigurationsPage() {
                                   />
                                 )}
                                 {configuration ? "Editar" : "Configurar"}
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setSelectedFiscalItem(item)}
+                                className="min-w-[132px] gap-2 border-teal-500 bg-white text-teal-700 shadow-sm hover:bg-teal-50 hover:text-teal-800 dark:border-teal-500 dark:bg-white dark:text-teal-700 dark:hover:bg-teal-50"
+                              >
+                                <ReceiptText className="h-4 w-4" aria-hidden="true" />
+                                {item.fiscalProfile
+                                  ? "Editar fiscal"
+                                  : "Configurar fiscal"}
                               </Button>
                             </div>
                           </td>
