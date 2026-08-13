@@ -56,6 +56,7 @@ describe("AdditionalServicesService pricing configurations", () => {
       findByTravel: jest.fn(),
       findOrderDashboardPage: jest.fn(),
       findAdditionalServiceCatalogById: jest.fn(),
+      findAdditionalServiceCatalogByTenantAndId: jest.fn(),
       findAdditionalServiceCatalogByCode: jest.fn(),
       findAdditionalServiceCatalogsByCodes: jest.fn(),
       findAdditionalServiceCatalogs: jest.fn(),
@@ -67,6 +68,10 @@ describe("AdditionalServicesService pricing configurations", () => {
       findPricingConfigurationsByCatalogIds: jest.fn(),
       createPricingConfiguration: jest.fn(),
       updatePricingConfiguration: jest.fn(),
+      findFiscalProfileById: jest.fn(),
+      findFiscalProfileByCatalogId: jest.fn(),
+      createFiscalProfile: jest.fn(),
+      updateFiscalProfile: jest.fn(),
       findSuppliers: jest.fn(),
       findSupplierById: jest.fn(),
       findSuppliersByIds: jest.fn(),
@@ -91,6 +96,7 @@ describe("AdditionalServicesService pricing configurations", () => {
           taxPercentage: "13",
           isActive: true,
         },
+        fiscalProfile: null,
       },
     ]);
 
@@ -112,6 +118,12 @@ describe("AdditionalServicesService pricing configurations", () => {
           taxPercentage: "13",
           isActive: true,
         },
+        fiscalProfile: null,
+        fiscalReadiness: {
+          status: "ABSENT",
+          isReady: false,
+          issues: [],
+        },
       },
     ]);
   });
@@ -121,6 +133,7 @@ describe("AdditionalServicesService pricing configurations", () => {
       {
         ...catalog,
         pricingConfiguration: null,
+        fiscalProfile: null,
       },
     ]);
 

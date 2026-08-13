@@ -190,9 +190,29 @@ export interface AdditionalServiceCatalogPricingRecord {
   isActive: boolean;
 }
 
+export interface AdditionalServiceFiscalProfileRecord {
+  id: string;
+  tenantId: string;
+  additionalServiceCatalogId: string;
+  cabysCode: string;
+  unitOfMeasureCode: string;
+  taxCode: string | null;
+  taxRateCode: string | null;
+  taxPercentage: string | null;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export type AdditionalServiceCatalogFiscalProfileRecord = Omit<
+  AdditionalServiceFiscalProfileRecord,
+  "tenantId" | "additionalServiceCatalogId" | "createdAt" | "updatedAt"
+>;
+
 export interface AdditionalServiceCatalogAdminRecord
   extends AdditionalServiceCatalogRecord {
   pricingConfiguration: AdditionalServiceCatalogPricingRecord | null;
+  fiscalProfile: AdditionalServiceCatalogFiscalProfileRecord | null;
 }
 
 export interface CreateAdditionalServiceCatalogItemData {
@@ -232,6 +252,26 @@ export interface UpdateAdditionalServicePricingConfigurationData {
   marginType?: AdditionalServiceMarginType;
   marginValue?: number;
   taxPercentage?: number;
+  isActive?: boolean;
+}
+
+export interface CreateAdditionalServiceFiscalProfileData {
+  tenantId: string;
+  additionalServiceCatalogId: string;
+  cabysCode: string;
+  unitOfMeasureCode: string;
+  taxCode: string | null;
+  taxRateCode: string | null;
+  taxPercentage: string | null;
+  isActive: boolean;
+}
+
+export interface UpdateAdditionalServiceFiscalProfileData {
+  cabysCode?: string;
+  unitOfMeasureCode?: string;
+  taxCode?: string | null;
+  taxRateCode?: string | null;
+  taxPercentage?: string | null;
   isActive?: boolean;
 }
 
@@ -392,6 +432,11 @@ export interface AdditionalServicesRepository {
     id: string,
   ): Promise<AdditionalServiceCatalogRecord | null>;
 
+  findAdditionalServiceCatalogByTenantAndId(
+    tenantId: string,
+    id: string,
+  ): Promise<AdditionalServiceCatalogRecord | null>;
+
   findAdditionalServiceCatalogByCode(
     tenantId: string,
     code: string,
@@ -442,6 +487,26 @@ export interface AdditionalServicesRepository {
     id: string,
     data: UpdateAdditionalServicePricingConfigurationData,
   ): Promise<AdditionalServicePricingConfigurationRecord>;
+
+  findFiscalProfileById(
+    tenantId: string,
+    id: string,
+  ): Promise<AdditionalServiceFiscalProfileRecord | null>;
+
+  findFiscalProfileByCatalogId(
+    tenantId: string,
+    additionalServiceCatalogId: string,
+  ): Promise<AdditionalServiceFiscalProfileRecord | null>;
+
+  createFiscalProfile(
+    data: CreateAdditionalServiceFiscalProfileData,
+  ): Promise<AdditionalServiceFiscalProfileRecord>;
+
+  updateFiscalProfile(
+    tenantId: string,
+    id: string,
+    data: UpdateAdditionalServiceFiscalProfileData,
+  ): Promise<AdditionalServiceFiscalProfileRecord>;
 
   findSuppliers(tenantId: string): Promise<SupplierRecord[]>;
 
