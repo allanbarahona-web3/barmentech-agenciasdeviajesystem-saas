@@ -1381,9 +1381,9 @@ model AdditionalServiceFiscalProfile {
   createdAt                  DateTime                 @default(now())
   updatedAt                  DateTime                 @updatedAt
   tenant                     Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  additionalServiceCatalog   AdditionalServiceCatalog @relation(fields: [additionalServiceCatalogId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  additionalServiceCatalog   AdditionalServiceCatalog @relation(fields: [additionalServiceCatalogId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "additional_service_fiscal_profiles_catalog_tenant_fkey")
 
-  @@unique([additionalServiceCatalogId, tenantId])
+  @@unique([additionalServiceCatalogId, tenantId], map: "additional_service_fiscal_profiles_catalog_tenant_key")
   @@map("additional_service_fiscal_profiles")
 }
 
