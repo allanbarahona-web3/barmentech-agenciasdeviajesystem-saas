@@ -1,5 +1,12 @@
 import { LoadedFiscalCodingCatalog } from "./cr-electronic-invoice-coding";
 
+export interface FiscalCatalogActivationIdentity {
+  countryCode: string;
+  catalogType: string;
+  version: string;
+  checksumSha256: string;
+}
+
 export type FiscalReleaseStatus = "DRAFT" | "VALIDATED" | "ACTIVE" | "RETIRED";
 
 export interface FiscalReleaseIdentity {
@@ -35,8 +42,8 @@ class ConcurrentActivationError extends Error {}
 
 const identityOf = ({ id, countryCode, catalogType, version, checksumSha256 }: FiscalReleaseRecord): FiscalReleaseIdentity => ({ id, countryCode, catalogType, version, checksumSha256 });
 
-function targetWhere(loaded: LoadedFiscalCodingCatalog) {
-  return { countryCode: loaded.catalog.countryCode, catalogType: loaded.catalog.catalogType, version: loaded.catalog.version };
+function targetWhere(identity: FiscalCatalogActivationIdentity) {
+  return { countryCode: identity.countryCode, catalogType: identity.catalogType, version: identity.version };
 }
 
 function classifyTarget(target: FiscalReleaseRecord | null, checksum: string): ActivationOutcome | null {
@@ -47,17 +54,17 @@ function classifyTarget(target: FiscalReleaseRecord | null, checksum: string): A
   return null;
 }
 
-async function readTarget(database: Pick<FiscalCatalogActivationDatabase, "fiscalCatalogRelease">, loaded: LoadedFiscalCodingCatalog): Promise<FiscalReleaseRecord | null> {
-  return database.fiscalCatalogRelease.findFirst({ where: targetWhere(loaded), select: { id: true, countryCode: true, catalogType: true, version: true, checksumSha256: true, status: true, activatedAt: true } });
+async function readTarget(database: Pick<FiscalCatalogActivationDatabase, "fiscalCatalogRelease">, identity: FiscalCatalogActivationIdentity): Promise<FiscalReleaseRecord | null> {
+  return database.fiscalCatalogRelease.findFirst({ where: targetWhere(identity), select: { id: true, countryCode: true, catalogType: true, version: true, checksumSha256: true, status: true, activatedAt: true } });
 }
 
-async function finalConcurrencyResult(database: FiscalCatalogActivationDatabase, loaded: LoadedFiscalCodingCatalog): Promise<ActivationOutcome> {
-  const target = await readTarget(database, loaded);
-  if (target?.checksumSha256 === loaded.checksumSha256 && target.status === "ACTIVE") {
+async function finalConcurrencyResult(database: FiscalCatalogActivationDatabase, identity: FiscalCatalogActivationIdentity): Promise<ActivationOutcome> {
+  const target = await readTarget(database, identity);
+  if (target?.checksumSha256 === identity.checksumSha256 && target.status === "ACTIVE") {
     return { result: "already active", release: identityOf(target), retiredRelease: null, activatedAt: target.activatedAt };
   }
   const active = await database.fiscalCatalogRelease.findFirst({
-    where: { countryCode: loaded.catalog.countryCode, catalogType: loaded.catalog.catalogType, status: "ACTIVE" },
+    where: { countryCode: identity.countryCode, catalogType: identity.catalogType, status: "ACTIVE" },
     select: { id: true, countryCode: true, catalogType: true, version: true, checksumSha256: true, status: true, activatedAt: true },
   });
   return { result: "activation conflict", ...(active ? { release: identityOf(active) } : target ? { release: identityOf(target) } : {}) };
@@ -68,19 +75,19 @@ function isConcurrentWriteError(error: unknown): boolean {
   return error instanceof ConcurrentActivationError || code === "P2002" || code === "P2025" || code === "P2034";
 }
 
-export async function activateCrFiscalCodingCatalog(
+export async function activateFiscalCatalogRelease(
   database: FiscalCatalogActivationDatabase,
-  loaded: LoadedFiscalCodingCatalog,
+  identity: FiscalCatalogActivationIdentity,
   now: () => Date = () => new Date(),
 ): Promise<ActivationOutcome> {
   const activatedAt = now();
-  const preflight = classifyTarget(await readTarget(database, loaded), loaded.checksumSha256);
+  const preflight = classifyTarget(await readTarget(database, identity), identity.checksumSha256);
   if (preflight) return preflight;
 
   try {
     return await database.$transaction(async (transaction) => {
-      const target = await readTarget(transaction, loaded);
-      const lifecycleResult = classifyTarget(target, loaded.checksumSha256);
+      const target = await readTarget(transaction, identity);
+      const lifecycleResult = classifyTarget(target, identity.checksumSha256);
       if (lifecycleResult) return lifecycleResult;
       if (!target) throw new ConcurrentActivationError();
 
@@ -93,12 +100,16 @@ export async function activateCrFiscalCodingCatalog(
         if (retired.count !== 1) throw new ConcurrentActivationError();
       }
 
-      const activated = await transaction.fiscalCatalogRelease.updateMany({ where: { id: target.id, status: "VALIDATED", checksumSha256: loaded.checksumSha256 }, data: { status: "ACTIVE", activatedAt } });
+      const activated = await transaction.fiscalCatalogRelease.updateMany({ where: { id: target.id, status: "VALIDATED", checksumSha256: identity.checksumSha256 }, data: { status: "ACTIVE", activatedAt } });
       if (activated.count !== 1) throw new ConcurrentActivationError();
       return { result: "activated", release: identityOf(target), retiredRelease: previous ? identityOf(previous) : null, activatedAt };
     });
   } catch (error) {
     if (!isConcurrentWriteError(error)) throw error;
-    return finalConcurrencyResult(database, loaded);
+    return finalConcurrencyResult(database, identity);
   }
+}
+
+export function activateCrFiscalCodingCatalog(database: FiscalCatalogActivationDatabase, loaded: LoadedFiscalCodingCatalog, now?: () => Date): Promise<ActivationOutcome> {
+  return activateFiscalCatalogRelease(database, { countryCode: loaded.catalog.countryCode, catalogType: loaded.catalog.catalogType, version: loaded.catalog.version, checksumSha256: loaded.checksumSha256 }, now);
 }

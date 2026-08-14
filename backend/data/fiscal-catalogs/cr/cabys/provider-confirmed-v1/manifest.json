@@ -1,0 +1,12 @@
+{
+  "countryCode": "CR",
+  "catalogType": "CABYS",
+  "version": "barmentech-provider-confirmed-v1",
+  "sourceAuthority": "Banco Central de Costa Rica / Ministerio de Hacienda de Costa Rica",
+  "sourceUrl": "https://api.facturaencr.com/v2/efactura/catalogs/cabys",
+  "sourceDocument": "barmentech-provider-confirmed-cabys-manifest.json",
+  "collectionMode": "PROVIDER_CONFIRMED_PARTIAL",
+  "provider": "FACTURA_EN_CR",
+  "description": "Partial global collection containing only CABYS codes explicitly confirmed through the configured provider.",
+  "effectiveFrom": null
+}
