@@ -15,7 +15,10 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "tsx prisma/seed.ts",
-    "user:create": "tsx prisma/create-user.ts"
+    "user:create": "tsx prisma/create-user.ts",
+    "fiscal:cr-coding:dry-run": "tsx scripts/import-cr-electronic-invoice-coding.ts",
+    "fiscal:cr-coding:import": "tsx scripts/import-cr-electronic-invoice-coding.ts --import",
+    "fiscal:cr-coding:activate": "tsx scripts/activate-cr-electronic-invoice-coding.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.879.0",
