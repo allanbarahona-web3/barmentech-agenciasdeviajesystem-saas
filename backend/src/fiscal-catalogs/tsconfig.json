@@ -7,5 +7,5 @@
     "rootDir": "../..",
     "types": ["node", "jest"]
   },
-  "include": ["./cr-electronic-invoice-coding*.ts"]
+  "include": ["./*.ts"]
 }

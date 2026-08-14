@@ -28,6 +28,7 @@ import { JobDispatcherModule } from "./infrastructure/job-dispatcher";
 import { AdditionalServicesModule } from "./additional-services";
 import { TravelContextModule } from "./travel-context/travel-context.module";
 import { GeneratedDocumentsModule } from "./generated-documents";
+import { FiscalCatalogModule } from "./fiscal-catalogs/fiscal-catalog.module";
 
 @Module({
   controllers: [AppController],
@@ -65,6 +66,7 @@ import { GeneratedDocumentsModule } from "./generated-documents";
     AdditionalServicesModule,
     TravelContextModule,
     GeneratedDocumentsModule,
+    FiscalCatalogModule,
   ],
   providers: [
     {
