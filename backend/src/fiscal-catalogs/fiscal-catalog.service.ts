@@ -8,7 +8,7 @@ export function normalizeCabysSearchText(value: string): string {
   return value.trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ");
 }
 
-interface CabysItemResponse extends CabysProviderItem {
+export interface CabysItemResponse extends CabysProviderItem {
   persisted: boolean;
   source: "LOCAL" | "FACTURA_EN_CR";
 }
