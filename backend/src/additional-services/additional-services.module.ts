@@ -22,6 +22,7 @@ import { CommercialProposalApprovalService } from "./commercial-proposal-approva
 import { CommercialProposalPublicController } from "./commercial-proposal-public.controller";
 import { SalesOrdersModule } from "../sales-orders/sales-orders.module";
 import { CommercialProposalInPersonApprovalService } from "./commercial-proposal-in-person-approval.service";
+import { FiscalCatalogModule } from "../fiscal-catalogs/fiscal-catalog.module";
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { CommercialProposalInPersonApprovalService } from "./commercial-proposal
     StorageModule,
     EmailModule,
     SalesOrdersModule,
+    FiscalCatalogModule,
   ],
   controllers: [
     AdditionalServiceCatalogController,

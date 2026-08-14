@@ -10,9 +10,9 @@ function setup() {
     tenantBillingConfiguration: { findUnique: jest.fn().mockResolvedValue({ countryCode: "CR" }) },
     fiscalCatalogRelease: { findFirst: jest.fn() },
     fiscalCabysEntry: { findMany: jest.fn().mockResolvedValue([]), findFirst: jest.fn().mockResolvedValue(null), create: jest.fn() },
-    fiscalUnitOfMeasureEntry: { findMany: jest.fn() },
+    fiscalUnitOfMeasureEntry: { findMany: jest.fn(), findFirst: jest.fn() },
     fiscalTaxEntry: { findMany: jest.fn(), findFirst: jest.fn() },
-    fiscalTaxRateEntry: { findMany: jest.fn() },
+    fiscalTaxRateEntry: { findMany: jest.fn(), findFirst: jest.fn() },
   };
   const provider = { search: jest.fn(), findExact: jest.fn() };
   return { prisma, provider, service: new FiscalCatalogService(prisma as never, provider) };
@@ -105,5 +105,48 @@ describe("FiscalCatalogService", () => {
     await expect(context.service.units("tenant")).rejects.toMatchObject({ response: expect.objectContaining({ code: "FISCAL_CATALOG_NOT_READY" }) });
     context.prisma.fiscalCatalogRelease.findFirst.mockResolvedValueOnce({ id: "coding", version: "4.4" }); context.prisma.fiscalTaxEntry.findFirst.mockResolvedValueOnce(null);
     await expect(context.service.taxRates("tenant", "99")).rejects.toMatchObject({ response: expect.objectContaining({ code: "FISCAL_CATALOG_ENTRY_NOT_FOUND" }) });
+  });
+
+  it("resolves authoritative active unit, tax, rate, and percentage", async () => {
+    const context = setup();
+    context.prisma.fiscalCatalogRelease.findFirst.mockResolvedValueOnce({ id: "cabys" }).mockResolvedValueOnce({ id: "coding", version: "4.4" });
+    context.prisma.fiscalCabysEntry.findFirst.mockResolvedValue({ id: "cabys-entry" });
+    context.prisma.fiscalUnitOfMeasureEntry.findFirst.mockResolvedValue({ code: "Sp" });
+    context.prisma.fiscalTaxEntry.findFirst.mockResolvedValue({ id: "iva", code: "01" });
+    context.prisma.fiscalTaxRateEntry.findFirst.mockResolvedValue({ code: "11", percentage: new Decimal("0.0000") });
+    await expect(context.service.resolveFiscalSelection("tenant", { cabysCode: providerItem.code, unitOfMeasureCode: "Sp", taxCode: "01", taxRateCode: "11" }, false)).resolves.toEqual({ cabysCode: providerItem.code, unitOfMeasureCode: "Sp", taxCode: "01", taxRateCode: "11", taxPercentage: "0.0000" });
+  });
+
+  it("rejects missing or inactive authoritative entries", async () => {
+    const context = setup(); context.prisma.fiscalCatalogRelease.findFirst.mockResolvedValue({ id: "cabys" }); context.prisma.fiscalCabysEntry.findFirst.mockResolvedValue(null);
+    await expect(context.service.resolveFiscalSelection("tenant", { cabysCode: providerItem.code, unitOfMeasureCode: "Sp", taxCode: "01", taxRateCode: "08" }, false)).rejects.toMatchObject({ response: expect.objectContaining({ code: "FISCAL_CATALOG_ENTRY_NOT_FOUND" }) });
+  });
+
+  it("evaluates fiscal readiness in bounded batches and treats malformed stored percentages as invalid", async () => {
+    const context = setup();
+    context.prisma.fiscalCatalogRelease.findFirst
+      .mockResolvedValueOnce({ id: "cabys" })
+      .mockResolvedValueOnce({ id: "coding" });
+    context.prisma.fiscalCabysEntry.findMany.mockResolvedValue([{ code: providerItem.code }]);
+    context.prisma.fiscalUnitOfMeasureEntry.findMany.mockResolvedValue([{ code: "Sp" }]);
+    context.prisma.fiscalTaxEntry.findMany.mockResolvedValue([{ id: "iva", code: "01" }]);
+    context.prisma.fiscalTaxRateEntry.findMany.mockResolvedValue([
+      { taxEntryId: "iva", code: "08", percentage: new Decimal("13.0000") },
+    ]);
+
+    const result = await context.service.evaluateFiscalProfiles("tenant", [
+      { additionalServiceCatalogId: "ready", cabysCode: providerItem.code, unitOfMeasureCode: "Sp", taxCode: "01", taxRateCode: "08", taxPercentage: "13", isActive: true },
+      { additionalServiceCatalogId: "invalid", cabysCode: providerItem.code, unitOfMeasureCode: "Sp", taxCode: "01", taxRateCode: "08", taxPercentage: "not-a-decimal", isActive: true },
+      { additionalServiceCatalogId: "inactive", cabysCode: providerItem.code, unitOfMeasureCode: "Sp", taxCode: "01", taxRateCode: "08", taxPercentage: "13.0000", isActive: false },
+    ]);
+
+    expect(result.get("ready")).toEqual({ status: "READY", isReady: true, issues: [] });
+    expect(result.get("invalid")).toEqual({ status: "INVALID", isReady: false, issues: ["TAX_PERCENTAGE_MISMATCH"] });
+    expect(result.get("inactive")).toEqual({ status: "INACTIVE", isReady: false, issues: [] });
+    expect(context.prisma.fiscalCabysEntry.findMany).toHaveBeenCalledTimes(1);
+    expect(context.prisma.fiscalUnitOfMeasureEntry.findMany).toHaveBeenCalledTimes(1);
+    expect(context.prisma.fiscalTaxEntry.findMany).toHaveBeenCalledTimes(1);
+    expect(context.prisma.fiscalTaxRateEntry.findMany).toHaveBeenCalledTimes(1);
+    expect(context.provider.findExact).not.toHaveBeenCalled();
   });
 });

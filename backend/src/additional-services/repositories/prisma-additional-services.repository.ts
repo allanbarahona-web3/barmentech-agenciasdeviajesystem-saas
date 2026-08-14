@@ -62,6 +62,7 @@ interface AdditionalServicesPrismaClient {
   additionalServiceFiscalProfile: {
     create(args: unknown): Promise<unknown>;
     findFirst(args: unknown): Promise<unknown>;
+    findMany(args: unknown): Promise<unknown>;
     update(args: unknown): Promise<unknown>;
   };
   supplier: {
@@ -379,6 +380,11 @@ export class PrismaAdditionalServicesRepository
     );
   }
 
+  async findFiscalProfilesByCatalogIds(tenantId: string, additionalServiceCatalogIds: string[]): Promise<AdditionalServiceFiscalProfileRecord[]> {
+    const profiles = await this.client.additionalServiceFiscalProfile.findMany({ where: { tenantId, additionalServiceCatalogId: { in: additionalServiceCatalogIds } } });
+    return (profiles as unknown[]).map((profile) => this.toFiscalProfileRecord(profile));
+  }
+
   createFiscalProfile(
     data: CreateAdditionalServiceFiscalProfileData,
   ): Promise<AdditionalServiceFiscalProfileRecord> {
@@ -537,6 +543,10 @@ export class PrismaAdditionalServicesRepository
         this.findFiscalById(client, tenantId, id),
       findFiscalProfileByCatalogId: (tenantId, catalogId) =>
         this.findFiscalByCatalogId(client, tenantId, catalogId),
+      findFiscalProfilesByCatalogIds: async (tenantId, catalogIds) => {
+        const profiles = await client.additionalServiceFiscalProfile.findMany({ where: { tenantId, additionalServiceCatalogId: { in: catalogIds } } });
+        return (profiles as unknown[]).map((profile) => this.toFiscalProfileRecord(profile));
+      },
       createFiscalProfile: (data) => this.createFiscal(client, data),
       updateFiscalProfile: (tenantId, id, data) =>
         this.updateFiscal(client, tenantId, id, data),
@@ -1553,7 +1563,7 @@ export class PrismaAdditionalServicesRepository
       marginType:
         configuration.marginType as AdditionalServicePricingConfigurationRecord["marginType"],
       marginValue: String(configuration.marginValue),
-      taxPercentage: String(configuration.taxPercentage),
+      taxPercentage: new Decimal(String(configuration.taxPercentage)).toFixed(4),
       isActive: Boolean(configuration.isActive),
       createdAt: configuration.createdAt as Date,
       updatedAt: configuration.updatedAt as Date,
@@ -1575,7 +1585,9 @@ export class PrismaAdditionalServicesRepository
       taxRateCode:
         profile.taxRateCode === null ? null : String(profile.taxRateCode),
       taxPercentage:
-        profile.taxPercentage === null ? null : String(profile.taxPercentage),
+        profile.taxPercentage === null
+          ? null
+          : new Decimal(String(profile.taxPercentage)).toFixed(4),
       isActive: Boolean(profile.isActive),
       createdAt: profile.createdAt as Date,
       updatedAt: profile.updatedAt as Date,

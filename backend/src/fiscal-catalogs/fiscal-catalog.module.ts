@@ -11,5 +11,6 @@ import { FiscalCatalogService } from "./fiscal-catalog.service";
     FacturaEnCrCabysProvider,
     { provide: CABYS_CATALOG_PROVIDER, useExisting: FacturaEnCrCabysProvider },
   ],
+  exports: [FiscalCatalogService],
 })
 export class FiscalCatalogModule {}

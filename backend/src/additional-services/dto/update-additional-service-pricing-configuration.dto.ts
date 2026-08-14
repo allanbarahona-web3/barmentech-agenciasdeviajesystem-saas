@@ -11,8 +11,4 @@ export class UpdateAdditionalServicePricingConfigurationDto {
   @Min(0)
   marginValue?: number;
 
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  taxPercentage?: number;
 }

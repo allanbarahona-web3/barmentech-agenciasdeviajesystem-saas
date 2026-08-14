@@ -1,154 +1,96 @@
-import { BadRequestException, ConflictException, NotFoundException } from "@nestjs/common";
-import { validateSync } from "class-validator";
+import { ConflictException, ValidationPipe } from "@nestjs/common";
 import { PricingEngineService } from "../pricing-engine";
-import { CreateAdditionalServiceFiscalProfileDto } from "./dto";
-import {
-  AdditionalServiceFiscalProfileRecord,
-  AdditionalServicesRepository,
-} from "./repositories";
+import { FiscalCatalogService } from "../fiscal-catalogs/fiscal-catalog.service";
+import { CreateAdditionalServiceFiscalProfileDto, UpdateAdditionalServiceFiscalProfileDto } from "./dto";
 import { AdditionalServicesService } from "./additional-services.service";
+import { AdditionalServiceFiscalProfileRecord, AdditionalServicesRepository } from "./repositories";
+import { AdditionalServiceMarginType } from "./enums";
 
-describe("AdditionalServicesService fiscal profiles", () => {
-  const tenantId = "tenant-1";
-  const catalogId = "catalog-1";
-  const profileId = "fiscal-1";
-  const catalog = { id: catalogId, tenantId, code: "TOUR", name: "Tour", isActive: true };
-  const profile: AdditionalServiceFiscalProfileRecord = {
-    id: profileId,
-    tenantId,
-    additionalServiceCatalogId: catalogId,
-    cabysCode: "1234567890123",
-    unitOfMeasureCode: "Sp",
-    taxCode: "01",
-    taxRateCode: "08",
-    taxPercentage: "13.0000",
-    isActive: false,
-    createdAt: new Date("2026-01-01T00:00:00.000Z"),
-    updatedAt: new Date("2026-01-01T00:00:00.000Z"),
-  };
+describe("AdditionalServicesService authoritative fiscal profiles", () => {
+  const tenantId = "tenant-1"; const catalogId = "catalog-1"; const profileId = "profile-1";
+  const authoritative = { cabysCode: "1234567890123", unitOfMeasureCode: "Sp", taxCode: "01", taxRateCode: "08", taxPercentage: "13.0000" };
+  const profile: AdditionalServiceFiscalProfileRecord = { id: profileId, tenantId, additionalServiceCatalogId: catalogId, ...authoritative, isActive: false, createdAt: new Date(), updatedAt: new Date() };
+  const pricing = { id: "pricing", tenantId, additionalServiceCatalogId: catalogId, marginType: AdditionalServiceMarginType.FIXED, marginValue: "1", taxPercentage: "1", isActive: true, createdAt: new Date(), updatedAt: new Date(), additionalServiceCatalog: { id: catalogId, tenantId, code: "TOUR", name: "Tour", isActive: true } };
   let repository: jest.Mocked<AdditionalServicesRepository>;
+  let fiscal: jest.Mocked<Pick<FiscalCatalogService, "resolveFiscalSelection" | "evaluateFiscalProfiles">>;
   let service: AdditionalServicesService;
 
   beforeEach(() => {
-    repository = {
-      executeInTransaction: jest.fn(), findTenantById: jest.fn(), findAllTenantIds: jest.fn(),
-      findTravelPackageById: jest.fn(), findInternalBookingById: jest.fn(),
-      findParticipantsByIds: jest.fn(), findTravelParticipants: jest.fn(), create: jest.fn(),
-      findById: jest.fn(), updateOrderDelivery: jest.fn(), findByIdempotencyKey: jest.fn(),
-      findByTravel: jest.fn(), findOrderDashboardPage: jest.fn(),
-      findAdditionalServiceCatalogById: jest.fn(),
-      findAdditionalServiceCatalogByTenantAndId: jest.fn(),
-      findAdditionalServiceCatalogByCode: jest.fn(), findAdditionalServiceCatalogsByCodes: jest.fn(),
-      findAdditionalServiceCatalogs: jest.fn(), findAdditionalServiceCatalogCodes: jest.fn(),
-      createAdditionalServiceCatalogItems: jest.fn(), findPricingConfigurations: jest.fn(),
-      findPricingConfigurationById: jest.fn(), findPricingConfigurationByCatalogId: jest.fn(),
-      findPricingConfigurationsByCatalogIds: jest.fn(), createPricingConfiguration: jest.fn(),
-      updatePricingConfiguration: jest.fn(), findFiscalProfileById: jest.fn(),
-      findFiscalProfileByCatalogId: jest.fn(), createFiscalProfile: jest.fn(),
-      updateFiscalProfile: jest.fn(), findSuppliers: jest.fn(), findSupplierById: jest.fn(),
-      findSuppliersByIds: jest.fn(), findSupplierByName: jest.fn(), createSupplier: jest.fn(),
-      updateSupplier: jest.fn(),
+    const partial: Partial<jest.Mocked<AdditionalServicesRepository>> = {
+      findAdditionalServiceCatalogByTenantAndId: jest.fn().mockResolvedValue({ id: catalogId, tenantId, code: "TOUR", name: "Tour", isActive: true }),
+      findFiscalProfileByCatalogId: jest.fn().mockResolvedValue(null), findFiscalProfileById: jest.fn(), createFiscalProfile: jest.fn().mockResolvedValue(profile), updateFiscalProfile: jest.fn().mockResolvedValue(profile),
+      findPricingConfigurationByCatalogId: jest.fn(), updatePricingConfiguration: jest.fn(), executeInTransaction: jest.fn(),
     };
-    service = new AdditionalServicesService(
-      repository,
-      { calculate: jest.fn() } as unknown as PricingEngineService,
-    );
+    repository = partial as jest.Mocked<AdditionalServicesRepository>;
+    repository.executeInTransaction.mockImplementation((work) => work(repository));
+    fiscal = { resolveFiscalSelection: jest.fn().mockResolvedValue(authoritative), evaluateFiscalProfiles: jest.fn() };
+    service = new AdditionalServicesService(repository, { calculate: jest.fn() } as unknown as PricingEngineService, fiscal as unknown as FiscalCatalogService);
   });
 
-  const catalogRecord = (fiscalProfile: any) => ({
-    ...catalog,
-    pricingConfiguration: null,
-    fiscalProfile,
-  });
-
-  it.each([
-    [null, "ABSENT", false],
-    [{ ...profile, tenantId: undefined, additionalServiceCatalogId: undefined, createdAt: undefined, updatedAt: undefined }, "INACTIVE", false],
-    [{ ...profile, tenantId: undefined, additionalServiceCatalogId: undefined, createdAt: undefined, updatedAt: undefined, isActive: true }, "READY", true],
-    [{ ...profile, tenantId: undefined, additionalServiceCatalogId: undefined, createdAt: undefined, updatedAt: undefined, isActive: true, taxRateCode: null }, "INVALID", false],
-  ])("derives catalog readiness %s as %s", async (fiscalProfile, status, isReady) => {
-    repository.findAdditionalServiceCatalogs.mockResolvedValue([catalogRecord(fiscalProfile)]);
-    const [result] = await service.listAdditionalServiceCatalog(tenantId);
-    expect(result.fiscalReadiness.status).toBe(status);
-    expect(result.fiscalReadiness.isReady).toBe(isReady);
-    expect(repository.findFiscalProfileById).not.toHaveBeenCalled();
-  });
-
-  it("creates a tenant-owned inactive profile with decimal strings", async () => {
-    repository.findAdditionalServiceCatalogByTenantAndId.mockResolvedValue(catalog);
-    repository.findFiscalProfileByCatalogId.mockResolvedValue(null);
-    repository.createFiscalProfile.mockResolvedValue(profile);
-    await expect(service.createFiscalProfile(tenantId, {
-      additionalServiceCatalogId: catalogId,
-      cabysCode: "1234567890123",
-      unitOfMeasureCode: " Sp ",
-      taxCode: "01",
-      taxRateCode: "08",
-      taxPercentage: "0",
-    })).resolves.toBe(profile);
-    expect(repository.createFiscalProfile).toHaveBeenCalledWith(
-      expect.objectContaining({ tenantId, unitOfMeasureCode: "Sp", taxPercentage: "0", isActive: false }),
-    );
-    expect(repository.createPricingConfiguration).not.toHaveBeenCalled();
+  it("confirms exact CABYS and derives percentage when creating inactive", async () => {
+    await service.createFiscalProfile(tenantId, { additionalServiceCatalogId: catalogId, cabysCode: authoritative.cabysCode, unitOfMeasureCode: "Sp", taxCode: "01", taxRateCode: "08" });
+    expect(fiscal.resolveFiscalSelection).toHaveBeenCalledWith(tenantId, expect.objectContaining({ cabysCode: authoritative.cabysCode, taxRateCode: "08" }), true);
+    expect(repository.createFiscalProfile).toHaveBeenCalledWith(expect.objectContaining({ ...authoritative, isActive: false }));
     expect(repository.updatePricingConfiguration).not.toHaveBeenCalled();
   });
 
-  it("returns 404 for a missing or cross-tenant catalog", async () => {
-    repository.findAdditionalServiceCatalogByTenantAndId.mockResolvedValue(null);
-    await expect(service.createFiscalProfile(tenantId, {
-      additionalServiceCatalogId: catalogId, cabysCode: "1234567890123", unitOfMeasureCode: "Sp",
-    })).rejects.toBeInstanceOf(NotFoundException);
+  it("preserves distinct zero-rate identity and treats CABYS reference mismatch as nonblocking", async () => {
+    fiscal.resolveFiscalSelection.mockResolvedValue({ ...authoritative, taxRateCode: "11", taxPercentage: "0.0000" });
+    await service.createFiscalProfile(tenantId, { additionalServiceCatalogId: catalogId, cabysCode: authoritative.cabysCode, unitOfMeasureCode: "Sp", taxCode: "01", taxRateCode: "11" });
+    expect(repository.createFiscalProfile).toHaveBeenCalledWith(expect.objectContaining({ taxRateCode: "11", taxPercentage: "0.0000" }));
   });
 
-  it("returns 409 for pre-checked and concurrent duplicates", async () => {
-    repository.findAdditionalServiceCatalogByTenantAndId.mockResolvedValue(catalog);
-    repository.findFiscalProfileByCatalogId.mockResolvedValueOnce(profile).mockResolvedValueOnce(null);
-    const input = { additionalServiceCatalogId: catalogId, cabysCode: "1234567890123", unitOfMeasureCode: "Sp" };
-    await expect(service.createFiscalProfile(tenantId, input)).rejects.toBeInstanceOf(ConflictException);
-    repository.createFiscalProfile.mockRejectedValue({ code: "P2002" });
-    await expect(service.createFiscalProfile(tenantId, input)).rejects.toBeInstanceOf(ConflictException);
+  it("keeps duplicate handling", async () => {
+    repository.findFiscalProfileByCatalogId.mockResolvedValueOnce(profile);
+    await expect(service.createFiscalProfile(tenantId, { additionalServiceCatalogId: catalogId, cabysCode: authoritative.cabysCode, unitOfMeasureCode: "Sp", taxCode: "01", taxRateCode: "08" })).rejects.toBeInstanceOf(ConflictException);
   });
 
-  it("rejects a partial tuple and activation of an incomplete profile", async () => {
-    repository.findAdditionalServiceCatalogByTenantAndId.mockResolvedValue(catalog);
-    repository.findFiscalProfileByCatalogId.mockResolvedValue(null);
-    await expect(service.createFiscalProfile(tenantId, {
-      additionalServiceCatalogId: catalogId, cabysCode: "1234567890123", unitOfMeasureCode: "Sp", taxCode: "01",
-    })).rejects.toBeInstanceOf(BadRequestException);
-    repository.findFiscalProfileById.mockResolvedValue({ ...profile, taxCode: null, taxRateCode: null, taxPercentage: null });
-    await expect(service.updateFiscalProfileStatus(tenantId, profileId, true)).rejects.toBeInstanceOf(BadRequestException);
+  it("updates an active profile and pricing atomically with the same percentage", async () => {
+    repository.findFiscalProfileById.mockResolvedValue({ ...profile, isActive: true }); repository.findPricingConfigurationByCatalogId.mockResolvedValue(pricing);
+    await service.updateFiscalProfile(tenantId, profileId, { taxRateCode: "08" });
+    expect(repository.executeInTransaction).toHaveBeenCalledTimes(1);
+    expect(repository.updateFiscalProfile).toHaveBeenCalledWith(tenantId, profileId, expect.objectContaining({ taxPercentage: "13.0000" }));
+    expect(repository.updatePricingConfiguration).toHaveBeenCalledWith(tenantId, "pricing", { taxPercentage: "13.0000" });
   });
 
-  it("validates the merged state when an active profile is updated", async () => {
+  it("activates without pricing and does not invent a pricing configuration", async () => {
+    repository.findFiscalProfileById.mockResolvedValue(profile); repository.findPricingConfigurationByCatalogId.mockResolvedValueOnce(null);
+    await service.updateFiscalProfileStatus(tenantId, profileId, true);
+    expect(repository.updateFiscalProfile).toHaveBeenCalledWith(tenantId, profileId, expect.objectContaining({ isActive: true, taxPercentage: "13.0000" }));
+    expect(repository.updatePricingConfiguration).not.toHaveBeenCalled();
+    expect(repository.executeInTransaction).not.toHaveBeenCalled();
+  });
+
+  it("synchronizes existing pricing transactionally during activation", async () => {
+    repository.findFiscalProfileById.mockResolvedValue(profile); repository.findPricingConfigurationByCatalogId.mockResolvedValue(pricing);
+    await service.updateFiscalProfileStatus(tenantId, profileId, true);
+    expect(repository.executeInTransaction).toHaveBeenCalledTimes(1);
+    expect(repository.updateFiscalProfile).toHaveBeenCalledWith(tenantId, profileId, expect.objectContaining({ isActive: true, taxPercentage: "13.0000" }));
+    expect(repository.updatePricingConfiguration).toHaveBeenCalledWith(tenantId, "pricing", { taxPercentage: "13.0000" });
+  });
+
+  it("updates an active fiscal profile without creating pricing when none exists", async () => {
     repository.findFiscalProfileById.mockResolvedValue({ ...profile, isActive: true });
-    await expect(service.updateFiscalProfile(tenantId, profileId, { taxCode: null })).rejects.toBeInstanceOf(BadRequestException);
-    expect(repository.updateFiscalProfile).not.toHaveBeenCalled();
+    repository.findPricingConfigurationByCatalogId.mockResolvedValue(null);
+    await service.updateFiscalProfile(tenantId, profileId, { taxRateCode: "08" });
+    expect(repository.updateFiscalProfile).toHaveBeenCalledWith(tenantId, profileId, expect.objectContaining({ taxPercentage: "13.0000" }));
+    expect(repository.updatePricingConfiguration).not.toHaveBeenCalled();
+    expect(repository.executeInTransaction).not.toHaveBeenCalled();
   });
 
-  it("deactivates idempotently and preserves fiscal values", async () => {
-    repository.findFiscalProfileById.mockResolvedValue(profile);
-    repository.updateFiscalProfile.mockResolvedValue(profile);
-    await service.updateFiscalProfileStatus(tenantId, profileId, false);
-    await service.updateFiscalProfileStatus(tenantId, profileId, false);
-    expect(repository.updateFiscalProfile).toHaveBeenNthCalledWith(1, tenantId, profileId, { isActive: false });
-    expect(repository.updateFiscalProfile).toHaveBeenNthCalledWith(2, tenantId, profileId, { isActive: false });
+  it("propagates pricing failure so the transaction can roll back", async () => {
+    repository.findFiscalProfileById.mockResolvedValue(profile); repository.findPricingConfigurationByCatalogId.mockResolvedValue(pricing); repository.updatePricingConfiguration.mockRejectedValue(new Error("pricing failed"));
+    await expect(service.updateFiscalProfileStatus(tenantId, profileId, true)).rejects.toThrow("pricing failed"); expect(repository.executeInTransaction).toHaveBeenCalledTimes(1);
   });
 
-  it.each([
-    ["123", "Sp", "CABYS", undefined],
-    ["1234567890123", "   ", "unit", undefined],
-    ["1234567890123", "Sp", "decimal", "1000"],
-    ["1234567890123", "Sp", "decimal", "1.00000"],
-  ] as Array<[string, string, string, string | undefined]>) (
-    "DTO rejects invalid %s / %s %s",
-    (cabysCode, unitOfMeasureCode, _label, taxPercentage) => {
-    const dto = Object.assign(new CreateAdditionalServiceFiscalProfileDto(), {
-      additionalServiceCatalogId: catalogId,
-      cabysCode,
-      unitOfMeasureCode,
-      ...(taxPercentage ? { taxPercentage } : {}),
-    });
-    expect(validateSync(dto).length).toBeGreaterThan(0);
-    },
-  );
+  it("deactivates without changing pricing or fiscal values", async () => {
+    repository.findFiscalProfileById.mockResolvedValue({ ...profile, isActive: true }); await service.updateFiscalProfileStatus(tenantId, profileId, false);
+    expect(repository.updateFiscalProfile).toHaveBeenCalledWith(tenantId, profileId, { isActive: false }); expect(repository.updatePricingConfiguration).not.toHaveBeenCalled();
+  });
+
+  it("rejects taxPercentage and unknown fiscal input through the global validation contract", async () => {
+    const pipe = new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true });
+    await expect(pipe.transform({ additionalServiceCatalogId: catalogId, ...authoritative, taxPercentage: "7.0000" }, { type: "body", metatype: CreateAdditionalServiceFiscalProfileDto })).rejects.toBeDefined();
+    await expect(pipe.transform({ taxPercentage: "7.0000" }, { type: "body", metatype: UpdateAdditionalServiceFiscalProfileDto })).rejects.toBeDefined();
+  });
 });

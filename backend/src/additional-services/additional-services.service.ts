@@ -5,6 +5,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from "@nestjs/common";
 import { randomBytes } from "crypto";
 import { PricingEngineService } from "../pricing-engine";
@@ -35,6 +36,7 @@ import {
 } from "./repositories";
 import { normalizeAdditionalServiceDetails } from "./service-details";
 import { PaymentConditionType } from "./enums";
+import { FiscalCatalogService } from "../fiscal-catalogs/fiscal-catalog.service";
 
 export interface AdditionalServiceOrderActor {
   id: string;
@@ -91,13 +93,22 @@ export class AdditionalServicesService {
     @Inject(ADDITIONAL_SERVICES_REPOSITORY)
     private readonly repository: AdditionalServicesRepository,
     private readonly pricingEngine: PricingEngineService,
+    @Optional() private readonly fiscalCatalogService?: FiscalCatalogService,
   ) {}
+
+  private fiscalCatalog(): FiscalCatalogService {
+    if (!this.fiscalCatalogService) throw new Error("FiscalCatalogService is required for fiscal operations");
+    return this.fiscalCatalogService;
+  }
 
   async listAdditionalServiceCatalog(
     tenantId: string,
   ): Promise<AdditionalServiceCatalogAdminItem[]> {
     const catalog =
       await this.repository.findAdditionalServiceCatalogs(tenantId);
+
+    const profiles = catalog.flatMap((item) => item.fiscalProfile ? [{ ...item.fiscalProfile, tenantId, additionalServiceCatalogId: item.id, createdAt: new Date(0), updatedAt: new Date(0) }] : []);
+    const readiness = await this.fiscalCatalog().evaluateFiscalProfiles(tenantId, profiles);
 
     return catalog.map(
       ({ id, code, name, isActive, pricingConfiguration, fiscalProfile }) => ({
@@ -107,7 +118,7 @@ export class AdditionalServicesService {
         isActive,
         pricingConfiguration,
         fiscalProfile,
-        fiscalReadiness: this.deriveFiscalReadiness(fiscalProfile),
+        fiscalReadiness: fiscalProfile ? readiness.get(id) ?? { status: "INVALID", isReady: false, issues: ["FISCAL_CATALOG_NOT_READY"] } : { status: "ABSENT", isReady: false, issues: [] },
       }),
     );
   }
@@ -147,7 +158,7 @@ export class AdditionalServicesService {
     tenantId: string,
     dto: CreateAdditionalServicePricingConfigurationDto,
   ): Promise<AdditionalServicePricingConfigurationRecord> {
-    await this.validatePricingValues(dto.marginValue, dto.taxPercentage);
+    await this.validatePricingValues(dto.marginValue);
     await this.validateCatalogOwnership(
       tenantId,
       dto.additionalServiceCatalogId,
@@ -165,13 +176,17 @@ export class AdditionalServicesService {
       );
     }
 
+    const profile = await this.repository.findFiscalProfileByCatalogId(tenantId, dto.additionalServiceCatalogId);
+    if (!profile?.isActive || !profile.taxCode || !profile.taxRateCode) throw new BadRequestException({ code: "ADDITIONAL_SERVICE_NOT_FISCALLY_READY" });
+    const authoritative = await this.fiscalCatalog().resolveFiscalSelection(tenantId, { cabysCode: profile.cabysCode, unitOfMeasureCode: profile.unitOfMeasureCode, taxCode: profile.taxCode, taxRateCode: profile.taxRateCode }, false);
+
     try {
       return await this.repository.createPricingConfiguration({
         tenantId,
         additionalServiceCatalogId: dto.additionalServiceCatalogId,
         marginType: dto.marginType,
         marginValue: dto.marginValue,
-        taxPercentage: dto.taxPercentage,
+        taxPercentage: authoritative.taxPercentage,
         isActive: dto.isActive ?? true,
       });
     } catch (error) {
@@ -190,13 +205,16 @@ export class AdditionalServicesService {
     configurationId: string,
     dto: UpdateAdditionalServicePricingConfigurationDto,
   ): Promise<AdditionalServicePricingConfigurationRecord> {
-    await this.getPricingConfiguration(tenantId, configurationId);
-    await this.validatePricingValues(dto.marginValue, dto.taxPercentage);
+    const configuration = await this.getPricingConfiguration(tenantId, configurationId);
+    await this.validatePricingValues(dto.marginValue);
+    const profile = await this.repository.findFiscalProfileByCatalogId(tenantId, configuration.additionalServiceCatalogId);
+    if (!profile?.isActive || !profile.taxCode || !profile.taxRateCode) throw new BadRequestException({ code: "ADDITIONAL_SERVICE_NOT_FISCALLY_READY" });
+    const authoritative = await this.fiscalCatalog().resolveFiscalSelection(tenantId, { cabysCode: profile.cabysCode, unitOfMeasureCode: profile.unitOfMeasureCode, taxCode: profile.taxCode, taxRateCode: profile.taxRateCode }, false);
 
     return this.repository.updatePricingConfiguration(
       tenantId,
       configurationId,
-      dto,
+      { ...dto, taxPercentage: authoritative.taxPercentage },
     );
   }
 
@@ -205,7 +223,14 @@ export class AdditionalServicesService {
     configurationId: string,
     isActive: boolean,
   ): Promise<AdditionalServicePricingConfigurationRecord> {
-    await this.getPricingConfiguration(tenantId, configurationId);
+    const configuration = await this.getPricingConfiguration(tenantId, configurationId);
+
+    if (isActive) {
+      const profile = await this.repository.findFiscalProfileByCatalogId(tenantId, configuration.additionalServiceCatalogId);
+      if (!profile?.isActive || !profile.taxCode || !profile.taxRateCode) throw new BadRequestException({ code: "ADDITIONAL_SERVICE_NOT_FISCALLY_READY" });
+      const authoritative = await this.fiscalCatalog().resolveFiscalSelection(tenantId, { cabysCode: profile.cabysCode, unitOfMeasureCode: profile.unitOfMeasureCode, taxCode: profile.taxCode, taxRateCode: profile.taxRateCode }, false);
+      return this.repository.updatePricingConfiguration(tenantId, configurationId, { isActive, taxPercentage: authoritative.taxPercentage });
+    }
 
     return this.repository.updatePricingConfiguration(
       tenantId,
@@ -231,21 +256,22 @@ export class AdditionalServicesService {
       );
     }
 
-    const data = this.normalizeFiscalFields({
-      cabysCode: dto.cabysCode,
-      unitOfMeasureCode: dto.unitOfMeasureCode,
-      taxCode: dto.taxCode ?? null,
-      taxRateCode: dto.taxRateCode ?? null,
-      taxPercentage: dto.taxPercentage ?? null,
-    });
-    this.validateFiscalState(data, dto.isActive ?? false);
+    const data = await this.fiscalCatalog().resolveFiscalSelection(tenantId, { cabysCode: dto.cabysCode.trim(), unitOfMeasureCode: dto.unitOfMeasureCode.trim(), taxCode: dto.taxCode.trim(), taxRateCode: dto.taxRateCode.trim() }, true);
 
     try {
-      return await this.repository.createFiscalProfile({
+      const create = (repository: AdditionalServicesRepository) => repository.createFiscalProfile({
         tenantId,
         additionalServiceCatalogId: catalogId,
         ...data,
         isActive: dto.isActive ?? false,
+      });
+      if (!(dto.isActive ?? false)) return await create(this.repository);
+      const pricing = await this.repository.findPricingConfigurationByCatalogId(tenantId, catalogId);
+      if (!pricing) return await create(this.repository);
+      return await this.repository.executeInTransaction(async (repository) => {
+        const created = await create(repository);
+        await repository.updatePricingConfiguration(tenantId, pricing.id, { taxPercentage: data.taxPercentage });
+        return created;
       });
     } catch (error) {
       if (this.isUniqueConstraintViolation(error)) {
@@ -273,13 +299,19 @@ export class AdditionalServicesService {
         changes.taxRateCode !== undefined
           ? changes.taxRateCode
           : existing.taxRateCode,
-      taxPercentage:
-        changes.taxPercentage !== undefined
-          ? changes.taxPercentage
-          : existing.taxPercentage,
+      taxPercentage: existing.taxPercentage,
     };
-    this.validateFiscalState(merged, existing.isActive);
-    return this.repository.updateFiscalProfile(tenantId, profileId, changes);
+    if (!merged.taxCode || !merged.taxRateCode) throw new BadRequestException({ code: "FISCAL_CATALOG_ENTRY_NOT_FOUND" });
+    const authoritative = await this.fiscalCatalog().resolveFiscalSelection(tenantId, { cabysCode: merged.cabysCode, unitOfMeasureCode: merged.unitOfMeasureCode, taxCode: merged.taxCode, taxRateCode: merged.taxRateCode }, changes.cabysCode !== undefined && changes.cabysCode !== existing.cabysCode);
+    const update = { ...changes, ...authoritative };
+    if (!existing.isActive) return this.repository.updateFiscalProfile(tenantId, profileId, update);
+    const pricing = await this.repository.findPricingConfigurationByCatalogId(tenantId, existing.additionalServiceCatalogId);
+    if (!pricing) return this.repository.updateFiscalProfile(tenantId, profileId, update);
+    return this.repository.executeInTransaction(async (repository) => {
+      const profile = await repository.updateFiscalProfile(tenantId, profileId, update);
+      await repository.updatePricingConfiguration(tenantId, pricing.id, { taxPercentage: authoritative.taxPercentage });
+      return profile;
+    });
   }
 
   async updateFiscalProfileStatus(
@@ -288,9 +320,15 @@ export class AdditionalServicesService {
     isActive: boolean,
   ): Promise<AdditionalServiceFiscalProfileRecord> {
     const existing = await this.getFiscalProfile(tenantId, profileId);
-    this.validateFiscalState(existing, isActive);
-    return this.repository.updateFiscalProfile(tenantId, profileId, {
-      isActive,
+    if (!isActive) return this.repository.updateFiscalProfile(tenantId, profileId, { isActive: false });
+    if (!existing.taxCode || !existing.taxRateCode) throw new BadRequestException({ code: "FISCAL_CATALOG_ENTRY_NOT_FOUND" });
+    const authoritative = await this.fiscalCatalog().resolveFiscalSelection(tenantId, { cabysCode: existing.cabysCode, unitOfMeasureCode: existing.unitOfMeasureCode, taxCode: existing.taxCode, taxRateCode: existing.taxRateCode }, false);
+    const pricing = await this.repository.findPricingConfigurationByCatalogId(tenantId, existing.additionalServiceCatalogId);
+    if (!pricing) return this.repository.updateFiscalProfile(tenantId, profileId, { ...authoritative, isActive: true });
+    return this.repository.executeInTransaction(async (repository) => {
+      const profile = await repository.updateFiscalProfile(tenantId, profileId, { ...authoritative, isActive: true });
+      await repository.updatePricingConfiguration(tenantId, pricing.id, { taxPercentage: authoritative.taxPercentage });
+      return profile;
     });
   }
 
@@ -714,14 +752,6 @@ export class AdditionalServicesService {
       ...(dto.taxRateCode !== undefined
         ? { taxRateCode: this.normalizeOptionalFiscalCode(dto.taxRateCode) }
         : {}),
-      ...(dto.taxPercentage !== undefined
-        ? {
-            taxPercentage:
-              dto.taxPercentage === null
-                ? null
-                : dto.taxPercentage.trim(),
-          }
-        : {}),
     };
   }
 
@@ -812,7 +842,6 @@ export class AdditionalServicesService {
 
   private async validatePricingValues(
     marginValue?: number,
-    taxPercentage?: number,
   ): Promise<void> {
     if (
       marginValue !== undefined &&
@@ -823,14 +852,6 @@ export class AdditionalServicesService {
       );
     }
 
-    if (
-      taxPercentage !== undefined &&
-      (!Number.isFinite(taxPercentage) || taxPercentage < 0)
-    ) {
-      throw new BadRequestException(
-        "El porcentaje de impuesto no puede ser negativo.",
-      );
-    }
   }
 
   private isUniqueConstraintViolation(error: unknown): boolean {
@@ -947,10 +968,11 @@ export class AdditionalServicesService {
         supplierId: line.supplierId.trim(),
       };
     });
+    const serviceCodes = [...new Set(normalizedLines.map(({ serviceCode }) => serviceCode))];
     const [catalogs, suppliers] = await Promise.all([
       repository.findAdditionalServiceCatalogsByCodes(
         tenantId,
-        [...new Set(normalizedLines.map(({ serviceCode }) => serviceCode))],
+        serviceCodes,
       ),
       repository.findSuppliersByIds(
         tenantId,
@@ -963,6 +985,13 @@ export class AdditionalServicesService {
     const supplierById = new Map(
       suppliers.map((supplier) => [supplier.id, supplier]),
     );
+    const catalogIds = catalogs.map((catalog) => catalog.id);
+    const [fiscalProfiles, pricingConfigurations] = await Promise.all([
+      repository.findFiscalProfilesByCatalogIds(tenantId, catalogIds),
+      repository.findPricingConfigurationsByCatalogIds(tenantId, catalogIds),
+    ]);
+    const fiscalReadiness = await this.fiscalCatalog().evaluateFiscalProfiles(tenantId, fiscalProfiles);
+    const pricingByCatalogId = new Map(pricingConfigurations.map((configuration) => [configuration.additionalServiceCatalogId, configuration]));
     const resolvedEntities = normalizedLines.map(
       ({ line, lineIndex, lineParticipantIds, serviceCode, supplierId }) => {
         const catalog = catalogByCode.get(serviceCode);
@@ -970,6 +999,10 @@ export class AdditionalServicesService {
           throw new NotFoundException(
             `El servicio adicional ${serviceCode} no existe o está inactivo.`,
           );
+        }
+        const pricing = pricingByCatalogId.get(catalog.id);
+        if (!pricing?.isActive || !fiscalReadiness.get(catalog.id)?.isReady) {
+          throw new BadRequestException({ code: "ADDITIONAL_SERVICE_NOT_FISCALLY_READY" });
         }
 
         const supplier = supplierById.get(supplierId);

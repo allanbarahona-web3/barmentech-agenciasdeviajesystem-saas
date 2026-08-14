@@ -23,31 +23,19 @@ export class CreateAdditionalServiceFiscalProfileDto {
 
   @IsString()
   @Transform(trimString)
-  @MaxLength(20)
+  @MaxLength(15)
   @Matches(/\S/, { message: "unitOfMeasureCode no puede estar vacío." })
   unitOfMeasureCode!: string;
 
-  @IsOptional()
   @IsString()
   @Transform(trimString)
-  @MaxLength(4)
-  @Matches(/\S/, { message: "taxCode no puede estar vacío." })
-  taxCode?: string | null;
+  @Matches(/^\d{2}$/, { message: "taxCode debe contener exactamente 2 dígitos." })
+  taxCode!: string;
 
-  @IsOptional()
   @IsString()
   @Transform(trimString)
-  @MaxLength(4)
-  @Matches(/\S/, { message: "taxRateCode no puede estar vacío." })
-  taxRateCode?: string | null;
-
-  @IsOptional()
-  @IsString()
-  @Transform(trimString)
-  @Matches(/^\d{1,3}(?:\.\d{1,4})?$/, {
-    message: "taxPercentage debe ser un decimal no negativo compatible con Decimal(7,4).",
-  })
-  taxPercentage?: string | null;
+  @Matches(/^\d{2}$/, { message: "taxRateCode debe contener exactamente 2 dígitos." })
+  taxRateCode!: string;
 
   @IsOptional()
   @IsBoolean()

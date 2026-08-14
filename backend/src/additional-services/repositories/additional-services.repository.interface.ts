@@ -244,14 +244,14 @@ export interface CreateAdditionalServicePricingConfigurationData {
   additionalServiceCatalogId: string;
   marginType: AdditionalServiceMarginType;
   marginValue: number;
-  taxPercentage: number;
+  taxPercentage: string | number;
   isActive: boolean;
 }
 
 export interface UpdateAdditionalServicePricingConfigurationData {
   marginType?: AdditionalServiceMarginType;
   marginValue?: number;
-  taxPercentage?: number;
+  taxPercentage?: string | number;
   isActive?: boolean;
 }
 
@@ -497,6 +497,11 @@ export interface AdditionalServicesRepository {
     tenantId: string,
     additionalServiceCatalogId: string,
   ): Promise<AdditionalServiceFiscalProfileRecord | null>;
+
+  findFiscalProfilesByCatalogIds(
+    tenantId: string,
+    additionalServiceCatalogIds: string[],
+  ): Promise<AdditionalServiceFiscalProfileRecord[]>;
 
   createFiscalProfile(
     data: CreateAdditionalServiceFiscalProfileData,

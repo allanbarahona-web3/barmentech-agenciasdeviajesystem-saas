@@ -13,6 +13,24 @@ interface CabysItemResponse extends CabysProviderItem {
   source: "LOCAL" | "FACTURA_EN_CR";
 }
 
+export interface AuthoritativeFiscalSelection {
+  cabysCode: string;
+  unitOfMeasureCode: string;
+  taxCode: string;
+  taxRateCode: string;
+  taxPercentage: string;
+}
+
+export interface FiscalProfileSelectionInput {
+  additionalServiceCatalogId: string;
+  cabysCode: string;
+  unitOfMeasureCode: string;
+  taxCode: string | null;
+  taxRateCode: string | null;
+  taxPercentage: string | null;
+  isActive: boolean;
+}
+
 @Injectable()
 export class FiscalCatalogService {
   constructor(
@@ -117,5 +135,65 @@ export class FiscalCatalogService {
     if (!tax) throw fiscalCatalogError("FISCAL_CATALOG_ENTRY_NOT_FOUND", HttpStatus.NOT_FOUND);
     const rates = await this.prisma.fiscalTaxRateEntry.findMany({ where: { releaseId: release.id, taxEntryId: tax.id, isActive: true }, select: { code: true, name: true, percentage: true }, orderBy: { code: "asc" } });
     return { items: rates.map((rate) => ({ code: rate.code, name: rate.name, percentage: rate.percentage.toFixed(4) })), release: { version: release.version } };
+  }
+
+  async resolveFiscalSelection(tenantId: string, input: { cabysCode: string; unitOfMeasureCode: string; taxCode: string; taxRateCode: string }, confirmCabys: boolean): Promise<AuthoritativeFiscalSelection> {
+    await this.requireCountry(tenantId);
+    if (confirmCabys) await this.confirmCabys(tenantId, input.cabysCode);
+    else {
+      const cabysRelease = await this.activeRelease("CABYS");
+      const cabys = cabysRelease ? await this.prisma.fiscalCabysEntry.findFirst({ where: { releaseId: cabysRelease.id, code: input.cabysCode, isActive: true }, select: { id: true } }) : null;
+      if (!cabys) throw fiscalCatalogError("FISCAL_CATALOG_ENTRY_NOT_FOUND", HttpStatus.UNPROCESSABLE_ENTITY);
+    }
+    const release = await this.codingReleaseOrThrow();
+    const [unit, tax] = await Promise.all([
+      this.prisma.fiscalUnitOfMeasureEntry.findFirst({ where: { releaseId: release.id, code: input.unitOfMeasureCode, isActive: true }, select: { code: true } }),
+      this.prisma.fiscalTaxEntry.findFirst({ where: { releaseId: release.id, code: input.taxCode, isActive: true }, select: { id: true, code: true } }),
+    ]);
+    if (!unit || !tax) throw fiscalCatalogError("FISCAL_CATALOG_ENTRY_NOT_FOUND", HttpStatus.UNPROCESSABLE_ENTITY);
+    const rate = await this.prisma.fiscalTaxRateEntry.findFirst({ where: { releaseId: release.id, taxEntryId: tax.id, code: input.taxRateCode, isActive: true }, select: { code: true, percentage: true } });
+    if (!rate) throw fiscalCatalogError("FISCAL_CATALOG_ENTRY_NOT_FOUND", HttpStatus.UNPROCESSABLE_ENTITY);
+    return { cabysCode: input.cabysCode, unitOfMeasureCode: unit.code, taxCode: tax.code, taxRateCode: rate.code, taxPercentage: rate.percentage.toFixed(4) };
+  }
+
+  async evaluateFiscalProfiles(tenantId: string, profiles: FiscalProfileSelectionInput[]): Promise<Map<string, { status: "ABSENT" | "INACTIVE" | "READY" | "INVALID"; isReady: boolean; issues: string[] }>> {
+    await this.requireCountry(tenantId);
+    const result = new Map<string, { status: "ABSENT" | "INACTIVE" | "READY" | "INVALID"; isReady: boolean; issues: string[] }>();
+    const [cabysRelease, codingRelease] = await Promise.all([this.activeRelease("CABYS"), this.activeRelease("ELECTRONIC_INVOICE_CODING")]);
+    if (!cabysRelease || !codingRelease) {
+      profiles.forEach((profile) => result.set(profile.additionalServiceCatalogId, { status: profile.isActive ? "INVALID" : "INACTIVE", isReady: false, issues: ["FISCAL_CATALOG_NOT_READY"] }));
+      return result;
+    }
+    const taxCodes = [...new Set(profiles.flatMap((profile) => profile.taxCode ? [profile.taxCode] : []))];
+    const [cabys, units, taxes] = await Promise.all([
+      this.prisma.fiscalCabysEntry.findMany({ where: { releaseId: cabysRelease.id, isActive: true, code: { in: [...new Set(profiles.map((profile) => profile.cabysCode))] } }, select: { code: true } }),
+      this.prisma.fiscalUnitOfMeasureEntry.findMany({ where: { releaseId: codingRelease.id, isActive: true, code: { in: [...new Set(profiles.map((profile) => profile.unitOfMeasureCode))] } }, select: { code: true } }),
+      this.prisma.fiscalTaxEntry.findMany({ where: { releaseId: codingRelease.id, isActive: true, code: { in: taxCodes } }, select: { id: true, code: true } }),
+    ]);
+    const taxByCode = new Map(taxes.map((tax) => [tax.code, tax]));
+    const rates = await this.prisma.fiscalTaxRateEntry.findMany({ where: { releaseId: codingRelease.id, isActive: true, taxEntryId: { in: taxes.map((tax) => tax.id) } }, select: { taxEntryId: true, code: true, percentage: true } });
+    const cabysCodes = new Set(cabys.map((entry) => entry.code)); const unitCodes = new Set(units.map((entry) => entry.code));
+    const rateByIdentity = new Map(rates.map((rate) => [`${rate.taxEntryId}:${rate.code}`, rate]));
+    for (const profile of profiles) {
+      if (!profile.isActive) { result.set(profile.additionalServiceCatalogId, { status: "INACTIVE", isReady: false, issues: [] }); continue; }
+      const issues: string[] = []; const tax = profile.taxCode ? taxByCode.get(profile.taxCode) : undefined; const rate = tax && profile.taxRateCode ? rateByIdentity.get(`${tax.id}:${profile.taxRateCode}`) : undefined;
+      if (!cabysCodes.has(profile.cabysCode)) issues.push("CABYS_INVALID");
+      if (!unitCodes.has(profile.unitOfMeasureCode)) issues.push("UNIT_OF_MEASURE_INVALID");
+      if (!tax) issues.push("TAX_INVALID");
+      if (!rate) issues.push("TAX_RATE_INVALID");
+      let percentageMatches = false;
+      if (profile.taxPercentage && rate) {
+        try {
+          percentageMatches =
+            new Decimal(profile.taxPercentage).toFixed(4) ===
+            rate.percentage.toFixed(4);
+        } catch {
+          percentageMatches = false;
+        }
+      }
+      if (!percentageMatches) issues.push("TAX_PERCENTAGE_MISMATCH");
+      result.set(profile.additionalServiceCatalogId, issues.length ? { status: "INVALID", isReady: false, issues } : { status: "READY", isReady: true, issues: [] });
+    }
+    return result;
   }
 }
