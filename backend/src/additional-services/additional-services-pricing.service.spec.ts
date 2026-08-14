@@ -7,6 +7,8 @@ import {
   AdditionalServicesRepository,
 } from "./repositories";
 import { AdditionalServicesPricingService } from "./additional-services-pricing.service";
+import { FiscalCatalogService } from "../fiscal-catalogs/fiscal-catalog.service";
+import { AdditionalServicePricingConfigurationReader } from "./infrastructure/additional-service-pricing-configuration.reader";
 
 describe("AdditionalServicesPricingService", () => {
   let repository: jest.Mocked<AdditionalServicesRepository>;
@@ -109,5 +111,23 @@ describe("AdditionalServicesPricingService", () => {
         quotationCurrency: "USD",
       }),
     ).rejects.toBe(pricingError);
+  });
+});
+
+describe("Additional Services public pricing path fiscal readiness", () => {
+  it("returns no calculation for active legacy pricing without a fiscal profile", async () => {
+    const repository = {
+      findAdditionalServiceCatalogByCode: jest.fn().mockResolvedValue({ id: "catalog-1", tenantId: "tenant-1", code: "LODGING", name: "Acomodación", isActive: true }),
+      findPricingConfigurationByCatalogId: jest.fn().mockResolvedValue({ id: "pricing-1", tenantId: "tenant-1", additionalServiceCatalogId: "catalog-1", marginType: "PERCENTAGE", marginValue: "10.0000", taxPercentage: "13.0000", isActive: true, createdAt: new Date(), updatedAt: new Date(), additionalServiceCatalog: { id: "catalog-1", tenantId: "tenant-1", code: "LODGING", name: "Acomodación", isActive: true } }),
+      findFiscalProfilesByCatalogIds: jest.fn().mockResolvedValue([]),
+    } as unknown as jest.Mocked<AdditionalServicesRepository>;
+    const fiscal = { evaluateFiscalProfiles: jest.fn().mockResolvedValue(new Map()), resolveFiscalSelection: jest.fn() };
+    const reader = new AdditionalServicePricingConfigurationReader(repository, fiscal as unknown as FiscalCatalogService);
+    const engine = new PricingEngineService(reader, { findCurrent: jest.fn() } as never);
+    const service = new AdditionalServicesPricingService(repository, engine);
+
+    await expect(service.calculate("tenant-1", { serviceCode: "LODGING", supplierCost: 100, costCurrency: "USD", quotationCurrency: "USD" })).rejects.toMatchObject({ response: { code: "ADDITIONAL_SERVICE_NOT_FISCALLY_READY" } });
+    expect(fiscal.evaluateFiscalProfiles).toHaveBeenCalledTimes(1);
+    expect(fiscal.resolveFiscalSelection).not.toHaveBeenCalled();
   });
 });
