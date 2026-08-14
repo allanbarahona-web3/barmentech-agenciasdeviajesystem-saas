@@ -78,14 +78,12 @@ function formatMargin(
 interface PricingConfigurationFormState {
   marginType: AdditionalServiceMarginType;
   marginValue: string;
-  taxPercentage: string;
   isActive: boolean;
 }
 
 const emptyForm: PricingConfigurationFormState = {
   marginType: "FIXED",
   marginValue: "",
-  taxPercentage: "",
   isActive: true,
 };
 
@@ -158,7 +156,6 @@ export default function PricingConfigurationsPage() {
         ? {
             marginType: configuration.marginType,
             marginValue: configuration.marginValue,
-            taxPercentage: configuration.taxPercentage,
             isActive: configuration.isActive,
           }
         : emptyForm,
@@ -192,8 +189,6 @@ export default function PricingConfigurationsPage() {
     if (!selectedItem || saving) return;
 
     const marginValue = Number(form.marginValue);
-    const taxPercentage = Number(form.taxPercentage);
-
     if (
       form.marginValue.trim() === "" ||
       !Number.isFinite(marginValue) ||
@@ -203,22 +198,25 @@ export default function PricingConfigurationsPage() {
       return;
     }
 
-    if (
-      form.taxPercentage.trim() === "" ||
-      !Number.isFinite(taxPercentage) ||
-      taxPercentage < 0
-    ) {
-      setFormError(
-        "El porcentaje de impuesto debe ser un número igual o mayor a 0.",
-      );
-      return;
-    }
-
     setSaving(true);
     setFormError("");
 
     try {
       const existingConfiguration = selectedItem.pricingConfiguration;
+      const fiscalReady = selectedItem.fiscalReadiness.status === "READY";
+
+      if (!fiscalReady) {
+        if (existingConfiguration?.isActive && !form.isActive) {
+          await updateAdditionalServicePricingConfigurationStatus(existingConfiguration.id, false);
+          setSelectedItem(null);
+          setForm(emptyForm);
+          setCatalog(await getAdditionalServiceAdminCatalog());
+          showSuccess("Configuración de precios desactivada correctamente.");
+          return;
+        }
+        setFormError("Active y complete el perfil fiscal antes de configurar el precio.");
+        return;
+      }
 
       if (existingConfiguration) {
         await updateAdditionalServicePricingConfiguration(
@@ -226,7 +224,6 @@ export default function PricingConfigurationsPage() {
           {
             marginType: form.marginType,
             marginValue,
-            taxPercentage,
           },
         );
 
@@ -241,7 +238,6 @@ export default function PricingConfigurationsPage() {
           additionalServiceCatalogId: selectedItem.id,
           marginType: form.marginType,
           marginValue,
-          taxPercentage,
           isActive: form.isActive,
         });
       }
@@ -330,7 +326,7 @@ export default function PricingConfigurationsPage() {
                     }));
                     setFormError("");
                   }}
-                  disabled={saving}
+                  disabled={saving || selectedItem.fiscalReadiness.status !== "READY"}
                   autoFocus
                   className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900 focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
                 >
@@ -360,36 +356,20 @@ export default function PricingConfigurationsPage() {
                     }));
                     setFormError("");
                   }}
-                  disabled={saving}
+                  disabled={saving || selectedItem.fiscalReadiness.status !== "READY"}
                   className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm text-slate-900 focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
                 />
               </div>
 
               <div>
-                <label
-                  htmlFor="pricing-tax-percentage"
-                  className="mb-1 block text-sm font-medium text-slate-700"
-                >
-                  Impuesto IVA
-                </label>
-                <input
-                  id="pricing-tax-percentage"
-                  type="number"
-                  min="0"
-                  step="0.0001"
-                  required
-                  value={form.taxPercentage}
-                  onChange={(event) => {
-                    setForm((current) => ({
-                      ...current,
-                      taxPercentage: event.target.value,
-                    }));
-                    setFormError("");
-                  }}
-                  disabled={saving}
-                  className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm text-slate-900 focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
-                />
+                <label htmlFor="pricing-tax-percentage" className="mb-1 block text-sm font-medium text-slate-700">IVA efectivo del perfil fiscal activo</label>
+                <input id="pricing-tax-percentage" value={selectedItem.fiscalProfile?.taxPercentage ? `${selectedItem.fiscalProfile.taxPercentage}%` : "No disponible"} readOnly className="h-10 w-full rounded-md border border-slate-200 bg-slate-100 px-3 text-sm text-slate-600" />
+                <p className="mt-1 text-xs text-slate-500">Este porcentaje lo determina el perfil fiscal y no se envía desde este formulario.</p>
               </div>
+
+              {selectedItem.fiscalReadiness.status !== "READY" ? (
+                <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">Active y complete el perfil fiscal antes de configurar el precio. Si el precio está activo, aún puede desactivarlo.</p>
+              ) : null}
 
               <label
                 htmlFor="pricing-is-active"
@@ -407,12 +387,10 @@ export default function PricingConfigurationsPage() {
                   id="pricing-is-active"
                   type="checkbox"
                   checked={form.isActive}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      isActive: event.target.checked,
-                    }))
-                  }
+                  onChange={(event) => {
+                    if (event.target.checked && selectedItem.fiscalReadiness.status !== "READY") return;
+                    setForm((current) => ({ ...current, isActive: event.target.checked }));
+                  }}
                   disabled={saving}
                   className="h-5 w-5 accent-slate-900"
                 />
@@ -452,7 +430,7 @@ export default function PricingConfigurationsPage() {
               Margen Adicionales
             </h1>
             <p className="m-0 text-slate-500">
-              Configura el margen e impuestos para cada servicio adicional.
+              Configure primero el perfil fiscal; después defina el margen comercial. El IVA se deriva del perfil fiscal activo.
             </p>
           </div>
           {!loadError && catalog.length > 0 ? (
@@ -608,6 +586,8 @@ export default function PricingConfigurationsPage() {
                                 variant="outline"
                                 size="sm"
                                 onClick={() => openConfigurationModal(item)}
+                                disabled={item.fiscalReadiness.status !== "READY" && !configuration?.isActive}
+                                title={item.fiscalReadiness.status !== "READY" && !configuration?.isActive ? "Active y complete el perfil fiscal antes de configurar el precio." : undefined}
                                 className={
                                   configuration
                                     ? "min-w-[118px] gap-2 border-slate-300 bg-white text-slate-700 shadow-sm hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 dark:border-slate-300 dark:bg-white dark:text-slate-700 dark:hover:border-blue-300 dark:hover:bg-blue-50 dark:hover:text-blue-700"
@@ -627,6 +607,7 @@ export default function PricingConfigurationsPage() {
                                 )}
                                 {configuration ? "Editar" : "Configurar"}
                               </Button>
+                              {item.fiscalReadiness.status !== "READY" && !configuration?.isActive ? <span className="basis-full text-xs text-amber-700">Configure y active el perfil fiscal primero.</span> : null}
                               <Button
                                 type="button"
                                 variant="outline"
