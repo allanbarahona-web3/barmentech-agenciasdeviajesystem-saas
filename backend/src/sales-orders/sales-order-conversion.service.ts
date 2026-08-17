@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -84,6 +85,7 @@ export class SalesOrderConversionService {
       if (existing) return existing;
 
       const lines = await tx.$queryRaw<Array<{
+        additionalServiceCatalogId: string | null;
         serviceCode: string;
         serviceName: string;
         serviceDetailsVersion: number | null;
@@ -94,7 +96,7 @@ export class SalesOrderConversionService {
         vatAmount: Prisma.Decimal;
         total: Prisma.Decimal;
         participants: unknown;
-      }>>`SELECT l."serviceCode", l."serviceName", l."serviceDetailsVersion",
+      }>>`SELECT l."additionalServiceCatalogId", l."serviceCode", l."serviceName", l."serviceDetailsVersion",
                  l."serviceDetails", l."commercialNotes", l."subtotal",
                  l."vatPercentage", l."vatAmount", l."finalSellingPrice" AS "total",
                  COALESCE(jsonb_agg(jsonb_build_object(
@@ -107,6 +109,14 @@ export class SalesOrderConversionService {
           WHERE l."orderId" = ${sourceId} AND l."tenantId" = ${tenantId}
           GROUP BY l."id"
           ORDER BY l."createdAt", l."id"`;
+
+      if (lines.some((line) => !line.additionalServiceCatalogId)) {
+        throw new BadRequestException({
+          code: "SALES_ORDER_LINE_CATALOG_IDENTITY_MISSING",
+          message:
+            "Una línea del servicio adicional no tiene una identidad de catálogo válida.",
+        });
+      }
 
       const year = new Date().getUTCFullYear();
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`${tenantId}:SALES_ORDER_NUMBER:${year}`}, 0))`;
@@ -130,11 +140,11 @@ export class SalesOrderConversionService {
 
       for (const line of lines) {
         await tx.$executeRaw`INSERT INTO "sales_order_lines" (
-            "id", "tenantId", "salesOrderId", "serviceCode", "serviceName", "serviceDetailsVersion",
+            "id", "tenantId", "salesOrderId", "additionalServiceCatalogId", "serviceCode", "serviceName", "serviceDetailsVersion",
             "serviceDetails", "commercialNotes", "subtotal", "vatPercentage", "vatAmount", "total",
             "participants", "updatedAt"
           ) VALUES (
-            ${randomUUID()}, ${tenantId}, ${salesOrderId}, ${line.serviceCode}, ${line.serviceName},
+            ${randomUUID()}, ${tenantId}, ${salesOrderId}, ${line.additionalServiceCatalogId}, ${line.serviceCode}, ${line.serviceName},
             ${line.serviceDetailsVersion}, ${JSON.stringify(line.serviceDetails)}::jsonb, ${line.commercialNotes},
             ${line.subtotal}, ${line.vatPercentage}, ${line.vatAmount}, ${line.total},
             ${JSON.stringify(line.participants)}::jsonb, CURRENT_TIMESTAMP

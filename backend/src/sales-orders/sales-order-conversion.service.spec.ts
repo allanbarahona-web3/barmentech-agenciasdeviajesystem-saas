@@ -42,6 +42,7 @@ describe("SalesOrderConversionService", () => {
   it("creates a customer-facing snapshot without supplier or margin fields", async () => {
     const existing = salesOrder();
     const acceptedLine = {
+      additionalServiceCatalogId: "catalog-baggage",
       serviceCode: "BAGGAGE",
       serviceName: "Equipaje",
       serviceDetailsVersion: 1,
@@ -65,8 +66,88 @@ describe("SalesOrderConversionService", () => {
 
     expect(execute).toHaveBeenCalledTimes(4);
     const lineInsertSql = String(execute.mock.calls[3][0]);
+    expect(lineInsertSql).toContain('"additionalServiceCatalogId"');
+    expect(execute.mock.calls[3]).toEqual(
+      expect.arrayContaining([
+        "catalog-baggage",
+        "BAGGAGE",
+        "Equipaje",
+        1,
+        JSON.stringify({ pieceQuantity: 1 }),
+        "Incluido",
+        "100.0000",
+        "13.0000",
+        "113.0000",
+        JSON.stringify([{ fullName: "Traveler A" }]),
+      ]),
+    );
     expect(lineInsertSql).toContain('"participants"');
     expect(lineInsertSql).not.toMatch(/supplier|margin|cost/i);
+  });
+
+  it("preserves each source line's exact catalog identity", async () => {
+    const { service, execute } = setup([
+      [proposal({ commercialStatus: "APPROVED" })],
+      [],
+      [
+        sourceLine({
+          additionalServiceCatalogId: "catalog-baggage",
+          serviceCode: "BAGGAGE",
+          serviceName: "Equipaje",
+        }),
+        sourceLine({
+          additionalServiceCatalogId: "catalog-transfer",
+          serviceCode: "TRANSFER",
+          serviceName: "Traslado",
+        }),
+      ],
+      [{ next: 1n }],
+      [salesOrder()],
+    ]);
+
+    await service.convertAdditionalServiceOrder("tenant-a", "proposal-a", actor);
+
+    expect(execute).toHaveBeenCalledTimes(5);
+    expect(execute.mock.calls[3]).toContain("catalog-baggage");
+    expect(execute.mock.calls[3]).not.toContain("catalog-transfer");
+    expect(execute.mock.calls[4]).toContain("catalog-transfer");
+    expect(execute.mock.calls[4]).not.toContain("catalog-baggage");
+  });
+
+  it("rejects a missing source catalog identity before Sales Order persistence", async () => {
+    const { service, execute, query } = setup([
+      [proposal({ commercialStatus: "APPROVED" })],
+      [],
+      [sourceLine({ additionalServiceCatalogId: null })],
+    ]);
+
+    await expect(
+      service.convertAdditionalServiceOrder("tenant-a", "proposal-a", actor),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({
+        code: "SALES_ORDER_LINE_CATALOG_IDENTITY_MISSING",
+      }),
+    });
+    expect(query).toHaveBeenCalledTimes(3);
+    expect(execute).toHaveBeenCalledTimes(1); // advisory lock only
+  });
+
+  it("uses the tenant-scoped source line identity without a catalog lookup", async () => {
+    const { service, query, execute } = setup([
+      [proposal({ commercialStatus: "APPROVED" })],
+      [],
+      [sourceLine({ additionalServiceCatalogId: "tenant-a-catalog" })],
+      [{ next: 1n }],
+      [salesOrder()],
+    ]);
+
+    await service.convertAdditionalServiceOrder("tenant-a", "proposal-a", actor);
+
+    const sourceLinesSql = String(query.mock.calls[2][0]);
+    expect(sourceLinesSql).toContain('l."tenantId" =');
+    expect(sourceLinesSql).toContain('l."additionalServiceCatalogId"');
+    expect(query).toHaveBeenCalledTimes(5);
+    expect(execute.mock.calls[3]).toContain("tenant-a-catalog");
   });
 });
 
@@ -108,6 +189,23 @@ function salesOrder() {
     customerEmail: "customer@example.test",
     createdAt: new Date(),
     lines: [],
+  };
+}
+
+function sourceLine(overrides: Record<string, unknown> = {}) {
+  return {
+    additionalServiceCatalogId: "catalog-a",
+    serviceCode: "BAGGAGE",
+    serviceName: "Equipaje",
+    serviceDetailsVersion: 1,
+    serviceDetails: { pieceQuantity: 1 },
+    commercialNotes: "Incluido",
+    subtotal: "100.0000",
+    vatPercentage: "13.0000",
+    vatAmount: "13.0000",
+    total: "113.0000",
+    participants: [{ fullName: "Traveler A" }],
+    ...overrides,
   };
 }
 
