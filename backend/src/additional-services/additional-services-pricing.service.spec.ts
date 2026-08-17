@@ -18,9 +18,11 @@ describe("AdditionalServicesPricingService", () => {
   beforeEach(() => {
     repository = {
       findAdditionalServiceCatalogByCode: jest.fn(),
+      findAdditionalServiceCatalogsByCodes: jest.fn(),
     } as unknown as jest.Mocked<AdditionalServicesRepository>;
     pricingEngine = {
       calculate: jest.fn(),
+      calculateMany: jest.fn(),
     } as unknown as jest.Mocked<PricingEngineService>;
     service = new AdditionalServicesPricingService(
       repository,
@@ -111,6 +113,37 @@ describe("AdditionalServicesPricingService", () => {
         quotationCurrency: "USD",
       }),
     ).rejects.toBe(pricingError);
+  });
+
+  it("resolves unique catalog codes once and preserves correlated input order", async () => {
+    repository.findAdditionalServiceCatalogsByCodes.mockResolvedValue([
+      { id: "catalog-tour", tenantId: "tenant-1", code: "TOUR", name: "Tour", isActive: true },
+      { id: "catalog-lodging", tenantId: "tenant-1", code: "LODGING", name: "Hospedaje", isActive: true },
+    ]);
+    const breakdowns = [
+      { finalSellingPrice: 10 },
+      { finalSellingPrice: 20 },
+      { finalSellingPrice: 30 },
+    ] as never;
+    pricingEngine.calculateMany.mockResolvedValue(breakdowns);
+
+    const inputs = [
+      { lineId: "line-3", serviceCode: " tour ", supplierCost: 1, costCurrency: "USD" as const, quotationCurrency: "USD" as const },
+      { lineId: "line-1", serviceCode: "LODGING", supplierCost: 2, costCurrency: "USD" as const, quotationCurrency: "USD" as const },
+      { lineId: "line-2", serviceCode: "TOUR", supplierCost: 3, costCurrency: "USD" as const, quotationCurrency: "USD" as const },
+    ];
+    await expect(service.calculateMany("tenant-1", inputs)).resolves.toEqual([
+      { lineId: "line-3", breakdown: breakdowns[0] },
+      { lineId: "line-1", breakdown: breakdowns[1] },
+      { lineId: "line-2", breakdown: breakdowns[2] },
+    ]);
+    expect(repository.findAdditionalServiceCatalogsByCodes).toHaveBeenCalledTimes(1);
+    expect(repository.findAdditionalServiceCatalogsByCodes).toHaveBeenCalledWith(
+      "tenant-1",
+      ["TOUR", "LODGING"],
+    );
+    expect(pricingEngine.calculateMany).toHaveBeenCalledTimes(1);
+    expect(pricingEngine.calculate).not.toHaveBeenCalled();
   });
 });
 

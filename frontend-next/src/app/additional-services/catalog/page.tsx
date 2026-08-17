@@ -1,9 +1,32 @@
+'use client';
+
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { AdditionalServicesContextHeader } from '@/components/additional-services-context-header';
 import { ADDITIONAL_SERVICE_CATEGORIES } from './services';
+import {
+  getSelectableAdditionalServices,
+  type SelectableAdditionalService,
+} from '@/lib/additional-services-catalog-api';
 import styles from './catalog.module.css';
 
 export default function AdditionalServicesCatalogPage() {
+  const [services, setServices] = useState<SelectableAdditionalService[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void getSelectableAdditionalServices()
+      .then((items) => {
+        if (!cancelled) setServices(items);
+      })
+      .catch(() => {
+        if (!cancelled) setLoadError('No fue posible comprobar la disponibilidad fiscal de los servicios.');
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  const serviceByCode = new Map(services?.map((service) => [service.code, service]) ?? []);
   return (
     <main className="app-shell">
       <div className={styles.page}>
@@ -32,14 +55,21 @@ export default function AdditionalServicesCatalogPage() {
         <div className={styles.grid}>
           {ADDITIONAL_SERVICE_CATEGORIES.map((category) => {
             const Icon = category.icon;
+            const readiness = serviceByCode.get(category.code);
+            const unavailable = !readiness?.isSellable;
             const cardContent = (
               <>
                 <Icon className={styles.icon} aria-hidden="true" />
                 <span className={styles.cardTitle}>{category.title}</span>
+                {unavailable && (
+                  <span className={styles.unavailableReason}>
+                    No disponible: requiere un perfil fiscal activo y completo.
+                  </span>
+                )}
               </>
             );
 
-            if (category.disabled) {
+            if (category.disabled || unavailable) {
               return (
                 <div
                   key={category.slug}
@@ -62,6 +92,7 @@ export default function AdditionalServicesCatalogPage() {
             );
           })}
         </div>
+        {loadError && <p role="alert" className={styles.catalogError}>{loadError}</p>}
 
         <div
           style={{

@@ -1,19 +1,25 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { AdditionalServicesContextHeader } from '@/components/additional-services-context-header';
 import { AdditionalServicesLinesTable } from '@/components/additional-services-lines-table';
 import { LoadingModal } from '@/components/loading-modal';
+import { ConfirmModal } from '@/components/confirm-modal';
 import { Button } from '@/components/ui/button';
-import { calculateAdditionalServicePrice } from '@/lib/additional-services-pricing-api';
+import {
+  AdditionalServicePricingApiError,
+  calculateAdditionalServicePrices,
+} from '@/lib/additional-services-pricing-api';
+import { getSelectableAdditionalServices } from '@/lib/additional-services-catalog-api';
 import {
   getAdditionalServicesCommercialConditions,
   getAdditionalServicesQuotationCurrency,
   getAdditionalServicesQuoteCustomerId,
   getAdditionalServicesWorkflowContext,
   getTemporaryAdditionalServiceLineSourcing,
+  getTemporaryAdditionalServiceLineId,
   getTemporaryAdditionalServiceLines,
   setAdditionalServicesCommercialConditions,
   setAdditionalServicesQuotationCurrency,
@@ -88,6 +94,21 @@ export default function AdditionalServicesPricingPage() {
   const router = useRouter();
   const [calculating, setCalculating] = useState(false);
   const [calculationError, setCalculationError] = useState<string | null>(null);
+  const [unavailableServiceCodes, setUnavailableServiceCodes] = useState<Set<string> | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void getSelectableAdditionalServices()
+      .then((services) => {
+        if (!cancelled) {
+          setUnavailableServiceCodes(new Set(services.filter((service) => !service.isSellable).map((service) => service.code)));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setUnavailableServiceCodes(null);
+      });
+    return () => { cancelled = true; };
+  }, []);
   const [quotationCurrency, setQuotationCurrency] =
     useState<TemporaryLineCurrency>(() =>
       getAdditionalServicesQuotationCurrency(),
@@ -199,50 +220,53 @@ export default function AdditionalServicesPricingPage() {
         throw new Error('Seleccione el plazo de pago del crédito.');
       }
 
-      const results = await Promise.all(
-        lines.map(async (line) => {
+      const unavailableLines = lines.filter((line) => unavailableServiceCodes?.has(line.serviceType));
+      if (unavailableLines.length > 0) {
+        throw new AdditionalServicePricingApiError('ADDITIONAL_SERVICE_NOT_FISCALLY_READY');
+      }
+
+      const batchLines = lines.map((line) => {
           const sourcing =
             getTemporaryAdditionalServiceLineSourcing(line);
-
-          try {
-            if (!isValidOptionalSupplierCostUrl(sourcing.providerUrl)) {
-              throw new Error(
-                'La URL del costo debe ser una dirección HTTP o HTTPS válida, o dejarse vacía.',
-              );
-            }
-
-            const breakdown = await calculateAdditionalServicePrice({
-              serviceCode: line.serviceType,
-              supplierCost: sourcing.cost,
-              costCurrency: sourcing.currency,
-              quotationCurrency,
-            });
-            return { line, breakdown };
-          } catch (error) {
-            const participant =
-              participantNames.get(line.participantId) ??
-              line.participantId;
-            const serviceName = getAdditionalServiceName(line);
-            const backendMessage =
-              error instanceof Error
-                ? error.message
-                : 'No se pudo calcular el precio.';
-
-            throw new Error(
-              `${participant} · ${serviceName}: ${backendMessage}`,
-            );
+          if (!isValidOptionalSupplierCostUrl(sourcing.providerUrl)) {
+            const participant = participantNames.get(line.participantId) ?? line.participantId;
+            throw new Error(`${participant} · ${getAdditionalServiceName(line)}: La URL del costo debe ser una dirección HTTP o HTTPS válida, o dejarse vacía.`);
           }
-        }),
-      );
+          return {
+            lineId: getTemporaryAdditionalServiceLineId(line),
+            serviceCode: line.serviceType,
+            supplierCost: sourcing.cost,
+            costCurrency: sourcing.currency,
+            quotationCurrency,
+          };
+        });
+      const batchResults = await calculateAdditionalServicePrices(batchLines);
+      const lineById = new Map(lines.map((line) => [getTemporaryAdditionalServiceLineId(line), line]));
+      const results = batchResults.map(({ lineId, breakdown }) => {
+        const line = lineById.get(lineId);
+        if (!line) throw new Error('La respuesta de precios no coincide con las líneas seleccionadas.');
+        return { line, breakdown };
+      });
 
       setTemporaryAdditionalServiceLinePricing(results);
       router.push('/additional-services/pricing-review');
     } catch (error) {
-      setCalculationError(
-        error instanceof Error
-          ? error.message
-          : 'No se pudieron calcular los precios.',
-      );
+      if (error instanceof AdditionalServicePricingApiError && error.code === 'ADDITIONAL_SERVICE_NOT_FISCALLY_READY') {
+        const affectedNames = [...new Set(
+          lines
+            .filter((line) => unavailableServiceCodes?.has(line.serviceType))
+            .map((line) => getAdditionalServiceName(line)),
+        )];
+        setCalculationError(
+          `Uno o más servicios seleccionados no tienen un perfil fiscal activo y completo. Solicite a un administrador configurar el perfil fiscal antes de continuar.${
+            affectedNames.length > 0
+              ? ` Servicios afectados: ${affectedNames.join(', ')}.`
+              : ''
+          }`,
+        );
+      } else {
+        setCalculationError(error instanceof Error ? error.message : 'No se pudieron calcular los precios.');
+      }
     } finally {
       setCalculating(false);
     }
@@ -254,6 +278,15 @@ export default function AdditionalServicesPricingPage() {
         isOpen={calculating}
         state="loading"
         loadingMessage="Calculando precios..."
+      />
+      <ConfirmModal
+        isOpen={calculationError !== null}
+        title="No es posible calcular el servicio"
+        message={calculationError ?? ''}
+        confirmText="Cerrar"
+        showCancel={false}
+        onConfirm={() => setCalculationError(null)}
+        onCancel={() => setCalculationError(null)}
       />
       <div className={`${styles.page} ${styles.pricingPage}`}>
         <AdditionalServicesContextHeader />
@@ -640,21 +673,23 @@ export default function AdditionalServicesPricingPage() {
             </div>
           </fieldset>
           <AdditionalServicesLinesTable mode="pricing" />
-          {calculationError && (
-            <p
-              role="alert"
+          {unavailableServiceCodes && getTemporaryAdditionalServiceLines().some(
+            (line) => unavailableServiceCodes.has(line.serviceType),
+          ) && (
+            <div
+              role="status"
               style={{
-                margin: '20px 0 0',
+                marginTop: '16px',
                 padding: '12px 14px',
-                border: '1px solid #fecaca',
+                border: '1px solid #fbbf24',
                 borderRadius: '9px',
-                background: '#fff1f2',
-                color: '#b91c1c',
+                background: '#fffbeb',
+                color: '#92400e',
                 fontWeight: 600,
               }}
             >
-              {calculationError}
-            </p>
+              No disponible: requiere un perfil fiscal activo y completo. Puede revisar, editar o eliminar las líneas existentes antes de continuar.
+            </div>
           )}
           <div className={styles.actions}>
             <Button asChild variant="outline" className={styles.backButton}>

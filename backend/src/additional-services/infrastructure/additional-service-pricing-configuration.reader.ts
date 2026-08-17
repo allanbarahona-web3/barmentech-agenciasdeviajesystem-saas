@@ -77,11 +77,14 @@ export class AdditionalServicePricingConfigurationReader
       profiles.map((profile) => [profile.additionalServiceCatalogId, profile]),
     );
 
+    uniqueIds.forEach((catalogId) =>
+      this.requireReady(catalogId, profileByCatalogId.get(catalogId), readiness),
+    );
+
     return new Map(
       configurations.map((configuration) => {
         const catalogId = configuration.additionalServiceCatalogId;
-        const profile = profileByCatalogId.get(catalogId);
-        this.requireReady(catalogId, profile, readiness);
+        const profile = profileByCatalogId.get(catalogId)!;
         return [
           catalogId,
           this.toPricingConfiguration(configuration, profile),

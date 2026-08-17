@@ -1,4 +1,5 @@
 export * from "./calculate-additional-service-price.dto";
+export * from "./calculate-many-additional-service-prices.dto";
 export * from "./commercial-proposal-pdf.dto";
 export * from "./commercial-proposal-preview.dto";
 export * from "./create-additional-service-order.dto";

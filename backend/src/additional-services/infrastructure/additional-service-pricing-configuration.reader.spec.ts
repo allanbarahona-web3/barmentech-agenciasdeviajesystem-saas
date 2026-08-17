@@ -63,4 +63,20 @@ describe("AdditionalServicePricingConfigurationReader fiscal boundary", () => {
     expect(repository.findFiscalProfilesByCatalogIds).toHaveBeenCalledTimes(1);
     expect(fiscal.evaluateFiscalProfiles).toHaveBeenCalledTimes(1);
   });
+
+  it("rejects the complete batch before returning configurations when one service is unready", async () => {
+    const profiles = [profile("service-1"), profile("service-2")];
+    const { reader, repository, fiscal } = setup(profiles, {
+      "service-1": true,
+      "service-2": false,
+    });
+    await expect(
+      reader.findForAdditionalServices(tenantId, ["service-1", "service-2"]),
+    ).rejects.toMatchObject({
+      response: { code: "ADDITIONAL_SERVICE_NOT_FISCALLY_READY" },
+    });
+    expect(repository.findPricingConfigurationsByCatalogIds).toHaveBeenCalledTimes(1);
+    expect(repository.findFiscalProfilesByCatalogIds).toHaveBeenCalledTimes(1);
+    expect(fiscal.evaluateFiscalProfiles).toHaveBeenCalledTimes(1);
+  });
 });

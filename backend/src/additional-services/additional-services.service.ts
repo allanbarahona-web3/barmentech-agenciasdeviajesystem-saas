@@ -79,6 +79,14 @@ export interface AdditionalServiceFiscalReadiness {
   issues: string[];
 }
 
+export interface SelectableAdditionalServiceItem {
+  code: string;
+  name: string;
+  fiscalReadiness: AdditionalServiceFiscalReadinessStatus;
+  isSellable: boolean;
+  readinessCode: string | null;
+}
+
 export interface SupplierListFilters {
   activeOnly?: boolean;
   travelType?: "INTERNATIONAL" | "INTERNAL";
@@ -121,6 +129,46 @@ export class AdditionalServicesService {
         fiscalReadiness: fiscalProfile ? readiness.get(id) ?? { status: "INVALID", isReady: false, issues: ["FISCAL_CATALOG_NOT_READY"] } : { status: "ABSENT", isReady: false, issues: [] },
       }),
     );
+  }
+
+  async listSelectableAdditionalServices(
+    tenantId: string,
+  ): Promise<SelectableAdditionalServiceItem[]> {
+    const catalog = await this.repository.findAdditionalServiceCatalogs(tenantId);
+    const profiles = catalog.flatMap((item) =>
+      item.fiscalProfile
+        ? [{
+            ...item.fiscalProfile,
+            tenantId,
+            additionalServiceCatalogId: item.id,
+            createdAt: new Date(0),
+            updatedAt: new Date(0),
+          }]
+        : [],
+    );
+    const readiness = await this.fiscalCatalog().evaluateFiscalProfiles(
+      tenantId,
+      profiles,
+    );
+
+    return catalog
+      .filter((item) => item.isActive)
+      .map((item) => {
+        const fiscalReadiness = item.fiscalProfile
+          ? readiness.get(item.id) ?? {
+              status: "INVALID" as const,
+              isReady: false,
+              issues: ["FISCAL_CATALOG_NOT_READY"],
+            }
+          : { status: "ABSENT" as const, isReady: false, issues: [] };
+        return {
+          code: item.code,
+          name: item.name,
+          fiscalReadiness: fiscalReadiness.status,
+          isSellable: fiscalReadiness.isReady,
+          readinessCode: fiscalReadiness.issues[0] ?? null,
+        };
+      });
   }
 
   listPricingConfigurations(

@@ -24,4 +24,12 @@ export class AdditionalServiceCatalogController {
       req.user.tenantId,
     );
   }
+
+  @Get("selectable")
+  @Roles("ADMIN", "AGENT", "OPERACIONES")
+  listSelectable(@Req() req: AdminRequest) {
+    return this.additionalServicesService.listSelectableAdditionalServices(
+      req.user.tenantId,
+    );
+  }
 }
