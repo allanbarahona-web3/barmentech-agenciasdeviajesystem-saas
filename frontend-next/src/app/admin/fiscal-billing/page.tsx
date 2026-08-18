@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic';
 
 import { useEffect, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { LoadingSpinner } from '@/components/loading-spinner';
@@ -223,6 +224,9 @@ export default function FiscalBillingAdminPage() {
             >
               {configured ? 'Configurada' : 'Sin configurar'}
             </Badge>
+            <Link href="/admin/fiscal-billing/issuers" className="rounded-md bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800">
+              Administrar emisores
+            </Link>
           </div>
           {!configured && (
             <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
