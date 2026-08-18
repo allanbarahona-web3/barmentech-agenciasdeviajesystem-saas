@@ -15,10 +15,18 @@ import { FiscalBillingAdminController } from "./fiscal-billing-admin.controller"
 import { FiscalBillingAdminService } from "./fiscal-billing-admin.service";
 import { FISCAL_BILLING_ADMIN_REPOSITORY } from "./fiscal-billing-admin.repository";
 import { PrismaFiscalBillingAdminRepository } from "./prisma-fiscal-billing-admin.repository";
+import { FiscalIssuerAdminController } from "./fiscal-issuer-admin.controller";
+import { FiscalIssuerAdminService } from "./fiscal-issuer-admin.service";
+import { FISCAL_ISSUER_ADMIN_REPOSITORY } from "./fiscal-issuer-admin.repository";
+import { PrismaFiscalIssuerAdminRepository } from "./prisma-fiscal-issuer-admin.repository";
 
 @Module({
   imports: [FiscalCatalogModule],
-  controllers: [FiscalBillingController, FiscalBillingAdminController],
+  controllers: [
+    FiscalBillingController,
+    FiscalBillingAdminController,
+    FiscalIssuerAdminController,
+  ],
   providers: [
     SalesOrderFiscalBillingService,
     BillingDocumentService,
@@ -26,6 +34,8 @@ import { PrismaFiscalBillingAdminRepository } from "./prisma-fiscal-billing-admi
     PrismaBillingDocumentRepository,
     FiscalBillingAdminService,
     PrismaFiscalBillingAdminRepository,
+    FiscalIssuerAdminService,
+    PrismaFiscalIssuerAdminRepository,
     {
       provide: SALES_ORDER_FISCAL_BILLING_REPOSITORY,
       useExisting: PrismaSalesOrderFiscalBillingRepository,
@@ -37,6 +47,10 @@ import { PrismaFiscalBillingAdminRepository } from "./prisma-fiscal-billing-admi
     {
       provide: FISCAL_BILLING_ADMIN_REPOSITORY,
       useExisting: PrismaFiscalBillingAdminRepository,
+    },
+    {
+      provide: FISCAL_ISSUER_ADMIN_REPOSITORY,
+      useExisting: PrismaFiscalIssuerAdminRepository,
     },
   ],
 })
