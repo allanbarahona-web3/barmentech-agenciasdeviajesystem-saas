@@ -1315,6 +1315,13 @@ enum FiscalCatalogReleaseStatus {
   RETIRED
 }
 
+enum TerritorialCatalogReleaseStatus {
+  DRAFT
+  VALIDATED
+  ACTIVE
+  RETIRED
+}
+
 model AdditionalServiceCatalog {
   id                    String                                  @id @default(cuid())
   tenantId              String
@@ -1511,6 +1518,54 @@ model FiscalTaxRateEntry {
   @@unique([releaseId, taxEntryId, code], map: "fiscal_tax_rate_entries_release_tax_code_key")
   @@index([releaseId, taxEntryId, isActive], map: "fiscal_tax_rate_entries_release_tax_active_idx")
   @@map("fiscal_tax_rate_entries")
+}
+
+model TerritorialCatalogRelease {
+  id                String                          @id @default(cuid())
+  countryCode       String                          @db.VarChar(2)
+  version           String                          @db.VarChar(100)
+  status            TerritorialCatalogReleaseStatus @default(DRAFT)
+  sourceAuthority   String                          @db.VarChar(200)
+  sourceUrl         String?                         @db.VarChar(1000)
+  sourcePublishedAt DateTime?
+  effectiveFrom     DateTime?
+  effectiveTo       DateTime?
+  checksumSha256    String                          @db.VarChar(64)
+  originalFilename  String                          @db.VarChar(255)
+  activatedAt       DateTime?
+  createdAt         DateTime                        @default(now())
+  updatedAt         DateTime                        @updatedAt
+  subdivisions      TerritorialSubdivision[]
+
+  @@unique([countryCode, version], map: "territorial_catalog_releases_country_version_key")
+  @@unique([countryCode, checksumSha256], map: "territorial_catalog_releases_country_checksum_key")
+  @@index([countryCode, status], map: "territorial_catalog_releases_country_status_idx")
+  @@map("territorial_catalog_releases")
+}
+
+model TerritorialSubdivision {
+  id                  String                    @id @default(cuid())
+  releaseId           String
+  parentId            String?
+  administrativeLevel Int
+  subdivisionTypeCode String                    @db.VarChar(30)
+  code                String                    @db.VarChar(20)
+  fullCode            String                    @db.VarChar(50)
+  name                String                    @db.VarChar(255)
+  searchText          String
+  isActive            Boolean                   @default(true)
+  sourceEffectiveFrom DateTime?
+  sourceEffectiveTo   DateTime?
+  createdAt           DateTime                  @default(now())
+  release             TerritorialCatalogRelease @relation(fields: [releaseId], references: [id], onDelete: Restrict, map: "territorial_subdivisions_release_fkey")
+  parent              TerritorialSubdivision?   @relation("TerritorialSubdivisionHierarchy", fields: [parentId, releaseId], references: [id, releaseId], onDelete: Restrict, map: "territorial_subdivisions_parent_release_fkey")
+  children            TerritorialSubdivision[]  @relation("TerritorialSubdivisionHierarchy")
+
+  @@unique([releaseId, fullCode], map: "territorial_subdivisions_release_full_code_key")
+  @@unique([id, releaseId], map: "territorial_subdivisions_id_release_key")
+  @@index([releaseId, parentId, isActive, administrativeLevel, fullCode], map: "territorial_subdivisions_root_read_idx")
+  @@index([releaseId, parentId, isActive, fullCode], map: "territorial_subdivisions_child_read_idx")
+  @@map("territorial_subdivisions")
 }
 
 model AdditionalServiceOrder {
