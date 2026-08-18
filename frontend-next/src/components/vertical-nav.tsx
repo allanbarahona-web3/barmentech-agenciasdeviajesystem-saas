@@ -342,6 +342,12 @@ export function VerticalNav() {
               ...(isAdmin
                 ? [
                     {
+                      href: "/admin/fiscal-billing",
+                      label: "Configuración fiscal",
+                      icon: "🧾",
+                      adminOnly: true,
+                    },
+                    {
                       href: "/admin/bank-accounts",
                       label: "Cuentas Bancarias",
                       icon: "🏦",
