@@ -1,5 +1,9 @@
 import { ForbiddenException, ValidationPipe } from "@nestjs/common";
-import { GUARDS_METADATA } from "@nestjs/common/constants";
+import {
+  GUARDS_METADATA,
+  METHOD_METADATA,
+  PATH_METADATA,
+} from "@nestjs/common/constants";
 import { Reflector } from "@nestjs/core";
 import { UserRole } from "@prisma/client";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
@@ -24,6 +28,15 @@ describe("FiscalIssuerAdminController", () => {
     expect(canActivate(UserRole.ADMIN)).toBe(true);
   });
 
+  it("exposes the read-only available-activities GET route", () => {
+    const handler =
+      FiscalIssuerAdminController.prototype.availableEconomicActivities;
+    expect(Reflect.getMetadata(PATH_METADATA, handler)).toBe(
+      ":issuerId/economic-activities/available",
+    );
+    expect(Reflect.getMetadata(METHOD_METADATA, handler)).toBe(0);
+  });
+
   it.each([
     UserRole.FACTURACION_COBROS,
     UserRole.AGENT,
@@ -42,11 +55,16 @@ describe("FiscalIssuerAdminController", () => {
 
     await controller.list(request);
     await controller.find(request, "issuer-a");
+    await controller.availableEconomicActivities(request, "issuer-a");
     await controller.update(request, "issuer-a", { displayName: "Updated" });
     await controller.setStatus(request, "issuer-a", { isActive: true });
 
     expect(service.list).toHaveBeenCalledWith("tenant-auth");
     expect(service.find).toHaveBeenCalledWith("tenant-auth", "issuer-a");
+    expect(service.availableEconomicActivities).toHaveBeenCalledWith(
+      "tenant-auth",
+      "issuer-a",
+    );
     expect(service.update).toHaveBeenCalledWith("tenant-auth", "issuer-a", {
       displayName: "Updated",
     });
@@ -131,6 +149,7 @@ function serviceMock() {
   return {
     list: jest.fn(),
     find: jest.fn(),
+    availableEconomicActivities: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
     setStatus: jest.fn(),

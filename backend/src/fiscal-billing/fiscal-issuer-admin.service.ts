@@ -9,12 +9,25 @@ import type {
   FiscalIssuerUpdateInput,
 } from "./fiscal-issuer-admin.types";
 import { fiscalBillingAdminError } from "./fiscal-billing-admin.errors";
+import {
+  HACIENDA_ECONOMIC_ACTIVITY_PROVIDER,
+  HaciendaActivityLookupError,
+  type HaciendaEconomicActivityProvider,
+} from "./hacienda-economic-activity.provider";
 
 @Injectable()
 export class FiscalIssuerAdminService {
   constructor(
     @Inject(FISCAL_ISSUER_ADMIN_REPOSITORY)
     private readonly repository: FiscalIssuerAdminRepository,
+    @Inject(HACIENDA_ECONOMIC_ACTIVITY_PROVIDER)
+    private readonly haciendaProvider: HaciendaEconomicActivityProvider = {
+      findByIdentification: async () => {
+        throw new HaciendaActivityLookupError(
+          "HACIENDA_ACTIVITY_LOOKUP_UNAVAILABLE",
+        );
+      },
+    },
   ) {}
 
   async list(tenantId: string) {
@@ -25,6 +38,33 @@ export class FiscalIssuerAdminService {
     const issuer = await this.repository.find(tenantId, issuerId);
     if (!issuer) throw fiscalBillingAdminError("FISCAL_ISSUER_NOT_FOUND");
     return toResponse(issuer);
+  }
+
+  async availableEconomicActivities(tenantId: string, issuerId: string) {
+    const issuer = await this.repository.find(tenantId, issuerId);
+    if (!issuer) throw fiscalBillingAdminError("FISCAL_ISSUER_NOT_FOUND");
+    try {
+      const taxpayer = await this.haciendaProvider.findByIdentification(
+        issuer.identificationNumber,
+      );
+      return {
+        issuer: {
+          id: issuer.id,
+          identificationTypeCode: issuer.identificationTypeCode,
+          identificationNumber: issuer.identificationNumber,
+        },
+        ...(taxpayer.legalName ? { legalName: taxpayer.legalName } : {}),
+        ...(taxpayer.taxSituation
+          ? { taxSituation: taxpayer.taxSituation }
+          : {}),
+        activities: taxpayer.activities,
+      };
+    } catch (error) {
+      if (error instanceof HaciendaActivityLookupError) {
+        throw fiscalBillingAdminError(error.code);
+      }
+      throw fiscalBillingAdminError("HACIENDA_ACTIVITY_LOOKUP_UNAVAILABLE");
+    }
   }
 
   async create(tenantId: string, input: FiscalIssuerCreateInput) {

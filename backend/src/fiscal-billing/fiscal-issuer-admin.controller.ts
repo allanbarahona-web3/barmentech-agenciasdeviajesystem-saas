@@ -33,6 +33,17 @@ export class FiscalIssuerAdminController {
     return this.service.find(request.user.tenantId, issuerId);
   }
 
+  @Get(":issuerId/economic-activities/available")
+  availableEconomicActivities(
+    @Req() request: FiscalIssuerAdminRequest,
+    @Param("issuerId") issuerId: string,
+  ) {
+    return this.service.availableEconomicActivities(
+      request.user.tenantId,
+      issuerId,
+    );
+  }
+
   @Post()
   create(
     @Req() request: FiscalIssuerAdminRequest,

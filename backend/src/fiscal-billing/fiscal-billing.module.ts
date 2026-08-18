@@ -19,6 +19,8 @@ import { FiscalIssuerAdminController } from "./fiscal-issuer-admin.controller";
 import { FiscalIssuerAdminService } from "./fiscal-issuer-admin.service";
 import { FISCAL_ISSUER_ADMIN_REPOSITORY } from "./fiscal-issuer-admin.repository";
 import { PrismaFiscalIssuerAdminRepository } from "./prisma-fiscal-issuer-admin.repository";
+import { HaciendaEconomicActivityAdapter } from "./hacienda-economic-activity.adapter";
+import { HACIENDA_ECONOMIC_ACTIVITY_PROVIDER } from "./hacienda-economic-activity.provider";
 
 @Module({
   imports: [FiscalCatalogModule],
@@ -36,6 +38,7 @@ import { PrismaFiscalIssuerAdminRepository } from "./prisma-fiscal-issuer-admin.
     PrismaFiscalBillingAdminRepository,
     FiscalIssuerAdminService,
     PrismaFiscalIssuerAdminRepository,
+    HaciendaEconomicActivityAdapter,
     {
       provide: SALES_ORDER_FISCAL_BILLING_REPOSITORY,
       useExisting: PrismaSalesOrderFiscalBillingRepository,
@@ -51,6 +54,10 @@ import { PrismaFiscalIssuerAdminRepository } from "./prisma-fiscal-issuer-admin.
     {
       provide: FISCAL_ISSUER_ADMIN_REPOSITORY,
       useExisting: PrismaFiscalIssuerAdminRepository,
+    },
+    {
+      provide: HACIENDA_ECONOMIC_ACTIVITY_PROVIDER,
+      useExisting: HaciendaEconomicActivityAdapter,
     },
   ],
 })
