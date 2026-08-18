@@ -5,6 +5,7 @@ import type {
   FiscalIssuerCreateInput,
   FiscalIssuerRecord,
   FiscalIssuerUpdateInput,
+  FiscalIssuerEconomicActivityRecord,
 } from "./fiscal-issuer-admin.types";
 
 @Injectable()
@@ -74,6 +75,56 @@ export class PrismaFiscalIssuerAdminRepository
         data: { isActive },
       });
       return { kind: "UPDATED" as const, issuer: updated };
+    });
+  }
+
+  listEconomicActivities(tenantId: string, issuerId: string) {
+    return this.prisma.fiscalIssuerEconomicActivity.findMany({
+      where: { tenantId, fiscalIssuerId: issuerId },
+      orderBy: [{ displayOrder: "asc" }, { id: "asc" }],
+    });
+  }
+
+  findEconomicActivity(tenantId: string, issuerId: string, code: string) {
+    return this.prisma.fiscalIssuerEconomicActivity.findFirst({
+      where: { tenantId, fiscalIssuerId: issuerId, economicActivityCode: code },
+    });
+  }
+
+  async createEconomicActivity(tenantId: string, issuerId: string, code: string, description: string) {
+    const last = await this.prisma.fiscalIssuerEconomicActivity.findFirst({
+      where: { tenantId, fiscalIssuerId: issuerId },
+      orderBy: [{ displayOrder: "desc" }, { id: "desc" }],
+      select: { displayOrder: true },
+    });
+    return this.prisma.fiscalIssuerEconomicActivity.create({
+      data: { tenantId, fiscalIssuerId: issuerId, economicActivityCode: code, description, isPrimary: false, displayOrder: (last?.displayOrder ?? -1) + 1 },
+    });
+  }
+
+  selectPrimaryEconomicActivity(tenantId: string, issuerId: string, assignmentId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const issuer = await tx.fiscalIssuer.findFirst({ where: { tenantId, id: issuerId }, select: { id: true } });
+      if (!issuer) return { kind: "ISSUER_NOT_FOUND" as const };
+      const activity = await tx.fiscalIssuerEconomicActivity.findFirst({ where: { id: assignmentId, tenantId, fiscalIssuerId: issuerId } }) as FiscalIssuerEconomicActivityRecord | null;
+      if (!activity) return { kind: "ACTIVITY_NOT_FOUND" as const };
+      if (activity.isPrimary) return { kind: "UNCHANGED" as const, activity };
+      await tx.fiscalIssuerEconomicActivity.updateMany({ where: { tenantId, fiscalIssuerId: issuerId, isPrimary: true }, data: { isPrimary: false } });
+      await tx.fiscalIssuerEconomicActivity.updateMany({ where: { id: assignmentId, tenantId, fiscalIssuerId: issuerId }, data: { isPrimary: true } });
+      const updated = await tx.fiscalIssuerEconomicActivity.findFirst({ where: { id: assignmentId, tenantId, fiscalIssuerId: issuerId } }) as FiscalIssuerEconomicActivityRecord;
+      return { kind: "UPDATED" as const, activity: updated };
+    });
+  }
+
+  deleteEconomicActivity(tenantId: string, issuerId: string, assignmentId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const issuer = await tx.fiscalIssuer.findFirst({ where: { tenantId, id: issuerId }, select: { id: true } });
+      if (!issuer) return { kind: "ISSUER_NOT_FOUND" as const };
+      const activity = await tx.fiscalIssuerEconomicActivity.findFirst({ where: { id: assignmentId, tenantId, fiscalIssuerId: issuerId } });
+      if (!activity) return { kind: "ACTIVITY_NOT_FOUND" as const };
+      if (activity.isPrimary) return { kind: "PRIMARY_REMOVAL_FORBIDDEN" as const };
+      await tx.fiscalIssuerEconomicActivity.deleteMany({ where: { id: assignmentId, tenantId, fiscalIssuerId: issuerId, isPrimary: false } });
+      return { kind: "DELETED" as const };
     });
   }
 }

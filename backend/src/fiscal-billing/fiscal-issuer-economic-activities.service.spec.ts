@@ -88,6 +88,11 @@ function repositoryMock(found: ReturnType<typeof issuer> | null) {
     create: jest.fn(),
     update: jest.fn(),
     setStatus: jest.fn(),
+    listEconomicActivities: jest.fn(),
+    findEconomicActivity: jest.fn(),
+    createEconomicActivity: jest.fn(),
+    selectPrimaryEconomicActivity: jest.fn(),
+    deleteEconomicActivity: jest.fn(),
   } as jest.Mocked<FiscalIssuerAdminRepository>;
 }
 

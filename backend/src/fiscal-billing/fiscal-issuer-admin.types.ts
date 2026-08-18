@@ -55,3 +55,23 @@ export type FiscalIssuerStatusResult =
   | { kind: "NOT_FOUND" }
   | { kind: "INCOMPLETE"; missingFields: string[] }
   | { kind: "UPDATED"; issuer: FiscalIssuerRecord };
+
+export interface FiscalIssuerEconomicActivityRecord {
+  id: string;
+  tenantId: string;
+  fiscalIssuerId: string;
+  economicActivityCode: string;
+  description: string | null;
+  isPrimary: boolean;
+  displayOrder: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export type EconomicActivityMutationResult =
+  | { kind: "ISSUER_NOT_FOUND" }
+  | { kind: "ACTIVITY_NOT_FOUND" }
+  | { kind: "PRIMARY_REMOVAL_FORBIDDEN" }
+  | { kind: "UNCHANGED"; activity: FiscalIssuerEconomicActivityRecord }
+  | { kind: "UPDATED"; activity: FiscalIssuerEconomicActivityRecord }
+  | { kind: "DELETED" };

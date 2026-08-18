@@ -13,6 +13,7 @@ import {
   CreateFiscalIssuerDto,
   UpdateFiscalIssuerDto,
   UpdateFiscalIssuerStatusDto,
+  AssignFiscalIssuerEconomicActivityDto,
 } from "./dto/fiscal-issuer-admin.dto";
 import { FiscalIssuerAdminController } from "./fiscal-issuer-admin.controller";
 
@@ -56,6 +57,10 @@ describe("FiscalIssuerAdminController", () => {
     await controller.list(request);
     await controller.find(request, "issuer-a");
     await controller.availableEconomicActivities(request, "issuer-a");
+    await controller.listEconomicActivities(request, "issuer-a");
+    await controller.assignEconomicActivity(request, "issuer-a", { code: "007.0" });
+    await controller.selectPrimaryEconomicActivity(request, "issuer-a", "activity-a");
+    await controller.deleteEconomicActivity(request, "issuer-a", "activity-a");
     await controller.update(request, "issuer-a", { displayName: "Updated" });
     await controller.setStatus(request, "issuer-a", { isActive: true });
 
@@ -65,6 +70,10 @@ describe("FiscalIssuerAdminController", () => {
       "tenant-auth",
       "issuer-a",
     );
+    expect(service.listEconomicActivities).toHaveBeenCalledWith("tenant-auth", "issuer-a");
+    expect(service.assignEconomicActivity).toHaveBeenCalledWith("tenant-auth", "issuer-a", "007.0");
+    expect(service.selectPrimaryEconomicActivity).toHaveBeenCalledWith("tenant-auth", "issuer-a", "activity-a");
+    expect(service.deleteEconomicActivity).toHaveBeenCalledWith("tenant-auth", "issuer-a", "activity-a");
     expect(service.update).toHaveBeenCalledWith("tenant-auth", "issuer-a", {
       displayName: "Updated",
     });
@@ -73,6 +82,12 @@ describe("FiscalIssuerAdminController", () => {
       "issuer-a",
       true,
     );
+  });
+
+  it("accepts only a trimmed activity code", async () => {
+    await expect(validate(AssignFiscalIssuerEconomicActivityDto, { code: " 007.0 " })).resolves.toEqual({ code: "007.0" });
+    await expect(validate(AssignFiscalIssuerEconomicActivityDto, { code: "007.0", tenantId: "foreign" })).rejects.toBeDefined();
+    await expect(validate(AssignFiscalIssuerEconomicActivityDto, { code: "007.0", description: "fake", isPrimary: true, displayOrder: 9, fiscalIssuerId: "other" })).rejects.toBeDefined();
   });
 
   it.each([
@@ -150,6 +165,10 @@ function serviceMock() {
     list: jest.fn(),
     find: jest.fn(),
     availableEconomicActivities: jest.fn(),
+    listEconomicActivities: jest.fn(),
+    assignEconomicActivity: jest.fn(),
+    selectPrimaryEconomicActivity: jest.fn(),
+    deleteEconomicActivity: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
     setStatus: jest.fn(),

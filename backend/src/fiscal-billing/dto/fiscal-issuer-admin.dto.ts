@@ -57,3 +57,11 @@ export class UpdateFiscalIssuerStatusDto {
   @IsBoolean()
   isActive!: boolean;
 }
+
+export class AssignFiscalIssuerEconomicActivityDto {
+  @Transform(trim)
+  @IsString()
+  @MaxLength(10)
+  @Matches(/\S/)
+  code!: string;
+}

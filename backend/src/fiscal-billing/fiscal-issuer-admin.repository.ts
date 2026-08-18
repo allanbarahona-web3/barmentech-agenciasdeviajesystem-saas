@@ -3,6 +3,8 @@ import type {
   FiscalIssuerRecord,
   FiscalIssuerStatusResult,
   FiscalIssuerUpdateInput,
+  FiscalIssuerEconomicActivityRecord,
+  EconomicActivityMutationResult,
 } from "./fiscal-issuer-admin.types";
 
 export const FISCAL_ISSUER_ADMIN_REPOSITORY = Symbol(
@@ -26,4 +28,9 @@ export interface FiscalIssuerAdminRepository {
     issuerId: string,
     isActive: boolean,
   ): Promise<FiscalIssuerStatusResult>;
+  listEconomicActivities(tenantId: string, issuerId: string): Promise<FiscalIssuerEconomicActivityRecord[]>;
+  findEconomicActivity(tenantId: string, issuerId: string, code: string): Promise<FiscalIssuerEconomicActivityRecord | null>;
+  createEconomicActivity(tenantId: string, issuerId: string, code: string, description: string): Promise<FiscalIssuerEconomicActivityRecord>;
+  selectPrimaryEconomicActivity(tenantId: string, issuerId: string, assignmentId: string): Promise<EconomicActivityMutationResult>;
+  deleteEconomicActivity(tenantId: string, issuerId: string, assignmentId: string): Promise<EconomicActivityMutationResult>;
 }
