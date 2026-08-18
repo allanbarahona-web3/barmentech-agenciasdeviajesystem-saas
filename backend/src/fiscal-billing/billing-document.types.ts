@@ -1,0 +1,99 @@
+import type { BillingMode, BillingDocumentSourceRole } from "@prisma/client";
+
+export interface BillingDocumentSourceIdentity {
+  sourceType: string;
+  sourceId: string;
+  sourceNumber: string | null;
+  sourceRole: BillingDocumentSourceRole;
+  creationDeduplicationKey: string | null;
+}
+
+export interface BillingDocumentIssuerSnapshot {
+  name: string;
+  identificationType: string;
+  identification: string;
+  economicActivityCode: string | null;
+  establishmentCode: string | null;
+  terminalCode: string | null;
+  email: string | null;
+  phone: string | null;
+  address: Record<string, unknown> | null;
+}
+
+export interface BillingDocumentReceiverSnapshot {
+  name: string | null;
+  identificationType: string | null;
+  identification: string | null;
+  economicActivityCode: string | null;
+  email: string | null;
+  phone: string | null;
+  address: Record<string, unknown> | null;
+}
+
+export interface BillingDocumentTotalsSnapshot {
+  grossSubtotal: string;
+  discountTotal: string;
+  taxableTotal: string;
+  exemptTotal: string;
+  exoneratedTotal: string;
+  grossTaxTotal: string;
+  exoneratedTaxTotal: string;
+  netTaxTotal: string;
+  total: string;
+}
+
+export interface BillingDocumentDraftLineSnapshot {
+  lineNumber: number;
+  cabysCode: string | null;
+  itemCode: string | null;
+  description: string;
+  quantity: string;
+  unitOfMeasureCode: string;
+  unitPrice: string;
+  grossAmount: string;
+  discountAmount: string;
+  discountCode: string | null;
+  discountReason: string | null;
+  taxableBase: string;
+  taxAmount: string;
+  exoneratedTaxAmount: string;
+  netTaxAmount: string;
+  lineSubtotal: string;
+  lineTotal: string;
+  taxes: BillingDocumentDraftTaxSnapshot[];
+}
+
+export interface BillingDocumentDraftTaxSnapshot {
+  taxOrder: number;
+  taxCode: string;
+  rateCode: string;
+  ratePercentage: string;
+  taxableBase: string;
+  taxAmount: string;
+  calculationFactor: string | null;
+  netTaxAmount: string;
+}
+
+export interface BillingDocumentDraftCommand {
+  tenantId: string;
+  internalNumber: string;
+  documentTypeCode: string;
+  billingMode: BillingMode;
+  source: BillingDocumentSourceIdentity | null;
+  schemaVersion: string;
+  countryCode: string;
+  currencyCode: string;
+  exchangeRate: string | null;
+  issuer: BillingDocumentIssuerSnapshot;
+  receiver: BillingDocumentReceiverSnapshot;
+  totals: BillingDocumentTotalsSnapshot;
+  lines: BillingDocumentDraftLineSnapshot[];
+  createdByUserId: string;
+}
+
+export interface PrimaryDocumentSummary {
+  id: string;
+  internalNumber: string;
+  lifecycleStatus: string;
+  documentTypeCode: string;
+}

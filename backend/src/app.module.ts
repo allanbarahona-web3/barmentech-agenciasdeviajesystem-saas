@@ -29,6 +29,7 @@ import { AdditionalServicesModule } from "./additional-services";
 import { TravelContextModule } from "./travel-context/travel-context.module";
 import { GeneratedDocumentsModule } from "./generated-documents";
 import { FiscalCatalogModule } from "./fiscal-catalogs/fiscal-catalog.module";
+import { FiscalBillingModule } from "./fiscal-billing/fiscal-billing.module";
 
 @Module({
   controllers: [AppController],
@@ -67,6 +68,7 @@ import { FiscalCatalogModule } from "./fiscal-catalogs/fiscal-catalog.module";
     TravelContextModule,
     GeneratedDocumentsModule,
     FiscalCatalogModule,
+    FiscalBillingModule,
   ],
   providers: [
     {
