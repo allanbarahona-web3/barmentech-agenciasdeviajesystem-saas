@@ -246,6 +246,15 @@ export function VerticalNav() {
             icon: "💰",
             adminOnly: true,
             items: [
+              ...(isAdmin || role === "FACTURACION_COBROS"
+                ? [
+                    {
+                      href: "/fiscal-billing/sales-orders",
+                      label: "Órdenes por facturar",
+                      icon: "🧾",
+                    },
+                  ]
+                : []),
               {
                 href: "/billing",
                 label: "Estados de cuenta",
