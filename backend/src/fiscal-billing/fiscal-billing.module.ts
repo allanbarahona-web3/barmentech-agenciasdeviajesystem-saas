@@ -11,15 +11,21 @@ import {
 } from "./billing-document.repository";
 import { BillingDocumentService } from "./billing-document.service";
 import { PrismaBillingDocumentRepository } from "./prisma-billing-document.repository";
+import { FiscalBillingAdminController } from "./fiscal-billing-admin.controller";
+import { FiscalBillingAdminService } from "./fiscal-billing-admin.service";
+import { FISCAL_BILLING_ADMIN_REPOSITORY } from "./fiscal-billing-admin.repository";
+import { PrismaFiscalBillingAdminRepository } from "./prisma-fiscal-billing-admin.repository";
 
 @Module({
   imports: [FiscalCatalogModule],
-  controllers: [FiscalBillingController],
+  controllers: [FiscalBillingController, FiscalBillingAdminController],
   providers: [
     SalesOrderFiscalBillingService,
     BillingDocumentService,
     PrismaSalesOrderFiscalBillingRepository,
     PrismaBillingDocumentRepository,
+    FiscalBillingAdminService,
+    PrismaFiscalBillingAdminRepository,
     {
       provide: SALES_ORDER_FISCAL_BILLING_REPOSITORY,
       useExisting: PrismaSalesOrderFiscalBillingRepository,
@@ -27,6 +33,10 @@ import { PrismaBillingDocumentRepository } from "./prisma-billing-document.repos
     {
       provide: BILLING_DOCUMENT_REPOSITORY,
       useExisting: PrismaBillingDocumentRepository,
+    },
+    {
+      provide: FISCAL_BILLING_ADMIN_REPOSITORY,
+      useExisting: PrismaFiscalBillingAdminRepository,
     },
   ],
 })
