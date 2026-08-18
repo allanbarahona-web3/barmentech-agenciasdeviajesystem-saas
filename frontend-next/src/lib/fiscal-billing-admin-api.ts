@@ -129,7 +129,12 @@ export type FiscalIssuer = {
   terminalCode: string | null; createdAt: string; updatedAt: string;
 };
 
-export type FiscalIssuerInput = Omit<FiscalIssuer, 'id' | 'isActive' | 'createdAt' | 'updatedAt'>;
+export type FiscalIssuerInput = Omit<
+  FiscalIssuer,
+  'id' | 'isActive' | 'createdAt' | 'updatedAt' | 'neighborhoodCode'
+> & {
+  neighborhoodCode?: string | null;
+};
 export type FiscalIssuerUpdateInput = Partial<FiscalIssuerInput>;
 
 async function parseIssuerResponse<T>(response: Response): Promise<T> {
