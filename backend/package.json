@@ -20,7 +20,8 @@
     "fiscal:cr-coding:import": "tsx scripts/import-cr-electronic-invoice-coding.ts --import",
     "fiscal:cr-coding:activate": "tsx scripts/activate-cr-electronic-invoice-coding.ts",
     "fiscal:cr-cabys:initialize": "tsx scripts/initialize-cr-cabys-release.ts",
-    "fiscal:cr-cabys:activate": "tsx scripts/activate-cr-cabys-release.ts"
+    "fiscal:cr-cabys:activate": "tsx scripts/activate-cr-cabys-release.ts",
+    "territorial:cr-dta:validate": "tsx scripts/validate-cr-dta-2026.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.879.0",
