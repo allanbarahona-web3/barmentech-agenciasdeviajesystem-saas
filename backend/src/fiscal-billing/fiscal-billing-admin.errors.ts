@@ -16,7 +16,16 @@ export type FiscalBillingAdminErrorCode =
   | "FISCAL_ISSUER_ECONOMIC_ACTIVITY_NOT_REGISTERED"
   | "FISCAL_ISSUER_ECONOMIC_ACTIVITY_INACTIVE"
   | "FISCAL_ISSUER_PRIMARY_ACTIVITY_REMOVAL_FORBIDDEN"
-  | "FISCAL_ISSUER_ECONOMIC_ACTIVITY_CONFLICT";
+  | "FISCAL_ISSUER_ECONOMIC_ACTIVITY_CONFLICT"
+  | "PROVIDER_NUMBERING_CONFIGURATION_MISSING"
+  | "PROVIDER_NUMBERING_UNAVAILABLE"
+  | "PROVIDER_NUMBERING_TIMEOUT"
+  | "PROVIDER_NUMBERING_RATE_LIMITED"
+  | "PROVIDER_NUMBERING_INVALID_RESPONSE"
+  | "PROVIDER_NUMBERING_ISSUER_NOT_FOUND"
+  | "PROVIDER_NUMBERING_ISSUER_NOT_READY"
+  | "PROVIDER_NUMBERING_VERIFICATION_MISMATCH"
+  | "PROVIDER_NUMBERING_CONFIGURATION_CONFLICT";
 
 const STATUS_BY_CODE: Record<FiscalBillingAdminErrorCode, HttpStatus> = {
   BILLING_CONFIGURATION_INVALID_COUNTRY: HttpStatus.UNPROCESSABLE_ENTITY,
@@ -35,6 +44,15 @@ const STATUS_BY_CODE: Record<FiscalBillingAdminErrorCode, HttpStatus> = {
   FISCAL_ISSUER_ECONOMIC_ACTIVITY_INACTIVE: HttpStatus.UNPROCESSABLE_ENTITY,
   FISCAL_ISSUER_PRIMARY_ACTIVITY_REMOVAL_FORBIDDEN: HttpStatus.CONFLICT,
   FISCAL_ISSUER_ECONOMIC_ACTIVITY_CONFLICT: HttpStatus.CONFLICT,
+  PROVIDER_NUMBERING_CONFIGURATION_MISSING: HttpStatus.SERVICE_UNAVAILABLE,
+  PROVIDER_NUMBERING_UNAVAILABLE: HttpStatus.SERVICE_UNAVAILABLE,
+  PROVIDER_NUMBERING_TIMEOUT: HttpStatus.GATEWAY_TIMEOUT,
+  PROVIDER_NUMBERING_RATE_LIMITED: HttpStatus.TOO_MANY_REQUESTS,
+  PROVIDER_NUMBERING_INVALID_RESPONSE: HttpStatus.BAD_GATEWAY,
+  PROVIDER_NUMBERING_ISSUER_NOT_FOUND: HttpStatus.NOT_FOUND,
+  PROVIDER_NUMBERING_ISSUER_NOT_READY: HttpStatus.UNPROCESSABLE_ENTITY,
+  PROVIDER_NUMBERING_VERIFICATION_MISMATCH: HttpStatus.CONFLICT,
+  PROVIDER_NUMBERING_CONFIGURATION_CONFLICT: HttpStatus.CONFLICT,
 };
 
 const MESSAGE_BY_CODE: Partial<Record<FiscalBillingAdminErrorCode, string>> = {
@@ -56,6 +74,24 @@ const MESSAGE_BY_CODE: Partial<Record<FiscalBillingAdminErrorCode, string>> = {
     "La actividad económica solicitada figura como inactiva en Hacienda.",
   FISCAL_ISSUER_PRIMARY_ACTIVITY_REMOVAL_FORBIDDEN:
     "Debe marcar otra actividad como principal antes de eliminar la actividad principal actual.",
+  PROVIDER_NUMBERING_CONFIGURATION_MISSING:
+    "La integración de numeración fiscal no está configurada.",
+  PROVIDER_NUMBERING_UNAVAILABLE:
+    "El proveedor de numeración fiscal no está disponible. Intente nuevamente más tarde.",
+  PROVIDER_NUMBERING_TIMEOUT:
+    "La configuración del proveedor tardó demasiado. Intente nuevamente.",
+  PROVIDER_NUMBERING_RATE_LIMITED:
+    "El proveedor limitó temporalmente las solicitudes. Intente nuevamente más tarde.",
+  PROVIDER_NUMBERING_INVALID_RESPONSE:
+    "El proveedor devolvió una respuesta de numeración que no pudo validarse.",
+  PROVIDER_NUMBERING_ISSUER_NOT_FOUND:
+    "El proveedor no encontró el emisor fiscal configurado.",
+  PROVIDER_NUMBERING_ISSUER_NOT_READY:
+    "El emisor fiscal no tiene los datos requeridos para configurar la numeración.",
+  PROVIDER_NUMBERING_VERIFICATION_MISMATCH:
+    "No fue posible verificar la configuración de numeración del emisor.",
+  PROVIDER_NUMBERING_CONFIGURATION_CONFLICT:
+    "El proveedor rechazó la configuración de numeración solicitada.",
 };
 
 export function fiscalBillingAdminError(

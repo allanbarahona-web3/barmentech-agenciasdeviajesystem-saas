@@ -21,6 +21,10 @@ import { FISCAL_ISSUER_ADMIN_REPOSITORY } from "./fiscal-issuer-admin.repository
 import { PrismaFiscalIssuerAdminRepository } from "./prisma-fiscal-issuer-admin.repository";
 import { HaciendaEconomicActivityAdapter } from "./hacienda-economic-activity.adapter";
 import { HACIENDA_ECONOMIC_ACTIVITY_PROVIDER } from "./hacienda-economic-activity.provider";
+import { ProviderNumberingAdminController } from "./provider-numbering-admin.controller";
+import { ProviderNumberingAdminService } from "./provider-numbering-admin.service";
+import { FacturaEnCrNumberingAdapter } from "./factura-en-cr-numbering.adapter";
+import { FACTURA_EN_CR_NUMBERING_PROVIDER } from "./factura-en-cr-numbering.provider";
 
 @Module({
   imports: [FiscalCatalogModule],
@@ -28,6 +32,7 @@ import { HACIENDA_ECONOMIC_ACTIVITY_PROVIDER } from "./hacienda-economic-activit
     FiscalBillingController,
     FiscalBillingAdminController,
     FiscalIssuerAdminController,
+    ProviderNumberingAdminController,
   ],
   providers: [
     SalesOrderFiscalBillingService,
@@ -39,6 +44,8 @@ import { HACIENDA_ECONOMIC_ACTIVITY_PROVIDER } from "./hacienda-economic-activit
     FiscalIssuerAdminService,
     PrismaFiscalIssuerAdminRepository,
     HaciendaEconomicActivityAdapter,
+    ProviderNumberingAdminService,
+    FacturaEnCrNumberingAdapter,
     {
       provide: SALES_ORDER_FISCAL_BILLING_REPOSITORY,
       useExisting: PrismaSalesOrderFiscalBillingRepository,
@@ -58,6 +65,10 @@ import { HACIENDA_ECONOMIC_ACTIVITY_PROVIDER } from "./hacienda-economic-activit
     {
       provide: HACIENDA_ECONOMIC_ACTIVITY_PROVIDER,
       useExisting: HaciendaEconomicActivityAdapter,
+    },
+    {
+      provide: FACTURA_EN_CR_NUMBERING_PROVIDER,
+      useExisting: FacturaEnCrNumberingAdapter,
     },
   ],
 })
