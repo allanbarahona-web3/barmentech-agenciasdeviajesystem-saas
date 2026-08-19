@@ -18,6 +18,68 @@ describe("FiscalIssuerAdminService", () => {
     );
   });
 
+  it("persists and returns only the canonical identification on create", async () => {
+    const repository = repositoryMock();
+    const provider = { findByIdentification: jest.fn() };
+    repository.create.mockImplementation(async (_tenantId, input) =>
+      issuer({ identificationNumber: input.identificationNumber }),
+    );
+    const service = new FiscalIssuerAdminService(repository, provider);
+
+    await expect(
+      service.create(
+        "tenant-a",
+        createInput({ identificationNumber: "3-102-884562" }),
+      ),
+    ).resolves.toMatchObject({ identificationNumber: "3102884562" });
+    expect(repository.create).toHaveBeenCalledWith(
+      "tenant-a",
+      expect.objectContaining({ identificationNumber: "3102884562" }),
+    );
+    expect(provider.findByIdentification).not.toHaveBeenCalled();
+  });
+
+  it("validates PATCH against the effective persisted combination", async () => {
+    const repository = repositoryMock();
+    repository.find.mockResolvedValue(issuer());
+    const provider = { findByIdentification: jest.fn() };
+    const service = new FiscalIssuerAdminService(repository, provider);
+
+    await expect(
+      service.update("tenant-a", "issuer-a", { identificationTypeCode: "01" }),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(repository.update).not.toHaveBeenCalled();
+
+    repository.update.mockResolvedValue(issuer({ identificationNumber: "3102884562" }));
+    await service.update("tenant-a", "issuer-a", {
+      identificationNumber: "3 102 884562",
+    });
+    expect(repository.update).toHaveBeenCalledWith(
+      "tenant-a",
+      "issuer-a",
+      expect.objectContaining({ identificationNumber: "3102884562" }),
+    );
+    expect(provider.findByIdentification).not.toHaveBeenCalled();
+  });
+
+  it("validates the effective identification when PATCH changes only country", async () => {
+    const repository = repositoryMock();
+    repository.find.mockResolvedValue(
+      issuer({
+        countryCode: "US",
+        provinceCode: "1",
+        identificationTypeCode: "01",
+        identificationNumber: "1234567890",
+      }),
+    );
+    const service = new FiscalIssuerAdminService(repository);
+
+    await expect(
+      service.update("tenant-a", "issuer-a", { countryCode: "CR" }),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(repository.update).not.toHaveBeenCalled();
+  });
+
   it.each(["01", "0", "8", "A", ""])(
     "rejects invalid CR province code %p",
     async (provinceCode) => {
@@ -75,6 +137,7 @@ describe("FiscalIssuerAdminService", () => {
 
   it("rejects incomplete activation with missing field details", async () => {
     const repository = repositoryMock();
+    repository.find.mockResolvedValue(issuer());
     repository.setStatus.mockResolvedValue({
       kind: "INCOMPLETE",
       missingFields: ["establishmentCode", "terminalCode"],
@@ -90,6 +153,7 @@ describe("FiscalIssuerAdminService", () => {
 
   it("maps an unexpected activation uniqueness collision to a stable conflict", async () => {
     const repository = repositoryMock();
+    repository.find.mockResolvedValue(issuer());
     repository.setStatus.mockRejectedValue({ code: "P2002" });
     const service = new FiscalIssuerAdminService(repository);
 
@@ -102,6 +166,7 @@ describe("FiscalIssuerAdminService", () => {
 
   it("returns deactivation and repeated activation results unchanged", async () => {
     const repository = repositoryMock();
+    repository.find.mockResolvedValue(issuer());
     repository.setStatus
       .mockResolvedValueOnce({ kind: "UPDATED", issuer: issuer({ isActive: false }) })
       .mockResolvedValueOnce({ kind: "UPDATED", issuer: issuer({ isActive: true }) });
@@ -109,6 +174,39 @@ describe("FiscalIssuerAdminService", () => {
 
     await expect(service.setStatus("tenant-a", "issuer-a", false)).resolves.toMatchObject({ isActive: false });
     await expect(service.setStatus("tenant-a", "issuer-a", true)).resolves.toMatchObject({ isActive: true });
+  });
+
+  it("rejects legacy invalid CR identification before activation", async () => {
+    const repository = repositoryMock();
+    const provider = { findByIdentification: jest.fn() };
+    repository.find.mockResolvedValue(
+      issuer({ identificationTypeCode: "01", identificationNumber: "1234567890" }),
+    );
+    const service = new FiscalIssuerAdminService(repository, provider);
+
+    await expectError(
+      service.setStatus("tenant-a", "issuer-a", true),
+      "FISCAL_ISSUER_IDENTIFICATION_INVALID",
+      422,
+    );
+    expect(repository.setStatus).not.toHaveBeenCalled();
+    expect(provider.findByIdentification).not.toHaveBeenCalled();
+  });
+
+  it("allows activation with a valid canonical CR identification", async () => {
+    const repository = repositoryMock();
+    const provider = { findByIdentification: jest.fn() };
+    repository.find.mockResolvedValue(issuer());
+    repository.setStatus.mockResolvedValue({
+      kind: "UPDATED",
+      issuer: issuer({ isActive: true }),
+    });
+    const service = new FiscalIssuerAdminService(repository, provider);
+
+    await expect(
+      service.setStatus("tenant-a", "issuer-a", true),
+    ).resolves.toMatchObject({ isActive: true });
+    expect(provider.findByIdentification).not.toHaveBeenCalled();
   });
 });
 

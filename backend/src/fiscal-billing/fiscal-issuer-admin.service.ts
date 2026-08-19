@@ -14,6 +14,7 @@ import {
   HaciendaActivityLookupError,
   type HaciendaEconomicActivityProvider,
 } from "./hacienda-economic-activity.provider";
+import { normalizeAndValidateIssuerIdentification } from "./fiscal-issuer-identification";
 
 @Injectable()
 export class FiscalIssuerAdminService {
@@ -125,7 +126,17 @@ export class FiscalIssuerAdminService {
 
   async create(tenantId: string, input: FiscalIssuerCreateInput) {
     assertProvinceCode(input.countryCode, input.provinceCode);
-    return toResponse(await this.repository.create(tenantId, input));
+    const identificationNumber = normalizeAndValidateIssuerIdentification(
+      input.countryCode,
+      input.identificationTypeCode,
+      input.identificationNumber,
+    );
+    return toResponse(
+      await this.repository.create(tenantId, {
+        ...input,
+        identificationNumber,
+      }),
+    );
   }
 
   async update(
@@ -139,13 +150,35 @@ export class FiscalIssuerAdminService {
       input.countryCode ?? current.countryCode,
       input.provinceCode ?? current.provinceCode,
     );
-    const issuer = await this.repository.update(tenantId, issuerId, input);
+    const countryCode = input.countryCode ?? current.countryCode;
+    const identificationTypeCode =
+      input.identificationTypeCode ?? current.identificationTypeCode;
+    const identificationNumber = normalizeAndValidateIssuerIdentification(
+      countryCode,
+      identificationTypeCode,
+      input.identificationNumber ?? current.identificationNumber,
+    );
+    const issuer = await this.repository.update(tenantId, issuerId, {
+      ...input,
+      ...(countryCode === "CR" ? { identificationNumber } : {}),
+    });
     if (!issuer) throw fiscalBillingAdminError("FISCAL_ISSUER_NOT_FOUND");
     return toResponse(issuer);
   }
 
   async setStatus(tenantId: string, issuerId: string, isActive: boolean) {
     try {
+      if (isActive) {
+        const current = await this.repository.find(tenantId, issuerId);
+        if (!current) {
+          throw fiscalBillingAdminError("FISCAL_ISSUER_NOT_FOUND");
+        }
+        normalizeAndValidateIssuerIdentification(
+          current.countryCode,
+          current.identificationTypeCode,
+          current.identificationNumber,
+        );
+      }
       const result = await this.repository.setStatus(
         tenantId,
         issuerId,
