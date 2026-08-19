@@ -52,6 +52,26 @@ const SAFE_MESSAGES: Record<string, string> = {
     'El emisor no tiene todos los datos requeridos para activarse.',
   FISCAL_ISSUER_ACTIVATION_CONFLICT:
     'No fue posible cambiar el emisor activo. Actualice la lista e intente nuevamente.',
+  HACIENDA_ACTIVITY_LOOKUP_UNAVAILABLE:
+    'No fue posible consultar las actividades en Hacienda. El servicio no está disponible en este momento. Puede reintentar más tarde.',
+  HACIENDA_ACTIVITY_LOOKUP_TIMEOUT:
+    'Hacienda tardó demasiado en responder. Intente nuevamente.',
+  HACIENDA_ACTIVITY_LOOKUP_RATE_LIMITED:
+    'Hacienda limitó temporalmente las consultas. Espere unos minutos e intente nuevamente.',
+  HACIENDA_ACTIVITY_LOOKUP_INVALID_RESPONSE:
+    'Hacienda respondió con información que no pudo procesarse. Intente nuevamente más tarde.',
+  HACIENDA_TAXPAYER_NOT_FOUND:
+    'Hacienda no encontró un contribuyente con la identificación registrada en este emisor.',
+  FISCAL_ISSUER_ECONOMIC_ACTIVITY_NOT_FOUND:
+    'La actividad asignada ya no existe o no está disponible.',
+  FISCAL_ISSUER_ECONOMIC_ACTIVITY_NOT_REGISTERED:
+    'La actividad seleccionada no está registrada para este contribuyente en Hacienda.',
+  FISCAL_ISSUER_ECONOMIC_ACTIVITY_INACTIVE:
+    'La actividad seleccionada no está activa en Hacienda.',
+  FISCAL_ISSUER_PRIMARY_ACTIVITY_REMOVAL_FORBIDDEN:
+    'No puede eliminar la actividad principal. Seleccione otra actividad principal antes de eliminarla.',
+  FISCAL_ISSUER_ECONOMIC_ACTIVITY_CONFLICT:
+    'No fue posible completar el cambio porque la información fue modificada simultáneamente. Recargue e intente nuevamente.',
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -167,4 +187,98 @@ export async function updateFiscalIssuer(id: string, input: FiscalIssuerUpdateIn
 }
 export async function updateFiscalIssuerStatus(id: string, isActive: boolean) {
   return parseIssuerResponse<FiscalIssuer>(await fetchApi(`/admin/fiscal-billing/issuers/${encodeURIComponent(id)}/status`, { method: 'PATCH', body: JSON.stringify({ isActive }) }));
+}
+
+export type HaciendaEconomicActivity = {
+  code: string;
+  description: string;
+  status?: string;
+  active?: boolean;
+  primary?: boolean;
+};
+
+export type AvailableEconomicActivities = {
+  issuer: Pick<
+    FiscalIssuer,
+    'id' | 'identificationTypeCode' | 'identificationNumber'
+  >;
+  legalName?: string;
+  taxSituation?: {
+    status?: string;
+    delinquent?: boolean;
+    omission?: boolean;
+    taxAdministration?: string;
+  };
+  activities: HaciendaEconomicActivity[];
+};
+
+export type FiscalIssuerEconomicActivity = {
+  id: string;
+  code: string;
+  description: string | null;
+  isPrimary: boolean;
+  displayOrder: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+function economicActivitiesPath(issuerId: string) {
+  return `/admin/fiscal-billing/issuers/${encodeURIComponent(issuerId)}/economic-activities`;
+}
+
+export async function getAvailableEconomicActivities(
+  issuerId: string,
+  signal?: AbortSignal,
+) {
+  return parseIssuerResponse<AvailableEconomicActivities>(
+    await fetchApi(`${economicActivitiesPath(issuerId)}/available`, {
+      method: 'GET',
+      signal,
+    }),
+  );
+}
+
+export async function listIssuerEconomicActivities(
+  issuerId: string,
+  signal?: AbortSignal,
+) {
+  return parseIssuerResponse<FiscalIssuerEconomicActivity[]>(
+    await fetchApi(economicActivitiesPath(issuerId), { method: 'GET', signal }),
+  );
+}
+
+export async function assignIssuerEconomicActivity(
+  issuerId: string,
+  code: string,
+) {
+  return parseIssuerResponse<FiscalIssuerEconomicActivity>(
+    await fetchApi(economicActivitiesPath(issuerId), {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    }),
+  );
+}
+
+export async function selectPrimaryIssuerEconomicActivity(
+  issuerId: string,
+  assignmentId: string,
+) {
+  return parseIssuerResponse<FiscalIssuerEconomicActivity>(
+    await fetchApi(
+      `${economicActivitiesPath(issuerId)}/${encodeURIComponent(assignmentId)}/primary`,
+      { method: 'PATCH' },
+    ),
+  );
+}
+
+export async function deleteIssuerEconomicActivity(
+  issuerId: string,
+  assignmentId: string,
+) {
+  return parseIssuerResponse<null>(
+    await fetchApi(
+      `${economicActivitiesPath(issuerId)}/${encodeURIComponent(assignmentId)}`,
+      { method: 'DELETE' },
+    ),
+  );
 }

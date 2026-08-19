@@ -5,6 +5,126 @@ import { HaciendaActivityLookupError } from "./hacienda-economic-activity.provid
 describe("HaciendaEconomicActivityAdapter", () => {
   afterEach(() => jest.restoreAllMocks());
 
+  it("normalizes the real official /fe/ae response shape", async () => {
+    jest.spyOn(global, "fetch").mockResolvedValue(
+      response({
+        nombre: " BARMENTECH SOCIEDAD DE RESPONSABILIDAD LIMITADA ",
+        tipoIdentificacion: "02",
+        regimen: {
+          codigo: 1,
+          descripcion: "Régimen general",
+        },
+        situacion: {
+          moroso: "SI",
+          omiso: "NO",
+          estado: "Inscrito",
+          administracionTributaria: " Cartago ",
+        },
+        actividades: [
+          {
+            estado: "A",
+            tipo: "P",
+            codigo: "4719.1",
+            descripcion:
+              " Venta al por menor en tiendas por departamentos ",
+          },
+        ],
+      }),
+    );
+
+    await expect(
+      new HaciendaEconomicActivityAdapter(config()).findByIdentification("1"),
+    ).resolves.toEqual({
+      legalName: "BARMENTECH SOCIEDAD DE RESPONSABILIDAD LIMITADA",
+      taxSituation: {
+        delinquent: true,
+        omission: false,
+        status: "Inscrito",
+        taxAdministration: "Cartago",
+      },
+      activities: [
+        {
+          status: "A",
+          primary: true,
+          code: "4719.1",
+          description: "Venta al por menor en tiendas por departamentos",
+        },
+      ],
+    });
+  });
+
+  it("normalizes a supported non-primary activity type", async () => {
+    jest.spyOn(global, "fetch").mockResolvedValue(
+      response({
+        actividades: [
+          {
+            estado: "A",
+            tipo: "S",
+            codigo: "007.0",
+            descripcion: "Actividad secundaria",
+          },
+        ],
+      }),
+    );
+
+    const result = await new HaciendaEconomicActivityAdapter(config())
+      .findByIdentification("1");
+    expect(result.activities[0]).toMatchObject({
+      code: "007.0",
+      primary: false,
+    });
+  });
+
+  it("accepts an official taxpayer response with no activities", async () => {
+    jest.spyOn(global, "fetch").mockResolvedValue(
+      response({
+        nombre: "Contribuyente",
+        tipoIdentificacion: "02",
+        regimen: { codigo: 1, descripcion: "Régimen general" },
+        situacion: { moroso: "NO", omiso: "NO" },
+        actividades: [],
+      }),
+    );
+
+    await expect(
+      new HaciendaEconomicActivityAdapter(config()).findByIdentification("1"),
+    ).resolves.toMatchObject({ activities: [] });
+  });
+
+  it.each(["SÍ", "YES", "", "UNKNOWN"])(
+    "rejects an invalid Hacienda SI/NO value %p",
+    async (value) => {
+      jest.spyOn(global, "fetch").mockResolvedValue(
+        response({
+          situacion: { moroso: value, omiso: "NO" },
+          actividades: [],
+        }),
+      );
+
+      await expect(
+        new HaciendaEconomicActivityAdapter(config()).findByIdentification("1"),
+      ).rejects.toMatchObject({
+        code: "HACIENDA_ACTIVITY_LOOKUP_INVALID_RESPONSE",
+      });
+    },
+  );
+
+  it.each([
+    { codigo: "1", descripcion: "Régimen general" },
+    { codigo: Number.NaN, descripcion: "Régimen general" },
+    { codigo: 1 },
+  ])("rejects a malformed official regime %#", async (regimen) => {
+    jest.spyOn(global, "fetch").mockResolvedValue(
+      response({ regimen, actividades: [] }),
+    );
+
+    await expect(
+      new HaciendaEconomicActivityAdapter(config()).findByIdentification("1"),
+    ).rejects.toMatchObject({
+      code: "HACIENDA_ACTIVITY_LOOKUP_INVALID_RESPONSE",
+    });
+  });
+
   it("encodes identification and safely normalizes codes without changing them", async () => {
     const fetchMock = jest.spyOn(global, "fetch").mockResolvedValue(
       response({

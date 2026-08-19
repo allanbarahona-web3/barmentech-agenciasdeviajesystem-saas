@@ -87,6 +87,9 @@ export class HaciendaEconomicActivityAdapter
 function normalizeResponse(body: unknown): HaciendaTaxpayerActivities {
   if (!isRecord(body) || !Array.isArray(body.actividades)) invalidResponse();
 
+  validateIdentificationType(body.tipoIdentificacion);
+  validateRegime(body.regimen);
+
   const activities = body.actividades.map(normalizeActivity);
   const deduplicated = new Map<string, HaciendaEconomicActivity>();
   for (const activity of activities) {
@@ -131,8 +134,8 @@ function normalizeSituation(value: unknown) {
   if (value === undefined || value === null) return undefined;
   if (!isRecord(value)) invalidResponse();
   const status = optionalTrimmedString(value.estado);
-  const delinquent = optionalBoolean(value.moroso);
-  const omission = optionalBoolean(value.omiso);
+  const delinquent = optionalYesNoBoolean(value.moroso);
+  const omission = optionalYesNoBoolean(value.omiso);
   const taxAdministration = optionalTrimmedString(
     value.administracionTributaria,
   );
@@ -142,6 +145,20 @@ function normalizeSituation(value: unknown) {
     ...(omission !== undefined ? { omission } : {}),
     ...(taxAdministration ? { taxAdministration } : {}),
   };
+}
+
+function validateIdentificationType(value: unknown) {
+  if (value === undefined || value === null) return;
+  requiredTrimmedString(value);
+}
+
+function validateRegime(value: unknown) {
+  if (value === undefined || value === null) return;
+  if (!isRecord(value)) invalidResponse();
+  if (typeof value.codigo !== "number" || !Number.isFinite(value.codigo)) {
+    invalidResponse();
+  }
+  requiredTrimmedString(value.descripcion);
 }
 
 function requiredTrimmedString(value: unknown): string {
@@ -161,6 +178,16 @@ function optionalBoolean(value: unknown): boolean | undefined {
   if (value === undefined || value === null) return undefined;
   if (typeof value !== "boolean") invalidResponse();
   return value;
+}
+
+function optionalYesNoBoolean(value: unknown): boolean | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value === "boolean") return value;
+  if (typeof value !== "string") invalidResponse();
+  const normalized = value.trim().toUpperCase();
+  if (normalized === "SI") return true;
+  if (normalized === "NO") return false;
+  invalidResponse();
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
