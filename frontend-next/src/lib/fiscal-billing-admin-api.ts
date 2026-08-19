@@ -52,6 +52,8 @@ const SAFE_MESSAGES: Record<string, string> = {
     'El emisor no tiene todos los datos requeridos para activarse.',
   FISCAL_ISSUER_ACTIVATION_CONFLICT:
     'No fue posible cambiar el emisor activo. Actualice la lista e intente nuevamente.',
+  FISCAL_ISSUER_IDENTIFICATION_INVALID:
+    'El número de identificación no corresponde al tipo seleccionado.',
   HACIENDA_ACTIVITY_LOOKUP_UNAVAILABLE:
     'No fue posible consultar las actividades en Hacienda. El servicio no está disponible en este momento. Puede reintentar más tarde.',
   HACIENDA_ACTIVITY_LOOKUP_TIMEOUT:
