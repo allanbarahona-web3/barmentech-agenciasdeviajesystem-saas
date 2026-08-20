@@ -25,7 +25,13 @@ export type FiscalBillingAdminErrorCode =
   | "PROVIDER_NUMBERING_ISSUER_NOT_FOUND"
   | "PROVIDER_NUMBERING_ISSUER_NOT_READY"
   | "PROVIDER_NUMBERING_VERIFICATION_MISMATCH"
-  | "PROVIDER_NUMBERING_CONFIGURATION_CONFLICT";
+  | "PROVIDER_NUMBERING_CONFIGURATION_CONFLICT"
+  | "FISCAL_NUMBER_SEQUENCE_ISSUER_NOT_READY"
+  | "FISCAL_NUMBER_SEQUENCE_DOCUMENT_TYPE_INVALID"
+  | "FISCAL_NUMBER_SEQUENCE_INVALID"
+  | "FISCAL_NUMBER_SEQUENCE_DECREASE"
+  | "FISCAL_NUMBER_SEQUENCE_PROVIDER_NOT_VERIFIED"
+  | "FISCAL_NUMBER_SEQUENCE_CONFLICT";
 
 const STATUS_BY_CODE: Record<FiscalBillingAdminErrorCode, HttpStatus> = {
   BILLING_CONFIGURATION_INVALID_COUNTRY: HttpStatus.UNPROCESSABLE_ENTITY,
@@ -53,6 +59,12 @@ const STATUS_BY_CODE: Record<FiscalBillingAdminErrorCode, HttpStatus> = {
   PROVIDER_NUMBERING_ISSUER_NOT_READY: HttpStatus.UNPROCESSABLE_ENTITY,
   PROVIDER_NUMBERING_VERIFICATION_MISMATCH: HttpStatus.CONFLICT,
   PROVIDER_NUMBERING_CONFIGURATION_CONFLICT: HttpStatus.CONFLICT,
+  FISCAL_NUMBER_SEQUENCE_ISSUER_NOT_READY: HttpStatus.UNPROCESSABLE_ENTITY,
+  FISCAL_NUMBER_SEQUENCE_DOCUMENT_TYPE_INVALID: HttpStatus.UNPROCESSABLE_ENTITY,
+  FISCAL_NUMBER_SEQUENCE_INVALID: HttpStatus.UNPROCESSABLE_ENTITY,
+  FISCAL_NUMBER_SEQUENCE_DECREASE: HttpStatus.CONFLICT,
+  FISCAL_NUMBER_SEQUENCE_PROVIDER_NOT_VERIFIED: HttpStatus.CONFLICT,
+  FISCAL_NUMBER_SEQUENCE_CONFLICT: HttpStatus.CONFLICT,
 };
 
 const MESSAGE_BY_CODE: Partial<Record<FiscalBillingAdminErrorCode, string>> = {
@@ -92,6 +104,18 @@ const MESSAGE_BY_CODE: Partial<Record<FiscalBillingAdminErrorCode, string>> = {
     "No fue posible verificar la configuración de numeración del emisor.",
   PROVIDER_NUMBERING_CONFIGURATION_CONFLICT:
     "El proveedor rechazó la configuración de numeración solicitada.",
+  FISCAL_NUMBER_SEQUENCE_ISSUER_NOT_READY:
+    "El emisor fiscal no está listo para administrar secuencias.",
+  FISCAL_NUMBER_SEQUENCE_DOCUMENT_TYPE_INVALID:
+    "El tipo de documento no admite configuración de secuencia.",
+  FISCAL_NUMBER_SEQUENCE_INVALID:
+    "El próximo consecutivo debe ser un entero decimal entre 1 y 9999999999.",
+  FISCAL_NUMBER_SEQUENCE_DECREASE:
+    "El próximo consecutivo no puede ser menor que el valor configurado.",
+  FISCAL_NUMBER_SEQUENCE_PROVIDER_NOT_VERIFIED:
+    "El proveedor no confirmó el modo integrador para este emisor.",
+  FISCAL_NUMBER_SEQUENCE_CONFLICT:
+    "La secuencia fiscal cambió concurrentemente. Consulte su estado e intente nuevamente.",
 };
 
 export function fiscalBillingAdminError(

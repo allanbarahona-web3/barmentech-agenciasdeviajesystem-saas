@@ -9,6 +9,7 @@ import {
   FacturaEnCrNumberingProvider,
   FacturaEnCrNumberingProviderError,
 } from "./factura-en-cr-numbering.provider";
+import type { FiscalIssuerRecord } from "./fiscal-issuer-admin.types";
 
 const VERIFICATION_DOCUMENT_TYPE = "01";
 
@@ -50,25 +51,10 @@ export class ProviderNumberingAdminService {
         );
       }
 
-      const verified = await this.provider.verifyIntegratorMode({
-        ...input,
-        documentTypeCode: VERIFICATION_DOCUMENT_TYPE,
-      });
-      const prefix = `${input.branchCode}${input.terminalCode}${VERIFICATION_DOCUMENT_TYPE}`;
-      if (
-        verified.mode !== "integrator" ||
-        verified.legalId !== input.legalId ||
-        verified.branchCode !== input.branchCode ||
-        verified.terminalCode !== input.terminalCode ||
-        verified.documentTypeCode !== VERIFICATION_DOCUMENT_TYPE ||
-        !new RegExp(`^${prefix}[0-9A-Za-z]{10}$`).test(
-          verified.nextConsecutivo20,
-        )
-      ) {
-        throw fiscalBillingAdminError(
-          "PROVIDER_NUMBERING_VERIFICATION_MISMATCH",
-        );
-      }
+      const verified = await this.verifyIssuerIntegratorMode(
+        issuer,
+        VERIFICATION_DOCUMENT_TYPE,
+      );
 
       return {
         issuerId,
@@ -81,6 +67,44 @@ export class ProviderNumberingAdminService {
         nextConsecutivo20: verified.nextConsecutivo20,
         verified: true as const,
       };
+    } catch (error) {
+      if (error instanceof FacturaEnCrNumberingProviderError) {
+        throw fiscalBillingAdminError(error.code);
+      }
+      throw error;
+    }
+  }
+
+  async verifyIssuerIntegratorMode(
+    issuer: FiscalIssuerRecord,
+    documentTypeCode: string,
+  ) {
+    const legalId = issuer.identificationNumber;
+    const branchCode = issuer.establishmentCode ?? "";
+    const terminalCode = issuer.terminalCode ?? "";
+    try {
+      const verified = await this.provider.verifyIntegratorMode({
+        legalId,
+        branchCode,
+        terminalCode,
+        documentTypeCode,
+      });
+      const prefix = `${branchCode}${terminalCode}${documentTypeCode}`;
+      if (
+        verified.mode !== "integrator" ||
+        verified.legalId !== legalId ||
+        verified.branchCode !== branchCode ||
+        verified.terminalCode !== terminalCode ||
+        verified.documentTypeCode !== documentTypeCode ||
+        !new RegExp(`^${prefix}[0-9A-Za-z]{10}$`).test(
+          verified.nextConsecutivo20,
+        )
+      ) {
+        throw fiscalBillingAdminError(
+          "PROVIDER_NUMBERING_VERIFICATION_MISMATCH",
+        );
+      }
+      return verified;
     } catch (error) {
       if (error instanceof FacturaEnCrNumberingProviderError) {
         throw fiscalBillingAdminError(error.code);

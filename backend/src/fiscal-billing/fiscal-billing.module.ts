@@ -25,6 +25,10 @@ import { ProviderNumberingAdminController } from "./provider-numbering-admin.con
 import { ProviderNumberingAdminService } from "./provider-numbering-admin.service";
 import { FacturaEnCrNumberingAdapter } from "./factura-en-cr-numbering.adapter";
 import { FACTURA_EN_CR_NUMBERING_PROVIDER } from "./factura-en-cr-numbering.provider";
+import { FiscalNumberSequenceAdminController } from "./fiscal-number-sequence-admin.controller";
+import { FiscalNumberSequenceAdminService } from "./fiscal-number-sequence-admin.service";
+import { PrismaFiscalNumberSequenceAdminRepository } from "./prisma-fiscal-number-sequence-admin.repository";
+import { FISCAL_NUMBER_SEQUENCE_ADMIN_REPOSITORY } from "./fiscal-number-sequence-admin.repository";
 
 @Module({
   imports: [FiscalCatalogModule],
@@ -33,6 +37,7 @@ import { FACTURA_EN_CR_NUMBERING_PROVIDER } from "./factura-en-cr-numbering.prov
     FiscalBillingAdminController,
     FiscalIssuerAdminController,
     ProviderNumberingAdminController,
+    FiscalNumberSequenceAdminController,
   ],
   providers: [
     SalesOrderFiscalBillingService,
@@ -46,6 +51,8 @@ import { FACTURA_EN_CR_NUMBERING_PROVIDER } from "./factura-en-cr-numbering.prov
     HaciendaEconomicActivityAdapter,
     ProviderNumberingAdminService,
     FacturaEnCrNumberingAdapter,
+    FiscalNumberSequenceAdminService,
+    PrismaFiscalNumberSequenceAdminRepository,
     {
       provide: SALES_ORDER_FISCAL_BILLING_REPOSITORY,
       useExisting: PrismaSalesOrderFiscalBillingRepository,
@@ -69,6 +76,10 @@ import { FACTURA_EN_CR_NUMBERING_PROVIDER } from "./factura-en-cr-numbering.prov
     {
       provide: FACTURA_EN_CR_NUMBERING_PROVIDER,
       useExisting: FacturaEnCrNumberingAdapter,
+    },
+    {
+      provide: FISCAL_NUMBER_SEQUENCE_ADMIN_REPOSITORY,
+      useExisting: PrismaFiscalNumberSequenceAdminRepository,
     },
   ],
 })
