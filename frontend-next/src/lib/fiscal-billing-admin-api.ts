@@ -74,6 +74,36 @@ const SAFE_MESSAGES: Record<string, string> = {
     'No puede eliminar la actividad principal. Seleccione otra actividad principal antes de eliminarla.',
   FISCAL_ISSUER_ECONOMIC_ACTIVITY_CONFLICT:
     'No fue posible completar el cambio porque la información fue modificada simultáneamente. Recargue e intente nuevamente.',
+  PROVIDER_NUMBERING_CONFIGURATION_MISSING:
+    'La integración con el proveedor de numeración no está configurada en el backend.',
+  PROVIDER_NUMBERING_UNAVAILABLE:
+    'El proveedor de numeración fiscal no está disponible. Intente nuevamente más tarde.',
+  PROVIDER_NUMBERING_TIMEOUT:
+    'El proveedor de numeración tardó demasiado en responder. Intente nuevamente.',
+  PROVIDER_NUMBERING_RATE_LIMITED:
+    'El proveedor limitó temporalmente las solicitudes. Espere unos minutos e intente nuevamente.',
+  PROVIDER_NUMBERING_INVALID_RESPONSE:
+    'El proveedor devolvió información de numeración que no pudo validarse.',
+  PROVIDER_NUMBERING_ISSUER_NOT_FOUND:
+    'El proveedor no encontró el emisor fiscal configurado.',
+  PROVIDER_NUMBERING_ISSUER_NOT_READY:
+    'El emisor fiscal no tiene los datos requeridos para configurar la numeración.',
+  PROVIDER_NUMBERING_VERIFICATION_MISMATCH:
+    'No fue posible verificar que el proveedor esté en modo integrador.',
+  PROVIDER_NUMBERING_CONFIGURATION_CONFLICT:
+    'El proveedor rechazó la configuración de numeración solicitada.',
+  FISCAL_NUMBER_SEQUENCE_ISSUER_NOT_READY:
+    'El emisor debe estar activo y tener identificación, establecimiento y terminal válidos para administrar secuencias.',
+  FISCAL_NUMBER_SEQUENCE_DOCUMENT_TYPE_INVALID:
+    'El tipo de documento no admite configuración de secuencia.',
+  FISCAL_NUMBER_SEQUENCE_INVALID:
+    'El próximo número debe ser un entero decimal entre 1 y 9999999999, sin ceros iniciales.',
+  FISCAL_NUMBER_SEQUENCE_DECREASE:
+    'La secuencia no puede reducirse. Ingrese el valor actual o uno mayor.',
+  FISCAL_NUMBER_SEQUENCE_PROVIDER_NOT_VERIFIED:
+    'No fue posible verificar que el proveedor esté en modo integrador. Configure y verifique el modo integrador antes de guardar la numeración.',
+  FISCAL_NUMBER_SEQUENCE_CONFLICT:
+    'La secuencia cambió mientras se realizaba la operación. Actualice la información e intente nuevamente.',
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -281,6 +311,76 @@ export async function deleteIssuerEconomicActivity(
     await fetchApi(
       `${economicActivitiesPath(issuerId)}/${encodeURIComponent(assignmentId)}`,
       { method: 'DELETE' },
+    ),
+  );
+}
+
+export type ProviderNumberingVerification = {
+  issuerId: string;
+  mode: 'integrator';
+  branchCode: string;
+  terminalCode: string;
+  verificationDocumentTypeCode: '01';
+  currentNumber: string;
+  nextNumber: string;
+  nextConsecutivo20: string;
+  verified: true;
+};
+
+export type FiscalNumberSequence = {
+  documentTypeCode: string;
+  documentTypeName: string;
+  configured: boolean;
+  startingSequenceNumber: string | null;
+  nextSequenceNumber: string | null;
+  providerBasePreview: string | null;
+  fullConsecutivePreview: string | null;
+};
+
+export type FiscalNumberSequencesResponse = {
+  issuerId: string;
+  establishmentCode: string;
+  terminalCode: string;
+  sequences: FiscalNumberSequence[];
+};
+
+function issuerNumberingPath(issuerId: string) {
+  return `/admin/fiscal-billing/issuers/${encodeURIComponent(issuerId)}`;
+}
+
+export async function configureIssuerIntegratorMode(issuerId: string) {
+  return parseIssuerResponse<ProviderNumberingVerification>(
+    await fetchApi(
+      `${issuerNumberingPath(issuerId)}/provider-numbering/integrator`,
+      { method: 'POST' },
+    ),
+  );
+}
+
+export async function getFiscalNumberSequences(
+  issuerId: string,
+  signal?: AbortSignal,
+) {
+  return parseIssuerResponse<FiscalNumberSequencesResponse>(
+    await fetchApi(`${issuerNumberingPath(issuerId)}/number-sequences`, {
+      method: 'GET',
+      signal,
+    }),
+  );
+}
+
+export async function setFiscalNumberSequence(
+  issuerId: string,
+  documentTypeCode: string,
+  nextSequenceNumber: string,
+) {
+  return parseIssuerResponse<FiscalNumberSequence>(
+    await fetchApi(
+      `${issuerNumberingPath(issuerId)}/number-sequences/${encodeURIComponent(documentTypeCode)}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ nextSequenceNumber }),
+      },
     ),
   );
 }
