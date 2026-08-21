@@ -1773,6 +1773,11 @@ enum BillingProviderStatus {
   FAILED
 }
 
+enum BillingProviderEnvironment {
+  sandbox
+  production
+}
+
 enum BillingTaxAuthorityStatus {
   NOT_SUBMITTED
   PROCESSING
@@ -1805,6 +1810,12 @@ model BillingDocument {
   allocatedSequenceNumber         BigInt?
   issuanceIdempotencyKey          String?                        @db.VarChar(100)
   providerDocumentId              String?                        @db.VarChar(255)
+  providerEnvironment             BillingProviderEnvironment?
+  providerRequestHash             String?                        @db.VarChar(64)
+  providerLastAttemptAt           DateTime?
+  providerLastErrorCode           String?                        @db.VarChar(100)
+  providerLastErrorAt             DateTime?
+  providerReconciliationRequired  Boolean                        @default(false)
   schemaVersion                   String                         @db.VarChar(20)
   countryCode                     String                         @default("CR") @db.VarChar(2)
   currencyCode                    String                         @db.VarChar(3)
@@ -1867,6 +1878,7 @@ model BillingDocument {
   @@index([tenantId, sourceType, sourceId])
   @@index([tenantId, fiscalIssuerId], map: "billing_documents_tenant_fiscal_issuer_idx")
   @@index([tenantId, billingDocumentNumberSequenceId], map: "billing_documents_tenant_number_sequence_idx")
+  @@index([tenantId, providerReconciliationRequired, providerLastAttemptAt], map: "billing_docs_tenant_reconciliation_attempt_idx")
   @@map("billing_documents")
 }
 
