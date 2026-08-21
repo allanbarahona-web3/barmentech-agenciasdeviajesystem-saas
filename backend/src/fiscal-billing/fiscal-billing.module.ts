@@ -29,6 +29,7 @@ import { FiscalNumberSequenceAdminController } from "./fiscal-number-sequence-ad
 import { FiscalNumberSequenceAdminService } from "./fiscal-number-sequence-admin.service";
 import { PrismaFiscalNumberSequenceAdminRepository } from "./prisma-fiscal-number-sequence-admin.repository";
 import { FISCAL_NUMBER_SEQUENCE_ADMIN_REPOSITORY } from "./fiscal-number-sequence-admin.repository";
+import { FiscalOutboxPublisherService } from "./jobs/fiscal-outbox-publisher.service";
 
 @Module({
   imports: [FiscalCatalogModule],
@@ -53,6 +54,7 @@ import { FISCAL_NUMBER_SEQUENCE_ADMIN_REPOSITORY } from "./fiscal-number-sequenc
     FacturaEnCrNumberingAdapter,
     FiscalNumberSequenceAdminService,
     PrismaFiscalNumberSequenceAdminRepository,
+    FiscalOutboxPublisherService,
     {
       provide: SALES_ORDER_FISCAL_BILLING_REPOSITORY,
       useExisting: PrismaSalesOrderFiscalBillingRepository,
