@@ -1788,74 +1788,85 @@ enum BillingArtifactStatus {
 }
 
 model BillingDocument {
-  id                           String                         @id @default(cuid())
-  tenantId                     String
-  documentTypeCode             String                         @db.VarChar(4)
-  billingMode                  BillingMode
-  internalNumber               String                         @db.VarChar(50)
-  fiscalNumber                 String?                        @db.VarChar(50)
-  haciendaKey                  String?                        @db.VarChar(50)
-  sourceType                   String?                        @db.VarChar(50)
-  sourceId                     String?                        @db.VarChar(100)
-  sourceNumber                 String?                        @db.VarChar(100)
-  sourceRole                   BillingDocumentSourceRole      @default(PRIMARY)
-  creationDeduplicationKey     String?                        @db.VarChar(200)
-  schemaVersion                String                         @db.VarChar(20)
-  countryCode                  String                         @default("CR") @db.VarChar(2)
-  currencyCode                 String                         @db.VarChar(3)
-  exchangeRate                 Decimal?                       @db.Decimal(18, 8)
-  issuedAt                     DateTime?
-  paymentConditionCode         String?                        @db.VarChar(4)
-  creditTermDays               Int?
-  dueDate                      DateTime?                      @db.Date
-  lifecycleStatus              BillingDocumentLifecycleStatus @default(DRAFT)
-  providerStatus               BillingProviderStatus          @default(NOT_SUBMITTED)
-  taxAuthorityStatus           BillingTaxAuthorityStatus      @default(NOT_SUBMITTED)
-  artifactStatus               BillingArtifactStatus          @default(NOT_GENERATED)
-  issuerName                   String
-  issuerIdentificationType     String                         @db.VarChar(4)
-  issuerIdentification         String                         @db.VarChar(30)
-  issuerEconomicActivityCode   String?                        @db.VarChar(10)
-  issuerEstablishmentCode      String?                        @db.VarChar(3)
-  issuerTerminalCode           String?                        @db.VarChar(5)
-  issuerEmail                  String?
-  issuerPhone                  String?
-  issuerAddressSnapshot        Json?
-  receiverName                 String?
-  receiverIdentificationType   String?                        @db.VarChar(4)
-  receiverIdentification       String?                        @db.VarChar(30)
-  receiverEconomicActivityCode String?                        @db.VarChar(10)
-  receiverEmail                String?
-  receiverPhone                String?
-  receiverAddressSnapshot      Json?
-  grossSubtotal                Decimal                        @db.Decimal(18, 4)
-  discountTotal                Decimal                        @db.Decimal(18, 4)
-  taxableTotal                 Decimal                        @db.Decimal(18, 4)
-  exemptTotal                  Decimal                        @db.Decimal(18, 4)
-  exoneratedTotal              Decimal                        @db.Decimal(18, 4)
-  grossTaxTotal                Decimal                        @db.Decimal(18, 4)
-  exoneratedTaxTotal           Decimal                        @db.Decimal(18, 4)
-  netTaxTotal                  Decimal                        @db.Decimal(18, 4)
-  total                        Decimal                        @db.Decimal(18, 4)
-  confirmedAt                  DateTime?
-  submittedAt                  DateTime?
-  createdBy                    String?
-  createdAt                    DateTime                       @default(now())
-  updatedAt                    DateTime                       @updatedAt
-  tenant                       Tenant                         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  lines                        BillingDocumentLine[]
-  references                   BillingDocumentReference[]     @relation("BillingDocumentReferences")
-  referencedBy                 BillingDocumentReference[]     @relation("ReferencedBillingDocuments")
-  paymentMethods               BillingDocumentPaymentMethod[]
+  id                              String                         @id @default(cuid())
+  tenantId                        String
+  documentTypeCode                String                         @db.VarChar(4)
+  billingMode                     BillingMode
+  internalNumber                  String                         @db.VarChar(50)
+  fiscalNumber                    String?                        @db.VarChar(50)
+  haciendaKey                     String?                        @db.VarChar(50)
+  sourceType                      String?                        @db.VarChar(50)
+  sourceId                        String?                        @db.VarChar(100)
+  sourceNumber                    String?                        @db.VarChar(100)
+  sourceRole                      BillingDocumentSourceRole      @default(PRIMARY)
+  creationDeduplicationKey        String?                        @db.VarChar(200)
+  fiscalIssuerId                  String?
+  billingDocumentNumberSequenceId String?
+  allocatedSequenceNumber         BigInt?
+  issuanceIdempotencyKey          String?                        @db.VarChar(100)
+  providerDocumentId              String?                        @db.VarChar(255)
+  schemaVersion                   String                         @db.VarChar(20)
+  countryCode                     String                         @default("CR") @db.VarChar(2)
+  currencyCode                    String                         @db.VarChar(3)
+  exchangeRate                    Decimal?                       @db.Decimal(18, 8)
+  issuedAt                        DateTime?
+  paymentConditionCode            String?                        @db.VarChar(4)
+  creditTermDays                  Int?
+  dueDate                         DateTime?                      @db.Date
+  lifecycleStatus                 BillingDocumentLifecycleStatus @default(DRAFT)
+  providerStatus                  BillingProviderStatus          @default(NOT_SUBMITTED)
+  taxAuthorityStatus              BillingTaxAuthorityStatus      @default(NOT_SUBMITTED)
+  artifactStatus                  BillingArtifactStatus          @default(NOT_GENERATED)
+  issuerName                      String
+  issuerIdentificationType        String                         @db.VarChar(4)
+  issuerIdentification            String                         @db.VarChar(30)
+  issuerEconomicActivityCode      String?                        @db.VarChar(10)
+  issuerEstablishmentCode         String?                        @db.VarChar(3)
+  issuerTerminalCode              String?                        @db.VarChar(5)
+  issuerEmail                     String?
+  issuerPhone                     String?
+  issuerAddressSnapshot           Json?
+  receiverName                    String?
+  receiverIdentificationType      String?                        @db.VarChar(4)
+  receiverIdentification          String?                        @db.VarChar(30)
+  receiverEconomicActivityCode    String?                        @db.VarChar(10)
+  receiverEmail                   String?
+  receiverPhone                   String?
+  receiverAddressSnapshot         Json?
+  grossSubtotal                   Decimal                        @db.Decimal(18, 4)
+  discountTotal                   Decimal                        @db.Decimal(18, 4)
+  taxableTotal                    Decimal                        @db.Decimal(18, 4)
+  exemptTotal                     Decimal                        @db.Decimal(18, 4)
+  exoneratedTotal                 Decimal                        @db.Decimal(18, 4)
+  grossTaxTotal                   Decimal                        @db.Decimal(18, 4)
+  exoneratedTaxTotal              Decimal                        @db.Decimal(18, 4)
+  netTaxTotal                     Decimal                        @db.Decimal(18, 4)
+  total                           Decimal                        @db.Decimal(18, 4)
+  confirmedAt                     DateTime?
+  submittedAt                     DateTime?
+  createdBy                       String?
+  createdAt                       DateTime                       @default(now())
+  updatedAt                       DateTime                       @updatedAt
+  tenant                          Tenant                         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  fiscalIssuer                    FiscalIssuer?                  @relation("BillingDocumentFiscalIssuer", fields: [fiscalIssuerId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "billing_documents_fiscal_issuer_tenant_fkey")
+  billingDocumentNumberSequence   BillingDocumentNumberSequence? @relation("BillingDocumentAllocatedNumberSequence", fields: [billingDocumentNumberSequenceId, tenantId, fiscalIssuerId, issuerEstablishmentCode, issuerTerminalCode, documentTypeCode], references: [id, tenantId, fiscalIssuerId, establishmentCode, terminalCode, documentTypeCode], onDelete: Restrict, map: "billing_documents_number_sequence_scope_fkey")
+  lines                           BillingDocumentLine[]
+  references                      BillingDocumentReference[]     @relation("BillingDocumentReferences")
+  referencedBy                    BillingDocumentReference[]     @relation("ReferencedBillingDocuments")
+  paymentMethods                  BillingDocumentPaymentMethod[]
 
   @@unique([tenantId, internalNumber])
   @@unique([tenantId, fiscalNumber])
   @@unique([tenantId, haciendaKey])
   @@unique([tenantId, creationDeduplicationKey])
+  @@unique([billingDocumentNumberSequenceId, allocatedSequenceNumber], map: "billing_documents_sequence_allocated_number_key")
+  @@unique([tenantId, issuanceIdempotencyKey], map: "billing_documents_tenant_issuance_idem_key")
   @@unique([id, tenantId])
   @@index([tenantId, lifecycleStatus])
   @@index([tenantId, documentTypeCode])
   @@index([tenantId, sourceType, sourceId])
+  @@index([tenantId, fiscalIssuerId], map: "billing_documents_tenant_fiscal_issuer_idx")
+  @@index([tenantId, billingDocumentNumberSequenceId], map: "billing_documents_tenant_number_sequence_idx")
   @@map("billing_documents")
 }
 
@@ -2025,6 +2036,7 @@ model FiscalIssuer {
   tenant                         Tenant                          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   economicActivities             FiscalIssuerEconomicActivity[]
   billingDocumentNumberSequences BillingDocumentNumberSequence[]
+  billingDocuments               BillingDocument[]               @relation("BillingDocumentFiscalIssuer")
 
   @@unique([id, tenantId])
   @@index([tenantId, isActive])
@@ -2033,20 +2045,22 @@ model FiscalIssuer {
 }
 
 model BillingDocumentNumberSequence {
-  id                     String       @id @default(cuid())
+  id                     String            @id @default(cuid())
   tenantId               String
   fiscalIssuerId         String
-  establishmentCode      String       @db.VarChar(3)
-  terminalCode           String       @db.VarChar(5)
-  documentTypeCode       String       @db.VarChar(4)
+  establishmentCode      String            @db.VarChar(3)
+  terminalCode           String            @db.VarChar(5)
+  documentTypeCode       String            @db.VarChar(4)
   startingSequenceNumber BigInt
   nextSequenceNumber     BigInt
-  createdAt              DateTime     @default(now())
-  updatedAt              DateTime     @updatedAt
-  tenant                 Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  fiscalIssuer           FiscalIssuer @relation(fields: [fiscalIssuerId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "billing_document_number_sequences_fiscalIssuer_tenant_fkey")
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @updatedAt
+  tenant                 Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  fiscalIssuer           FiscalIssuer      @relation(fields: [fiscalIssuerId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "billing_document_number_sequences_fiscalIssuer_tenant_fkey")
+  billingDocuments       BillingDocument[] @relation("BillingDocumentAllocatedNumberSequence")
 
   @@unique([tenantId, fiscalIssuerId, establishmentCode, terminalCode, documentTypeCode], map: "billing_document_number_sequences_scope_key")
+  @@unique([id, tenantId, fiscalIssuerId, establishmentCode, terminalCode, documentTypeCode], map: "billing_doc_num_sequences_allocation_scope_key")
   @@map("billing_document_number_sequences")
 }
 
