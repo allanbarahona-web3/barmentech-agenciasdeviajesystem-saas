@@ -67,4 +67,16 @@ export class FiscalBillingController {
       billingDocumentId,
     );
   }
+
+  @Post("documents/:billingDocumentId/request-electronic-issuance")
+  requestElectronicIssuance(
+    @Req() request: FiscalBillingRequest,
+    @Param("billingDocumentId") billingDocumentId: string,
+  ) {
+    return this.billingDocumentService.requestElectronicIssuance(
+      request.user.tenantId,
+      billingDocumentId,
+      request.user.id,
+    );
+  }
 }
