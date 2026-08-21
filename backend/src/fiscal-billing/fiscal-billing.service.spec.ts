@@ -180,6 +180,17 @@ describe("SalesOrderFiscalBillingService", () => {
           total: "113.0000",
         },
         issuer: { economicActivityCode: "791100" },
+        paymentConditionCode: "01",
+        creditTermDays: null,
+        exchangeRate: null,
+        paymentMethods: [
+          {
+            paymentMethodOrder: 1,
+            paymentMethodCode: "01",
+            description: null,
+            declaredAmount: null,
+          },
+        ],
       });
       expect(create.lines).toEqual([
         expect.objectContaining({
@@ -202,6 +213,153 @@ describe("SalesOrderFiscalBillingService", () => {
       expect(fiscalCatalog.evaluateFiscalProfiles).toHaveBeenCalledTimes(1);
     },
   );
+
+  it("maps CREDIT days exactly and takes currency only from the Sales Order", async () => {
+    const { service, repository } = setup({
+      salesOrder: salesOrder({
+        currency: "USD",
+        paymentConditionType: "CREDIT",
+        paymentTermValue: 45,
+        paymentTermUnit: "DAYS",
+      }),
+    });
+
+    await service.createOrResumeDraft(
+      "tenant-a",
+      "sales-a",
+      { ...draftInput, exchangeRate: "523.12345678" },
+      "user-a",
+    );
+
+    expect(repository.createDraft.mock.calls[0][0]).toMatchObject({
+      currencyCode: "USD",
+      exchangeRate: "523.12345678",
+      paymentConditionCode: "02",
+      creditTermDays: 45,
+    });
+  });
+
+  it.each([
+    { paymentConditionType: "CREDIT", paymentTermValue: 2, paymentTermUnit: "MONTHS" },
+    { paymentConditionType: "CREDIT", paymentTermValue: null, paymentTermUnit: "DAYS" },
+    { paymentConditionType: "CREDIT", paymentTermValue: 0, paymentTermUnit: "DAYS" },
+  ])("rejects unsupported or incomplete CREDIT terms before persistence", async (condition) => {
+    const { service, repository } = setup({ salesOrder: salesOrder(condition) });
+    await expectCode(
+      service.createOrResumeDraft("tenant-a", "sales-a", draftInput, "user-a"),
+      "BILLING_COMMERCIAL_CREDIT_TERM_INVALID",
+    );
+    expect(repository.createDraft).not.toHaveBeenCalled();
+  });
+
+  it("requires receiver identity for 01 and canonicalizes formatted CR identity", async () => {
+    const { service, repository } = setup();
+    await expectCode(
+      service.createOrResumeDraft(
+        "tenant-a",
+        "sales-a",
+        { fiscalIssuerId: "issuer-a", documentTypeCode: "01", paymentMethodCodes: ["01"] },
+        "user-a",
+      ),
+      "BILLING_RECEIVER_IDENTIFICATION_INVALID",
+    );
+    expect(repository.createDraft).not.toHaveBeenCalled();
+
+    await service.createOrResumeDraft("tenant-a", "sales-a", draftInput, "user-a");
+    expect(repository.createDraft.mock.calls[0][0].receiver).toMatchObject({
+      name: "Customer A",
+      email: null,
+      identificationType: "01",
+      identification: "123456789",
+    });
+  });
+
+  it("permits 04 without identity but rejects an incomplete or invalid supplied pair", async () => {
+    const { service, repository } = setup();
+    const ticketInput = {
+      fiscalIssuerId: "issuer-a",
+      documentTypeCode: "04",
+      paymentMethodCodes: ["01"],
+    };
+    await service.createOrResumeDraft("tenant-a", "sales-a", ticketInput, "user-a");
+    expect(repository.createDraft.mock.calls[0][0].receiver).toMatchObject({
+      identificationType: null,
+      identification: null,
+    });
+
+    repository.createDraft.mockClear();
+    for (const invalid of [
+      { receiverIdentificationTypeCode: "02" },
+      { receiverIdentificationNumber: "3101000000" },
+      { receiverIdentificationTypeCode: "02", receiverIdentificationNumber: "31.010/00000" },
+    ]) {
+      await expectCode(
+        service.createOrResumeDraft("tenant-a", "sales-a", { ...ticketInput, ...invalid }, "user-a"),
+        "BILLING_RECEIVER_IDENTIFICATION_INVALID",
+      );
+    }
+    expect(repository.createDraft).not.toHaveBeenCalled();
+  });
+
+  it("normalizes and deduplicates one to four payment methods in first-occurrence order", async () => {
+    const { service, repository } = setup();
+    await service.createOrResumeDraft(
+      "tenant-a",
+      "sales-a",
+      { ...draftInput, paymentMethodCodes: [" 04 ", "01", "04", "06"] },
+      "user-a",
+    );
+    expect(repository.createDraft.mock.calls[0][0].paymentMethods).toEqual([
+      expect.objectContaining({ paymentMethodOrder: 1, paymentMethodCode: "04" }),
+      expect.objectContaining({ paymentMethodOrder: 2, paymentMethodCode: "01" }),
+      expect.objectContaining({ paymentMethodOrder: 3, paymentMethodCode: "06" }),
+    ]);
+  });
+
+  it.each([[[]], [[""]], [["08"]], [["01", "02", "03", "04", "05"]]])(
+    "rejects invalid payment methods before persistence",
+    async (paymentMethodCodes) => {
+      const { service, repository } = setup();
+      await expectCode(
+        service.createOrResumeDraft(
+          "tenant-a",
+          "sales-a",
+          { ...draftInput, paymentMethodCodes },
+          "user-a",
+        ),
+        "BILLING_PAYMENT_METHOD_INVALID",
+      );
+      expect(repository.createDraft).not.toHaveBeenCalled();
+    },
+  );
+
+  it("rejects contradictory CRC and missing/non-canonical/non-positive foreign exchange rates", async () => {
+    const local = setup();
+    await expectCode(
+      local.service.createOrResumeDraft(
+        "tenant-a",
+        "sales-a",
+        { ...draftInput, exchangeRate: "1" },
+        "user-a",
+      ),
+      "BILLING_EXCHANGE_RATE_INVALID",
+    );
+    expect(local.repository.createDraft).not.toHaveBeenCalled();
+
+    for (const exchangeRate of [undefined, "0", "-1", "01.5", "1e3", " 500.1 "]) {
+      const foreign = setup({ salesOrder: salesOrder({ currency: "USD" }) });
+      await expectCode(
+        foreign.service.createOrResumeDraft(
+          "tenant-a",
+          "sales-a",
+          { ...draftInput, exchangeRate },
+          "user-a",
+        ),
+        "BILLING_EXCHANGE_RATE_INVALID",
+      );
+      expect(foreign.repository.createDraft).not.toHaveBeenCalled();
+    }
+  });
 
   it("keeps repository and global-readiness operations bounded for multiple lines", async () => {
     const secondLine = sourceLine({
@@ -321,7 +479,7 @@ describe("SalesOrderFiscalBillingService", () => {
       service.createOrResumeDraft(
         "tenant-a",
         "sales-a",
-        { fiscalIssuerId: "issuer-a", documentTypeCode: "99" },
+        { ...draftInput, documentTypeCode: "99" },
         "user-a",
       ),
       "BILLING_DOCUMENT_TYPE_INVALID",
@@ -330,7 +488,13 @@ describe("SalesOrderFiscalBillingService", () => {
   });
 });
 
-const draftInput = { fiscalIssuerId: "issuer-a", documentTypeCode: "01" };
+const draftInput = {
+  fiscalIssuerId: "issuer-a",
+  documentTypeCode: "01",
+  receiverIdentificationTypeCode: "01",
+  receiverIdentificationNumber: "1-2345-6789",
+  paymentMethodCodes: ["01"],
+};
 const workspace = { id: "document-a", lifecycleStatus: "DRAFT", lines: [] };
 
 function setup(options: {

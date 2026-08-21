@@ -74,6 +74,13 @@ export interface BillingDocumentDraftTaxSnapshot {
   netTaxAmount: string;
 }
 
+export interface BillingDocumentPaymentMethodSnapshot {
+  paymentMethodOrder: number;
+  paymentMethodCode: string;
+  description: null;
+  declaredAmount: null;
+}
+
 export interface BillingDocumentDraftCommand {
   tenantId: string;
   fiscalIssuerId: string | null;
@@ -85,9 +92,12 @@ export interface BillingDocumentDraftCommand {
   countryCode: string;
   currencyCode: string;
   exchangeRate: string | null;
+  paymentConditionCode: string;
+  creditTermDays: number | null;
   issuer: BillingDocumentIssuerSnapshot;
   receiver: BillingDocumentReceiverSnapshot;
   totals: BillingDocumentTotalsSnapshot;
+  paymentMethods: BillingDocumentPaymentMethodSnapshot[];
   lines: BillingDocumentDraftLineSnapshot[];
   createdByUserId: string;
 }

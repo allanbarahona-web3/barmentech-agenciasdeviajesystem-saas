@@ -14,12 +14,12 @@ export function normalizeAndValidateIssuerIdentification(
 ): string {
   const trimmed = identificationNumber.trim();
   if (countryCode !== "CR") return trimmed;
-
-  const canonical = /^[0-9 -]+$/.test(trimmed)
-    ? trimmed.replace(/[ -]/g, "")
-    : "";
+  const canonical = normalizeCrIdentification(
+    identificationTypeCode,
+    identificationNumber,
+  );
   const format = CR_FORMATS[identificationTypeCode];
-  if (!canonical || !format?.pattern.test(canonical)) {
+  if (!canonical) {
     throw fiscalBillingAdminError("FISCAL_ISSUER_IDENTIFICATION_INVALID", {
       identificationTypeCode,
       expectedCanonicalFormat:
@@ -28,4 +28,16 @@ export function normalizeAndValidateIssuerIdentification(
     });
   }
   return canonical;
+}
+
+export function normalizeCrIdentification(
+  identificationTypeCode: string,
+  identificationNumber: string,
+): string | null {
+  const trimmed = identificationNumber.trim();
+  const canonical = /^[0-9 -]+$/.test(trimmed)
+    ? trimmed.replace(/[ -]/g, "")
+    : "";
+  const format = CR_FORMATS[identificationTypeCode];
+  return canonical && format?.pattern.test(canonical) ? canonical : null;
 }

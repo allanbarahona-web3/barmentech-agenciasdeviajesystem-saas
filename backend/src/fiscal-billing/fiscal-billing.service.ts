@@ -10,6 +10,7 @@ import {
   billingInternalNumber,
   CR_DOCUMENT_TYPE_CHOICES,
   CR_DOCUMENT_TYPES,
+  CR_PAYMENT_METHOD_CODES,
   ELIGIBLE_SALES_ORDER_STATUS,
   FISCAL_BILLING_SOURCE_TYPE,
   type CrDocumentTypeCode,
@@ -31,6 +32,16 @@ import type {
   FiscalProfileSnapshot,
   SalesOrderSource,
 } from "./fiscal-billing.types";
+import { normalizeCrIdentification } from "./fiscal-issuer-identification";
+
+type CreateDraftInput = {
+  fiscalIssuerId: string;
+  documentTypeCode: string;
+  receiverIdentificationTypeCode?: string;
+  receiverIdentificationNumber?: string;
+  paymentMethodCodes: string[];
+  exchangeRate?: string;
+};
 
 type ReadinessIssue = {
   code: string;
@@ -161,7 +172,7 @@ export class SalesOrderFiscalBillingService {
   async createOrResumeDraft(
     tenantId: string,
     salesOrderId: string,
-    input: { fiscalIssuerId: string; documentTypeCode: string },
+    input: CreateDraftInput,
     actorId: string,
   ) {
     this.assertDocumentType(input.documentTypeCode);
@@ -182,6 +193,19 @@ export class SalesOrderFiscalBillingService {
     if (!issuer) throw fiscalBillingError("FISCAL_ISSUER_NOT_FOUND");
     if (!issuer.isActive) throw fiscalBillingError("FISCAL_ISSUER_NOT_ACTIVE");
     this.assertDraftReady(analysis);
+    const commercialCondition = this.resolveCommercialCondition(
+      analysis.salesOrder,
+    );
+    const receiverIdentity = this.resolveReceiverIdentity(
+      input.documentTypeCode,
+      input.receiverIdentificationTypeCode,
+      input.receiverIdentificationNumber,
+    );
+    const paymentMethods = this.resolvePaymentMethods(input.paymentMethodCodes);
+    const exchangeRate = this.resolveExchangeRate(
+      analysis.salesOrder.currency,
+      input.exchangeRate,
+    );
     const primaryActivity = issuer.economicActivities.find(
       (activity) => activity.isPrimary,
     );
@@ -213,7 +237,9 @@ export class SalesOrderFiscalBillingService {
       schemaVersion: configuration.fiscalSchemaVersion,
       countryCode: configuration.countryCode,
       currencyCode: analysis.salesOrder.currency,
-      exchangeRate: null,
+      exchangeRate,
+      paymentConditionCode: commercialCondition.paymentConditionCode,
+      creditTermDays: commercialCondition.creditTermDays,
       issuer: {
         name: issuer.legalName,
         identificationType: issuer.identificationTypeCode,
@@ -235,8 +261,8 @@ export class SalesOrderFiscalBillingService {
       },
       receiver: {
         name: analysis.salesOrder.customerName || null,
-        identificationType: null,
-        identification: null,
+        identificationType: receiverIdentity.identificationType,
+        identification: receiverIdentity.identification,
         economicActivityCode: null,
         email: analysis.salesOrder.customerEmail,
         phone: null,
@@ -253,6 +279,7 @@ export class SalesOrderFiscalBillingService {
         netTaxTotal: analysis.totals.tax,
         total: analysis.totals.total,
       },
+      paymentMethods,
       lines: this.toDraftLines(analysis),
       createdByUserId: actorId,
     };
@@ -499,6 +526,93 @@ export class SalesOrderFiscalBillingService {
     if (!Object.values(CR_DOCUMENT_TYPES).includes(value as CrDocumentTypeCode)) {
       throw fiscalBillingError("BILLING_DOCUMENT_TYPE_INVALID");
     }
+  }
+
+  private resolveCommercialCondition(salesOrder: SalesOrderSource): {
+    paymentConditionCode: string;
+    creditTermDays: number | null;
+  } {
+    if (salesOrder.paymentConditionType === "CASH") {
+      return { paymentConditionCode: "01", creditTermDays: null };
+    }
+    if (
+      salesOrder.paymentConditionType === "CREDIT" &&
+      salesOrder.paymentTermUnit === "DAYS" &&
+      Number.isSafeInteger(salesOrder.paymentTermValue) &&
+      salesOrder.paymentTermValue! > 0
+    ) {
+      return {
+        paymentConditionCode: "02",
+        creditTermDays: salesOrder.paymentTermValue,
+      };
+    }
+    throw fiscalBillingError("BILLING_COMMERCIAL_CREDIT_TERM_INVALID");
+  }
+
+  private resolveReceiverIdentity(
+    documentTypeCode: string,
+    typeCode?: string,
+    number?: string,
+  ): { identificationType: string | null; identification: string | null } {
+    const supplied = typeCode !== undefined || number !== undefined;
+    if (
+      (documentTypeCode === CR_DOCUMENT_TYPES.ELECTRONIC_INVOICE && !supplied) ||
+      (supplied && (!typeCode || !number))
+    ) {
+      throw fiscalBillingError("BILLING_RECEIVER_IDENTIFICATION_INVALID");
+    }
+    if (!supplied) {
+      return { identificationType: null, identification: null };
+    }
+    const identification = normalizeCrIdentification(typeCode!, number!);
+    if (!identification) {
+      throw fiscalBillingError("BILLING_RECEIVER_IDENTIFICATION_INVALID");
+    }
+    return { identificationType: typeCode!, identification };
+  }
+
+  private resolvePaymentMethods(codes: string[]): BillingDocumentDraftCommand["paymentMethods"] {
+    if (!Array.isArray(codes) || codes.length < 1 || codes.length > 4) {
+      throw fiscalBillingError("BILLING_PAYMENT_METHOD_INVALID");
+    }
+    const supported = new Set<string>(CR_PAYMENT_METHOD_CODES);
+    const normalized: string[] = [];
+    for (const value of codes) {
+      const code = typeof value === "string" ? value.trim() : "";
+      if (!code || !supported.has(code)) {
+        throw fiscalBillingError("BILLING_PAYMENT_METHOD_INVALID");
+      }
+      if (!normalized.includes(code)) normalized.push(code);
+    }
+    return normalized.map((paymentMethodCode, index) => ({
+      paymentMethodOrder: index + 1,
+      paymentMethodCode,
+      description: null,
+      declaredAmount: null,
+    }));
+  }
+
+  private resolveExchangeRate(
+    currencyCode: string,
+    supplied?: string,
+  ): string | null {
+    if (currencyCode === "CRC") {
+      if (supplied !== undefined) {
+        throw fiscalBillingError("BILLING_EXCHANGE_RATE_INVALID");
+      }
+      return null;
+    }
+    if (
+      typeof supplied !== "string" ||
+      !/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(supplied)
+    ) {
+      throw fiscalBillingError("BILLING_EXCHANGE_RATE_INVALID");
+    }
+    const decimal = new Prisma.Decimal(supplied);
+    if (!decimal.isPositive() || decimal.isZero()) {
+      throw fiscalBillingError("BILLING_EXCHANGE_RATE_INVALID");
+    }
+    return supplied;
   }
 
 }

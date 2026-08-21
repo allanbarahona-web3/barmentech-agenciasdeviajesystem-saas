@@ -57,7 +57,15 @@ describe("PrismaBillingDocumentRepository generic draft persistence", () => {
     expect(JSON.stringify(data)).not.toContain("BD-SO-");
     expect(JSON.stringify(data)).not.toContain("billingDocumentNumberSequence");
     expect(data.lines.create[0].taxes.create).toHaveLength(1);
-    expect("paymentMethods" in data).toBe(false);
+    expect(data.paymentMethods.create).toEqual([
+      {
+        tenantId: "tenant-a",
+        paymentMethodOrder: 1,
+        paymentMethodCode: "04",
+        description: null,
+        declaredAmount: null,
+      },
+    ]);
     expect("references" in data).toBe(false);
   });
 
@@ -139,6 +147,8 @@ function genericCommand(): BillingDocumentDraftCommand {
     countryCode: "CR",
     currencyCode: "USD",
     exchangeRate: null,
+    paymentConditionCode: "01",
+    creditTermDays: null,
     issuer: {
       name: "Generic Issuer",
       identificationType: "02",
@@ -170,6 +180,14 @@ function genericCommand(): BillingDocumentDraftCommand {
       netTaxTotal: "13.0000",
       total: "113.0000",
     },
+    paymentMethods: [
+      {
+        paymentMethodOrder: 1,
+        paymentMethodCode: "04",
+        description: null,
+        declaredAmount: null,
+      },
+    ],
     lines: [
       {
         lineNumber: 1,

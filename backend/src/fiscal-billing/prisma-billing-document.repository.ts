@@ -91,8 +91,8 @@ export class PrismaBillingDocumentRepository
               ? null
               : new Prisma.Decimal(command.exchangeRate),
           issuedAt: null,
-          paymentConditionCode: null,
-          creditTermDays: null,
+          paymentConditionCode: command.paymentConditionCode,
+          creditTermDays: command.creditTermDays,
           dueDate: null,
           lifecycleStatus: "DRAFT",
           providerStatus: "NOT_SUBMITTED",
@@ -170,6 +170,15 @@ export class PrismaBillingDocumentRepository
                   netTaxAmount: new Prisma.Decimal(tax.netTaxAmount),
                 })),
               },
+            })),
+          },
+          paymentMethods: {
+            create: command.paymentMethods.map((method) => ({
+              tenantId: command.tenantId,
+              paymentMethodOrder: method.paymentMethodOrder,
+              paymentMethodCode: method.paymentMethodCode,
+              description: method.description,
+              declaredAmount: method.declaredAmount,
             })),
           },
         },
@@ -560,6 +569,7 @@ export class PrismaBillingDocumentRepository
     const document = await this.prisma.billingDocument.findFirst({
       where: { tenantId, id: documentId },
       include: {
+        paymentMethods: { orderBy: { paymentMethodOrder: "asc" } },
         lines: {
           orderBy: { lineNumber: "asc" },
           include: { taxes: { orderBy: { taxOrder: "asc" } } },
@@ -581,7 +591,10 @@ export class PrismaBillingDocumentRepository
       exoneratedTaxTotal: decimal(document.exoneratedTaxTotal),
       netTaxTotal: decimal(document.netTaxTotal),
       total: decimal(document.total),
-      paymentMethods: [],
+      paymentMethods: document.paymentMethods.map((method) => ({
+        ...method,
+        declaredAmount: decimal(method.declaredAmount),
+      })),
       references: [],
       lines: document.lines.map((line) => ({
         ...line,

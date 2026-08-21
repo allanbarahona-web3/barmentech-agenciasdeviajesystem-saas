@@ -1,5 +1,15 @@
 import { Transform } from "class-transformer";
-import { IsIn, IsInt, IsString, Max, Min } from "class-validator";
+import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  Max,
+  Min,
+} from "class-validator";
 import { CR_DOCUMENT_TYPES } from "../fiscal-billing.constants";
 
 export class ListEligibleSalesOrdersDto {
@@ -24,4 +34,22 @@ export class CreateBillingDraftDto {
     CR_DOCUMENT_TYPES.ELECTRONIC_TICKET,
   ])
   documentTypeCode!: string;
+
+  @IsOptional()
+  @IsIn(["01", "02", "03", "04"])
+  receiverIdentificationTypeCode?: string;
+
+  @IsOptional()
+  @IsString()
+  receiverIdentificationNumber?: string;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(4)
+  @IsString({ each: true })
+  paymentMethodCodes!: string[];
+
+  @IsOptional()
+  @IsString()
+  exchangeRate?: string;
 }

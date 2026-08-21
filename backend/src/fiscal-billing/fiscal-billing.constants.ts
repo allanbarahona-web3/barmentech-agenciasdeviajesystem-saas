@@ -17,6 +17,18 @@ export const CR_DOCUMENT_TYPE_CHOICES = [
   { code: CR_DOCUMENT_TYPES.ELECTRONIC_TICKET, label: "Tiquete electrónico" },
 ] as const;
 
+// Costa Rica v4.4 payment methods currently supported by persisted drafts.
+export const CR_PAYMENT_METHOD_CODES = [
+  "01",
+  "02",
+  "03",
+  "04",
+  "05",
+  "06",
+  "07",
+  "99",
+] as const;
+
 export function billingCreationDeduplicationKey(salesOrderId: string): string {
   return `billing-document:primary:sales-order:${salesOrderId}`;
 }

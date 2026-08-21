@@ -82,6 +82,8 @@ function commandWithoutSalesOrder(): BillingDocumentDraftCommand {
     countryCode: "CR",
     currencyCode: "CRC",
     exchangeRate: null,
+    paymentConditionCode: "01",
+    creditTermDays: null,
     issuer: {
       name: "Issuer",
       identificationType: "02",
@@ -113,6 +115,7 @@ function commandWithoutSalesOrder(): BillingDocumentDraftCommand {
       netTaxTotal: "0.0000",
       total: "0.0000",
     },
+    paymentMethods: [],
     lines: [],
     createdByUserId: "user-a",
   };
