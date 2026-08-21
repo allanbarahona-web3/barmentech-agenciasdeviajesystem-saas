@@ -31,11 +31,43 @@ describe("BillingDocumentService generic core", () => {
     );
     expect(result).toEqual({ id: "document-a", sourceType: "CUSTOM_INTAKE" });
   });
+
+  it("delegates the internal issuance request without accepting fiscal identity", async () => {
+    const allocation = {
+      billingDocumentId: "document-a",
+      sequenceId: "sequence-a",
+      allocatedSequenceNumber: "225",
+      providerBase: "0000000225",
+      fiscalNumber: "00100001010000000225",
+      issuanceIdempotencyKey:
+        "billing-document:document-a:electronic-issuance:v1",
+      outboxEventId: "outbox-a",
+      outboxDeduplicationKey:
+        "billing-document:document-a:electronic-issuance-requested:v1",
+      lifecycleStatus: "CONFIRMED",
+      providerStatus: "PENDING",
+      newlyAllocated: true,
+    };
+    const repository = {
+      requestElectronicIssuance: jest.fn().mockResolvedValue(allocation),
+    };
+    const service = new BillingDocumentService(repository as never);
+
+    await expect(
+      service.requestElectronicIssuance("tenant-a", "document-a", "user-a"),
+    ).resolves.toEqual(allocation);
+    expect(repository.requestElectronicIssuance).toHaveBeenCalledWith(
+      "tenant-a",
+      "document-a",
+      "user-a",
+    );
+  });
 });
 
 function commandWithoutSalesOrder(): BillingDocumentDraftCommand {
   return {
     tenantId: "tenant-a",
+    fiscalIssuerId: null,
     internalNumber: "GENERIC-1",
     documentTypeCode: "01",
     billingMode: BillingMode.ELECTRONIC_PROVIDER,

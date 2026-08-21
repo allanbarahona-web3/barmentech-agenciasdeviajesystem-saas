@@ -1,5 +1,6 @@
 import type {
   BillingDocumentDraftCommand,
+  BillingDocumentFiscalAllocationResult,
   PrimaryDocumentSummary,
 } from "./billing-document.types";
 
@@ -16,5 +17,10 @@ export interface BillingDocumentRepository {
   createDraft(
     command: BillingDocumentDraftCommand,
   ): Promise<PrimaryDocumentSummary>;
+  requestElectronicIssuance(
+    tenantId: string,
+    billingDocumentId: string,
+    actorUserId: string,
+  ): Promise<BillingDocumentFiscalAllocationResult>;
   findWorkspace(tenantId: string, documentId: string): Promise<unknown | null>;
 }

@@ -163,6 +163,7 @@ describe("SalesOrderFiscalBillingService", () => {
       const create = repository.createDraft.mock.calls[0][0];
       expect(create).toMatchObject({
         tenantId: "tenant-a",
+        fiscalIssuerId: "issuer-a",
         documentTypeCode,
         internalNumber: "BD-SO-sales-a",
         source: {

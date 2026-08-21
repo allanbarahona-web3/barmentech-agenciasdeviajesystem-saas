@@ -198,6 +198,7 @@ export class SalesOrderFiscalBillingService {
     const configuration = analysis.configuration!;
     const command: BillingDocumentDraftCommand = {
       tenantId,
+      fiscalIssuerId: issuer.id,
       internalNumber,
       documentTypeCode: input.documentTypeCode,
       billingMode: BillingMode.ELECTRONIC_PROVIDER,

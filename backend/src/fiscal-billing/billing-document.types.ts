@@ -76,6 +76,7 @@ export interface BillingDocumentDraftTaxSnapshot {
 
 export interface BillingDocumentDraftCommand {
   tenantId: string;
+  fiscalIssuerId: string | null;
   internalNumber: string;
   documentTypeCode: string;
   billingMode: BillingMode;
@@ -96,4 +97,18 @@ export interface PrimaryDocumentSummary {
   internalNumber: string;
   lifecycleStatus: string;
   documentTypeCode: string;
+}
+
+export interface BillingDocumentFiscalAllocationResult {
+  billingDocumentId: string;
+  sequenceId: string;
+  allocatedSequenceNumber: string;
+  providerBase: string;
+  fiscalNumber: string;
+  issuanceIdempotencyKey: string;
+  outboxEventId: string;
+  outboxDeduplicationKey: string;
+  lifecycleStatus: string;
+  providerStatus: string;
+  newlyAllocated: boolean;
 }

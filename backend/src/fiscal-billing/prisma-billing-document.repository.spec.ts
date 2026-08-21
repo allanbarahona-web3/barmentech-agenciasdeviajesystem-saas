@@ -36,6 +36,8 @@ describe("PrismaBillingDocumentRepository generic draft persistence", () => {
     );
     const data = tx.billingDocument.create.mock.calls[0][0].data;
     expect(data).toMatchObject({
+      tenantId: "tenant-a",
+      fiscalIssuerId: "issuer-generic",
       internalNumber: "GENERIC-REF-1",
       sourceType: "CUSTOM_INTAKE",
       sourceId: "custom-source-1",
@@ -47,18 +49,82 @@ describe("PrismaBillingDocumentRepository generic draft persistence", () => {
       fiscalNumber: null,
       haciendaKey: null,
       issuedAt: null,
+      lifecycleStatus: "DRAFT",
+      providerStatus: "NOT_SUBMITTED",
+      taxAuthorityStatus: "NOT_SUBMITTED",
     });
     expect(JSON.stringify(data)).not.toContain("SALES_ORDER");
     expect(JSON.stringify(data)).not.toContain("BD-SO-");
+    expect(JSON.stringify(data)).not.toContain("billingDocumentNumberSequence");
     expect(data.lines.create[0].taxes.create).toHaveLength(1);
     expect("paymentMethods" in data).toBe(false);
     expect("references" in data).toBe(false);
+  });
+
+  it("supports a generic draft with no local fiscal issuer", async () => {
+    const tx = {
+      billingDocument: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({
+          id: "external-document",
+          internalNumber: "EXTERNAL-1",
+          lifecycleStatus: "DRAFT",
+          documentTypeCode: "01",
+        }),
+      },
+    };
+    const prisma = {
+      $transaction: jest.fn((work: (client: typeof tx) => unknown) => work(tx)),
+    };
+    const repository = new PrismaBillingDocumentRepository(prisma as never);
+    const command = genericCommand();
+    command.billingMode = BillingMode.EXTERNAL_REGISTRATION;
+    command.fiscalIssuerId = null;
+
+    await repository.createDraft(command);
+
+    expect(tx.billingDocument.create.mock.calls[0][0].data).toMatchObject({
+      tenantId: "tenant-a",
+      fiscalIssuerId: null,
+      billingMode: BillingMode.EXTERNAL_REGISTRATION,
+      fiscalNumber: null,
+      haciendaKey: null,
+      issuedAt: null,
+      lifecycleStatus: "DRAFT",
+      providerStatus: "NOT_SUBMITTED",
+    });
+  });
+
+  it("returns an existing primary draft without replacing its issuer", async () => {
+    const existing = {
+      id: "existing-document",
+      internalNumber: "GENERIC-REF-1",
+      lifecycleStatus: "DRAFT",
+      documentTypeCode: "01",
+    };
+    const tx = {
+      billingDocument: {
+        findFirst: jest.fn().mockResolvedValue(existing),
+        create: jest.fn(),
+      },
+    };
+    const prisma = {
+      $transaction: jest.fn((work: (client: typeof tx) => unknown) => work(tx)),
+    };
+    const repository = new PrismaBillingDocumentRepository(prisma as never);
+    const command = genericCommand();
+    command.fiscalIssuerId = "different-requested-issuer";
+
+    await expect(repository.createDraft(command)).resolves.toEqual(existing);
+
+    expect(tx.billingDocument.create).not.toHaveBeenCalled();
   });
 });
 
 function genericCommand(): BillingDocumentDraftCommand {
   return {
     tenantId: "tenant-a",
+    fiscalIssuerId: "issuer-generic",
     internalNumber: "GENERIC-REF-1",
     documentTypeCode: "01",
     billingMode: BillingMode.ELECTRONIC_PROVIDER,

@@ -20,6 +20,18 @@ export class BillingDocumentService {
     return this.repository.findPrimaryDocument(tenantId, sourceType, sourceId);
   }
 
+  requestElectronicIssuance(
+    tenantId: string,
+    billingDocumentId: string,
+    actorUserId: string,
+  ) {
+    return this.repository.requestElectronicIssuance(
+      tenantId,
+      billingDocumentId,
+      actorUserId,
+    );
+  }
+
   async createOrResumeDraft(command: BillingDocumentDraftCommand) {
     const primarySource =
       command.source?.sourceRole === "PRIMARY" ? command.source : null;
