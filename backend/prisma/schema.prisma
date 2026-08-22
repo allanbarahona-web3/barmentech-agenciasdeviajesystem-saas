@@ -1284,6 +1284,11 @@ enum Currency {
   CRC
 }
 
+enum OfficialExchangeRateType {
+  REFERENCE_BUY
+  REFERENCE_SELL
+}
+
 enum AdditionalServiceExchangeRateType {
   SELL
 }
@@ -1793,78 +1798,83 @@ enum BillingArtifactStatus {
 }
 
 model BillingDocument {
-  id                              String                         @id @default(cuid())
-  tenantId                        String
-  documentTypeCode                String                         @db.VarChar(4)
-  billingMode                     BillingMode
-  internalNumber                  String                         @db.VarChar(50)
-  fiscalNumber                    String?                        @db.VarChar(50)
-  haciendaKey                     String?                        @db.VarChar(50)
-  sourceType                      String?                        @db.VarChar(50)
-  sourceId                        String?                        @db.VarChar(100)
-  sourceNumber                    String?                        @db.VarChar(100)
-  sourceRole                      BillingDocumentSourceRole      @default(PRIMARY)
-  creationDeduplicationKey        String?                        @db.VarChar(200)
-  fiscalIssuerId                  String?
-  billingDocumentNumberSequenceId String?
-  allocatedSequenceNumber         BigInt?
-  issuanceIdempotencyKey          String?                        @db.VarChar(100)
-  providerDocumentId              String?                        @db.VarChar(255)
-  providerEnvironment             BillingProviderEnvironment?
-  providerRequestHash             String?                        @db.VarChar(64)
-  providerLastAttemptAt           DateTime?
-  providerLastErrorCode           String?                        @db.VarChar(100)
-  providerLastErrorAt             DateTime?
-  providerReconciliationRequired  Boolean                        @default(false)
-  schemaVersion                   String                         @db.VarChar(20)
-  countryCode                     String                         @default("CR") @db.VarChar(2)
-  currencyCode                    String                         @db.VarChar(3)
-  exchangeRate                    Decimal?                       @db.Decimal(18, 8)
-  issuedAt                        DateTime?
-  paymentConditionCode            String?                        @db.VarChar(4)
-  creditTermDays                  Int?
-  dueDate                         DateTime?                      @db.Date
-  lifecycleStatus                 BillingDocumentLifecycleStatus @default(DRAFT)
-  providerStatus                  BillingProviderStatus          @default(NOT_SUBMITTED)
-  taxAuthorityStatus              BillingTaxAuthorityStatus      @default(NOT_SUBMITTED)
-  artifactStatus                  BillingArtifactStatus          @default(NOT_GENERATED)
-  issuerName                      String
-  issuerIdentificationType        String                         @db.VarChar(4)
-  issuerIdentification            String                         @db.VarChar(30)
-  issuerEconomicActivityCode      String?                        @db.VarChar(10)
-  issuerEstablishmentCode         String?                        @db.VarChar(3)
-  issuerTerminalCode              String?                        @db.VarChar(5)
-  issuerEmail                     String?
-  issuerPhone                     String?
-  issuerAddressSnapshot           Json?
-  receiverName                    String?
-  receiverIdentificationType      String?                        @db.VarChar(4)
-  receiverIdentification          String?                        @db.VarChar(30)
-  receiverEconomicActivityCode    String?                        @db.VarChar(10)
-  receiverEmail                   String?
-  receiverPhone                   String?
-  receiverAddressSnapshot         Json?
-  grossSubtotal                   Decimal                        @db.Decimal(18, 4)
-  discountTotal                   Decimal                        @db.Decimal(18, 4)
-  taxableTotal                    Decimal                        @db.Decimal(18, 4)
-  exemptTotal                     Decimal                        @db.Decimal(18, 4)
-  exoneratedTotal                 Decimal                        @db.Decimal(18, 4)
-  grossTaxTotal                   Decimal                        @db.Decimal(18, 4)
-  exoneratedTaxTotal              Decimal                        @db.Decimal(18, 4)
-  netTaxTotal                     Decimal                        @db.Decimal(18, 4)
-  total                           Decimal                        @db.Decimal(18, 4)
-  confirmedAt                     DateTime?
-  submittedAt                     DateTime?
-  createdBy                       String?
-  createdAt                       DateTime                       @default(now())
-  updatedAt                       DateTime                       @updatedAt
-  tenant                          Tenant                         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  fiscalIssuer                    FiscalIssuer?                  @relation("BillingDocumentFiscalIssuer", fields: [fiscalIssuerId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "billing_documents_fiscal_issuer_tenant_fkey")
-  billingDocumentNumberSequence   BillingDocumentNumberSequence? @relation("BillingDocumentAllocatedNumberSequence", fields: [billingDocumentNumberSequenceId, tenantId, fiscalIssuerId, issuerEstablishmentCode, issuerTerminalCode, documentTypeCode], references: [id, tenantId, fiscalIssuerId, establishmentCode, terminalCode, documentTypeCode], onDelete: Restrict, map: "billing_documents_number_sequence_scope_fkey")
-  lines                           BillingDocumentLine[]
-  references                      BillingDocumentReference[]     @relation("BillingDocumentReferences")
-  referencedBy                    BillingDocumentReference[]     @relation("ReferencedBillingDocuments")
-  paymentMethods                  BillingDocumentPaymentMethod[]
+  id                                String                           @id @default(cuid())
+  tenantId                          String
+  documentTypeCode                  String                           @db.VarChar(4)
+  billingMode                       BillingMode
+  internalNumber                    String                           @db.VarChar(50)
+  fiscalNumber                      String?                          @db.VarChar(50)
+  haciendaKey                       String?                          @db.VarChar(50)
+  sourceType                        String?                          @db.VarChar(50)
+  sourceId                          String?                          @db.VarChar(100)
+  sourceNumber                      String?                          @db.VarChar(100)
+  sourceRole                        BillingDocumentSourceRole        @default(PRIMARY)
+  creationDeduplicationKey          String?                          @db.VarChar(200)
+  fiscalIssuerId                    String?
+  billingDocumentNumberSequenceId   String?
+  allocatedSequenceNumber           BigInt?
+  issuanceIdempotencyKey            String?                          @db.VarChar(100)
+  providerDocumentId                String?                          @db.VarChar(255)
+  providerEnvironment               BillingProviderEnvironment?
+  providerRequestHash               String?                          @db.VarChar(64)
+  providerLastAttemptAt             DateTime?
+  providerLastErrorCode             String?                          @db.VarChar(100)
+  providerLastErrorAt               DateTime?
+  providerReconciliationRequired    Boolean                          @default(false)
+  schemaVersion                     String                           @db.VarChar(20)
+  countryCode                       String                           @default("CR") @db.VarChar(2)
+  currencyCode                      String                           @db.VarChar(3)
+  exchangeRate                      Decimal?                         @db.Decimal(18, 8)
+  officialExchangeRateObservationId String?
+  fiscalExchangeRateEffectiveDate   DateTime?                        @db.Date
+  fiscalExchangeRateSourceAuthority String?                          @db.VarChar(100)
+  fiscalExchangeRateIndicatorCode   String?                          @db.VarChar(100)
+  issuedAt                          DateTime?
+  paymentConditionCode              String?                          @db.VarChar(4)
+  creditTermDays                    Int?
+  dueDate                           DateTime?                        @db.Date
+  lifecycleStatus                   BillingDocumentLifecycleStatus   @default(DRAFT)
+  providerStatus                    BillingProviderStatus            @default(NOT_SUBMITTED)
+  taxAuthorityStatus                BillingTaxAuthorityStatus        @default(NOT_SUBMITTED)
+  artifactStatus                    BillingArtifactStatus            @default(NOT_GENERATED)
+  issuerName                        String
+  issuerIdentificationType          String                           @db.VarChar(4)
+  issuerIdentification              String                           @db.VarChar(30)
+  issuerEconomicActivityCode        String?                          @db.VarChar(10)
+  issuerEstablishmentCode           String?                          @db.VarChar(3)
+  issuerTerminalCode                String?                          @db.VarChar(5)
+  issuerEmail                       String?
+  issuerPhone                       String?
+  issuerAddressSnapshot             Json?
+  receiverName                      String?
+  receiverIdentificationType        String?                          @db.VarChar(4)
+  receiverIdentification            String?                          @db.VarChar(30)
+  receiverEconomicActivityCode      String?                          @db.VarChar(10)
+  receiverEmail                     String?
+  receiverPhone                     String?
+  receiverAddressSnapshot           Json?
+  grossSubtotal                     Decimal                          @db.Decimal(18, 4)
+  discountTotal                     Decimal                          @db.Decimal(18, 4)
+  taxableTotal                      Decimal                          @db.Decimal(18, 4)
+  exemptTotal                       Decimal                          @db.Decimal(18, 4)
+  exoneratedTotal                   Decimal                          @db.Decimal(18, 4)
+  grossTaxTotal                     Decimal                          @db.Decimal(18, 4)
+  exoneratedTaxTotal                Decimal                          @db.Decimal(18, 4)
+  netTaxTotal                       Decimal                          @db.Decimal(18, 4)
+  total                             Decimal                          @db.Decimal(18, 4)
+  confirmedAt                       DateTime?
+  submittedAt                       DateTime?
+  createdBy                         String?
+  createdAt                         DateTime                         @default(now())
+  updatedAt                         DateTime                         @updatedAt
+  tenant                            Tenant                           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  fiscalIssuer                      FiscalIssuer?                    @relation("BillingDocumentFiscalIssuer", fields: [fiscalIssuerId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "billing_documents_fiscal_issuer_tenant_fkey")
+  billingDocumentNumberSequence     BillingDocumentNumberSequence?   @relation("BillingDocumentAllocatedNumberSequence", fields: [billingDocumentNumberSequenceId, tenantId, fiscalIssuerId, issuerEstablishmentCode, issuerTerminalCode, documentTypeCode], references: [id, tenantId, fiscalIssuerId, establishmentCode, terminalCode, documentTypeCode], onDelete: Restrict, map: "billing_documents_number_sequence_scope_fkey")
+  lines                             BillingDocumentLine[]
+  references                        BillingDocumentReference[]       @relation("BillingDocumentReferences")
+  referencedBy                      BillingDocumentReference[]       @relation("ReferencedBillingDocuments")
+  paymentMethods                    BillingDocumentPaymentMethod[]
+  officialExchangeRateObservation   OfficialExchangeRateObservation? @relation("BillingDocumentOfficialExchangeRate", fields: [officialExchangeRateObservationId, fiscalExchangeRateEffectiveDate, fiscalExchangeRateSourceAuthority, fiscalExchangeRateIndicatorCode], references: [id, effectiveDate, sourceAuthority, sourceIndicatorCode], onDelete: Restrict, onUpdate: Restrict, map: "billing_documents_official_fx_snapshot_fkey")
 
   @@unique([tenantId, internalNumber])
   @@unique([tenantId, fiscalNumber])
@@ -1879,7 +1889,33 @@ model BillingDocument {
   @@index([tenantId, fiscalIssuerId], map: "billing_documents_tenant_fiscal_issuer_idx")
   @@index([tenantId, billingDocumentNumberSequenceId], map: "billing_documents_tenant_number_sequence_idx")
   @@index([tenantId, providerReconciliationRequired, providerLastAttemptAt], map: "billing_docs_tenant_reconciliation_attempt_idx")
+  @@index([officialExchangeRateObservationId], map: "billing_documents_official_fx_observation_idx")
   @@map("billing_documents")
+}
+
+model OfficialExchangeRateObservation {
+  id                  String                   @id @default(cuid())
+  countryCode         String                   @db.VarChar(2)
+  foreignCurrencyCode String                   @db.VarChar(3)
+  localCurrencyCode   String                   @db.VarChar(3)
+  rateType            OfficialExchangeRateType
+  effectiveDate       DateTime                 @db.Date
+  value               Decimal                  @db.Decimal(30, 12)
+  sourceAuthority     String                   @db.VarChar(100)
+  sourceIndicatorCode String                   @db.VarChar(100)
+  retrievedAt         DateTime
+  sourcePublishedAt   DateTime?
+  requestIdentity     String                   @db.VarChar(200)
+  responseHash        String?                  @db.VarChar(64)
+  createdAt           DateTime                 @default(now())
+  billingDocuments    BillingDocument[]        @relation("BillingDocumentOfficialExchangeRate")
+
+  @@unique([countryCode, foreignCurrencyCode, localCurrencyCode, rateType, effectiveDate, sourceAuthority, sourceIndicatorCode], map: "official_fx_obs_authoritative_identity_key")
+  @@unique([requestIdentity], map: "official_fx_obs_request_identity_key")
+  @@unique([id, effectiveDate, sourceAuthority, sourceIndicatorCode], map: "official_fx_obs_snapshot_identity_key")
+  @@index([countryCode, foreignCurrencyCode, localCurrencyCode, rateType, effectiveDate], map: "official_fx_obs_resolution_idx")
+  @@index([sourceAuthority, sourceIndicatorCode, effectiveDate], map: "official_fx_obs_source_audit_idx")
+  @@map("official_exchange_rate_observations")
 }
 
 model BillingDocumentLine {
