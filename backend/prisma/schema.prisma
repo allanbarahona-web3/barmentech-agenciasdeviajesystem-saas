@@ -1824,7 +1824,9 @@ model BillingDocument {
   schemaVersion                     String                           @db.VarChar(20)
   countryCode                       String                           @default("CR") @db.VarChar(2)
   currencyCode                      String                           @db.VarChar(3)
-  exchangeRate                      Decimal?                         @db.Decimal(18, 8)
+  exchangeRate                      Decimal?                         @db.Decimal(30, 12)
+  fiscalEmissionAt                  DateTime?
+  fiscalIssueDate                   DateTime?                        @db.Date
   officialExchangeRateObservationId String?
   fiscalExchangeRateEffectiveDate   DateTime?                        @db.Date
   fiscalExchangeRateSourceAuthority String?                          @db.VarChar(100)

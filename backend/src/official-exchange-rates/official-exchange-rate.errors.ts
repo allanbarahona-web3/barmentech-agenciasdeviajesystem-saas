@@ -1,6 +1,7 @@
 export type OfficialExchangeRateProviderErrorCode =
   | "BCCR_EXCHANGE_RATE_CONFIGURATION_MISSING"
   | "BCCR_EXCHANGE_RATE_REQUEST_INVALID"
+  | "BCCR_EXCHANGE_RATE_AUTHENTICATION_FAILED"
   | "BCCR_EXCHANGE_RATE_UNAVAILABLE"
   | "BCCR_EXCHANGE_RATE_TIMEOUT"
   | "BCCR_EXCHANGE_RATE_RATE_LIMITED"
@@ -11,6 +12,8 @@ const SAFE_MESSAGES: Record<OfficialExchangeRateProviderErrorCode, string> = {
     "La configuración del servicio oficial de tipos de cambio está incompleta.",
   BCCR_EXCHANGE_RATE_REQUEST_INVALID:
     "La consulta del tipo de cambio oficial no es válida.",
+  BCCR_EXCHANGE_RATE_AUTHENTICATION_FAILED:
+    "No fue posible autenticar el acceso al servicio oficial de tipos de cambio.",
   BCCR_EXCHANGE_RATE_UNAVAILABLE:
     "El servicio oficial de tipos de cambio no está disponible.",
   BCCR_EXCHANGE_RATE_TIMEOUT:
