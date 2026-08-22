@@ -30,6 +30,7 @@ import { TravelContextModule } from "./travel-context/travel-context.module";
 import { GeneratedDocumentsModule } from "./generated-documents";
 import { FiscalCatalogModule } from "./fiscal-catalogs/fiscal-catalog.module";
 import { FiscalBillingModule } from "./fiscal-billing/fiscal-billing.module";
+import { OfficialExchangeRateModule } from "./official-exchange-rates/official-exchange-rate.module";
 import { TerritorialCatalogModule } from "./territorial-catalogs/territorial-catalog.module";
 
 @Module({
@@ -70,6 +71,7 @@ import { TerritorialCatalogModule } from "./territorial-catalogs/territorial-cat
     GeneratedDocumentsModule,
     FiscalCatalogModule,
     FiscalBillingModule,
+    OfficialExchangeRateModule,
     TerritorialCatalogModule,
   ],
   providers: [
