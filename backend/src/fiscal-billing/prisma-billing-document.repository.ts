@@ -86,10 +86,7 @@ export class PrismaBillingDocumentRepository
           schemaVersion: command.schemaVersion,
           countryCode: command.countryCode,
           currencyCode: command.currencyCode,
-          exchangeRate:
-            command.exchangeRate === null
-              ? null
-              : new Prisma.Decimal(command.exchangeRate),
+          exchangeRate: null,
           issuedAt: null,
           paymentConditionCode: command.paymentConditionCode,
           creditTermDays: command.creditTermDays,

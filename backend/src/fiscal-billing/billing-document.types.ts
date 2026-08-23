@@ -91,7 +91,6 @@ export interface BillingDocumentDraftCommand {
   schemaVersion: string;
   countryCode: string;
   currencyCode: string;
-  exchangeRate: string | null;
   paymentConditionCode: string;
   creditTermDays: number | null;
   issuer: BillingDocumentIssuerSnapshot;

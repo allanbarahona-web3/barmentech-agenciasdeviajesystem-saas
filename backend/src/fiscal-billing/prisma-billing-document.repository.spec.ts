@@ -45,6 +45,7 @@ describe("PrismaBillingDocumentRepository generic draft persistence", () => {
       sourceRole: "PRIMARY",
       creationDeduplicationKey: "custom-deduplication-key",
       currencyCode: "USD",
+      exchangeRate: null,
       receiverName: "Generic Receiver",
       fiscalNumber: null,
       haciendaKey: null,
@@ -53,6 +54,12 @@ describe("PrismaBillingDocumentRepository generic draft persistence", () => {
       providerStatus: "NOT_SUBMITTED",
       taxAuthorityStatus: "NOT_SUBMITTED",
     });
+    expect(data).not.toHaveProperty("officialExchangeRateObservationId");
+    expect(data).not.toHaveProperty("fiscalExchangeRateEffectiveDate");
+    expect(data).not.toHaveProperty("fiscalExchangeRateSourceAuthority");
+    expect(data).not.toHaveProperty("fiscalExchangeRateIndicatorCode");
+    expect(data).not.toHaveProperty("fiscalEmissionAt");
+    expect(data).not.toHaveProperty("fiscalIssueDate");
     expect(JSON.stringify(data)).not.toContain("SALES_ORDER");
     expect(JSON.stringify(data)).not.toContain("BD-SO-");
     expect(JSON.stringify(data)).not.toContain("billingDocumentNumberSequence");
@@ -67,6 +74,41 @@ describe("PrismaBillingDocumentRepository generic draft persistence", () => {
       },
     ]);
     expect("references" in data).toBe(false);
+  });
+
+  it("persists a CRC draft with no fiscal exchange-rate or emission snapshot", async () => {
+    const tx = {
+      billingDocument: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({
+          id: "document-crc",
+          internalNumber: "GENERIC-REF-1",
+          lifecycleStatus: "DRAFT",
+          documentTypeCode: "01",
+        }),
+      },
+    };
+    const prisma = {
+      $transaction: jest.fn((work: (client: typeof tx) => unknown) => work(tx)),
+    };
+    const command = genericCommand();
+    command.currencyCode = "CRC";
+
+    await new PrismaBillingDocumentRepository(prisma as never).createDraft(command);
+
+    const data = tx.billingDocument.create.mock.calls[0][0].data;
+    expect(data.currencyCode).toBe("CRC");
+    expect(data.exchangeRate).toBeNull();
+    for (const field of [
+      "officialExchangeRateObservationId",
+      "fiscalExchangeRateEffectiveDate",
+      "fiscalExchangeRateSourceAuthority",
+      "fiscalExchangeRateIndicatorCode",
+      "fiscalEmissionAt",
+      "fiscalIssueDate",
+    ]) {
+      expect(data).not.toHaveProperty(field);
+    }
   });
 
   it("supports a generic draft with no local fiscal issuer", async () => {
@@ -146,7 +188,6 @@ function genericCommand(): BillingDocumentDraftCommand {
     schemaVersion: "4.4",
     countryCode: "CR",
     currencyCode: "USD",
-    exchangeRate: null,
     paymentConditionCode: "01",
     creditTermDays: null,
     issuer: {

@@ -81,7 +81,6 @@ function commandWithoutSalesOrder(): BillingDocumentDraftCommand {
     schemaVersion: "4.4",
     countryCode: "CR",
     currencyCode: "CRC",
-    exchangeRate: null,
     paymentConditionCode: "01",
     creditTermDays: null,
     issuer: {

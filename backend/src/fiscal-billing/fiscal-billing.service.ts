@@ -40,7 +40,6 @@ type CreateDraftInput = {
   receiverIdentificationTypeCode?: string;
   receiverIdentificationNumber?: string;
   paymentMethodCodes: string[];
-  exchangeRate?: string;
 };
 
 type ReadinessIssue = {
@@ -202,10 +201,6 @@ export class SalesOrderFiscalBillingService {
       input.receiverIdentificationNumber,
     );
     const paymentMethods = this.resolvePaymentMethods(input.paymentMethodCodes);
-    const exchangeRate = this.resolveExchangeRate(
-      analysis.salesOrder.currency,
-      input.exchangeRate,
-    );
     const primaryActivity = issuer.economicActivities.find(
       (activity) => activity.isPrimary,
     );
@@ -237,7 +232,6 @@ export class SalesOrderFiscalBillingService {
       schemaVersion: configuration.fiscalSchemaVersion,
       countryCode: configuration.countryCode,
       currencyCode: analysis.salesOrder.currency,
-      exchangeRate,
       paymentConditionCode: commercialCondition.paymentConditionCode,
       creditTermDays: commercialCondition.creditTermDays,
       issuer: {
@@ -590,29 +584,6 @@ export class SalesOrderFiscalBillingService {
       description: null,
       declaredAmount: null,
     }));
-  }
-
-  private resolveExchangeRate(
-    currencyCode: string,
-    supplied?: string,
-  ): string | null {
-    if (currencyCode === "CRC") {
-      if (supplied !== undefined) {
-        throw fiscalBillingError("BILLING_EXCHANGE_RATE_INVALID");
-      }
-      return null;
-    }
-    if (
-      typeof supplied !== "string" ||
-      !/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(supplied)
-    ) {
-      throw fiscalBillingError("BILLING_EXCHANGE_RATE_INVALID");
-    }
-    const decimal = new Prisma.Decimal(supplied);
-    if (!decimal.isPositive() || decimal.isZero()) {
-      throw fiscalBillingError("BILLING_EXCHANGE_RATE_INVALID");
-    }
-    return supplied;
   }
 
 }

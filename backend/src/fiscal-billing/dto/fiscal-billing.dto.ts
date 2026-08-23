@@ -49,7 +49,4 @@ export class CreateBillingDraftDto {
   @IsString({ each: true })
   paymentMethodCodes!: string[];
 
-  @IsOptional()
-  @IsString()
-  exchangeRate?: string;
 }

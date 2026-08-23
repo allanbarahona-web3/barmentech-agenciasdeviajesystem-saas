@@ -1,4 +1,4 @@
-import { ForbiddenException, RequestMethod } from "@nestjs/common";
+import { ForbiddenException, RequestMethod, ValidationPipe } from "@nestjs/common";
 import {
   GUARDS_METADATA,
   METHOD_METADATA,
@@ -12,6 +12,7 @@ import { RolesGuard } from "../auth/roles.guard";
 import { BillingDocumentService } from "./billing-document.service";
 import { FiscalBillingController } from "./fiscal-billing.controller";
 import { fiscalBillingError } from "./fiscal-billing.errors";
+import { CreateBillingDraftDto } from "./dto/fiscal-billing.dto";
 
 describe("FiscalBillingController authorization", () => {
   it("declares only ADMIN and FACTURACION_COBROS roles", () => {
@@ -34,6 +35,34 @@ describe("FiscalBillingController authorization", () => {
       expect(() => canActivate(role)).toThrow(ForbiddenException);
     },
   );
+});
+
+describe("FiscalBillingController draft request validation", () => {
+  it("rejects caller-owned exchangeRate through the global pipe contract", async () => {
+    const pipe = new ValidationPipe({
+      whitelist: true,
+      transform: true,
+      forbidNonWhitelisted: true,
+    });
+
+    await expect(
+      pipe.transform(
+        {
+          fiscalIssuerId: "issuer-a",
+          documentTypeCode: "04",
+          paymentMethodCodes: ["01"],
+          exchangeRate: "454.34",
+        },
+        { type: "body", metatype: CreateBillingDraftDto },
+      ),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({
+        message: expect.arrayContaining([
+          expect.stringContaining("exchangeRate should not exist"),
+        ]),
+      }),
+    });
+  });
 });
 
 describe("FiscalBillingController electronic issuance request", () => {

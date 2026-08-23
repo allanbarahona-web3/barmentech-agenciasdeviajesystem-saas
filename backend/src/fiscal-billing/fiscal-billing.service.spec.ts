@@ -182,7 +182,6 @@ describe("SalesOrderFiscalBillingService", () => {
         issuer: { economicActivityCode: "791100" },
         paymentConditionCode: "01",
         creditTermDays: null,
-        exchangeRate: null,
         paymentMethods: [
           {
             paymentMethodOrder: 1,
@@ -192,6 +191,7 @@ describe("SalesOrderFiscalBillingService", () => {
           },
         ],
       });
+      expect(create).not.toHaveProperty("exchangeRate");
       expect(create.lines).toEqual([
         expect.objectContaining({
           quantity: "1.0000",
@@ -214,7 +214,7 @@ describe("SalesOrderFiscalBillingService", () => {
     },
   );
 
-  it("maps CREDIT days exactly and takes currency only from the Sales Order", async () => {
+  it("creates a USD draft without a caller or commercial exchange rate", async () => {
     const { service, repository } = setup({
       salesOrder: salesOrder({
         currency: "USD",
@@ -227,16 +227,27 @@ describe("SalesOrderFiscalBillingService", () => {
     await service.createOrResumeDraft(
       "tenant-a",
       "sales-a",
-      { ...draftInput, exchangeRate: "523.12345678" },
+      draftInput,
       "user-a",
     );
 
-    expect(repository.createDraft.mock.calls[0][0]).toMatchObject({
+    const command = repository.createDraft.mock.calls[0][0];
+    expect(command).toMatchObject({
       currencyCode: "USD",
-      exchangeRate: "523.12345678",
       paymentConditionCode: "02",
       creditTermDays: 45,
+      totals: {
+        grossSubtotal: "100.0000",
+        grossTaxTotal: "13.0000",
+        total: "113.0000",
+      },
     });
+    expect(command).not.toHaveProperty("exchangeRate");
+    expect(Object.keys(service)).toEqual([
+      "repository",
+      "fiscalCatalogService",
+      "billingDocumentService",
+    ]);
   });
 
   it.each([
@@ -333,34 +344,6 @@ describe("SalesOrderFiscalBillingService", () => {
     },
   );
 
-  it("rejects contradictory CRC and missing/non-canonical/non-positive foreign exchange rates", async () => {
-    const local = setup();
-    await expectCode(
-      local.service.createOrResumeDraft(
-        "tenant-a",
-        "sales-a",
-        { ...draftInput, exchangeRate: "1" },
-        "user-a",
-      ),
-      "BILLING_EXCHANGE_RATE_INVALID",
-    );
-    expect(local.repository.createDraft).not.toHaveBeenCalled();
-
-    for (const exchangeRate of [undefined, "0", "-1", "01.5", "1e3", " 500.1 "]) {
-      const foreign = setup({ salesOrder: salesOrder({ currency: "USD" }) });
-      await expectCode(
-        foreign.service.createOrResumeDraft(
-          "tenant-a",
-          "sales-a",
-          { ...draftInput, exchangeRate },
-          "user-a",
-        ),
-        "BILLING_EXCHANGE_RATE_INVALID",
-      );
-      expect(foreign.repository.createDraft).not.toHaveBeenCalled();
-    }
-  });
-
   it("keeps repository and global-readiness operations bounded for multiple lines", async () => {
     const secondLine = sourceLine({
       id: "line-b",
@@ -413,6 +396,25 @@ describe("SalesOrderFiscalBillingService", () => {
     expect(repository.createDraft).not.toHaveBeenCalled();
     expect(repository.findSalesOrder).not.toHaveBeenCalled();
     expect(fiscalCatalog.evaluateFiscalProfiles).not.toHaveBeenCalled();
+  });
+
+  it("returns a resumed legacy draft without clearing its persisted exchange rate", async () => {
+    const { service, repository } = setup();
+    const legacyWorkspace = { ...workspace, exchangeRate: "523.12345678" };
+    repository.findPrimaryDocument.mockResolvedValueOnce(primaryDocument());
+    repository.findWorkspace.mockResolvedValueOnce(legacyWorkspace);
+
+    await expect(
+      service.createOrResumeDraft(
+        "tenant-a",
+        "sales-a",
+        draftInput,
+        "user-a",
+      ),
+    ).resolves.toBe(legacyWorkspace);
+
+    expect(repository.createDraft).not.toHaveBeenCalled();
+    expect(repository.findSalesOrder).not.toHaveBeenCalled();
   });
 
   it("recovers a concurrent P2002 by returning the winning DRAFT", async () => {
