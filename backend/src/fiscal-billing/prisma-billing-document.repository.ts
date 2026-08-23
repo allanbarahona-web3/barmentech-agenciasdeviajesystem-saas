@@ -4,12 +4,19 @@ import { PrismaService } from "../prisma/prisma.service";
 import type { BillingDocumentRepository } from "./billing-document.repository";
 import type {
   BillingDocumentDraftCommand,
+  BillingDocumentFiscalPreparation,
   BillingDocumentFiscalAllocationResult,
+  BillingDocumentIssuancePreflight,
   PrimaryDocumentSummary,
 } from "./billing-document.types";
 import { fiscalBillingError } from "./fiscal-billing.errors";
 import { normalizeAndValidateIssuerIdentification } from "./fiscal-issuer-identification";
 import { CR_DOCUMENT_TYPES } from "./fiscal-billing.constants";
+import {
+  buildRequestIdentity,
+  buildResponseHash,
+} from "../official-exchange-rates/official-exchange-rate.resolver";
+import { costaRicaDate } from "./fiscal-emission-time";
 
 const MAX_SEQUENCE_NUMBER = 9_999_999_999n;
 const SUPPORTED_DOCUMENT_TYPES = new Set<string>([
@@ -43,6 +50,44 @@ export class PrismaBillingDocumentRepository
         documentTypeCode: true,
       },
     });
+  }
+
+  async findIssuancePreflight(
+    tenantId: string,
+    billingDocumentId: string,
+  ): Promise<BillingDocumentIssuancePreflight | null> {
+    const document = await this.prisma.billingDocument.findUnique({
+      where: { id_tenantId: { id: billingDocumentId, tenantId } },
+      select: {
+        id: true,
+        billingMode: true,
+        lifecycleStatus: true,
+        providerStatus: true,
+        taxAuthorityStatus: true,
+        currencyCode: true,
+        fiscalNumber: true,
+        providerDocumentId: true,
+        billingDocumentNumberSequenceId: true,
+        allocatedSequenceNumber: true,
+        issuanceIdempotencyKey: true,
+        fiscalEmissionAt: true,
+        fiscalIssueDate: true,
+        exchangeRate: true,
+        officialExchangeRateObservationId: true,
+        fiscalExchangeRateEffectiveDate: true,
+        fiscalExchangeRateSourceAuthority: true,
+        fiscalExchangeRateIndicatorCode: true,
+      },
+    });
+    return document
+      ? {
+          ...document,
+          exchangeRate:
+            document.exchangeRate === null
+              ? null
+              : document.exchangeRate.toFixed(),
+        }
+      : null;
   }
 
   createDraft(
@@ -193,6 +238,7 @@ export class PrismaBillingDocumentRepository
     tenantId: string,
     billingDocumentId: string,
     actorUserId: string,
+    preparation: BillingDocumentFiscalPreparation | null,
   ): Promise<BillingDocumentFiscalAllocationResult> {
     if (
       !tenantId ||
@@ -246,6 +292,11 @@ export class PrismaBillingDocumentRepository
         }
 
         this.requireEligibleDraft(document);
+        const fiscalSnapshot = await this.verifyFiscalPreparation(
+          tx,
+          document,
+          preparation,
+        );
         await this.requireFinalReadiness(tx, document);
 
         const sequence = await tx.billingDocumentNumberSequence.findUnique({
@@ -297,13 +348,24 @@ export class PrismaBillingDocumentRepository
           document.issuerTerminalCode! +
           document.documentTypeCode +
           providerBase;
-        const confirmedAt = new Date();
+        const confirmedAt = fiscalSnapshot.fiscalEmissionAt;
 
         let updated;
         try {
           updated = await tx.billingDocument.update({
             where: { id_tenantId: { id: billingDocumentId, tenantId } },
             data: {
+              fiscalEmissionAt: fiscalSnapshot.fiscalEmissionAt,
+              fiscalIssueDate: fiscalSnapshot.fiscalIssueDate,
+              exchangeRate: fiscalSnapshot.exchangeRate,
+              officialExchangeRateObservationId:
+                fiscalSnapshot.officialExchangeRateObservationId,
+              fiscalExchangeRateEffectiveDate:
+                fiscalSnapshot.fiscalExchangeRateEffectiveDate,
+              fiscalExchangeRateSourceAuthority:
+                fiscalSnapshot.fiscalExchangeRateSourceAuthority,
+              fiscalExchangeRateIndicatorCode:
+                fiscalSnapshot.fiscalExchangeRateIndicatorCode,
               billingDocumentNumberSequenceId: allocation.id,
               allocatedSequenceNumber,
               fiscalNumber,
@@ -389,6 +451,131 @@ export class PrismaBillingDocumentRepository
     }
   }
 
+  private async verifyFiscalPreparation(
+    tx: Prisma.TransactionClient,
+    document: AllocationDocument,
+    preparation: BillingDocumentFiscalPreparation | null,
+  ) {
+    if (
+      !preparation ||
+      document.currencyCode !== preparation.expectedCurrencyCode ||
+      document.fiscalEmissionAt !== null ||
+      document.fiscalIssueDate !== null ||
+      document.exchangeRate !== null ||
+      document.officialExchangeRateObservationId !== null ||
+      document.fiscalExchangeRateEffectiveDate !== null ||
+      document.fiscalExchangeRateSourceAuthority !== null ||
+      document.fiscalExchangeRateIndicatorCode !== null ||
+      !isCanonicalDate(preparation.fiscalIssueDate) ||
+      costaRicaDate(preparation.fiscalEmissionAt) !== preparation.fiscalIssueDate
+    ) {
+      throw fiscalBillingError("BILLING_DOCUMENT_FISCAL_EMISSION_CONFLICT");
+    }
+    const fiscalIssueDate = dateOnlyToUtc(preparation.fiscalIssueDate);
+    if (document.currencyCode === "CRC") {
+      if (preparation.officialRate !== null) {
+        throw fiscalBillingError("BILLING_DOCUMENT_OFFICIAL_RATE_MISMATCH");
+      }
+      return {
+        fiscalEmissionAt: preparation.fiscalEmissionAt,
+        fiscalIssueDate,
+        exchangeRate: null,
+        officialExchangeRateObservationId: null,
+        fiscalExchangeRateEffectiveDate: null,
+        fiscalExchangeRateSourceAuthority: null,
+        fiscalExchangeRateIndicatorCode: null,
+      };
+    }
+    if (document.currencyCode !== "USD") {
+      throw fiscalBillingError("BILLING_DOCUMENT_UNSUPPORTED_FISCAL_CURRENCY");
+    }
+    const rate = preparation.officialRate;
+    if (
+      !rate ||
+      rate.sourceAuthority !== "BCCR" ||
+      rate.sourceIndicatorCode !== "318" ||
+      rate.effectiveDate !== preparation.fiscalIssueDate ||
+      !isCanonicalPositiveDecimal(rate.value)
+    ) {
+      throw fiscalBillingError("BILLING_DOCUMENT_OFFICIAL_RATE_MISMATCH");
+    }
+    const observation = await this.loadAndVerifyOfficialObservation(tx, {
+      observationId: rate.observationId,
+      effectiveDate: preparation.fiscalIssueDate,
+      value: rate.value,
+      sourceAuthority: rate.sourceAuthority,
+      sourceIndicatorCode: rate.sourceIndicatorCode,
+    });
+    return {
+      fiscalEmissionAt: preparation.fiscalEmissionAt,
+      fiscalIssueDate,
+      exchangeRate: new Prisma.Decimal(rate.value),
+      officialExchangeRateObservationId: observation.id,
+      fiscalExchangeRateEffectiveDate: fiscalIssueDate,
+      fiscalExchangeRateSourceAuthority: observation.sourceAuthority,
+      fiscalExchangeRateIndicatorCode: observation.sourceIndicatorCode,
+    };
+  }
+
+  private async loadAndVerifyOfficialObservation(
+    tx: Prisma.TransactionClient,
+    expected: {
+      observationId: string;
+      effectiveDate: string;
+      value: string;
+      sourceAuthority: string;
+      sourceIndicatorCode: string;
+    },
+  ) {
+    const identity = {
+      countryCode: "CR",
+      foreignCurrencyCode: "USD",
+      localCurrencyCode: "CRC",
+      rateType: "REFERENCE_SELL" as const,
+      effectiveDate: expected.effectiveDate,
+      sourceAuthority: "BCCR",
+      sourceIndicatorCode: "318",
+    };
+    const observation = await tx.officialExchangeRateObservation.findUnique({
+      where: { id: expected.observationId },
+      select: {
+        id: true,
+        countryCode: true,
+        foreignCurrencyCode: true,
+        localCurrencyCode: true,
+        rateType: true,
+        effectiveDate: true,
+        value: true,
+        sourceAuthority: true,
+        sourceIndicatorCode: true,
+        requestIdentity: true,
+        responseHash: true,
+      },
+    });
+    if (
+      !isCanonicalDate(expected.effectiveDate) ||
+      !isCanonicalPositiveDecimal(expected.value) ||
+      expected.sourceAuthority !== identity.sourceAuthority ||
+      expected.sourceIndicatorCode !== identity.sourceIndicatorCode ||
+      !observation ||
+      observation.countryCode !== identity.countryCode ||
+      observation.foreignCurrencyCode !== identity.foreignCurrencyCode ||
+      observation.localCurrencyCode !== identity.localCurrencyCode ||
+      observation.rateType !== identity.rateType ||
+      dateToDateOnly(observation.effectiveDate) !== identity.effectiveDate ||
+      observation.sourceAuthority !== identity.sourceAuthority ||
+      observation.sourceAuthority !== expected.sourceAuthority ||
+      observation.sourceIndicatorCode !== identity.sourceIndicatorCode ||
+      observation.sourceIndicatorCode !== expected.sourceIndicatorCode ||
+      observation.value.toFixed() !== expected.value ||
+      observation.requestIdentity !== buildRequestIdentity(identity) ||
+      observation.responseHash !== buildResponseHash(identity, expected.value)
+    ) {
+      throw fiscalBillingError("BILLING_DOCUMENT_OFFICIAL_RATE_MISMATCH");
+    }
+    return observation;
+  }
+
   private async readExistingAllocation(
     tx: Prisma.TransactionClient,
     document: AllocationDocument,
@@ -404,7 +591,8 @@ export class PrismaBillingDocumentRepository
       document.allocatedSequenceNumber! > MAX_SEQUENCE_NUMBER ||
       !document.fiscalIssuerId ||
       !document.issuerEstablishmentCode ||
-      !document.issuerTerminalCode
+      !document.issuerTerminalCode ||
+      !validExistingFiscalSnapshot(document)
     ) {
       throw fiscalBillingError("BILLING_DOCUMENT_ALLOCATION_STATE_CONFLICT");
     }
@@ -418,6 +606,15 @@ export class PrismaBillingDocumentRepository
       providerBase;
     if (document.fiscalNumber !== expectedFiscalNumber) {
       throw fiscalBillingError("BILLING_DOCUMENT_ALLOCATION_STATE_CONFLICT");
+    }
+    if (document.currencyCode === "USD") {
+      await this.loadAndVerifyOfficialObservation(tx, {
+        observationId: document.officialExchangeRateObservationId!,
+        effectiveDate: dateToDateOnly(document.fiscalIssueDate!),
+        value: document.exchangeRate!.toFixed(),
+        sourceAuthority: document.fiscalExchangeRateSourceAuthority!,
+        sourceIndicatorCode: document.fiscalExchangeRateIndicatorCode!,
+      });
     }
     const [sequence, outbox] = await Promise.all([
       tx.billingDocumentNumberSequence.findFirst({
@@ -507,9 +704,7 @@ export class PrismaBillingDocumentRepository
       !/^\d{3}$/.test(document.issuerEstablishmentCode ?? "") ||
       !/^\d{5}$/.test(document.issuerTerminalCode ?? "") ||
       !document.issuerEconomicActivityCode?.trim() ||
-      !/^[A-Z]{3}$/.test(document.currencyCode) ||
-      (document.currencyCode !== "CRC" &&
-        (!document.exchangeRate || document.exchangeRate.lte(0))) ||
+      !["CRC", "USD"].includes(document.currencyCode) ||
       (document.documentTypeCode !== "04" &&
         (!document.receiverName?.trim() ||
           !document.receiverIdentificationType?.trim() ||
@@ -633,6 +828,41 @@ function outboxKey(billingDocumentId: string) {
   return `billing-document:${billingDocumentId}:electronic-issuance-requested:v1`;
 }
 
+function isCanonicalDate(value: string): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return false;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return (
+    Number.isFinite(date.getTime()) &&
+    date.getUTCFullYear() === Number(match[1]) &&
+    date.getUTCMonth() + 1 === Number(match[2]) &&
+    date.getUTCDate() === Number(match[3])
+  );
+}
+
+function dateOnlyToUtc(value: string): Date {
+  return new Date(`${value}T00:00:00.000Z`);
+}
+
+function dateToDateOnly(value: Date): string {
+  return [
+    value.getUTCFullYear().toString().padStart(4, "0"),
+    (value.getUTCMonth() + 1).toString().padStart(2, "0"),
+    value.getUTCDate().toString().padStart(2, "0"),
+  ].join("-");
+}
+
+function isCanonicalPositiveDecimal(value: string): boolean {
+  const match = /^((?:0|[1-9]\d*))(?:\.(\d+))?$/.exec(value);
+  if (!match) return false;
+  const fraction = match[2] ?? "";
+  return (
+    !(match[1] === "0" && !fraction.replace(/0+$/, "")) &&
+    match[1].length <= 18 &&
+    fraction.replace(/0+$/, "").length <= 12
+  );
+}
+
 function allocationBundleState(document: {
   billingDocumentNumberSequenceId: string | null;
   allocatedSequenceNumber: bigint | null;
@@ -646,6 +876,31 @@ function allocationBundleState(document: {
   if (present === 0) return "EMPTY" as const;
   if (present === 3) return "COMPLETE" as const;
   return "PARTIAL" as const;
+}
+
+function validExistingFiscalSnapshot(document: AllocationDocument): boolean {
+  if (!document.fiscalEmissionAt || !document.fiscalIssueDate) return false;
+  const issueDate = dateToDateOnly(document.fiscalIssueDate);
+  if (costaRicaDate(document.fiscalEmissionAt) !== issueDate) return false;
+  if (document.currencyCode === "CRC") {
+    return (
+      document.exchangeRate === null &&
+      document.officialExchangeRateObservationId === null &&
+      document.fiscalExchangeRateEffectiveDate === null &&
+      document.fiscalExchangeRateSourceAuthority === null &&
+      document.fiscalExchangeRateIndicatorCode === null
+    );
+  }
+  if (document.currencyCode !== "USD") return false;
+  return (
+    document.exchangeRate !== null &&
+    document.exchangeRate.gt(0) &&
+    document.officialExchangeRateObservationId !== null &&
+    document.fiscalExchangeRateEffectiveDate !== null &&
+    dateToDateOnly(document.fiscalExchangeRateEffectiveDate) === issueDate &&
+    document.fiscalExchangeRateSourceAuthority === "BCCR" &&
+    document.fiscalExchangeRateIndicatorCode === "318"
+  );
 }
 
 function validIssuerIdentification(document: AllocationDocument) {

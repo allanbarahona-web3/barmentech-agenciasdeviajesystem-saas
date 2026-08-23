@@ -121,3 +121,39 @@ export interface BillingDocumentFiscalAllocationResult {
   providerStatus: string;
   newlyAllocated: boolean;
 }
+
+export interface BillingDocumentIssuancePreflight {
+  id: string;
+  billingMode: string;
+  lifecycleStatus: string;
+  providerStatus: string;
+  taxAuthorityStatus: string;
+  currencyCode: string;
+  fiscalNumber: string | null;
+  providerDocumentId: string | null;
+  billingDocumentNumberSequenceId: string | null;
+  allocatedSequenceNumber: bigint | null;
+  issuanceIdempotencyKey: string | null;
+  fiscalEmissionAt: Date | null;
+  fiscalIssueDate: Date | null;
+  exchangeRate: string | null;
+  officialExchangeRateObservationId: string | null;
+  fiscalExchangeRateEffectiveDate: Date | null;
+  fiscalExchangeRateSourceAuthority: string | null;
+  fiscalExchangeRateIndicatorCode: string | null;
+}
+
+export interface BillingDocumentOfficialRatePreparation {
+  observationId: string;
+  value: string;
+  effectiveDate: string;
+  sourceAuthority: string;
+  sourceIndicatorCode: string;
+}
+
+export interface BillingDocumentFiscalPreparation {
+  expectedCurrencyCode: "CRC" | "USD";
+  fiscalEmissionAt: Date;
+  fiscalIssueDate: string;
+  officialRate: BillingDocumentOfficialRatePreparation | null;
+}

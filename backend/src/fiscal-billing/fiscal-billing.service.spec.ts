@@ -525,6 +525,8 @@ function setup(options: {
   };
   const billingDocumentService = new BillingDocumentService(
     repository as never,
+    {} as never,
+    {} as never,
   );
   return {
     service: new SalesOrderFiscalBillingService(

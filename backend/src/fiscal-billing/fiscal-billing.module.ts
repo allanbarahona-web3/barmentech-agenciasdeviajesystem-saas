@@ -30,9 +30,11 @@ import { FiscalNumberSequenceAdminService } from "./fiscal-number-sequence-admin
 import { PrismaFiscalNumberSequenceAdminRepository } from "./prisma-fiscal-number-sequence-admin.repository";
 import { FISCAL_NUMBER_SEQUENCE_ADMIN_REPOSITORY } from "./fiscal-number-sequence-admin.repository";
 import { FiscalOutboxPublisherService } from "./jobs/fiscal-outbox-publisher.service";
+import { OfficialExchangeRateModule } from "../official-exchange-rates/official-exchange-rate.module";
+import { FiscalIssuanceClock } from "./fiscal-issuance.clock";
 
 @Module({
-  imports: [FiscalCatalogModule],
+  imports: [FiscalCatalogModule, OfficialExchangeRateModule],
   controllers: [
     FiscalBillingController,
     FiscalBillingAdminController,
@@ -55,6 +57,7 @@ import { FiscalOutboxPublisherService } from "./jobs/fiscal-outbox-publisher.ser
     FiscalNumberSequenceAdminService,
     PrismaFiscalNumberSequenceAdminRepository,
     FiscalOutboxPublisherService,
+    FiscalIssuanceClock,
     {
       provide: SALES_ORDER_FISCAL_BILLING_REPOSITORY,
       useExisting: PrismaSalesOrderFiscalBillingRepository,

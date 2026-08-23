@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { PrismaBillingDocumentRepository } from "./prisma-billing-document.repository";
+import { buildRequestIdentity, buildResponseHash } from "../official-exchange-rates/official-exchange-rate.resolver";
 
 describe("PrismaBillingDocumentRepository fiscal allocation", () => {
   it("allocates with a locked tenant document, one atomic increment, and one safe outbox event", async () => {
@@ -9,6 +10,7 @@ describe("PrismaBillingDocumentRepository fiscal allocation", () => {
       "tenant-a",
       "document-a",
       "user-a",
+      crcPreparation(),
     );
 
     expect(result).toEqual({
@@ -42,6 +44,13 @@ describe("PrismaBillingDocumentRepository fiscal allocation", () => {
       expect.objectContaining({
         where: { id_tenantId: { id: "document-a", tenantId: "tenant-a" } },
         data: expect.objectContaining({
+          fiscalEmissionAt: new Date("2026-08-22T05:59:59.123Z"),
+          fiscalIssueDate: new Date("2026-08-21T00:00:00.000Z"),
+          exchangeRate: null,
+          officialExchangeRateObservationId: null,
+          fiscalExchangeRateEffectiveDate: null,
+          fiscalExchangeRateSourceAuthority: null,
+          fiscalExchangeRateIndicatorCode: null,
           billingDocumentNumberSequenceId: "sequence-a",
           allocatedSequenceNumber: 225n,
           fiscalNumber: "00100001010000000225",
@@ -84,6 +93,8 @@ describe("PrismaBillingDocumentRepository fiscal allocation", () => {
       billingDocumentNumberSequenceId: "sequence-a",
       allocatedSequenceNumber: 225n,
       fiscalNumber: "00100001010000000225",
+      fiscalEmissionAt: new Date("2026-08-22T05:59:59.123Z"),
+      fiscalIssueDate: new Date("2026-08-21T00:00:00.000Z"),
       issuanceIdempotencyKey:
         "billing-document:document-a:electronic-issuance:v1",
     });
@@ -93,12 +104,84 @@ describe("PrismaBillingDocumentRepository fiscal allocation", () => {
       "tenant-a",
       "document-a",
       "retrying-user",
+      null,
     );
 
     expect(result.newlyAllocated).toBe(false);
     expect(result.allocatedSequenceNumber).toBe("225");
     expect(result.outboxEventId).toBe("outbox-a");
     expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(tx.officialExchangeRateObservation.findUnique).not.toHaveBeenCalled();
+    expect(tx.billingDocument.update).not.toHaveBeenCalled();
+    expect(tx.billingOutboxEvent.createMany).not.toHaveBeenCalled();
+  });
+
+  it("authoritatively verifies a complete USD snapshot before returning it idempotently", async () => {
+    const { repository, tx } = setupExistingAllocation(existingUsdDocument());
+    tx.officialExchangeRateObservation.findUnique.mockResolvedValue(
+      officialObservationRow(),
+    );
+
+    const result = await repository.requestElectronicIssuance(
+      "tenant-a",
+      "document-a",
+      "retrying-user",
+      null,
+    );
+
+    expect(result).toMatchObject({
+      billingDocumentId: "document-a",
+      sequenceId: "sequence-a",
+      allocatedSequenceNumber: "225",
+      fiscalNumber: "00100001010000000225",
+      outboxEventId: "outbox-a",
+      newlyAllocated: false,
+    });
+    expect(tx.officialExchangeRateObservation.findUnique).toHaveBeenCalledWith({
+      where: { id: "observation-a" },
+      select: expect.objectContaining({
+        requestIdentity: true,
+        responseHash: true,
+        value: true,
+      }),
+    });
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(tx.billingDocumentNumberSequence.findUnique).not.toHaveBeenCalled();
+    expect(tx.billingDocument.update).not.toHaveBeenCalled();
+    expect(tx.billingOutboxEvent.createMany).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["missing observation", null],
+    ["wrong country", { countryCode: "PA" }],
+    ["wrong foreign currency", { foreignCurrencyCode: "EUR" }],
+    ["wrong local currency", { localCurrencyCode: "USD" }],
+    ["wrong rate type", { rateType: "REFERENCE_BUY" }],
+    ["wrong effective date", { effectiveDate: new Date("2026-08-21T00:00:00.000Z") }],
+    ["wrong authority", { sourceAuthority: "OTHER" }],
+    ["wrong indicator", { sourceIndicatorCode: "317" }],
+    ["different exact decimal", { value: new Prisma.Decimal("454.340000000002") }],
+    ["wrong request identity", { requestIdentity: "wrong-identity" }],
+    ["invalid response hash", { responseHash: "0".repeat(64) }],
+  ] as const)("rejects an existing USD allocation with %s before any write", async (_label, override) => {
+    const { repository, tx } = setupExistingAllocation(existingUsdDocument());
+    tx.officialExchangeRateObservation.findUnique.mockResolvedValue(
+      override === null ? null : { ...officialObservationRow(), ...override },
+    );
+
+    await expectCode(
+      repository.requestElectronicIssuance(
+        "tenant-a",
+        "document-a",
+        "retrying-user",
+        null,
+      ),
+      "BILLING_DOCUMENT_OFFICIAL_RATE_MISMATCH",
+    );
+
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(tx.billingDocumentNumberSequence.findFirst).not.toHaveBeenCalled();
+    expect(tx.billingDocumentNumberSequence.findUnique).not.toHaveBeenCalled();
     expect(tx.billingDocument.update).not.toHaveBeenCalled();
     expect(tx.billingOutboxEvent.createMany).not.toHaveBeenCalled();
   });
@@ -111,6 +194,8 @@ describe("PrismaBillingDocumentRepository fiscal allocation", () => {
       billingDocumentNumberSequenceId: "sequence-a",
       allocatedSequenceNumber: 225n,
       fiscalNumber: "00100001010000000225",
+      fiscalEmissionAt: new Date("2026-08-22T05:59:59.123Z"),
+      fiscalIssueDate: new Date("2026-08-21T00:00:00.000Z"),
       issuanceIdempotencyKey:
         "billing-document:document-a:electronic-issuance:v1",
     });
@@ -124,8 +209,8 @@ describe("PrismaBillingDocumentRepository fiscal allocation", () => {
     const repository = new PrismaBillingDocumentRepository(prisma as never);
 
     const [allocated, retried] = await Promise.all([
-      repository.requestElectronicIssuance("tenant-a", "document-a", "user-a"),
-      repository.requestElectronicIssuance("tenant-a", "document-a", "user-b"),
+      repository.requestElectronicIssuance("tenant-a", "document-a", "user-a", crcPreparation()),
+      repository.requestElectronicIssuance("tenant-a", "document-a", "user-b", null),
     ]);
 
     expect(allocated.newlyAllocated).toBe(true);
@@ -140,8 +225,8 @@ describe("PrismaBillingDocumentRepository fiscal allocation", () => {
     const second = setupNewAllocation({ documentId: "document-b", allocated: 226n });
 
     const [a, b] = await Promise.all([
-      first.repository.requestElectronicIssuance("tenant-a", "document-a", "user-a"),
-      second.repository.requestElectronicIssuance("tenant-a", "document-b", "user-b"),
+      first.repository.requestElectronicIssuance("tenant-a", "document-a", "user-a", crcPreparation()),
+      second.repository.requestElectronicIssuance("tenant-a", "document-b", "user-b", crcPreparation()),
     ]);
 
     expect(a.sequenceId).toBe("sequence-a");
@@ -160,8 +245,8 @@ describe("PrismaBillingDocumentRepository fiscal allocation", () => {
     });
 
     const [a, b] = await Promise.all([
-      first.repository.requestElectronicIssuance("tenant-a", "document-a", "user-a"),
-      second.repository.requestElectronicIssuance("tenant-a", "document-b", "user-b"),
+      first.repository.requestElectronicIssuance("tenant-a", "document-a", "user-a", crcPreparation()),
+      second.repository.requestElectronicIssuance("tenant-a", "document-b", "user-b", crcPreparation()),
     ]);
 
     expect(a.sequenceId).toBe("sequence-a");
@@ -176,7 +261,7 @@ describe("PrismaBillingDocumentRepository fiscal allocation", () => {
     });
 
     await expectCode(
-      repository.requestElectronicIssuance("tenant-a", "document-a", "user-a"),
+      repository.requestElectronicIssuance("tenant-a", "document-a", "user-a", null),
       "BILLING_DOCUMENT_ALLOCATION_STATE_CONFLICT",
     );
     expect(tx.billingDocumentNumberSequence.findUnique).not.toHaveBeenCalled();
@@ -189,11 +274,76 @@ describe("PrismaBillingDocumentRepository fiscal allocation", () => {
     });
 
     await expectCode(
-      repository.requestElectronicIssuance("tenant-a", "document-a", "user-a"),
+      repository.requestElectronicIssuance("tenant-a", "document-a", "user-a", crcPreparation()),
       "BILLING_DOCUMENT_FISCAL_READINESS_FAILED",
     );
     expect(tx.$queryRaw).toHaveBeenCalledTimes(1);
     expect(tx.billingOutboxEvent.createMany).not.toHaveBeenCalled();
+  });
+
+  it("verifies and atomically persists the exact USD official observation", async () => {
+    const { repository, tx } = setupNewAllocation({
+      document: { currencyCode: "USD" },
+    });
+    tx.officialExchangeRateObservation.findUnique.mockResolvedValue(
+      officialObservationRow(),
+    );
+
+    await repository.requestElectronicIssuance(
+      "tenant-a",
+      "document-a",
+      "user-a",
+      usdPreparation(),
+    );
+
+    expect(tx.officialExchangeRateObservation.findUnique).toHaveBeenCalledWith({
+      where: { id: "observation-a" },
+      select: expect.objectContaining({
+        requestIdentity: true,
+        responseHash: true,
+        value: true,
+      }),
+    });
+    expect(tx.billingDocument.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          fiscalEmissionAt: new Date("2026-08-22T06:00:00.456Z"),
+          fiscalIssueDate: new Date("2026-08-22T00:00:00.000Z"),
+          exchangeRate: new Prisma.Decimal("454.340000000001"),
+          officialExchangeRateObservationId: "observation-a",
+          fiscalExchangeRateEffectiveDate: new Date("2026-08-22T00:00:00.000Z"),
+          fiscalExchangeRateSourceAuthority: "BCCR",
+          fiscalExchangeRateIndicatorCode: "318",
+          issuedAt: null,
+        }),
+      }),
+    );
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects observation or locked-currency mismatch before sequence access", async () => {
+    const observationMismatch = setupNewAllocation({ document: { currencyCode: "USD" } });
+    observationMismatch.tx.officialExchangeRateObservation.findUnique.mockResolvedValue({
+      ...officialObservationRow(),
+      value: new Prisma.Decimal("455.00"),
+    });
+    await expectCode(
+      observationMismatch.repository.requestElectronicIssuance(
+        "tenant-a", "document-a", "user-a", usdPreparation(),
+      ),
+      "BILLING_DOCUMENT_OFFICIAL_RATE_MISMATCH",
+    );
+    expect(observationMismatch.tx.billingDocumentNumberSequence.findUnique).not.toHaveBeenCalled();
+    expect(observationMismatch.tx.$queryRaw).toHaveBeenCalledTimes(1);
+
+    const currencyMismatch = setupNewAllocation();
+    await expectCode(
+      currencyMismatch.repository.requestElectronicIssuance(
+        "tenant-a", "document-a", "user-a", usdPreparation(),
+      ),
+      "BILLING_DOCUMENT_FISCAL_EMISSION_CONFLICT",
+    );
+    expect(currencyMismatch.tx.billingDocumentNumberSequence.findUnique).not.toHaveBeenCalled();
   });
 
   it.each(["02", "03", "08", "09", "10"])(
@@ -206,6 +356,7 @@ describe("PrismaBillingDocumentRepository fiscal allocation", () => {
           "tenant-a",
           "document-a",
           "user-a",
+          crcPreparation(),
         ),
         "BILLING_DOCUMENT_FISCAL_READINESS_FAILED",
       );
@@ -222,7 +373,7 @@ describe("PrismaBillingDocumentRepository fiscal allocation", () => {
     tx.billingDocument.update.mockRejectedValue(new Error("write failed"));
 
     await expectCode(
-      repository.requestElectronicIssuance("tenant-a", "document-a", "user-a"),
+      repository.requestElectronicIssuance("tenant-a", "document-a", "user-a", crcPreparation()),
       "BILLING_DOCUMENT_CONCURRENT_ALLOCATION_CONFLICT",
     );
     expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
@@ -235,7 +386,7 @@ describe("PrismaBillingDocumentRepository fiscal allocation", () => {
     tx.billingOutboxEvent.findUnique.mockResolvedValue({ id: "conflicting-outbox" });
 
     await expectCode(
-      repository.requestElectronicIssuance("tenant-a", "document-a", "user-a"),
+      repository.requestElectronicIssuance("tenant-a", "document-a", "user-a", crcPreparation()),
       "BILLING_DOCUMENT_OUTBOX_CONFLICT",
     );
     expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
@@ -325,6 +476,7 @@ function transactionMock() {
     tenantBillingConfiguration: { findUnique: jest.fn() },
     fiscalIssuer: { findFirst: jest.fn() },
     fiscalIssuerEconomicActivity: { findFirst: jest.fn() },
+    officialExchangeRateObservation: { findUnique: jest.fn() },
     billingOutboxEvent: {
       createMany: jest.fn(),
       findUnique: jest.fn(),
@@ -357,6 +509,12 @@ function readyDocument(overrides: Record<string, unknown> = {}) {
     schemaVersion: "4.4",
     currencyCode: "CRC",
     exchangeRate: null,
+    fiscalEmissionAt: null,
+    fiscalIssueDate: null,
+    officialExchangeRateObservationId: null,
+    fiscalExchangeRateEffectiveDate: null,
+    fiscalExchangeRateSourceAuthority: null,
+    fiscalExchangeRateIndicatorCode: null,
     receiverName: "Customer",
     receiverIdentificationType: "01",
     receiverIdentification: "101110111",
@@ -398,5 +556,69 @@ function rawSql(mock: jest.Mock, call: number) {
 async function expectCode(promise: Promise<unknown>, code: string) {
   await expect(promise).rejects.toMatchObject({
     response: expect.objectContaining({ code }),
+  });
+}
+
+function crcPreparation() {
+  return {
+    expectedCurrencyCode: "CRC" as const,
+    fiscalEmissionAt: new Date("2026-08-22T05:59:59.123Z"),
+    fiscalIssueDate: "2026-08-21",
+    officialRate: null,
+  };
+}
+
+function usdPreparation() {
+  return {
+    expectedCurrencyCode: "USD" as const,
+    fiscalEmissionAt: new Date("2026-08-22T06:00:00.456Z"),
+    fiscalIssueDate: "2026-08-22",
+    officialRate: {
+      observationId: "observation-a",
+      value: "454.340000000001",
+      effectiveDate: "2026-08-22",
+      sourceAuthority: "BCCR",
+      sourceIndicatorCode: "318",
+    },
+  };
+}
+
+function officialObservationRow() {
+  const identity = {
+    countryCode: "CR",
+    foreignCurrencyCode: "USD",
+    localCurrencyCode: "CRC",
+    rateType: "REFERENCE_SELL" as const,
+    effectiveDate: "2026-08-22",
+    sourceAuthority: "BCCR",
+    sourceIndicatorCode: "318",
+  };
+  return {
+    id: "observation-a",
+    ...identity,
+    effectiveDate: new Date("2026-08-22T00:00:00.000Z"),
+    value: new Prisma.Decimal("454.340000000001"),
+    requestIdentity: buildRequestIdentity(identity),
+    responseHash: buildResponseHash(identity, "454.340000000001"),
+  };
+}
+
+function existingUsdDocument() {
+  return readyDocument({
+    lifecycleStatus: "CONFIRMED",
+    providerStatus: "PENDING",
+    currencyCode: "USD",
+    billingDocumentNumberSequenceId: "sequence-a",
+    allocatedSequenceNumber: 225n,
+    fiscalNumber: "00100001010000000225",
+    issuanceIdempotencyKey:
+      "billing-document:document-a:electronic-issuance:v1",
+    fiscalEmissionAt: new Date("2026-08-22T06:00:00.456Z"),
+    fiscalIssueDate: new Date("2026-08-22T00:00:00.000Z"),
+    exchangeRate: new Prisma.Decimal("454.340000000001"),
+    officialExchangeRateObservationId: "observation-a",
+    fiscalExchangeRateEffectiveDate: new Date("2026-08-22T00:00:00.000Z"),
+    fiscalExchangeRateSourceAuthority: "BCCR",
+    fiscalExchangeRateIndicatorCode: "318",
   });
 }

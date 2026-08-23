@@ -3,6 +3,37 @@ import type { BillingDocumentDraftCommand } from "./billing-document.types";
 import { PrismaBillingDocumentRepository } from "./prisma-billing-document.repository";
 
 describe("PrismaBillingDocumentRepository generic draft persistence", () => {
+  it("loads issuance preflight only by the tenant-scoped document identity", async () => {
+    const findUnique = jest.fn().mockResolvedValue({
+      id: "document-a",
+      billingMode: "ELECTRONIC_PROVIDER",
+      lifecycleStatus: "DRAFT",
+      providerStatus: "NOT_SUBMITTED",
+      taxAuthorityStatus: "NOT_SUBMITTED",
+      currencyCode: "USD",
+      fiscalNumber: null,
+      providerDocumentId: null,
+      billingDocumentNumberSequenceId: null,
+      allocatedSequenceNumber: null,
+      issuanceIdempotencyKey: null,
+      fiscalEmissionAt: null,
+      fiscalIssueDate: null,
+      exchangeRate: null,
+      officialExchangeRateObservationId: null,
+      fiscalExchangeRateEffectiveDate: null,
+      fiscalExchangeRateSourceAuthority: null,
+      fiscalExchangeRateIndicatorCode: null,
+    });
+    const repository = new PrismaBillingDocumentRepository({
+      billingDocument: { findUnique },
+    } as never);
+
+    await repository.findIssuancePreflight("tenant-a", "document-a");
+
+    expect(findUnique).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id_tenantId: { id: "document-a", tenantId: "tenant-a" } },
+    }));
+  });
   it("persists a ready command without a SalesOrder object or hardcoded source values", async () => {
     const tx = {
       billingDocument: {
