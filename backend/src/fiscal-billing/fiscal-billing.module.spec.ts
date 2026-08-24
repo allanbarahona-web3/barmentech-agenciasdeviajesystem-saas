@@ -15,6 +15,7 @@ import { FACTURA_EN_CR_NUMBERING_PROVIDER } from "./factura-en-cr-numbering.prov
 import { FacturaEnCrNumberingAdapter } from "./factura-en-cr-numbering.adapter";
 import { BillingDocumentStatusLookupService } from "./billing-document-status-lookup.service";
 import { BillingDocumentStatusPersistenceService } from "./billing-document-status-persistence.service";
+import { BillingDocumentRecoveryPreparationService } from "./billing-document-recovery-preparation.service";
 
 describe("FiscalBillingModule official-rate wiring", () => {
   it("imports the existing official-rate module without duplicating its resolver", () => {
@@ -37,6 +38,8 @@ describe("FiscalBillingModule official-rate wiring", () => {
     expect((Reflect.getMetadata("exports", FiscalBillingModule) as unknown[]).filter((value) => value === BillingDocumentStatusLookupService)).toHaveLength(1);
     expect(providers.filter((value) => value === BillingDocumentStatusPersistenceService)).toHaveLength(1);
     expect((Reflect.getMetadata("exports", FiscalBillingModule) as unknown[]).filter((value) => value === BillingDocumentStatusPersistenceService)).toHaveLength(1);
+    expect(providers.filter((value) => value === BillingDocumentRecoveryPreparationService)).toHaveLength(1);
+    expect((Reflect.getMetadata("exports", FiscalBillingModule) as unknown[]).filter((value) => value === BillingDocumentRecoveryPreparationService)).toHaveLength(1);
     expect(providers).toContain(FacturaEnCrDocumentStatusAdapter);
     expect(providers).toContainEqual({
       provide: ELECTRONIC_DOCUMENT_STATUS_PROVIDER,
