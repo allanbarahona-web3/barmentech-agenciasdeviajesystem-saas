@@ -37,14 +37,15 @@ export class BillingDocumentSubmissionExecutorService {
       case"ALREADY_ACKNOWLEDGED":return{classification:"ALREADY_ACKNOWLEDGED",tenantId:claim.tenantId,billingDocumentId:claim.billingDocumentId};
       case"ALREADY_FAILED":return{classification:"ALREADY_FAILED",tenantId:claim.tenantId,billingDocumentId:claim.billingDocumentId};
       case"RECONCILIATION_REQUIRED":return{classification:"RECONCILIATION_REQUIRED",reasonCode:"EXISTING_RECONCILIATION_REQUIRED",retryAfterSeconds:null,tenantId:claim.tenantId,billingDocumentId:claim.billingDocumentId};
-      case"CLAIMED":return this.submit(prepared,claim);
+      case"CLAIMED":return submitPreparedElectronicDocument(this.provider,prepared.preparedSubmission,{tenantId:claim.tenantId,billingDocumentId:claim.billingDocumentId,requestHash:claim.requestHash,attemptedAt:claim.attemptedAt});
       default:return exhaustiveClaim(claim);
     }
   }
 
-  private async submit(prepared:BillingDocumentSubmissionPreparationResult,claim:Extract<BillingDocumentSubmissionAttemptResult,{classification:"CLAIMED"}>):Promise<BillingDocumentSubmissionExecutorOutcome>{
-    const attempt:AttemptIdentity={tenantId:claim.tenantId,billingDocumentId:claim.billingDocumentId,requestHash:claim.requestHash,attemptedAt:claim.attemptedAt};
-    try{return{classification:"ACKNOWLEDGED",attempt,acknowledgement:await this.provider.submitElectronicDocument(prepared.preparedSubmission)};}
+}
+
+export async function submitPreparedElectronicDocument(provider:ElectronicDocumentSubmissionProvider,prepared:BillingDocumentSubmissionPreparationResult["preparedSubmission"],attempt:AttemptIdentity):Promise<BillingDocumentSubmissionExecutorOutcome>{
+    try{return{classification:"ACKNOWLEDGED",attempt,acknowledgement:await provider.submitElectronicDocument(prepared)};}
     catch(error){
       if(error instanceof ElectronicDocumentSubmissionError){
         if(error.outcome==="DEFINITE_REJECTION"||error.outcome==="CONFIGURATION_FAILURE")return{classification:"DEFINITE_FAILURE",attempt,errorCode:error.code};
@@ -52,7 +53,6 @@ export class BillingDocumentSubmissionExecutorService {
       }
       return{classification:"RECONCILIATION_REQUIRED",attempt,reasonCode:"ELECTRONIC_SUBMISSION_UNEXPECTED_ERROR",retryAfterSeconds:null};
     }
-  }
 }
 
 function validJob(job:FiscalSubmissionJobEnvelope):{tenantId:string;billingDocumentId:string;eventVersion:1}{
