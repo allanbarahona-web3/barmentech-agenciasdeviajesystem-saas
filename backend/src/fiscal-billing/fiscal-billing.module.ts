@@ -42,6 +42,7 @@ import { FiscalBillingSubmissionProcessor } from "./jobs/fiscal-billing-submissi
 import { FacturaEnCrDocumentStatusAdapter } from "./providers/factura-en-cr-document-status.adapter";
 import { ELECTRONIC_DOCUMENT_STATUS_PROVIDER } from "./providers/electronic-document-status.provider";
 import { BillingDocumentStatusLookupService } from "./billing-document-status-lookup.service";
+import { BillingDocumentStatusPersistenceService } from "./billing-document-status-persistence.service";
 
 @Module({
   imports: [FiscalCatalogModule, OfficialExchangeRateModule],
@@ -76,6 +77,7 @@ import { BillingDocumentStatusLookupService } from "./billing-document-status-lo
     BillingDocumentSubmissionOutcomeService,
     FiscalBillingSubmissionProcessor,
     BillingDocumentStatusLookupService,
+    BillingDocumentStatusPersistenceService,
     {
       provide: SALES_ORDER_FISCAL_BILLING_REPOSITORY,
       useExisting: PrismaSalesOrderFiscalBillingRepository,
@@ -113,6 +115,6 @@ import { BillingDocumentStatusLookupService } from "./billing-document-status-lo
       useExisting: PrismaFiscalNumberSequenceAdminRepository,
     },
   ],
-  exports: [ELECTRONIC_DOCUMENT_SUBMISSION_PROVIDER, ELECTRONIC_DOCUMENT_STATUS_PROVIDER, BillingDocumentSubmissionPreparationService, BillingDocumentSubmissionAttemptService, BillingDocumentSubmissionExecutorService, BillingDocumentSubmissionOutcomeService, BillingDocumentStatusLookupService],
+  exports: [ELECTRONIC_DOCUMENT_SUBMISSION_PROVIDER, ELECTRONIC_DOCUMENT_STATUS_PROVIDER, BillingDocumentSubmissionPreparationService, BillingDocumentSubmissionAttemptService, BillingDocumentSubmissionExecutorService, BillingDocumentSubmissionOutcomeService, BillingDocumentStatusLookupService, BillingDocumentStatusPersistenceService],
 })
 export class FiscalBillingModule {}

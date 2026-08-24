@@ -1,0 +1,216 @@
+import { HttpException, Injectable } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
+import { PrismaService } from "../prisma/prisma.service";
+import type { BillingDocumentStatusLookupResult } from "./billing-document-status-lookup.service";
+import { fiscalBillingError } from "./fiscal-billing.errors";
+import { FiscalIssuanceClock } from "./fiscal-issuance.clock";
+
+const persistenceSelect = Prisma.validator<Prisma.BillingDocumentSelect>()({
+  id: true, tenantId: true, billingMode: true, lifecycleStatus: true,
+  providerStatus: true, taxAuthorityStatus: true, providerDocumentId: true,
+  haciendaKey: true, fiscalNumber: true, documentTypeCode: true,
+  providerEnvironment: true, fiscalIssueDate: true, fiscalEmissionAt: true,
+  billingDocumentNumberSequenceId: true, allocatedSequenceNumber: true,
+  issuanceIdempotencyKey: true, providerRequestHash: true,
+  providerLastAttemptAt: true, providerReconciliationRequired: true,
+  providerLastErrorCode: true, providerLastErrorAt: true,
+  submittedAt: true, issuedAt: true,
+});
+type PersistenceRow = Prisma.BillingDocumentGetPayload<{ select: typeof persistenceSelect }>;
+type Decision = "ACCEPTED" | "REJECTED" | null;
+
+export interface BillingDocumentStatusPersistenceResult {
+  readonly tenantId: string;
+  readonly billingDocumentId: string;
+  readonly final: boolean;
+  readonly finalDecision: Decision;
+  readonly lifecycleStatus: "SUBMITTED";
+  readonly providerStatus: "PROCESSED";
+  readonly taxAuthorityStatus: "PROCESSING" | "ACCEPTED" | "REJECTED";
+  readonly issuedAt: Date | null;
+  readonly newlyPersisted: boolean;
+  readonly rejectionDetail: string | null;
+}
+
+@Injectable()
+export class BillingDocumentStatusPersistenceService {
+  constructor(private readonly prisma: PrismaService, private readonly clock: FiscalIssuanceClock) {}
+
+  async persist(lookup: BillingDocumentStatusLookupResult): Promise<BillingDocumentStatusPersistenceResult> {
+    const input = validateInput(lookup);
+    try {
+      return await this.prisma.$transaction(async tx => {
+        const locked = await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT "id" FROM "billing_documents"
+          WHERE "id" = ${input.billingDocumentId} AND "tenantId" = ${input.tenantId}
+          FOR UPDATE
+        `;
+        if (locked.length !== 1) notFound();
+        const row = await readRow(tx, input);
+        if (!row) notFound();
+        requireCompleteState(row);
+        requireImmutableIdentity(row, input);
+
+        const winner = classifyWinner(row, input);
+        if (winner) return result(input, acknowledgedTaxStatus(row), row.issuedAt, false);
+        if ((row.taxAuthorityStatus === "ACCEPTED" && input.decision !== "ACCEPTED") ||
+            (row.taxAuthorityStatus === "REJECTED" && input.decision !== "REJECTED")) conflict();
+        requireSourceState(row, input);
+
+        if (input.decision === null) {
+          if (row.taxAuthorityStatus !== "PROCESSING" || row.issuedAt !== null) conflict();
+          return result(input, "PROCESSING", null, false);
+        }
+        if (input.decision === "REJECTED" && row.taxAuthorityStatus === "REJECTED") {
+          return result(input, "REJECTED", null, false);
+        }
+
+        let issuedAt: Date | null = null;
+        if (input.decision === "ACCEPTED") {
+          issuedAt = this.clock.now();
+          if (!validDate(issuedAt)) corrupt();
+        }
+        const target = input.decision;
+        const updated = await tx.billingDocument.updateMany({
+          where: expectedWhere(row, input),
+          data: {
+            taxAuthorityStatus: target,
+            providerReconciliationRequired: false,
+            providerLastErrorCode: null,
+            providerLastErrorAt: null,
+            ...(issuedAt ? { issuedAt } : {}),
+          },
+        });
+        if (updated.count === 1) return result(input, target, issuedAt, true);
+
+        if (input.decision === "ACCEPTED") conflict();
+        const concurrent = await readRow(tx, input);
+        if (!concurrent) notFound();
+        requireCompleteState(concurrent);
+        requireImmutableIdentity(concurrent, input);
+        if (classifyWinner(concurrent, input)) return result(input, acknowledgedTaxStatus(concurrent), concurrent.issuedAt, false);
+        conflict();
+      });
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw fiscalBillingError("BILLING_DOCUMENT_STATUS_PERSISTENCE_FAILED");
+    }
+  }
+}
+
+interface ValidatedInput {
+  tenantId: string; billingDocumentId: string; sequenceId: string; allocatedSequenceNumber: bigint;
+  providerDocumentId: string; haciendaKey: string; issuanceIdempotencyKey: string; fiscalEmissionAt: Date;
+  requestHash: string; attemptedAt: Date; fiscalNumber: string; documentTypeCode: "01" | "04";
+  providerEnvironment: "sandbox" | "production"; fiscalIssueDate: string; submittedAt: Date;
+  sourceTaxStatus: "PROCESSING" | "ACCEPTED" | "REJECTED"; decision: Decision; rejectionDetail: string | null;
+}
+
+function validateInput(value: BillingDocumentStatusLookupResult): ValidatedInput {
+  try {
+    const identity = value.persistedIdentity, provider = value.providerResult;
+    if (!identity || !provider || !safe(identity.tenantId, 191) || !safe(identity.billingDocumentId, 191) ||
+      !safe(identity.billingDocumentNumberSequenceId, 191) || !/^[1-9]\d{0,9}$/.test(identity.allocatedSequenceNumber) ||
+      !/^[A-Za-z0-9_-]{1,255}$/.test(identity.providerDocumentId) || !/^\d{50}$/.test(identity.haciendaKey) ||
+      identity.issuanceIdempotencyKey !== `billing-document:${identity.billingDocumentId}:electronic-issuance:v1` || identity.issuanceIdempotencyKey.length > 100 ||
+      !validDate(identity.fiscalEmissionAt) || !/^[a-f0-9]{64}$/.test(identity.providerRequestHash) || !validDate(identity.providerLastAttemptAt) ||
+      !/^\d{20}$/.test(identity.fiscalNumber) || (identity.documentTypeCode !== "01" && identity.documentTypeCode !== "04") ||
+      (identity.providerEnvironment !== "sandbox" && identity.providerEnvironment !== "production") || !canonicalDate(identity.fiscalIssueDate) ||
+      identity.lifecycleStatus !== "SUBMITTED" || identity.providerStatus !== "PROCESSED" ||
+      !["PROCESSING", "ACCEPTED", "REJECTED"].includes(identity.taxAuthorityStatus) || identity.providerReconciliationRequired !== false ||
+      !validDate(identity.submittedAt) || identity.issuedAt !== null || identity.providerLastAttemptAt.getTime() !== identity.submittedAt.getTime() ||
+      identity.fiscalNumber.slice(8, 10) !== identity.documentTypeCode || identity.fiscalNumber.slice(10) !== identity.allocatedSequenceNumber.padStart(10, "0") ||
+      identity.haciendaKey.slice(21, 41) !== identity.fiscalNumber || identity.haciendaKey.slice(3, 9) !== keyDate(identity.fiscalIssueDate)) corrupt();
+    if (provider.classification !== "ELECTRONIC_DOCUMENT_STATUS" || provider.providerDocumentId !== identity.providerDocumentId ||
+      provider.haciendaKey !== identity.haciendaKey || provider.consecutive !== identity.fiscalNumber || provider.providerEnvironment !== identity.providerEnvironment ||
+      !/^[a-z][a-z0-9_]{0,63}$/.test(provider.providerStatus) || provider.final !== (provider.finalDecision !== null) ||
+      (provider.finalDecision === "ACCEPTED") !== (provider.providerStatus === "accepted") ||
+      (provider.finalDecision === "REJECTED") !== (provider.providerStatus === "rejected") ||
+      (provider.finalDecision !== null && provider.finalDecision !== "ACCEPTED" && provider.finalDecision !== "REJECTED") ||
+      (provider.rejectionDetail !== null && provider.rejectionDetail !== undefined &&
+        (provider.finalDecision !== "REJECTED" || typeof provider.rejectionDetail !== "string")) ||
+      (provider.fiscalIssuedAt !== null && (typeof provider.fiscalIssuedAt !== "string" || !sameCostaRicaDate(provider.fiscalIssuedAt, identity.fiscalIssueDate)))) corrupt();
+    if ((identity.taxAuthorityStatus === "ACCEPTED" && provider.finalDecision !== "ACCEPTED") ||
+        (identity.taxAuthorityStatus === "REJECTED" && provider.finalDecision !== "REJECTED")) conflict();
+    return {
+      tenantId: identity.tenantId, billingDocumentId: identity.billingDocumentId,
+      sequenceId: identity.billingDocumentNumberSequenceId, allocatedSequenceNumber: BigInt(identity.allocatedSequenceNumber),
+      providerDocumentId: identity.providerDocumentId, haciendaKey: identity.haciendaKey,
+      issuanceIdempotencyKey: identity.issuanceIdempotencyKey, fiscalEmissionAt: new Date(identity.fiscalEmissionAt.getTime()),
+      requestHash: identity.providerRequestHash, attemptedAt: new Date(identity.providerLastAttemptAt.getTime()),
+      fiscalNumber: identity.fiscalNumber, documentTypeCode: identity.documentTypeCode,
+      providerEnvironment: identity.providerEnvironment, fiscalIssueDate: identity.fiscalIssueDate,
+      submittedAt: new Date(identity.submittedAt.getTime()), sourceTaxStatus: identity.taxAuthorityStatus,
+      decision: provider.finalDecision, rejectionDetail: provider.rejectionDetail ?? null,
+    };
+  } catch (error) { if (error instanceof HttpException) throw error; corrupt(); }
+}
+
+async function readRow(tx: Prisma.TransactionClient, input: ValidatedInput) {
+  return tx.billingDocument.findUnique({ where: { id_tenantId: { id: input.billingDocumentId, tenantId: input.tenantId } }, select: persistenceSelect });
+}
+function requireCompleteState(row: PersistenceRow) {
+  if (row.billingMode !== "ELECTRONIC_PROVIDER" || row.lifecycleStatus !== "SUBMITTED" || row.providerStatus !== "PROCESSED" ||
+    (row.taxAuthorityStatus !== "PROCESSING" && row.taxAuthorityStatus !== "ACCEPTED" && row.taxAuthorityStatus !== "REJECTED") ||
+    !safe(row.billingDocumentNumberSequenceId, 191) || typeof row.allocatedSequenceNumber !== "bigint" || !safe(row.fiscalNumber, 50) ||
+    (row.documentTypeCode !== "01" && row.documentTypeCode !== "04") || !safe(row.issuanceIdempotencyKey, 100) ||
+    !safe(row.providerRequestHash, 64) || !validDate(row.providerLastAttemptAt) || !safe(row.providerDocumentId, 255) ||
+    !safe(row.haciendaKey, 50) || (row.providerEnvironment !== "sandbox" && row.providerEnvironment !== "production") ||
+    !validDate(row.fiscalEmissionAt) || !validDate(row.fiscalIssueDate) || !validDate(row.submittedAt) ||
+    !/^[1-9]\d{0,9}$/.test(row.allocatedSequenceNumber.toString()) || !/^\d{20}$/.test(row.fiscalNumber) ||
+    row.fiscalNumber.slice(8,10) !== row.documentTypeCode || row.fiscalNumber.slice(10) !== row.allocatedSequenceNumber.toString().padStart(10,"0") ||
+    row.issuanceIdempotencyKey !== `billing-document:${row.id}:electronic-issuance:v1` || !/^[a-f0-9]{64}$/.test(row.providerRequestHash) ||
+    row.providerLastAttemptAt.getTime() !== row.submittedAt.getTime() || !/^[A-Za-z0-9_-]{1,255}$/.test(row.providerDocumentId) ||
+    !/^\d{50}$/.test(row.haciendaKey) || row.haciendaKey.slice(21,41) !== row.fiscalNumber || row.haciendaKey.slice(3,9) !== keyDate(dateOnly(row.fiscalIssueDate)) ||
+    row.providerReconciliationRequired || row.providerLastErrorCode !== null || row.providerLastErrorAt !== null ||
+    (row.taxAuthorityStatus !== "ACCEPTED" && row.issuedAt !== null) || (row.issuedAt !== null && !validDate(row.issuedAt))) corrupt();
+}
+function requireImmutableIdentity(row: PersistenceRow, input: ValidatedInput) {
+  if (row.id !== input.billingDocumentId || row.tenantId !== input.tenantId || row.billingDocumentNumberSequenceId !== input.sequenceId ||
+    row.allocatedSequenceNumber !== input.allocatedSequenceNumber || row.fiscalNumber !== input.fiscalNumber || row.documentTypeCode !== input.documentTypeCode ||
+    row.issuanceIdempotencyKey !== input.issuanceIdempotencyKey || row.providerRequestHash !== input.requestHash ||
+    row.providerLastAttemptAt!.getTime() !== input.attemptedAt.getTime() || row.providerDocumentId !== input.providerDocumentId ||
+    row.haciendaKey !== input.haciendaKey || row.providerEnvironment !== input.providerEnvironment ||
+    row.fiscalEmissionAt!.getTime() !== input.fiscalEmissionAt.getTime() || dateOnly(row.fiscalIssueDate!) !== input.fiscalIssueDate ||
+    row.submittedAt!.getTime() !== input.submittedAt.getTime()) stale();
+}
+function requireSourceState(row: PersistenceRow, input: ValidatedInput) {
+  if (row.lifecycleStatus !== "SUBMITTED" || row.providerStatus !== "PROCESSED" || row.taxAuthorityStatus !== input.sourceTaxStatus ||
+    row.providerReconciliationRequired || row.providerLastErrorCode !== null || row.providerLastErrorAt !== null || row.issuedAt !== null) stale();
+  if ((input.sourceTaxStatus === "ACCEPTED" && input.decision !== "ACCEPTED") ||
+      (input.sourceTaxStatus === "REJECTED" && input.decision !== "REJECTED")) conflict();
+}
+function classifyWinner(row: PersistenceRow, input: ValidatedInput): boolean {
+  if (input.decision === "ACCEPTED" && row.taxAuthorityStatus === "ACCEPTED" && validDate(row.issuedAt)) return true;
+  if (input.decision === "REJECTED" && row.taxAuthorityStatus === "REJECTED" && row.issuedAt === null) return true;
+  return false;
+}
+function acknowledgedTaxStatus(row: PersistenceRow): "PROCESSING" | "ACCEPTED" | "REJECTED" {
+  if (row.taxAuthorityStatus === "NOT_SUBMITTED") corrupt();
+  return row.taxAuthorityStatus;
+}
+function expectedWhere(row: PersistenceRow, input: ValidatedInput) {
+  return { id: input.billingDocumentId, tenantId: input.tenantId, billingMode: "ELECTRONIC_PROVIDER" as const,
+    lifecycleStatus: "SUBMITTED" as const, providerStatus: "PROCESSED" as const, taxAuthorityStatus: input.sourceTaxStatus,
+    billingDocumentNumberSequenceId: input.sequenceId, allocatedSequenceNumber: input.allocatedSequenceNumber,
+    fiscalNumber: input.fiscalNumber, documentTypeCode: input.documentTypeCode, issuanceIdempotencyKey: input.issuanceIdempotencyKey,
+    providerRequestHash: input.requestHash, providerLastAttemptAt: input.attemptedAt, providerDocumentId: input.providerDocumentId,
+    haciendaKey: input.haciendaKey, providerEnvironment: input.providerEnvironment, fiscalEmissionAt: row.fiscalEmissionAt,
+    fiscalIssueDate: row.fiscalIssueDate, submittedAt: input.submittedAt, providerReconciliationRequired: false,
+    providerLastErrorCode: null, providerLastErrorAt: null, issuedAt: null };
+}
+function result(input: ValidatedInput, tax: "PROCESSING" | "ACCEPTED" | "REJECTED", issuedAt: Date | null, newlyPersisted: boolean): BillingDocumentStatusPersistenceResult {
+  return { tenantId: input.tenantId, billingDocumentId: input.billingDocumentId, final: input.decision !== null,
+    finalDecision: input.decision, lifecycleStatus: "SUBMITTED", providerStatus: "PROCESSED", taxAuthorityStatus: tax,
+    issuedAt: issuedAt ? new Date(issuedAt.getTime()) : null, newlyPersisted, rejectionDetail: input.decision === "REJECTED" ? input.rejectionDetail : null };
+}
+function safe(value: unknown, max: number): value is string { return typeof value === "string" && value.length > 0 && value.length <= max && value.trim() === value; }
+function validDate(value: unknown): value is Date { return value instanceof Date && Number.isFinite(value.getTime()); }
+function canonicalDate(value: unknown): value is string { const match=typeof value === "string"?/^(\d{4})-(\d{2})-(\d{2})$/.exec(value):null;if(!match)return false;const d=new Date(Date.UTC(+match[1],+match[2]-1,+match[3]));return d.getUTCFullYear()===+match[1]&&d.getUTCMonth()+1===+match[2]&&d.getUTCDate()===+match[3]; }
+function sameCostaRicaDate(value:string,expected:string):boolean{const instant=new Date(value);if(!Number.isFinite(instant.getTime()))return false;const parts=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Costa_Rica",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(instant);const part=(type:Intl.DateTimeFormatPartTypes)=>parts.find(item=>item.type===type)?.value??"";return `${part("year")}-${part("month")}-${part("day")}`===expected;}
+function dateOnly(value: Date): string { return `${value.getUTCFullYear().toString().padStart(4,"0")}-${(value.getUTCMonth()+1).toString().padStart(2,"0")}-${value.getUTCDate().toString().padStart(2,"0")}`; }
+function keyDate(value: string): string { return `${value.slice(8,10)}${value.slice(5,7)}${value.slice(2,4)}`; }
+function notFound(): never { throw fiscalBillingError("BILLING_DOCUMENT_NOT_FOUND"); }
+function stale(): never { throw fiscalBillingError("BILLING_DOCUMENT_STATUS_STALE"); }
+function conflict(): never { throw fiscalBillingError("BILLING_DOCUMENT_STATUS_CONFLICT"); }
+function corrupt(): never { throw fiscalBillingError("BILLING_DOCUMENT_STATUS_STATE_CORRUPT"); }
