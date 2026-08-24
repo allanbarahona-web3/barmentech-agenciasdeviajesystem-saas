@@ -48,6 +48,10 @@ type SubmissionRow = Prisma.BillingDocumentGetPayload<{ select: typeof submissio
 
 export interface BillingDocumentSubmissionPreparationResult {
   readonly preparedSubmission: ReturnType<typeof prepareFacturaEnCrSubmission>;
+  readonly allocationIdentity: {
+    readonly billingDocumentNumberSequenceId: string;
+    readonly allocatedSequenceNumber: string;
+  };
   readonly providerState: {
     readonly billingMode: string; readonly lifecycleStatus: string; readonly providerStatus: string; readonly taxAuthorityStatus: string;
     readonly providerDocumentId: string | null; readonly providerEnvironment: string | null; readonly providerRequestHash: string | null;
@@ -74,6 +78,9 @@ export class BillingDocumentSubmissionPreparationService {
     let aggregate: FacturaEnCrSubmissionAggregate;
     try { aggregate = mapAggregate(row, tenantId); }
     catch { throw fiscalBillingError("BILLING_DOCUMENT_SUBMISSION_SNAPSHOT_INVALID"); }
+    if (!aggregate.billingDocumentNumberSequenceId || typeof aggregate.allocatedSequenceNumber !== "string") {
+      throw fiscalBillingError("BILLING_DOCUMENT_SUBMISSION_SNAPSHOT_INVALID");
+    }
 
     let preparedSubmission: ReturnType<typeof prepareFacturaEnCrSubmission>;
     try { preparedSubmission = prepareFacturaEnCrSubmission(aggregate); }
@@ -83,6 +90,10 @@ export class BillingDocumentSubmissionPreparationService {
     }
     return {
       preparedSubmission,
+      allocationIdentity: {
+        billingDocumentNumberSequenceId: aggregate.billingDocumentNumberSequenceId,
+        allocatedSequenceNumber: aggregate.allocatedSequenceNumber,
+      },
       identity: { tenantId: row.tenantId, billingDocumentId: row.id },
       providerState: {
         billingMode: row.billingMode, lifecycleStatus: row.lifecycleStatus, providerStatus: row.providerStatus,
