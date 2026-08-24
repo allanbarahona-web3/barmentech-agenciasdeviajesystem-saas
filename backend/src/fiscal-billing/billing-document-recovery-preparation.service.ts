@@ -16,6 +16,8 @@ export interface BillingDocumentRecoveryPreparationResult {
   readonly issuanceIdempotencyKey: string;
   readonly providerRequestHash: string;
   readonly providerLastAttemptAt: Date;
+  readonly fiscalEmissionAt: Date;
+  readonly fiscalIssueDate: string;
   readonly lifecycleStatus: "CONFIRMED";
   readonly providerStatus: "PENDING";
   readonly taxAuthorityStatus: "NOT_SUBMITTED";
@@ -55,7 +57,7 @@ function validateRecovery(value: BillingDocumentSubmissionPreparationResult, ten
   if (typeof recovery.fiscalNumber !== "string" || !/^\d{20}$/.test(recovery.fiscalNumber) ||
     (recovery.documentTypeCode !== "01" && recovery.documentTypeCode !== "04") ||
     typeof recovery.issuanceIdempotencyKey !== "string" || recovery.issuanceIdempotencyKey !== `billing-document:${billingDocumentId}:electronic-issuance:v1` ||
-    typeof recovery.fiscalIssueDate !== "string" || !canonicalDate(recovery.fiscalIssueDate) || recovery.issuedAt !== null) mismatch();
+    !validDate(recovery.fiscalEmissionAt) || typeof recovery.fiscalIssueDate !== "string" || !canonicalDate(recovery.fiscalIssueDate) || recovery.issuedAt !== null) mismatch();
   if (recovery.fiscalNumber.slice(8,10) !== recovery.documentTypeCode || recovery.fiscalNumber.slice(10) !== allocation.allocatedSequenceNumber.padStart(10,"0") ||
     prepared.metadata?.fiscalNumber !== recovery.fiscalNumber || prepared.metadata?.documentTypeCode !== recovery.documentTypeCode ||
     prepared.metadata?.fiscalIssueDate !== recovery.fiscalIssueDate || prepared.idempotencyKey !== recovery.issuanceIdempotencyKey ||
@@ -79,7 +81,8 @@ function validateRecovery(value: BillingDocumentSubmissionPreparationResult, ten
     allocatedSequenceNumber: allocation.allocatedSequenceNumber,
     fiscalNumber: recovery.fiscalNumber, documentTypeCode: recovery.documentTypeCode,
     issuanceIdempotencyKey: recovery.issuanceIdempotencyKey, providerRequestHash: state.providerRequestHash,
-    providerLastAttemptAt: new Date(state.providerLastAttemptAt.getTime()), lifecycleStatus:"CONFIRMED", providerStatus:"PENDING",
+    providerLastAttemptAt: new Date(state.providerLastAttemptAt.getTime()), fiscalEmissionAt:new Date(recovery.fiscalEmissionAt.getTime()),
+    fiscalIssueDate:recovery.fiscalIssueDate, lifecycleStatus:"CONFIRMED", providerStatus:"PENDING",
     taxAuthorityStatus:"NOT_SUBMITTED", providerReconciliationRequired:true,
     providerLastErrorCode:errorCode, providerLastErrorAt:errorAt===null?null:new Date(errorAt.getTime()), submittedAt:null, issuedAt:null,
   };

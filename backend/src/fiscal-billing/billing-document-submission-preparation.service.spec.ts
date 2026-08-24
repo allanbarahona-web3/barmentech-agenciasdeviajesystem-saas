@@ -31,7 +31,7 @@ describe("BillingDocumentSubmissionPreparationService",()=>{
     expect(aggregate.receiver).toMatchObject({economicActivityCode:null,phone:"506 22220000",address:{provinceCode:"1",cantonCode:"01",districtCode:"02",neighborhoodCode:"03",otherAddressDetails:"Centro"}});
     expect(result.preparedSubmission).toBe(expected);
     expect(result.allocationIdentity).toEqual({billingDocumentNumberSequenceId:"sequence-a",allocatedSequenceNumber:"9999999999"});
-    expect(result.recoveryIdentity).toEqual({fiscalNumber:"00100001010000000042",documentTypeCode:"01",issuanceIdempotencyKey:"billing-document:document-a:electronic-issuance:v1",fiscalIssueDate:"2026-08-24",issuedAt:null});
+    expect(result.recoveryIdentity).toEqual({fiscalNumber:"00100001010000000042",documentTypeCode:"01",issuanceIdempotencyKey:"billing-document:document-a:electronic-issuance:v1",fiscalEmissionAt:new Date("2026-08-24T06:00:00.456Z"),fiscalIssueDate:"2026-08-24",issuedAt:null});
     expect(query).toHaveProperty("select.issuedAt",true);
     expect(result.preparedSubmission.canonicalBody).not.toContain("sequence-a");expect(result.preparedSubmission.canonicalBody).not.toContain("9999999999");
     expect(result.preparedSubmission.requestHash).toBe(createHash("sha256").update(result.preparedSubmission.canonicalBody,"utf8").digest("hex"));
@@ -99,8 +99,10 @@ describe("BillingDocumentSubmissionPreparationService",()=>{
     const builder=jest.spyOn(facturaBuilder,"prepareFacturaEnCrSubmission").mockReturnValue(expected);
     const result=await subject(jest.fn().mockResolvedValue(persisted)).prepare("tenant-a","document-a");
     expect(result.preparedSubmission).toBe(expected);
-    expect(result.recoveryIdentity).toEqual({fiscalNumber:"00100001010000000042",documentTypeCode:"01",issuanceIdempotencyKey:"billing-document:document-a:electronic-issuance:v1",fiscalIssueDate:"2026-08-24",issuedAt});
+    expect(result.recoveryIdentity).toEqual({fiscalNumber:"00100001010000000042",documentTypeCode:"01",issuanceIdempotencyKey:"billing-document:document-a:electronic-issuance:v1",fiscalEmissionAt:new Date("2026-08-24T06:00:00.456Z"),fiscalIssueDate:"2026-08-24",issuedAt});
     expect(result.recoveryIdentity.fiscalNumber).not.toBe(result.preparedSubmission.metadata.fiscalNumber);
+    expect(result.recoveryIdentity.fiscalEmissionAt.getTime()).toBe(new Date("2026-08-24T06:00:00.456Z").getTime());
+    expect(result.recoveryIdentity.fiscalEmissionAt).not.toBe(persisted.fiscalEmissionAt);
     expect(result.recoveryIdentity.issuedAt).not.toBe(issuedAt);expect(result.recoveryIdentity.issuedAt?.getTime()).toBe(issuedAt.getTime());
     expect(result.recoveryIdentity.issuedAt?.toISOString()).toBe("2026-08-24T12:34:56.789Z");expect(builder).toHaveBeenCalledTimes(1);
   });
@@ -110,6 +112,7 @@ describe("BillingDocumentSubmissionPreparationService",()=>{
     ["unsupported document type",{documentTypeCode:"03"}],["non-string document type",{documentTypeCode:1}],
     ["missing issuance key",{issuanceIdempotencyKey:null}],["non-string issuance key",{issuanceIdempotencyKey:1}],
     ["missing fiscal issue date",{fiscalIssueDate:null}],["invalid fiscal issue date",{fiscalIssueDate:new Date("invalid")}],["non-Date fiscal issue date",{fiscalIssueDate:"2026-08-24"}],
+    ["missing fiscal emission",{fiscalEmissionAt:null}],["invalid fiscal emission",{fiscalEmissionAt:new Date("invalid")}],["non-Date fiscal emission",{fiscalEmissionAt:"2026-08-24T06:00:00.456Z"}],
     ["invalid issuedAt",{issuedAt:new Date("invalid")}],["non-Date issuedAt",{issuedAt:"2026-08-24T12:00:00Z"}],
   ] as const)("fails safely for malformed recovery identity: %s",async(_label,override)=>{
     const builder=jest.spyOn(facturaBuilder,"prepareFacturaEnCrSubmission").mockReturnValue(prepared());

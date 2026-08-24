@@ -56,6 +56,7 @@ export interface BillingDocumentSubmissionPreparationResult {
     readonly fiscalNumber: string;
     readonly documentTypeCode: "01" | "04";
     readonly issuanceIdempotencyKey: string;
+    readonly fiscalEmissionAt: Date;
     readonly fiscalIssueDate: string;
     readonly issuedAt: Date | null;
   };
@@ -124,9 +125,10 @@ function mapRecoveryIdentity(row: SubmissionRow): BillingDocumentSubmissionPrepa
     typeof row.issuanceIdempotencyKey !== "string" ||
     row.issuanceIdempotencyKey !== `billing-document:${row.id}:electronic-issuance:v1` || row.issuanceIdempotencyKey.length > 100) invalidSnapshot();
   const fiscalIssueDate = dateOnly(row.fiscalIssueDate);
-  if (fiscalIssueDate === null || (row.issuedAt !== null && !(row.issuedAt instanceof Date && Number.isFinite(row.issuedAt.getTime())))) invalidSnapshot();
+  if (!(row.fiscalEmissionAt instanceof Date) || !Number.isFinite(row.fiscalEmissionAt.getTime()) || fiscalIssueDate === null ||
+    (row.issuedAt !== null && !(row.issuedAt instanceof Date && Number.isFinite(row.issuedAt.getTime())))) invalidSnapshot();
   return { fiscalNumber: row.fiscalNumber, documentTypeCode: row.documentTypeCode,
-    issuanceIdempotencyKey: row.issuanceIdempotencyKey, fiscalIssueDate,
+    issuanceIdempotencyKey: row.issuanceIdempotencyKey, fiscalEmissionAt: new Date(row.fiscalEmissionAt.getTime()), fiscalIssueDate,
     issuedAt: row.issuedAt === null ? null : new Date(row.issuedAt.getTime()) };
 }
 
