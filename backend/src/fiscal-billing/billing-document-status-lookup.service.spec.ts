@@ -60,6 +60,10 @@ describe("BillingDocumentStatusLookupService", () => {
     expect(identity.providerLastStatusCheckAt).not.toBe(last);expect(identity.providerNextStatusCheckAt).not.toBe(next);expect(identity.providerStatusCheckLeaseUntil).not.toBe(lease);
   });
 
+  it("allows an exact due unexpired lease and calls the provider once",async()=>{const now=new Date(ATTEMPT.getTime()+20_000),c=context(row({providerStatusCheckLockOwner:"worker-a",providerStatusCheckLeaseUntil:new Date(now.getTime()+60_000)}),undefined,now);await c.service.lookupStatus("tenant-a","document-a","worker-a");expect(c.clock.now).toHaveBeenCalledTimes(1);expect(c.provider.getDocumentStatus).toHaveBeenCalledTimes(1);});
+  it.each<[string,{owner?:string;row?:Record<string,unknown>;leaseDelta?:number;nowDelta?:number}]>([["wrong owner",{owner:"worker-b"}],["missing lease",{row:{providerStatusCheckLockOwner:null,providerStatusCheckLeaseUntil:null}}],["expired",{leaseDelta:0}],["future",{nowDelta:0}]])("rejects a %s automatic lease before provider",async(_label,options)=>{const now=new Date(ATTEMPT.getTime()+(options.nowDelta??20_000)),lease=new Date(now.getTime()+(options.leaseDelta??60_000)),c=context(row({providerStatusCheckLockOwner:"worker-a",providerStatusCheckLeaseUntil:lease,...options.row}),undefined,now);await expect(c.service.lookupStatus("tenant-a","document-a",options.owner??"worker-a")).rejects.toBeDefined();expect(c.provider.getDocumentStatus).not.toHaveBeenCalled();});
+  it.each(["ACCEPTED","REJECTED"] as const)("returns an already-completed %s retry without provider access",async taxAuthorityStatus=>{const c=context(row({taxAuthorityStatus,providerNextStatusCheckAt:null,providerStatusCheckLockOwner:null,providerStatusCheckLeaseUntil:null,providerStatusCheckAttempts:1,providerLastStatusCheckAt:new Date(ATTEMPT.getTime()+20_000),issuedAt:taxAuthorityStatus==="ACCEPTED"?new Date(ATTEMPT.getTime()+20_000):null}));await expect(c.service.lookupStatus("tenant-a","document-a","old-owner")).resolves.toEqual({classification:"ALREADY_COMPLETED",taxAuthorityStatus});expect(c.provider.getDocumentStatus).not.toHaveBeenCalled();expect(c.clock.now).not.toHaveBeenCalled();});
+
   it.each([{providerStatusCheckAttempts:-1},{providerStatusCheckAttempts:1.5},{providerLastStatusCheckAt:new Date(Number.NaN)},{providerStatusCheckLockOwner:"worker-a"},{providerStatusCheckLockOwner:" x ",providerStatusCheckLeaseUntil:new Date()},{taxAuthorityStatus:"ACCEPTED",providerNextStatusCheckAt:new Date()}])("rejects malformed scheduling state before provider access: %o",async override=>{const c=context(row(override));await expect(c.service.lookupStatus("tenant-a","document-a")).rejects.toBeDefined();expect(c.provider.getDocumentStatus).not.toHaveBeenCalled();});
 
   it.each([
@@ -158,7 +162,7 @@ function row(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function context(persisted: ReturnType<typeof row> | null, providerError?: Error) {
+function context(persisted: ReturnType<typeof row> | null, providerError?: Error, now=new Date(ATTEMPT.getTime()+20_000)) {
   const providerResult: ElectronicDocumentStatusResult = {
     classification: "ELECTRONIC_DOCUMENT_STATUS", providerDocumentId: "provider_a-1", haciendaKey: KEY,
     consecutive: NUMBER, providerEnvironment: "sandbox", providerStatus: "processing", final: false,
@@ -168,8 +172,9 @@ function context(persisted: ReturnType<typeof row> | null, providerError?: Error
     findUnique: jest.fn(async () => persisted), update: jest.fn(), updateMany: jest.fn(), create: jest.fn(), delete: jest.fn(),
   }, $transaction: jest.fn(), $executeRaw: jest.fn(), $queryRaw: jest.fn() };
   const provider = { getDocumentStatus: jest.fn(async () => { if (providerError) throw providerError; return providerResult; }) };
+  const clock={now:jest.fn(()=>now)};
   return { prisma, provider, providerResult: providerResult as Mutable<ElectronicDocumentStatusResult>, persisted,
-    service: new BillingDocumentStatusLookupService(prisma as unknown as PrismaService, provider as ElectronicDocumentStatusProvider) };
+    clock,service: new BillingDocumentStatusLookupService(prisma as unknown as PrismaService, provider as ElectronicDocumentStatusProvider,clock) };
 }
 
 type Mutable<T> = { -readonly [P in keyof T]: T[P] };

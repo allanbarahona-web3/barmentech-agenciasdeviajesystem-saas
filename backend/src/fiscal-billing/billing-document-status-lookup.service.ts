@@ -2,6 +2,7 @@ import { Inject, Injectable } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { fiscalBillingError } from "./fiscal-billing.errors";
+import { FiscalIssuanceClock } from "./fiscal-issuance.clock";
 import {
   ELECTRONIC_DOCUMENT_STATUS_PROVIDER,
   ElectronicDocumentStatusError,
@@ -55,6 +56,7 @@ export interface BillingDocumentStatusLookupResult {
   };
   readonly providerResult: ElectronicDocumentStatusResult;
 }
+export interface BillingDocumentStatusLookupAlreadyCompleted {readonly classification:"ALREADY_COMPLETED";readonly taxAuthorityStatus:"ACCEPTED"|"REJECTED";}
 
 @Injectable()
 export class BillingDocumentStatusLookupService {
@@ -62,9 +64,12 @@ export class BillingDocumentStatusLookupService {
     private readonly prisma: PrismaService,
     @Inject(ELECTRONIC_DOCUMENT_STATUS_PROVIDER)
     private readonly statusProvider: ElectronicDocumentStatusProvider,
+    private readonly clock?: FiscalIssuanceClock,
   ) {}
 
-  async lookupStatus(tenantId: string, billingDocumentId: string): Promise<BillingDocumentStatusLookupResult> {
+  async lookupStatus(tenantId:string,billingDocumentId:string):Promise<BillingDocumentStatusLookupResult>;
+  async lookupStatus(tenantId:string,billingDocumentId:string,expectedStatusCheckLockOwner:string):Promise<BillingDocumentStatusLookupResult|BillingDocumentStatusLookupAlreadyCompleted>;
+  async lookupStatus(tenantId: string, billingDocumentId: string, expectedStatusCheckLockOwner?: string): Promise<BillingDocumentStatusLookupResult|BillingDocumentStatusLookupAlreadyCompleted> {
     if (!boundedIdentifier(tenantId) || !boundedIdentifier(billingDocumentId)) notFound();
 
     let row: StatusLookupRow | null;
@@ -77,8 +82,10 @@ export class BillingDocumentStatusLookupService {
       throw fiscalBillingError("BILLING_DOCUMENT_STATUS_LOOKUP_FAILED");
     }
     if (!row || row.id !== billingDocumentId || row.tenantId !== tenantId) notFound();
+    if(expectedStatusCheckLockOwner!==undefined){const completed=completedStatus(row);if(completed)return{classification:"ALREADY_COMPLETED",taxAuthorityStatus:completed};}
 
     const prepared = validateSnapshot(row);
+    if(expectedStatusCheckLockOwner!==undefined){if(!safeString(expectedStatusCheckLockOwner,100)||prepared.statusCheckLockOwner!==expectedStatusCheckLockOwner||!prepared.statusCheckLeaseUntil||!prepared.nextStatusCheckAt||!this.clock)invalid();const now=this.clock.now();if(!validDate(now)||prepared.statusCheckLeaseUntil.getTime()<=now.getTime()||prepared.nextStatusCheckAt.getTime()>now.getTime()||prepared.taxAuthorityStatus!=="PROCESSING")invalid();}
     let providerResult: ElectronicDocumentStatusResult;
     try {
       providerResult = await this.statusProvider.getDocumentStatus({
@@ -186,6 +193,7 @@ function copyDate(value: Date | null): Date | null { return value === null ? nul
 function statusCheckSelect(){return{providerStatusCheckAttempts:true,providerLastStatusCheckAt:true,providerNextStatusCheckAt:true,providerStatusCheckLockOwner:true,providerStatusCheckLeaseUntil:true};}
 function dateOnly(value: Date): string { return `${value.getUTCFullYear().toString().padStart(4, "0")}-${(value.getUTCMonth() + 1).toString().padStart(2, "0")}-${value.getUTCDate().toString().padStart(2, "0")}`; }
 function keyDate(value: string): string { return `${value.slice(8, 10)}${value.slice(5, 7)}${value.slice(2, 4)}`; }
+function completedStatus(row:StatusLookupRow):"ACCEPTED"|"REJECTED"|null{if(row.lifecycleStatus!=="SUBMITTED"||row.providerStatus!=="PROCESSED"||(row.taxAuthorityStatus!=="ACCEPTED"&&row.taxAuthorityStatus!=="REJECTED"))return null;if(row.providerReconciliationRequired||row.providerStatusCheckLockOwner!==null||row.providerStatusCheckLeaseUntil!==null||row.providerNextStatusCheckAt!==null||!Number.isInteger(row.providerStatusCheckAttempts)||row.providerStatusCheckAttempts<0||!nullableDate(row.providerLastStatusCheckAt)||(row.taxAuthorityStatus==="ACCEPTED"?!validDate(row.issuedAt):row.issuedAt!==null))invalid();return row.taxAuthorityStatus;}
 function notFound(): never { throw fiscalBillingError("BILLING_DOCUMENT_NOT_FOUND"); }
 function ineligible(): never { throw fiscalBillingError("BILLING_DOCUMENT_STATUS_LOOKUP_INELIGIBLE"); }
 function invalid(): never { throw fiscalBillingError("BILLING_DOCUMENT_STATUS_SNAPSHOT_INVALID"); }

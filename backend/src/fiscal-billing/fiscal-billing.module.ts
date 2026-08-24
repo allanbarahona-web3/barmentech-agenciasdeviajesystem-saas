@@ -45,6 +45,8 @@ import { BillingDocumentStatusLookupService } from "./billing-document-status-lo
 import { BillingDocumentStatusPersistenceService } from "./billing-document-status-persistence.service";
 import { BillingDocumentRecoveryPreparationService } from "./billing-document-recovery-preparation.service";
 import { BillingDocumentRecoveryExecutorService } from "./billing-document-recovery-executor.service";
+import { FiscalStatusReconciliationPublisher } from "./jobs/fiscal-status-reconciliation.publisher";
+import { FiscalStatusReconciliationProcessor } from "./jobs/fiscal-status-reconciliation.processor";
 
 @Module({
   imports: [FiscalCatalogModule, OfficialExchangeRateModule],
@@ -82,6 +84,8 @@ import { BillingDocumentRecoveryExecutorService } from "./billing-document-recov
     BillingDocumentStatusPersistenceService,
     BillingDocumentRecoveryPreparationService,
     BillingDocumentRecoveryExecutorService,
+    FiscalStatusReconciliationPublisher,
+    FiscalStatusReconciliationProcessor,
     {
       provide: SALES_ORDER_FISCAL_BILLING_REPOSITORY,
       useExisting: PrismaSalesOrderFiscalBillingRepository,
