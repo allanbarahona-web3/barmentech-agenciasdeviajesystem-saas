@@ -38,6 +38,7 @@ import { BillingDocumentSubmissionPreparationService } from "./billing-document-
 import { BillingDocumentSubmissionAttemptService } from "./billing-document-submission-attempt.service";
 import { BillingDocumentSubmissionExecutorService } from "./billing-document-submission-executor.service";
 import { BillingDocumentSubmissionOutcomeService } from "./billing-document-submission-outcome.service";
+import { FiscalBillingSubmissionProcessor } from "./jobs/fiscal-billing-submission.processor";
 
 @Module({
   imports: [FiscalCatalogModule, OfficialExchangeRateModule],
@@ -69,6 +70,7 @@ import { BillingDocumentSubmissionOutcomeService } from "./billing-document-subm
     BillingDocumentSubmissionAttemptService,
     BillingDocumentSubmissionExecutorService,
     BillingDocumentSubmissionOutcomeService,
+    FiscalBillingSubmissionProcessor,
     {
       provide: SALES_ORDER_FISCAL_BILLING_REPOSITORY,
       useExisting: PrismaSalesOrderFiscalBillingRepository,

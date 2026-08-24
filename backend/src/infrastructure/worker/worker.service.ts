@@ -32,6 +32,12 @@ interface DispatcherJobData {
   };
 }
 
+export interface WorkerRegistrationOptions {
+  concurrency?: number;
+}
+
+export const MAX_WORKER_REGISTRATION_CONCURRENCY = 25;
+
 @Injectable()
 export class WorkerService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(WorkerService.name);
@@ -94,9 +100,22 @@ export class WorkerService implements OnModuleInit, OnModuleDestroy {
     registrationKey: string,
     queueKey: PlatformQueueKey,
     processor: Processor,
+    options?: WorkerRegistrationOptions,
   ): Worker | null {
     if (!registrationKey.trim()) {
       throw new Error("Worker registration key must not be empty.");
+    }
+
+    const concurrency = options?.concurrency;
+    if (
+      concurrency !== undefined &&
+      (!Number.isInteger(concurrency) ||
+        concurrency < 1 ||
+        concurrency > MAX_WORKER_REGISTRATION_CONCURRENCY)
+    ) {
+      throw new Error(
+        `Worker concurrency must be an integer between 1 and ${MAX_WORKER_REGISTRATION_CONCURRENCY}.`,
+      );
     }
 
     if (!this.redisService.isEnabled()) {
@@ -121,7 +140,7 @@ export class WorkerService implements OnModuleInit, OnModuleDestroy {
       worker = new Worker(queueName, this.wrapProcessor(processor), {
         connection,
         prefix: this.queueService.getPrefix(),
-        concurrency: this.config.concurrency,
+        concurrency: concurrency ?? this.config.concurrency,
         lockDuration: this.config.lockDurationMs,
         stalledInterval: this.config.stalledIntervalMs,
         maxStalledCount: this.config.maxStalledCount,

@@ -170,6 +170,8 @@ export class FiscalOutboxPublisherService
         metadata: { tenantId: event.tenantId },
         options: {
           jobId: fiscalIssuanceJobId(event.id),
+          attempts: 3,
+          backoff: { type: "exponential", delay: 2000 },
           removeOnComplete: false,
           removeOnFail: false,
         },

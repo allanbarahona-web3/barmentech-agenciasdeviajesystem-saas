@@ -63,6 +63,8 @@ describe("FiscalOutboxPublisherService", () => {
       metadata: { tenantId: "tenant-a" },
       options: {
         jobId: fiscalIssuanceJobId("outbox-a"),
+        attempts: 3,
+        backoff: { type: "exponential", delay: 2000 },
         removeOnComplete: false,
         removeOnFail: false,
       },

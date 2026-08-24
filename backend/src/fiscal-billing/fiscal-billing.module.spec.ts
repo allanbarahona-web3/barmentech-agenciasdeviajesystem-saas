@@ -6,6 +6,7 @@ import { BillingDocumentSubmissionPreparationService } from "./billing-document-
 import { BillingDocumentSubmissionAttemptService } from "./billing-document-submission-attempt.service";
 import { BillingDocumentSubmissionExecutorService } from "./billing-document-submission-executor.service";
 import { BillingDocumentSubmissionOutcomeService } from "./billing-document-submission-outcome.service";
+import { FiscalBillingSubmissionProcessor } from "./jobs/fiscal-billing-submission.processor";
 
 describe("FiscalBillingModule official-rate wiring", () => {
   it("imports the existing official-rate module without duplicating its resolver", () => {
@@ -23,5 +24,6 @@ describe("FiscalBillingModule official-rate wiring", () => {
     expect(Reflect.getMetadata("exports",FiscalBillingModule)).toContain(BillingDocumentSubmissionExecutorService);
     expect(providers).toContain(BillingDocumentSubmissionOutcomeService);
     expect(Reflect.getMetadata("exports",FiscalBillingModule)).toContain(BillingDocumentSubmissionOutcomeService);
+    expect(providers).toContain(FiscalBillingSubmissionProcessor);
   });
 });

@@ -1,6 +1,7 @@
 import { ConfigService } from "@nestjs/config";
 import { MODULE_METADATA } from "@nestjs/common/constants";
 import { FiscalBillingModule } from "../../fiscal-billing/fiscal-billing.module";
+import { FiscalBillingSubmissionProcessor } from "../../fiscal-billing/jobs/fiscal-billing-submission.processor";
 import {
   DEFAULT_QUEUE_NAMES,
   PLATFORM_QUEUE_KEYS,
@@ -50,19 +51,18 @@ describe("queue configuration", () => {
     ).toBe("fiscal-custom");
   });
 
-  it("does not register a fiscal worker", () => {
+  it("registers the fiscal processor without adding another queue", () => {
     const providers = Reflect.getMetadata(
       MODULE_METADATA.PROVIDERS,
       FiscalBillingModule,
     ) as Array<{ name?: string }>;
 
+    expect(providers).toContain(FiscalBillingSubmissionProcessor);
     expect(
-      providers.some((provider) =>
-        /fiscal.*(?:worker|processor)|(?:worker|processor).*fiscal/i.test(
-          provider.name ?? "",
-        ),
+      Object.values(PLATFORM_QUEUE_KEYS).filter(
+        (queueKey) => queueKey === PLATFORM_QUEUE_KEYS.FISCAL_BILLING,
       ),
-    ).toBe(false);
+    ).toHaveLength(1);
   });
 });
 
