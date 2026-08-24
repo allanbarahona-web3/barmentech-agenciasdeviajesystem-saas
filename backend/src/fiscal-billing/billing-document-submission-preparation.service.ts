@@ -19,7 +19,7 @@ const submissionSelect = Prisma.validator<Prisma.BillingDocumentSelect>()({
   receiverEmail: true, receiverPhone: true, receiverAddressSnapshot: true,
   providerStatus: true, taxAuthorityStatus: true, providerDocumentId: true, providerEnvironment: true, providerRequestHash: true,
   providerLastAttemptAt: true, providerLastErrorCode: true, providerLastErrorAt: true, providerReconciliationRequired: true,
-  haciendaKey: true, submittedAt: true,
+  haciendaKey: true, submittedAt: true, issuedAt: true,
   officialExchangeRateObservation: { select: {
     id: true, countryCode: true, foreignCurrencyCode: true, localCurrencyCode: true, rateType: true,
     effectiveDate: true, value: true, sourceAuthority: true, sourceIndicatorCode: true, requestIdentity: true, responseHash: true,
@@ -51,6 +51,13 @@ export interface BillingDocumentSubmissionPreparationResult {
   readonly allocationIdentity: {
     readonly billingDocumentNumberSequenceId: string;
     readonly allocatedSequenceNumber: string;
+  };
+  readonly recoveryIdentity: {
+    readonly fiscalNumber: string;
+    readonly documentTypeCode: "01" | "04";
+    readonly issuanceIdempotencyKey: string;
+    readonly fiscalIssueDate: string;
+    readonly issuedAt: Date | null;
   };
   readonly providerState: {
     readonly billingMode: string; readonly lifecycleStatus: string; readonly providerStatus: string; readonly taxAuthorityStatus: string;
@@ -88,12 +95,16 @@ export class BillingDocumentSubmissionPreparationService {
       if (error instanceof FacturaEnCrPreparationError) throw fiscalBillingError("BILLING_DOCUMENT_SUBMISSION_PREPARATION_FAILED");
       throw fiscalBillingError("BILLING_DOCUMENT_SUBMISSION_PREPARATION_FAILED");
     }
+    let recoveryIdentity: BillingDocumentSubmissionPreparationResult["recoveryIdentity"];
+    try { recoveryIdentity = mapRecoveryIdentity(row); }
+    catch { throw fiscalBillingError("BILLING_DOCUMENT_SUBMISSION_SNAPSHOT_INVALID"); }
     return {
       preparedSubmission,
       allocationIdentity: {
         billingDocumentNumberSequenceId: aggregate.billingDocumentNumberSequenceId,
         allocatedSequenceNumber: aggregate.allocatedSequenceNumber,
       },
+      recoveryIdentity,
       identity: { tenantId: row.tenantId, billingDocumentId: row.id },
       providerState: {
         billingMode: row.billingMode, lifecycleStatus: row.lifecycleStatus, providerStatus: row.providerStatus,
@@ -105,6 +116,18 @@ export class BillingDocumentSubmissionPreparationService {
       },
     };
   }
+}
+
+function mapRecoveryIdentity(row: SubmissionRow): BillingDocumentSubmissionPreparationResult["recoveryIdentity"] {
+  if (typeof row.fiscalNumber !== "string" || !/^\d{20}$/.test(row.fiscalNumber) ||
+    (row.documentTypeCode !== "01" && row.documentTypeCode !== "04") ||
+    typeof row.issuanceIdempotencyKey !== "string" ||
+    row.issuanceIdempotencyKey !== `billing-document:${row.id}:electronic-issuance:v1` || row.issuanceIdempotencyKey.length > 100) invalidSnapshot();
+  const fiscalIssueDate = dateOnly(row.fiscalIssueDate);
+  if (fiscalIssueDate === null || (row.issuedAt !== null && !(row.issuedAt instanceof Date && Number.isFinite(row.issuedAt.getTime())))) invalidSnapshot();
+  return { fiscalNumber: row.fiscalNumber, documentTypeCode: row.documentTypeCode,
+    issuanceIdempotencyKey: row.issuanceIdempotencyKey, fiscalIssueDate,
+    issuedAt: row.issuedAt === null ? null : new Date(row.issuedAt.getTime()) };
 }
 
 function mapAggregate(row: SubmissionRow, expectedTenantId: string): FacturaEnCrSubmissionAggregate {

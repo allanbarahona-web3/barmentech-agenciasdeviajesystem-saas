@@ -31,6 +31,8 @@ describe("BillingDocumentSubmissionPreparationService",()=>{
     expect(aggregate.receiver).toMatchObject({economicActivityCode:null,phone:"506 22220000",address:{provinceCode:"1",cantonCode:"01",districtCode:"02",neighborhoodCode:"03",otherAddressDetails:"Centro"}});
     expect(result.preparedSubmission).toBe(expected);
     expect(result.allocationIdentity).toEqual({billingDocumentNumberSequenceId:"sequence-a",allocatedSequenceNumber:"9999999999"});
+    expect(result.recoveryIdentity).toEqual({fiscalNumber:"00100001010000000042",documentTypeCode:"01",issuanceIdempotencyKey:"billing-document:document-a:electronic-issuance:v1",fiscalIssueDate:"2026-08-24",issuedAt:null});
+    expect(query).toHaveProperty("select.issuedAt",true);
     expect(result.preparedSubmission.canonicalBody).not.toContain("sequence-a");expect(result.preparedSubmission.canonicalBody).not.toContain("9999999999");
     expect(result.preparedSubmission.requestHash).toBe(createHash("sha256").update(result.preparedSubmission.canonicalBody,"utf8").digest("hex"));
     expect(result.identity).toEqual({tenantId:"tenant-a",billingDocumentId:"document-a"});
@@ -90,6 +92,30 @@ describe("BillingDocumentSubmissionPreparationService",()=>{
     await new BillingDocumentSubmissionPreparationService(prisma as unknown as PrismaService).prepare("tenant-a","document-a");
     expect(prisma.billingDocument.update).not.toHaveBeenCalled();expect(prisma.salesOrder.findFirst).not.toHaveBeenCalled();expect(prisma.client.findFirst).not.toHaveBeenCalled();expect(prisma.officialExchangeRateObservation.findUnique).not.toHaveBeenCalled();expect(prisma.$transaction).not.toHaveBeenCalled();
   });
+
+  it("preserves persisted recovery identity, UTC DATE identity, and an exact defensive issuedAt copy",async()=>{
+    const issuedAt=new Date("2026-08-24T12:34:56.789Z"),persisted=row({fiscalIssueDate:new Date("2026-08-24T23:59:59.999Z"),issuedAt});
+    const expected=prepared();expected.metadata.fiscalNumber="99999999999999999999";
+    const builder=jest.spyOn(facturaBuilder,"prepareFacturaEnCrSubmission").mockReturnValue(expected);
+    const result=await subject(jest.fn().mockResolvedValue(persisted)).prepare("tenant-a","document-a");
+    expect(result.preparedSubmission).toBe(expected);
+    expect(result.recoveryIdentity).toEqual({fiscalNumber:"00100001010000000042",documentTypeCode:"01",issuanceIdempotencyKey:"billing-document:document-a:electronic-issuance:v1",fiscalIssueDate:"2026-08-24",issuedAt});
+    expect(result.recoveryIdentity.fiscalNumber).not.toBe(result.preparedSubmission.metadata.fiscalNumber);
+    expect(result.recoveryIdentity.issuedAt).not.toBe(issuedAt);expect(result.recoveryIdentity.issuedAt?.getTime()).toBe(issuedAt.getTime());
+    expect(result.recoveryIdentity.issuedAt?.toISOString()).toBe("2026-08-24T12:34:56.789Z");expect(builder).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["missing fiscal number",{fiscalNumber:null}],["non-string fiscal number",{fiscalNumber:42}],
+    ["unsupported document type",{documentTypeCode:"03"}],["non-string document type",{documentTypeCode:1}],
+    ["missing issuance key",{issuanceIdempotencyKey:null}],["non-string issuance key",{issuanceIdempotencyKey:1}],
+    ["missing fiscal issue date",{fiscalIssueDate:null}],["invalid fiscal issue date",{fiscalIssueDate:new Date("invalid")}],["non-Date fiscal issue date",{fiscalIssueDate:"2026-08-24"}],
+    ["invalid issuedAt",{issuedAt:new Date("invalid")}],["non-Date issuedAt",{issuedAt:"2026-08-24T12:00:00Z"}],
+  ] as const)("fails safely for malformed recovery identity: %s",async(_label,override)=>{
+    const builder=jest.spyOn(facturaBuilder,"prepareFacturaEnCrSubmission").mockReturnValue(prepared());
+    const error=await capture(subject(jest.fn().mockResolvedValue(row(override))).prepare("tenant-a","document-a"));
+    expect(error.getResponse()).toMatchObject({code:"BILLING_DOCUMENT_SUBMISSION_SNAPSHOT_INVALID"});expect(builder.mock.calls.length).toBeLessThanOrEqual(1);
+  });
 });
 
 function subject(findUnique:jest.Mock){return new BillingDocumentSubmissionPreparationService({billingDocument:{findUnique}} as unknown as PrismaService);}
@@ -101,7 +127,7 @@ function row(overrides:Record<string,unknown>={}){return{id:"document-a",tenantI
   officialExchangeRateObservationId:null,fiscalExchangeRateEffectiveDate:null,fiscalExchangeRateSourceAuthority:null,fiscalExchangeRateIndicatorCode:null,officialExchangeRateObservation:null,
   paymentConditionCode:"01",creditTermDays:null,receiverName:"Receiver",receiverIdentificationType:"02",receiverIdentification:"3101999999",receiverEconomicActivityCode:null,
   receiverEmail:null,receiverPhone:"506 22220000",receiverAddressSnapshot:{provinceCode:"1",cantonCode:"01",districtCode:"02",neighborhoodCode:"03",otherAddressDetails:"Centro"},
-  providerStatus:"PENDING",taxAuthorityStatus:"NOT_SUBMITTED",providerDocumentId:null,providerEnvironment:null,providerRequestHash:null,providerLastAttemptAt:null,providerLastErrorCode:null,providerLastErrorAt:null,providerReconciliationRequired:false,haciendaKey:null,submittedAt:null,
+  providerStatus:"PENDING",taxAuthorityStatus:"NOT_SUBMITTED",providerDocumentId:null,providerEnvironment:null,providerRequestHash:null,providerLastAttemptAt:null,providerLastErrorCode:null,providerLastErrorAt:null,providerReconciliationRequired:false,haciendaKey:null,submittedAt:null,issuedAt:null,
   paymentMethods:[{id:"payment-a",tenantId:"tenant-a",paymentMethodOrder:1,paymentMethodCode:"01",description:null,declaredAmount:null}],
   lines:[{id:"line-a",tenantId:"tenant-a",lineNumber:1,cabysCode:"1234567890123",itemCode:null,description:"Service",quantity:d("0.000000000000000001"),unitOfMeasureCode:"Sp",unitPrice:d("999999999999999999.123456789012"),grossAmount:d("100"),discountAmount:d("10"),discountCode:"07",discountReason:"Persisted",taxableBase:d("90"),taxAmount:d("11.7"),exoneratedTaxAmount:d("11.7"),netTaxAmount:d("0"),lineSubtotal:d("90"),lineTotal:d("90"),taxes:[{id:"tax-a",tenantId:"tenant-a",taxOrder:1,taxCode:"01",rateCode:"08",ratePercentage:d("13"),taxableBase:d("90"),taxAmount:d("11.7"),calculationFactor:null,netTaxAmount:d("0"),exemption:{id:"ex-a",tenantId:"tenant-a",documentTypeCode:"01",documentNumber:"AUTH-1",legalArticle:null,legalSection:null,issuingInstitutionCode:"01",issuingInstitutionName:"Hacienda",otherInstitutionDescription:null,issueDate:new Date("2024-02-29T00:00:00.000Z"),exemptedPercentage:d("100"),exemptedAmount:d("11.7")}}]}],...overrides};}
 function prepared(){const canonicalBody='{"safe":true}';return{endpoint:"/documents/factura" as const,canonicalBody,requestHash:createHash("sha256").update(canonicalBody,"utf8").digest("hex"),idempotencyKey:"billing-document:document-a:electronic-issuance:v1",metadata:{billingDocumentId:"document-a",tenantId:"tenant-a",documentTypeCode:"01" as const,fiscalNumber:"00100001010000000042",fiscalIssueDate:"2026-08-24"}};}
