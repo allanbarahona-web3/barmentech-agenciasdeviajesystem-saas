@@ -3,6 +3,7 @@ import { OfficialExchangeRateResolver } from "../official-exchange-rates/officia
 import { FiscalBillingModule } from "./fiscal-billing.module";
 import { FiscalIssuanceClock } from "./fiscal-issuance.clock";
 import { BillingDocumentSubmissionPreparationService } from "./billing-document-submission-preparation.service";
+import { BillingDocumentSubmissionAttemptService } from "./billing-document-submission-attempt.service";
 
 describe("FiscalBillingModule official-rate wiring", () => {
   it("imports the existing official-rate module without duplicating its resolver", () => {
@@ -14,5 +15,7 @@ describe("FiscalBillingModule official-rate wiring", () => {
     expect(providers).not.toContain(OfficialExchangeRateResolver);
     expect(providers).toContain(BillingDocumentSubmissionPreparationService);
     expect(Reflect.getMetadata("exports",FiscalBillingModule)).toContain(BillingDocumentSubmissionPreparationService);
+    expect(providers).toContain(BillingDocumentSubmissionAttemptService);
+    expect(Reflect.getMetadata("exports",FiscalBillingModule)).toContain(BillingDocumentSubmissionAttemptService);
   });
 });
