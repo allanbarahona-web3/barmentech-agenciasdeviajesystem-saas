@@ -34,6 +34,7 @@ import { OfficialExchangeRateModule } from "../official-exchange-rates/official-
 import { FiscalIssuanceClock } from "./fiscal-issuance.clock";
 import { FacturaEnCrElectronicSubmissionAdapter } from "./providers/factura-en-cr-electronic-submission.adapter";
 import { ELECTRONIC_DOCUMENT_SUBMISSION_PROVIDER } from "./providers/electronic-document-submission.provider";
+import { BillingDocumentSubmissionPreparationService } from "./billing-document-submission-preparation.service";
 
 @Module({
   imports: [FiscalCatalogModule, OfficialExchangeRateModule],
@@ -61,6 +62,7 @@ import { ELECTRONIC_DOCUMENT_SUBMISSION_PROVIDER } from "./providers/electronic-
     PrismaFiscalNumberSequenceAdminRepository,
     FiscalOutboxPublisherService,
     FiscalIssuanceClock,
+    BillingDocumentSubmissionPreparationService,
     {
       provide: SALES_ORDER_FISCAL_BILLING_REPOSITORY,
       useExisting: PrismaSalesOrderFiscalBillingRepository,
@@ -94,6 +96,6 @@ import { ELECTRONIC_DOCUMENT_SUBMISSION_PROVIDER } from "./providers/electronic-
       useExisting: PrismaFiscalNumberSequenceAdminRepository,
     },
   ],
-  exports: [ELECTRONIC_DOCUMENT_SUBMISSION_PROVIDER],
+  exports: [ELECTRONIC_DOCUMENT_SUBMISSION_PROVIDER, BillingDocumentSubmissionPreparationService],
 })
 export class FiscalBillingModule {}
