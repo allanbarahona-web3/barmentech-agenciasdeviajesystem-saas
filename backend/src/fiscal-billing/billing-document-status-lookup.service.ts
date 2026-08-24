@@ -19,9 +19,11 @@ const statusLookupSelect = Prisma.validator<Prisma.BillingDocumentSelect>()({
   providerLastAttemptAt: true, providerReconciliationRequired: true,
   providerLastErrorCode: true, providerLastErrorAt: true,
   submittedAt: true, issuedAt: true,
-});
+  ...statusCheckSelect(),
+} as Prisma.BillingDocumentSelect);
 
-type StatusLookupRow = Prisma.BillingDocumentGetPayload<{ select: typeof statusLookupSelect }>;
+type StatusCheckFields={providerStatusCheckAttempts:number;providerLastStatusCheckAt:Date|null;providerNextStatusCheckAt:Date|null;providerStatusCheckLockOwner:string|null;providerStatusCheckLeaseUntil:Date|null};
+type StatusLookupRow = Prisma.BillingDocumentGetPayload<{ select: typeof statusLookupSelect }> & StatusCheckFields;
 
 export interface BillingDocumentStatusLookupResult {
   readonly persistedIdentity: {
@@ -45,6 +47,11 @@ export interface BillingDocumentStatusLookupResult {
     readonly providerReconciliationRequired: false;
     readonly submittedAt: Date;
     readonly issuedAt: null;
+    readonly providerStatusCheckAttempts: number;
+    readonly providerLastStatusCheckAt: Date | null;
+    readonly providerNextStatusCheckAt: Date | null;
+    readonly providerStatusCheckLockOwner: string | null;
+    readonly providerStatusCheckLeaseUntil: Date | null;
   };
   readonly providerResult: ElectronicDocumentStatusResult;
 }
@@ -65,7 +72,7 @@ export class BillingDocumentStatusLookupService {
       row = await this.prisma.billingDocument.findUnique({
         where: { id_tenantId: { id: billingDocumentId, tenantId } },
         select: statusLookupSelect,
-      });
+      }) as StatusLookupRow | null;
     } catch {
       throw fiscalBillingError("BILLING_DOCUMENT_STATUS_LOOKUP_FAILED");
     }
@@ -109,6 +116,11 @@ export class BillingDocumentStatusLookupService {
         providerReconciliationRequired: false,
         submittedAt: new Date(prepared.submittedAt.getTime()),
         issuedAt: null,
+        providerStatusCheckAttempts: prepared.statusCheckAttempts,
+        providerLastStatusCheckAt: copyDate(prepared.lastStatusCheckAt),
+        providerNextStatusCheckAt: copyDate(prepared.nextStatusCheckAt),
+        providerStatusCheckLockOwner: prepared.statusCheckLockOwner,
+        providerStatusCheckLeaseUntil: copyDate(prepared.statusCheckLeaseUntil),
       },
       providerResult,
     };
@@ -131,6 +143,12 @@ function validateSnapshot(row: StatusLookupRow) {
   if (row.issuanceIdempotencyKey !== `billing-document:${row.id}:electronic-issuance:v1` || row.issuanceIdempotencyKey.length > 100) invalid();
   if (typeof row.providerRequestHash !== "string" || !/^[a-f0-9]{64}$/.test(row.providerRequestHash)) invalid();
   if (!validDate(row.providerLastAttemptAt) || !validDate(row.submittedAt) || row.providerLastAttemptAt.getTime() !== row.submittedAt.getTime()) invalid();
+  if (!Number.isInteger(row.providerStatusCheckAttempts) || row.providerStatusCheckAttempts < 0 || !nullableDate(row.providerLastStatusCheckAt) || !nullableDate(row.providerNextStatusCheckAt) || !nullableDate(row.providerStatusCheckLeaseUntil)) invalid();
+  if ((row.providerStatusCheckLockOwner === null) !== (row.providerStatusCheckLeaseUntil === null) ||
+      (row.providerStatusCheckLockOwner !== null && !safeString(row.providerStatusCheckLockOwner, 100))) invalid();
+  if ((row.taxAuthorityStatus === "ACCEPTED" || row.taxAuthorityStatus === "REJECTED") &&
+      (row.providerNextStatusCheckAt !== null || row.providerStatusCheckLockOwner !== null || row.providerStatusCheckLeaseUntil !== null)) invalid();
+  if (row.providerLastStatusCheckAt && row.providerNextStatusCheckAt && row.providerLastStatusCheckAt.getTime() > row.providerNextStatusCheckAt.getTime()) invalid();
   if (typeof row.providerDocumentId !== "string" || !/^[A-Za-z0-9_-]{1,255}$/.test(row.providerDocumentId)) invalid();
   if (typeof row.haciendaKey !== "string" || !/^\d{50}$/.test(row.haciendaKey) || row.haciendaKey.slice(21, 41) !== row.fiscalNumber) invalid();
   if (row.providerEnvironment !== "sandbox" && row.providerEnvironment !== "production") invalid();
@@ -152,12 +170,20 @@ function validateSnapshot(row: StatusLookupRow) {
     attemptedAt: row.providerLastAttemptAt,
     submittedAt: row.submittedAt,
     taxAuthorityStatus: row.taxAuthorityStatus,
+    statusCheckAttempts: row.providerStatusCheckAttempts,
+    lastStatusCheckAt: row.providerLastStatusCheckAt,
+    nextStatusCheckAt: row.providerNextStatusCheckAt,
+    statusCheckLockOwner: row.providerStatusCheckLockOwner,
+    statusCheckLeaseUntil: row.providerStatusCheckLeaseUntil,
   };
 }
 
 function boundedIdentifier(value: unknown): value is string { return typeof value === "string" && value.length > 0 && value.length <= 191 && value.trim() === value; }
 function safeString(value: unknown, maximum: number): value is string { return typeof value === "string" && value.length > 0 && value.length <= maximum && value.trim() === value; }
 function validDate(value: unknown): value is Date { return value instanceof Date && Number.isFinite(value.getTime()); }
+function nullableDate(value: unknown): value is Date | null { return value === null || validDate(value); }
+function copyDate(value: Date | null): Date | null { return value === null ? null : new Date(value.getTime()); }
+function statusCheckSelect(){return{providerStatusCheckAttempts:true,providerLastStatusCheckAt:true,providerNextStatusCheckAt:true,providerStatusCheckLockOwner:true,providerStatusCheckLeaseUntil:true};}
 function dateOnly(value: Date): string { return `${value.getUTCFullYear().toString().padStart(4, "0")}-${(value.getUTCMonth() + 1).toString().padStart(2, "0")}-${value.getUTCDate().toString().padStart(2, "0")}`; }
 function keyDate(value: string): string { return `${value.slice(8, 10)}${value.slice(5, 7)}${value.slice(2, 4)}`; }
 function notFound(): never { throw fiscalBillingError("BILLING_DOCUMENT_NOT_FOUND"); }

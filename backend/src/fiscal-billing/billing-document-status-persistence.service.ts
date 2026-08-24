@@ -4,6 +4,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import type { BillingDocumentStatusLookupResult } from "./billing-document-status-lookup.service";
 import { fiscalBillingError } from "./fiscal-billing.errors";
 import { FiscalIssuanceClock } from "./fiscal-issuance.clock";
+import { nextFiscalStatusReconciliationSchedule } from "./fiscal-status-reconciliation-policy";
 
 const persistenceSelect = Prisma.validator<Prisma.BillingDocumentSelect>()({
   id: true, tenantId: true, billingMode: true, lifecycleStatus: true,
@@ -15,8 +16,10 @@ const persistenceSelect = Prisma.validator<Prisma.BillingDocumentSelect>()({
   providerLastAttemptAt: true, providerReconciliationRequired: true,
   providerLastErrorCode: true, providerLastErrorAt: true,
   submittedAt: true, issuedAt: true,
-});
-type PersistenceRow = Prisma.BillingDocumentGetPayload<{ select: typeof persistenceSelect }>;
+  ...statusCheckSelect(),
+} as Prisma.BillingDocumentSelect);
+type StatusCheckFields={providerStatusCheckAttempts:number;providerLastStatusCheckAt:Date|null;providerNextStatusCheckAt:Date|null;providerStatusCheckLockOwner:string|null;providerStatusCheckLeaseUntil:Date|null};
+type PersistenceRow = Prisma.BillingDocumentGetPayload<{ select: typeof persistenceSelect }> & StatusCheckFields;
 type Decision = "ACCEPTED" | "REJECTED" | null;
 
 export interface BillingDocumentStatusPersistenceResult {
@@ -56,34 +59,23 @@ export class BillingDocumentStatusPersistenceService {
         if ((row.taxAuthorityStatus === "ACCEPTED" && input.decision !== "ACCEPTED") ||
             (row.taxAuthorityStatus === "REJECTED" && input.decision !== "REJECTED")) conflict();
         requireSourceState(row, input);
-
-        if (input.decision === null) {
-          if (row.taxAuthorityStatus !== "PROCESSING" || row.issuedAt !== null) conflict();
-          return result(input, "PROCESSING", null, false);
-        }
-        if (input.decision === "REJECTED" && row.taxAuthorityStatus === "REJECTED") {
-          return result(input, "REJECTED", null, false);
-        }
-
-        let issuedAt: Date | null = null;
-        if (input.decision === "ACCEPTED") {
-          issuedAt = this.clock.now();
-          if (!validDate(issuedAt)) corrupt();
-        }
-        const target = input.decision;
+        const completedAt=this.clock.now();if(!validDate(completedAt))corrupt();
+        const attempts=input.statusCheckAttempts+1;
+        const scheduling=input.decision===null?nextFiscalStatusReconciliationSchedule(input.submittedAt,attempts,completedAt):{nextStatusCheckAt:null,reconciliationRequired:false};
+        const issuedAt=input.decision==="ACCEPTED"?completedAt:null;
+        const target=input.decision??"PROCESSING";
         const updated = await tx.billingDocument.updateMany({
           where: expectedWhere(row, input),
           data: {
             taxAuthorityStatus: target,
-            providerReconciliationRequired: false,
+            providerReconciliationRequired: scheduling.reconciliationRequired,
             providerLastErrorCode: null,
             providerLastErrorAt: null,
-            ...(issuedAt ? { issuedAt } : {}),
-          },
+            providerStatusCheckAttempts:attempts,providerLastStatusCheckAt:completedAt,providerNextStatusCheckAt:scheduling.nextStatusCheckAt,
+            providerStatusCheckLockOwner:null,providerStatusCheckLeaseUntil:null,issuedAt,
+          } as Prisma.BillingDocumentUpdateManyMutationInput,
         });
         if (updated.count === 1) return result(input, target, issuedAt, true);
-
-        if (input.decision === "ACCEPTED") conflict();
         const concurrent = await readRow(tx, input);
         if (!concurrent) notFound();
         requireCompleteState(concurrent);
@@ -104,6 +96,7 @@ interface ValidatedInput {
   requestHash: string; attemptedAt: Date; fiscalNumber: string; documentTypeCode: "01" | "04";
   providerEnvironment: "sandbox" | "production"; fiscalIssueDate: string; submittedAt: Date;
   sourceTaxStatus: "PROCESSING" | "ACCEPTED" | "REJECTED"; decision: Decision; rejectionDetail: string | null;
+  statusCheckAttempts:number;lastStatusCheckAt:Date|null;nextStatusCheckAt:Date|null;statusCheckLockOwner:string|null;statusCheckLeaseUntil:Date|null;
 }
 
 function validateInput(value: BillingDocumentStatusLookupResult): ValidatedInput {
@@ -119,6 +112,11 @@ function validateInput(value: BillingDocumentStatusLookupResult): ValidatedInput
       identity.lifecycleStatus !== "SUBMITTED" || identity.providerStatus !== "PROCESSED" ||
       !["PROCESSING", "ACCEPTED", "REJECTED"].includes(identity.taxAuthorityStatus) || identity.providerReconciliationRequired !== false ||
       !validDate(identity.submittedAt) || identity.issuedAt !== null || identity.providerLastAttemptAt.getTime() !== identity.submittedAt.getTime() ||
+      !Number.isInteger(identity.providerStatusCheckAttempts)||identity.providerStatusCheckAttempts<0||identity.providerStatusCheckAttempts>=2147483647||
+      !nullableDate(identity.providerLastStatusCheckAt)||!nullableDate(identity.providerNextStatusCheckAt)||!nullableDate(identity.providerStatusCheckLeaseUntil)||
+      (identity.providerStatusCheckLockOwner===null)!==(identity.providerStatusCheckLeaseUntil===null)||(identity.providerStatusCheckLockOwner!==null&&!safe(identity.providerStatusCheckLockOwner,100))||
+      (identity.providerLastStatusCheckAt!==null&&identity.providerNextStatusCheckAt!==null&&identity.providerLastStatusCheckAt.getTime()>identity.providerNextStatusCheckAt.getTime())||
+      ((identity.taxAuthorityStatus==="ACCEPTED"||identity.taxAuthorityStatus==="REJECTED")&&(identity.providerNextStatusCheckAt!==null||identity.providerStatusCheckLockOwner!==null||identity.providerStatusCheckLeaseUntil!==null))||
       identity.fiscalNumber.slice(8, 10) !== identity.documentTypeCode || identity.fiscalNumber.slice(10) !== identity.allocatedSequenceNumber.padStart(10, "0") ||
       identity.haciendaKey.slice(21, 41) !== identity.fiscalNumber || identity.haciendaKey.slice(3, 9) !== keyDate(identity.fiscalIssueDate)) corrupt();
     if (provider.classification !== "ELECTRONIC_DOCUMENT_STATUS" || provider.providerDocumentId !== identity.providerDocumentId ||
@@ -142,12 +140,14 @@ function validateInput(value: BillingDocumentStatusLookupResult): ValidatedInput
       providerEnvironment: identity.providerEnvironment, fiscalIssueDate: identity.fiscalIssueDate,
       submittedAt: new Date(identity.submittedAt.getTime()), sourceTaxStatus: identity.taxAuthorityStatus,
       decision: provider.finalDecision, rejectionDetail: provider.rejectionDetail ?? null,
+      statusCheckAttempts:identity.providerStatusCheckAttempts,lastStatusCheckAt:copyDate(identity.providerLastStatusCheckAt),nextStatusCheckAt:copyDate(identity.providerNextStatusCheckAt),
+      statusCheckLockOwner:identity.providerStatusCheckLockOwner,statusCheckLeaseUntil:copyDate(identity.providerStatusCheckLeaseUntil),
     };
   } catch (error) { if (error instanceof HttpException) throw error; corrupt(); }
 }
 
 async function readRow(tx: Prisma.TransactionClient, input: ValidatedInput) {
-  return tx.billingDocument.findUnique({ where: { id_tenantId: { id: input.billingDocumentId, tenantId: input.tenantId } }, select: persistenceSelect });
+  return tx.billingDocument.findUnique({ where: { id_tenantId: { id: input.billingDocumentId, tenantId: input.tenantId } }, select: persistenceSelect }) as Promise<PersistenceRow|null>;
 }
 function requireCompleteState(row: PersistenceRow) {
   if (row.billingMode !== "ELECTRONIC_PROVIDER" || row.lifecycleStatus !== "SUBMITTED" || row.providerStatus !== "PROCESSED" ||
@@ -162,7 +162,13 @@ function requireCompleteState(row: PersistenceRow) {
     row.issuanceIdempotencyKey !== `billing-document:${row.id}:electronic-issuance:v1` || !/^[a-f0-9]{64}$/.test(row.providerRequestHash) ||
     row.providerLastAttemptAt.getTime() !== row.submittedAt.getTime() || !/^[A-Za-z0-9_-]{1,255}$/.test(row.providerDocumentId) ||
     !/^\d{50}$/.test(row.haciendaKey) || row.haciendaKey.slice(21,41) !== row.fiscalNumber || row.haciendaKey.slice(3,9) !== keyDate(dateOnly(row.fiscalIssueDate)) ||
-    row.providerReconciliationRequired || row.providerLastErrorCode !== null || row.providerLastErrorAt !== null ||
+    row.providerLastErrorCode !== null || row.providerLastErrorAt !== null ||!Number.isInteger(row.providerStatusCheckAttempts)||row.providerStatusCheckAttempts<0||
+    !nullableDate(row.providerLastStatusCheckAt)||!nullableDate(row.providerNextStatusCheckAt)||!nullableDate(row.providerStatusCheckLeaseUntil)||
+    (row.providerStatusCheckLockOwner===null)!==(row.providerStatusCheckLeaseUntil===null)||(row.providerStatusCheckLockOwner!==null&&!safe(row.providerStatusCheckLockOwner,100))||
+    (row.providerLastStatusCheckAt!==null&&row.providerNextStatusCheckAt!==null&&row.providerLastStatusCheckAt.getTime()>row.providerNextStatusCheckAt.getTime())||
+    ((row.providerNextStatusCheckAt!==null||row.providerStatusCheckLockOwner!==null)&&(row.taxAuthorityStatus!=="PROCESSING"||row.providerReconciliationRequired||row.issuedAt!==null))||
+    ((row.taxAuthorityStatus==="ACCEPTED"||row.taxAuthorityStatus==="REJECTED")&&(row.providerNextStatusCheckAt!==null||row.providerStatusCheckLockOwner!==null||row.providerStatusCheckLeaseUntil!==null||row.providerReconciliationRequired))||
+    (row.taxAuthorityStatus==="PROCESSING"&&row.providerReconciliationRequired&&row.providerNextStatusCheckAt!==null)||
     (row.taxAuthorityStatus !== "ACCEPTED" && row.issuedAt !== null) || (row.issuedAt !== null && !validDate(row.issuedAt))) corrupt();
 }
 function requireImmutableIdentity(row: PersistenceRow, input: ValidatedInput) {
@@ -176,14 +182,18 @@ function requireImmutableIdentity(row: PersistenceRow, input: ValidatedInput) {
 }
 function requireSourceState(row: PersistenceRow, input: ValidatedInput) {
   if (row.lifecycleStatus !== "SUBMITTED" || row.providerStatus !== "PROCESSED" || row.taxAuthorityStatus !== input.sourceTaxStatus ||
-    row.providerReconciliationRequired || row.providerLastErrorCode !== null || row.providerLastErrorAt !== null || row.issuedAt !== null) stale();
+    row.providerReconciliationRequired || row.providerLastErrorCode !== null || row.providerLastErrorAt !== null || row.issuedAt !== null||
+    row.providerStatusCheckAttempts!==input.statusCheckAttempts||dateTime(row.providerLastStatusCheckAt)!==dateTime(input.lastStatusCheckAt)||dateTime(row.providerNextStatusCheckAt)!==dateTime(input.nextStatusCheckAt)||
+    row.providerStatusCheckLockOwner!==input.statusCheckLockOwner||dateTime(row.providerStatusCheckLeaseUntil)!==dateTime(input.statusCheckLeaseUntil)) stale();
   if ((input.sourceTaxStatus === "ACCEPTED" && input.decision !== "ACCEPTED") ||
       (input.sourceTaxStatus === "REJECTED" && input.decision !== "REJECTED")) conflict();
 }
 function classifyWinner(row: PersistenceRow, input: ValidatedInput): boolean {
-  if (input.decision === "ACCEPTED" && row.taxAuthorityStatus === "ACCEPTED" && validDate(row.issuedAt)) return true;
-  if (input.decision === "REJECTED" && row.taxAuthorityStatus === "REJECTED" && row.issuedAt === null) return true;
-  return false;
+  if(row.providerStatusCheckAttempts!==input.statusCheckAttempts+1||!validDate(row.providerLastStatusCheckAt)||row.providerStatusCheckLockOwner!==null||row.providerStatusCheckLeaseUntil!==null)return false;
+  if(input.decision==="ACCEPTED")return row.taxAuthorityStatus==="ACCEPTED"&&row.issuedAt?.getTime()===row.providerLastStatusCheckAt.getTime()&&row.providerNextStatusCheckAt===null&&!row.providerReconciliationRequired;
+  if(input.decision==="REJECTED")return row.taxAuthorityStatus==="REJECTED"&&row.issuedAt===null&&row.providerNextStatusCheckAt===null&&!row.providerReconciliationRequired;
+  if(row.taxAuthorityStatus!=="PROCESSING"||row.issuedAt!==null)return false;const schedule=nextFiscalStatusReconciliationSchedule(input.submittedAt,row.providerStatusCheckAttempts,row.providerLastStatusCheckAt);
+  return dateTime(row.providerNextStatusCheckAt)===dateTime(schedule.nextStatusCheckAt)&&row.providerReconciliationRequired===schedule.reconciliationRequired;
 }
 function acknowledgedTaxStatus(row: PersistenceRow): "PROCESSING" | "ACCEPTED" | "REJECTED" {
   if (row.taxAuthorityStatus === "NOT_SUBMITTED") corrupt();
@@ -197,7 +207,8 @@ function expectedWhere(row: PersistenceRow, input: ValidatedInput) {
     providerRequestHash: input.requestHash, providerLastAttemptAt: input.attemptedAt, providerDocumentId: input.providerDocumentId,
     haciendaKey: input.haciendaKey, providerEnvironment: input.providerEnvironment, fiscalEmissionAt: row.fiscalEmissionAt,
     fiscalIssueDate: row.fiscalIssueDate, submittedAt: input.submittedAt, providerReconciliationRequired: false,
-    providerLastErrorCode: null, providerLastErrorAt: null, issuedAt: null };
+    providerLastErrorCode: null, providerLastErrorAt: null, issuedAt: null,providerStatusCheckAttempts:input.statusCheckAttempts,
+    providerLastStatusCheckAt:input.lastStatusCheckAt,providerNextStatusCheckAt:input.nextStatusCheckAt,providerStatusCheckLockOwner:input.statusCheckLockOwner,providerStatusCheckLeaseUntil:input.statusCheckLeaseUntil } as Prisma.BillingDocumentWhereInput;
 }
 function result(input: ValidatedInput, tax: "PROCESSING" | "ACCEPTED" | "REJECTED", issuedAt: Date | null, newlyPersisted: boolean): BillingDocumentStatusPersistenceResult {
   return { tenantId: input.tenantId, billingDocumentId: input.billingDocumentId, final: input.decision !== null,
@@ -206,6 +217,8 @@ function result(input: ValidatedInput, tax: "PROCESSING" | "ACCEPTED" | "REJECTE
 }
 function safe(value: unknown, max: number): value is string { return typeof value === "string" && value.length > 0 && value.length <= max && value.trim() === value; }
 function validDate(value: unknown): value is Date { return value instanceof Date && Number.isFinite(value.getTime()); }
+function nullableDate(value:unknown):value is Date|null{return value===null||validDate(value);}function copyDate(value:Date|null){return value===null?null:new Date(value.getTime());}function dateTime(value:Date|null){return value?.getTime()??null;}
+function statusCheckSelect(){return{providerStatusCheckAttempts:true,providerLastStatusCheckAt:true,providerNextStatusCheckAt:true,providerStatusCheckLockOwner:true,providerStatusCheckLeaseUntil:true};}
 function canonicalDate(value: unknown): value is string { const match=typeof value === "string"?/^(\d{4})-(\d{2})-(\d{2})$/.exec(value):null;if(!match)return false;const d=new Date(Date.UTC(+match[1],+match[2]-1,+match[3]));return d.getUTCFullYear()===+match[1]&&d.getUTCMonth()+1===+match[2]&&d.getUTCDate()===+match[3]; }
 function sameCostaRicaDate(value:string,expected:string):boolean{const instant=new Date(value);if(!Number.isFinite(instant.getTime()))return false;const parts=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Costa_Rica",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(instant);const part=(type:Intl.DateTimeFormatPartTypes)=>parts.find(item=>item.type===type)?.value??"";return `${part("year")}-${part("month")}-${part("day")}`===expected;}
 function dateOnly(value: Date): string { return `${value.getUTCFullYear().toString().padStart(4,"0")}-${(value.getUTCMonth()+1).toString().padStart(2,"0")}-${value.getUTCDate().toString().padStart(2,"0")}`; }

@@ -37,6 +37,8 @@ describe("BillingDocumentStatusLookupService", () => {
       lifecycleStatus: "SUBMITTED", providerStatus: "PROCESSED",
       taxAuthorityStatus: "PROCESSING", providerReconciliationRequired: false,
       submittedAt: ATTEMPT, issuedAt: null,
+      providerStatusCheckAttempts: 0, providerLastStatusCheckAt: null,
+      providerNextStatusCheckAt: new Date(ATTEMPT.getTime()+10_000), providerStatusCheckLockOwner: null, providerStatusCheckLeaseUntil: null,
     });
     expect(result.persistedIdentity.providerLastAttemptAt).not.toBe(ATTEMPT);
     expect(result.persistedIdentity.fiscalEmissionAt.getTime()).toBe(new Date("2026-08-24T05:59:59.987Z").getTime());
@@ -46,11 +48,19 @@ describe("BillingDocumentStatusLookupService", () => {
   });
 
   it.each(["ACCEPTED", "REJECTED"] as const)("allows a complete final %s acknowledgement without interpreting the result", async (taxAuthorityStatus) => {
-    const c = context(row({ taxAuthorityStatus }));
+    const c = context(row({ taxAuthorityStatus, providerNextStatusCheckAt: null }));
     await expect(c.service.lookupStatus("tenant-a", "document-a")).resolves.toMatchObject({ persistedIdentity: { taxAuthorityStatus } });
     expect(c.provider.getDocumentStatus).toHaveBeenCalledTimes(1);
     noWrites(c);
   });
+
+  it("defensively copies every scheduling timestamp and preserves the lock identity",async()=>{const last=new Date("2026-08-24T12:00:05.111Z"),next=new Date("2026-08-24T12:00:20.222Z"),lease=new Date("2026-08-24T12:01:00.333Z"),c=context(row({providerStatusCheckAttempts:2,providerLastStatusCheckAt:last,providerNextStatusCheckAt:next,providerStatusCheckLockOwner:"worker-a",providerStatusCheckLeaseUntil:lease}));
+    const identity=(await c.service.lookupStatus("tenant-a","document-a")).persistedIdentity;expect(identity).toMatchObject({providerStatusCheckAttempts:2,providerStatusCheckLockOwner:"worker-a"});
+    expect(identity.providerLastStatusCheckAt?.getTime()).toBe(last.getTime());expect(identity.providerNextStatusCheckAt?.getTime()).toBe(next.getTime());expect(identity.providerStatusCheckLeaseUntil?.getTime()).toBe(lease.getTime());
+    expect(identity.providerLastStatusCheckAt).not.toBe(last);expect(identity.providerNextStatusCheckAt).not.toBe(next);expect(identity.providerStatusCheckLeaseUntil).not.toBe(lease);
+  });
+
+  it.each([{providerStatusCheckAttempts:-1},{providerStatusCheckAttempts:1.5},{providerLastStatusCheckAt:new Date(Number.NaN)},{providerStatusCheckLockOwner:"worker-a"},{providerStatusCheckLockOwner:" x ",providerStatusCheckLeaseUntil:new Date()},{taxAuthorityStatus:"ACCEPTED",providerNextStatusCheckAt:new Date()}])("rejects malformed scheduling state before provider access: %o",async override=>{const c=context(row(override));await expect(c.service.lookupStatus("tenant-a","document-a")).rejects.toBeDefined();expect(c.provider.getDocumentStatus).not.toHaveBeenCalled();});
 
   it.each([
     ["external mode", { billingMode: "EXTERNAL_REGISTRATION" }, "BILLING_DOCUMENT_STATUS_LOOKUP_INELIGIBLE"],
@@ -143,7 +153,8 @@ function row(overrides: Record<string, unknown> = {}) {
     billingDocumentNumberSequenceId: "sequence-a", allocatedSequenceNumber: 42n,
     issuanceIdempotencyKey: "billing-document:document-a:electronic-issuance:v1", providerRequestHash: HASH,
     providerLastAttemptAt: ATTEMPT, providerReconciliationRequired: false, providerLastErrorCode: null,
-    providerLastErrorAt: null, submittedAt: ATTEMPT, issuedAt: null, ...overrides,
+    providerLastErrorAt: null, submittedAt: ATTEMPT, issuedAt: null, providerStatusCheckAttempts:0,providerLastStatusCheckAt:null,
+    providerNextStatusCheckAt:new Date(ATTEMPT.getTime()+10_000),providerStatusCheckLockOwner:null,providerStatusCheckLeaseUntil:null, ...overrides,
   };
 }
 
