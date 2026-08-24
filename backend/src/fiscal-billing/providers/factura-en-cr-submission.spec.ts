@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { buildRequestIdentity, buildResponseHash } from "../../official-exchange-rates/official-exchange-rate.resolver";
 import { FacturaEnCrPreparationError, prepareFacturaEnCrSubmission, type FacturaEnCrLineSnapshot, type FacturaEnCrSubmissionAggregate, type FacturaEnCrTaxSnapshot } from "./factura-en-cr-submission";
+import type { PreparedElectronicDocumentSubmission } from "./electronic-document-submission.provider";
 
 describe("prepareFacturaEnCrSubmission", () => {
   it("builds a CRC Factura without receiver activity and preserves milliseconds", () => {
@@ -41,6 +42,7 @@ describe("prepareFacturaEnCrSubmission", () => {
   it("escapes JSON strings and prevents injection while remaining parseable",()=>{const description='quote" slash\\ control\n unicode é separators\u2028\u2029 ,"evil":1';const result=prepareFacturaEnCrSubmission(fixture({lines:[line({description})]}));const parsed=JSON.parse(result.canonicalBody);expect(parsed.detalle[0].detalle).toBe(description);expect(parsed.detalle[0]).not.toHaveProperty("evil");});
   it("fails safely for runtime undefined",()=>{const d=fixture();(d.receiver as unknown as Record<string,unknown>).name=undefined;expectCode(()=>prepareFacturaEnCrSubmission(d),"FACTURA_EN_CR_RECEIVER_INVALID");});
   it("is byte deterministic, hashes exact UTF-8, changes meaningfully, and returns exact idempotency",()=>{const a=prepareFacturaEnCrSubmission(fixture()),b=prepareFacturaEnCrSubmission(fixture()),changed=prepareFacturaEnCrSubmission(fixture({lines:[line({description:"Changed"})]}));expect(a.canonicalBody).toBe(b.canonicalBody);expect(a.requestHash).toBe(createHash("sha256").update(a.canonicalBody,"utf8").digest("hex"));expect(changed.requestHash).not.toBe(a.requestHash);expect(a.idempotencyKey).toBe("billing-document:document-a:electronic-issuance:v1");expectCode(()=>prepareFacturaEnCrSubmission(fixture({issuanceIdempotencyKey:"other"})),"FACTURA_EN_CR_SNAPSHOT_INCOMPLETE");});
+  it("persists canonical fiscalIssueDate only in safe provider-neutral metadata without changing payload bytes or their hash",()=>{const result:PreparedElectronicDocumentSubmission=prepareFacturaEnCrSubmission(fixture()),body=result.canonicalBody,hash=result.requestHash;expect(result.metadata.fiscalIssueDate).toBe("2026-08-23");expect(body).not.toContain("fiscalIssueDate");(result.metadata as {fiscalIssueDate:string}).fiscalIssueDate="2026-08-24";expect(result.canonicalBody).toBe(body);expect(result.requestHash).toBe(hash);expect(hash).toBe(createHash("sha256").update(body,"utf8").digest("hex"));});
   it("structurally excludes internal and provider-managed fields",()=>{const body=JSON.parse(prepareFacturaEnCrSubmission(fixture()).canonicalBody);for(const key of ["tenantId","id","environment","certificateId","clave","fiscalNumber","providerRequestHash","grossSubtotal","total","metadata"])expect(body).not.toHaveProperty(key);});
 });
 

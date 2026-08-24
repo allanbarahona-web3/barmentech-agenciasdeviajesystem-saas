@@ -32,6 +32,8 @@ import { FISCAL_NUMBER_SEQUENCE_ADMIN_REPOSITORY } from "./fiscal-number-sequenc
 import { FiscalOutboxPublisherService } from "./jobs/fiscal-outbox-publisher.service";
 import { OfficialExchangeRateModule } from "../official-exchange-rates/official-exchange-rate.module";
 import { FiscalIssuanceClock } from "./fiscal-issuance.clock";
+import { FacturaEnCrElectronicSubmissionAdapter } from "./providers/factura-en-cr-electronic-submission.adapter";
+import { ELECTRONIC_DOCUMENT_SUBMISSION_PROVIDER } from "./providers/electronic-document-submission.provider";
 
 @Module({
   imports: [FiscalCatalogModule, OfficialExchangeRateModule],
@@ -54,6 +56,7 @@ import { FiscalIssuanceClock } from "./fiscal-issuance.clock";
     HaciendaEconomicActivityAdapter,
     ProviderNumberingAdminService,
     FacturaEnCrNumberingAdapter,
+    FacturaEnCrElectronicSubmissionAdapter,
     FiscalNumberSequenceAdminService,
     PrismaFiscalNumberSequenceAdminRepository,
     FiscalOutboxPublisherService,
@@ -83,9 +86,14 @@ import { FiscalIssuanceClock } from "./fiscal-issuance.clock";
       useExisting: FacturaEnCrNumberingAdapter,
     },
     {
+      provide: ELECTRONIC_DOCUMENT_SUBMISSION_PROVIDER,
+      useExisting: FacturaEnCrElectronicSubmissionAdapter,
+    },
+    {
       provide: FISCAL_NUMBER_SEQUENCE_ADMIN_REPOSITORY,
       useExisting: PrismaFiscalNumberSequenceAdminRepository,
     },
   ],
+  exports: [ELECTRONIC_DOCUMENT_SUBMISSION_PROVIDER],
 })
 export class FiscalBillingModule {}

@@ -18,7 +18,7 @@ export interface FacturaEnCrOfficialRateSnapshot { id: string; countryCode: stri
 export interface FacturaEnCrReceiverSnapshot { name: string | null; identificationType: string | null; identification: string | null; economicActivityCode: string | null; email: string | null; /** Unconstrained persisted phone is intentionally not parsed/emitted. */ phone: string | null; address: { provinceCode?: unknown; cantonCode?: unknown; districtCode?: unknown; neighborhoodCode?: unknown; otherAddressDetails?: unknown } | null; }
 export interface FacturaEnCrLineSnapshot { lineNumber: number; cabysCode: string | null; itemCode?: string | null; description: string; quantity: string; unitOfMeasureCode: string; unitPrice: string; grossAmount: string; discountAmount: string; discountCode: string | null; discountReason: string | null; taxableBase: string; taxAmount: string; exoneratedTaxAmount: string; netTaxAmount: string; lineSubtotal: string; lineTotal: string; taxes: FacturaEnCrTaxSnapshot[]; }
 export interface FacturaEnCrTaxSnapshot { taxOrder: number; taxCode: string; rateCode: string; ratePercentage: string; taxableBase: string; taxAmount: string; calculationFactor: string | null; netTaxAmount: string; exemption: null | { documentTypeCode: string; documentNumber: string; legalArticle: string | null; legalSection: string | null; issuingInstitutionCode: string | null; issuingInstitutionName: string | null; otherInstitutionDescription: string | null; issueDate: Date | string; exemptedPercentage: string; exemptedAmount: string }; }
-export interface FacturaEnCrPreparedSubmission { endpoint: "/documents/factura" | "/documents/tiquete"; canonicalBody: string; requestHash: string; idempotencyKey: string; metadata: { billingDocumentId: string; tenantId: string; documentTypeCode: "01" | "04"; fiscalNumber: string }; }
+export interface FacturaEnCrPreparedSubmission { endpoint: "/documents/factura" | "/documents/tiquete"; canonicalBody: string; requestHash: string; idempotencyKey: string; metadata: { billingDocumentId: string; tenantId: string; documentTypeCode: "01" | "04"; fiscalNumber: string; fiscalIssueDate: string }; }
 
 type Json = string | boolean | null | ExactDecimal | Json[] | { [key: string]: Json }; class ExactDecimal { constructor(readonly value: string) {} }
 type Dec = { coefficient: bigint; scale: number; canonical: string };
@@ -37,7 +37,7 @@ export function prepareFacturaEnCrSubmission(d: FacturaEnCrSubmissionAggregate):
   if (fiscalNumber.length !== 20 || d.fiscalNumber !== fiscalNumber) fail("FACTURA_EN_CR_ALLOCATION_MISMATCH");
   const idempotencyKey = `billing-document:${d.id}:electronic-issuance:v1`;
   if (idempotencyKey.length > 100 || d.issuanceIdempotencyKey !== idempotencyKey) fail("FACTURA_EN_CR_SNAPSHOT_INCOMPLETE");
-  const receiver = mapReceiver(d.receiver, d.documentTypeCode), fechaEmision = emissionTime(d.fiscalEmissionAt, d.fiscalIssueDate);
+  const fiscalIssueDate = dateOnly(d.fiscalIssueDate), receiver = mapReceiver(d.receiver, d.documentTypeCode), fechaEmision = emissionTime(d.fiscalEmissionAt, fiscalIssueDate);
   const methods = [...d.paymentMethods].sort((a,b) => a.paymentMethodOrder-b.paymentMethodOrder);
   if (methods.length !== 1 || !positiveInt(methods[0].paymentMethodOrder) || !PAYMENTS.has(methods[0].paymentMethodCode) || methods[0].declaredAmount !== null) fail("FACTURA_EN_CR_PAYMENT_METHODS_UNSUPPORTED");
   if (!d.lines.length) fail("FACTURA_EN_CR_LINE_TAX_INVALID"); uniquePositive(d.lines.map(x=>x.lineNumber));
@@ -48,12 +48,12 @@ export function prepareFacturaEnCrSubmission(d: FacturaEnCrSubmissionAggregate):
   else fail("FACTURA_EN_CR_SNAPSHOT_INCOMPLETE");
   body.medioPago=[methods[0].paymentMethodCode];
   if (d.currencyCode === "CRC") { if (d.exchangeRate !== null || d.officialExchangeRateObservation !== null) fail("FACTURA_EN_CR_OFFICIAL_RATE_MISMATCH"); body.currency="CRC"; }
-  else if (d.currencyCode === "USD") { const value=officialRate(d.officialExchangeRateObservation,d.exchangeRate,dateOnly(d.fiscalIssueDate)); body.currency="USD"; body.exchangeRate=new ExactDecimal(value); }
+  else if (d.currencyCode === "USD") { const value=officialRate(d.officialExchangeRateObservation,d.exchangeRate,fiscalIssueDate); body.currency="USD"; body.exchangeRate=new ExactDecimal(value); }
   else fail("FACTURA_EN_CR_OFFICIAL_RATE_MISMATCH");
   if (receiver) { if (d.receiver!.economicActivityCode) body.codigoActividadReceptor=d.receiver!.economicActivityCode; body.receptor=receiver; }
   body.detalle=[...d.lines].sort((a,b)=>a.lineNumber-b.lineNumber).map(mapLine);
   let canonicalBody: string; try { canonicalBody=serialize(body); } catch(error) { if(error instanceof FacturaEnCrPreparationError) throw error; fail("FACTURA_EN_CR_CANONICAL_SERIALIZATION_FAILED"); }
-  return { endpoint,canonicalBody,requestHash:createHash("sha256").update(canonicalBody,"utf8").digest("hex"),idempotencyKey,metadata:{billingDocumentId:d.id,tenantId:d.tenantId,documentTypeCode:d.documentTypeCode as "01"|"04",fiscalNumber} };
+  return { endpoint,canonicalBody,requestHash:createHash("sha256").update(canonicalBody,"utf8").digest("hex"),idempotencyKey,metadata:{billingDocumentId:d.id,tenantId:d.tenantId,documentTypeCode:d.documentTypeCode as "01"|"04",fiscalNumber,fiscalIssueDate} };
 }
 
 function officialRate(o: FacturaEnCrOfficialRateSnapshot|null, exchangeRate:string|null, issueDate:string):string {
