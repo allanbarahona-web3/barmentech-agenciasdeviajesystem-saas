@@ -29,7 +29,9 @@ describe("BillingDocumentStatusLookupService", () => {
     expect(result.persistedIdentity).toEqual({
       tenantId: "tenant-a", billingDocumentId: "document-a",
       billingDocumentNumberSequenceId: "sequence-a", allocatedSequenceNumber: "42",
-      providerDocumentId: "provider_a-1", providerRequestHash: HASH,
+      providerDocumentId: "provider_a-1", haciendaKey: KEY,
+      issuanceIdempotencyKey: "billing-document:document-a:electronic-issuance:v1",
+      fiscalEmissionAt: new Date("2026-08-24T05:59:59.987Z"), providerRequestHash: HASH,
       providerLastAttemptAt: ATTEMPT, fiscalNumber: NUMBER, documentTypeCode: "01",
       providerEnvironment: "sandbox", fiscalIssueDate: "2026-08-24",
       lifecycleStatus: "SUBMITTED", providerStatus: "PROCESSED",
@@ -37,6 +39,9 @@ describe("BillingDocumentStatusLookupService", () => {
       submittedAt: ATTEMPT, issuedAt: null,
     });
     expect(result.persistedIdentity.providerLastAttemptAt).not.toBe(ATTEMPT);
+    expect(result.persistedIdentity.fiscalEmissionAt.getTime()).toBe(new Date("2026-08-24T05:59:59.987Z").getTime());
+    expect(result.persistedIdentity.fiscalEmissionAt.toISOString()).toBe("2026-08-24T05:59:59.987Z");
+    expect(result.persistedIdentity.fiscalEmissionAt).not.toBe(c.persisted!.fiscalEmissionAt);
     noWrites(c);
   });
 
@@ -55,10 +60,15 @@ describe("BillingDocumentStatusLookupService", () => {
     ["provider ID", { providerDocumentId: null, haciendaKey: null, providerEnvironment: null, submittedAt: null }, "BILLING_DOCUMENT_STATUS_LOOKUP_INELIGIBLE"],
     ["partial acknowledgement", { providerDocumentId: null }, "BILLING_DOCUMENT_STATUS_SNAPSHOT_INVALID"],
     ["Hacienda key", { haciendaKey: null }, "BILLING_DOCUMENT_STATUS_SNAPSHOT_INVALID"],
+    ["non-string Hacienda key", { haciendaKey: 506 }, "BILLING_DOCUMENT_STATUS_SNAPSHOT_INVALID"],
     ["fiscal number", { fiscalNumber: null }, "BILLING_DOCUMENT_STATUS_SNAPSHOT_INVALID"],
     ["environment", { providerEnvironment: null }, "BILLING_DOCUMENT_STATUS_SNAPSHOT_INVALID"],
     ["issue date", { fiscalIssueDate: null }, "BILLING_DOCUMENT_STATUS_SNAPSHOT_INVALID"],
     ["emission timestamp", { fiscalEmissionAt: null }, "BILLING_DOCUMENT_STATUS_SNAPSHOT_INVALID"],
+    ["invalid emission Date", { fiscalEmissionAt: new Date("invalid") }, "BILLING_DOCUMENT_STATUS_SNAPSHOT_INVALID"],
+    ["non-Date emission timestamp", { fiscalEmissionAt: "2026-08-24T05:59:59.987Z" }, "BILLING_DOCUMENT_STATUS_SNAPSHOT_INVALID"],
+    ["issuance key", { issuanceIdempotencyKey: null }, "BILLING_DOCUMENT_STATUS_SNAPSHOT_INVALID"],
+    ["non-string issuance key", { issuanceIdempotencyKey: 123 }, "BILLING_DOCUMENT_STATUS_SNAPSHOT_INVALID"],
     ["request hash", { providerRequestHash: null }, "BILLING_DOCUMENT_STATUS_SNAPSHOT_INVALID"],
     ["attempt timestamp", { providerLastAttemptAt: null }, "BILLING_DOCUMENT_STATUS_SNAPSHOT_INVALID"],
     ["reconciliation", { providerReconciliationRequired: true }, "BILLING_DOCUMENT_STATUS_SNAPSHOT_INVALID"],
@@ -105,6 +115,15 @@ describe("BillingDocumentStatusLookupService", () => {
     noWrites(c);
   });
 
+  it("keeps the persisted Hacienda identity even when the normalized provider object is a different runtime value", async () => {
+    const c = context(row());
+    c.providerResult.haciendaKey = "9".repeat(50);
+    const result = await c.service.lookupStatus("tenant-a", "document-a");
+    expect(result.persistedIdentity.haciendaKey).toBe(KEY);
+    expect(result.providerResult).toBe(c.providerResult);
+    expect(result.providerResult.haciendaKey).toBe("9".repeat(50));
+  });
+
   it("maps Prisma failures safely and never calls provider", async () => {
     const c = context(row());
     c.prisma.billingDocument.findUnique.mockRejectedValueOnce(new Error(`database ${KEY}`));
@@ -120,7 +139,7 @@ function row(overrides: Record<string, unknown> = {}) {
     id: "document-a", tenantId: "tenant-a", billingMode: "ELECTRONIC_PROVIDER", lifecycleStatus: "SUBMITTED",
     providerStatus: "PROCESSED", taxAuthorityStatus: "PROCESSING", providerDocumentId: "provider_a-1",
     haciendaKey: KEY, fiscalNumber: NUMBER, documentTypeCode: "01", providerEnvironment: "sandbox",
-    fiscalIssueDate: new Date("2026-08-24T00:00:00.000Z"), fiscalEmissionAt: new Date("2026-08-24T05:59:59.000Z"),
+    fiscalIssueDate: new Date("2026-08-24T00:00:00.000Z"), fiscalEmissionAt: new Date("2026-08-24T05:59:59.987Z"),
     billingDocumentNumberSequenceId: "sequence-a", allocatedSequenceNumber: 42n,
     issuanceIdempotencyKey: "billing-document:document-a:electronic-issuance:v1", providerRequestHash: HASH,
     providerLastAttemptAt: ATTEMPT, providerReconciliationRequired: false, providerLastErrorCode: null,
@@ -138,8 +157,11 @@ function context(persisted: ReturnType<typeof row> | null, providerError?: Error
     findUnique: jest.fn(async () => persisted), update: jest.fn(), updateMany: jest.fn(), create: jest.fn(), delete: jest.fn(),
   }, $transaction: jest.fn(), $executeRaw: jest.fn(), $queryRaw: jest.fn() };
   const provider = { getDocumentStatus: jest.fn(async () => { if (providerError) throw providerError; return providerResult; }) };
-  return { prisma, provider, providerResult, service: new BillingDocumentStatusLookupService(prisma as unknown as PrismaService, provider as ElectronicDocumentStatusProvider) };
+  return { prisma, provider, providerResult: providerResult as Mutable<ElectronicDocumentStatusResult>, persisted,
+    service: new BillingDocumentStatusLookupService(prisma as unknown as PrismaService, provider as ElectronicDocumentStatusProvider) };
 }
+
+type Mutable<T> = { -readonly [P in keyof T]: T[P] };
 
 function noWrites(c: ReturnType<typeof context>) {
   expect(c.prisma.billingDocument.update).not.toHaveBeenCalled();

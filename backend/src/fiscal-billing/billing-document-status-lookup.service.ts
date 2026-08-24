@@ -30,6 +30,9 @@ export interface BillingDocumentStatusLookupResult {
     readonly billingDocumentNumberSequenceId: string;
     readonly allocatedSequenceNumber: string;
     readonly providerDocumentId: string;
+    readonly haciendaKey: string;
+    readonly issuanceIdempotencyKey: string;
+    readonly fiscalEmissionAt: Date;
     readonly providerRequestHash: string;
     readonly providerLastAttemptAt: Date;
     readonly fiscalNumber: string;
@@ -91,6 +94,9 @@ export class BillingDocumentStatusLookupService {
         billingDocumentNumberSequenceId: prepared.sequenceId,
         allocatedSequenceNumber: prepared.allocatedSequenceNumber,
         providerDocumentId: prepared.providerDocumentId,
+        haciendaKey: prepared.haciendaKey,
+        issuanceIdempotencyKey: prepared.issuanceIdempotencyKey,
+        fiscalEmissionAt: new Date(prepared.fiscalEmissionAt.getTime()),
         providerRequestHash: prepared.requestHash,
         providerLastAttemptAt: new Date(prepared.attemptedAt.getTime()),
         fiscalNumber: prepared.fiscalNumber,
@@ -140,6 +146,8 @@ function validateSnapshot(row: StatusLookupRow) {
     documentTypeCode,
     providerEnvironment: row.providerEnvironment,
     fiscalIssueDate,
+    issuanceIdempotencyKey: row.issuanceIdempotencyKey,
+    fiscalEmissionAt: row.fiscalEmissionAt,
     requestHash: row.providerRequestHash,
     attemptedAt: row.providerLastAttemptAt,
     submittedAt: row.submittedAt,
