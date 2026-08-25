@@ -32,6 +32,7 @@ export class ReceiptProcessingWorker implements OnModuleInit {
           >
         >,
       ) => this.process(job),
+      { jobNames: [RECEIPT_PROCESSING_JOB_NAME, BILLING_BOOTSTRAP_JOB_NAME] },
     );
   }
 

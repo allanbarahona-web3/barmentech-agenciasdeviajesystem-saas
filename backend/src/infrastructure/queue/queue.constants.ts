@@ -3,6 +3,8 @@ export const PLATFORM_QUEUE_KEYS = {
   DOCUMENT: "document",
   EMAIL: "email",
   FISCAL_BILLING: "fiscal-billing",
+  FISCAL_STATUS_RECONCILIATION: "fiscal-status-reconciliation",
+  FISCAL_REFRESH_RECONCILIATION: "fiscal-refresh-reconciliation",
   PDF: "pdf",
   NOTIFICATION: "notification",
   PACKAGE_COMPLETED: "package-completed",
@@ -17,6 +19,8 @@ export const DEFAULT_QUEUE_NAMES: Record<PlatformQueueKey, string> = {
   document: "document",
   email: "email",
   "fiscal-billing": "fiscal-billing",
+  "fiscal-status-reconciliation": "fiscal-status-reconciliation",
+  "fiscal-refresh-reconciliation": "fiscal-refresh-reconciliation",
   pdf: "pdf",
   notification: "notification",
   "package-completed": "package-completed",
@@ -28,6 +32,10 @@ export const QUEUE_NAME_ENV_KEYS: Record<PlatformQueueKey, string> = {
   document: "BULLMQ_DOCUMENT_QUEUE_NAME",
   email: "BULLMQ_EMAIL_QUEUE_NAME",
   "fiscal-billing": "BULLMQ_FISCAL_BILLING_QUEUE_NAME",
+  "fiscal-status-reconciliation":
+    "BULLMQ_FISCAL_STATUS_RECONCILIATION_QUEUE_NAME",
+  "fiscal-refresh-reconciliation":
+    "BULLMQ_FISCAL_REFRESH_RECONCILIATION_QUEUE_NAME",
   pdf: "BULLMQ_PDF_QUEUE_NAME",
   notification: "BULLMQ_NOTIFICATION_QUEUE_NAME",
   "package-completed": "BULLMQ_PACKAGE_COMPLETED_QUEUE_NAME",

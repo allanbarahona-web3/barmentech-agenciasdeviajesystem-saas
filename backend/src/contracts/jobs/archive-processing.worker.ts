@@ -35,6 +35,7 @@ export class ArchiveProcessingWorker implements OnModuleInit {
       ARCHIVE_PROCESSING_WORKER_REGISTRATION_KEY,
       PLATFORM_QUEUE_KEYS.DOCUMENT,
       (job: Job<JobEnvelope<ArchiveProcessingJobPayload>>) => this.process(job),
+      { jobNames: ARCHIVE_PROCESSING_JOB_NAME },
     );
   }
 

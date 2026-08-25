@@ -14,7 +14,7 @@ export const FISCAL_BILLING_SUBMISSION_CONCURRENCY=5;
 @Injectable()
 export class FiscalBillingSubmissionProcessor implements OnModuleInit{
   constructor(private readonly workers:WorkerService,private readonly executor:BillingDocumentSubmissionExecutorService,private readonly outcomes:BillingDocumentSubmissionOutcomeService){}
-  onModuleInit():void{this.workers.registerWorker(FISCAL_BILLING_SUBMISSION_WORKER_REGISTRATION_KEY,PLATFORM_QUEUE_KEYS.FISCAL_BILLING,job=>this.process(job as Job<JobEnvelope<unknown>>),{concurrency:FISCAL_BILLING_SUBMISSION_CONCURRENCY});}
+  onModuleInit():void{this.workers.registerWorker(FISCAL_BILLING_SUBMISSION_WORKER_REGISTRATION_KEY,PLATFORM_QUEUE_KEYS.FISCAL_BILLING,job=>this.process(job as Job<JobEnvelope<unknown>>),{concurrency:FISCAL_BILLING_SUBMISSION_CONCURRENCY,jobNames:FISCAL_ISSUANCE_JOB_NAME});}
   private async process(job:Job<JobEnvelope<unknown>>):Promise<{completed:true;classification:BillingDocumentSubmissionExecutorOutcome["classification"]}>{
     if(job.name!==FISCAL_ISSUANCE_JOB_NAME)throw new Error("FISCAL_SUBMISSION_JOB_UNSUPPORTED");
     const outcome=await this.executor.execute({name:job.name,id:job.id,payload:job.data?.payload,metadata:job.data?.metadata});

@@ -46,6 +46,7 @@ describe("PackageCompletedWorker", () => {
       PACKAGE_COMPLETED_WORKER_REGISTRATION_KEY,
       PLATFORM_QUEUE_KEYS.PACKAGE_COMPLETED,
       expect.any(Function),
+      { jobNames: PACKAGE_COMPLETED_JOB_NAME },
     );
 
     const payload: PackageCompletedJobPayload = {

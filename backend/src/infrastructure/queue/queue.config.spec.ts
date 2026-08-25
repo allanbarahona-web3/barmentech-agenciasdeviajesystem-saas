@@ -16,6 +16,8 @@ describe("queue configuration", () => {
       DOCUMENT: "document",
       EMAIL: "email",
       FISCAL_BILLING: "fiscal-billing",
+      FISCAL_STATUS_RECONCILIATION: "fiscal-status-reconciliation",
+      FISCAL_REFRESH_RECONCILIATION: "fiscal-refresh-reconciliation",
       PDF: "pdf",
       NOTIFICATION: "notification",
       PACKAGE_COMPLETED: "package-completed",
@@ -26,6 +28,8 @@ describe("queue configuration", () => {
       document: "document",
       email: "email",
       "fiscal-billing": "fiscal-billing",
+      "fiscal-status-reconciliation": "fiscal-status-reconciliation",
+      "fiscal-refresh-reconciliation": "fiscal-refresh-reconciliation",
       pdf: "pdf",
       notification: "notification",
       "package-completed": "package-completed",
@@ -36,6 +40,25 @@ describe("queue configuration", () => {
         PLATFORM_QUEUE_KEYS.FISCAL_BILLING
       ],
     ).toBe("fiscal-billing");
+    expect(
+      getQueueConfig(configService()).queueNames[
+        PLATFORM_QUEUE_KEYS.FISCAL_STATUS_RECONCILIATION
+      ],
+    ).toBe("fiscal-status-reconciliation");
+    expect(
+      getQueueConfig(configService()).queueNames[
+        PLATFORM_QUEUE_KEYS.FISCAL_REFRESH_RECONCILIATION
+      ],
+    ).toBe("fiscal-refresh-reconciliation");
+  });
+
+  it("uses stable optional environment-name keys for both reconciliation queues", () => {
+    expect(
+      QUEUE_NAME_ENV_KEYS[PLATFORM_QUEUE_KEYS.FISCAL_STATUS_RECONCILIATION],
+    ).toBe("BULLMQ_FISCAL_STATUS_RECONCILIATION_QUEUE_NAME");
+    expect(
+      QUEUE_NAME_ENV_KEYS[PLATFORM_QUEUE_KEYS.FISCAL_REFRESH_RECONCILIATION],
+    ).toBe("BULLMQ_FISCAL_REFRESH_RECONCILIATION_QUEUE_NAME");
   });
 
   it("uses the existing BullMQ environment-name convention for the fiscal queue", () => {
@@ -51,18 +74,18 @@ describe("queue configuration", () => {
     ).toBe("fiscal-custom");
   });
 
-  it("registers the fiscal processor without adding another queue", () => {
+  it("registers the fiscal processor with three distinct fiscal queues", () => {
     const providers = Reflect.getMetadata(
       MODULE_METADATA.PROVIDERS,
       FiscalBillingModule,
     ) as Array<{ name?: string }>;
 
     expect(providers).toContain(FiscalBillingSubmissionProcessor);
-    expect(
-      Object.values(PLATFORM_QUEUE_KEYS).filter(
-        (queueKey) => queueKey === PLATFORM_QUEUE_KEYS.FISCAL_BILLING,
-      ),
-    ).toHaveLength(1);
+    expect(new Set([
+      PLATFORM_QUEUE_KEYS.FISCAL_BILLING,
+      PLATFORM_QUEUE_KEYS.FISCAL_STATUS_RECONCILIATION,
+      PLATFORM_QUEUE_KEYS.FISCAL_REFRESH_RECONCILIATION,
+    ]).size).toBe(3);
   });
 });
 
