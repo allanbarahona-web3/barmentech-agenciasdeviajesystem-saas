@@ -1,4 +1,4 @@
-import { Inject, Injectable } from "@nestjs/common";
+import { HttpException, Inject, Injectable } from "@nestjs/common";
 import {
   BILLING_DOCUMENT_REPOSITORY,
   type BillingDocumentRepository,
@@ -147,12 +147,17 @@ export class BillingDocumentService {
   }
 
   async getWorkspace(tenantId: string, billingDocumentId: string) {
-    const workspace = await this.repository.findWorkspace(
-      tenantId,
-      billingDocumentId,
-    );
-    if (!workspace) throw fiscalBillingError("BILLING_DOCUMENT_NOT_FOUND");
-    return workspace;
+    try {
+      const workspace = await this.repository.findWorkspace(
+        tenantId,
+        billingDocumentId,
+      );
+      if (!workspace) throw fiscalBillingError("BILLING_DOCUMENT_NOT_FOUND");
+      return workspace;
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw fiscalBillingError("BILLING_DOCUMENT_SUBMISSION_READ_FAILED");
+    }
   }
 
   private isUniqueConstraintViolation(error: unknown): boolean {

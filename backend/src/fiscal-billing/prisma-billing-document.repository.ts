@@ -7,6 +7,7 @@ import type {
   BillingDocumentFiscalPreparation,
   BillingDocumentFiscalAllocationResult,
   BillingDocumentIssuancePreflight,
+  BillingDocumentWorkspace,
   PrimaryDocumentSummary,
 } from "./billing-document.types";
 import { fiscalBillingError } from "./fiscal-billing.errors";
@@ -29,6 +30,24 @@ const BILLING_DOCUMENT_AGGREGATE = "BillingDocument";
 type AllocationDocument = Prisma.BillingDocumentGetPayload<{
   include: { lines: { include: { taxes: true } } };
 }>;
+const workspaceSelect=Prisma.validator<Prisma.BillingDocumentSelect>()({
+  id:true,billingMode:true,internalNumber:true,documentTypeCode:true,sourceType:true,sourceId:true,sourceNumber:true,sourceRole:true,
+  schemaVersion:true,countryCode:true,currencyCode:true,exchangeRate:true,fiscalEmissionAt:true,fiscalIssueDate:true,dueDate:true,
+  confirmedAt:true,submittedAt:true,issuedAt:true,createdAt:true,updatedAt:true,paymentConditionCode:true,creditTermDays:true,
+  lifecycleStatus:true,providerStatus:true,taxAuthorityStatus:true,artifactStatus:true,fiscalNumber:true,allocatedSequenceNumber:true,
+  haciendaKey:true,haciendaRejectionDetail:true,providerEnvironment:true,providerDocumentId:true,providerLastErrorCode:true,providerLastErrorAt:true,
+  issuerName:true,issuerIdentificationType:true,issuerIdentification:true,issuerEconomicActivityCode:true,issuerEstablishmentCode:true,
+  issuerTerminalCode:true,issuerEmail:true,issuerPhone:true,issuerAddressSnapshot:true,receiverName:true,receiverIdentificationType:true,
+  receiverIdentification:true,receiverEconomicActivityCode:true,receiverEmail:true,receiverPhone:true,receiverAddressSnapshot:true,
+  grossSubtotal:true,discountTotal:true,taxableTotal:true,exemptTotal:true,exoneratedTotal:true,grossTaxTotal:true,
+  exoneratedTaxTotal:true,netTaxTotal:true,total:true,
+  paymentMethods:{orderBy:{paymentMethodOrder:"asc"},select:{id:true,paymentMethodOrder:true,paymentMethodCode:true,description:true,declaredAmount:true}},
+  references:{orderBy:{referenceOrder:"asc"},select:{id:true,referenceOrder:true,referencedBillingDocumentId:true,externalDocumentKey:true,externalDocumentNumber:true,referencedDocumentTypeCode:true,reasonCode:true,reasonDescription:true,referenceDate:true}},
+  lines:{orderBy:{lineNumber:"asc"},select:{id:true,lineNumber:true,cabysCode:true,itemCode:true,description:true,quantity:true,unitOfMeasureCode:true,unitPrice:true,grossAmount:true,discountAmount:true,discountCode:true,discountReason:true,taxableBase:true,taxAmount:true,exoneratedTaxAmount:true,netTaxAmount:true,lineSubtotal:true,lineTotal:true,
+    taxes:{orderBy:{taxOrder:"asc"},select:{id:true,taxOrder:true,taxCode:true,rateCode:true,ratePercentage:true,taxableBase:true,taxAmount:true,calculationFactor:true,netTaxAmount:true,
+      exemption:{select:{id:true,documentTypeCode:true,documentNumber:true,legalArticle:true,legalSection:true,issuingInstitutionCode:true,issuingInstitutionName:true,otherInstitutionDescription:true,issueDate:true,exemptedPercentage:true,exemptedAmount:true}}}}}}
+});
+type WorkspaceRow=Prisma.BillingDocumentGetPayload<{select:typeof workspaceSelect}>;
 
 @Injectable()
 export class PrismaBillingDocumentRepository
@@ -757,58 +776,33 @@ export class PrismaBillingDocumentRepository
     }
   }
 
-  async findWorkspace(tenantId: string, documentId: string) {
-    const document = await this.prisma.billingDocument.findFirst({
-      where: { tenantId, id: documentId },
-      include: {
-        paymentMethods: { orderBy: { paymentMethodOrder: "asc" } },
-        lines: {
-          orderBy: { lineNumber: "asc" },
-          include: { taxes: { orderBy: { taxOrder: "asc" } } },
-        },
-      },
-    });
+  async findWorkspace(tenantId: string, documentId: string):Promise<BillingDocumentWorkspace|null> {
+    const document = await this.prisma.billingDocument.findUnique({
+      where:{id_tenantId:{id:documentId,tenantId}},select:workspaceSelect,
+    }) as WorkspaceRow|null;
     if (!document) return null;
-    const decimal = (value: Prisma.Decimal | null) =>
-      value === null ? null : value.toFixed();
     return {
-      ...document,
-      exchangeRate: decimal(document.exchangeRate),
-      grossSubtotal: decimal(document.grossSubtotal),
-      discountTotal: decimal(document.discountTotal),
-      taxableTotal: decimal(document.taxableTotal),
-      exemptTotal: decimal(document.exemptTotal),
-      exoneratedTotal: decimal(document.exoneratedTotal),
-      grossTaxTotal: decimal(document.grossTaxTotal),
-      exoneratedTaxTotal: decimal(document.exoneratedTaxTotal),
-      netTaxTotal: decimal(document.netTaxTotal),
-      total: decimal(document.total),
-      paymentMethods: document.paymentMethods.map((method) => ({
-        ...method,
-        declaredAmount: decimal(method.declaredAmount),
-      })),
-      references: [],
-      lines: document.lines.map((line) => ({
-        ...line,
-        quantity: decimal(line.quantity),
-        unitPrice: decimal(line.unitPrice),
-        grossAmount: decimal(line.grossAmount),
-        discountAmount: decimal(line.discountAmount),
-        taxableBase: decimal(line.taxableBase),
-        taxAmount: decimal(line.taxAmount),
-        exoneratedTaxAmount: decimal(line.exoneratedTaxAmount),
-        netTaxAmount: decimal(line.netTaxAmount),
-        lineSubtotal: decimal(line.lineSubtotal),
-        lineTotal: decimal(line.lineTotal),
-        taxes: line.taxes.map((tax) => ({
-          ...tax,
-          ratePercentage: decimal(tax.ratePercentage),
-          taxableBase: decimal(tax.taxableBase),
-          taxAmount: decimal(tax.taxAmount),
-          calculationFactor: decimal(tax.calculationFactor),
-          netTaxAmount: decimal(tax.netTaxAmount),
-        })),
-      })),
+      id:document.id,billingMode:document.billingMode,internalNumber:document.internalNumber,documentTypeCode:document.documentTypeCode,
+      sourceType:document.sourceType,sourceId:document.sourceId,sourceNumber:document.sourceNumber,sourceRole:document.sourceRole,
+      schemaVersion:document.schemaVersion,countryCode:document.countryCode,currencyCode:document.currencyCode,exchangeRate:workspaceDecimal(document.exchangeRate),
+      fiscalEmissionAt:workspaceTimestamp(document.fiscalEmissionAt),fiscalIssueDate:workspaceDate(document.fiscalIssueDate),dueDate:workspaceDate(document.dueDate),
+      confirmedAt:workspaceTimestamp(document.confirmedAt),submittedAt:workspaceTimestamp(document.submittedAt),issuedAt:workspaceTimestamp(document.issuedAt),
+      createdAt:requiredWorkspaceTimestamp(document.createdAt),updatedAt:requiredWorkspaceTimestamp(document.updatedAt),paymentConditionCode:document.paymentConditionCode,creditTermDays:document.creditTermDays,
+      lifecycleStatus:document.lifecycleStatus,providerStatus:document.providerStatus,taxAuthorityStatus:document.taxAuthorityStatus,artifactStatus:document.artifactStatus,
+      fiscalNumber:document.fiscalNumber,allocatedSequenceNumber:document.allocatedSequenceNumber===null?null:document.allocatedSequenceNumber.toString(),haciendaKey:document.haciendaKey,
+      haciendaRejectionDetail:document.haciendaRejectionDetail,providerEnvironment:document.providerEnvironment,providerDocumentId:document.providerDocumentId,
+      providerLastErrorCode:document.providerLastErrorCode,providerLastErrorAt:workspaceTimestamp(document.providerLastErrorAt),
+      issuerName:document.issuerName,issuerIdentificationType:document.issuerIdentificationType,issuerIdentification:document.issuerIdentification,
+      issuerEconomicActivityCode:document.issuerEconomicActivityCode,issuerEstablishmentCode:document.issuerEstablishmentCode,issuerTerminalCode:document.issuerTerminalCode,
+      issuerEmail:document.issuerEmail,issuerPhone:document.issuerPhone,issuerAddressSnapshot:document.issuerAddressSnapshot,
+      receiverName:document.receiverName,receiverIdentificationType:document.receiverIdentificationType,receiverIdentification:document.receiverIdentification,
+      receiverEconomicActivityCode:document.receiverEconomicActivityCode,receiverEmail:document.receiverEmail,receiverPhone:document.receiverPhone,receiverAddressSnapshot:document.receiverAddressSnapshot,
+      grossSubtotal:requiredWorkspaceDecimal(document.grossSubtotal),discountTotal:requiredWorkspaceDecimal(document.discountTotal),taxableTotal:requiredWorkspaceDecimal(document.taxableTotal),
+      exemptTotal:requiredWorkspaceDecimal(document.exemptTotal),exoneratedTotal:requiredWorkspaceDecimal(document.exoneratedTotal),grossTaxTotal:requiredWorkspaceDecimal(document.grossTaxTotal),
+      exoneratedTaxTotal:requiredWorkspaceDecimal(document.exoneratedTaxTotal),netTaxTotal:requiredWorkspaceDecimal(document.netTaxTotal),total:requiredWorkspaceDecimal(document.total),
+      paymentMethods:document.paymentMethods.map(method=>({id:method.id,paymentMethodOrder:method.paymentMethodOrder,paymentMethodCode:method.paymentMethodCode,description:method.description,declaredAmount:workspaceDecimal(method.declaredAmount)})),
+      references:document.references.map(reference=>({id:reference.id,referenceOrder:reference.referenceOrder,referencedBillingDocumentId:reference.referencedBillingDocumentId,externalDocumentKey:reference.externalDocumentKey,externalDocumentNumber:reference.externalDocumentNumber,referencedDocumentTypeCode:reference.referencedDocumentTypeCode,reasonCode:reference.reasonCode,reasonDescription:reference.reasonDescription,referenceDate:requiredWorkspaceDate(reference.referenceDate)})),
+      lines:document.lines.map(line=>({id:line.id,lineNumber:line.lineNumber,cabysCode:line.cabysCode,itemCode:line.itemCode,description:line.description,quantity:requiredWorkspaceDecimal(line.quantity),unitOfMeasureCode:line.unitOfMeasureCode,unitPrice:requiredWorkspaceDecimal(line.unitPrice),grossAmount:requiredWorkspaceDecimal(line.grossAmount),discountAmount:requiredWorkspaceDecimal(line.discountAmount),discountCode:line.discountCode,discountReason:line.discountReason,taxableBase:requiredWorkspaceDecimal(line.taxableBase),taxAmount:requiredWorkspaceDecimal(line.taxAmount),exoneratedTaxAmount:requiredWorkspaceDecimal(line.exoneratedTaxAmount),netTaxAmount:requiredWorkspaceDecimal(line.netTaxAmount),lineSubtotal:requiredWorkspaceDecimal(line.lineSubtotal),lineTotal:requiredWorkspaceDecimal(line.lineTotal),taxes:line.taxes.map(tax=>({id:tax.id,taxOrder:tax.taxOrder,taxCode:tax.taxCode,rateCode:tax.rateCode,ratePercentage:requiredWorkspaceDecimal(tax.ratePercentage),taxableBase:requiredWorkspaceDecimal(tax.taxableBase),taxAmount:requiredWorkspaceDecimal(tax.taxAmount),calculationFactor:workspaceDecimal(tax.calculationFactor),netTaxAmount:requiredWorkspaceDecimal(tax.netTaxAmount),exemption:tax.exemption?{id:tax.exemption.id,documentTypeCode:tax.exemption.documentTypeCode,documentNumber:tax.exemption.documentNumber,legalArticle:tax.exemption.legalArticle,legalSection:tax.exemption.legalSection,issuingInstitutionCode:tax.exemption.issuingInstitutionCode,issuingInstitutionName:tax.exemption.issuingInstitutionName,otherInstitutionDescription:tax.exemption.otherInstitutionDescription,issueDate:requiredWorkspaceDate(tax.exemption.issueDate),exemptedPercentage:requiredWorkspaceDecimal(tax.exemption.exemptedPercentage),exemptedAmount:requiredWorkspaceDecimal(tax.exemption.exemptedAmount)}:null}))})),
       readiness: {
         receiverFiscalIdentityMissing:
           !document.receiverIdentificationType ||
@@ -819,6 +813,14 @@ export class PrismaBillingDocumentRepository
     };
   }
 }
+
+function workspaceDecimal(value:Prisma.Decimal|null):string|null{return value===null?null:value.toFixed();}
+function requiredWorkspaceDecimal(value:Prisma.Decimal):string{return value.toFixed();}
+function workspaceTimestamp(value:Date|null):Date|null{return value===null?null:requiredWorkspaceTimestamp(value);}
+function requiredWorkspaceTimestamp(value:Date):Date{if(!(value instanceof Date)||!Number.isFinite(value.getTime()))workspaceMappingFailure();return new Date(value.getTime());}
+function workspaceDate(value:Date|null):string|null{return value===null?null:requiredWorkspaceDate(value);}
+function requiredWorkspaceDate(value:Date):string{if(!(value instanceof Date)||!Number.isFinite(value.getTime()))workspaceMappingFailure();return `${value.getUTCFullYear().toString().padStart(4,"0")}-${(value.getUTCMonth()+1).toString().padStart(2,"0")}-${value.getUTCDate().toString().padStart(2,"0")}`;}
+function workspaceMappingFailure():never{throw fiscalBillingError("BILLING_DOCUMENT_SUBMISSION_READ_FAILED");}
 
 function issuanceKey(billingDocumentId: string) {
   return `billing-document:${billingDocumentId}:electronic-issuance:v1`;

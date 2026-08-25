@@ -157,3 +157,141 @@ export interface BillingDocumentFiscalPreparation {
   fiscalIssueDate: string;
   officialRate: BillingDocumentOfficialRatePreparation | null;
 }
+
+export interface BillingDocumentWorkspace {
+  id: string;
+  billingMode: string;
+  internalNumber: string;
+  documentTypeCode: string;
+  sourceType: string | null;
+  sourceId: string | null;
+  sourceNumber: string | null;
+  sourceRole: string;
+  schemaVersion: string;
+  countryCode: string;
+  currencyCode: string;
+  exchangeRate: string | null;
+  fiscalEmissionAt: Date | null;
+  fiscalIssueDate: string | null;
+  dueDate: string | null;
+  confirmedAt: Date | null;
+  submittedAt: Date | null;
+  issuedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+  paymentConditionCode: string | null;
+  creditTermDays: number | null;
+  lifecycleStatus: string;
+  providerStatus: string;
+  taxAuthorityStatus: string;
+  artifactStatus: string;
+  fiscalNumber: string | null;
+  allocatedSequenceNumber: string | null;
+  haciendaKey: string | null;
+  haciendaRejectionDetail: string | null;
+  providerEnvironment: string | null;
+  providerDocumentId: string | null;
+  providerLastErrorCode: string | null;
+  providerLastErrorAt: Date | null;
+  issuerName: string;
+  issuerIdentificationType: string;
+  issuerIdentification: string;
+  issuerEconomicActivityCode: string | null;
+  issuerEstablishmentCode: string | null;
+  issuerTerminalCode: string | null;
+  issuerEmail: string | null;
+  issuerPhone: string | null;
+  issuerAddressSnapshot: unknown;
+  receiverName: string | null;
+  receiverIdentificationType: string | null;
+  receiverIdentification: string | null;
+  receiverEconomicActivityCode: string | null;
+  receiverEmail: string | null;
+  receiverPhone: string | null;
+  receiverAddressSnapshot: unknown;
+  grossSubtotal: string;
+  discountTotal: string;
+  taxableTotal: string;
+  exemptTotal: string;
+  exoneratedTotal: string;
+  grossTaxTotal: string;
+  exoneratedTaxTotal: string;
+  netTaxTotal: string;
+  total: string;
+  paymentMethods: BillingDocumentWorkspacePaymentMethod[];
+  references: BillingDocumentWorkspaceReference[];
+  lines: BillingDocumentWorkspaceLine[];
+  readiness: {
+    receiverFiscalIdentityMissing: boolean;
+    exchangeRateMissing: boolean;
+  };
+}
+
+export interface BillingDocumentWorkspacePaymentMethod {
+  id: string;
+  paymentMethodOrder: number;
+  paymentMethodCode: string;
+  description: string | null;
+  declaredAmount: string | null;
+}
+
+export interface BillingDocumentWorkspaceReference {
+  id: string;
+  referenceOrder: number;
+  referencedBillingDocumentId: string | null;
+  externalDocumentKey: string | null;
+  externalDocumentNumber: string | null;
+  referencedDocumentTypeCode: string;
+  reasonCode: string;
+  reasonDescription: string | null;
+  referenceDate: string;
+}
+
+export interface BillingDocumentWorkspaceLine {
+  id: string;
+  lineNumber: number;
+  cabysCode: string | null;
+  itemCode: string | null;
+  description: string;
+  quantity: string;
+  unitOfMeasureCode: string;
+  unitPrice: string;
+  grossAmount: string;
+  discountAmount: string;
+  discountCode: string | null;
+  discountReason: string | null;
+  taxableBase: string;
+  taxAmount: string;
+  exoneratedTaxAmount: string;
+  netTaxAmount: string;
+  lineSubtotal: string;
+  lineTotal: string;
+  taxes: BillingDocumentWorkspaceTax[];
+}
+
+export interface BillingDocumentWorkspaceTax {
+  id: string;
+  taxOrder: number;
+  taxCode: string;
+  rateCode: string;
+  ratePercentage: string;
+  taxableBase: string;
+  taxAmount: string;
+  calculationFactor: string | null;
+  netTaxAmount: string;
+  exemption: BillingDocumentWorkspaceTaxExemption | null;
+}
+
+export interface BillingDocumentWorkspaceTaxExemption {
+  id: string;
+  documentTypeCode: string;
+  documentNumber: string;
+  legalArticle: string | null;
+  legalSection: string | null;
+  issuingInstitutionCode: string | null;
+  issuingInstitutionName: string | null;
+  otherInstitutionDescription: string | null;
+  issueDate: string;
+  exemptedPercentage: string;
+  exemptedAmount: string;
+}

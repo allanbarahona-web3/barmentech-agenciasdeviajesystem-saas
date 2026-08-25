@@ -3,6 +3,7 @@ import { BillingDocumentService } from "./billing-document.service";
 import type { BillingDocumentDraftCommand } from "./billing-document.types";
 
 describe("BillingDocumentService generic core", () => {
+  it("sanitizes workspace read failures and preserves tenant-scoped not-found",async()=>{let repository={findWorkspace:jest.fn().mockResolvedValue(null)},service=new BillingDocumentService(repository as never,{} as never,{} as never);await expect(service.getWorkspace("tenant-a","foreign-document")).rejects.toMatchObject({response:expect.objectContaining({code:"BILLING_DOCUMENT_NOT_FOUND"})});expect(repository.findWorkspace).toHaveBeenCalledWith("tenant-a","foreign-document");repository={findWorkspace:jest.fn().mockRejectedValue(new Error("raw prisma database-url Hacienda detail"))};service=new BillingDocumentService(repository as never,{} as never,{} as never);const error=await captureWorkspace(service.getWorkspace("tenant-a","document-a"));expect(error.getResponse()).toMatchObject({code:"BILLING_DOCUMENT_SUBMISSION_READ_FAILED"});expect(JSON.stringify(error.getResponse())).not.toMatch(/prisma|database-url|Hacienda detail/);});
   it("accepts and forwards a source-agnostic draft command unchanged", async () => {
     const command = commandWithoutSalesOrder();
     const repository = {
@@ -183,6 +184,8 @@ describe("BillingDocumentService generic core", () => {
     expect(repository.requestElectronicIssuance).not.toHaveBeenCalled();
   });
 });
+
+async function captureWorkspace(promise:Promise<unknown>):Promise<{getResponse():unknown}>{try{await promise;throw new Error("expected rejection");}catch(error){return error as {getResponse():unknown};}}
 
 function preflight(overrides: Record<string, unknown> = {}) {
   return {

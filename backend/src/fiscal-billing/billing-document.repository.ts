@@ -3,6 +3,7 @@ import type {
   BillingDocumentFiscalPreparation,
   BillingDocumentFiscalAllocationResult,
   BillingDocumentIssuancePreflight,
+  BillingDocumentWorkspace,
   PrimaryDocumentSummary,
 } from "./billing-document.types";
 
@@ -29,5 +30,5 @@ export interface BillingDocumentRepository {
     actorUserId: string,
     preparation: BillingDocumentFiscalPreparation | null,
   ): Promise<BillingDocumentFiscalAllocationResult>;
-  findWorkspace(tenantId: string, documentId: string): Promise<unknown | null>;
+  findWorkspace(tenantId: string, documentId: string): Promise<BillingDocumentWorkspace | null>;
 }
