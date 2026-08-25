@@ -29,6 +29,7 @@ export interface ElectronicDocumentSubmissionAcknowledgement {
   status: ElectronicDocumentStatus;
   providerEnvironment: "sandbox" | "production";
   estimatedReadyAt: string | null;
+  rejectionDetail: string | null;
 }
 
 export interface ElectronicDocumentSubmissionProvider {

@@ -106,9 +106,18 @@ function normalizeAcknowledgement(text: string, prepared: PreparedElectronicDocu
   let estimatedReadyAt: string | null = null;
   if (value.estimatedReadyAt !== undefined && value.estimatedReadyAt !== null) { estimatedReadyAt = bounded(value.estimatedReadyAt, 64); if (!rfc3339(estimatedReadyAt)) invalidResponse("UNKNOWN_REQUIRES_RECONCILIATION"); }
   const final = status === "accepted" || status === "rejected";
+  const rejected = status === "rejected";
+  let rejectionDetail: string | null = null;
+  if (value.haciendaMessage !== undefined && value.haciendaMessage !== null) {
+    if (!rejected || typeof value.haciendaMessage !== "string") invalidResponse("UNKNOWN_REQUIRES_RECONCILIATION");
+    rejectionDetail = value.haciendaMessage.trim();
+    if (!rejectionDetail || /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/.test(rejectionDetail)) {
+      invalidResponse("UNKNOWN_REQUIRES_RECONCILIATION");
+    }
+  }
   return { classification: "ACKNOWLEDGED_PROVIDER_SUBMISSION", providerDocumentId: documentId, haciendaKey: key,
     consecutive, status: { providerStatus: status, final, accepted: status === "accepted", rejected: status === "rejected" },
-    providerEnvironment: value.environment, estimatedReadyAt };
+    providerEnvironment: value.environment, estimatedReadyAt, rejectionDetail };
 }
 
 function classifyHttpError(status: number, text: string, headers: Headers): never {
