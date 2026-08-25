@@ -37,7 +37,7 @@ describe("PrismaBillingDocumentRepository generic draft persistence", () => {
       where: { id_tenantId: { id: "document-a", tenantId: "tenant-a" } },
     }));
   });
-  it("persists a ready command without a SalesOrder object or hardcoded source values", async () => {
+  it("produces a Prisma-valid USD type-01 nested snapshot with tenant-safe inherited relations", async () => {
     const tx = {
       billingDocument: {
         findFirst: jest.fn().mockResolvedValue(null),
@@ -54,6 +54,12 @@ describe("PrismaBillingDocumentRepository generic draft persistence", () => {
     };
     const repository = new PrismaBillingDocumentRepository(prisma as never);
     const command = genericCommand();
+    command.paymentMethods.push({
+      paymentMethodOrder: 2,
+      paymentMethodCode: "01",
+      description: null,
+      declaredAmount: null,
+    });
 
     await repository.createDraft(command);
 
@@ -98,15 +104,28 @@ describe("PrismaBillingDocumentRepository generic draft persistence", () => {
     expect(JSON.stringify(data)).not.toContain("BD-SO-");
     expect(JSON.stringify(data)).not.toContain("billingDocumentNumberSequence");
     expect(data.lines.create[0].taxes.create).toHaveLength(1);
+    expect(data.lines.create[0]).not.toHaveProperty("tenantId");
+    expect(data.lines.create[0].taxes.create[0]).not.toHaveProperty("tenantId");
+    expect(data.paymentMethods.create.every((method: Record<string, unknown>) => !("tenantId" in method))).toBe(true);
     expect(data.paymentMethods.create).toEqual([
       {
-        tenantId: "tenant-a",
         paymentMethodOrder: 1,
         paymentMethodCode: "04",
         description: null,
         declaredAmount: null,
       },
+      {
+        paymentMethodOrder: 2,
+        paymentMethodCode: "01",
+        description: null,
+        declaredAmount: null,
+      },
     ]);
+    expect(data).not.toHaveProperty("billingDocumentNumberSequenceId");
+    expect(data).not.toHaveProperty("issuanceIdempotencyKey");
+    expect(data).not.toHaveProperty("providerDocumentId");
+    expect(data).not.toHaveProperty("fiscalEmissionAt");
+    expect(data).not.toHaveProperty("fiscalIssueDate");
     expect("references" in data).toBe(false);
   });
 
