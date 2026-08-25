@@ -32,7 +32,8 @@ type AllocationDocument = Prisma.BillingDocumentGetPayload<{
 }>;
 const workspaceSelect=Prisma.validator<Prisma.BillingDocumentSelect>()({
   id:true,billingMode:true,internalNumber:true,documentTypeCode:true,sourceType:true,sourceId:true,sourceNumber:true,sourceRole:true,
-  schemaVersion:true,countryCode:true,currencyCode:true,exchangeRate:true,fiscalEmissionAt:true,fiscalIssueDate:true,dueDate:true,
+  schemaVersion:true,countryCode:true,currencyCode:true,exchangeRate:true,fiscalEmissionAt:true,fiscalIssueDate:true,
+  officialExchangeRateObservationId:true,fiscalExchangeRateEffectiveDate:true,fiscalExchangeRateSourceAuthority:true,fiscalExchangeRateIndicatorCode:true,dueDate:true,
   confirmedAt:true,submittedAt:true,issuedAt:true,createdAt:true,updatedAt:true,paymentConditionCode:true,creditTermDays:true,
   lifecycleStatus:true,providerStatus:true,taxAuthorityStatus:true,artifactStatus:true,fiscalNumber:true,allocatedSequenceNumber:true,
   haciendaKey:true,haciendaRejectionDetail:true,providerEnvironment:true,providerDocumentId:true,providerLastErrorCode:true,providerLastErrorAt:true,
@@ -805,8 +806,7 @@ export class PrismaBillingDocumentRepository
         receiverFiscalIdentityMissing:
           !document.receiverIdentificationType ||
           !document.receiverIdentification,
-        exchangeRateMissing:
-          document.currencyCode !== "CRC" && document.exchangeRate === null,
+        exchangeRateMissing: !workspaceFiscalIdentityReady(document),
       },
     };
   }
@@ -819,6 +819,17 @@ function requiredWorkspaceTimestamp(value:Date):Date{if(!(value instanceof Date)
 function workspaceDate(value:Date|null):string|null{return value===null?null:requiredWorkspaceDate(value);}
 function requiredWorkspaceDate(value:Date):string{if(!(value instanceof Date)||!Number.isFinite(value.getTime()))workspaceMappingFailure();return `${value.getUTCFullYear().toString().padStart(4,"0")}-${(value.getUTCMonth()+1).toString().padStart(2,"0")}-${value.getUTCDate().toString().padStart(2,"0")}`;}
 function workspaceMappingFailure():never{throw fiscalBillingError("BILLING_DOCUMENT_SUBMISSION_READ_FAILED");}
+function workspaceFiscalIdentityReady(document:WorkspaceRow):boolean{
+  if(document.currencyCode!=="CRC"&&document.currencyCode!=="USD")return false;
+  const allocated=document.lifecycleStatus!=="DRAFT"||document.fiscalNumber!==null||document.allocatedSequenceNumber!==null;
+  const emissionEmpty=document.fiscalEmissionAt===null&&document.fiscalIssueDate===null;
+  const emissionComplete=validWorkspaceDate(document.fiscalEmissionAt)&&validWorkspaceDate(document.fiscalIssueDate);
+  const rateEmpty=document.exchangeRate===null&&document.officialExchangeRateObservationId===null&&document.fiscalExchangeRateEffectiveDate===null&&document.fiscalExchangeRateSourceAuthority===null&&document.fiscalExchangeRateIndicatorCode===null;
+  const rateComplete=document.exchangeRate!==null&&document.exchangeRate.greaterThan(0)&&typeof document.officialExchangeRateObservationId==="string"&&document.officialExchangeRateObservationId.length>0&&validWorkspaceDate(document.fiscalExchangeRateEffectiveDate)&&document.fiscalExchangeRateSourceAuthority==="BCCR"&&document.fiscalExchangeRateIndicatorCode==="318"&&validWorkspaceDate(document.fiscalIssueDate)&&document.fiscalExchangeRateEffectiveDate!.getTime()===document.fiscalIssueDate!.getTime();
+  if(!allocated)return emissionEmpty&&rateEmpty;
+  return emissionComplete&&(document.currencyCode==="CRC"?rateEmpty:rateComplete);
+}
+function validWorkspaceDate(value:Date|null):value is Date{return value instanceof Date&&Number.isFinite(value.getTime());}
 
 function issuanceKey(billingDocumentId: string) {
   return `billing-document:${billingDocumentId}:electronic-issuance:v1`;

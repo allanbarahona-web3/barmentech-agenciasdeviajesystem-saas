@@ -21,6 +21,10 @@
 .documentTypeBadge:hover { background: #e3effa; color: #102f57; }
 .primaryAction { border: 1px solid #1d5f9f; background: #1d5f9f; color: #fff; box-shadow: 0 2px 5px rgba(29, 95, 159, .22); }
 .primaryAction:hover { border-color: #164c81; background: #164c81; color: #fff; box-shadow: 0 3px 8px rgba(22, 76, 129, .28); }
+.secondaryAction { border: 1px solid #9eb3cb !important; background: #eef4fb !important; color: #174f88 !important; box-shadow: 0 1px 3px rgba(23, 63, 112, .08); }
+.secondaryAction:hover { border-color: #5e86b0 !important; background: #dfeaf6 !important; color: #102f57 !important; }
+.secondaryAction:focus-visible { outline: 2px solid #1f63d8; outline-offset: 2px; }
+.secondaryAction:disabled { border-color: #cbd5e1 !important; background: #f2f5f8 !important; color: #718096 !important; }
 .disabledAction { min-width: 142px; cursor: not-allowed; }
 .state { display: grid; min-height: 280px; padding: 48px 20px; place-items: center; text-align: center; }
 .state h2, .state h3 { margin: 0 0 7px; color: #172b4d; }
@@ -31,6 +35,9 @@
 .paginationActions { display: flex; gap: 8px; }
 .backLink { display: inline-flex; align-items: center; gap: 7px; margin-bottom: 18px; color: #315f9b; font-size: 13px; font-weight: 700; }
 .backLink svg { width: 16px; height: 16px; }
+.navigationButton { min-height: 38px; border: 1px solid #b8c8dc; border-radius: 8px; background: #eef4fb; padding: 8px 13px; color: #174f88 !important; box-shadow: 0 1px 3px rgba(23, 63, 112, .08); }
+.navigationButton:hover { border-color: #7196bd; background: #dfeaf6; color: #102f57 !important; }
+.navigationButton[aria-disabled="true"] { pointer-events: none; opacity: .55; }
 .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; margin-bottom: 18px; }
 .section { padding: 20px; }
 .section h2 { margin: 0 0 14px; color: #172b4d; font-size: 16px; }
@@ -57,6 +64,8 @@
 .readiness { border: 1px solid #72c69a; border-radius: 10px; background: #effaf3; padding: 15px; color: #17663b; font-size: 13px; font-weight: 700; }
 .muted { color: #718096; font-size: 12px; }
 .types { display: flex; flex-wrap: wrap; gap: 8px; }
+.paymentMethodBadge { border-color: #9fc0e4 !important; background: #eef5fc !important; color: #163f70 !important; font-weight: 700; }
+.paymentMethodBadge:hover { background: #e3effa !important; color: #102f57 !important; }
 .formGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-bottom: 20px; }
 .formGrid label { display: grid; gap: 6px; color: #334155; font-size: 12px; font-weight: 700; }
 .formGrid select, .formGrid input { width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; padding: 10px 12px; color: #172b4d; font: inherit; }
