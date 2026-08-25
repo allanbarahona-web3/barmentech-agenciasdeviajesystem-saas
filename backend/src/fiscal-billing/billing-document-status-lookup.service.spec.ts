@@ -39,6 +39,7 @@ describe("BillingDocumentStatusLookupService", () => {
       submittedAt: ATTEMPT, issuedAt: null,
       providerStatusCheckAttempts: 0, providerLastStatusCheckAt: null,
       providerNextStatusCheckAt: new Date(ATTEMPT.getTime()+10_000), providerStatusCheckLockOwner: null, providerStatusCheckLeaseUntil: null,
+      providerRefreshAttempts:0,providerLastRefreshAt:null,providerNextRefreshAt:null,providerRefreshLockOwner:null,providerRefreshLeaseUntil:null,
     });
     expect(result.persistedIdentity.providerLastAttemptAt).not.toBe(ATTEMPT);
     expect(result.persistedIdentity.fiscalEmissionAt.getTime()).toBe(new Date("2026-08-24T05:59:59.987Z").getTime());
@@ -158,7 +159,8 @@ function row(overrides: Record<string, unknown> = {}) {
     issuanceIdempotencyKey: "billing-document:document-a:electronic-issuance:v1", providerRequestHash: HASH,
     providerLastAttemptAt: ATTEMPT, providerReconciliationRequired: false, providerLastErrorCode: null,
     providerLastErrorAt: null, submittedAt: ATTEMPT, issuedAt: null, providerStatusCheckAttempts:0,providerLastStatusCheckAt:null,
-    providerNextStatusCheckAt:new Date(ATTEMPT.getTime()+10_000),providerStatusCheckLockOwner:null,providerStatusCheckLeaseUntil:null, ...overrides,
+    providerNextStatusCheckAt:new Date(ATTEMPT.getTime()+10_000),providerStatusCheckLockOwner:null,providerStatusCheckLeaseUntil:null,
+    providerRefreshAttempts:0,providerLastRefreshAt:null,providerNextRefreshAt:null,providerRefreshLockOwner:null,providerRefreshLeaseUntil:null,...overrides,
   };
 }
 

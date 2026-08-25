@@ -50,7 +50,7 @@ describe("BillingDocumentStatusPersistenceService",()=>{
       billingDocumentNumberSequenceId:"sequence-a",allocatedSequenceNumber:42n,fiscalNumber:NUMBER,documentTypeCode:"01",issuanceIdempotencyKey:"billing-document:document-a:electronic-issuance:v1",
       providerRequestHash:HASH,providerLastAttemptAt:ATTEMPT,providerDocumentId:"provider_a-1",haciendaKey:KEY,providerEnvironment:"sandbox",fiscalEmissionAt:EMISSION,
       submittedAt:ATTEMPT,providerReconciliationRequired:false,providerLastErrorCode:null,providerLastErrorAt:null,issuedAt:null});
-    expect(write.data).toEqual({taxAuthorityStatus:"ACCEPTED",providerReconciliationRequired:false,providerLastErrorCode:null,providerLastErrorAt:null,providerStatusCheckAttempts:1,providerLastStatusCheckAt:ISSUED,providerNextStatusCheckAt:null,providerStatusCheckLockOwner:null,providerStatusCheckLeaseUntil:null,issuedAt:ISSUED});
+    expect(write.data).toEqual({taxAuthorityStatus:"ACCEPTED",providerReconciliationRequired:false,providerLastErrorCode:null,providerLastErrorAt:null,providerStatusCheckAttempts:1,providerLastStatusCheckAt:ISSUED,providerNextStatusCheckAt:null,providerStatusCheckLockOwner:null,providerStatusCheckLeaseUntil:null,providerNextRefreshAt:null,providerRefreshLockOwner:null,providerRefreshLeaseUntil:null,issuedAt:ISSUED});
     for(const preserved of ["allocatedSequenceNumber","fiscalNumber","submittedAt","providerRequestHash","providerLastAttemptAt","fiscalEmissionAt"])expect(write.data).not.toHaveProperty(preserved);
     noSideEffects(c);
   });
@@ -66,7 +66,7 @@ describe("BillingDocumentStatusPersistenceService",()=>{
     const detail="Rechazo fiscal limitado";const c=context(row(),lookup({providerResult:rejected(detail)}));
     const result=await c.service.persist(c.lookup);const write=c.tx.billingDocument.updateMany.mock.calls[0][0] as {data:Record<string,unknown>};
     expect(result).toMatchObject({final:true,finalDecision:"REJECTED",taxAuthorityStatus:"REJECTED",issuedAt:null,newlyPersisted:true,rejectionDetail:detail});
-    expect(write.data).toEqual({taxAuthorityStatus:"REJECTED",providerReconciliationRequired:false,providerLastErrorCode:null,providerLastErrorAt:null,providerStatusCheckAttempts:1,providerLastStatusCheckAt:ISSUED,providerNextStatusCheckAt:null,providerStatusCheckLockOwner:null,providerStatusCheckLeaseUntil:null,issuedAt:null});
+    expect(write.data).toEqual({taxAuthorityStatus:"REJECTED",providerReconciliationRequired:false,providerLastErrorCode:null,providerLastErrorAt:null,providerStatusCheckAttempts:1,providerLastStatusCheckAt:ISSUED,providerNextStatusCheckAt:null,providerStatusCheckLockOwner:null,providerStatusCheckLeaseUntil:null,providerNextRefreshAt:null,providerRefreshLockOwner:null,providerRefreshLeaseUntil:null,issuedAt:null});
     expect(JSON.stringify(write.data)).not.toContain(detail);expect(c.clock.now).toHaveBeenCalledTimes(1);noSideEffects(c);
   });
 
@@ -185,12 +185,14 @@ function row(overrides:Record<string,unknown>={}){return{id:"document-a",tenantI
   providerDocumentId:"provider_a-1",haciendaKey:KEY,fiscalNumber:NUMBER,documentTypeCode:"01",providerEnvironment:"sandbox",fiscalIssueDate:new Date("2026-08-24T00:00:00Z"),fiscalEmissionAt:EMISSION,
   billingDocumentNumberSequenceId:"sequence-a",allocatedSequenceNumber:42n,issuanceIdempotencyKey:"billing-document:document-a:electronic-issuance:v1",providerRequestHash:HASH,
   providerLastAttemptAt:ATTEMPT,providerReconciliationRequired:false,providerLastErrorCode:null,providerLastErrorAt:null,submittedAt:ATTEMPT,issuedAt:null,
-  providerStatusCheckAttempts:0,providerLastStatusCheckAt:null,providerNextStatusCheckAt:new Date(ATTEMPT.getTime()+10_000),providerStatusCheckLockOwner:null,providerStatusCheckLeaseUntil:null,...overrides};}
+  providerStatusCheckAttempts:0,providerLastStatusCheckAt:null,providerNextStatusCheckAt:new Date(ATTEMPT.getTime()+10_000),providerStatusCheckLockOwner:null,providerStatusCheckLeaseUntil:null,
+  providerRefreshAttempts:0,providerLastRefreshAt:null,providerNextRefreshAt:null,providerRefreshLockOwner:null,providerRefreshLeaseUntil:null,...overrides};}
 function finalRow(decision:"ACCEPTED"|"REJECTED"){return row({taxAuthorityStatus:decision,issuedAt:decision==="ACCEPTED"?ISSUED:null,providerStatusCheckAttempts:1,providerLastStatusCheckAt:ISSUED,providerNextStatusCheckAt:null,providerStatusCheckLockOwner:null,providerStatusCheckLeaseUntil:null});}
 function lookup(overrides:{persistedIdentity?:Record<string,unknown>;providerResult?:Record<string,unknown>}={}):BillingDocumentStatusLookupResult{return{persistedIdentity:{tenantId:"tenant-a",billingDocumentId:"document-a",billingDocumentNumberSequenceId:"sequence-a",allocatedSequenceNumber:"42",providerDocumentId:"provider_a-1",haciendaKey:KEY,
   issuanceIdempotencyKey:"billing-document:document-a:electronic-issuance:v1",fiscalEmissionAt:EMISSION,providerRequestHash:HASH,providerLastAttemptAt:ATTEMPT,fiscalNumber:NUMBER,documentTypeCode:"01",providerEnvironment:"sandbox",
   fiscalIssueDate:"2026-08-24",lifecycleStatus:"SUBMITTED",providerStatus:"PROCESSED",taxAuthorityStatus:"PROCESSING",providerReconciliationRequired:false,submittedAt:ATTEMPT,issuedAt:null,
-  providerStatusCheckAttempts:0,providerLastStatusCheckAt:null,providerNextStatusCheckAt:new Date(ATTEMPT.getTime()+10_000),providerStatusCheckLockOwner:null,providerStatusCheckLeaseUntil:null,...overrides.persistedIdentity},
+  providerStatusCheckAttempts:0,providerLastStatusCheckAt:null,providerNextStatusCheckAt:new Date(ATTEMPT.getTime()+10_000),providerStatusCheckLockOwner:null,providerStatusCheckLeaseUntil:null,
+  providerRefreshAttempts:0,providerLastRefreshAt:null,providerNextRefreshAt:null,providerRefreshLockOwner:null,providerRefreshLeaseUntil:null,...overrides.persistedIdentity},
   providerResult:{classification:"ELECTRONIC_DOCUMENT_STATUS",providerDocumentId:"provider_a-1",haciendaKey:KEY,consecutive:NUMBER,providerEnvironment:"sandbox",providerStatus:"queued",final:false,finalDecision:null,fiscalIssuedAt:null,rejectionDetail:null,...overrides.providerResult}} as BillingDocumentStatusLookupResult;}
 function accepted(){return{providerStatus:"accepted",final:true,finalDecision:"ACCEPTED",fiscalIssuedAt:"2026-08-24T12:04:00-06:00",rejectionDetail:null};}
 function rejected(detail:string|null){return{providerStatus:"rejected",final:true,finalDecision:"REJECTED",fiscalIssuedAt:null,rejectionDetail:detail};}

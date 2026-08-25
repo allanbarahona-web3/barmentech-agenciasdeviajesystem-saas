@@ -49,6 +49,9 @@ import { FiscalStatusReconciliationPublisher } from "./jobs/fiscal-status-reconc
 import { FiscalStatusReconciliationProcessor } from "./jobs/fiscal-status-reconciliation.processor";
 import { FacturaEnCrDocumentRefreshAdapter } from "./providers/factura-en-cr-document-refresh.adapter";
 import { ELECTRONIC_DOCUMENT_REFRESH_PROVIDER } from "./providers/electronic-document-refresh.provider";
+import { BillingDocumentRefreshExecutorService } from "./billing-document-refresh-executor.service";
+import { FiscalRefreshReconciliationPublisher } from "./jobs/fiscal-refresh-reconciliation.publisher";
+import { FiscalRefreshReconciliationProcessor } from "./jobs/fiscal-refresh-reconciliation.processor";
 
 @Module({
   imports: [FiscalCatalogModule, OfficialExchangeRateModule],
@@ -89,6 +92,9 @@ import { ELECTRONIC_DOCUMENT_REFRESH_PROVIDER } from "./providers/electronic-doc
     FiscalStatusReconciliationPublisher,
     FiscalStatusReconciliationProcessor,
     FacturaEnCrDocumentRefreshAdapter,
+    BillingDocumentRefreshExecutorService,
+    FiscalRefreshReconciliationPublisher,
+    FiscalRefreshReconciliationProcessor,
     {
       provide: SALES_ORDER_FISCAL_BILLING_REPOSITORY,
       useExisting: PrismaSalesOrderFiscalBillingRepository,
