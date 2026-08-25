@@ -1826,6 +1826,11 @@ model BillingDocument {
   providerNextStatusCheckAt         DateTime?
   providerStatusCheckLockOwner      String?                          @db.VarChar(100)
   providerStatusCheckLeaseUntil     DateTime?
+  providerRefreshAttempts           Int                              @default(0)
+  providerLastRefreshAt             DateTime?
+  providerNextRefreshAt             DateTime?
+  providerRefreshLockOwner          String?                          @db.VarChar(100)
+  providerRefreshLeaseUntil         DateTime?
   schemaVersion                     String                           @db.VarChar(20)
   countryCode                       String                           @default("CR") @db.VarChar(2)
   currencyCode                      String                           @db.VarChar(3)
@@ -1899,6 +1904,9 @@ model BillingDocument {
   @@index([providerNextStatusCheckAt, taxAuthorityStatus, lifecycleStatus, providerStatus], map: "billing_docs_status_check_due_idx")
   @@index([tenantId, taxAuthorityStatus, providerNextStatusCheckAt], map: "billing_docs_tenant_status_check_idx")
   @@index([providerStatusCheckLeaseUntil], map: "billing_docs_status_check_lease_idx")
+  @@index([providerNextRefreshAt, taxAuthorityStatus, providerReconciliationRequired], map: "billing_docs_refresh_due_idx")
+  @@index([tenantId, providerReconciliationRequired, providerNextRefreshAt], map: "billing_docs_tenant_refresh_idx")
+  @@index([providerRefreshLeaseUntil], map: "billing_docs_refresh_lease_idx")
   @@index([officialExchangeRateObservationId], map: "billing_documents_official_fx_observation_idx")
   @@map("billing_documents")
 }
