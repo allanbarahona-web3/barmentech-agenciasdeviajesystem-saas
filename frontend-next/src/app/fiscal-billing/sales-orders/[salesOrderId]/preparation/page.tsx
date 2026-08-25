@@ -1,13 +1,16 @@
 'use client';
 
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { LoadingSpinner } from '@/components/loading-spinner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { ConfirmModal } from '@/components/confirm-modal';
+import { getHomeRouteForRole, getStoredSession } from '@/lib/auth-api';
 import {
+  createOrResumeBillingDraft,
   FiscalBillingApiError,
   fiscalBillingIssueMessage,
   getFiscalPreparation,
@@ -82,15 +85,27 @@ function Line({ line, currency }: { line: FiscalPreparationLine; currency: strin
   );
 }
 
+const RECEIVER_TYPES=[['01','Cédula física'],['02','Cédula jurídica'],['03','DIMEX'],['04','NITE/NIT']] as const;
+const PAYMENT_METHODS=[['01','Efectivo'],['02','Tarjeta'],['03','Cheque'],['04','Transferencia/depósito bancario'],['05','Recaudado por terceros'],['06','SINPE Móvil'],['07','Plataforma digital'],['99','Otros']] as const;
+type DocumentType='01'|'04';type ReceiverType='01'|'02'|'03'|'04';
+
 export default function FiscalPreparationPage() {
   const params = useParams<{ salesOrderId: string }>();
+  const router=useRouter();
+  const [authorized,setAuthorized]=useState(false);
   const [preparation, setPreparation] = useState<FiscalPreparation | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<FiscalBillingApiError | null>(null);
   const [reload, setReload] = useState(0);
+  const [issuerId,setIssuerId]=useState('');const [documentType,setDocumentType]=useState<DocumentType>('01');
+  const [receiverType,setReceiverType]=useState<ReceiverType|''>('');const [receiverNumber,setReceiverNumber]=useState('');
+  const [paymentMethods,setPaymentMethods]=useState<string[]>(['04']);const [formError,setFormError]=useState('');
+  const [confirming,setConfirming]=useState(false);const [saving,setSaving]=useState(false);const submitGuard=useRef(false);
+
+  useEffect(()=>{const session=getStoredSession();if(!session?.user?.id){router.replace('/');return;}const role=String(session.user.role??'').toUpperCase();if(role!== 'ADMIN'&&role!=='FACTURACION_COBROS'){router.replace(getHomeRouteForRole(role));return;}setAuthorized(true);},[router]);
 
   useEffect(() => {
-    const controller = new AbortController();
+    if(!authorized)return;const controller = new AbortController();
     void reload;
     void getFiscalPreparation(params.salesOrderId, controller.signal)
       .then(setPreparation)
@@ -102,9 +117,16 @@ export default function FiscalPreparationPage() {
       })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [params.salesOrderId, reload]);
+  }, [authorized,params.salesOrderId, reload]);
 
-  if (loading) return <main className="app-shell"><div className={styles.state}><LoadingSpinner message="Validando la preparación fiscal…" /></div></main>;
+  useEffect(()=>{if(preparation?.issuerChoices.length===1&&!issuerId)setIssuerId(preparation.issuerChoices[0].id);},[issuerId,preparation]);
+
+  const togglePayment=(code:string)=>{setPaymentMethods(current=>current.includes(code)?current.filter(value=>value!==code):current.length<4?[...current,code]:current);};
+  const validateForm=()=>{if(!issuerId)return 'Seleccione un emisor fiscal.';if(!preparation?.documentTypeChoices.some(choice=>choice.code===documentType))return 'Seleccione un tipo de documento admitido.';const normalizedReceiver=receiverNumber.trim(),hasType=receiverType!=='',hasNumber=normalizedReceiver!=='';if(documentType==='01'&&(!hasType||!hasNumber))return 'La factura electrónica requiere la identificación completa del receptor.';if(documentType==='04'&&hasType!==hasNumber)return 'Complete ambos campos de identificación o deje ambos vacíos.';if(hasNumber&&(!/^[0-9 -]+$/.test(normalizedReceiver)||normalizedReceiver.length>30))return 'Use únicamente dígitos, espacios o guiones en la identificación.';if(paymentMethods.length<1||paymentMethods.length>4||new Set(paymentMethods).size!==paymentMethods.length)return 'Seleccione entre uno y cuatro métodos de pago sin duplicados.';return '';};
+  const requestConfirmation=()=>{const message=validateForm();setFormError(message);if(!message)setConfirming(true);};
+  const createDraft=async()=>{if(submitGuard.current)return;const message=validateForm();if(message){setFormError(message);setConfirming(false);return;}submitGuard.current=true;setSaving(true);setFormError('');try{const identity=receiverType&&receiverNumber.trim()?{receiverIdentificationTypeCode:receiverType,receiverIdentificationNumber:receiverNumber.trim()}:{};const workspace=await createOrResumeBillingDraft(params.salesOrderId,{fiscalIssuerId:issuerId,documentTypeCode:documentType,...identity,paymentMethodCodes:paymentMethods});setConfirming(false);router.push(`/fiscal-billing/documents/${encodeURIComponent(workspace.id)}`);}catch(requestError){setConfirming(false);setFormError(requestError instanceof FiscalBillingApiError?requestError.message:'No se pudo crear el borrador fiscal.');}finally{submitGuard.current=false;setSaving(false);}};
+
+  if (!authorized||loading) return <main className="app-shell"><div className={styles.state}><LoadingSpinner message="Validando la preparación fiscal…" /></div></main>;
   if (error || !preparation) return (
     <main className="app-shell"><div className={styles.state}><div>
       <h1>No se pudo cargar la preparación</h1><p>{error?.message ?? 'La preparación no está disponible.'}</p>
@@ -169,12 +191,19 @@ export default function FiscalPreparationPage() {
 
       {preparation.existingPrimaryDocument && <section className={`${styles.card} ${styles.section} ${styles.sectionGap}`}><h2>Documento fiscal existente</h2><dl className={styles.details}>
         <div><dt>Número interno</dt><dd>{preparation.existingPrimaryDocument.internalNumber}</dd></div><div><dt>Estado</dt><dd>{preparation.existingPrimaryDocument.lifecycleStatus}</dd></div><div><dt>Tipo</dt><dd>{preparation.existingPrimaryDocument.documentTypeCode}</dd></div>
-      </dl></section>}
+      </dl><Button asChild><Link href={`/fiscal-billing/documents/${encodeURIComponent(preparation.existingPrimaryDocument.id)}`}>{preparation.nextAction==='RESUME'?'Continuar borrador':'Ver documento'}</Link></Button></section>}
 
       {blockingIssues.length > 0 && <section className={`${styles.card} ${styles.section} ${styles.sectionGap}`}><h2>Problemas que requieren corrección</h2><div className={styles.issueList}>{blockingIssues.map((issue, index) => <Issue key={`${issue.code}-${issue.lineId ?? index}`} issue={issue} />)}</div></section>}
       {informationalIssues.length > 0 && <section className={`${styles.card} ${styles.section} ${styles.sectionGap}`}><h2>Información pendiente</h2><div className={styles.issueList}>{informationalIssues.map((issue, index) => <Issue key={`${issue.code}-${index}`} issue={issue} />)}</div></section>}
       {preparation.canCreateDraft && <div className={styles.readiness}>La orden está lista para preparar el borrador fiscal.</div>}
+      {preparation.nextAction==='CREATE'&&preparation.canCreateDraft&&!preparation.existingPrimaryDocument&&<section className={`${styles.card} ${styles.section} ${styles.sectionGap}`}><h2>Datos para el borrador fiscal</h2><div className={styles.formGrid}>
+        <label><span>Emisor fiscal</span><select value={issuerId} onChange={event=>setIssuerId(event.target.value)}><option value="">Seleccione…</option>{preparation.issuerChoices.map(issuer=><option key={issuer.id} value={issuer.id}>{issuer.displayName} · {issuer.legalName}</option>)}</select></label>
+        <label><span>Tipo de documento</span><select value={documentType} onChange={event=>{const value=event.target.value;if(value==='01'||value==='04')setDocumentType(value);}}>{preparation.documentTypeChoices.filter(choice=>choice.code==='01'||choice.code==='04').map(choice=><option key={choice.code} value={choice.code}>{choice.code} · {choice.label}</option>)}</select></label>
+        <label><span>Tipo de identificación del receptor</span><select value={receiverType} onChange={event=>setReceiverType(event.target.value as ReceiverType|'')}><option value="">Sin identificación</option>{RECEIVER_TYPES.map(([code,label])=><option key={code} value={code}>{code} · {label}</option>)}</select></label>
+        <label><span>Número de identificación</span><input value={receiverNumber} onChange={event=>setReceiverNumber(event.target.value)} placeholder="Dígitos, espacios o guiones" /></label>
+      </div><fieldset className={styles.paymentFieldset}><legend>Métodos de pago (1–4)</legend><div className={styles.checkGrid}>{PAYMENT_METHODS.map(([code,label])=><label key={code}><input type="checkbox" checked={paymentMethods.includes(code)} onChange={()=>togglePayment(code)} disabled={!paymentMethods.includes(code)&&paymentMethods.length>=4}/><span>{code} · {label}</span></label>)}</div></fieldset>
+      {formError&&<div className={`${styles.issue} ${styles.issueBlocking}`} role="alert">{formError}</div>}<Button type="button" disabled={saving} onClick={requestConfirmation}>{saving?'Creando borrador…':'Crear borrador fiscal'}</Button></section>}
       {preparation.commercialObservations && <section className={`${styles.card} ${styles.section}`}><h2>Observaciones comerciales</h2><p className={styles.muted}>{preparation.commercialObservations}</p></section>}
-    </div></main>
+    </div><ConfirmModal isOpen={confirming} title="Crear borrador fiscal" confirmText="Crear borrador" isLoading={saving} onCancel={()=>{if(!saving)setConfirming(false);}} onConfirm={()=>void createDraft()} message={<div><p>Se creará un snapshot fiscal persistido con los valores de la orden de venta.</p><p>Esta acción todavía no emite el documento ni consume un consecutivo. La emisión se realizará posteriormente desde el workspace.</p></div>}/></main>
   );
 }

@@ -148,6 +148,59 @@ export type FiscalPreparation = {
   nextAction: 'CREATE' | 'RESUME' | 'VIEW';
 };
 
+export type CreateBillingDraftInput = {
+  fiscalIssuerId: string;
+  documentTypeCode: '01' | '04';
+  receiverIdentificationTypeCode?: '01' | '02' | '03' | '04';
+  receiverIdentificationNumber?: string;
+  paymentMethodCodes: string[];
+};
+
+export type BillingDocumentWorkspaceTaxExemption = {
+  id: string; documentTypeCode: string; documentNumber: string;
+  legalArticle: string | null; legalSection: string | null;
+  issuingInstitutionCode: string | null; issuingInstitutionName: string | null;
+  otherInstitutionDescription: string | null; issueDate: string;
+  exemptedPercentage: string; exemptedAmount: string;
+};
+export type BillingDocumentWorkspaceTax = {
+  id: string; taxOrder: number; taxCode: string; rateCode: string;
+  ratePercentage: string; taxableBase: string; taxAmount: string;
+  calculationFactor: string | null; netTaxAmount: string;
+  exemption: BillingDocumentWorkspaceTaxExemption | null;
+};
+export type BillingDocumentWorkspaceLine = {
+  id: string; lineNumber: number; cabysCode: string | null; itemCode: string | null;
+  description: string; quantity: string; unitOfMeasureCode: string; unitPrice: string;
+  grossAmount: string; discountAmount: string; discountCode: string | null;
+  discountReason: string | null; taxableBase: string; taxAmount: string;
+  exoneratedTaxAmount: string; netTaxAmount: string; lineSubtotal: string;
+  lineTotal: string; taxes: BillingDocumentWorkspaceTax[];
+};
+export type BillingDocumentWorkspace = {
+  id: string; billingMode: string; internalNumber: string; documentTypeCode: string;
+  sourceType: string | null; sourceId: string | null; sourceNumber: string | null; sourceRole: string;
+  schemaVersion: string; countryCode: string; currencyCode: string; exchangeRate: string | null;
+  fiscalEmissionAt: string | null; fiscalIssueDate: string | null; dueDate: string | null;
+  confirmedAt: string | null; submittedAt: string | null; issuedAt: string | null;
+  createdAt: string; updatedAt: string; paymentConditionCode: string | null; creditTermDays: number | null;
+  lifecycleStatus: string; providerStatus: string; taxAuthorityStatus: string; artifactStatus: string;
+  fiscalNumber: string | null; allocatedSequenceNumber: string | null; haciendaKey: string | null;
+  haciendaRejectionDetail: string | null; providerEnvironment: string | null;
+  providerDocumentId: string | null; providerLastErrorCode: string | null; providerLastErrorAt: string | null;
+  issuerName: string; issuerIdentificationType: string; issuerIdentification: string;
+  issuerEconomicActivityCode: string | null; issuerEstablishmentCode: string | null; issuerTerminalCode: string | null;
+  issuerEmail: string | null; issuerPhone: string | null; issuerAddressSnapshot: unknown;
+  receiverName: string | null; receiverIdentificationType: string | null; receiverIdentification: string | null;
+  receiverEconomicActivityCode: string | null; receiverEmail: string | null; receiverPhone: string | null; receiverAddressSnapshot: unknown;
+  grossSubtotal: string; discountTotal: string; taxableTotal: string; exemptTotal: string;
+  exoneratedTotal: string; grossTaxTotal: string; exoneratedTaxTotal: string; netTaxTotal: string; total: string;
+  paymentMethods: Array<{ id: string; paymentMethodOrder: number; paymentMethodCode: string; description: string | null; declaredAmount: string | null }>;
+  references: Array<{ id: string; referenceOrder: number; referencedBillingDocumentId: string | null; externalDocumentKey: string | null; externalDocumentNumber: string | null; referencedDocumentTypeCode: string; reasonCode: string; reasonDescription: string | null; referenceDate: string }>;
+  lines: BillingDocumentWorkspaceLine[];
+  readiness: { receiverFiscalIdentityMissing: boolean; exchangeRateMissing: boolean };
+};
+
 const ERROR_MESSAGES: Record<string, string> = {
   SALES_ORDER_NOT_FOUND: 'La orden de venta no fue encontrada.',
   SALES_ORDER_SOURCE_NOT_ELIGIBLE: 'La orden no proviene de un origen elegible para facturación fiscal.',
@@ -161,8 +214,16 @@ const ERROR_MESSAGES: Record<string, string> = {
   SALES_ORDER_TOTALS_MISMATCH: 'Los totales de la orden no coinciden con la suma de sus líneas.',
   BILLING_CONFIGURATION_NOT_FOUND: 'No existe configuración de facturación para la empresa.',
   BILLING_NOT_ENABLED: 'La facturación electrónica no está habilitada.',
+  FISCAL_ISSUER_NOT_FOUND: 'El emisor fiscal seleccionado no fue encontrado.',
+  FISCAL_ISSUER_NOT_ACTIVE: 'El emisor fiscal seleccionado no está activo.',
   FISCAL_ISSUER_ECONOMIC_ACTIVITY_NOT_CONFIGURED: 'Ningún emisor activo tiene una actividad económica principal configurada.',
   RECEIVER_FISCAL_IDENTITY_INCOMPLETE: 'La identidad fiscal del receptor deberá completarse antes de emitir una factura electrónica.',
+  BILLING_RECEIVER_IDENTIFICATION_INVALID: 'La identificación fiscal del receptor no es válida.',
+  BILLING_PAYMENT_METHOD_INVALID: 'Seleccione entre uno y cuatro métodos de pago válidos.',
+  BILLING_DRAFT_CONFLICT: 'No fue posible crear el borrador porque existe un documento en conflicto.',
+  BILLING_DRAFT_ALREADY_ADVANCED: 'El documento fiscal existente ya avanzó y solo puede consultarse.',
+  BILLING_DOCUMENT_NOT_FOUND: 'El documento fiscal no fue encontrado.',
+  BILLING_DOCUMENT_SUBMISSION_READ_FAILED: 'No fue posible leer el documento fiscal de forma segura.',
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -182,6 +243,15 @@ async function request<T>(path: string, signal?: AbortSignal): Promise<T> {
   throw new FiscalBillingApiError(code, message, details, backendMessage);
 }
 
+async function post<T>(path: string, body: unknown): Promise<T> {
+  const response = await fetchApi(path, { method: 'POST', body: JSON.stringify(body) });
+  if (response.ok) return response.json() as Promise<T>;
+  const payload: unknown = await response.json().catch(() => null);
+  const record = isRecord(payload) ? payload : {};
+  const code = typeof record.code === 'string' ? record.code : 'FISCAL_BILLING_REQUEST_FAILED';
+  throw new FiscalBillingApiError(code, ERROR_MESSAGES[code] ?? 'No se pudo crear el borrador fiscal.');
+}
+
 export function getEligibleSalesOrders(
   page: number,
   pageSize: number,
@@ -196,6 +266,18 @@ export function getFiscalPreparation(salesOrderId: string, signal?: AbortSignal)
     `/fiscal-billing/sales-orders/${encodeURIComponent(salesOrderId)}/preparation`,
     signal,
   );
+}
+
+export function createOrResumeBillingDraft(salesOrderId: string, input: CreateBillingDraftInput) {
+  return post<BillingDocumentWorkspace>(`/fiscal-billing/sales-orders/${encodeURIComponent(salesOrderId)}/draft`, input);
+}
+
+export function getBillingDocumentWorkspace(billingDocumentId: string, signal?: AbortSignal) {
+  return request<BillingDocumentWorkspace>(`/fiscal-billing/documents/${encodeURIComponent(billingDocumentId)}/workspace`, signal);
+}
+
+export function fiscalBillingErrorMessage(code: string): string {
+  return ERROR_MESSAGES[code] ?? 'No se pudo completar la operación fiscal.';
 }
 
 export function fiscalBillingIssueMessage(code: string): string {

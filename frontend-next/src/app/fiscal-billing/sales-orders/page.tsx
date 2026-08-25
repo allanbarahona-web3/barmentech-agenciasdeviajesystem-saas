@@ -41,6 +41,9 @@ function Action({ order }: { order: EligibleSalesOrder }) {
       </Button>
     );
   }
+  if (order.existingPrimaryDocument) {
+    return <Button asChild size="sm" variant="outline"><Link href={`/fiscal-billing/documents/${encodeURIComponent(order.existingPrimaryDocument.id)}`}>{order.action === 'RESUME' ? 'Continuar borrador' : 'Ver documento'}</Link></Button>;
+  }
   return (
     <Button className={styles.disabledAction} disabled size="sm" variant="outline" type="button">
       {order.action === 'RESUME' ? 'Continuar borrador' : 'Ver documento'}
