@@ -201,6 +201,20 @@ export type BillingDocumentWorkspace = {
   readiness: { receiverFiscalIdentityMissing: boolean; exchangeRateMissing: boolean };
 };
 
+export type BillingDocumentFiscalAllocationResult = {
+  billingDocumentId: string;
+  sequenceId: string;
+  allocatedSequenceNumber: string;
+  providerBase: string;
+  fiscalNumber: string;
+  issuanceIdempotencyKey: string;
+  outboxEventId: string;
+  outboxDeduplicationKey: string;
+  lifecycleStatus: string;
+  providerStatus: string;
+  newlyAllocated: boolean;
+};
+
 const ERROR_MESSAGES: Record<string, string> = {
   SALES_ORDER_NOT_FOUND: 'La orden de venta no fue encontrada.',
   SALES_ORDER_SOURCE_NOT_ELIGIBLE: 'La orden no proviene de un origen elegible para facturación fiscal.',
@@ -223,6 +237,22 @@ const ERROR_MESSAGES: Record<string, string> = {
   BILLING_DRAFT_CONFLICT: 'No fue posible crear el borrador porque existe un documento en conflicto.',
   BILLING_DRAFT_ALREADY_ADVANCED: 'El documento fiscal existente ya avanzó y solo puede consultarse.',
   BILLING_DOCUMENT_NOT_FOUND: 'El documento fiscal no fue encontrado.',
+  BILLING_DOCUMENT_NOT_ELIGIBLE_FOR_ISSUANCE: 'El documento no es elegible para solicitar emisión electrónica.',
+  BILLING_DOCUMENT_FISCAL_READINESS_FAILED: 'El documento todavía tiene requisitos fiscales pendientes.',
+  BILLING_DOCUMENT_UNSUPPORTED_FISCAL_CURRENCY: 'La moneda del documento no es compatible con la emisión fiscal.',
+  BILLING_DOCUMENT_OFFICIAL_RATE_MISMATCH: 'No fue posible confirmar el tipo de cambio oficial requerido.',
+  BILLING_DOCUMENT_FISCAL_EMISSION_CONFLICT: 'La identidad temporal de la emisión fiscal está en conflicto.',
+  BILLING_DOCUMENT_SEQUENCE_NOT_CONFIGURED: 'No existe una secuencia fiscal configurada para este documento.',
+  BILLING_DOCUMENT_SEQUENCE_EXHAUSTED: 'La secuencia fiscal disponible está agotada.',
+  BILLING_DOCUMENT_ALLOCATION_STATE_CONFLICT: 'El estado de asignación fiscal está en conflicto.',
+  BILLING_DOCUMENT_CONCURRENT_ALLOCATION_CONFLICT: 'Otra solicitud modificó la asignación fiscal simultáneamente.',
+  BILLING_DOCUMENT_OUTBOX_CONFLICT: 'No fue posible registrar de forma segura la solicitud de envío.',
+  BILLING_DOCUMENT_PROVIDER_ATTEMPT_IDENTITY_CONFLICT: 'La identidad del intento de envío está en conflicto.',
+  BILLING_DOCUMENT_PROVIDER_REQUEST_HASH_CONFLICT: 'La solicitud fiscal persistida está en conflicto.',
+  BILLING_DOCUMENT_PROVIDER_ATTEMPT_STATE_CORRUPT: 'El estado persistido del intento de envío no es válido.',
+  BILLING_DOCUMENT_PROVIDER_ATTEMPT_CONCURRENT_CONFLICT: 'El intento de envío cambió simultáneamente.',
+  BILLING_DOCUMENT_PROVIDER_ATTEMPT_PERSISTENCE_FAILED: 'No fue posible guardar el intento de envío.',
+  BILLING_DOCUMENT_SUBMISSION_OUTCOME_CONFLICT: 'El resultado del envío fiscal está en conflicto.',
   BILLING_DOCUMENT_SUBMISSION_READ_FAILED: 'No fue posible leer el documento fiscal de forma segura.',
 };
 
@@ -252,6 +282,22 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   throw new FiscalBillingApiError(code, ERROR_MESSAGES[code] ?? 'No se pudo crear el borrador fiscal.');
 }
 
+async function postWithoutBody<T>(path: string): Promise<T> {
+  const response = await fetchApi(path, { method: 'POST' });
+  if (response.ok) return response.json() as Promise<T>;
+  const payload: unknown = await response.json().catch(() => null);
+  const record = isRecord(payload) ? payload : {};
+  const code = typeof record.code === 'string' ? record.code : 'FISCAL_BILLING_REQUEST_FAILED';
+  throw new FiscalBillingApiError(
+    code,
+    ERROR_MESSAGES[code] ?? 'No se pudo solicitar la emisión electrónica.',
+  );
+}
+
+function validRouteId(value: string): boolean {
+  return value.length >= 1 && value.length <= 200 && value.trim() === value && /^[A-Za-z0-9_-]+$/.test(value);
+}
+
 export function getEligibleSalesOrders(
   page: number,
   pageSize: number,
@@ -274,6 +320,18 @@ export function createOrResumeBillingDraft(salesOrderId: string, input: CreateBi
 
 export function getBillingDocumentWorkspace(billingDocumentId: string, signal?: AbortSignal) {
   return request<BillingDocumentWorkspace>(`/fiscal-billing/documents/${encodeURIComponent(billingDocumentId)}/workspace`, signal);
+}
+
+export function requestBillingDocumentElectronicIssuance(billingDocumentId: string) {
+  if (!validRouteId(billingDocumentId)) {
+    return Promise.reject(new FiscalBillingApiError(
+      'BILLING_DOCUMENT_NOT_FOUND',
+      ERROR_MESSAGES.BILLING_DOCUMENT_NOT_FOUND,
+    ));
+  }
+  return postWithoutBody<BillingDocumentFiscalAllocationResult>(
+    `/fiscal-billing/documents/${encodeURIComponent(billingDocumentId)}/request-electronic-issuance`,
+  );
 }
 
 export function fiscalBillingErrorMessage(code: string): string {

@@ -65,5 +65,15 @@
 .checkGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
 .checkGrid label { display: flex; align-items: center; gap: 8px; color: #334155; font-size: 12px; }
 .rejectionText { white-space: pre-wrap; overflow-wrap: anywhere; }
+.workspaceActions { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 18px; }
+.workspaceActions svg { width: 15px; height: 15px; }
+.statusAlert { margin-bottom: 14px; border: 1px solid; border-radius: 10px; padding: 14px 16px; }
+.statusAlert strong { display: block; font-size: 13px; }
+.statusAlert p { margin: 5px 0 0; font-size: 12px; overflow-wrap: anywhere; }
+.successAlert { border-color: #72c69a; background: #effaf3; color: #17663b; }
+.dangerAlert { border-color: #e79a94; background: #fff6f5; color: #8f2520; }
+.infoAlert { border-color: #9fc0e4; background: #f3f8fe; color: #204f80; }
+.spin { animation: fiscal-spin .8s linear infinite; }
+@keyframes fiscal-spin { to { transform: rotate(360deg); } }
 @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } .profileGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 620px) { .pagination { align-items: stretch; flex-direction: column; } .paginationActions > * { flex: 1; } .profileGrid { grid-template-columns: 1fr; } }
