@@ -47,6 +47,8 @@ import { BillingDocumentRecoveryPreparationService } from "./billing-document-re
 import { BillingDocumentRecoveryExecutorService } from "./billing-document-recovery-executor.service";
 import { FiscalStatusReconciliationPublisher } from "./jobs/fiscal-status-reconciliation.publisher";
 import { FiscalStatusReconciliationProcessor } from "./jobs/fiscal-status-reconciliation.processor";
+import { FacturaEnCrDocumentRefreshAdapter } from "./providers/factura-en-cr-document-refresh.adapter";
+import { ELECTRONIC_DOCUMENT_REFRESH_PROVIDER } from "./providers/electronic-document-refresh.provider";
 
 @Module({
   imports: [FiscalCatalogModule, OfficialExchangeRateModule],
@@ -86,6 +88,7 @@ import { FiscalStatusReconciliationProcessor } from "./jobs/fiscal-status-reconc
     BillingDocumentRecoveryExecutorService,
     FiscalStatusReconciliationPublisher,
     FiscalStatusReconciliationProcessor,
+    FacturaEnCrDocumentRefreshAdapter,
     {
       provide: SALES_ORDER_FISCAL_BILLING_REPOSITORY,
       useExisting: PrismaSalesOrderFiscalBillingRepository,
@@ -118,11 +121,12 @@ import { FiscalStatusReconciliationProcessor } from "./jobs/fiscal-status-reconc
       provide: ELECTRONIC_DOCUMENT_STATUS_PROVIDER,
       useExisting: FacturaEnCrDocumentStatusAdapter,
     },
+    {provide:ELECTRONIC_DOCUMENT_REFRESH_PROVIDER,useExisting:FacturaEnCrDocumentRefreshAdapter},
     {
       provide: FISCAL_NUMBER_SEQUENCE_ADMIN_REPOSITORY,
       useExisting: PrismaFiscalNumberSequenceAdminRepository,
     },
   ],
-  exports: [ELECTRONIC_DOCUMENT_SUBMISSION_PROVIDER, ELECTRONIC_DOCUMENT_STATUS_PROVIDER, BillingDocumentSubmissionPreparationService, BillingDocumentSubmissionAttemptService, BillingDocumentSubmissionExecutorService, BillingDocumentSubmissionOutcomeService, BillingDocumentStatusLookupService, BillingDocumentStatusPersistenceService, BillingDocumentRecoveryPreparationService, BillingDocumentRecoveryExecutorService],
+  exports: [ELECTRONIC_DOCUMENT_SUBMISSION_PROVIDER, ELECTRONIC_DOCUMENT_STATUS_PROVIDER,ELECTRONIC_DOCUMENT_REFRESH_PROVIDER, BillingDocumentSubmissionPreparationService, BillingDocumentSubmissionAttemptService, BillingDocumentSubmissionExecutorService, BillingDocumentSubmissionOutcomeService, BillingDocumentStatusLookupService, BillingDocumentStatusPersistenceService, BillingDocumentRecoveryPreparationService, BillingDocumentRecoveryExecutorService],
 })
 export class FiscalBillingModule {}

@@ -19,6 +19,8 @@ import { BillingDocumentRecoveryPreparationService } from "./billing-document-re
 import { BillingDocumentRecoveryExecutorService } from "./billing-document-recovery-executor.service";
 import { FiscalStatusReconciliationPublisher } from "./jobs/fiscal-status-reconciliation.publisher";
 import { FiscalStatusReconciliationProcessor } from "./jobs/fiscal-status-reconciliation.processor";
+import { FacturaEnCrDocumentRefreshAdapter } from "./providers/factura-en-cr-document-refresh.adapter";
+import { ELECTRONIC_DOCUMENT_REFRESH_PROVIDER } from "./providers/electronic-document-refresh.provider";
 
 describe("FiscalBillingModule official-rate wiring", () => {
   it("imports the existing official-rate module without duplicating its resolver", () => {
@@ -47,6 +49,7 @@ describe("FiscalBillingModule official-rate wiring", () => {
     expect((Reflect.getMetadata("exports", FiscalBillingModule) as unknown[]).filter((value) => value === BillingDocumentRecoveryExecutorService)).toHaveLength(1);
     expect(providers.filter((value) => value === FiscalStatusReconciliationPublisher)).toHaveLength(1);
     expect(providers.filter((value) => value === FiscalStatusReconciliationProcessor)).toHaveLength(1);
+    expect(providers.filter((value)=>value===FacturaEnCrDocumentRefreshAdapter)).toHaveLength(1);expect(providers).toContainEqual({provide:ELECTRONIC_DOCUMENT_REFRESH_PROVIDER,useExisting:FacturaEnCrDocumentRefreshAdapter});expect((Reflect.getMetadata("exports",FiscalBillingModule) as unknown[]).filter(value=>value===ELECTRONIC_DOCUMENT_REFRESH_PROVIDER)).toHaveLength(1);
     expect(providers).toContain(FacturaEnCrDocumentStatusAdapter);
     expect(providers).toContainEqual({
       provide: ELECTRONIC_DOCUMENT_STATUS_PROVIDER,
