@@ -1805,6 +1805,7 @@ model BillingDocument {
   internalNumber                    String                           @db.VarChar(50)
   fiscalNumber                      String?                          @db.VarChar(50)
   haciendaKey                       String?                          @db.VarChar(50)
+  haciendaRejectionDetail           String?                          @db.Text
   sourceType                        String?                          @db.VarChar(50)
   sourceId                          String?                          @db.VarChar(100)
   sourceNumber                      String?                          @db.VarChar(100)
