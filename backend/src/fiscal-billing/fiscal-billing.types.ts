@@ -1,6 +1,9 @@
+import type { FiscalItemCategory } from "@prisma/client";
+
 export interface SalesOrderSourceLine {
   id: string;
   additionalServiceCatalogId: string | null;
+  fiscalItemCategory: FiscalItemCategory | null;
   serviceCode: string;
   serviceName: string;
   serviceDetailsVersion: number | null;

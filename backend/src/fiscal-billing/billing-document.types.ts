@@ -101,6 +101,18 @@ export interface BillingDocumentDraftCommand {
   createdByUserId: string;
 }
 
+export interface CrV44SalesOrderDraftCommand {
+  tenantId: string;
+  salesOrderId: string;
+  fiscalIssuerId: string;
+  internalNumber: string;
+  documentTypeCode: string;
+  receiverIdentificationType: string | null;
+  receiverIdentification: string | null;
+  paymentMethods: BillingDocumentPaymentMethodSnapshot[];
+  createdByUserId: string;
+}
+
 export interface PrimaryDocumentSummary {
   id: string;
   internalNumber: string;
@@ -168,6 +180,7 @@ export interface BillingDocumentWorkspace {
   sourceNumber: string | null;
   sourceRole: string;
   schemaVersion: string;
+  fiscalCalculationPolicyVersion: string | null;
   countryCode: string;
   currencyCode: string;
   exchangeRate: string | null;

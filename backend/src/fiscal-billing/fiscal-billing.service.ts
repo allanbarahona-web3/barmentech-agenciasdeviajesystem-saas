@@ -1,19 +1,15 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { BillingMode, Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import {
   FiscalCatalogService,
   type FiscalProfileSelectionInput,
 } from "../fiscal-catalogs/fiscal-catalog.service";
 import {
   ADDITIONAL_SERVICE_SALES_ORDER_SOURCE_TYPE,
-  billingCreationDeduplicationKey,
   billingInternalNumber,
   CR_DOCUMENT_TYPE_CHOICES,
-  CR_DOCUMENT_TYPES,
-  CR_PAYMENT_METHOD_CODES,
   ELIGIBLE_SALES_ORDER_STATUS,
   FISCAL_BILLING_SOURCE_TYPE,
-  type CrDocumentTypeCode,
 } from "./fiscal-billing.constants";
 import { fiscalBillingError } from "./fiscal-billing.errors";
 import {
@@ -22,8 +18,7 @@ import {
 } from "./fiscal-billing.repository";
 import { BillingDocumentService } from "./billing-document.service";
 import type {
-  BillingDocumentDraftCommand,
-  BillingDocumentDraftLineSnapshot,
+  CrV44SalesOrderDraftCommand,
   PrimaryDocumentSummary,
 } from "./billing-document.types";
 import type {
@@ -32,7 +27,12 @@ import type {
   FiscalProfileSnapshot,
   SalesOrderSource,
 } from "./fiscal-billing.types";
-import { normalizeCrIdentification } from "./fiscal-issuer-identification";
+import {
+  requireCrDraftDocumentType,
+  resolveCrDraftCommercialCondition,
+  resolveCrDraftPaymentMethods,
+  resolveCrDraftReceiverIdentity,
+} from "./fiscal-draft-selection";
 
 type CreateDraftInput = {
   fiscalIssuerId: string;
@@ -174,7 +174,7 @@ export class SalesOrderFiscalBillingService {
     input: CreateDraftInput,
     actorId: string,
   ) {
-    this.assertDocumentType(input.documentTypeCode);
+    requireCrDraftDocumentType(input.documentTypeCode);
     const existing = await this.billingDocumentService.findPrimaryDocument(
       tenantId,
       FISCAL_BILLING_SOURCE_TYPE,
@@ -192,15 +192,13 @@ export class SalesOrderFiscalBillingService {
     if (!issuer) throw fiscalBillingError("FISCAL_ISSUER_NOT_FOUND");
     if (!issuer.isActive) throw fiscalBillingError("FISCAL_ISSUER_NOT_ACTIVE");
     this.assertDraftReady(analysis);
-    const commercialCondition = this.resolveCommercialCondition(
-      analysis.salesOrder,
-    );
-    const receiverIdentity = this.resolveReceiverIdentity(
+    resolveCrDraftCommercialCondition(analysis.salesOrder);
+    const receiverIdentity = resolveCrDraftReceiverIdentity(
       input.documentTypeCode,
       input.receiverIdentificationTypeCode,
       input.receiverIdentificationNumber,
     );
-    const paymentMethods = this.resolvePaymentMethods(input.paymentMethodCodes);
+    const paymentMethods = resolveCrDraftPaymentMethods(input.paymentMethodCodes);
     const primaryActivity = issuer.economicActivities.find(
       (activity) => activity.isPrimary,
     );
@@ -214,70 +212,20 @@ export class SalesOrderFiscalBillingService {
     if (internalNumber.length > 50) {
       throw fiscalBillingError("BILLING_INTERNAL_NUMBER_INVALID");
     }
-    const configuration = analysis.configuration!;
-    const command: BillingDocumentDraftCommand = {
+    const command: CrV44SalesOrderDraftCommand = {
       tenantId,
+      salesOrderId,
       fiscalIssuerId: issuer.id,
       internalNumber,
       documentTypeCode: input.documentTypeCode,
-      billingMode: BillingMode.ELECTRONIC_PROVIDER,
-      source: {
-        sourceType: FISCAL_BILLING_SOURCE_TYPE,
-        sourceId: analysis.salesOrder.id,
-        sourceNumber: analysis.salesOrder.orderNumber,
-        sourceRole: "PRIMARY",
-        creationDeduplicationKey:
-          billingCreationDeduplicationKey(salesOrderId),
-      },
-      schemaVersion: configuration.fiscalSchemaVersion,
-      countryCode: configuration.countryCode,
-      currencyCode: analysis.salesOrder.currency,
-      paymentConditionCode: commercialCondition.paymentConditionCode,
-      creditTermDays: commercialCondition.creditTermDays,
-      issuer: {
-        name: issuer.legalName,
-        identificationType: issuer.identificationTypeCode,
-        identification: issuer.identificationNumber,
-        economicActivityCode: primaryActivity.economicActivityCode,
-        establishmentCode: issuer.establishmentCode,
-        terminalCode: issuer.terminalCode,
-        email: issuer.email,
-        phone: issuer.phoneNumber
-          ? [issuer.phoneCountryCode, issuer.phoneNumber].filter(Boolean).join(" ")
-          : null,
-        address: {
-          provinceCode: issuer.provinceCode,
-          cantonCode: issuer.cantonCode,
-          districtCode: issuer.districtCode,
-          neighborhoodCode: issuer.neighborhoodCode,
-          otherAddressDetails: issuer.otherAddressDetails,
-        },
-      },
-      receiver: {
-        name: analysis.salesOrder.customerName || null,
-        identificationType: receiverIdentity.identificationType,
-        identification: receiverIdentity.identification,
-        economicActivityCode: null,
-        email: analysis.salesOrder.customerEmail,
-        phone: null,
-        address: null,
-      },
-      totals: {
-        grossSubtotal: analysis.totals.subtotal,
-        discountTotal: "0.0000",
-        taxableTotal: analysis.totals.subtotal,
-        exemptTotal: "0.0000",
-        exoneratedTotal: "0.0000",
-        grossTaxTotal: analysis.totals.tax,
-        exoneratedTaxTotal: "0.0000",
-        netTaxTotal: analysis.totals.tax,
-        total: analysis.totals.total,
-      },
+      receiverIdentificationType: receiverIdentity.identificationType,
+      receiverIdentification: receiverIdentity.identification,
       paymentMethods,
-      lines: this.toDraftLines(analysis),
       createdByUserId: actorId,
     };
-    return this.billingDocumentService.createOrResumeDraft(command);
+    return this.billingDocumentService.createOrResumeCrV44SalesOrderDraft(
+      command,
+    );
   }
 
   private async analyze(
@@ -346,6 +294,35 @@ export class SalesOrderFiscalBillingService {
     issues.push({ code: "RECEIVER_FISCAL_IDENTITY_INCOMPLETE", blocking: false });
 
     const lines = salesOrder.lines.map((source) => {
+      if (source.fiscalItemCategory === null) {
+        issues.push({
+          code: "SALES_ORDER_LINE_FISCAL_CATEGORY_UNCLASSIFIED",
+          blocking: true,
+          lineId: source.id,
+        });
+        return {
+          source,
+          profile: null,
+          readinessStatus: "INVALID" as const,
+          issues: ["SALES_ORDER_LINE_FISCAL_CATEGORY_UNCLASSIFIED"],
+        };
+      }
+      if (
+        source.fiscalItemCategory !== "SERVICE" &&
+        source.fiscalItemCategory !== "MERCHANDISE"
+      ) {
+        issues.push({
+          code: "BILLING_DRAFT_FISCAL_SOURCE_UNSUPPORTED",
+          blocking: true,
+          lineId: source.id,
+        });
+        return {
+          source,
+          profile: null,
+          readinessStatus: "INVALID" as const,
+          issues: ["BILLING_DRAFT_FISCAL_SOURCE_UNSUPPORTED"],
+        };
+      }
       if (!source.additionalServiceCatalogId) {
         issues.push({
           code: "SALES_ORDER_LINE_SOURCE_IDENTITY_MISSING",
@@ -468,122 +445,16 @@ export class SalesOrderFiscalBillingService {
   private assertDraftReady(analysis: Analysis): void {
     const blocking = analysis.issues.find((issue) => issue.blocking);
     if (blocking) {
+      const exposeExistingLineIdentity =
+        blocking.code !== "SALES_ORDER_LINE_FISCAL_CATEGORY_UNCLASSIFIED" &&
+        blocking.code !== "BILLING_DRAFT_FISCAL_SOURCE_UNSUPPORTED";
       throw fiscalBillingError(
         blocking.code as Parameters<typeof fiscalBillingError>[0],
-        blocking.lineId ? { lineId: blocking.lineId } : undefined,
+        exposeExistingLineIdentity && blocking.lineId
+          ? { lineId: blocking.lineId }
+          : undefined,
       );
     }
-  }
-
-  private toDraftLines(analysis: Analysis): BillingDocumentDraftLineSnapshot[] {
-    return analysis.lines.map(({ source, profile }, index) => {
-      if (!profile?.taxCode || !profile.taxRateCode || !profile.taxPercentage) {
-        throw fiscalBillingError("SALES_ORDER_LINE_FISCAL_PROFILE_INVALID", {
-          lineId: source.id,
-        });
-      }
-      return {
-        lineNumber: index + 1,
-        cabysCode: profile.cabysCode,
-        itemCode: source.serviceCode,
-        description: source.serviceName,
-        quantity: "1.0000",
-        unitOfMeasureCode: profile.unitOfMeasureCode,
-        unitPrice: source.subtotal,
-        grossAmount: source.subtotal,
-        discountAmount: "0.0000",
-        discountCode: null,
-        discountReason: null,
-        taxableBase: source.subtotal,
-        taxAmount: source.vatAmount,
-        exoneratedTaxAmount: "0.0000",
-        netTaxAmount: source.vatAmount,
-        lineSubtotal: source.subtotal,
-        lineTotal: source.total,
-        taxes: [
-          {
-            taxOrder: 1,
-            taxCode: profile.taxCode,
-            rateCode: profile.taxRateCode,
-            ratePercentage: profile.taxPercentage,
-            taxableBase: source.subtotal,
-            taxAmount: source.vatAmount,
-            calculationFactor: null,
-            netTaxAmount: source.vatAmount,
-          },
-        ],
-      };
-    });
-  }
-
-  private assertDocumentType(value: string): asserts value is CrDocumentTypeCode {
-    if (!Object.values(CR_DOCUMENT_TYPES).includes(value as CrDocumentTypeCode)) {
-      throw fiscalBillingError("BILLING_DOCUMENT_TYPE_INVALID");
-    }
-  }
-
-  private resolveCommercialCondition(salesOrder: SalesOrderSource): {
-    paymentConditionCode: string;
-    creditTermDays: number | null;
-  } {
-    if (salesOrder.paymentConditionType === "CASH") {
-      return { paymentConditionCode: "01", creditTermDays: null };
-    }
-    if (
-      salesOrder.paymentConditionType === "CREDIT" &&
-      salesOrder.paymentTermUnit === "DAYS" &&
-      Number.isSafeInteger(salesOrder.paymentTermValue) &&
-      salesOrder.paymentTermValue! > 0
-    ) {
-      return {
-        paymentConditionCode: "02",
-        creditTermDays: salesOrder.paymentTermValue,
-      };
-    }
-    throw fiscalBillingError("BILLING_COMMERCIAL_CREDIT_TERM_INVALID");
-  }
-
-  private resolveReceiverIdentity(
-    documentTypeCode: string,
-    typeCode?: string,
-    number?: string,
-  ): { identificationType: string | null; identification: string | null } {
-    const supplied = typeCode !== undefined || number !== undefined;
-    if (
-      (documentTypeCode === CR_DOCUMENT_TYPES.ELECTRONIC_INVOICE && !supplied) ||
-      (supplied && (!typeCode || !number))
-    ) {
-      throw fiscalBillingError("BILLING_RECEIVER_IDENTIFICATION_INVALID");
-    }
-    if (!supplied) {
-      return { identificationType: null, identification: null };
-    }
-    const identification = normalizeCrIdentification(typeCode!, number!);
-    if (!identification) {
-      throw fiscalBillingError("BILLING_RECEIVER_IDENTIFICATION_INVALID");
-    }
-    return { identificationType: typeCode!, identification };
-  }
-
-  private resolvePaymentMethods(codes: string[]): BillingDocumentDraftCommand["paymentMethods"] {
-    if (!Array.isArray(codes) || codes.length < 1 || codes.length > 4) {
-      throw fiscalBillingError("BILLING_PAYMENT_METHOD_INVALID");
-    }
-    const supported = new Set<string>(CR_PAYMENT_METHOD_CODES);
-    const normalized: string[] = [];
-    for (const value of codes) {
-      const code = typeof value === "string" ? value.trim() : "";
-      if (!code || !supported.has(code)) {
-        throw fiscalBillingError("BILLING_PAYMENT_METHOD_INVALID");
-      }
-      if (!normalized.includes(code)) normalized.push(code);
-    }
-    return normalized.map((paymentMethodCode, index) => ({
-      paymentMethodOrder: index + 1,
-      paymentMethodCode,
-      description: null,
-      declaredAmount: null,
-    }));
   }
 
 }

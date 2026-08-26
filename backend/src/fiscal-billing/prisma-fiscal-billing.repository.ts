@@ -29,7 +29,12 @@ export class PrismaSalesOrderFiscalBillingRepository
       status: ELIGIBLE_SALES_ORDER_STATUS,
       lines: {
         some: {},
-        none: { additionalServiceCatalogId: null },
+        none: {
+          OR: [
+            { additionalServiceCatalogId: null },
+            { fiscalItemCategory: null },
+          ],
+        },
       },
     };
     const [orders, total] = await Promise.all([

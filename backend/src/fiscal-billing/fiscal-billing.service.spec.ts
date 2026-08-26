@@ -148,7 +148,7 @@ describe("SalesOrderFiscalBillingService", () => {
   });
 
   it.each(["01", "04"])(
-    "creates a valid %s draft with immutable line and tax snapshots",
+    "forwards only validated selections for an atomic %s fiscal draft",
     async (documentTypeCode) => {
       const { service, repository, fiscalCatalog } = setup();
 
@@ -164,24 +164,11 @@ describe("SalesOrderFiscalBillingService", () => {
       expect(create).toMatchObject({
         tenantId: "tenant-a",
         fiscalIssuerId: "issuer-a",
+        salesOrderId: "sales-a",
         documentTypeCode,
         internalNumber: "BD-SO-sales-a",
-        source: {
-          sourceType: "SALES_ORDER",
-          sourceId: "sales-a",
-          sourceNumber: "SO-2026-000001",
-          sourceRole: "PRIMARY",
-          creationDeduplicationKey:
-            "billing-document:primary:sales-order:sales-a",
-        },
-        totals: {
-          grossSubtotal: "100.0000",
-          grossTaxTotal: "13.0000",
-          total: "113.0000",
-        },
-        issuer: { economicActivityCode: "791100" },
-        paymentConditionCode: "01",
-        creditTermDays: null,
+        receiverIdentificationType: "01",
+        receiverIdentification: "123456789",
         paymentMethods: [
           {
             paymentMethodOrder: 1,
@@ -192,24 +179,8 @@ describe("SalesOrderFiscalBillingService", () => {
         ],
       });
       expect(create).not.toHaveProperty("exchangeRate");
-      expect(create.lines).toEqual([
-        expect.objectContaining({
-          quantity: "1.0000",
-          unitPrice: "100.0000",
-          grossAmount: "100.0000",
-          taxableBase: "100.0000",
-          taxAmount: "13.0000",
-          netTaxAmount: "13.0000",
-          lineTotal: "113.0000",
-          taxes: [
-            expect.objectContaining({
-              taxCode: "01",
-              rateCode: "08",
-              ratePercentage: "13.0000",
-            }),
-          ],
-        }),
-      ]);
+      expect(create).not.toHaveProperty("totals");
+      expect(create).not.toHaveProperty("lines");
       expect(fiscalCatalog.evaluateFiscalProfiles).toHaveBeenCalledTimes(1);
     },
   );
@@ -233,15 +204,12 @@ describe("SalesOrderFiscalBillingService", () => {
 
     const command = repository.createDraft.mock.calls[0][0];
     expect(command).toMatchObject({
-      currencyCode: "USD",
-      paymentConditionCode: "02",
-      creditTermDays: 45,
-      totals: {
-        grossSubtotal: "100.0000",
-        grossTaxTotal: "13.0000",
-        total: "113.0000",
-      },
+      tenantId: "tenant-a",
+      salesOrderId: "sales-a",
+      fiscalIssuerId: "issuer-a",
     });
+    expect(command).not.toHaveProperty("currencyCode");
+    expect(command).not.toHaveProperty("totals");
     expect(command).not.toHaveProperty("exchangeRate");
     expect(Object.keys(service)).toEqual([
       "repository",
@@ -277,11 +245,9 @@ describe("SalesOrderFiscalBillingService", () => {
     expect(repository.createDraft).not.toHaveBeenCalled();
 
     await service.createOrResumeDraft("tenant-a", "sales-a", draftInput, "user-a");
-    expect(repository.createDraft.mock.calls[0][0].receiver).toMatchObject({
-      name: "Customer A",
-      email: null,
-      identificationType: "01",
-      identification: "123456789",
+    expect(repository.createDraft.mock.calls[0][0]).toMatchObject({
+      receiverIdentificationType: "01",
+      receiverIdentification: "123456789",
     });
   });
 
@@ -293,9 +259,9 @@ describe("SalesOrderFiscalBillingService", () => {
       paymentMethodCodes: ["01"],
     };
     await service.createOrResumeDraft("tenant-a", "sales-a", ticketInput, "user-a");
-    expect(repository.createDraft.mock.calls[0][0].receiver).toMatchObject({
-      identificationType: null,
-      identification: null,
+    expect(repository.createDraft.mock.calls[0][0]).toMatchObject({
+      receiverIdentificationType: null,
+      receiverIdentification: null,
     });
 
     repository.createDraft.mockClear();
@@ -505,6 +471,7 @@ function setup(options: {
   issuer?: ReturnType<typeof issuer>;
 } = {}) {
   const selectedIssuer = options.issuer ?? issuer();
+  const createDraft = jest.fn().mockResolvedValue(primaryDocument());
   const repository = {
     listEligibleSalesOrders: jest.fn(),
     findSalesOrder: jest.fn().mockResolvedValue(options.salesOrder ?? salesOrder()),
@@ -513,7 +480,8 @@ function setup(options: {
     findActiveIssuers: jest.fn().mockResolvedValue([selectedIssuer]),
     findIssuer: jest.fn().mockResolvedValue(selectedIssuer),
     findPrimaryDocument: jest.fn().mockResolvedValue(null),
-    createDraft: jest.fn().mockResolvedValue(primaryDocument()),
+    createDraft,
+    createCrV44SalesOrderDraft: createDraft,
     findWorkspace: jest.fn().mockResolvedValue(workspace),
   };
   const fiscalCatalog = {
@@ -568,6 +536,7 @@ function sourceLine(overrides: Record<string, unknown> = {}) {
   return {
     id: "line-a",
     additionalServiceCatalogId: "catalog-a",
+    fiscalItemCategory: "SERVICE",
     serviceCode: "TOUR",
     serviceName: "Tour",
     serviceDetailsVersion: 1,

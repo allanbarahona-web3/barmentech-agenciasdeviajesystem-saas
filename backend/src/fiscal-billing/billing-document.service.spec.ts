@@ -3,6 +3,40 @@ import { BillingDocumentService } from "./billing-document.service";
 import type { BillingDocumentDraftCommand } from "./billing-document.types";
 
 describe("BillingDocumentService generic core", () => {
+  it.each([
+    ["Sales Order source", { sourceType: "SALES_ORDER" }],
+    ["CR policy", { fiscalCalculationPolicyVersion: "CR_V44_DECIMAL_V1" }],
+    ["arbitrary policy", { fiscalCalculationPolicyVersion: "OTHER_POLICY" }],
+  ])("blocks generic %s before repository lookup", async (_label, runtime) => {
+    const command = commandWithoutSalesOrder() as BillingDocumentDraftCommand &
+      Record<string, unknown>;
+    const candidate = runtime as {
+      sourceType?: string;
+      fiscalCalculationPolicyVersion?: string;
+    };
+    if (candidate.sourceType) command.source!.sourceType = candidate.sourceType;
+    if (candidate.fiscalCalculationPolicyVersion) {
+      command.fiscalCalculationPolicyVersion =
+        candidate.fiscalCalculationPolicyVersion;
+    }
+    const repository = {
+      findPrimaryDocument: jest.fn(),
+      createDraft: jest.fn(),
+    };
+    const service = new BillingDocumentService(
+      repository as never,
+      {} as never,
+      {} as never,
+    );
+
+    await expect(service.createOrResumeDraft(command)).rejects.toMatchObject({
+      response: expect.objectContaining({
+        code: "BILLING_DRAFT_CREATION_PATH_UNSUPPORTED",
+      }),
+    });
+    expect(repository.findPrimaryDocument).not.toHaveBeenCalled();
+    expect(repository.createDraft).not.toHaveBeenCalled();
+  });
   it("reads workspace without invoking BCCR, allocation, outbox, queue, or provider behavior",async()=>{const workspace={id:"document-a",readiness:{receiverFiscalIdentityMissing:false,exchangeRateMissing:false}},repository={findWorkspace:jest.fn().mockResolvedValue(workspace),requestElectronicIssuance:jest.fn(),createDraft:jest.fn()},resolver={resolveExactObservation:jest.fn()},clock={now:jest.fn()},service=new BillingDocumentService(repository as never,resolver as never,clock as never);await expect(service.getWorkspace("tenant-a","document-a")).resolves.toBe(workspace);expect(repository.findWorkspace).toHaveBeenCalledTimes(1);expect(resolver.resolveExactObservation).not.toHaveBeenCalled();expect(clock.now).not.toHaveBeenCalled();expect(repository.requestElectronicIssuance).not.toHaveBeenCalled();expect(repository.createDraft).not.toHaveBeenCalled();});
   it("sanitizes workspace read failures and preserves tenant-scoped not-found",async()=>{let repository={findWorkspace:jest.fn().mockResolvedValue(null)},service=new BillingDocumentService(repository as never,{} as never,{} as never);await expect(service.getWorkspace("tenant-a","foreign-document")).rejects.toMatchObject({response:expect.objectContaining({code:"BILLING_DOCUMENT_NOT_FOUND"})});expect(repository.findWorkspace).toHaveBeenCalledWith("tenant-a","foreign-document");repository={findWorkspace:jest.fn().mockRejectedValue(new Error("raw prisma database-url Hacienda detail"))};service=new BillingDocumentService(repository as never,{} as never,{} as never);const error=await captureWorkspace(service.getWorkspace("tenant-a","document-a"));expect(error.getResponse()).toMatchObject({code:"BILLING_DOCUMENT_SUBMISSION_READ_FAILED"});expect(JSON.stringify(error.getResponse())).not.toMatch(/prisma|database-url|Hacienda detail/);});
   it("accepts and forwards a source-agnostic draft command unchanged", async () => {
@@ -37,6 +71,141 @@ describe("BillingDocumentService generic core", () => {
     );
     expect(result).toEqual({ id: "document-a", sourceType: "CUSTOM_INTAKE" });
   });
+
+  it("creates a CR v4.4 Sales Order draft without invoking BCCR and resumes the persisted workspace", async () => {
+    const workspace = {
+      id: "document-a",
+      fiscalCalculationPolicyVersion: "CR_V44_DECIMAL_V1",
+    };
+    const repository = {
+      findPrimaryDocument: jest.fn().mockResolvedValue(null),
+      createCrV44SalesOrderDraft: jest.fn().mockResolvedValue({
+        id: "document-a",
+        internalNumber: "BD-SO-sales-a",
+        lifecycleStatus: "DRAFT",
+        documentTypeCode: "01",
+      }),
+      findWorkspace: jest.fn().mockResolvedValue(workspace),
+    };
+    const resolver = { resolveExactObservation: jest.fn() };
+    const service = new BillingDocumentService(
+      repository as never,
+      resolver as never,
+      { now: jest.fn() } as never,
+    );
+    const command = {
+      tenantId: "tenant-a",
+      salesOrderId: "sales-a",
+      fiscalIssuerId: "issuer-a",
+      internalNumber: "BD-SO-sales-a",
+      documentTypeCode: "01",
+      receiverIdentificationType: "01",
+      receiverIdentification: "123456789",
+      paymentMethods: [],
+      createdByUserId: "user-a",
+    };
+
+    await expect(
+      service.createOrResumeCrV44SalesOrderDraft(command),
+    ).resolves.toBe(workspace);
+
+    expect(repository.createCrV44SalesOrderDraft).toHaveBeenCalledWith(command);
+    expect(repository.findWorkspace).toHaveBeenCalledWith(
+      "tenant-a",
+      "document-a",
+    );
+    expect(resolver.resolveExactObservation).not.toHaveBeenCalled();
+  });
+
+  it("recovers only the exact concurrent Sales Order winner", async () => {
+    const winner = {
+      id: "winner-a",
+      internalNumber: "BD-SO-sales-a",
+      lifecycleStatus: "DRAFT",
+      documentTypeCode: "01",
+    };
+    const repository = {
+      findPrimaryDocument: jest
+        .fn()
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(winner),
+      createCrV44SalesOrderDraft: jest.fn().mockRejectedValue({ code: "P2002" }),
+      findWorkspace: jest.fn().mockResolvedValue({ id: "winner-a" }),
+    };
+    const service = new BillingDocumentService(
+      repository as never,
+      { resolveExactObservation: jest.fn() } as never,
+      {} as never,
+    );
+
+    await expect(
+      service.createOrResumeCrV44SalesOrderDraft({
+        tenantId: "tenant-a",
+        salesOrderId: "sales-a",
+        fiscalIssuerId: "issuer-a",
+        internalNumber: "BD-SO-sales-a",
+        documentTypeCode: "01",
+        receiverIdentificationType: "01",
+        receiverIdentification: "123456789",
+        paymentMethods: [],
+        createdByUserId: "user-a",
+      }),
+    ).resolves.toEqual({ id: "winner-a" });
+    expect(repository.findPrimaryDocument).toHaveBeenNthCalledWith(
+      2,
+      "tenant-a",
+      "SALES_ORDER",
+      "sales-a",
+    );
+  });
+
+  it.each([
+    ["internal number", { internalNumber: "BD-SO-other" }],
+    ["document type", { documentTypeCode: "04" }],
+  ])(
+    "rejects a concurrent Sales Order winner with a contradictory %s",
+    async (_label, contradiction) => {
+      const winner = {
+        id: "winner-a",
+        internalNumber: "BD-SO-sales-a",
+        lifecycleStatus: "DRAFT",
+        documentTypeCode: "01",
+        ...contradiction,
+      };
+      const repository = {
+        findPrimaryDocument: jest
+          .fn()
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce(winner),
+        createCrV44SalesOrderDraft: jest
+          .fn()
+          .mockRejectedValue({ code: "P2002" }),
+        findWorkspace: jest.fn(),
+      };
+      const service = new BillingDocumentService(
+        repository as never,
+        { resolveExactObservation: jest.fn() } as never,
+        {} as never,
+      );
+
+      await expect(
+        service.createOrResumeCrV44SalesOrderDraft({
+          tenantId: "tenant-a",
+          salesOrderId: "sales-a",
+          fiscalIssuerId: "issuer-a",
+          internalNumber: "BD-SO-sales-a",
+          documentTypeCode: "01",
+          receiverIdentificationType: "01",
+          receiverIdentification: "123456789",
+          paymentMethods: [],
+          createdByUserId: "user-a",
+        }),
+      ).rejects.toMatchObject({
+        response: expect.objectContaining({ code: "BILLING_DRAFT_CONFLICT" }),
+      });
+      expect(repository.findWorkspace).not.toHaveBeenCalled();
+    },
+  );
 
   it("prepares CRC issuance without resolving an official rate", async () => {
     const allocation = {

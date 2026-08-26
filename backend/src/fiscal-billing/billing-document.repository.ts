@@ -1,5 +1,6 @@
 import type {
   BillingDocumentDraftCommand,
+  CrV44SalesOrderDraftCommand,
   BillingDocumentFiscalPreparation,
   BillingDocumentFiscalAllocationResult,
   BillingDocumentIssuancePreflight,
@@ -19,6 +20,9 @@ export interface BillingDocumentRepository {
   ): Promise<PrimaryDocumentSummary | null>;
   createDraft(
     command: BillingDocumentDraftCommand,
+  ): Promise<PrimaryDocumentSummary>;
+  createCrV44SalesOrderDraft(
+    command: CrV44SalesOrderDraftCommand,
   ): Promise<PrimaryDocumentSummary>;
   findIssuancePreflight(
     tenantId: string,
