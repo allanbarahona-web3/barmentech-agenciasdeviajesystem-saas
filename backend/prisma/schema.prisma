@@ -1833,6 +1833,7 @@ model BillingDocument {
   providerRefreshLockOwner          String?                          @db.VarChar(100)
   providerRefreshLeaseUntil         DateTime?
   schemaVersion                     String                           @db.VarChar(20)
+  fiscalCalculationPolicyVersion    String?                          @db.VarChar(100)
   countryCode                       String                           @default("CR") @db.VarChar(2)
   currencyCode                      String                           @db.VarChar(3)
   exchangeRate                      Decimal?                         @db.Decimal(30, 12)
@@ -1866,15 +1867,15 @@ model BillingDocument {
   receiverEmail                     String?
   receiverPhone                     String?
   receiverAddressSnapshot           Json?
-  grossSubtotal                     Decimal                          @db.Decimal(18, 4)
-  discountTotal                     Decimal                          @db.Decimal(18, 4)
-  taxableTotal                      Decimal                          @db.Decimal(18, 4)
-  exemptTotal                       Decimal                          @db.Decimal(18, 4)
-  exoneratedTotal                   Decimal                          @db.Decimal(18, 4)
-  grossTaxTotal                     Decimal                          @db.Decimal(18, 4)
-  exoneratedTaxTotal                Decimal                          @db.Decimal(18, 4)
-  netTaxTotal                       Decimal                          @db.Decimal(18, 4)
-  total                             Decimal                          @db.Decimal(18, 4)
+  grossSubtotal                     Decimal                          @db.Decimal(19, 5)
+  discountTotal                     Decimal                          @db.Decimal(19, 5)
+  taxableTotal                      Decimal                          @db.Decimal(19, 5)
+  exemptTotal                       Decimal                          @db.Decimal(19, 5)
+  exoneratedTotal                   Decimal                          @db.Decimal(19, 5)
+  grossTaxTotal                     Decimal                          @db.Decimal(19, 5)
+  exoneratedTaxTotal                Decimal                          @db.Decimal(19, 5)
+  netTaxTotal                       Decimal                          @db.Decimal(19, 5)
+  total                             Decimal                          @db.Decimal(19, 5)
   confirmedAt                       DateTime?
   submittedAt                       DateTime?
   createdBy                         String?
@@ -1947,17 +1948,17 @@ model BillingDocumentLine {
   description         String
   quantity            Decimal          @db.Decimal(18, 4)
   unitOfMeasureCode   String           @db.VarChar(20)
-  unitPrice           Decimal          @db.Decimal(18, 4)
-  grossAmount         Decimal          @db.Decimal(18, 4)
-  discountAmount      Decimal          @db.Decimal(18, 4)
+  unitPrice           Decimal          @db.Decimal(19, 5)
+  grossAmount         Decimal          @db.Decimal(19, 5)
+  discountAmount      Decimal          @db.Decimal(19, 5)
   discountCode        String?          @db.VarChar(4)
   discountReason      String?
-  taxableBase         Decimal          @db.Decimal(18, 4)
-  taxAmount           Decimal          @db.Decimal(18, 4)
-  exoneratedTaxAmount Decimal          @db.Decimal(18, 4)
-  netTaxAmount        Decimal          @db.Decimal(18, 4)
-  lineSubtotal        Decimal          @db.Decimal(18, 4)
-  lineTotal           Decimal          @db.Decimal(18, 4)
+  taxableBase         Decimal          @db.Decimal(19, 5)
+  taxAmount           Decimal          @db.Decimal(19, 5)
+  exoneratedTaxAmount Decimal          @db.Decimal(19, 5)
+  netTaxAmount        Decimal          @db.Decimal(19, 5)
+  lineSubtotal        Decimal          @db.Decimal(19, 5)
+  lineTotal           Decimal          @db.Decimal(19, 5)
   createdAt           DateTime         @default(now())
   updatedAt           DateTime         @updatedAt
   tenant              Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -1978,10 +1979,10 @@ model BillingLineTax {
   taxCode               String                   @db.VarChar(4)
   rateCode              String                   @db.VarChar(4)
   ratePercentage        Decimal                  @db.Decimal(7, 4)
-  taxableBase           Decimal                  @db.Decimal(18, 4)
-  taxAmount             Decimal                  @db.Decimal(18, 4)
+  taxableBase           Decimal                  @db.Decimal(19, 5)
+  taxAmount             Decimal                  @db.Decimal(19, 5)
   calculationFactor     Decimal?                 @db.Decimal(18, 8)
-  netTaxAmount          Decimal                  @db.Decimal(18, 4)
+  netTaxAmount          Decimal                  @db.Decimal(19, 5)
   createdAt             DateTime                 @default(now())
   updatedAt             DateTime                 @updatedAt
   tenant                Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -2007,7 +2008,7 @@ model BillingLineTaxExemption {
   otherInstitutionDescription String?
   issueDate                   DateTime       @db.Date
   exemptedPercentage          Decimal        @db.Decimal(7, 4)
-  exemptedAmount              Decimal        @db.Decimal(18, 4)
+  exemptedAmount              Decimal        @db.Decimal(19, 5)
   createdAt                   DateTime       @default(now())
   updatedAt                   DateTime       @updatedAt
   tenant                      Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -2049,7 +2050,7 @@ model BillingDocumentPaymentMethod {
   paymentMethodOrder Int
   paymentMethodCode  String          @db.VarChar(4)
   description        String?
-  declaredAmount     Decimal?        @db.Decimal(18, 4)
+  declaredAmount     Decimal?        @db.Decimal(19, 5)
   createdAt          DateTime        @default(now())
   updatedAt          DateTime        @updatedAt
   tenant             Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
