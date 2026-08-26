@@ -36,6 +36,7 @@ describe("SalesOrderConversionService", () => {
 
     expect(result.orderNumber).toBe("SO-2026-000001");
     expect(execute).toHaveBeenCalledTimes(1); // no INSERT after lock
+    expect(String(execute.mock.calls)).not.toMatch(/UPDATE/i);
     expect(query).toHaveBeenCalledTimes(2);
   });
 
@@ -43,6 +44,7 @@ describe("SalesOrderConversionService", () => {
     const existing = salesOrder();
     const acceptedLine = {
       additionalServiceCatalogId: "catalog-baggage",
+      fiscalItemCategory: "SERVICE",
       serviceCode: "BAGGAGE",
       serviceName: "Equipaje",
       serviceDetailsVersion: 1,
@@ -67,9 +69,11 @@ describe("SalesOrderConversionService", () => {
     expect(execute).toHaveBeenCalledTimes(4);
     const lineInsertSql = String(execute.mock.calls[3][0]);
     expect(lineInsertSql).toContain('"additionalServiceCatalogId"');
+    expect(lineInsertSql).toContain('"fiscalItemCategory"');
     expect(execute.mock.calls[3]).toEqual(
       expect.arrayContaining([
         "catalog-baggage",
+        "SERVICE",
         "BAGGAGE",
         "Equipaje",
         1,
@@ -85,18 +89,20 @@ describe("SalesOrderConversionService", () => {
     expect(lineInsertSql).not.toMatch(/supplier|margin|cost/i);
   });
 
-  it("preserves each source line's exact catalog identity", async () => {
-    const { service, execute } = setup([
+  it("copies mixed SERVICE and MERCHANDISE categories without per-line queries", async () => {
+    const { service, execute, query } = setup([
       [proposal({ commercialStatus: "APPROVED" })],
       [],
       [
         sourceLine({
           additionalServiceCatalogId: "catalog-baggage",
+          fiscalItemCategory: "SERVICE",
           serviceCode: "BAGGAGE",
           serviceName: "Equipaje",
         }),
         sourceLine({
           additionalServiceCatalogId: "catalog-transfer",
+          fiscalItemCategory: "MERCHANDISE",
           serviceCode: "TRANSFER",
           serviceName: "Traslado",
         }),
@@ -110,8 +116,11 @@ describe("SalesOrderConversionService", () => {
     expect(execute).toHaveBeenCalledTimes(5);
     expect(execute.mock.calls[3]).toContain("catalog-baggage");
     expect(execute.mock.calls[3]).not.toContain("catalog-transfer");
+    expect(execute.mock.calls[3]).toContain("SERVICE");
     expect(execute.mock.calls[4]).toContain("catalog-transfer");
     expect(execute.mock.calls[4]).not.toContain("catalog-baggage");
+    expect(execute.mock.calls[4]).toContain("MERCHANDISE");
+    expect(query).toHaveBeenCalledTimes(5);
   });
 
   it("rejects a missing source catalog identity before Sales Order persistence", async () => {
@@ -146,9 +155,32 @@ describe("SalesOrderConversionService", () => {
     const sourceLinesSql = String(query.mock.calls[2][0]);
     expect(sourceLinesSql).toContain('l."tenantId" =');
     expect(sourceLinesSql).toContain('l."additionalServiceCatalogId"');
+    expect(sourceLinesSql).toContain('LEFT JOIN "additional_service_catalogs" catalog');
+    expect(sourceLinesSql).toContain('catalog."tenantId" = l."tenantId"');
     expect(query).toHaveBeenCalledTimes(5);
     expect(execute.mock.calls[3]).toContain("tenant-a-catalog");
   });
+
+  it.each([null, undefined, "UNSUPPORTED"])(
+    "rejects an invalid fiscal item category before Sales Order persistence",
+    async (fiscalItemCategory) => {
+      const { service, execute, query } = setup([
+        [proposal({ commercialStatus: "APPROVED" })],
+        [],
+        [sourceLine({ fiscalItemCategory })],
+      ]);
+
+      await expect(
+        service.convertAdditionalServiceOrder("tenant-a", "proposal-a", actor),
+      ).rejects.toMatchObject({
+        response: expect.objectContaining({
+          code: "SALES_ORDER_LINE_FISCAL_ITEM_CATEGORY_INVALID",
+        }),
+      });
+      expect(query).toHaveBeenCalledTimes(3);
+      expect(execute).toHaveBeenCalledTimes(1); // source lock only
+    },
+  );
 });
 
 const actor = { id: "user-a", fullName: "Agent A" };
@@ -195,6 +227,7 @@ function salesOrder() {
 function sourceLine(overrides: Record<string, unknown> = {}) {
   return {
     additionalServiceCatalogId: "catalog-a",
+    fiscalItemCategory: "SERVICE",
     serviceCode: "BAGGAGE",
     serviceName: "Equipaje",
     serviceDetailsVersion: 1,

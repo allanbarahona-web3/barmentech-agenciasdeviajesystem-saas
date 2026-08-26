@@ -5,7 +5,11 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
-import { Prisma, type PrismaClient } from "@prisma/client";
+import {
+  Prisma,
+  type FiscalItemCategory,
+  type PrismaClient,
+} from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 
 const SOURCE_TYPE = "ADDITIONAL_SERVICE_ORDER";
@@ -26,6 +30,7 @@ export interface SalesOrderSummary {
   lines: Array<{
     serviceCode: string;
     serviceName: string;
+    fiscalItemCategory: FiscalItemCategory | null;
     serviceDetailsVersion: number | null;
     serviceDetails: unknown;
     commercialNotes: string | null;
@@ -86,6 +91,7 @@ export class SalesOrderConversionService {
 
       const lines = await tx.$queryRaw<Array<{
         additionalServiceCatalogId: string | null;
+        fiscalItemCategory: unknown;
         serviceCode: string;
         serviceName: string;
         serviceDetailsVersion: number | null;
@@ -96,7 +102,7 @@ export class SalesOrderConversionService {
         vatAmount: Prisma.Decimal;
         total: Prisma.Decimal;
         participants: unknown;
-      }>>`SELECT l."additionalServiceCatalogId", l."serviceCode", l."serviceName", l."serviceDetailsVersion",
+      }>>`SELECT l."additionalServiceCatalogId", catalog."fiscalItemCategory", l."serviceCode", l."serviceName", l."serviceDetailsVersion",
                  l."serviceDetails", l."commercialNotes", l."subtotal",
                  l."vatPercentage", l."vatAmount", l."finalSellingPrice" AS "total",
                  COALESCE(jsonb_agg(jsonb_build_object(
@@ -104,19 +110,36 @@ export class SalesOrderConversionService {
                    'identification', p."identification", 'email', p."email", 'phone', p."phone"
                  ) ORDER BY p."createdAt") FILTER (WHERE p."id" IS NOT NULL), '[]'::jsonb) AS "participants"
           FROM "additional_service_order_lines" l
+          LEFT JOIN "additional_service_catalogs" catalog
+            ON catalog."id" = l."additionalServiceCatalogId" AND catalog."tenantId" = l."tenantId"
           LEFT JOIN "additional_service_order_participants" p
             ON p."lineId" = l."id" AND p."tenantId" = l."tenantId"
           WHERE l."orderId" = ${sourceId} AND l."tenantId" = ${tenantId}
-          GROUP BY l."id"
+          GROUP BY l."id", catalog."fiscalItemCategory"
           ORDER BY l."createdAt", l."id"`;
 
-      if (lines.some((line) => !line.additionalServiceCatalogId)) {
-        throw new BadRequestException({
-          code: "SALES_ORDER_LINE_CATALOG_IDENTITY_MISSING",
-          message:
-            "Una línea del servicio adicional no tiene una identidad de catálogo válida.",
-        });
-      }
+      const snapshotLines = lines.map((line) => {
+        if (!line.additionalServiceCatalogId) {
+          throw new BadRequestException({
+            code: "SALES_ORDER_LINE_CATALOG_IDENTITY_MISSING",
+            message:
+              "Una línea del servicio adicional no tiene una identidad de catálogo válida.",
+          });
+        }
+        const fiscalItemCategory = toFiscalItemCategory(line.fiscalItemCategory);
+        if (!fiscalItemCategory) {
+          throw new BadRequestException({
+            code: "SALES_ORDER_LINE_FISCAL_ITEM_CATEGORY_INVALID",
+            message:
+              "Una línea del servicio adicional no tiene una clasificación fiscal válida.",
+          });
+        }
+        return {
+          ...line,
+          additionalServiceCatalogId: line.additionalServiceCatalogId,
+          fiscalItemCategory,
+        };
+      });
 
       const year = new Date().getUTCFullYear();
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`${tenantId}:SALES_ORDER_NUMBER:${year}`}, 0))`;
@@ -138,13 +161,13 @@ export class SalesOrderConversionService {
           ${proposal.commercialObservations}, ${actor.id}, ${actor.fullName}, CURRENT_TIMESTAMP
         )`;
 
-      for (const line of lines) {
+      for (const line of snapshotLines) {
         await tx.$executeRaw`INSERT INTO "sales_order_lines" (
-            "id", "tenantId", "salesOrderId", "additionalServiceCatalogId", "serviceCode", "serviceName", "serviceDetailsVersion",
+            "id", "tenantId", "salesOrderId", "additionalServiceCatalogId", "fiscalItemCategory", "serviceCode", "serviceName", "serviceDetailsVersion",
             "serviceDetails", "commercialNotes", "subtotal", "vatPercentage", "vatAmount", "total",
             "participants", "updatedAt"
           ) VALUES (
-            ${randomUUID()}, ${tenantId}, ${salesOrderId}, ${line.additionalServiceCatalogId}, ${line.serviceCode}, ${line.serviceName},
+            ${randomUUID()}, ${tenantId}, ${salesOrderId}, ${line.additionalServiceCatalogId}, ${line.fiscalItemCategory}::"FiscalItemCategory", ${line.serviceCode}, ${line.serviceName},
             ${line.serviceDetailsVersion}, ${JSON.stringify(line.serviceDetails)}::jsonb, ${line.commercialNotes},
             ${line.subtotal}, ${line.vatPercentage}, ${line.vatAmount}, ${line.total},
             ${JSON.stringify(line.participants)}::jsonb, CURRENT_TIMESTAMP
@@ -173,6 +196,7 @@ export class SalesOrderConversionService {
              so."commercialObservations", so."customerName", so."customerEmail", so."createdAt",
              COALESCE(jsonb_agg(jsonb_build_object(
                'serviceCode', l."serviceCode", 'serviceName', l."serviceName",
+               'fiscalItemCategory', l."fiscalItemCategory",
                'serviceDetailsVersion', l."serviceDetailsVersion", 'serviceDetails', l."serviceDetails",
                'commercialNotes', l."commercialNotes", 'subtotal', l."subtotal"::text,
                'vatPercentage', l."vatPercentage"::text, 'vatAmount', l."vatAmount"::text,
@@ -196,4 +220,8 @@ export class SalesOrderConversionService {
       lines: row.lines as SalesOrderSummary["lines"], createdAt: row.createdAt as Date,
     };
   }
+}
+
+function toFiscalItemCategory(value: unknown): FiscalItemCategory | null {
+  return value === "SERVICE" || value === "MERCHANDISE" ? value : null;
 }
