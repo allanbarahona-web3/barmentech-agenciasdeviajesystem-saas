@@ -1308,6 +1308,11 @@ enum AdditionalServiceMarginType {
   PERCENTAGE
 }
 
+enum FiscalItemCategory {
+  SERVICE
+  MERCHANDISE
+}
+
 enum FiscalCatalogType {
   CABYS
   ELECTRONIC_INVOICE_CODING
@@ -1336,6 +1341,7 @@ model AdditionalServiceCatalog {
   icon                  String?
   color                 String?
   displayOrder          Int                                     @default(0)
+  fiscalItemCategory    FiscalItemCategory                      @default(SERVICE)
   isActive              Boolean                                 @default(true)
   createdAt             DateTime                                @default(now())
   updatedAt             DateTime                                @updatedAt
@@ -1733,6 +1739,7 @@ model SalesOrderLine {
   tenantId                   String
   salesOrderId               String
   additionalServiceCatalogId String?
+  fiscalItemCategory         FiscalItemCategory?
   serviceCode                String
   serviceName                String
   serviceDetailsVersion      Int?
