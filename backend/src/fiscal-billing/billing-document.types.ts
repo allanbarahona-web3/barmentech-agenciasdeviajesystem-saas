@@ -136,6 +136,7 @@ export interface BillingDocumentFiscalAllocationResult {
 
 export interface BillingDocumentIssuancePreflight {
   id: string;
+  fiscalCalculationPolicyVersion: string | null;
   billingMode: string;
   lifecycleStatus: string;
   providerStatus: string;
@@ -237,6 +238,13 @@ export interface BillingDocumentWorkspace {
   readiness: {
     receiverFiscalIdentityMissing: boolean;
     exchangeRateMissing: boolean;
+    fiscalCalculationPolicyUnsupported: boolean;
+    calculatedSnapshotInvalid: boolean;
+    issuanceReady: boolean;
+    issues: Array<
+      | "BILLING_DOCUMENT_FISCAL_CALCULATION_POLICY_UNSUPPORTED"
+      | "BILLING_DOCUMENT_CALCULATED_SNAPSHOT_INVALID"
+    >;
   };
 }
 

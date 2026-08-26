@@ -7,14 +7,19 @@ import {
   prepareFacturaEnCrSubmission,
   type FacturaEnCrSubmissionAggregate,
 } from "./providers/factura-en-cr-submission";
+import { CR_V44_DECIMAL_V1 } from "./cr-v44-fiscal-calculation-policy";
+import { validateCrV44CalculatedSnapshot } from "./cr-v44-calculated-snapshot-validator";
+import { FiscalCalculationError } from "./fiscal-decimal";
 
 const submissionSelect = Prisma.validator<Prisma.BillingDocumentSelect>()({
-  id: true, tenantId: true, documentTypeCode: true, billingMode: true, lifecycleStatus: true,
+  id: true, tenantId: true, documentTypeCode: true, billingMode: true, lifecycleStatus: true, fiscalCalculationPolicyVersion: true,
   issuerIdentification: true, issuerEconomicActivityCode: true, issuerEstablishmentCode: true, issuerTerminalCode: true,
   billingDocumentNumberSequenceId: true, allocatedSequenceNumber: true, fiscalNumber: true, issuanceIdempotencyKey: true,
   fiscalEmissionAt: true, fiscalIssueDate: true, currencyCode: true, exchangeRate: true,
   officialExchangeRateObservationId: true, fiscalExchangeRateEffectiveDate: true, fiscalExchangeRateSourceAuthority: true, fiscalExchangeRateIndicatorCode: true,
   paymentConditionCode: true, creditTermDays: true,
+  grossSubtotal: true, discountTotal: true, taxableTotal: true, exemptTotal: true, exoneratedTotal: true,
+  grossTaxTotal: true, exoneratedTaxTotal: true, netTaxTotal: true, total: true,
   receiverName: true, receiverIdentificationType: true, receiverIdentification: true, receiverEconomicActivityCode: true,
   receiverEmail: true, receiverPhone: true, receiverAddressSnapshot: true,
   providerStatus: true, taxAuthorityStatus: true, providerDocumentId: true, providerEnvironment: true, providerRequestHash: true,
@@ -82,12 +87,22 @@ export class BillingDocumentSubmissionPreparationService {
       throw fiscalBillingError("BILLING_DOCUMENT_SUBMISSION_READ_FAILED");
     }
     if (!row) throw fiscalBillingError("BILLING_DOCUMENT_NOT_FOUND");
+    if (row.fiscalCalculationPolicyVersion !== CR_V44_DECIMAL_V1) {
+      throw fiscalBillingError("BILLING_DOCUMENT_FISCAL_CALCULATION_POLICY_UNSUPPORTED");
+    }
 
     let aggregate: FacturaEnCrSubmissionAggregate;
     try { aggregate = mapAggregate(row, tenantId); }
     catch { throw fiscalBillingError("BILLING_DOCUMENT_SUBMISSION_SNAPSHOT_INVALID"); }
     if (!aggregate.billingDocumentNumberSequenceId || typeof aggregate.allocatedSequenceNumber !== "string") {
       throw fiscalBillingError("BILLING_DOCUMENT_SUBMISSION_SNAPSHOT_INVALID");
+    }
+    try { validateCrV44CalculatedSnapshot(aggregate); }
+    catch (error) {
+      if (error instanceof FiscalCalculationError && error.code === "FISCAL_DECIMAL_CAPACITY_OVERFLOW") {
+        throw fiscalBillingError("BILLING_DOCUMENT_HACIENDA_MONEY_CAPACITY_EXCEEDED");
+      }
+      throw fiscalBillingError("BILLING_DOCUMENT_CALCULATED_SNAPSHOT_INVALID");
     }
 
     let preparedSubmission: ReturnType<typeof prepareFacturaEnCrSubmission>;
@@ -139,6 +154,7 @@ function mapAggregate(row: SubmissionRow, expectedTenantId: string): FacturaEnCr
   verifyOfficialSnapshot(row);
   return {
     id: row.id, tenantId: row.tenantId, documentTypeCode: row.documentTypeCode,
+    fiscalCalculationPolicyVersion: row.fiscalCalculationPolicyVersion,
     issuerIdentification: row.issuerIdentification, issuerEconomicActivityCode: row.issuerEconomicActivityCode,
     issuerEstablishmentCode: row.issuerEstablishmentCode, issuerTerminalCode: row.issuerTerminalCode,
     billingDocumentNumberSequenceId: row.billingDocumentNumberSequenceId,
@@ -155,6 +171,12 @@ function mapAggregate(row: SubmissionRow, expectedTenantId: string): FacturaEnCr
       responseHash: row.officialExchangeRateObservation.responseHash,
     } : null,
     paymentConditionCode: row.paymentConditionCode, creditTermDays: row.creditTermDays,
+    totals: {
+      grossSubtotal: decimal(row.grossSubtotal)!, discountTotal: decimal(row.discountTotal)!,
+      taxableTotal: decimal(row.taxableTotal)!, exemptTotal: decimal(row.exemptTotal)!,
+      exoneratedTotal: decimal(row.exoneratedTotal)!, grossTaxTotal: decimal(row.grossTaxTotal)!,
+      exoneratedTaxTotal: decimal(row.exoneratedTaxTotal)!, netTaxTotal: decimal(row.netTaxTotal)!, total: decimal(row.total)!,
+    },
     receiver: { name: row.receiverName, identificationType: row.receiverIdentificationType, identification: row.receiverIdentification,
       economicActivityCode: row.receiverEconomicActivityCode, email: row.receiverEmail, phone: row.receiverPhone,
       address: address(row.receiverAddressSnapshot) },

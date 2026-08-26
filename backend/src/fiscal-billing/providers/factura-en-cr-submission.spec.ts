@@ -44,16 +44,54 @@ describe("prepareFacturaEnCrSubmission", () => {
   it("is byte deterministic, hashes exact UTF-8, changes meaningfully, and returns exact idempotency",()=>{const a=prepareFacturaEnCrSubmission(fixture()),b=prepareFacturaEnCrSubmission(fixture()),changed=prepareFacturaEnCrSubmission(fixture({lines:[line({description:"Changed"})]}));expect(a.canonicalBody).toBe(b.canonicalBody);expect(a.requestHash).toBe(createHash("sha256").update(a.canonicalBody,"utf8").digest("hex"));expect(changed.requestHash).not.toBe(a.requestHash);expect(a.idempotencyKey).toBe("billing-document:document-a:electronic-issuance:v1");expectCode(()=>prepareFacturaEnCrSubmission(fixture({issuanceIdempotencyKey:"other"})),"FACTURA_EN_CR_SNAPSHOT_INCOMPLETE");});
   it("persists canonical fiscalIssueDate only in safe provider-neutral metadata without changing payload bytes or their hash",()=>{const result:PreparedElectronicDocumentSubmission=prepareFacturaEnCrSubmission(fixture()),body=result.canonicalBody,hash=result.requestHash;expect(result.metadata.fiscalIssueDate).toBe("2026-08-23");expect(body).not.toContain("fiscalIssueDate");(result.metadata as {fiscalIssueDate:string}).fiscalIssueDate="2026-08-24";expect(result.canonicalBody).toBe(body);expect(result.requestHash).toBe(hash);expect(hash).toBe(createHash("sha256").update(body,"utf8").digest("hex"));});
   it("structurally excludes internal and provider-managed fields",()=>{const body=JSON.parse(prepareFacturaEnCrSubmission(fixture()).canonicalBody);for(const key of ["tenantId","id","environment","certificateId","clave","fiscalNumber","providerRequestHash","grossSubtotal","total","metadata"])expect(body).not.toHaveProperty(key);});
+
+  it("prepares the exact CR_V44_DECIMAL_V1 31.25 / 4.0625 / 35.3125 snapshot without provider-managed totals",()=>{
+    const first=prepareFacturaEnCrSubmission(calculatedFixture()),second=prepareFacturaEnCrSubmission(calculatedFixture());
+    const expected='{"emisorLegalId":"3101000000","branchCode":"001","terminalCode":"00001","consecutivoNumero":"0000000042","fechaEmision":"2026-08-23T06:34:56.789-06:00","situacion":"1","codigoActividad":"791100","condicionVenta":"01","medioPago":["01"],"currency":"CRC","receptor":{"tipoIdentificacion":"02","numeroIdentificacion":"3101999999","nombre":"Receiver"},"detalle":[{"codigoCabys":"1234567890123","cantidad":1,"unidadMedida":"Sp","detalle":"Service","precioUnitario":31.25,"impuesto":[{"codigo":"01","codigoTarifa":"08","tarifa":13}]}]}';
+    expect(first.canonicalBody).toBe(expected);expect(second).toEqual(first);
+    expect(first.requestHash).toBe(createHash("sha256").update(expected,"utf8").digest("hex"));
+    expect(first.idempotencyKey).toBe("billing-document:document-a:electronic-issuance:v1");
+    const body=JSON.parse(first.canonicalBody);expect(body.detalle[0].precioUnitario).toBe(31.25);
+    for(const key of ["grossSubtotal","discountTotal","taxableTotal","exemptTotal","grossTaxTotal","netTaxTotal","total","fiscalCalculationPolicyVersion"])expect(body).not.toHaveProperty(key);
+    for(const key of ["grossAmount","taxableBase","taxAmount","netTaxAmount","lineTotal"])expect(body.detalle[0]).not.toHaveProperty(key);
+  });
+
+  it.each([["02","1","1","101"],["03","2","2","102"],["04","4","4","104"],["08","13","13","113"],["09","0.5","0.5","100.5"],["10","0","0","100"]] as const)("accepts calculated IVA tariff %s at %s%%",(rateCode,ratePercentage,taxAmount,total)=>{
+    const exempt=rateCode==="10";
+    const aggregate=calculatedFixture({
+      totals:{grossSubtotal:"100",discountTotal:"0",taxableTotal:exempt?"0":"100",exemptTotal:exempt?"100":"0",exoneratedTotal:"0",grossTaxTotal:taxAmount,exoneratedTaxTotal:"0",netTaxTotal:taxAmount,total},
+      lines:[line({unitPrice:"100",grossAmount:"100",taxableBase:"100",lineSubtotal:"100",taxAmount,exoneratedTaxAmount:"0",netTaxAmount:taxAmount,lineTotal:total,taxes:[tax({rateCode,ratePercentage,taxableBase:"100",taxAmount,netTaxAmount:taxAmount})]})],
+    });
+    expect(()=>prepareFacturaEnCrSubmission(aggregate)).not.toThrow();
+  });
+
+  it.each(["01","05","06","07","11"])("rejects calculated unsupported tariff %s",rateCode=>expectCode(()=>prepareFacturaEnCrSubmission(calculatedFixture({lines:[line({taxes:[tax({rateCode,ratePercentage:"0"})]})]})),"FACTURA_EN_CR_LINE_TAX_INVALID"));
+  it("rejects calculated multiple tax, six-decimal money, and Hacienda overflow",()=>{
+    expectCode(()=>prepareFacturaEnCrSubmission(calculatedFixture({lines:[line({taxes:[tax(),{...tax(),taxOrder:2}]})]})),"FACTURA_EN_CR_LINE_TAX_INVALID");
+    expectCode(()=>prepareFacturaEnCrSubmission(calculatedFixture({lines:[line({unitPrice:"31.250001"})]})),"FACTURA_EN_CR_LINE_TAX_INVALID");
+    expectCode(()=>prepareFacturaEnCrSubmission(calculatedFixture({lines:[line({unitPrice:"10000000000000"})]})),"FACTURA_EN_CR_LINE_TAX_INVALID");
+  });
+  it("emits only the validated frozen USD exchange-rate value for a calculated snapshot",()=>{
+    const result=prepareFacturaEnCrSubmission(calculatedFixture({currencyCode:"USD",exchangeRate:"512.123456789012",officialExchangeRateObservation:official()}));
+    expect(result.canonicalBody).toContain('"currency":"USD","exchangeRate":512.123456789012');
+    expect(result.canonicalBody).not.toContain("BCCR");expect(result.canonicalBody).not.toContain("obs-a");expect(result.canonicalBody).not.toContain("CR_V44_DECIMAL_V1");
+  });
+  it("does not mutate the calculated aggregate while producing deterministic output",()=>{
+    const aggregate=calculatedFixture(),before=JSON.stringify(aggregate);
+    const first=prepareFacturaEnCrSubmission(aggregate),second=prepareFacturaEnCrSubmission(aggregate);
+    expect(JSON.stringify(aggregate)).toBe(before);expect(second).toEqual(first);
+  });
 });
 
-function fixture(o:Partial<FacturaEnCrSubmissionAggregate>={}):FacturaEnCrSubmissionAggregate{return{id:"document-a",tenantId:"tenant-a",documentTypeCode:"01",issuerIdentification:"3101000000",issuerEconomicActivityCode:"791100",issuerEstablishmentCode:"001",issuerTerminalCode:"00001",billingDocumentNumberSequenceId:"sequence-a",allocatedSequenceNumber:"42",fiscalNumber:"00100001010000000042",issuanceIdempotencyKey:"billing-document:document-a:electronic-issuance:v1",fiscalEmissionAt:new Date("2026-08-23T12:34:56.789Z"),fiscalIssueDate:"2026-08-23",currencyCode:"CRC",exchangeRate:null,officialExchangeRateObservation:null,paymentConditionCode:"01",creditTermDays:null,receiver:receiver(),paymentMethods:[payment("01")],lines:[line()],...o};}
+function fixture(o:Partial<FacturaEnCrSubmissionAggregate>={}):FacturaEnCrSubmissionAggregate{return{id:"document-a",tenantId:"tenant-a",documentTypeCode:"01",fiscalCalculationPolicyVersion:null,issuerIdentification:"3101000000",issuerEconomicActivityCode:"791100",issuerEstablishmentCode:"001",issuerTerminalCode:"00001",billingDocumentNumberSequenceId:"sequence-a",allocatedSequenceNumber:"42",fiscalNumber:"00100001010000000042",issuanceIdempotencyKey:"billing-document:document-a:electronic-issuance:v1",fiscalEmissionAt:new Date("2026-08-23T12:34:56.789Z"),fiscalIssueDate:"2026-08-23",currencyCode:"CRC",exchangeRate:null,officialExchangeRateObservation:null,paymentConditionCode:"01",creditTermDays:null,receiver:receiver(),paymentMethods:[payment("01")],totals:{grossSubtotal:"100",discountTotal:"0",taxableTotal:"100",exemptTotal:"0",exoneratedTotal:"0",grossTaxTotal:"13",exoneratedTaxTotal:"0",netTaxTotal:"13",total:"113"},lines:[line()],...o};}
+function calculatedFixture(o:Partial<FacturaEnCrSubmissionAggregate>={}):FacturaEnCrSubmissionAggregate{return fixture({fiscalCalculationPolicyVersion:"CR_V44_DECIMAL_V1",totals:{grossSubtotal:"31.25",discountTotal:"0",taxableTotal:"31.25",exemptTotal:"0",exoneratedTotal:"0",grossTaxTotal:"4.0625",exoneratedTaxTotal:"0",netTaxTotal:"4.0625",total:"35.3125"},lines:[line({unitPrice:"31.25",grossAmount:"31.25",discountAmount:"0",taxableBase:"31.25",taxAmount:"4.0625",exoneratedTaxAmount:"0",netTaxAmount:"4.0625",lineSubtotal:"31.25",lineTotal:"35.3125",taxes:[tax({taxableBase:"31.25",taxAmount:"4.0625",netTaxAmount:"4.0625"})]})],...o});}
 function tiquete(o:Partial<FacturaEnCrSubmissionAggregate>={}){return fixture({documentTypeCode:"04",fiscalNumber:"00100001040000000042",...o});}
 function usd(o:Partial<FacturaEnCrSubmissionAggregate>={}){return fixture({currencyCode:"USD",exchangeRate:"512.123456789012",officialExchangeRateObservation:official(),...o});}
 function official(value="512.123456789012"){const identity={countryCode:"CR",foreignCurrencyCode:"USD",localCurrencyCode:"CRC",rateType:"REFERENCE_SELL" as const,effectiveDate:"2026-08-23",sourceAuthority:"BCCR",sourceIndicatorCode:"318"};return{id:"obs-a",...identity,value,requestIdentity:buildRequestIdentity(identity),responseHash:buildResponseHash(identity,value)};}
 function receiver(){return{name:"Receiver",identificationType:"02",identification:"3101999999",economicActivityCode:null,email:null,phone:null,address:null};}
 function payment(paymentMethodCode:string){return{paymentMethodOrder:1,paymentMethodCode,description:null,declaredAmount:null};}
-function tax(o:Partial<FacturaEnCrTaxSnapshot>={}):FacturaEnCrTaxSnapshot{return{taxOrder:1,taxCode:"01",rateCode:"08",ratePercentage:"13.0000",taxableBase:"100.0000",taxAmount:"13.0000",calculationFactor:null,netTaxAmount:"13.0000",exemption:null,...o};}
-function line(o:Partial<FacturaEnCrLineSnapshot>={}):FacturaEnCrLineSnapshot{return{lineNumber:1,cabysCode:"1234567890123",description:"Service",quantity:"1.0000",unitOfMeasureCode:"Sp",unitPrice:"100.0000",grossAmount:"100.0000",discountAmount:"0.0000",discountCode:null,discountReason:null,taxableBase:"100.0000",taxAmount:"13.0000",exoneratedTaxAmount:"0.0000",netTaxAmount:"13.0000",lineSubtotal:"100.0000",lineTotal:"113.0000",taxes:[tax()],...o};}
+function tax(o:Partial<FacturaEnCrTaxSnapshot>={}):FacturaEnCrTaxSnapshot{return{taxOrder:1,taxCode:"01",rateCode:"08",ratePercentage:"13",taxableBase:"100.0000",taxAmount:"13.0000",calculationFactor:null,netTaxAmount:"13.0000",exemption:null,...o};}
+function line(o:Partial<FacturaEnCrLineSnapshot>={}):FacturaEnCrLineSnapshot{return{lineNumber:1,cabysCode:"1234567890123",description:"Service",quantity:"1",unitOfMeasureCode:"Sp",unitPrice:"100.0000",grossAmount:"100.0000",discountAmount:"0.0000",discountCode:null,discountReason:null,taxableBase:"100.0000",taxAmount:"13.0000",exoneratedTaxAmount:"0.0000",netTaxAmount:"13.0000",lineSubtotal:"100.0000",lineTotal:"113.0000",taxes:[tax()],...o};}
 function exemption():NonNullable<FacturaEnCrTaxSnapshot["exemption"]>{return{documentTypeCode:"01",documentNumber:"AUTH-1",legalArticle:null,legalSection:null,issuingInstitutionCode:"01",issuingInstitutionName:"Hacienda",otherInstitutionDescription:null,issueDate:"2026-01-10",exemptedPercentage:"100.0000",exemptedAmount:"13.0000"};}
 function exemptLine(e=exemption()){return line({exoneratedTaxAmount:"13",netTaxAmount:"0",lineTotal:"100",taxes:[tax({netTaxAmount:"0",exemption:e})]});}
 function expectCode(fn:()=>unknown,code:string){try{fn();fail("expected error");}catch(error){expect(error).toBeInstanceOf(FacturaEnCrPreparationError);expect((error as FacturaEnCrPreparationError).code).toBe(code);expect((error as Error).message).toBe(code);}}

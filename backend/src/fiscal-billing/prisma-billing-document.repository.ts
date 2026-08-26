@@ -38,6 +38,8 @@ import {
   resolveCrDraftReceiverIdentity,
   validateCrDraftPaymentSnapshots,
 } from "./fiscal-draft-selection";
+import { validateCrV44CalculatedSnapshot } from "./cr-v44-calculated-snapshot-validator";
+import { FiscalCalculationError } from "./fiscal-decimal";
 
 const MAX_SEQUENCE_NUMBER = 9_999_999_999n;
 const SUPPORTED_DOCUMENT_TYPES = new Set<string>([
@@ -217,7 +219,7 @@ type AuthoritativeSalesOrder = Prisma.SalesOrderGetPayload<{
   include: typeof authoritativeSalesOrderInclude;
 }>;
 type AllocationDocument = Prisma.BillingDocumentGetPayload<{
-  include: { lines: { include: { taxes: true } } };
+  include: { lines: { include: { taxes: { include: { exemption: true } } } } };
 }>;
 const workspaceSelect=Prisma.validator<Prisma.BillingDocumentSelect>()({
   id:true,billingMode:true,internalNumber:true,documentTypeCode:true,sourceType:true,sourceId:true,sourceNumber:true,sourceRole:true,
@@ -269,6 +271,7 @@ export class PrismaBillingDocumentRepository
       where: { id_tenantId: { id: billingDocumentId, tenantId } },
       select: {
         id: true,
+        fiscalCalculationPolicyVersion: true,
         billingMode: true,
         lifecycleStatus: true,
         providerStatus: true,
@@ -589,7 +592,12 @@ export class PrismaBillingDocumentRepository
           include: {
             lines: {
               orderBy: { lineNumber: "asc" },
-              include: { taxes: { orderBy: { taxOrder: "asc" } } },
+              include: {
+                taxes: {
+                  orderBy: { taxOrder: "asc" },
+                  include: { exemption: true },
+                },
+              },
             },
           },
         });
@@ -989,6 +997,7 @@ export class PrismaBillingDocumentRepository
   }
 
   private requireEligibleDraft(document: {
+    fiscalCalculationPolicyVersion: string | null;
     billingMode: string;
     lifecycleStatus: string;
     providerStatus: string;
@@ -996,6 +1005,11 @@ export class PrismaBillingDocumentRepository
     fiscalNumber: string | null;
     providerDocumentId: string | null;
   }) {
+    if (document.fiscalCalculationPolicyVersion !== CR_V44_DECIMAL_V1) {
+      throw fiscalBillingError(
+        "BILLING_DOCUMENT_FISCAL_CALCULATION_POLICY_UNSUPPORTED",
+      );
+    }
     if (
       document.billingMode !== "ELECTRONIC_PROVIDER" ||
       document.lifecycleStatus !== "DRAFT" ||
@@ -1014,6 +1028,12 @@ export class PrismaBillingDocumentRepository
     tx: Prisma.TransactionClient,
     document: AllocationDocument,
   ) {
+    if (document.fiscalCalculationPolicyVersion !== CR_V44_DECIMAL_V1) {
+      throw fiscalBillingError(
+        "BILLING_DOCUMENT_FISCAL_CALCULATION_POLICY_UNSUPPORTED",
+      );
+    }
+    requireValidCalculatedSnapshot(document);
     if (!document.fiscalIssuerId) readinessFailure();
     if (
       document.countryCode !== "CR" ||
@@ -1027,8 +1047,7 @@ export class PrismaBillingDocumentRepository
       (document.documentTypeCode !== "04" &&
         (!document.receiverName?.trim() ||
           !document.receiverIdentificationType?.trim() ||
-          !document.receiverIdentification?.trim())) ||
-      !validLinesAndTotals(document)
+          !document.receiverIdentification?.trim()))
     ) {
       readinessFailure();
     }
@@ -1081,6 +1100,21 @@ export class PrismaBillingDocumentRepository
       where:{id_tenantId:{id:documentId,tenantId}},select:workspaceSelect,
     }) as WorkspaceRow|null;
     if (!document) return null;
+    const receiverFiscalIdentityMissing =
+      document.documentTypeCode !== "04" &&
+      (!document.receiverIdentificationType || !document.receiverIdentification);
+    const exchangeRateMissing = !workspaceFiscalIdentityReady(document);
+    const fiscalCalculationPolicyUnsupported =
+      document.fiscalCalculationPolicyVersion !== CR_V44_DECIMAL_V1;
+    const calculatedSnapshotInvalid =
+      !fiscalCalculationPolicyUnsupported && !validCalculatedSnapshot(document);
+    const readinessIssues: BillingDocumentWorkspace["readiness"]["issues"] = [];
+    if (fiscalCalculationPolicyUnsupported) {
+      readinessIssues.push("BILLING_DOCUMENT_FISCAL_CALCULATION_POLICY_UNSUPPORTED");
+    }
+    if (calculatedSnapshotInvalid) {
+      readinessIssues.push("BILLING_DOCUMENT_CALCULATED_SNAPSHOT_INVALID");
+    }
     return {
       id:document.id,billingMode:document.billingMode,internalNumber:document.internalNumber,documentTypeCode:document.documentTypeCode,
       sourceType:document.sourceType,sourceId:document.sourceId,sourceNumber:document.sourceNumber,sourceRole:document.sourceRole,
@@ -1104,10 +1138,20 @@ export class PrismaBillingDocumentRepository
       references:document.references.map(reference=>({id:reference.id,referenceOrder:reference.referenceOrder,referencedBillingDocumentId:reference.referencedBillingDocumentId,externalDocumentKey:reference.externalDocumentKey,externalDocumentNumber:reference.externalDocumentNumber,referencedDocumentTypeCode:reference.referencedDocumentTypeCode,reasonCode:reference.reasonCode,reasonDescription:reference.reasonDescription,referenceDate:requiredWorkspaceDate(reference.referenceDate)})),
       lines:document.lines.map(line=>({id:line.id,lineNumber:line.lineNumber,cabysCode:line.cabysCode,itemCode:line.itemCode,description:line.description,quantity:requiredWorkspaceDecimal(line.quantity),unitOfMeasureCode:line.unitOfMeasureCode,unitPrice:requiredWorkspaceDecimal(line.unitPrice),grossAmount:requiredWorkspaceDecimal(line.grossAmount),discountAmount:requiredWorkspaceDecimal(line.discountAmount),discountCode:line.discountCode,discountReason:line.discountReason,taxableBase:requiredWorkspaceDecimal(line.taxableBase),taxAmount:requiredWorkspaceDecimal(line.taxAmount),exoneratedTaxAmount:requiredWorkspaceDecimal(line.exoneratedTaxAmount),netTaxAmount:requiredWorkspaceDecimal(line.netTaxAmount),lineSubtotal:requiredWorkspaceDecimal(line.lineSubtotal),lineTotal:requiredWorkspaceDecimal(line.lineTotal),taxes:line.taxes.map(tax=>({id:tax.id,taxOrder:tax.taxOrder,taxCode:tax.taxCode,rateCode:tax.rateCode,ratePercentage:requiredWorkspaceDecimal(tax.ratePercentage),taxableBase:requiredWorkspaceDecimal(tax.taxableBase),taxAmount:requiredWorkspaceDecimal(tax.taxAmount),calculationFactor:workspaceDecimal(tax.calculationFactor),netTaxAmount:requiredWorkspaceDecimal(tax.netTaxAmount),exemption:tax.exemption?{id:tax.exemption.id,documentTypeCode:tax.exemption.documentTypeCode,documentNumber:tax.exemption.documentNumber,legalArticle:tax.exemption.legalArticle,legalSection:tax.exemption.legalSection,issuingInstitutionCode:tax.exemption.issuingInstitutionCode,issuingInstitutionName:tax.exemption.issuingInstitutionName,otherInstitutionDescription:tax.exemption.otherInstitutionDescription,issueDate:requiredWorkspaceDate(tax.exemption.issueDate),exemptedPercentage:requiredWorkspaceDecimal(tax.exemption.exemptedPercentage),exemptedAmount:requiredWorkspaceDecimal(tax.exemption.exemptedAmount)}:null}))})),
       readiness: {
-        receiverFiscalIdentityMissing:
-          !document.receiverIdentificationType ||
-          !document.receiverIdentification,
-        exchangeRateMissing: !workspaceFiscalIdentityReady(document),
+        receiverFiscalIdentityMissing,
+        exchangeRateMissing,
+        fiscalCalculationPolicyUnsupported,
+        calculatedSnapshotInvalid,
+        issuanceReady:
+          document.billingMode === "ELECTRONIC_PROVIDER" &&
+          document.lifecycleStatus === "DRAFT" &&
+          document.providerStatus === "NOT_SUBMITTED" &&
+          document.taxAuthorityStatus === "NOT_SUBMITTED" &&
+          !receiverFiscalIdentityMissing &&
+          !exchangeRateMissing &&
+          !fiscalCalculationPolicyUnsupported &&
+          !calculatedSnapshotInvalid,
+        issues: readinessIssues,
       },
     };
   }
@@ -1657,65 +1701,72 @@ function validIssuerIdentification(document: AllocationDocument) {
   }
 }
 
-function validLinesAndTotals(document: AllocationDocument) {
-  const totals = [
-    document.grossSubtotal,
-    document.discountTotal,
-    document.taxableTotal,
-    document.exemptTotal,
-    document.exoneratedTotal,
-    document.grossTaxTotal,
-    document.exoneratedTaxTotal,
-    document.netTaxTotal,
-    document.total,
-  ];
-  if (
-    !document.lines.length ||
-    totals.some((value) => value.lt(0)) ||
-    document.total.lte(0) ||
-    !document.grossTaxTotal
-      .minus(document.exoneratedTaxTotal)
-      .equals(document.netTaxTotal) ||
-    !document.grossSubtotal
-      .minus(document.discountTotal)
-      .plus(document.netTaxTotal)
-      .equals(document.total)
-  ) {
+function validCalculatedSnapshot(document: AllocationDocument | WorkspaceRow) {
+  try {
+    validateCrV44CalculatedSnapshot(calculatedSnapshot(document));
+    return true;
+  } catch {
     return false;
   }
+}
 
-  const lineSubtotal = document.lines.reduce(
-    (sum, line) => sum.plus(line.lineSubtotal),
-    new Prisma.Decimal(0),
-  );
-  const lineTotal = document.lines.reduce(
-    (sum, line) => sum.plus(line.lineTotal),
-    new Prisma.Decimal(0),
-  );
-  if (
-    !lineSubtotal.equals(document.grossSubtotal.minus(document.discountTotal)) ||
-    !lineTotal.equals(document.total)
-  ) {
-    return false;
+function requireValidCalculatedSnapshot(document: AllocationDocument): void {
+  try {
+    validateCrV44CalculatedSnapshot(calculatedSnapshot(document));
+  } catch (error) {
+    if (
+      error instanceof FiscalCalculationError &&
+      error.code === "FISCAL_DECIMAL_CAPACITY_OVERFLOW"
+    ) {
+      throw fiscalBillingError(
+        "BILLING_DOCUMENT_HACIENDA_MONEY_CAPACITY_EXCEEDED",
+      );
+    }
+    throw fiscalBillingError("BILLING_DOCUMENT_CALCULATED_SNAPSHOT_INVALID");
   }
-  return document.lines.every(
-    (line) =>
-      line.lineNumber > 0 &&
-      Boolean(line.description.trim()) &&
-      Boolean(line.unitOfMeasureCode.trim()) &&
-      line.quantity.gt(0) &&
-      line.unitPrice.gte(0) &&
-      line.grossAmount.gte(0) &&
-      line.discountAmount.gte(0) &&
-      line.taxableBase.gte(0) &&
-      line.taxAmount.gte(0) &&
-      line.exoneratedTaxAmount.gte(0) &&
-      line.netTaxAmount.gte(0) &&
-      line.lineSubtotal.gte(0) &&
-      line.lineTotal.gt(0) &&
-      line.grossAmount.minus(line.discountAmount).equals(line.lineSubtotal) &&
-      line.lineSubtotal.plus(line.netTaxAmount).equals(line.lineTotal),
-  );
+}
+
+function calculatedSnapshot(document: AllocationDocument | WorkspaceRow) {
+  return {
+    fiscalCalculationPolicyVersion: document.fiscalCalculationPolicyVersion,
+    totals: {
+      grossSubtotal: document.grossSubtotal.toFixed(),
+      discountTotal: document.discountTotal.toFixed(),
+      taxableTotal: document.taxableTotal.toFixed(),
+      exemptTotal: document.exemptTotal.toFixed(),
+      exoneratedTotal: document.exoneratedTotal.toFixed(),
+      grossTaxTotal: document.grossTaxTotal.toFixed(),
+      exoneratedTaxTotal: document.exoneratedTaxTotal.toFixed(),
+      netTaxTotal: document.netTaxTotal.toFixed(),
+      total: document.total.toFixed(),
+    },
+    lines: document.lines.map((line) => ({
+      lineNumber: line.lineNumber,
+      quantity: line.quantity.toFixed(),
+      unitPrice: line.unitPrice.toFixed(),
+      grossAmount: line.grossAmount.toFixed(),
+      discountAmount: line.discountAmount.toFixed(),
+      discountCode: line.discountCode,
+      discountReason: line.discountReason,
+      taxableBase: line.taxableBase.toFixed(),
+      taxAmount: line.taxAmount.toFixed(),
+      exoneratedTaxAmount: line.exoneratedTaxAmount.toFixed(),
+      netTaxAmount: line.netTaxAmount.toFixed(),
+      lineSubtotal: line.lineSubtotal.toFixed(),
+      lineTotal: line.lineTotal.toFixed(),
+      taxes: line.taxes.map((tax) => ({
+        taxOrder: tax.taxOrder,
+        taxCode: tax.taxCode,
+        rateCode: tax.rateCode,
+        ratePercentage: tax.ratePercentage.toFixed(),
+        taxableBase: tax.taxableBase.toFixed(),
+        taxAmount: tax.taxAmount.toFixed(),
+        calculationFactor: tax.calculationFactor?.toFixed() ?? null,
+        netTaxAmount: tax.netTaxAmount.toFixed(),
+        exemption: tax.exemption,
+      })),
+    })),
+  };
 }
 
 function readinessFailure(): never {

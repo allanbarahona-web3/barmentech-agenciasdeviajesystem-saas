@@ -331,6 +331,14 @@ describe("BillingDocumentService generic core", () => {
     expect(resolver.resolveExactObservation).not.toHaveBeenCalled();
   });
 
+  it.each([null,""," ","UNKNOWN_POLICY"])("rejects unsupported policy %p before BCCR or allocation",async fiscalCalculationPolicyVersion=>{
+    const repository={findIssuancePreflight:jest.fn().mockResolvedValue(preflight({currencyCode:"USD",fiscalCalculationPolicyVersion})),requestElectronicIssuance:jest.fn()};
+    const resolver={resolveExactObservation:jest.fn()};const clock={now:jest.fn()};
+    const service=new BillingDocumentService(repository as never,resolver as never,clock as never);
+    await expect(service.requestElectronicIssuance("tenant-a","document-a","user-a")).rejects.toMatchObject({response:expect.objectContaining({code:"BILLING_DOCUMENT_FISCAL_CALCULATION_POLICY_UNSUPPORTED"})});
+    expect(resolver.resolveExactObservation).not.toHaveBeenCalled();expect(clock.now).not.toHaveBeenCalled();expect(repository.requestElectronicIssuance).not.toHaveBeenCalled();
+  });
+
   it("rejects unsupported currency and resolver failures before allocation", async () => {
     const unsupportedRepository = {
       findIssuancePreflight: jest.fn().mockResolvedValue(preflight({ currencyCode: "EUR" })),
@@ -360,6 +368,7 @@ async function captureWorkspace(promise:Promise<unknown>):Promise<{getResponse()
 function preflight(overrides: Record<string, unknown> = {}) {
   return {
     id: "document-a", billingMode: "ELECTRONIC_PROVIDER", lifecycleStatus: "DRAFT",
+    fiscalCalculationPolicyVersion: "CR_V44_DECIMAL_V1",
     providerStatus: "NOT_SUBMITTED", taxAuthorityStatus: "NOT_SUBMITTED",
     currencyCode: "CRC", fiscalNumber: null, providerDocumentId: null,
     billingDocumentNumberSequenceId: null, allocatedSequenceNumber: null,

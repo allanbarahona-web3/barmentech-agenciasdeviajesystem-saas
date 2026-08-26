@@ -14,6 +14,7 @@ import type {
 import { fiscalBillingError } from "./fiscal-billing.errors";
 import { FiscalIssuanceClock } from "./fiscal-issuance.clock";
 import { costaRicaDate } from "./fiscal-emission-time";
+import { CR_V44_DECIMAL_V1 } from "./cr-v44-fiscal-calculation-policy";
 
 @Injectable()
 export class BillingDocumentService {
@@ -48,6 +49,11 @@ export class BillingDocumentService {
         billingDocumentId,
         actorUserId,
         null,
+      );
+    }
+    if (preflight.fiscalCalculationPolicyVersion !== CR_V44_DECIMAL_V1) {
+      throw fiscalBillingError(
+        "BILLING_DOCUMENT_FISCAL_CALCULATION_POLICY_UNSUPPORTED",
       );
     }
     if (allocationState(preflight) === "PARTIAL" || !isCleanEligibleDraft(preflight)) {
@@ -240,6 +246,7 @@ function allocationState(document: BillingDocumentIssuancePreflight) {
 function isCleanEligibleDraft(document: BillingDocumentIssuancePreflight) {
   return (
     document.billingMode === "ELECTRONIC_PROVIDER" &&
+    document.fiscalCalculationPolicyVersion === CR_V44_DECIMAL_V1 &&
     document.lifecycleStatus === "DRAFT" &&
     document.providerStatus === "NOT_SUBMITTED" &&
     document.taxAuthorityStatus === "NOT_SUBMITTED" &&
