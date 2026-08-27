@@ -32,6 +32,8 @@ import { FISCAL_NUMBER_SEQUENCE_ADMIN_REPOSITORY } from "./fiscal-number-sequenc
 import { FiscalOutboxPublisherService } from "./jobs/fiscal-outbox-publisher.service";
 import { FiscalAcceptedFanoutCoordinatorService } from "./jobs/fiscal-accepted-fanout-coordinator.service";
 import { AccountReceivableRecognitionService } from "./account-receivable-recognition.service";
+import { AccountReceivableRecognitionPublisher } from "./jobs/account-receivable-recognition.publisher";
+import { AccountReceivableRecognitionProcessor } from "./jobs/account-receivable-recognition.processor";
 import { OfficialExchangeRateModule } from "../official-exchange-rates/official-exchange-rate.module";
 import { FiscalIssuanceClock } from "./fiscal-issuance.clock";
 import { FacturaEnCrElectronicSubmissionAdapter } from "./providers/factura-en-cr-electronic-submission.adapter";
@@ -83,6 +85,8 @@ import { FiscalRefreshReconciliationProcessor } from "./jobs/fiscal-refresh-reco
     FiscalOutboxPublisherService,
     FiscalAcceptedFanoutCoordinatorService,
     AccountReceivableRecognitionService,
+    AccountReceivableRecognitionPublisher,
+    AccountReceivableRecognitionProcessor,
     FiscalIssuanceClock,
     BillingDocumentSubmissionPreparationService,
     BillingDocumentSubmissionAttemptService,

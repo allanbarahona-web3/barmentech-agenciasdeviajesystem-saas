@@ -5,6 +5,7 @@ export const PLATFORM_QUEUE_KEYS = {
   FISCAL_BILLING: "fiscal-billing",
   FISCAL_STATUS_RECONCILIATION: "fiscal-status-reconciliation",
   FISCAL_REFRESH_RECONCILIATION: "fiscal-refresh-reconciliation",
+  ACCOUNT_RECEIVABLE_RECOGNITION: "account-receivable-recognition",
   PDF: "pdf",
   NOTIFICATION: "notification",
   PACKAGE_COMPLETED: "package-completed",
@@ -21,6 +22,7 @@ export const DEFAULT_QUEUE_NAMES: Record<PlatformQueueKey, string> = {
   "fiscal-billing": "fiscal-billing",
   "fiscal-status-reconciliation": "fiscal-status-reconciliation",
   "fiscal-refresh-reconciliation": "fiscal-refresh-reconciliation",
+  "account-receivable-recognition": "account-receivable-recognition",
   pdf: "pdf",
   notification: "notification",
   "package-completed": "package-completed",
@@ -36,6 +38,8 @@ export const QUEUE_NAME_ENV_KEYS: Record<PlatformQueueKey, string> = {
     "BULLMQ_FISCAL_STATUS_RECONCILIATION_QUEUE_NAME",
   "fiscal-refresh-reconciliation":
     "BULLMQ_FISCAL_REFRESH_RECONCILIATION_QUEUE_NAME",
+  "account-receivable-recognition":
+    "BULLMQ_ACCOUNT_RECEIVABLE_RECOGNITION_QUEUE_NAME",
   pdf: "BULLMQ_PDF_QUEUE_NAME",
   notification: "BULLMQ_NOTIFICATION_QUEUE_NAME",
   "package-completed": "BULLMQ_PACKAGE_COMPLETED_QUEUE_NAME",

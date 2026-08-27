@@ -139,6 +139,26 @@ describe("AccountReceivableRecognitionService", () => {
     expect(c.tx.accountReceivable.findUnique).toHaveBeenCalledTimes(1);
     expect(c.tx.billingOutboxEvent.updateMany).toHaveBeenCalledTimes(1);
   });
+
+  it("conditionally marks only its owned structural failure as FAILED", async () => {
+    const c = context();
+    await c.service.failClaim(claim(), ACCOUNT_RECEIVABLE_RECOGNITION_ERRORS.DOCUMENT_INVALID);
+    expect(c.rootUpdate).toHaveBeenCalledWith({
+      where: expect.objectContaining({ id: "child-a", tenantId: "tenant-a", status: "PROCESSING", lockedBy: "owner-a" }),
+      data: { status: "FAILED", lastError: ACCOUNT_RECEIVABLE_RECOGNITION_ERRORS.DOCUMENT_INVALID, lockedAt: null, lockedBy: null },
+    });
+  });
+
+  it("returns a final transient failure to the owned outbox lifecycle with backoff", async () => {
+    jest.useFakeTimers().setSystemTime(new Date("2026-08-24T12:00:00.000Z"));
+    const c = context({ outboxAttemptCount: 2, outboxMaximumAttempts: 5 });
+    await c.service.releaseClaimAfterWorkerFailure(claim());
+    expect(c.tx.billingOutboxEvent.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: "child-a", lockedBy: "owner-a" }),
+      data: expect.objectContaining({ status: "PENDING", availableAt: new Date("2026-08-24T12:00:02.000Z"), lastError: "ACCOUNT_RECEIVABLE_RECOGNITION_WORKER_FAILED" }),
+    }));
+    jest.useRealTimers();
+  });
 });
 
 const ISSUE_DATE = new Date("2026-08-24T00:00:00.000Z");
@@ -147,21 +167,22 @@ function d(value: string) { return new Prisma.Decimal(value); }
 
 function claim() { return { tenantId: "tenant-a", billingOutboxEventId: "child-a", lockOwner: "owner-a" }; }
 
-function context(options: { child?: ReturnType<typeof child>; document?: ReturnType<typeof document>; locked?: Array<{ id: string }>; createCount?: number; receivable?: Record<string, unknown>; childCompletionCount?: number } = {}) {
+function context(options: { child?: ReturnType<typeof child>; document?: ReturnType<typeof document>; locked?: Array<{ id: string }>; createCount?: number; receivable?: Record<string, unknown>; childCompletionCount?: number; outboxAttemptCount?: number; outboxMaximumAttempts?: number } = {}) {
   const event = options.child ?? child();
   const doc = options.document ?? document();
   const createMany = jest.fn().mockResolvedValue({ count: options.createCount ?? 1 });
   const tx = {
     $queryRaw: jest.fn().mockResolvedValue(options.locked ?? [{ id: "child-a" }]),
-    billingOutboxEvent: { findUnique: jest.fn().mockResolvedValue(event), updateMany: jest.fn().mockResolvedValue({ count: options.childCompletionCount ?? 1 }) },
+    billingOutboxEvent: { findUnique: jest.fn(async (args: { select?: unknown }) => args.select ? { attemptCount: options.outboxAttemptCount ?? 1, maximumAttempts: options.outboxMaximumAttempts ?? 5 } : event), updateMany: jest.fn().mockResolvedValue({ count: options.childCompletionCount ?? 1 }) },
     billingDocument: { findFirst: jest.fn().mockResolvedValue(doc) },
     accountReceivable: {
       createMany,
       findUnique: jest.fn(async () => options.receivable ?? { id: "receivable-a", ...createMany.mock.calls[0][0].data }),
     },
   };
-  const prisma = { $transaction: jest.fn(async (work: (value: typeof tx) => unknown) => work(tx)) } as unknown as PrismaService;
-  return { service: new AccountReceivableRecognitionService(prisma), tx };
+  const rootUpdate = jest.fn().mockResolvedValue({ count: 1 });
+  const prisma = { $transaction: jest.fn(async (work: (value: typeof tx) => unknown) => work(tx)), billingOutboxEvent: { updateMany: rootUpdate } } as unknown as PrismaService;
+  return { service: new AccountReceivableRecognitionService(prisma), tx, rootUpdate };
 }
 
 function child(overrides: Record<string, unknown> = {}) {

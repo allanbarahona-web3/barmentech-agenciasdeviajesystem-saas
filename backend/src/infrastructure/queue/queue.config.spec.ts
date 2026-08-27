@@ -2,6 +2,7 @@ import { ConfigService } from "@nestjs/config";
 import { MODULE_METADATA } from "@nestjs/common/constants";
 import { FiscalBillingModule } from "../../fiscal-billing/fiscal-billing.module";
 import { FiscalBillingSubmissionProcessor } from "../../fiscal-billing/jobs/fiscal-billing-submission.processor";
+import { AccountReceivableRecognitionProcessor } from "../../fiscal-billing/jobs/account-receivable-recognition.processor";
 import {
   DEFAULT_QUEUE_NAMES,
   PLATFORM_QUEUE_KEYS,
@@ -18,6 +19,7 @@ describe("queue configuration", () => {
       FISCAL_BILLING: "fiscal-billing",
       FISCAL_STATUS_RECONCILIATION: "fiscal-status-reconciliation",
       FISCAL_REFRESH_RECONCILIATION: "fiscal-refresh-reconciliation",
+      ACCOUNT_RECEIVABLE_RECOGNITION: "account-receivable-recognition",
       PDF: "pdf",
       NOTIFICATION: "notification",
       PACKAGE_COMPLETED: "package-completed",
@@ -30,6 +32,7 @@ describe("queue configuration", () => {
       "fiscal-billing": "fiscal-billing",
       "fiscal-status-reconciliation": "fiscal-status-reconciliation",
       "fiscal-refresh-reconciliation": "fiscal-refresh-reconciliation",
+      "account-receivable-recognition": "account-receivable-recognition",
       pdf: "pdf",
       notification: "notification",
       "package-completed": "package-completed",
@@ -50,6 +53,7 @@ describe("queue configuration", () => {
         PLATFORM_QUEUE_KEYS.FISCAL_REFRESH_RECONCILIATION
       ],
     ).toBe("fiscal-refresh-reconciliation");
+    expect(getQueueConfig(configService()).queueNames[PLATFORM_QUEUE_KEYS.ACCOUNT_RECEIVABLE_RECOGNITION]).toBe("account-receivable-recognition");
   });
 
   it("uses stable optional environment-name keys for both reconciliation queues", () => {
@@ -74,6 +78,10 @@ describe("queue configuration", () => {
     ).toBe("fiscal-custom");
   });
 
+  it("uses the existing BullMQ environment-name convention for receivable recognition", () => {
+    expect(QUEUE_NAME_ENV_KEYS[PLATFORM_QUEUE_KEYS.ACCOUNT_RECEIVABLE_RECOGNITION]).toBe("BULLMQ_ACCOUNT_RECEIVABLE_RECOGNITION_QUEUE_NAME");
+  });
+
   it("registers the fiscal processor with three distinct fiscal queues", () => {
     const providers = Reflect.getMetadata(
       MODULE_METADATA.PROVIDERS,
@@ -81,11 +89,13 @@ describe("queue configuration", () => {
     ) as Array<{ name?: string }>;
 
     expect(providers).toContain(FiscalBillingSubmissionProcessor);
+    expect(providers).toContain(AccountReceivableRecognitionProcessor);
     expect(new Set([
       PLATFORM_QUEUE_KEYS.FISCAL_BILLING,
       PLATFORM_QUEUE_KEYS.FISCAL_STATUS_RECONCILIATION,
       PLATFORM_QUEUE_KEYS.FISCAL_REFRESH_RECONCILIATION,
-    ]).size).toBe(3);
+      PLATFORM_QUEUE_KEYS.ACCOUNT_RECEIVABLE_RECOGNITION,
+    ]).size).toBe(4);
   });
 });
 

@@ -12,6 +12,7 @@ const DOCUMENT_TYPE_INVOICE = "01";
 const CASH_CONDITION = "01";
 const CREDIT_CONDITION = "02";
 const MAX_AMOUNT = new Prisma.Decimal("99999999999999.99999");
+const WORKER_FAILURE_ERROR = "ACCOUNT_RECEIVABLE_RECOGNITION_WORKER_FAILED";
 
 export const ACCOUNT_RECEIVABLE_RECOGNITION_ERRORS = {
   CLAIM_INVALID: "ACCOUNT_RECEIVABLE_RECOGNITION_CLAIM_INVALID",
@@ -142,6 +143,73 @@ export class AccountReceivableRecognitionService {
       }
     });
   }
+
+  async failClaim(
+    claim: ClaimedReceivableRecognitionEvent,
+    errorCode: string,
+  ): Promise<void> {
+    await this.prisma.billingOutboxEvent.updateMany({
+      where: ownedRecognitionClaimWhere(claim),
+      data: {
+        status: "FAILED",
+        lastError: safeRecognitionError(errorCode),
+        lockedAt: null,
+        lockedBy: null,
+      },
+    });
+  }
+
+  async releaseClaimAfterWorkerFailure(
+    claim: ClaimedReceivableRecognitionEvent,
+  ): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      const locked = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT "id" FROM "billing_outbox_events"
+        WHERE "id" = ${claim.billingOutboxEventId}
+          AND "tenantId" = ${claim.tenantId}
+          AND "eventType" = ${ACCOUNT_RECEIVABLE_RECOGNITION_REQUESTED_EVENT_TYPE}
+          AND "eventVersion" = ${ACCOUNT_RECEIVABLE_RECOGNITION_REQUESTED_EVENT_VERSION}
+          AND "status" = 'PROCESSING'
+          AND "lockedBy" = ${claim.lockOwner}
+        FOR UPDATE
+      `;
+      if (locked.length !== 1) return;
+      const event = await tx.billingOutboxEvent.findUnique({
+        where: { id: claim.billingOutboxEventId },
+        select: { attemptCount: true, maximumAttempts: true },
+      });
+      if (!event) return;
+      if (event.attemptCount >= event.maximumAttempts) {
+        await tx.billingOutboxEvent.updateMany({
+          where: ownedRecognitionClaimWhere(claim),
+          data: {
+            status: "FAILED", lastError: WORKER_FAILURE_ERROR,
+            lockedAt: null, lockedBy: null,
+          },
+        });
+        return;
+      }
+      const exponent = Math.min(Math.max(event.attemptCount - 1, 0), 30);
+      const delayMs = Math.min(1_000 * 2 ** exponent, 60_000);
+      await tx.billingOutboxEvent.updateMany({
+        where: ownedRecognitionClaimWhere(claim),
+        data: {
+          status: "PENDING",
+          availableAt: new Date(Date.now() + delayMs),
+          lastError: WORKER_FAILURE_ERROR,
+          lockedAt: null,
+          lockedBy: null,
+        },
+      });
+    });
+  }
+}
+
+export function isNonRetryableRecognitionError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  return Object.values(ACCOUNT_RECEIVABLE_RECOGNITION_ERRORS).includes(
+    error.message as (typeof ACCOUNT_RECEIVABLE_RECOGNITION_ERRORS)[keyof typeof ACCOUNT_RECEIVABLE_RECOGNITION_ERRORS],
+  );
 }
 
 const billingDocumentRecognitionSelect = {
@@ -331,4 +399,21 @@ function nonEmpty(value: unknown): value is string {
 
 function isJsonObject(value: Prisma.JsonValue): value is Prisma.JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function ownedRecognitionClaimWhere(claim: ClaimedReceivableRecognitionEvent) {
+  return {
+    id: claim.billingOutboxEventId,
+    tenantId: claim.tenantId,
+    eventType: ACCOUNT_RECEIVABLE_RECOGNITION_REQUESTED_EVENT_TYPE,
+    eventVersion: ACCOUNT_RECEIVABLE_RECOGNITION_REQUESTED_EVENT_VERSION,
+    status: "PROCESSING" as const,
+    lockedBy: claim.lockOwner,
+  };
+}
+
+function safeRecognitionError(value: string): string {
+  return Object.values(ACCOUNT_RECEIVABLE_RECOGNITION_ERRORS).includes(
+    value as (typeof ACCOUNT_RECEIVABLE_RECOGNITION_ERRORS)[keyof typeof ACCOUNT_RECEIVABLE_RECOGNITION_ERRORS],
+  ) ? value : WORKER_FAILURE_ERROR;
 }
