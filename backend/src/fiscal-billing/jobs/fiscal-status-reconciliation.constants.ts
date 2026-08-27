@@ -6,6 +6,6 @@ export const FISCAL_STATUS_RECONCILIATION_LEASE_MS=60_000;
 export const FISCAL_STATUS_RECONCILIATION_CONCURRENCY=10;
 export const FISCAL_STATUS_RECONCILIATION_WORKER_KEY="fiscal-status-reconciliation";
 
-export function fiscalStatusReconciliationJobId(statusCheckLockOwner:string):string{
-  return `fiscal-status-${statusCheckLockOwner}`;
+export function fiscalStatusReconciliationJobId(billingDocumentId:string):string{
+  return `fiscal-status-${billingDocumentId}`;
 }
