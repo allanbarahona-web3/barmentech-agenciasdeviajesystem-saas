@@ -5,6 +5,7 @@ import type { BillingDocumentStatusLookupResult } from "./billing-document-statu
 import { fiscalBillingError } from "./fiscal-billing.errors";
 import { FiscalIssuanceClock } from "./fiscal-issuance.clock";
 import { nextFiscalStatusReconciliationSchedule } from "./fiscal-status-reconciliation-policy";
+import { persistBillingDocumentFiscalAcceptedOutboxEvent } from "./billing-document-fiscal-accepted-outbox";
 
 const persistenceSelect = Prisma.validator<Prisma.BillingDocumentSelect>()({
   id: true, tenantId: true, billingMode: true, lifecycleStatus: true,
@@ -80,7 +81,16 @@ export class BillingDocumentStatusPersistenceService {
             providerNextRefreshAt:refreshDue,providerRefreshLockOwner:null,providerRefreshLeaseUntil:null,
           } as Prisma.BillingDocumentUpdateManyMutationInput,
         });
-        if (updated.count === 1) return result(input, target, issuedAt, taxAuthorityFinalizedAt, true);
+        if (updated.count === 1) {
+          if (target === "ACCEPTED") {
+            await persistBillingDocumentFiscalAcceptedOutboxEvent(
+              tx,
+              input.tenantId,
+              input.billingDocumentId,
+            );
+          }
+          return result(input, target, issuedAt, taxAuthorityFinalizedAt, true);
+        }
         const concurrent = await readRow(tx, input);
         if (!concurrent) notFound();
         requireCompleteState(concurrent);

@@ -232,6 +232,18 @@ describe("FiscalOutboxPublisherService", () => {
     expect(updateMany).not.toHaveBeenCalled();
   });
 
+  it("does not claim or dispatch fiscal-accepted events as issuance requests", async () => {
+    const { service, tx, dispatch, updateMany } = setup([]);
+
+    await service.publishAvailableEvents();
+
+    expect(tx.$queryRaw.mock.calls[0]).not.toContain(
+      "billing-document.fiscal-accepted",
+    );
+    expect(dispatch).not.toHaveBeenCalled();
+    expect(updateMany).not.toHaveBeenCalled();
+  });
+
   it("does not overlap poll cycles and schedules only after completion", async () => {
     jest.useFakeTimers();
     const { service } = setup([]);
