@@ -31,6 +31,7 @@ import { PrismaFiscalNumberSequenceAdminRepository } from "./prisma-fiscal-numbe
 import { FISCAL_NUMBER_SEQUENCE_ADMIN_REPOSITORY } from "./fiscal-number-sequence-admin.repository";
 import { FiscalOutboxPublisherService } from "./jobs/fiscal-outbox-publisher.service";
 import { FiscalAcceptedFanoutCoordinatorService } from "./jobs/fiscal-accepted-fanout-coordinator.service";
+import { AccountReceivableRecognitionService } from "./account-receivable-recognition.service";
 import { OfficialExchangeRateModule } from "../official-exchange-rates/official-exchange-rate.module";
 import { FiscalIssuanceClock } from "./fiscal-issuance.clock";
 import { FacturaEnCrElectronicSubmissionAdapter } from "./providers/factura-en-cr-electronic-submission.adapter";
@@ -81,6 +82,7 @@ import { FiscalRefreshReconciliationProcessor } from "./jobs/fiscal-refresh-reco
     PrismaFiscalNumberSequenceAdminRepository,
     FiscalOutboxPublisherService,
     FiscalAcceptedFanoutCoordinatorService,
+    AccountReceivableRecognitionService,
     FiscalIssuanceClock,
     BillingDocumentSubmissionPreparationService,
     BillingDocumentSubmissionAttemptService,
