@@ -1857,6 +1857,7 @@ model BillingDocument {
   lifecycleStatus                   BillingDocumentLifecycleStatus   @default(DRAFT)
   providerStatus                    BillingProviderStatus            @default(NOT_SUBMITTED)
   taxAuthorityStatus                BillingTaxAuthorityStatus        @default(NOT_SUBMITTED)
+  taxAuthorityFinalizedAt           DateTime?                        @db.Timestamptz(6)
   artifactStatus                    BillingArtifactStatus            @default(NOT_GENERATED)
   issuerName                        String
   issuerIdentificationType          String                           @db.VarChar(4)
@@ -1912,6 +1913,7 @@ model BillingDocument {
   @@index([tenantId, providerReconciliationRequired, providerLastAttemptAt], map: "billing_docs_tenant_reconciliation_attempt_idx")
   @@index([providerNextStatusCheckAt, taxAuthorityStatus, lifecycleStatus, providerStatus], map: "billing_docs_status_check_due_idx")
   @@index([tenantId, taxAuthorityStatus, providerNextStatusCheckAt], map: "billing_docs_tenant_status_check_idx")
+  @@index([tenantId, taxAuthorityStatus, taxAuthorityFinalizedAt], map: "billing_docs_tenant_tax_status_finalized_idx")
   @@index([providerStatusCheckLeaseUntil], map: "billing_docs_status_check_lease_idx")
   @@index([providerNextRefreshAt, taxAuthorityStatus, providerReconciliationRequired], map: "billing_docs_refresh_due_idx")
   @@index([tenantId, providerReconciliationRequired, providerNextRefreshAt], map: "billing_docs_tenant_refresh_idx")
