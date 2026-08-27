@@ -62,6 +62,7 @@ const crV44ConcurrentWinnerSelect =
     sourceType: true,
     sourceId: true,
     sourceRole: true,
+    customerId: true,
     internalNumber: true,
     documentTypeCode: true,
     fiscalIssuerId: true,
@@ -120,6 +121,7 @@ type CrV44ConcurrentWinner = Prisma.BillingDocumentGetPayload<{
 type CrV44ConcurrentWinnerExpectation = {
   tenantId: string;
   sourceId: string;
+  customerId: string | null;
   internalNumber: string;
   documentTypeCode: string;
   fiscalIssuerId: string;
@@ -139,6 +141,7 @@ function isExactPristineCrV44ConcurrentWinner(
     winner.tenantId === expected.tenantId &&
     winner.sourceType === FISCAL_BILLING_SOURCE_TYPE &&
     winner.sourceId === expected.sourceId &&
+    winner.customerId === expected.customerId &&
     winner.sourceRole === "PRIMARY" &&
     winner.internalNumber === expected.internalNumber &&
     winner.documentTypeCode === expected.documentTypeCode &&
@@ -370,6 +373,13 @@ export class PrismaBillingDocumentRepository
         });
         if (!salesOrder) throw fiscalBillingError("SALES_ORDER_NOT_FOUND");
         requireEligibleFiscalSalesOrder(salesOrder);
+        if (salesOrder.customerId !== null) {
+          const customer = await tx.client.findFirst({
+            where: { id: salesOrder.customerId, tenantId: request.tenantId },
+            select: { id: true },
+          });
+          if (!customer) throw fiscalBillingError("BILLING_DRAFT_CONFLICT");
+        }
 
         const [configuration, issuer] = await Promise.all([
           tx.tenantBillingConfiguration.findUnique({
@@ -496,6 +506,7 @@ export class PrismaBillingDocumentRepository
         expectedWinner = {
           tenantId: command.tenantId,
           sourceId: salesOrder.id,
+          customerId: salesOrder.customerId,
           internalNumber: command.internalNumber,
           documentTypeCode: command.documentTypeCode,
           fiscalIssuerId: issuer.id,
@@ -512,7 +523,11 @@ export class PrismaBillingDocumentRepository
           ),
         };
         return tx.billingDocument.create({
-          data: billingDocumentCreateData(command, CR_V44_DECIMAL_V1),
+          data: billingDocumentCreateData(
+            command,
+            CR_V44_DECIMAL_V1,
+            salesOrder.customerId,
+          ),
           select: primaryDocumentSelect,
         });
       });
@@ -1446,6 +1461,7 @@ function mapCrV44Calculation(
 function billingDocumentCreateData(
   command: BillingDocumentDraftCommand,
   fiscalCalculationPolicyVersion: string | null,
+  customerId: string | null = null,
 ): Prisma.BillingDocumentUncheckedCreateInput {
   const source = command.source;
   return {
@@ -1456,6 +1472,7 @@ function billingDocumentCreateData(
     internalNumber: command.internalNumber,
     fiscalNumber: null,
     haciendaKey: null,
+    customerId,
     sourceType: source?.sourceType ?? null,
     sourceId: source?.sourceId ?? null,
     sourceNumber: source?.sourceNumber ?? null,

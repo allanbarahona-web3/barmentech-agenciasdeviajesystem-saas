@@ -156,6 +156,11 @@ describe("PrismaBillingDocumentRepository CR_V44_DECIMAL_V1 draft", () => {
     expect(context.tx.fiscalUnitOfMeasureEntry.findMany).toHaveBeenCalledTimes(1);
     expect(context.tx.fiscalTaxEntry.findMany).toHaveBeenCalledTimes(1);
     expect(context.tx.fiscalTaxRateEntry.findMany).toHaveBeenCalledTimes(1);
+    expect(context.tx.client.findFirst).toHaveBeenCalledTimes(1);
+    expect(context.tx.client.findFirst).toHaveBeenCalledWith({
+      where: { id: "customer-a", tenantId: "tenant-a" },
+      select: { id: true },
+    });
     expect(calculate).toHaveBeenCalledTimes(1);
     expect(calculate.mock.calls[0][0]).toMatchObject({
       lines: [
@@ -166,6 +171,45 @@ describe("PrismaBillingDocumentRepository CR_V44_DECIMAL_V1 draft", () => {
     expect(firstLine(createdData(context)).lineNumber).toBe(1);
     expect((createdData(context).lines as { create: unknown[] }).create).toHaveLength(2);
   });
+
+  it("persists only the authoritative tenant-owned Sales Order customer ID", async () => {
+    const context = setup();
+
+    await context.repository.createCrV44SalesOrderDraft(
+      { ...command(), customerId: "request-customer" } as CrV44SalesOrderDraftCommand,
+    );
+
+    const data = createdData(context);
+    expect(data.customerId).toBe("customer-a");
+    expect(context.tx.client.findFirst).toHaveBeenCalledWith({
+      where: { id: "customer-a", tenantId: "tenant-a" },
+      select: { id: true },
+    });
+    expect(Object.keys(context.tx.client.findFirst.mock.calls[0][0].select)).toEqual(["id"]);
+  });
+
+  it("persists a null Sales Order customer ID without a Client read", async () => {
+    const context = setup({ order: salesOrder({ customerId: null }) });
+
+    await context.repository.createCrV44SalesOrderDraft(command());
+
+    expect(createdData(context).customerId).toBeNull();
+    expect(context.tx.client.findFirst).not.toHaveBeenCalled();
+  });
+
+  it.each(["missing", "foreign"] as const)(
+    "rejects a missing or foreign Sales Order customer before persistence",
+    async _case => {
+      const context = setup({ customer: null });
+
+      await expectCode(
+        context.repository.createCrV44SalesOrderDraft(command()),
+        "BILLING_DRAFT_CONFLICT",
+      );
+      expect(context.tx.billingDocument.create).not.toHaveBeenCalled();
+      expect(context.tx.client.findFirst).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it("persists exempt tariff 10 into exempt rather than taxable totals", async () => {
     const context = setup({
@@ -430,6 +474,7 @@ describe("PrismaBillingDocumentRepository CR_V44_DECIMAL_V1 draft", () => {
 
     expect(calculate).not.toHaveBeenCalled();
     expect(context.tx.salesOrder.findFirst).not.toHaveBeenCalled();
+    expect(context.tx.client.findFirst).not.toHaveBeenCalled();
     expect(context.tx.billingDocument.create).not.toHaveBeenCalled();
   });
 
@@ -500,6 +545,8 @@ describe("PrismaBillingDocumentRepository CR_V44_DECIMAL_V1 draft", () => {
 
   it.each([
     ["foreign tenant", { tenantId: "tenant-b" }],
+    ["customer", { customerId: "customer-b" }],
+    ["null customer", { customerId: null }],
     ["issuer", { fiscalIssuerId: "issuer-b" }],
     ["establishment", { issuerEstablishmentCode: "002" }],
     ["terminal", { issuerTerminalCode: "00002" }],
@@ -573,6 +620,7 @@ function setup(options: {
   existing?: Record<string, unknown> | null;
   createError?: unknown;
   winner?: Record<string, unknown> | null;
+  customer?: { id: string; tenantId: string } | null;
 } = {}) {
   const order = options.order ?? salesOrder();
   const create = options.createError
@@ -590,6 +638,11 @@ function setup(options: {
     },
     salesOrder: {
       findFirst: jest.fn().mockResolvedValue(order),
+    },
+    client: {
+      findFirst: jest.fn().mockResolvedValue(
+        options.customer === undefined ? { id: "customer-a" } : options.customer,
+      ),
     },
     tenantBillingConfiguration: {
       findUnique: jest.fn().mockResolvedValue({
@@ -702,6 +755,7 @@ function concurrentWinner(overrides: Record<string, unknown> = {}) {
     sourceType: "SALES_ORDER",
     sourceId: "sales-a",
     sourceRole: "PRIMARY",
+    customerId: "customer-a",
     internalNumber: "BD-SO-sales-a",
     documentTypeCode: "01",
     fiscalIssuerId: "issuer-a",
@@ -764,6 +818,7 @@ function salesOrder(options: {
   lines?: ReturnType<typeof sourceLine>[];
   commercialSubtotal?: Prisma.Decimal;
   totalVat?: Prisma.Decimal;
+  customerId?: string | null;
 } = {}) {
   const line = sourceLine({
     fiscalItemCategory:
@@ -783,7 +838,7 @@ function salesOrder(options: {
     orderNumber: "SO-2026-000001",
     status: "CREATED",
     sourceType: "ADDITIONAL_SERVICE_ORDER",
-    customerId: "customer-a",
+    customerId: options.customerId === undefined ? "customer-a" : options.customerId,
     customerName: "Customer A",
     customerEmail: null,
     currency: "CRC",
