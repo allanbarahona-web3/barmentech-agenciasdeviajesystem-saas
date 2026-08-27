@@ -19,7 +19,7 @@ const statusLookupSelect = Prisma.validator<Prisma.BillingDocumentSelect>()({
   issuanceIdempotencyKey: true, providerRequestHash: true,
   providerLastAttemptAt: true, providerReconciliationRequired: true,
   providerLastErrorCode: true, providerLastErrorAt: true,
-  submittedAt: true, issuedAt: true,
+  submittedAt: true, issuedAt: true, taxAuthorityFinalizedAt: true,
   ...statusCheckSelect(),
   ...refreshSelect(),
 } as Prisma.BillingDocumentSelect);
@@ -50,6 +50,7 @@ export interface BillingDocumentStatusLookupResult {
     readonly providerReconciliationRequired: false;
     readonly submittedAt: Date;
     readonly issuedAt: null;
+    readonly taxAuthorityFinalizedAt: null;
     readonly providerStatusCheckAttempts: number;
     readonly providerLastStatusCheckAt: Date | null;
     readonly providerNextStatusCheckAt: Date | null;
@@ -126,6 +127,7 @@ export class BillingDocumentStatusLookupService {
         providerReconciliationRequired: false,
         submittedAt: new Date(prepared.submittedAt.getTime()),
         issuedAt: null,
+        taxAuthorityFinalizedAt: null,
         providerStatusCheckAttempts: prepared.statusCheckAttempts,
         providerLastStatusCheckAt: copyDate(prepared.lastStatusCheckAt),
         providerNextStatusCheckAt: copyDate(prepared.nextStatusCheckAt),
@@ -145,7 +147,7 @@ function validateSnapshot(row: StatusLookupRow) {
   if (row.providerDocumentId === null && !hasAnyAcknowledgement) ineligible();
   if (row.lifecycleStatus !== "SUBMITTED" || row.providerStatus !== "PROCESSED" ||
       (row.taxAuthorityStatus !== "PROCESSING" && row.taxAuthorityStatus !== "ACCEPTED" && row.taxAuthorityStatus !== "REJECTED") ||
-      row.providerReconciliationRequired || row.providerLastErrorCode !== null || row.providerLastErrorAt !== null || row.issuedAt !== null) invalid();
+      row.providerReconciliationRequired || row.providerLastErrorCode !== null || row.providerLastErrorAt !== null || (row.taxAuthorityStatus === "PROCESSING" && (row.issuedAt !== null || row.taxAuthorityFinalizedAt !== null))) invalid();
   if (!safeString(row.billingDocumentNumberSequenceId, 191) || typeof row.allocatedSequenceNumber !== "bigint") invalid();
   const allocatedSequenceNumber = row.allocatedSequenceNumber.toString();
   if (!/^[1-9]\d{0,9}$/.test(allocatedSequenceNumber)) invalid();
@@ -200,7 +202,7 @@ function statusCheckSelect(){return{providerStatusCheckAttempts:true,providerLas
 function refreshSelect(){return{providerRefreshAttempts:true,providerLastRefreshAt:true,providerNextRefreshAt:true,providerRefreshLockOwner:true,providerRefreshLeaseUntil:true};}
 function dateOnly(value: Date): string { return `${value.getUTCFullYear().toString().padStart(4, "0")}-${(value.getUTCMonth() + 1).toString().padStart(2, "0")}-${value.getUTCDate().toString().padStart(2, "0")}`; }
 function keyDate(value: string): string { return `${value.slice(8, 10)}${value.slice(5, 7)}${value.slice(2, 4)}`; }
-function completedStatus(row:StatusLookupRow):"ACCEPTED"|"REJECTED"|null{if(row.lifecycleStatus!=="SUBMITTED"||row.providerStatus!=="PROCESSED"||(row.taxAuthorityStatus!=="ACCEPTED"&&row.taxAuthorityStatus!=="REJECTED"))return null;if(row.providerReconciliationRequired||row.providerStatusCheckLockOwner!==null||row.providerStatusCheckLeaseUntil!==null||row.providerNextStatusCheckAt!==null||!Number.isInteger(row.providerStatusCheckAttempts)||row.providerStatusCheckAttempts<0||!nullableDate(row.providerLastStatusCheckAt)||(row.taxAuthorityStatus==="ACCEPTED"?!validDate(row.issuedAt):row.issuedAt!==null))invalid();return row.taxAuthorityStatus;}
+function completedStatus(row:StatusLookupRow):"ACCEPTED"|"REJECTED"|null{if(row.lifecycleStatus!=="SUBMITTED"||row.providerStatus!=="PROCESSED"||(row.taxAuthorityStatus!=="ACCEPTED"&&row.taxAuthorityStatus!=="REJECTED"))return null;if(row.providerReconciliationRequired||row.providerStatusCheckLockOwner!==null||row.providerStatusCheckLeaseUntil!==null||row.providerNextStatusCheckAt!==null||!Number.isInteger(row.providerStatusCheckAttempts)||row.providerStatusCheckAttempts<0||!nullableDate(row.providerLastStatusCheckAt)||!validDate(row.taxAuthorityFinalizedAt)||(row.taxAuthorityStatus==="ACCEPTED"?!validDate(row.issuedAt):row.issuedAt!==null))invalid();return row.taxAuthorityStatus;}
 function notFound(): never { throw fiscalBillingError("BILLING_DOCUMENT_NOT_FOUND"); }
 function ineligible(): never { throw fiscalBillingError("BILLING_DOCUMENT_STATUS_LOOKUP_INELIGIBLE"); }
 function invalid(): never { throw fiscalBillingError("BILLING_DOCUMENT_STATUS_SNAPSHOT_INVALID"); }

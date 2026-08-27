@@ -36,7 +36,7 @@ describe("BillingDocumentStatusLookupService", () => {
       providerEnvironment: "sandbox", fiscalIssueDate: "2026-08-24",
       lifecycleStatus: "SUBMITTED", providerStatus: "PROCESSED",
       taxAuthorityStatus: "PROCESSING", providerReconciliationRequired: false,
-      submittedAt: ATTEMPT, issuedAt: null,
+      submittedAt: ATTEMPT, issuedAt: null, taxAuthorityFinalizedAt:null,
       providerStatusCheckAttempts: 0, providerLastStatusCheckAt: null,
       providerNextStatusCheckAt: new Date(ATTEMPT.getTime()+10_000), providerStatusCheckLockOwner: null, providerStatusCheckLeaseUntil: null,
       providerRefreshAttempts:0,providerLastRefreshAt:null,providerNextRefreshAt:null,providerRefreshLockOwner:null,providerRefreshLeaseUntil:null,
@@ -49,7 +49,7 @@ describe("BillingDocumentStatusLookupService", () => {
   });
 
   it.each(["ACCEPTED", "REJECTED"] as const)("allows a complete final %s acknowledgement without interpreting the result", async (taxAuthorityStatus) => {
-    const c = context(row({ taxAuthorityStatus, providerNextStatusCheckAt: null }));
+    const c = context(row({ taxAuthorityStatus, providerNextStatusCheckAt: null, issuedAt: taxAuthorityStatus === "ACCEPTED" ? new Date("2026-08-24T05:59:59.987Z") : null, taxAuthorityFinalizedAt: new Date("2026-08-24T12:01:00.456Z") }));
     await expect(c.service.lookupStatus("tenant-a", "document-a")).resolves.toMatchObject({ persistedIdentity: { taxAuthorityStatus } });
     expect(c.provider.getDocumentStatus).toHaveBeenCalledTimes(1);
     noWrites(c);
@@ -63,7 +63,7 @@ describe("BillingDocumentStatusLookupService", () => {
 
   it("allows an exact due unexpired lease and calls the provider once",async()=>{const now=new Date(ATTEMPT.getTime()+20_000),c=context(row({providerStatusCheckLockOwner:"worker-a",providerStatusCheckLeaseUntil:new Date(now.getTime()+60_000)}),undefined,now);await c.service.lookupStatus("tenant-a","document-a","worker-a");expect(c.clock.now).toHaveBeenCalledTimes(1);expect(c.provider.getDocumentStatus).toHaveBeenCalledTimes(1);});
   it.each<[string,{owner?:string;row?:Record<string,unknown>;leaseDelta?:number;nowDelta?:number}]>([["wrong owner",{owner:"worker-b"}],["missing lease",{row:{providerStatusCheckLockOwner:null,providerStatusCheckLeaseUntil:null}}],["expired",{leaseDelta:0}],["future",{nowDelta:0}]])("rejects a %s automatic lease before provider",async(_label,options)=>{const now=new Date(ATTEMPT.getTime()+(options.nowDelta??20_000)),lease=new Date(now.getTime()+(options.leaseDelta??60_000)),c=context(row({providerStatusCheckLockOwner:"worker-a",providerStatusCheckLeaseUntil:lease,...options.row}),undefined,now);await expect(c.service.lookupStatus("tenant-a","document-a",options.owner??"worker-a")).rejects.toBeDefined();expect(c.provider.getDocumentStatus).not.toHaveBeenCalled();});
-  it.each(["ACCEPTED","REJECTED"] as const)("returns an already-completed %s retry without provider access",async taxAuthorityStatus=>{const c=context(row({taxAuthorityStatus,providerNextStatusCheckAt:null,providerStatusCheckLockOwner:null,providerStatusCheckLeaseUntil:null,providerStatusCheckAttempts:1,providerLastStatusCheckAt:new Date(ATTEMPT.getTime()+20_000),issuedAt:taxAuthorityStatus==="ACCEPTED"?new Date(ATTEMPT.getTime()+20_000):null}));await expect(c.service.lookupStatus("tenant-a","document-a","old-owner")).resolves.toEqual({classification:"ALREADY_COMPLETED",taxAuthorityStatus});expect(c.provider.getDocumentStatus).not.toHaveBeenCalled();expect(c.clock.now).not.toHaveBeenCalled();});
+  it.each(["ACCEPTED","REJECTED"] as const)("returns an already-completed %s retry without provider access",async taxAuthorityStatus=>{const c=context(row({taxAuthorityStatus,providerNextStatusCheckAt:null,providerStatusCheckLockOwner:null,providerStatusCheckLeaseUntil:null,providerStatusCheckAttempts:1,providerLastStatusCheckAt:new Date(ATTEMPT.getTime()+20_000),issuedAt:taxAuthorityStatus==="ACCEPTED"?new Date("2026-08-24T05:59:59.987Z"):null,taxAuthorityFinalizedAt:new Date(ATTEMPT.getTime()+20_000)}));await expect(c.service.lookupStatus("tenant-a","document-a","old-owner")).resolves.toEqual({classification:"ALREADY_COMPLETED",taxAuthorityStatus});expect(c.provider.getDocumentStatus).not.toHaveBeenCalled();expect(c.clock.now).not.toHaveBeenCalled();});
 
   it.each([{providerStatusCheckAttempts:-1},{providerStatusCheckAttempts:1.5},{providerLastStatusCheckAt:new Date(Number.NaN)},{providerStatusCheckLockOwner:"worker-a"},{providerStatusCheckLockOwner:" x ",providerStatusCheckLeaseUntil:new Date()},{taxAuthorityStatus:"ACCEPTED",providerNextStatusCheckAt:new Date()}])("rejects malformed scheduling state before provider access: %o",async override=>{const c=context(row(override));await expect(c.service.lookupStatus("tenant-a","document-a")).rejects.toBeDefined();expect(c.provider.getDocumentStatus).not.toHaveBeenCalled();});
 
@@ -158,7 +158,7 @@ function row(overrides: Record<string, unknown> = {}) {
     billingDocumentNumberSequenceId: "sequence-a", allocatedSequenceNumber: 42n,
     issuanceIdempotencyKey: "billing-document:document-a:electronic-issuance:v1", providerRequestHash: HASH,
     providerLastAttemptAt: ATTEMPT, providerReconciliationRequired: false, providerLastErrorCode: null,
-    providerLastErrorAt: null, submittedAt: ATTEMPT, issuedAt: null, providerStatusCheckAttempts:0,providerLastStatusCheckAt:null,
+    providerLastErrorAt: null, submittedAt: ATTEMPT, issuedAt: null,taxAuthorityFinalizedAt:null, providerStatusCheckAttempts:0,providerLastStatusCheckAt:null,
     providerNextStatusCheckAt:new Date(ATTEMPT.getTime()+10_000),providerStatusCheckLockOwner:null,providerStatusCheckLeaseUntil:null,
     providerRefreshAttempts:0,providerLastRefreshAt:null,providerNextRefreshAt:null,providerRefreshLockOwner:null,providerRefreshLeaseUntil:null,...overrides,
   };

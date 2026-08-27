@@ -191,6 +191,7 @@ export interface BillingDocumentWorkspace {
   confirmedAt: Date | null;
   submittedAt: Date | null;
   issuedAt: Date | null;
+  taxAuthorityFinalizedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
   paymentConditionCode: string | null;
