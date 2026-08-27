@@ -362,8 +362,10 @@ model Client {
   assignedTo                           User?                               @relation("CustomerAssignedTo", fields: [assignedToUserId], references: [id])
   additionalServiceOrderParticipations AdditionalServiceOrderParticipant[]
   additionalServiceQuoteOrders         AdditionalServiceOrder[]            @relation("AdditionalServiceQuoteCustomer")
+  billingDocuments                     BillingDocument[]                   @relation("BillingDocumentCustomer")
 
   @@unique([tenantId, idType, idNumber])
+  @@unique([id, tenantId], map: "Client_id_tenantId_key")
   @@index([fullName])
   @@index([email])
   @@index([tenantId])
@@ -1813,6 +1815,7 @@ model BillingDocument {
   fiscalNumber                      String?                          @db.VarChar(50)
   haciendaKey                       String?                          @db.VarChar(50)
   haciendaRejectionDetail           String?                          @db.Text
+  customerId                        String?
   sourceType                        String?                          @db.VarChar(50)
   sourceId                          String?                          @db.VarChar(100)
   sourceNumber                      String?                          @db.VarChar(100)
@@ -1890,6 +1893,7 @@ model BillingDocument {
   createdAt                         DateTime                         @default(now())
   updatedAt                         DateTime                         @updatedAt
   tenant                            Tenant                           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer                          Client?                          @relation("BillingDocumentCustomer", fields: [customerId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "billing_documents_customer_tenant_fkey")
   fiscalIssuer                      FiscalIssuer?                    @relation("BillingDocumentFiscalIssuer", fields: [fiscalIssuerId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "billing_documents_fiscal_issuer_tenant_fkey")
   billingDocumentNumberSequence     BillingDocumentNumberSequence?   @relation("BillingDocumentAllocatedNumberSequence", fields: [billingDocumentNumberSequenceId, tenantId, fiscalIssuerId, issuerEstablishmentCode, issuerTerminalCode, documentTypeCode], references: [id, tenantId, fiscalIssuerId, establishmentCode, terminalCode, documentTypeCode], onDelete: Restrict, map: "billing_documents_number_sequence_scope_fkey")
   lines                             BillingDocumentLine[]
@@ -1908,6 +1912,7 @@ model BillingDocument {
   @@index([tenantId, lifecycleStatus])
   @@index([tenantId, documentTypeCode])
   @@index([tenantId, sourceType, sourceId])
+  @@index([tenantId, customerId], map: "billing_documents_tenant_customer_idx")
   @@index([tenantId, fiscalIssuerId], map: "billing_documents_tenant_fiscal_issuer_idx")
   @@index([tenantId, billingDocumentNumberSequenceId], map: "billing_documents_tenant_number_sequence_idx")
   @@index([tenantId, providerReconciliationRequired, providerLastAttemptAt], map: "billing_docs_tenant_reconciliation_attempt_idx")
@@ -2220,8 +2225,8 @@ model AccountReceivable {
   debtorIdentificationType   String?                 @db.VarChar(4)
   debtorIdentificationNumber String?                 @db.VarChar(30)
   currencyCode               String                  @db.VarChar(3)
-  originalAmount             Decimal                 @db.Decimal(18, 4)
-  outstandingAmount          Decimal                 @db.Decimal(18, 4)
+  originalAmount             Decimal                 @db.Decimal(19, 5)
+  outstandingAmount          Decimal                 @db.Decimal(19, 5)
   dueDate                    DateTime                @db.Date
   paymentTermDays            Int?
   status                     AccountReceivableStatus @default(OPEN)
@@ -2259,8 +2264,8 @@ model Payment {
   payerIdentificationType      String?             @db.VarChar(4)
   payerIdentificationNumber    String?             @db.VarChar(30)
   currencyCode                 String              @db.VarChar(3)
-  receivedAmount               Decimal             @db.Decimal(18, 4)
-  availableAmount              Decimal             @db.Decimal(18, 4)
+  receivedAmount               Decimal             @db.Decimal(19, 5)
+  availableAmount              Decimal             @db.Decimal(19, 5)
   receivedAt                   DateTime
   paymentMethod                String              @db.VarChar(50)
   externalReference            String?             @db.VarChar(150)
@@ -2292,7 +2297,7 @@ model PaymentAllocation {
   paymentId                  String
   accountReceivableId        String
   allocationDeduplicationKey String                     @db.VarChar(200)
-  amount                     Decimal                    @db.Decimal(18, 4)
+  amount                     Decimal                    @db.Decimal(19, 5)
   status                     PaymentAllocationStatus    @default(ACTIVE)
   allocatedAt                DateTime
   createdAt                  DateTime                   @default(now())
