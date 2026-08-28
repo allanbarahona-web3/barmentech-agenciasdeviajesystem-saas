@@ -31,6 +31,7 @@ import { PrismaFiscalNumberSequenceAdminRepository } from "./prisma-fiscal-numbe
 import { FISCAL_NUMBER_SEQUENCE_ADMIN_REPOSITORY } from "./fiscal-number-sequence-admin.repository";
 import { FiscalOutboxPublisherService } from "./jobs/fiscal-outbox-publisher.service";
 import { FiscalAcceptedFanoutCoordinatorService } from "./jobs/fiscal-accepted-fanout-coordinator.service";
+import { FiscalTerminalArtifactFanoutCoordinatorService } from "./jobs/fiscal-terminal-artifact-fanout-coordinator.service";
 import { AccountReceivableRecognitionService } from "./account-receivable-recognition.service";
 import { AccountReceivableRecognitionPublisher } from "./jobs/account-receivable-recognition.publisher";
 import { AccountReceivableRecognitionProcessor } from "./jobs/account-receivable-recognition.processor";
@@ -84,6 +85,7 @@ import { FiscalRefreshReconciliationProcessor } from "./jobs/fiscal-refresh-reco
     PrismaFiscalNumberSequenceAdminRepository,
     FiscalOutboxPublisherService,
     FiscalAcceptedFanoutCoordinatorService,
+    FiscalTerminalArtifactFanoutCoordinatorService,
     AccountReceivableRecognitionService,
     AccountReceivableRecognitionPublisher,
     AccountReceivableRecognitionProcessor,
