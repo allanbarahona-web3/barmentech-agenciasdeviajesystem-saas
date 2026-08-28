@@ -57,11 +57,13 @@ import { ELECTRONIC_DOCUMENT_REFRESH_PROVIDER } from "./providers/electronic-doc
 import { BillingDocumentRefreshExecutorService } from "./billing-document-refresh-executor.service";
 import { FiscalRefreshReconciliationPublisher } from "./jobs/fiscal-refresh-reconciliation.publisher";
 import { FiscalRefreshReconciliationProcessor } from "./jobs/fiscal-refresh-reconciliation.processor";
+import { StorageModule } from "../storage/storage.module";
+import { FiscalArtifactRetrievalService } from "./fiscal-artifact-retrieval.service";
 import { FacturaEnCrFiscalArtifactRetrievalAdapter } from "./providers/factura-en-cr-fiscal-artifact-retrieval.adapter";
 import { FISCAL_ARTIFACT_RETRIEVAL_PORT } from "./providers/fiscal-artifact-retrieval.provider";
 
 @Module({
-  imports: [FiscalCatalogModule, OfficialExchangeRateModule],
+  imports: [FiscalCatalogModule, OfficialExchangeRateModule, StorageModule],
   controllers: [
     FiscalBillingController,
     FiscalBillingAdminController,
@@ -105,6 +107,7 @@ import { FISCAL_ARTIFACT_RETRIEVAL_PORT } from "./providers/fiscal-artifact-retr
     FiscalStatusReconciliationProcessor,
     FacturaEnCrDocumentRefreshAdapter,
     FacturaEnCrFiscalArtifactRetrievalAdapter,
+    FiscalArtifactRetrievalService,
     BillingDocumentRefreshExecutorService,
     FiscalRefreshReconciliationPublisher,
     FiscalRefreshReconciliationProcessor,
