@@ -92,6 +92,7 @@ model Tenant {
   salesOrders                        SalesOrder[]
   salesOrderLines                    SalesOrderLine[]
   billingDocuments                   BillingDocument[]
+  billingDocumentArtifacts           BillingDocumentArtifact[]
   billingDocumentLines               BillingDocumentLine[]
   billingLineTaxes                   BillingLineTax[]
   billingLineTaxExemptions           BillingLineTaxExemption[]
@@ -1806,6 +1807,18 @@ enum BillingArtifactStatus {
   FAILED
 }
 
+enum BillingDocumentArtifactType {
+  SIGNED_FISCAL_XML
+  TAX_AUTHORITY_RESPONSE_XML
+  INTERNAL_PDF
+}
+
+enum BillingDocumentArtifactStatus {
+  PENDING
+  AVAILABLE
+  FAILED
+}
+
 model BillingDocument {
   id                                String                           @id @default(cuid())
   tenantId                          String
@@ -1896,6 +1909,7 @@ model BillingDocument {
   customer                          Client?                          @relation("BillingDocumentCustomer", fields: [customerId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "billing_documents_customer_tenant_fkey")
   fiscalIssuer                      FiscalIssuer?                    @relation("BillingDocumentFiscalIssuer", fields: [fiscalIssuerId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "billing_documents_fiscal_issuer_tenant_fkey")
   billingDocumentNumberSequence     BillingDocumentNumberSequence?   @relation("BillingDocumentAllocatedNumberSequence", fields: [billingDocumentNumberSequenceId, tenantId, fiscalIssuerId, issuerEstablishmentCode, issuerTerminalCode, documentTypeCode], references: [id, tenantId, fiscalIssuerId, establishmentCode, terminalCode, documentTypeCode], onDelete: Restrict, map: "billing_documents_number_sequence_scope_fkey")
+  artifacts                         BillingDocumentArtifact[]
   lines                             BillingDocumentLine[]
   references                        BillingDocumentReference[]       @relation("BillingDocumentReferences")
   referencedBy                      BillingDocumentReference[]       @relation("ReferencedBillingDocuments")
@@ -1925,6 +1939,36 @@ model BillingDocument {
   @@index([providerRefreshLeaseUntil], map: "billing_docs_refresh_lease_idx")
   @@index([officialExchangeRateObservationId], map: "billing_documents_official_fx_observation_idx")
   @@map("billing_documents")
+}
+
+model BillingDocumentArtifact {
+  id                String                        @id @default(cuid())
+  tenantId          String
+  billingDocumentId String
+  artifactType      BillingDocumentArtifactType
+  version           Int                           @default(1)
+  status            BillingDocumentArtifactStatus @default(PENDING)
+  storageProvider   String?                       @db.VarChar(50)
+  storageKey        String?                       @db.VarChar(1024)
+  sha256            String?                       @db.VarChar(64)
+  byteSize          BigInt?
+  mimeType          String?                       @db.VarChar(100)
+  sourceEtag        String?                       @db.VarChar(255)
+  retrievedAt       DateTime?                     @db.Timestamptz(6)
+  storedAt          DateTime?                     @db.Timestamptz(6)
+  terminalErrorCode String?                       @db.VarChar(100)
+  failedAt          DateTime?                     @db.Timestamptz(6)
+  createdAt         DateTime                      @default(now())
+  updatedAt         DateTime                      @updatedAt
+  tenant            Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  billingDocument   BillingDocument               @relation(fields: [billingDocumentId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "billing_document_artifacts_document_tenant_fkey")
+
+  @@unique([tenantId, billingDocumentId, artifactType, version], map: "billing_document_artifacts_identity_key")
+  @@unique([storageProvider, storageKey], map: "billing_document_artifacts_storage_key")
+  @@unique([id, tenantId], map: "billing_document_artifacts_id_tenant_key")
+  @@index([tenantId, status, artifactType], map: "billing_document_artifacts_tenant_status_type_idx")
+  @@index([tenantId, createdAt], map: "billing_document_artifacts_tenant_created_idx")
+  @@map("billing_document_artifacts")
 }
 
 model OfficialExchangeRateObservation {
