@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Query, Req, Res, UseGuards } from "@nestjs/common";
+import type { Response } from 'express';
 import { UserRole } from "@prisma/client";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { Roles } from "../auth/roles.decorator";
@@ -9,6 +10,7 @@ import {
 } from "./dto/fiscal-billing.dto";
 import { BillingDocumentService } from "./billing-document.service";
 import { SalesOrderFiscalBillingService } from "./fiscal-billing.service";
+import { FiscalArtifactReadService } from './fiscal-artifact-read.service';
 
 type FiscalBillingRequest = {
   user: { id: string; tenantId: string; role: UserRole };
@@ -21,6 +23,7 @@ export class FiscalBillingController {
   constructor(
     private readonly salesOrderService: SalesOrderFiscalBillingService,
     private readonly billingDocumentService: BillingDocumentService,
+    private readonly artifactReadService: FiscalArtifactReadService,
   ) {}
 
   @Get("sales-orders/eligible")
@@ -66,6 +69,33 @@ export class FiscalBillingController {
       request.user.tenantId,
       billingDocumentId,
     );
+  }
+
+  @Get('documents/:billingDocumentId/artifacts')
+  listArtifacts(
+    @Req() request: FiscalBillingRequest,
+    @Param('billingDocumentId') billingDocumentId: string,
+  ) {
+    return this.artifactReadService.list(request.user.tenantId, billingDocumentId);
+  }
+
+  @Get('documents/:billingDocumentId/artifacts/:artifactType/versions/:version/download')
+  async downloadArtifact(
+    @Req() request: FiscalBillingRequest,
+    @Param('billingDocumentId') billingDocumentId: string,
+    @Param('artifactType') artifactType: string,
+    @Param('version') version: string,
+    @Res() response: Response,
+  ): Promise<void> {
+    const artifact = await this.artifactReadService.download(request.user.tenantId, billingDocumentId, artifactType, version);
+    response.set({
+      'Content-Type': artifact.mimeType,
+      'Content-Length': artifact.bytes.length.toString(),
+      'Content-Disposition': `attachment; filename="${artifact.filename}"`,
+      'Cache-Control': 'private, no-store',
+      'X-Content-Type-Options': 'nosniff',
+    });
+    response.send(artifact.bytes);
   }
 
   @Post("documents/:billingDocumentId/request-electronic-issuance")
