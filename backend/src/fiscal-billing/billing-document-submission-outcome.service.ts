@@ -6,6 +6,7 @@ import { FiscalIssuanceClock } from "./fiscal-issuance.clock";
 import { fiscalBillingError } from "./fiscal-billing.errors";
 import { initialFiscalStatusReconciliationSchedule } from "./fiscal-status-reconciliation-policy";
 import { persistBillingDocumentFiscalAcceptedOutboxEvent } from "./billing-document-fiscal-accepted-outbox";
+import { persistBillingDocumentFiscalTerminalOutboxEvent } from "./billing-document-fiscal-terminal-outbox";
 
 const outcomeSelect=Prisma.validator<Prisma.BillingDocumentSelect>()({id:true,tenantId:true,billingMode:true,lifecycleStatus:true,providerStatus:true,taxAuthorityStatus:true,
   billingDocumentNumberSequenceId:true,allocatedSequenceNumber:true,fiscalNumber:true,issuanceIdempotencyKey:true,fiscalIssueDate:true,providerRequestHash:true,providerLastAttemptAt:true,
@@ -55,6 +56,7 @@ export class BillingDocumentSubmissionOutcomeService{
       issuedAt:taxAuthorityStatus==="ACCEPTED"?row.fiscalEmissionAt:null,taxAuthorityFinalizedAt:finalizedAt} as Prisma.BillingDocumentUpdateManyMutationInput});
     if(updated.count!==1)outcomeConflict();
     if(taxAuthorityStatus==="ACCEPTED")await persistBillingDocumentFiscalAcceptedOutboxEvent(tx,identity.tenantId,identity.billingDocumentId);
+    if(terminal)await persistBillingDocumentFiscalTerminalOutboxEvent(tx,identity.tenantId,identity.billingDocumentId);
     return persisted(identity);
   }
   private async persistError(tx:Prisma.TransactionClient,row:OutcomeRow,code:string,reconciliation:boolean,identity:Identity){

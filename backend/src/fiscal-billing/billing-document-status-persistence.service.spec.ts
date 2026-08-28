@@ -52,7 +52,7 @@ describe("BillingDocumentStatusPersistenceService",()=>{
       submittedAt:ATTEMPT,providerReconciliationRequired:false,providerLastErrorCode:null,providerLastErrorAt:null,issuedAt:null});
     expect(write.data).toEqual({taxAuthorityStatus:"ACCEPTED",providerReconciliationRequired:false,providerLastErrorCode:null,providerLastErrorAt:null,haciendaRejectionDetail:null,providerStatusCheckAttempts:1,providerLastStatusCheckAt:ISSUED,providerNextStatusCheckAt:null,providerStatusCheckLockOwner:null,providerStatusCheckLeaseUntil:null,providerNextRefreshAt:null,providerRefreshLockOwner:null,providerRefreshLeaseUntil:null,issuedAt:EMISSION,taxAuthorityFinalizedAt:ISSUED});
     for(const preserved of ["allocatedSequenceNumber","fiscalNumber","submittedAt","providerRequestHash","providerLastAttemptAt","fiscalEmissionAt"])expect(write.data).not.toHaveProperty(preserved);
-    expect(c.tx.billingOutboxEvent.createMany).toHaveBeenCalledWith({data:{tenantId:"tenant-a",eventType:"billing-document.fiscal-accepted",eventVersion:1,aggregateType:"BillingDocument",aggregateId:"document-a",deduplicationKey:"billing-document.fiscal-accepted:document-a:v1",payload:{tenantId:"tenant-a",billingDocumentId:"document-a",eventVersion:1}},skipDuplicates:true});
+    expect(c.tx.billingOutboxEvent.createMany.mock.calls).toEqual([[acceptedEvent()],[terminalEvent()]]);
   });
 
   it("returns an exact accepted winner idempotently and preserves its original issuedAt",async()=>{
@@ -67,7 +67,7 @@ describe("BillingDocumentStatusPersistenceService",()=>{
     const result=await c.service.persist(c.lookup);const write=c.tx.billingDocument.updateMany.mock.calls[0][0] as {data:Record<string,unknown>};
     expect(result).toMatchObject({final:true,finalDecision:"REJECTED",taxAuthorityStatus:"REJECTED",issuedAt:null,taxAuthorityFinalizedAt:ISSUED,newlyPersisted:true,rejectionDetail:detail});
     expect(write.data).toEqual({taxAuthorityStatus:"REJECTED",providerReconciliationRequired:false,providerLastErrorCode:null,providerLastErrorAt:null,haciendaRejectionDetail:detail,providerStatusCheckAttempts:1,providerLastStatusCheckAt:ISSUED,providerNextStatusCheckAt:null,providerStatusCheckLockOwner:null,providerStatusCheckLeaseUntil:null,providerNextRefreshAt:null,providerRefreshLockOwner:null,providerRefreshLeaseUntil:null,issuedAt:null,taxAuthorityFinalizedAt:ISSUED});
-    expect(write.data.providerLastErrorCode).toBeNull();expect(c.clock.now).toHaveBeenCalledTimes(1);noSideEffects(c);
+    expect(write.data.providerLastErrorCode).toBeNull();expect(c.clock.now).toHaveBeenCalledTimes(1);expect(c.tx.billingOutboxEvent.createMany.mock.calls).toEqual([[terminalEvent()]]);expect(c.tx).not.toHaveProperty("billingDocumentNumberSequence");expect(c.tx).not.toHaveProperty("salesOrder");
   });
 
   it("persists a normalized rejection detail longer than 1,000 characters unchanged",async()=>{
@@ -86,7 +86,7 @@ describe("BillingDocumentStatusPersistenceService",()=>{
     const input=lookup({providerResult:rejected("detail")});
     const c=context(finalRow("REJECTED","detail"),input);const result=await c.service.persist(input);
     expect(result).toMatchObject({taxAuthorityStatus:"REJECTED",newlyPersisted:false,rejectionDetail:"detail"});
-    expect(c.tx.billingDocument.updateMany).not.toHaveBeenCalled();expect(c.clock.now).not.toHaveBeenCalled();
+    expect(c.tx.billingDocument.updateMany).not.toHaveBeenCalled();expect(c.tx.billingOutboxEvent.createMany).not.toHaveBeenCalled();expect(c.clock.now).not.toHaveBeenCalled();
   });
 
   it.each([["different detail","different"],["null detail",null]] as const)("rejects an inexact rejected winner with %s",async(_label,persistedDetail)=>{const input=lookup({providerResult:rejected("expected")}),c=context(finalRow("REJECTED",persistedDetail),input);const error=await capture(c.service.persist(input));expect(error.getResponse()).toMatchObject({code:"BILLING_DOCUMENT_STATUS_CONFLICT"});expect(c.tx.billingDocument.updateMany).not.toHaveBeenCalled();expect(c.clock.now).not.toHaveBeenCalled();});
@@ -142,10 +142,10 @@ describe("BillingDocumentStatusPersistenceService",()=>{
     expect(c.clock.now).toHaveBeenCalledTimes(1);expect(c.tx.billingDocument.findUnique).toHaveBeenCalledTimes(2);expect(c.tx.billingOutboxEvent.createMany).not.toHaveBeenCalled();
   });
 
-  it("rolls back reconciled acceptance when its neutral outbox insert fails",async()=>{
-    const c=context(row(),lookup({providerResult:accepted()}));c.tx.billingOutboxEvent.createMany.mockRejectedValueOnce(new Error("outbox failed"));
+  it("rolls back reconciled terminal persistence when terminal-event insertion fails",async()=>{
+    const c=context(row(),lookup({providerResult:accepted()}));c.tx.billingOutboxEvent.createMany.mockResolvedValueOnce({count:1}).mockRejectedValueOnce(new Error("outbox failed"));
     const error=await capture(c.service.persist(c.lookup));expect(error.getResponse()).toMatchObject({code:"BILLING_DOCUMENT_STATUS_PERSISTENCE_FAILED"});
-    expect(c.tx.billingDocument.updateMany).toHaveBeenCalledTimes(1);expect(c.tx.billingOutboxEvent.createMany).toHaveBeenCalledTimes(1);
+    expect(c.tx.billingDocument.updateMany).toHaveBeenCalledTimes(1);expect(c.tx.billingOutboxEvent.createMany.mock.calls).toEqual([[acceptedEvent()],[terminalEvent()]]);
   });
 
   it("can defensively recognize an exact rejected winner after a zero-row CAS without clock",async()=>{
@@ -207,4 +207,6 @@ function rejected(detail:string|null){return{providerStatus:"rejected",final:tru
 function context(persisted:ReturnType<typeof row>|null,input:BillingDocumentStatusLookupResult){const owned=!!persisted&&persisted.tenantId===input.persistedIdentity.tenantId&&persisted.id===input.persistedIdentity.billingDocumentId;const tx={billingDocument:{findUnique:jest.fn(async(_args:unknown)=>owned?persisted:null),updateMany:jest.fn(async(_args:unknown)=>({count:1}))},billingOutboxEvent:{createMany:jest.fn(async(_args:unknown)=>({count:1}))},$queryRaw:jest.fn(async(..._args:unknown[])=>owned?[{id:"document-a"}]:[])};
   const prisma={$transaction:jest.fn(async(callback:(client:typeof tx)=>unknown)=>callback(tx))};const clock={now:jest.fn(()=>ISSUED)};return{tx,prisma,clock,lookup:input,service:new BillingDocumentStatusPersistenceService(prisma as unknown as PrismaService,clock as unknown as FiscalIssuanceClock)};}
 function noSideEffects(c:ReturnType<typeof context>){expect(c.tx.billingOutboxEvent.createMany).not.toHaveBeenCalled();expect(c.tx).not.toHaveProperty("billingDocumentNumberSequence");expect(c.tx).not.toHaveProperty("salesOrder");}
+function acceptedEvent(){return{data:{tenantId:"tenant-a",eventType:"billing-document.fiscal-accepted",eventVersion:1,aggregateType:"BillingDocument",aggregateId:"document-a",deduplicationKey:"billing-document.fiscal-accepted:document-a:v1",payload:{tenantId:"tenant-a",billingDocumentId:"document-a",eventVersion:1}},skipDuplicates:true};}
+function terminalEvent(){return{data:{tenantId:"tenant-a",eventType:"billing-document.fiscal-terminal",eventVersion:1,aggregateType:"BillingDocument",aggregateId:"document-a",deduplicationKey:"billing-document.fiscal-terminal:document-a:v1",payload:{tenantId:"tenant-a",billingDocumentId:"document-a",eventVersion:1}},skipDuplicates:true};}
 async function capture(promise:Promise<unknown>):Promise<{getResponse():unknown}>{try{await promise;throw new Error("expected rejection");}catch(error){return error as {getResponse():unknown};}}

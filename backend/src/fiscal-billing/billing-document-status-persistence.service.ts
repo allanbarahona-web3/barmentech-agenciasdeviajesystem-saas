@@ -6,6 +6,7 @@ import { fiscalBillingError } from "./fiscal-billing.errors";
 import { FiscalIssuanceClock } from "./fiscal-issuance.clock";
 import { nextFiscalStatusReconciliationSchedule } from "./fiscal-status-reconciliation-policy";
 import { persistBillingDocumentFiscalAcceptedOutboxEvent } from "./billing-document-fiscal-accepted-outbox";
+import { persistBillingDocumentFiscalTerminalOutboxEvent } from "./billing-document-fiscal-terminal-outbox";
 
 const persistenceSelect = Prisma.validator<Prisma.BillingDocumentSelect>()({
   id: true, tenantId: true, billingMode: true, lifecycleStatus: true,
@@ -84,6 +85,13 @@ export class BillingDocumentStatusPersistenceService {
         if (updated.count === 1) {
           if (target === "ACCEPTED") {
             await persistBillingDocumentFiscalAcceptedOutboxEvent(
+              tx,
+              input.tenantId,
+              input.billingDocumentId,
+            );
+          }
+          if (target === "ACCEPTED" || target === "REJECTED") {
+            await persistBillingDocumentFiscalTerminalOutboxEvent(
               tx,
               input.tenantId,
               input.billingDocumentId,
