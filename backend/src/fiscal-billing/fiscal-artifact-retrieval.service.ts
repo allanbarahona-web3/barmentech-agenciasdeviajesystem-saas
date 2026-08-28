@@ -5,6 +5,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { IMMUTABLE_BILLING_ARTIFACT_STORAGE_PORT, type ImmutableBillingArtifactStorageMetadata, type ImmutableBillingArtifactStoragePort, ImmutableBillingArtifactStorageError } from '../storage/immutable-billing-artifact-storage.port';
 import { FiscalXmlIdentityValidationError, validateFiscalXmlIdentity } from './fiscal-xml-identity.validator';
 import { BILLING_DOCUMENT_ARTIFACT_RETRIEVAL_REQUESTED_EVENT_TYPE, BILLING_DOCUMENT_ARTIFACT_RETRIEVAL_REQUESTED_EVENT_VERSION, FISCAL_TERMINAL_ARTIFACT_FANOUT_AGGREGATE_TYPE, FISCAL_TERMINAL_ARTIFACT_VERSION, type FiscalTerminalArtifactType } from './jobs/fiscal-terminal-artifact-fanout.constants';
+import { FISCAL_ARTIFACT_RETRIEVAL_RETRY_BASE_MS, FISCAL_ARTIFACT_RETRIEVAL_RETRY_MAX_MS } from './jobs/fiscal-artifact-retrieval.constants';
 import { FISCAL_ARTIFACT_RETRIEVAL_PORT, FiscalArtifactRetrievalError, type FiscalArtifactRetrievalPort } from './providers/fiscal-artifact-retrieval.provider';
 
 const LEASE_MS = 60_000;
@@ -16,6 +17,7 @@ const ARTIFACT_ERROR = 'FISCAL_ARTIFACT_RETRIEVAL_ARTIFACT_INVALID';
 const VALIDATION_ERROR = 'FISCAL_ARTIFACT_RETRIEVAL_IDENTITY_INVALID';
 const STORAGE_ERROR = 'FISCAL_ARTIFACT_RETRIEVAL_STORAGE_CONFLICT';
 const RETRYABLE_ERROR = 'FISCAL_ARTIFACT_RETRIEVAL_RETRYABLE_FAILURE';
+export const FISCAL_ARTIFACT_RETRIEVAL_ATTEMPTS_EXHAUSTED = 'FISCAL_ARTIFACT_RETRIEVAL_ATTEMPTS_EXHAUSTED';
 
 export interface ClaimedFiscalArtifactRetrieval {
   tenantId: string;
@@ -65,6 +67,42 @@ export class FiscalArtifactRetrievalService {
       catch { throw new FiscalArtifactRetrievalServiceError(RETRYABLE_ERROR, true); }
       throw normalized;
     }
+  }
+
+  async finalizeExhaustedDelivery(claim: ClaimedFiscalArtifactRetrieval, exhaustionCode: string): Promise<void> {
+    const code = exhaustionCode === FISCAL_ARTIFACT_RETRIEVAL_ATTEMPTS_EXHAUSTED
+      ? exhaustionCode
+      : FISCAL_ARTIFACT_RETRIEVAL_ATTEMPTS_EXHAUSTED;
+    await this.prisma.$transaction(async (tx) => {
+      const locked = await lockOwnedChildForFinalization(tx, claim);
+      if (!locked) return;
+      const child = await tx.billingOutboxEvent.findUnique({ where: { id: claim.outboxEventId } });
+      const payload = child && validPayload(child, claim);
+      if (!child || !payload || !validAttemptLifecycle(child)) return;
+      const artifact = await lockArtifact(tx, payload);
+      if (!artifact || !exactArtifactIdentity(artifact, payload)) return;
+      const now = new Date();
+
+      if (isAvailable(artifact)) {
+        await requireOwnedUpdate(tx, claim, { status: 'PROCESSED', processedAt: now, lastError: null, lockedAt: null, lockedBy: null });
+        return;
+      }
+      if (isFailed(artifact)) {
+        await requireOwnedUpdate(tx, claim, { status: 'FAILED', lastError: artifact.terminalErrorCode, lockedAt: null, lockedBy: null });
+        return;
+      }
+      if (!isPending(artifact)) return;
+
+      if (child.attemptCount < child.maximumAttempts) {
+        const backoff = boundedRetryDelay(child.attemptCount);
+        await requireOwnedUpdate(tx, claim, { status: 'PENDING', availableAt: new Date(now.getTime() + backoff), lastError: code, lockedAt: null, lockedBy: null });
+        return;
+      }
+
+      const failed = await tx.$executeRaw`UPDATE "billing_document_artifacts" SET "status" = 'FAILED', "terminalErrorCode" = ${code}, "failedAt" = ${now}, "updatedAt" = ${now} WHERE "id" = ${artifact.id} AND "tenantId" = ${claim.tenantId} AND "status" = 'PENDING'`;
+      if (failed !== 1) throw new FiscalArtifactRetrievalServiceError(RETRYABLE_ERROR, true);
+      await requireOwnedUpdate(tx, claim, { status: 'FAILED', lastError: code, lockedAt: null, lockedBy: null });
+    });
   }
 
   private async prepare(claim: ClaimedFiscalArtifactRetrieval): Promise<Prepared> {
@@ -117,6 +155,16 @@ export class FiscalArtifactRetrievalService {
   }
 }
 
+async function lockOwnedChildForFinalization(tx: Prisma.TransactionClient, claim: ClaimedFiscalArtifactRetrieval): Promise<boolean> {
+  const rows = await tx.$queryRaw<Array<{ id: string }>>`SELECT "id" FROM "billing_outbox_events" WHERE "id" = ${claim.outboxEventId} AND "tenantId" = ${claim.tenantId} AND "eventType" = ${BILLING_DOCUMENT_ARTIFACT_RETRIEVAL_REQUESTED_EVENT_TYPE} AND "eventVersion" = ${BILLING_DOCUMENT_ARTIFACT_RETRIEVAL_REQUESTED_EVENT_VERSION} AND "status" = 'PROCESSING' AND "lockedBy" = ${claim.lockOwner} FOR UPDATE`;
+  return rows.length === 1;
+}
+
+async function requireOwnedUpdate(tx: Prisma.TransactionClient, claim: ClaimedFiscalArtifactRetrieval, data: Prisma.BillingOutboxEventUpdateManyMutationInput): Promise<void> {
+  const updated = await tx.billingOutboxEvent.updateMany({ where: ownedWhere(claim), data });
+  if (updated.count !== 1) throw new FiscalArtifactRetrievalServiceError(RETRYABLE_ERROR, true);
+}
+
 async function lockOwnedChild(tx: Prisma.TransactionClient, claim: ClaimedFiscalArtifactRetrieval): Promise<void> {
   const cutoff = new Date(Date.now() - LEASE_MS);
   const rows = await tx.$queryRaw<Array<{ id: string }>>`SELECT "id" FROM "billing_outbox_events" WHERE "id" = ${claim.outboxEventId} AND "tenantId" = ${claim.tenantId} AND "eventType" = ${BILLING_DOCUMENT_ARTIFACT_RETRIEVAL_REQUESTED_EVENT_TYPE} AND "eventVersion" = ${BILLING_DOCUMENT_ARTIFACT_RETRIEVAL_REQUESTED_EVENT_VERSION} AND "status" = 'PROCESSING' AND "lockedBy" = ${claim.lockOwner} AND "lockedAt" >= ${cutoff} FOR UPDATE`;
@@ -124,6 +172,8 @@ async function lockOwnedChild(tx: Prisma.TransactionClient, claim: ClaimedFiscal
 }
 async function lockArtifact(tx: Prisma.TransactionClient, payload: Payload): Promise<ArtifactRow | null> { const rows = await tx.$queryRaw<ArtifactRow[]>`SELECT "id", "tenantId", "billingDocumentId", "artifactType", "version", "status", "storageProvider", "storageKey", "sha256", "byteSize", "mimeType", "sourceEtag", "retrievedAt", "storedAt", "terminalErrorCode", "failedAt" FROM "billing_document_artifacts" WHERE "tenantId" = ${payload.tenantId} AND "billingDocumentId" = ${payload.billingDocumentId} AND "artifactType" = ${payload.artifactType} AND "version" = ${payload.artifactVersion} FOR UPDATE`; return rows.length === 1 ? rows[0] : null; }
 function validPayload(child: { tenantId: string; eventType: string; eventVersion: number; aggregateType: string; aggregateId: string; causationId: string | null; payload: Prisma.JsonValue }, claim: ClaimedFiscalArtifactRetrieval): Payload | null { if (child.tenantId !== claim.tenantId || child.eventType !== BILLING_DOCUMENT_ARTIFACT_RETRIEVAL_REQUESTED_EVENT_TYPE || child.eventVersion !== 1 || child.aggregateType !== FISCAL_TERMINAL_ARTIFACT_FANOUT_AGGREGATE_TYPE || !nonEmpty(child.causationId) || !jsonObject(child.payload) || Object.keys(child.payload).length !== 5) return null; const p = child.payload; return typeof p.tenantId === 'string' && p.tenantId === child.tenantId && typeof p.billingDocumentId === 'string' && p.billingDocumentId === child.aggregateId && (p.artifactType === 'SIGNED_FISCAL_XML' || p.artifactType === 'TAX_AUTHORITY_RESPONSE_XML') && p.artifactVersion === 1 && p.eventVersion === 1 ? { tenantId: p.tenantId, billingDocumentId: p.billingDocumentId, artifactType: p.artifactType, artifactVersion: 1, eventVersion: 1 } : null; }
+function validAttemptLifecycle(child: { attemptCount: number; maximumAttempts: number }): boolean { return Number.isInteger(child.attemptCount) && child.attemptCount >= 1 && Number.isInteger(child.maximumAttempts) && child.maximumAttempts >= 1; }
+function boundedRetryDelay(attemptCount: number): number { return Math.min(FISCAL_ARTIFACT_RETRIEVAL_RETRY_BASE_MS * 2 ** Math.min(Math.max(attemptCount - 1, 0), 30), FISCAL_ARTIFACT_RETRIEVAL_RETRY_MAX_MS); }
 function samePreparedChild(child: { id: string; tenantId: string; eventType: string; eventVersion: number; aggregateType: string; aggregateId: string; causationId: string | null; payload: Prisma.JsonValue; status: string; lockedBy: string | null; lockedAt: Date | null }, prepared: Prepared): boolean { const payload = validPayload(child, prepared.claim); return child.id === prepared.child.id && child.tenantId === prepared.child.tenantId && child.eventType === prepared.child.eventType && child.eventVersion === prepared.child.eventVersion && child.aggregateType === prepared.child.aggregateType && child.aggregateId === prepared.child.aggregateId && child.causationId === prepared.child.causationId && child.status === 'PROCESSING' && child.lockedBy === prepared.claim.lockOwner && validDate(child.lockedAt) && child.lockedAt.getTime() >= Date.now() - LEASE_MS && payload !== null && payload.tenantId === prepared.child.payload.tenantId && payload.billingDocumentId === prepared.child.payload.billingDocumentId && payload.artifactType === prepared.child.payload.artifactType && payload.artifactVersion === prepared.child.payload.artifactVersion && payload.eventVersion === prepared.child.payload.eventVersion; }
 function validDocument(d: { providerDocumentId: string | null; providerEnvironment: string | null; haciendaKey: string | null; fiscalNumber: string | null; documentTypeCode: string; taxAuthorityStatus: string; taxAuthorityFinalizedAt: Date | null }): d is Prepared['document'] { return nonEmpty(d.providerDocumentId) && (d.providerEnvironment === 'sandbox' || d.providerEnvironment === 'production') && nonEmpty(d.haciendaKey) && nonEmpty(d.fiscalNumber) && (d.documentTypeCode === '01' || d.documentTypeCode === '04') && (d.taxAuthorityStatus === 'ACCEPTED' || d.taxAuthorityStatus === 'REJECTED') && validDate(d.taxAuthorityFinalizedAt); }
 function exactArtifactIdentity(a: ArtifactRow, p: Payload): boolean { return a.tenantId === p.tenantId && a.billingDocumentId === p.billingDocumentId && a.artifactType === p.artifactType && a.version === p.artifactVersion; }

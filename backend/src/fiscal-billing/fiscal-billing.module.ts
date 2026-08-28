@@ -59,6 +59,8 @@ import { FiscalRefreshReconciliationPublisher } from "./jobs/fiscal-refresh-reco
 import { FiscalRefreshReconciliationProcessor } from "./jobs/fiscal-refresh-reconciliation.processor";
 import { StorageModule } from "../storage/storage.module";
 import { FiscalArtifactRetrievalService } from "./fiscal-artifact-retrieval.service";
+import { FiscalArtifactRetrievalPublisher } from "./jobs/fiscal-artifact-retrieval.publisher";
+import { FiscalArtifactRetrievalProcessor } from "./jobs/fiscal-artifact-retrieval.processor";
 import { FacturaEnCrFiscalArtifactRetrievalAdapter } from "./providers/factura-en-cr-fiscal-artifact-retrieval.adapter";
 import { FISCAL_ARTIFACT_RETRIEVAL_PORT } from "./providers/fiscal-artifact-retrieval.provider";
 
@@ -108,6 +110,8 @@ import { FISCAL_ARTIFACT_RETRIEVAL_PORT } from "./providers/fiscal-artifact-retr
     FacturaEnCrDocumentRefreshAdapter,
     FacturaEnCrFiscalArtifactRetrievalAdapter,
     FiscalArtifactRetrievalService,
+    FiscalArtifactRetrievalPublisher,
+    FiscalArtifactRetrievalProcessor,
     BillingDocumentRefreshExecutorService,
     FiscalRefreshReconciliationPublisher,
     FiscalRefreshReconciliationProcessor,

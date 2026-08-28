@@ -22,6 +22,8 @@ import { FiscalStatusReconciliationProcessor } from "./jobs/fiscal-status-reconc
 import { FacturaEnCrDocumentRefreshAdapter } from "./providers/factura-en-cr-document-refresh.adapter";
 import { ELECTRONIC_DOCUMENT_REFRESH_PROVIDER } from "./providers/electronic-document-refresh.provider";
 import { BillingDocumentRefreshExecutorService } from "./billing-document-refresh-executor.service";import { FiscalRefreshReconciliationPublisher } from "./jobs/fiscal-refresh-reconciliation.publisher";import { FiscalRefreshReconciliationProcessor } from "./jobs/fiscal-refresh-reconciliation.processor";
+import { FiscalArtifactRetrievalPublisher } from "./jobs/fiscal-artifact-retrieval.publisher";
+import { FiscalArtifactRetrievalProcessor } from "./jobs/fiscal-artifact-retrieval.processor";
 
 describe("FiscalBillingModule official-rate wiring", () => {
   it("imports the existing official-rate module without duplicating its resolver", () => {
@@ -52,6 +54,7 @@ describe("FiscalBillingModule official-rate wiring", () => {
     expect(providers.filter((value) => value === FiscalStatusReconciliationProcessor)).toHaveLength(1);
     expect(providers.filter((value)=>value===FacturaEnCrDocumentRefreshAdapter)).toHaveLength(1);expect(providers).toContainEqual({provide:ELECTRONIC_DOCUMENT_REFRESH_PROVIDER,useExisting:FacturaEnCrDocumentRefreshAdapter});expect((Reflect.getMetadata("exports",FiscalBillingModule) as unknown[]).filter(value=>value===ELECTRONIC_DOCUMENT_REFRESH_PROVIDER)).toHaveLength(1);
     expect(providers.filter(value=>value===BillingDocumentRefreshExecutorService)).toHaveLength(1);expect(providers.filter(value=>value===FiscalRefreshReconciliationPublisher)).toHaveLength(1);expect(providers.filter(value=>value===FiscalRefreshReconciliationProcessor)).toHaveLength(1);
+    expect(providers.filter(value=>value===FiscalArtifactRetrievalPublisher)).toHaveLength(1);expect(providers.filter(value=>value===FiscalArtifactRetrievalProcessor)).toHaveLength(1);
     expect(providers).toContain(FacturaEnCrDocumentStatusAdapter);
     expect(providers).toContainEqual({
       provide: ELECTRONIC_DOCUMENT_STATUS_PROVIDER,

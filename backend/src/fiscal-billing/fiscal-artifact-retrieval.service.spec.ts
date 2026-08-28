@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client';
 import { createHash } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { ImmutableBillingArtifactStorageError, type ImmutableBillingArtifactStoragePort } from '../storage/immutable-billing-artifact-storage.port';
-import { FiscalArtifactRetrievalService } from './fiscal-artifact-retrieval.service';
+import { FISCAL_ARTIFACT_RETRIEVAL_ATTEMPTS_EXHAUSTED, FiscalArtifactRetrievalService } from './fiscal-artifact-retrieval.service';
 import { FiscalArtifactRetrievalError, type FiscalArtifactRetrievalPort } from './providers/fiscal-artifact-retrieval.provider';
 
 const KEY = '50624072600310167816600100001010000000866142351111';
@@ -124,6 +124,62 @@ describe('FiscalArtifactRetrievalService', () => {
     expect(c.retrieval.retrieveFiscalArtifact).not.toHaveBeenCalled(); expect(c.storage.storeImmutable).not.toHaveBeenCalled();
     expect(JSON.stringify(error)).not.toMatch(new RegExp(`${KEY}|${NUMBER}|private/|stack|cause`, 'i'));
   });
+
+  describe('final BullMQ delivery lifecycle', () => {
+    afterEach(() => jest.useRealTimers());
+
+    it('returns owned work below the outbox maximum to PENDING with bounded backoff', async () => {
+      jest.useFakeTimers().setSystemTime(NOW);
+      const c = lifecycleContext({ attemptCount: 2, maximumAttempts: 5 });
+      await c.service.finalizeExhaustedDelivery(claim(), FISCAL_ARTIFACT_RETRIEVAL_ATTEMPTS_EXHAUSTED);
+      expect(c.tx.billingOutboxEvent.updateMany).toHaveBeenCalledWith({
+        where: { id: 'event-a', tenantId: 'tenant-a', status: 'PROCESSING', lockedBy: 'worker-a' },
+        data: { status: 'PENDING', availableAt: new Date('2026-09-09T12:00:02.000Z'), lastError: FISCAL_ARTIFACT_RETRIEVAL_ATTEMPTS_EXHAUSTED, lockedAt: null, lockedBy: null },
+      });
+      expect(c.tx.$executeRaw).not.toHaveBeenCalled();
+    });
+
+    it('atomically fails the exhausted child and exact PENDING artifact', async () => {
+      jest.useFakeTimers().setSystemTime(NOW);
+      const c = lifecycleContext({ attemptCount: 5, maximumAttempts: 5 });
+      await c.service.finalizeExhaustedDelivery(claim(), FISCAL_ARTIFACT_RETRIEVAL_ATTEMPTS_EXHAUSTED);
+      expect(c.prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(c.tx.$executeRaw.mock.calls[0]).toEqual(expect.arrayContaining([FISCAL_ARTIFACT_RETRIEVAL_ATTEMPTS_EXHAUSTED, NOW]));
+      expect(c.tx.billingOutboxEvent.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'FAILED', lastError: FISCAL_ARTIFACT_RETRIEVAL_ATTEMPTS_EXHAUSTED, lockedAt: null, lockedBy: null }) }));
+      expect(c.retrieval.retrieveFiscalArtifact).not.toHaveBeenCalled();
+      expect(c.storage.storeImmutable).not.toHaveBeenCalled();
+    });
+
+    it('does not mutate a stale or foreign owner', async () => {
+      const c = lifecycleContext({ owned: false });
+      await c.service.finalizeExhaustedDelivery(claim(), FISCAL_ARTIFACT_RETRIEVAL_ATTEMPTS_EXHAUSTED);
+      expect(c.tx.billingOutboxEvent.findUnique).not.toHaveBeenCalled();
+      expect(c.tx.billingOutboxEvent.updateMany).not.toHaveBeenCalled();
+      expect(c.tx.$executeRaw).not.toHaveBeenCalled();
+    });
+
+    it('reconciles an exact AVAILABLE artifact as PROCESSED without failing it', async () => {
+      const c = lifecycleContext({ artifact: available() });
+      await c.service.finalizeExhaustedDelivery(claim(), FISCAL_ARTIFACT_RETRIEVAL_ATTEMPTS_EXHAUSTED);
+      expect(c.tx.$executeRaw).not.toHaveBeenCalled();
+      expect(c.tx.billingOutboxEvent.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'PROCESSED', lastError: null }) }));
+    });
+
+    it('preserves exact FAILED artifact metadata while making the child terminal', async () => {
+      const artifact = failed(); const c = lifecycleContext({ artifact });
+      await c.service.finalizeExhaustedDelivery(claim(), FISCAL_ARTIFACT_RETRIEVAL_ATTEMPTS_EXHAUSTED);
+      expect(c.tx.$executeRaw).not.toHaveBeenCalled();
+      expect(c.tx.billingOutboxEvent.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'FAILED', lastError: artifact.terminalErrorCode }) }));
+    });
+
+    it('rejects a child CAS loss so artifact failure and child completion roll back together', async () => {
+      const c = lifecycleContext({ updateCount: 0 });
+      await expect(c.service.finalizeExhaustedDelivery(claim(), FISCAL_ARTIFACT_RETRIEVAL_ATTEMPTS_EXHAUSTED)).rejects.toMatchObject({ retryable: true });
+      expect(c.prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(c.tx.$executeRaw).toHaveBeenCalledTimes(1);
+      expect(c.tx.billingOutboxEvent.updateMany).toHaveBeenCalledTimes(1);
+    });
+  });
 });
 
 function claim() { return { tenantId: 'tenant-a', outboxEventId: 'event-a', lockOwner: 'worker-a' }; }
@@ -143,5 +199,18 @@ function context(options: { artifact?: ReturnType<typeof pending> | ReturnType<t
   const prisma = { $transaction: jest.fn(async (work: (value: typeof tx) => unknown) => work(tx)) } as unknown as PrismaService & { $transaction: jest.Mock };
   const retrieval = { retrieveFiscalArtifact: jest.fn().mockImplementation(async () => { if (options.retrievalError) throw options.retrievalError; return options.retrieved ?? retrieved(); }) } as unknown as FiscalArtifactRetrievalPort & { retrieveFiscalArtifact: jest.Mock };
   const immutable = { storeImmutable: jest.fn().mockImplementation(async (value) => { if (options.storageError) throw options.storageError; return storage(value.expectedSha256, value.bytes); }) } as unknown as ImmutableBillingArtifactStoragePort & { storeImmutable: jest.Mock };
+  return { service: new FiscalArtifactRetrievalService(prisma, retrieval, immutable), prisma, tx, retrieval, storage: immutable };
+}
+
+function lifecycleContext(options: { attemptCount?: number; maximumAttempts?: number; artifact?: ReturnType<typeof pending> | ReturnType<typeof available> | ReturnType<typeof failed>; owned?: boolean; updateCount?: number } = {}) {
+  const lifecycleChild = { ...child(), attemptCount: options.attemptCount ?? 5, maximumAttempts: options.maximumAttempts ?? 5 };
+  const tx = {
+    $queryRaw: jest.fn().mockResolvedValueOnce(options.owned === false ? [] : [{ id: 'event-a' }]).mockResolvedValueOnce([options.artifact ?? pending()]),
+    $executeRaw: jest.fn().mockResolvedValue(1),
+    billingOutboxEvent: { findUnique: jest.fn().mockResolvedValue(lifecycleChild), updateMany: jest.fn().mockResolvedValue({ count: options.updateCount ?? 1 }) },
+  };
+  const prisma = { $transaction: jest.fn(async (work: (value: typeof tx) => unknown) => work(tx)) } as unknown as PrismaService & { $transaction: jest.Mock };
+  const retrieval = { retrieveFiscalArtifact: jest.fn() } as unknown as FiscalArtifactRetrievalPort & { retrieveFiscalArtifact: jest.Mock };
+  const immutable = { storeImmutable: jest.fn() } as unknown as ImmutableBillingArtifactStoragePort & { storeImmutable: jest.Mock };
   return { service: new FiscalArtifactRetrievalService(prisma, retrieval, immutable), prisma, tx, retrieval, storage: immutable };
 }
