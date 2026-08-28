@@ -57,6 +57,8 @@ import { ELECTRONIC_DOCUMENT_REFRESH_PROVIDER } from "./providers/electronic-doc
 import { BillingDocumentRefreshExecutorService } from "./billing-document-refresh-executor.service";
 import { FiscalRefreshReconciliationPublisher } from "./jobs/fiscal-refresh-reconciliation.publisher";
 import { FiscalRefreshReconciliationProcessor } from "./jobs/fiscal-refresh-reconciliation.processor";
+import { FacturaEnCrFiscalArtifactRetrievalAdapter } from "./providers/factura-en-cr-fiscal-artifact-retrieval.adapter";
+import { FISCAL_ARTIFACT_RETRIEVAL_PORT } from "./providers/fiscal-artifact-retrieval.provider";
 
 @Module({
   imports: [FiscalCatalogModule, OfficialExchangeRateModule],
@@ -102,6 +104,7 @@ import { FiscalRefreshReconciliationProcessor } from "./jobs/fiscal-refresh-reco
     FiscalStatusReconciliationPublisher,
     FiscalStatusReconciliationProcessor,
     FacturaEnCrDocumentRefreshAdapter,
+    FacturaEnCrFiscalArtifactRetrievalAdapter,
     BillingDocumentRefreshExecutorService,
     FiscalRefreshReconciliationPublisher,
     FiscalRefreshReconciliationProcessor,
@@ -138,11 +141,12 @@ import { FiscalRefreshReconciliationProcessor } from "./jobs/fiscal-refresh-reco
       useExisting: FacturaEnCrDocumentStatusAdapter,
     },
     {provide:ELECTRONIC_DOCUMENT_REFRESH_PROVIDER,useExisting:FacturaEnCrDocumentRefreshAdapter},
+    { provide: FISCAL_ARTIFACT_RETRIEVAL_PORT, useExisting: FacturaEnCrFiscalArtifactRetrievalAdapter },
     {
       provide: FISCAL_NUMBER_SEQUENCE_ADMIN_REPOSITORY,
       useExisting: PrismaFiscalNumberSequenceAdminRepository,
     },
   ],
-  exports: [ELECTRONIC_DOCUMENT_SUBMISSION_PROVIDER, ELECTRONIC_DOCUMENT_STATUS_PROVIDER,ELECTRONIC_DOCUMENT_REFRESH_PROVIDER, BillingDocumentSubmissionPreparationService, BillingDocumentSubmissionAttemptService, BillingDocumentSubmissionExecutorService, BillingDocumentSubmissionOutcomeService, BillingDocumentStatusLookupService, BillingDocumentStatusPersistenceService, BillingDocumentRecoveryPreparationService, BillingDocumentRecoveryExecutorService],
+  exports: [ELECTRONIC_DOCUMENT_SUBMISSION_PROVIDER, ELECTRONIC_DOCUMENT_STATUS_PROVIDER,ELECTRONIC_DOCUMENT_REFRESH_PROVIDER, FISCAL_ARTIFACT_RETRIEVAL_PORT, BillingDocumentSubmissionPreparationService, BillingDocumentSubmissionAttemptService, BillingDocumentSubmissionExecutorService, BillingDocumentSubmissionOutcomeService, BillingDocumentStatusLookupService, BillingDocumentStatusPersistenceService, BillingDocumentRecoveryPreparationService, BillingDocumentRecoveryExecutorService],
 })
 export class FiscalBillingModule {}
