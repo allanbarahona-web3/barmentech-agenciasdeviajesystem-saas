@@ -1,5 +1,6 @@
 import { addMinor, removeMinor, updateMinor } from "@/features/contracts-form/utils";
 import type { ContractFormState } from "@/features/contracts-form/types";
+import { CLIENT_IDENTIFICATION_OPTIONS } from '@/features/customers/client-identification';
 
 export interface MinorsStepProps {
   state: ContractFormState;
@@ -99,9 +100,11 @@ export function MinorsStep({
                     )
                   }
                 >
-                  <option value="Cedula">Cédula</option>
-                  <option value="Pasaporte">Pasaporte</option>
-                  <option value="DIMEX">DIMEX</option>
+                  {CLIENT_IDENTIFICATION_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
                 </select>
               </label>
               <label>
@@ -226,9 +229,11 @@ export function MinorsStep({
                       value={minor.tutorIdType}
                       onChange={(event) => setState((prev) => updateMinor(prev, minor.id, "tutorIdType", event.target.value))}
                     >
-                      <option value="Cedula">Cédula</option>
-                      <option value="Pasaporte">Pasaporte</option>
-                      <option value="DIMEX">DIMEX</option>
+                      {CLIENT_IDENTIFICATION_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
                     </select>
                   </label>
                   

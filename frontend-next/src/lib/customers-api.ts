@@ -1,5 +1,6 @@
 import { authenticatedFetch, getStoredToken } from './auth-api';
 import { resolveApiBase } from './runtime-config';
+import type { ClientIdentificationType } from '@/features/customers/client-identification';
 
 // Types
 export interface CustomerListItem {
@@ -23,6 +24,7 @@ export interface GetCustomersParams {
   page?: number;
   pageSize?: number;
   search?: string;
+  idType?: ClientIdentificationType;
 }
 
 export type CustomerDocumentCategory = 
@@ -171,7 +173,7 @@ export interface CustomerProfile {
 
 export interface UpdateCustomerDto {
   fullName?: string;
-  idType?: string;
+  idType?: ClientIdentificationType;
   email?: string;
   phone?: string;
   maritalStatus?: string;
@@ -185,7 +187,7 @@ export interface UpdateCustomerDto {
 export interface CreateCustomerDto {
   fullName: string;
   idNumber: string;
-  idType?: string;
+  idType: ClientIdentificationType;
   email: string;
   phone?: string;
   emergencyContactName?: string;
@@ -198,7 +200,7 @@ export interface CreateCustomerDto {
 
 export interface ValidateCustomerIdentityRequest {
   idNumber: string;
-  idType?: string;
+  idType: ClientIdentificationType;
   fullName: string;
 }
 
@@ -215,7 +217,7 @@ export interface CustomerIdentityValidationResult {
 
 export interface ResolveMinorCustomerRequest {
   fullName: string;
-  idType: string;
+  idType: ClientIdentificationType;
   idNumber: string;
   dateOfBirth?: string;
 }
@@ -231,6 +233,7 @@ export async function getCustomers(
   if (params?.page) queryParams.append('page', String(params.page));
   if (params?.pageSize) queryParams.append('pageSize', String(params.pageSize));
   if (params?.search) queryParams.append('search', params.search);
+  if (params?.idType) queryParams.append('idType', params.idType);
 
   const queryString = queryParams.toString();
   const url = `${apiBase}/customers${queryString ? `?${queryString}` : ''}`;

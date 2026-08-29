@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { ContractFormState, IdType } from "@/features/contracts-form/types";
+import { getClientIdentificationTypeLabel } from '@/features/customers/client-identification';
 
 export interface HolderStepProps {
   state: ContractFormState;
@@ -83,7 +84,7 @@ export function HolderStep({
         <label>
           Tipo ID
           <input
-            value={state.clientIdType}
+            value={getClientIdentificationTypeLabel(state.clientIdType)}
             readOnly
             style={{ backgroundColor: "#f3f4f6", cursor: "not-allowed" }}
           />

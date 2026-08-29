@@ -1,5 +1,6 @@
 import { ContractFormState } from "@/features/contracts-form/types";
 import { formatBusinessDate } from "@/shared/regional";
+import { getClientIdentificationTypeLabel } from '@/features/customers/client-identification';
 
 /**
  * Helper functions for HTML generation.
@@ -29,7 +30,7 @@ export const getResponsibleAdultIdentity = (
 ): { idType: string; idNumber: string } => {
   if (travelingWith === state.clientFullName) {
     return {
-      idType: state.clientIdType,
+      idType: getClientIdentificationTypeLabel(state.clientIdType),
       idNumber: state.clientIdNumber,
     };
   }
@@ -37,7 +38,7 @@ export const getResponsibleAdultIdentity = (
   const companion = state.companions.find((item) => item.fullName === travelingWith);
   if (companion) {
     return {
-      idType: companion.idType,
+      idType: getClientIdentificationTypeLabel(companion.idType),
       idNumber: companion.idNumber,
     };
   }

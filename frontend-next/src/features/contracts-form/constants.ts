@@ -1,13 +1,6 @@
 /**
  * Shared constants for contract and customer forms
  */
-
-export const ID_TYPE_OPTIONS = [
-  { value: "Cedula", label: "Cédula" },
-  { value: "Pasaporte", label: "Pasaporte" },
-  { value: "DIMEX", label: "DIMEX" },
-];
-
 export const MARITAL_STATUS_OPTIONS = [
   { value: "Soltero", label: "Soltero" },
   { value: "Casado", label: "Casado" },

@@ -11,6 +11,10 @@ import {
   type CustomerInfo,
   type CustomerListItem,
 } from '@/lib/customers-api';
+import {
+  isClientIdentificationType,
+  type ClientIdentificationType,
+} from '@/features/customers/client-identification';
 
 export interface CustomerLookupStepProps {
   state: ContractFormState;
@@ -86,7 +90,7 @@ export function CustomerLookupStep({
 
   async function handleSaveCustomer(formData: {
     fullName: string;
-    idType: string;
+    idType: ClientIdentificationType;
     email: string;
     phone: string;
     maritalStatus: string;
@@ -100,6 +104,10 @@ export function CustomerLookupStep({
 
     const updatedProfile = await updateCustomer(selectedCustomer.id, formData);
     const customer = updatedProfile.customer;
+    if (!isClientIdentificationType(customer.idType)) {
+      throw new Error('Seleccione un tipo de identificación canónico');
+    }
+    const canonicalCustomerIdType = customer.idType;
     setSelectedCustomer((current) =>
       current
         ? {
@@ -112,11 +120,9 @@ export function CustomerLookupStep({
     );
     setState((previous) => ({
       ...previous,
+      selectedCustomerId: customer.id,
       clientFullName: customer.fullName,
-      clientIdType: (customer.idType || 'Cedula') as
-        | 'Cedula'
-        | 'Pasaporte'
-        | 'DIMEX',
+      clientIdType: canonicalCustomerIdType,
       clientIdNumber: customer.idNumber,
       clientEmail: customer.email || '',
       clientPhone: customer.phone || '',

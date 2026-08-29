@@ -4,6 +4,11 @@ import { addCompanionFromCustomer, removeCompanion, updateCompanion } from "@/fe
 import { getCustomers, getCustomerProfile, updateCustomer, type CustomerListItem, type CustomerInfo } from '@/lib/customers-api';
 import { CustomerCreateModal } from '@/features/customers/components/CustomerCreateModal';
 import { CustomerEditModal } from '@/features/customers/components/CustomerEditModal';
+import {
+  getClientIdentificationTypeLabel,
+  isClientIdentificationType,
+  type ClientIdentificationType,
+} from '@/features/customers/client-identification';
 
 export interface CompanionsStepProps {
   state: ContractFormState;
@@ -18,7 +23,7 @@ export interface CompanionsStepProps {
     passport: { id: string; fileName: string; mimeType: string } | null;
   }>;
   onViewDocument: (customerId: string, documentId: string) => void;
-  handleValidateCompanionIdentity: (companionId: string, idNumber: string, fullName: string, idType?: string) => Promise<void>;
+  handleValidateCompanionIdentity: (companionId: string, idNumber: string, fullName: string, idType: ClientIdentificationType) => Promise<void>;
   nationalityOptions: string[];
   requiredDocumentLabelClass: (hasAttachment: boolean) => string;
   updateFileInputState: (input: HTMLInputElement, hasFile: boolean) => void;
@@ -106,6 +111,13 @@ export function CompanionsStep({
       // Fetch full customer profile
       const profile = await getCustomerProfile(selectedCompanionCustomer.id);
       const customerData = profile.customer;
+      if (!isClientIdentificationType(customerData.idType)) {
+        setLookupError(
+          'El cliente usa un tipo de identificación heredado. Edítelo y seleccione el tipo canónico antes de continuar.',
+        );
+        return;
+      }
+      const canonicalCustomerIdType = customerData.idType;
 
       // Create companion with customer data and capture the new state
       let newCompanionId: string | null = null;
@@ -119,7 +131,7 @@ export function CompanionsStep({
           emergencyContactName: customerData.emergencyContactName || '',
           emergencyContactPhone: customerData.emergencyContactPhone || '',
           address: customerData.address || '',
-          idType: customerData.idType || undefined,
+          idType: canonicalCustomerIdType,
           maritalStatus: customerData.maritalStatus || undefined,
           occupation: customerData.occupation || undefined,
           nationality: customerData.nationality || undefined,
@@ -132,7 +144,7 @@ export function CompanionsStep({
       // Wait for React to process the state update, then load documents
       setTimeout(() => {
         if (newCompanionId) {
-          handleValidateCompanionIdentity(newCompanionId, customerData.idNumber, customerData.fullName, customerData.idType || undefined);
+          handleValidateCompanionIdentity(newCompanionId, customerData.idNumber, customerData.fullName, canonicalCustomerIdType);
         }
       }, 50);
 
@@ -192,7 +204,7 @@ export function CompanionsStep({
 
   async function handleSaveCustomerEdit(formData: {
     fullName: string;
-    idType: string;
+    idType: ClientIdentificationType;
     email: string;
     phone: string;
     maritalStatus: string;
@@ -208,6 +220,10 @@ export function CompanionsStep({
       // Update customer via API
       const updatedProfile = await updateCustomer(customerToEdit.id, formData);
       const updatedCustomer = updatedProfile.customer;
+      if (!isClientIdentificationType(updatedCustomer.idType)) {
+        throw new Error('Seleccione un tipo de identificación canónico');
+      }
+      const canonicalCustomerIdType = updatedCustomer.idType;
 
       // If editing a companion already in the list
       if (editingCompanionId) {
@@ -218,7 +234,7 @@ export function CompanionsStep({
               ? {
                   ...c,
                   fullName: updatedCustomer.fullName,
-                  idType: (updatedCustomer.idType || 'Cedula') as 'Cedula' | 'Pasaporte' | 'DIMEX',
+                  idType: canonicalCustomerIdType,
                   email: updatedCustomer.email || '',
                   phone: updatedCustomer.phone || '',
                   emergencyContactName: updatedCustomer.emergencyContactName || '',
@@ -714,7 +730,7 @@ export function CompanionsStep({
               <label>
                 Tipo ID
                 <input
-                  value={companion.idType}
+                  value={getClientIdentificationTypeLabel(companion.idType)}
                   readOnly
                   style={{ backgroundColor: "#f3f4f6", cursor: "not-allowed" }}
                 />

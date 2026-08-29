@@ -23,11 +23,11 @@ import {
   applyMoneyDerivedValues
 } from "@/features/contracts-form/utils";
 import { toLocalDateIso } from "@/shared/regional";
-import type { ContractFormState } from "@/features/contracts-form/types";
+import type { ContractFormState, IdType } from "@/features/contracts-form/types";
 import type { TravelPackage } from "@/lib/travel-packages-api";
 import { getContractDraft, reserveNextContractNumber, saveContractDraft, archiveContract } from "@/lib/contracts-api";
 import { getTravelPackageById } from "@/lib/travel-packages-api";
-import { normalizeIdentification, validateIdentification } from "@/features/customers/utils/normalize-identification";
+import { isClientIdentificationType } from '@/features/customers/client-identification';
 import { getInternalTripById } from "@/lib/internal-trips-api";
 import {
   validateCustomerIdentity,
@@ -59,6 +59,20 @@ export type ContractsWizardProps = {
   initialInternalTripId?: string | null;
   mode?: string;
 };
+
+function hasOnlyCanonicalClientIdentityTypes(state: ContractFormState): boolean {
+  return (
+    isClientIdentificationType(state.clientIdType) &&
+    state.companions.every((companion) =>
+      isClientIdentificationType(companion.idType),
+    ) &&
+    state.minors.every(
+      (minor) =>
+        isClientIdentificationType(minor.minorIdType) &&
+        isClientIdentificationType(minor.tutorIdType),
+    )
+  );
+}
 
 /**
  * Contracts Wizard - Orchestration Layer
@@ -203,11 +217,21 @@ export function ContractsWizard({
 
         if (isCancelled) return;
 
+        if (!isClientIdentificationType(customer.idType)) {
+          setState((prev) => ({ ...prev, selectedCustomerId: null }));
+          setIdentityConflictMessage(
+            'El cliente usa un tipo de identificación heredado. Edítelo y seleccione el tipo canónico antes de continuar.',
+          );
+          setShowIdentityConflictModal(true);
+          return;
+        }
+        const canonicalCustomerIdType = customer.idType;
+
         // Replace holder fields with selected customer data
         setState((prev) => ({
           ...prev,
           clientFullName: customer.fullName,
-          clientIdType: (customer.idType || 'Cedula') as 'Cedula' | 'Pasaporte' | 'DIMEX',
+          clientIdType: canonicalCustomerIdType,
           clientIdNumber: customer.idNumber,
           clientEmail: customer.email || '',
           clientPhone: customer.phone || '',
@@ -277,37 +301,18 @@ export function ContractsWizard({
   };
 
   // ==================== COMPANION CUSTOMER LOOKUP ====================
-  const handleValidateCompanionIdentity = async (companionId: string, idNumber: string, fullName: string, idType?: string) => {
+  const handleValidateCompanionIdentity = async (companionId: string, idNumber: string, fullName: string, idType: IdType) => {
     // Skip validation if either field is empty
     if (!idNumber.trim() || !fullName.trim()) {
       return;
     }
 
-    // Normalize idNumber based on idType
-    const normalizedIdNumber = normalizeIdentification(idType, idNumber);
-
-    // Validate normalized idNumber
-    const validationResult = validateIdentification(idType, normalizedIdNumber);
-    if (!validationResult.isValid) {
-      // Show validation error - could display in UI or console
-      console.error('Companion ID validation failed:', validationResult.errorMessage);
-      return;
-    }
-
-    // Update companion state with normalized value
-    setState((prev) => ({
-      ...prev,
-      companions: prev.companions.map(c => 
-        c.id === companionId
-          ? { ...c, idNumber: normalizedIdNumber }
-          : c
-      ),
-    }));
+    const submittedIdNumber = idNumber.trim();
 
     try {
       const result = await validateCustomerIdentity({
-        idNumber: normalizedIdNumber,
-        idType: idType,
+        idNumber: submittedIdNumber,
+        idType,
         fullName: fullName.trim(),
       });
 
@@ -316,6 +321,14 @@ export function ContractsWizard({
         const profile = await getCustomerProfile(result.existingCustomer.id);
         const customer = profile.customer;
         const documents = profile.documents || [];
+        if (!isClientIdentificationType(customer.idType)) {
+          setIdentityConflictMessage(
+            'El cliente usa un tipo de identificación heredado. Edítelo y seleccione el tipo canónico antes de continuar.',
+          );
+          setShowIdentityConflictModal(true);
+          return;
+        }
+        const canonicalCustomerIdType = customer.idType;
 
         // Update companion fields with customer data
         setState((prev) => ({
@@ -325,7 +338,7 @@ export function ContractsWizard({
               ? {
                   ...c,
                   fullName: customer.fullName,
-                  idType: (customer.idType || 'Cedula') as 'Cedula' | 'Pasaporte' | 'DIMEX',
+                  idType: canonicalCustomerIdType,
                   idNumber: customer.idNumber,
                   email: customer.email || '',
                   phone: customer.phone || '',
@@ -356,8 +369,10 @@ export function ContractsWizard({
         }));
       }
     } catch (error) {
-      console.error('Error validating companion identity:', error);
-      // Silent fail - user can still manually enter data
+      setIdentityConflictMessage(
+        error instanceof Error ? error.message : 'No se pudo validar la identidad del acompañante.',
+      );
+      setShowIdentityConflictModal(true);
     }
   };
 
@@ -537,7 +552,11 @@ export function ContractsWizard({
         setSupportDocs([]);
         setCompanionDocs({});
         setMinorDocs({});
-        setStatus(`Borrador ${draft.contractNumber} cargado. Continua completando la informacion.`);
+        setStatus(
+          hasOnlyCanonicalClientIdentityTypes(withCalculations)
+            ? `Borrador ${draft.contractNumber} cargado. Continua completando la informacion.`
+            : 'El borrador contiene tipos de identificación heredados. Seleccione tipos canónicos antes de volver a guardarlo.',
+        );
       })
       .catch((error) => {
         setActiveDraftId(null);
@@ -781,6 +800,10 @@ export function ContractsWizard({
       setStatus("No hay numero de contrato reservado para guardar el borrador.");
       return;
     }
+    if (!hasOnlyCanonicalClientIdentityTypes(state)) {
+      setStatus('Seleccione tipos de identificación canónicos antes de guardar el borrador.');
+      return;
+    }
 
     setSavingDraft(true);
     try {
@@ -831,6 +854,10 @@ export function ContractsWizard({
       setStatus("No hay numero de contrato reservado para guardar el borrador.");
       return;
     }
+    if (!hasOnlyCanonicalClientIdentityTypes(state)) {
+      setStatus('Seleccione tipos de identificación canónicos antes de guardar el borrador.');
+      return;
+    }
 
     setSavingDraft(true);
     try {
@@ -874,27 +901,10 @@ export function ContractsWizard({
       return;
     }
 
-    // Normalize idNumber based on idType
-    const normalizedIdNumber = normalizeIdentification(idType, idNumber);
-
-    // Validate normalized idNumber
-    const validationResult = validateIdentification(idType, normalizedIdNumber);
-    if (!validationResult.isValid) {
-      setIdentityConflictMessage(validationResult.errorMessage || 'Número de identificación inválido');
-      setShowIdentityConflictModal(true);
-      return;
-    }
-
-    // Update state with normalized value
-    setState((prev) => ({
-      ...prev,
-      clientIdNumber: normalizedIdNumber,
-    }));
-
     try {
       const result = await validateCustomerIdentity({
-        idNumber: normalizedIdNumber,
-        idType: idType,
+        idNumber,
+        idType,
         fullName,
       });
 
@@ -905,9 +915,10 @@ export function ContractsWizard({
       }
       // If valid, do nothing - continue normally
     } catch (error) {
-      // Network or unexpected errors - don't block the user
-      console.error("Error validating customer identity:", error);
-      // Optionally show a subtle warning but don't block
+      setIdentityConflictMessage(
+        error instanceof Error ? error.message : 'No se pudo validar la identidad del cliente.',
+      );
+      setShowIdentityConflictModal(true);
     }
   };
 
@@ -1027,6 +1038,10 @@ export function ContractsWizard({
     if (!state.clientFullName.trim() || !state.clientIdNumber.trim() || !state.clientEmail.trim()) {
       console.log("❌ Faltan datos principales del cliente");
       setStatus("Completa los datos principales del cliente antes de guardar.");
+      return;
+    }
+    if (!hasOnlyCanonicalClientIdentityTypes(state)) {
+      setStatus('Seleccione tipos de identificación canónicos antes de guardar el contrato.');
       return;
     }
     if (rangeMessage || itineraryMessage) {

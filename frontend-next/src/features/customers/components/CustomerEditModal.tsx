@@ -2,6 +2,10 @@
 
 import { useState } from 'react';
 import { CustomerForm } from './CustomerForm';
+import {
+  isClientIdentificationType,
+  type ClientIdentificationType,
+} from '@/features/customers/client-identification';
 
 interface CustomerEditModalProps {
   isOpen: boolean;
@@ -22,7 +26,7 @@ interface CustomerEditModalProps {
   onClose: () => void;
   onSave: (formData: {
     fullName: string;
-    idType: string;
+    idType: ClientIdentificationType;
     email: string;
     phone: string;
     maritalStatus: string;
@@ -34,10 +38,23 @@ interface CustomerEditModalProps {
   }) => Promise<void>;
 }
 
+type CustomerEditFormState = {
+  fullName: string;
+  idType: ClientIdentificationType | '';
+  email: string;
+  phone: string;
+  maritalStatus: string;
+  nationality: string;
+  occupation: string;
+  address: string;
+  emergencyContactName: string;
+  emergencyContactPhone: string;
+};
+
 export function CustomerEditModal({ isOpen, customer, onClose, onSave }: CustomerEditModalProps) {
-  const [editForm, setEditForm] = useState({
+  const [editForm, setEditForm] = useState<CustomerEditFormState>({
     fullName: customer.fullName,
-    idType: customer.idType || '',
+    idType: isClientIdentificationType(customer.idType) ? customer.idType : '',
     email: customer.email || '',
     phone: customer.phone || '',
     maritalStatus: customer.maritalStatus || '',
@@ -49,18 +66,24 @@ export function CustomerEditModal({ isOpen, customer, onClose, onSave }: Custome
   });
 
   const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   function handleEditFormChange(updates: Partial<typeof editForm>) {
     setEditForm((prev) => ({ ...prev, ...updates }));
   }
 
   async function handleSave() {
+    if (!isClientIdentificationType(editForm.idType)) {
+      setError('Seleccione un tipo de identificación canónico');
+      return;
+    }
     setIsSaving(true);
+    setError(null);
     try {
-      await onSave(editForm);
+      await onSave({ ...editForm, idType: editForm.idType });
       onClose();
     } catch (err) {
-      // Error handling is done by the parent
+      setError(err instanceof Error ? err.message : 'Error al actualizar cliente');
     } finally {
       setIsSaving(false);
     }
@@ -71,7 +94,7 @@ export function CustomerEditModal({ isOpen, customer, onClose, onSave }: Custome
     // Reset form to original values
     setEditForm({
       fullName: customer.fullName,
-      idType: customer.idType || '',
+      idType: isClientIdentificationType(customer.idType) ? customer.idType : '',
       email: customer.email || '',
       phone: customer.phone || '',
       maritalStatus: customer.maritalStatus || '',
@@ -81,6 +104,7 @@ export function CustomerEditModal({ isOpen, customer, onClose, onSave }: Custome
       emergencyContactName: customer.emergencyContactName || '',
       emergencyContactPhone: customer.emergencyContactPhone || '',
     });
+    setError(null);
     onClose();
   }
 
@@ -150,6 +174,11 @@ export function CustomerEditModal({ isOpen, customer, onClose, onSave }: Custome
           </button>
         </div>
         <div style={{ padding: '24px' }}>
+          {error && (
+            <div role="alert" style={{ marginBottom: '12px', color: '#991b1b' }}>
+              {error}
+            </div>
+          )}
           <CustomerForm
             customer={customer}
             isEditMode={true}

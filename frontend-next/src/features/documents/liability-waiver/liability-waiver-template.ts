@@ -1,4 +1,5 @@
 import { TenantLegalInfo } from "@/features/contracts-form/pdf-template";
+import { getClientIdentificationTypeLabel } from '@/features/customers/client-identification';
 
 /**
  * Data required to render the Liability Waiver document.
@@ -53,7 +54,7 @@ export function buildLiabilityWaiverHtml(
   </div>
 
   <div class="waiver-content">
-    <p>Yo, <strong>${esc(data.clientName)}</strong>, mayor de edad, <strong>${esc(data.clientCivilStatus)}</strong>, <strong>${esc(data.clientOccupation)}</strong>, portador(a) de la <strong>${esc(data.clientIdType)}</strong> número <strong>${esc(data.clientIdNumber)}</strong>, vecino(a) de <strong>${esc(data.clientAddress)}</strong>, denominado(a) como el "Cliente",</p>
+    <p>Yo, <strong>${esc(data.clientName)}</strong>, mayor de edad, <strong>${esc(data.clientCivilStatus)}</strong>, <strong>${esc(data.clientOccupation)}</strong>, portador(a) de la <strong>${esc(getClientIdentificationTypeLabel(data.clientIdType))}</strong> número <strong>${esc(data.clientIdNumber)}</strong>, vecino(a) de <strong>${esc(data.clientAddress)}</strong>, denominado(a) como el "Cliente",</p>
 
     <p>en pleno uso de mis facultades, manifiesto:</p>
 
@@ -90,7 +91,7 @@ export function buildLiabilityWaiverHtml(
     <p><strong>Cliente</strong></p>
     <div class="waiver-signature-line">____________________________________</div>
     <p>${esc(data.clientName)}</p>
-    <p>${esc(data.clientIdType)}: ${esc(data.clientIdNumber)}</p>
+    <p>${esc(getClientIdentificationTypeLabel(data.clientIdType))}: ${esc(data.clientIdNumber)}</p>
     <p>Fecha: ${esc(signatureDate)}</p>
   </div>
 </section>`;

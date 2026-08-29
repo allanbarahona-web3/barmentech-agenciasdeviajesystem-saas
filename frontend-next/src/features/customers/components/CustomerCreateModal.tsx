@@ -2,7 +2,10 @@
 
 import { useState } from 'react';
 import { createCustomer, type CreateCustomerDto, type CustomerInfo } from '@/lib/customers-api';
-import { normalizeIdentification, validateIdentification } from '@/features/customers/utils/normalize-identification';
+import {
+  CLIENT_IDENTIFICATION_OPTIONS,
+  type ClientIdentificationType,
+} from '@/features/customers/client-identification';
 import { NATIONALITY_OPTIONS, MARITAL_STATUS_OPTIONS } from '@/features/contracts-form/constants';
 
 interface CustomerCreateModalProps {
@@ -15,7 +18,7 @@ export function CustomerCreateModal({ isOpen, onClose, onCustomerCreated }: Cust
   const [formData, setFormData] = useState<CreateCustomerDto>({
     fullName: '',
     idNumber: '',
-    idType: 'Cedula',
+    idType: 'CEDULA_FISICA',
     email: '',
     phone: '',
     emergencyContactName: '',
@@ -40,7 +43,7 @@ export function CustomerCreateModal({ isOpen, onClose, onCustomerCreated }: Cust
     setFormData({
       fullName: '',
       idNumber: '',
-      idType: 'Cedula',
+      idType: 'CEDULA_FISICA',
       email: '',
       phone: '',
       emergencyContactName: '',
@@ -64,18 +67,12 @@ export function CustomerCreateModal({ isOpen, onClose, onCustomerCreated }: Cust
       setError('El número de identificación es requerido');
       return;
     }
-    if (!formData.email.trim()) {
-      setError('El email es requerido');
+    if (!formData.idType) {
+      setError('El tipo de identificación es requerido');
       return;
     }
-
-    // Normalize idNumber based on idType
-    const normalizedIdNumber = normalizeIdentification(formData.idType, formData.idNumber);
-
-    // Validate normalized idNumber
-    const validationResult = validateIdentification(formData.idType, normalizedIdNumber);
-    if (!validationResult.isValid) {
-      setError(validationResult.errorMessage || 'Número de identificación inválido');
+    if (!formData.email.trim()) {
+      setError('El email es requerido');
       return;
     }
 
@@ -85,7 +82,7 @@ export function CustomerCreateModal({ isOpen, onClose, onCustomerCreated }: Cust
     try {
       const createdCustomer = await createCustomer({
         ...formData,
-        idNumber: normalizedIdNumber,
+        idNumber: formData.idNumber.trim(),
       });
       onCustomerCreated(createdCustomer);
       handleClose();
@@ -199,8 +196,13 @@ export function CustomerCreateModal({ isOpen, onClose, onCustomerCreated }: Cust
                   Tipo de Identificación *
                 </div>
                 <select
-                  value={formData.idType || 'Cedula'}
-                  onChange={(e) => handleChange('idType', e.target.value)}
+                  value={formData.idType}
+                  onChange={(e) =>
+                    handleChange(
+                      'idType',
+                      e.target.value as ClientIdentificationType,
+                    )
+                  }
                   disabled={isSaving}
                   style={{
                     width: '100%',
@@ -216,9 +218,11 @@ export function CustomerCreateModal({ isOpen, onClose, onCustomerCreated }: Cust
                   onFocus={(e) => (e.currentTarget.style.borderColor = '#667eea')}
                   onBlur={(e) => (e.currentTarget.style.borderColor = '#e5e7eb')}
                 >
-                  <option value="Cedula">Cédula</option>
-                  <option value="Pasaporte">Pasaporte</option>
-                  <option value="DIMEX">DIMEX</option>
+                  {CLIENT_IDENTIFICATION_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
                 </select>
               </div>
 
@@ -229,16 +233,10 @@ export function CustomerCreateModal({ isOpen, onClose, onCustomerCreated }: Cust
                 </div>
                 <input
                   type="text"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
                   value={formData.idNumber}
-                  onChange={(e) => {
-                    // Solo permitir dígitos 0-9
-                    const value = e.target.value.replace(/\D/g, '');
-                    handleChange('idNumber', value);
-                  }}
+                  onChange={(e) => handleChange('idNumber', e.target.value)}
                   disabled={isSaving}
-                  placeholder="Solo números (0-9)"
+                  placeholder="Número de identificación"
                   style={{
                     width: '100%',
                     padding: '8px 12px',
