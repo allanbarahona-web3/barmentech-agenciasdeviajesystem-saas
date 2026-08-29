@@ -372,6 +372,42 @@ describe("ContractsService archive customer identity resolution", () => {
     expect(client.findFirst).toHaveBeenCalledTimes(2);
   });
 
+  it("resolves a formatted canonical physical identity without creating a Customer", async () => {
+    const canonicalHolder: CustomerRecord = {
+      id: "canonical-holder",
+      tenantId: "tenant-1",
+      fullName: "Canonical Holder",
+      idType: "CEDULA_FISICA",
+      idNumber: "303570962",
+    };
+    const { service, client } = createService([canonicalHolder]);
+
+    const result = await service.resolveArchiveParticipants(
+      canonicalHolder.tenantId,
+      {
+        selectedCustomerId: undefined,
+        fullName: canonicalHolder.fullName,
+        idType: canonicalHolder.idType,
+        idNumber: "3-357-962",
+      },
+      [],
+      [],
+    );
+
+    expect(result.client.id).toBe(canonicalHolder.id);
+    expect(client.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          tenantId: canonicalHolder.tenantId,
+          idType: "CEDULA_FISICA",
+          idNumber: "303570962",
+        },
+      }),
+    );
+    expect(client.create).not.toHaveBeenCalled();
+    expect(client.update).not.toHaveBeenCalled();
+  });
+
   it("rejects a legacy draft when its Customer no longer exists", async () => {
     const { service } = createService([]);
 

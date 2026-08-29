@@ -1,5 +1,6 @@
 import { Transform } from "class-transformer";
-import { IsInt, IsOptional, IsString, Max, Min } from "class-validator";
+import { IsInt, IsOptional, IsString, Max, MaxLength, Min } from "class-validator";
+import type { ClientIdentificationType } from "../client-identification";
 
 /**
  * ListCustomersDto
@@ -24,4 +25,9 @@ export class ListCustomersDto {
   @IsOptional()
   @IsString()
   search?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  idType?: ClientIdentificationType;
 }
