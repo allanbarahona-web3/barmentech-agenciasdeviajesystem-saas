@@ -36,17 +36,17 @@ function Action({ order }: { order: EligibleSalesOrder }) {
     return (
       <Button asChild className={styles.primaryAction} size="sm">
         <Link href={`/fiscal-billing/sales-orders/${encodeURIComponent(order.id)}/preparation`}>
-          Preparar documento
+          Facturar
         </Link>
       </Button>
     );
   }
   if (order.existingPrimaryDocument) {
-    return <Button asChild size="sm" variant="outline"><Link href={`/fiscal-billing/documents/${encodeURIComponent(order.existingPrimaryDocument.id)}`}>{order.action === 'RESUME' ? 'Continuar borrador' : 'Ver documento'}</Link></Button>;
+    return <Button asChild size="sm" variant="outline"><Link href={`/fiscal-billing/documents/${encodeURIComponent(order.existingPrimaryDocument.id)}`}>{order.action === 'RESUME' ? 'Facturar' : 'Ver documento'}</Link></Button>;
   }
   return (
     <Button className={styles.disabledAction} disabled size="sm" variant="outline" type="button">
-      {order.action === 'RESUME' ? 'Continuar borrador' : 'Ver documento'}
+      {order.action === 'RESUME' ? 'Facturar' : 'Ver documento'}
     </Button>
   );
 }

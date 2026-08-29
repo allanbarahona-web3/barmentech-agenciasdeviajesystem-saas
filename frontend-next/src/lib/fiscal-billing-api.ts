@@ -109,7 +109,10 @@ export type FiscalPreparation = {
   customer: {
     name: string;
     email: string | null;
+    receiverIdentificationTypeCode: '01' | '02' | '03' | '04' | null;
+    receiverIdentificationNumber: string | null;
     receiverFiscalIdentityComplete: boolean;
+    receiverFiscalIdentityStatus: 'COMPLETE' | 'INCOMPLETE' | 'UNSUPPORTED';
   };
   currency: string;
   paymentCondition: {
