@@ -19,6 +19,7 @@ import {
   accountReceivableRecognitionJobId,
   type AccountReceivableRecognitionJobPayload,
 } from "./account-receivable-recognition.constants";
+import { logFiscalPollerFailure } from "./fiscal-poller-error-logging";
 
 interface ClaimedRecognitionEvent {
   id: string; tenantId: string; eventType: string; eventVersion: number;
@@ -63,8 +64,8 @@ export class AccountReceivableRecognitionPublisher implements OnModuleInit, OnMo
 
   private async executeCycle(): Promise<void> {
     if (this.stopping || this.activeCycle) return;
-    const cycle = this.publishAvailableEvents().catch(() => {
-      this.logger.error("Account receivable recognition polling cycle failed.");
+    const cycle = this.publishAvailableEvents().catch((error) => {
+      logFiscalPollerFailure(this.logger, "AccountReceivableRecognitionPublisher", error);
     });
     this.activeCycle = cycle;
     try { await cycle; }

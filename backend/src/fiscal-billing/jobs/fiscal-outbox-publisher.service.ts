@@ -21,6 +21,7 @@ import {
   FISCAL_OUTBOX_RETRY_MAX_MS,
   fiscalIssuanceJobId,
 } from "./fiscal-outbox-publisher.constants";
+import { logFiscalPollerFailure } from "./fiscal-poller-error-logging";
 
 interface ClaimedFiscalOutboxEvent {
   id: string;
@@ -92,8 +93,8 @@ export class FiscalOutboxPublisherService
 
   private async executeCycle(): Promise<void> {
     if (this.stopping || this.activeCycle) return;
-    const cycle = this.publishAvailableEvents().catch(() => {
-      this.logger.error("Fiscal outbox polling cycle failed.");
+    const cycle = this.publishAvailableEvents().catch((error) => {
+      logFiscalPollerFailure(this.logger, "FiscalOutboxPublisherService", error);
     });
     this.activeCycle = cycle;
     try {

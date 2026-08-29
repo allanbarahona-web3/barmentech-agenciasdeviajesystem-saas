@@ -20,6 +20,7 @@ import {
   FISCAL_ACCEPTED_FANOUT_RETRY_BASE_MS,
   FISCAL_ACCEPTED_FANOUT_RETRY_MAX_MS,
 } from "./fiscal-accepted-fanout.constants";
+import { logFiscalPollerFailure } from "./fiscal-poller-error-logging";
 
 interface ClaimedAcceptedEvent {
   id: string;
@@ -94,8 +95,8 @@ export class FiscalAcceptedFanoutCoordinatorService
 
   private async executeCycle(): Promise<void> {
     if (this.stopping || this.activeCycle) return;
-    const cycle = this.fanOutAvailableEvents().catch(() => {
-      this.logger.error("Fiscal accepted fan-out polling cycle failed.");
+    const cycle = this.fanOutAvailableEvents().catch((error) => {
+      logFiscalPollerFailure(this.logger, "FiscalAcceptedFanoutCoordinatorService", error);
     });
     this.activeCycle = cycle;
     try {

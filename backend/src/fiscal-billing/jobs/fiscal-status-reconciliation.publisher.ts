@@ -4,6 +4,7 @@ import { JobDispatcherService } from "../../infrastructure/job-dispatcher";
 import { PLATFORM_QUEUE_KEYS } from "../../infrastructure/queue";
 import { PrismaService } from "../../prisma/prisma.service";
 import { FISCAL_STATUS_RECONCILIATION_BATCH_SIZE, FISCAL_STATUS_RECONCILIATION_EVENT_VERSION, FISCAL_STATUS_RECONCILIATION_JOB_NAME, FISCAL_STATUS_RECONCILIATION_LEASE_MS, FISCAL_STATUS_RECONCILIATION_POLL_INTERVAL_MS, fiscalStatusReconciliationJobId } from "./fiscal-status-reconciliation.constants";
+import { logFiscalPollerFailure } from "./fiscal-poller-error-logging";
 
 interface ClaimedStatusCheck{tenantId:string;billingDocumentId:string;statusCheckLockOwner:string;}
 export interface FiscalStatusReconciliationPayload{tenantId:string;billingDocumentId:string;statusCheckLockOwner:string;eventVersion:1;}
@@ -15,7 +16,7 @@ export class FiscalStatusReconciliationPublisher implements OnModuleInit,OnModul
   onModuleInit(){this.schedule(0);}async onModuleDestroy(){this.stopping=true;if(this.timer){clearTimeout(this.timer);this.timer=null;}await this.activeCycle;}
   async publishDueStatusChecks():Promise<void>{const claimed=await this.claimBatch();for(const row of claimed){try{assertClaimedStatusCheck(row);}catch(error){this.logDispatchFailure(error,"BEFORE_DISPATCH");continue;}try{await this.dispatch(row);}catch(error){this.logDispatchFailure(error,"DURING_DISPATCH");}}}
   private schedule(delay:number){if(this.stopping)return;this.timer=setTimeout(()=>{this.timer=null;void this.executeCycle();},delay);}
-  private async executeCycle(){if(this.stopping||this.activeCycle)return;const cycle=this.publishDueStatusChecks().catch(()=>this.logger.error("Fiscal status reconciliation polling cycle failed."));this.activeCycle=cycle;try{await cycle;}finally{this.activeCycle=null;this.schedule(FISCAL_STATUS_RECONCILIATION_POLL_INTERVAL_MS);}}
+  private async executeCycle(){if(this.stopping||this.activeCycle)return;const cycle=this.publishDueStatusChecks().catch(error=>logFiscalPollerFailure(this.logger,"FiscalStatusReconciliationPublisher",error));this.activeCycle=cycle;try{await cycle;}finally{this.activeCycle=null;this.schedule(FISCAL_STATUS_RECONCILIATION_POLL_INTERVAL_MS);}}
   private claimBatch():Promise<ClaimedStatusCheck[]>{const claimedAt=new Date(),leaseUntil=new Date(claimedAt.getTime()+FISCAL_STATUS_RECONCILIATION_LEASE_MS),batchOwner=`fsr-${randomUUID()}`;
     return this.prisma.$transaction(tx=>tx.$queryRaw<ClaimedStatusCheck[]>`
       WITH selected AS (

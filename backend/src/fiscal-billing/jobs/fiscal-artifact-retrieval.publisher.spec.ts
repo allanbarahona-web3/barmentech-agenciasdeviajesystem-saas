@@ -112,9 +112,10 @@ describe('FiscalArtifactRetrievalPublisher', () => {
     c.publisher.onModuleInit(); await jest.advanceTimersByTimeAsync(0);
     const secondCycle = (c.publisher as unknown as { cycle(): Promise<void> }).cycle();
     expect(c.prisma.$transaction).toHaveBeenCalledTimes(1);
-    rejectClaim(new Error('database unavailable'));
+    rejectClaim(Object.assign(new Error('secret-db.example.test:25060'), { errorCode: 'P1001' }));
     await secondCycle; await c.publisher.onModuleDestroy();
-    expect(diagnostic).toHaveBeenCalledWith('Fiscal artifact retrieval polling cycle failed.');
+    expect(diagnostic).toHaveBeenCalledWith('FISCAL_POLLER_FAILURE poller=FiscalArtifactRetrievalPublisher phase=POLLING_CYCLE category=PRISMA code=P1001');
+    expect(JSON.stringify(diagnostic.mock.calls)).not.toMatch(/secret-db|25060/);
     diagnostic.mockRestore();
   });
 });

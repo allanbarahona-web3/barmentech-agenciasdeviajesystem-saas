@@ -17,6 +17,7 @@ import {
   FISCAL_TERMINAL_ARTIFACT_VERSION,
   type FiscalTerminalArtifactType,
 } from "./fiscal-terminal-artifact-fanout.constants";
+import { logFiscalPollerFailure } from "./fiscal-poller-error-logging";
 
 interface ClaimedTerminalEvent {
   id: string;
@@ -104,8 +105,8 @@ export class FiscalTerminalArtifactFanoutCoordinatorService implements OnModuleI
 
   private async executeCycle(): Promise<void> {
     if (this.stopping || this.activeCycle) return;
-    const cycle = this.fanOutAvailableEvents().catch(() => {
-      this.logger.error("Fiscal terminal artifact fan-out polling cycle failed.");
+    const cycle = this.fanOutAvailableEvents().catch((error) => {
+      logFiscalPollerFailure(this.logger, "FiscalTerminalArtifactFanoutCoordinatorService", error);
     });
     this.activeCycle = cycle;
     try { await cycle; }
