@@ -87,6 +87,13 @@ describe("SalesOrderConversionService", () => {
     );
     expect(lineInsertSql).toContain('"participants"');
     expect(lineInsertSql).not.toMatch(/supplier|margin|cost/i);
+    expect(execute.mock.calls[2]).toEqual(
+      expect.arrayContaining([
+        "tenant-a",
+        "ADDITIONAL_SERVICE_ORDER",
+        "proposal-a",
+      ]),
+    );
   });
 
   it("copies mixed SERVICE and MERCHANDISE categories without per-line queries", async () => {
