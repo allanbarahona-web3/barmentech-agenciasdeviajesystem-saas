@@ -2,6 +2,56 @@ import { Prisma } from "@prisma/client";
 import { PrismaSalesOrderFiscalBillingRepository } from "./prisma-fiscal-billing.repository";
 
 describe("PrismaSalesOrderFiscalBillingRepository", () => {
+  it("loads only the tenant-scoped Client identity required for preparation", async () => {
+    const prisma = prismaMock();
+    prisma.salesOrder.findFirst.mockResolvedValue({
+      id: "sales-a",
+      tenantId: "tenant-a",
+      orderNumber: "SO-1",
+      status: "CREATED",
+      sourceType: "ADDITIONAL_SERVICE_ORDER",
+      customerId: "customer-a",
+      customerName: "Snapshot Name",
+      customerEmail: "snapshot@example.test",
+      currency: "CRC",
+      commercialSubtotal: decimal("100"),
+      totalVat: decimal("13"),
+      total: decimal("113"),
+      paymentConditionType: "CASH",
+      paymentTermValue: null,
+      paymentTermUnit: null,
+      commercialObservations: null,
+      createdAt: new Date("2026-08-29T00:00:00Z"),
+      lines: [],
+    });
+    prisma.client.findFirst.mockResolvedValue({
+      id: "customer-a",
+      idType: "CEDULA_JURIDICA",
+      idNumber: "3101123456",
+    });
+    const repository = new PrismaSalesOrderFiscalBillingRepository(prisma as never);
+
+    const result = await repository.findSalesOrder("tenant-a", "sales-a");
+
+    expect(prisma.salesOrder.findFirst).toHaveBeenCalledWith({
+      where: { tenantId: "tenant-a", id: "sales-a" },
+      include: { lines: { orderBy: [{ createdAt: "asc" }, { id: "asc" }] } },
+    });
+    expect(prisma.client.findFirst).toHaveBeenCalledWith({
+      where: { id: "customer-a", tenantId: "tenant-a" },
+      select: { id: true, idType: true, idNumber: true },
+    });
+    expect(result).toMatchObject({
+      customerName: "Snapshot Name",
+      customerEmail: "snapshot@example.test",
+      customerFiscalIdentity: {
+        id: "customer-a",
+        idType: "CEDULA_JURIDICA",
+        idNumber: "3101123456",
+      },
+    });
+  });
+
   it("lists eligible rows with bounded queries and exact tenant/source/status filters", async () => {
     const prisma = prismaMock();
     prisma.salesOrder.findMany.mockResolvedValue([
@@ -37,7 +87,12 @@ describe("PrismaSalesOrderFiscalBillingRepository", () => {
           status: "CREATED",
           lines: {
             some: {},
-            none: { additionalServiceCatalogId: null },
+            none: {
+              OR: [
+                { additionalServiceCatalogId: null },
+                { fiscalItemCategory: null },
+              ],
+            },
           },
         },
       }),
@@ -70,6 +125,7 @@ function prismaMock() {
     tenantBillingConfiguration: { findUnique: jest.fn() },
     additionalServiceFiscalProfile: { findMany: jest.fn() },
     fiscalIssuer: { findMany: jest.fn(), findFirst: jest.fn() },
+    client: { findFirst: jest.fn() },
   };
 }
 

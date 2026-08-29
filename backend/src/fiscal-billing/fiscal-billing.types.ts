@@ -25,6 +25,11 @@ export interface SalesOrderSource {
   customerId: string | null;
   customerName: string;
   customerEmail: string | null;
+  customerFiscalIdentity: {
+    id: string;
+    idType: string | null;
+    idNumber: string;
+  } | null;
   currency: string;
   commercialSubtotal: string;
   totalVat: string;

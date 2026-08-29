@@ -113,8 +113,15 @@ export class PrismaSalesOrderFiscalBillingRepository
       },
     });
     if (!order) return null;
+    const customerFiscalIdentity = order.customerId
+      ? await this.prisma.client.findFirst({
+          where: { id: order.customerId, tenantId },
+          select: { id: true, idType: true, idNumber: true },
+        })
+      : null;
     return {
       ...order,
+      customerFiscalIdentity,
       currency: order.currency,
       commercialSubtotal: order.commercialSubtotal.toFixed(4),
       totalVat: order.totalVat.toFixed(4),

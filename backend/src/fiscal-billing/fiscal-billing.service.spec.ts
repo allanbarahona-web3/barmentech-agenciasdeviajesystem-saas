@@ -16,7 +16,9 @@ describe("SalesOrderFiscalBillingService", () => {
   });
 
   it("prepares without writes and reports missing receiver data", async () => {
-    const { service, repository, fiscalCatalog } = setup();
+    const { service, repository, fiscalCatalog } = setup({
+      salesOrder: salesOrder({ customerFiscalIdentity: null }),
+    });
 
     const result = await service.prepare("tenant-a", "sales-a");
 
@@ -24,7 +26,10 @@ describe("SalesOrderFiscalBillingService", () => {
     expect(result.customer).toEqual({
       name: "Customer A",
       email: null,
+      receiverIdentificationTypeCode: null,
+      receiverIdentificationNumber: null,
       receiverFiscalIdentityComplete: false,
+      receiverFiscalIdentityStatus: "INCOMPLETE",
     });
     expect(result.issues).toContainEqual({
       code: "RECEIVER_FISCAL_IDENTITY_INCOMPLETE",
@@ -33,6 +38,80 @@ describe("SalesOrderFiscalBillingService", () => {
     expect(repository.createDraft).not.toHaveBeenCalled();
     expect(fiscalCatalog.evaluateFiscalProfiles).toHaveBeenCalledTimes(1);
   });
+
+  it.each([
+    ["CEDULA_FISICA", "1-2345-6789", "01", "123456789"],
+    ["CEDULA_JURIDICA", "3-101-123456", "02", "3101123456"],
+    ["DIMEX", "112345678901", "03", "112345678901"],
+    ["NITE", "1234567890", "04", "1234567890"],
+  ])(
+    "prefills supported canonical Client identity %s as receiver type %s",
+    async (idType, idNumber, expectedType, expectedNumber) => {
+      const { service, repository } = setup({
+        salesOrder: salesOrder({
+          customerName: "Sales Order Customer Snapshot",
+          customerEmail: "snapshot@example.test",
+          customerFiscalIdentity: {
+            id: "customer-a",
+            idType,
+            idNumber,
+          },
+        }),
+      });
+
+      const result = await service.prepare("tenant-a", "sales-a");
+
+      expect(result.customer).toEqual({
+        name: "Sales Order Customer Snapshot",
+        email: "snapshot@example.test",
+        receiverIdentificationTypeCode: expectedType,
+        receiverIdentificationNumber: expectedNumber,
+        receiverFiscalIdentityComplete: true,
+        receiverFiscalIdentityStatus: "COMPLETE",
+      });
+      expect(result.issues).not.toContainEqual(
+        expect.objectContaining({
+          code: "RECEIVER_FISCAL_IDENTITY_INCOMPLETE",
+        }),
+      );
+      expect(repository.createDraft).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ["PASAPORTE", "P-123", "UNSUPPORTED", "P-123"],
+    ["OTHER", "LOCAL-123", "UNSUPPORTED", "LOCAL-123"],
+    [null, "123456789", "INCOMPLETE", null],
+    ["Cedula", "123456789", "INCOMPLETE", null],
+    ["CEDULA_FISICA", "", "INCOMPLETE", null],
+  ])(
+    "keeps unsupported or incomplete Client identity %s explicit",
+    async (idType, idNumber, expectedStatus, expectedNumber) => {
+      const { service } = setup({
+        salesOrder: salesOrder({
+          customerFiscalIdentity: {
+            id: "customer-a",
+            idType,
+            idNumber,
+          },
+        }),
+      });
+
+      const result = await service.prepare("tenant-a", "sales-a");
+
+      expect(result.customer).toMatchObject({
+        receiverIdentificationTypeCode:
+          idType === "CEDULA_FISICA" ? "01" : null,
+        receiverIdentificationNumber: expectedNumber,
+        receiverFiscalIdentityComplete: false,
+        receiverFiscalIdentityStatus: expectedStatus,
+      });
+      expect(result.issues).toContainEqual({
+        code: "RECEIVER_FISCAL_IDENTITY_INCOMPLETE",
+        blocking: false,
+      });
+    },
+  );
 
   it.each([
     [null, "BILLING_CONFIGURATION_NOT_FOUND"],
@@ -518,6 +597,11 @@ function salesOrder(overrides: Record<string, unknown> = {}) {
     customerId: "customer-a",
     customerName: "Customer A",
     customerEmail: null,
+    customerFiscalIdentity: {
+      id: "customer-a",
+      idType: "CEDULA_FISICA",
+      idNumber: "123456789",
+    },
     currency: "CRC",
     commercialSubtotal: "100.0000",
     totalVat: "13.0000",

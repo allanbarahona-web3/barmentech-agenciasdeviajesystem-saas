@@ -33,6 +33,10 @@ import {
   resolveCrDraftPaymentMethods,
   resolveCrDraftReceiverIdentity,
 } from "./fiscal-draft-selection";
+import {
+  clientFiscalReceiverPrefill,
+  type FiscalReceiverIdentityPrefill,
+} from "./client-fiscal-receiver-prefill";
 
 type CreateDraftInput = {
   fiscalIssuerId: string;
@@ -63,6 +67,7 @@ type Analysis = {
   issues: ReadinessIssue[];
   totals: { subtotal: string; tax: string; total: string };
   existingPrimaryDocument: PrimaryDocumentSummary | null;
+  receiverFiscalIdentity: FiscalReceiverIdentityPrefill;
 };
 
 @Injectable()
@@ -92,7 +97,7 @@ export class SalesOrderFiscalBillingService {
       customer: {
         name: analysis.salesOrder.customerName,
         email: analysis.salesOrder.customerEmail,
-        receiverFiscalIdentityComplete: false,
+        ...analysis.receiverFiscalIdentity,
       },
       currency: analysis.salesOrder.currency,
       paymentCondition: {
@@ -277,6 +282,9 @@ export class SalesOrderFiscalBillingService {
         )
       : new Map();
     const issues: ReadinessIssue[] = [];
+    const receiverFiscalIdentity = clientFiscalReceiverPrefill(
+      salesOrder.customerFiscalIdentity,
+    );
     if (!configuration) {
       issues.push({ code: "BILLING_CONFIGURATION_NOT_FOUND", blocking: true });
     } else if (
@@ -291,7 +299,12 @@ export class SalesOrderFiscalBillingService {
         blocking: true,
       });
     }
-    issues.push({ code: "RECEIVER_FISCAL_IDENTITY_INCOMPLETE", blocking: false });
+    if (!receiverFiscalIdentity.receiverFiscalIdentityComplete) {
+      issues.push({
+        code: "RECEIVER_FISCAL_IDENTITY_INCOMPLETE",
+        blocking: false,
+      });
+    }
 
     const lines = salesOrder.lines.map((source) => {
       if (source.fiscalItemCategory === null) {
@@ -439,6 +452,7 @@ export class SalesOrderFiscalBillingService {
       issues,
       totals: calculatedTotals,
       existingPrimaryDocument,
+      receiverFiscalIdentity,
     };
   }
 
