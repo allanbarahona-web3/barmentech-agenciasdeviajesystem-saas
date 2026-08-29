@@ -20,6 +20,18 @@
   height: 18px;
 }
 
+.primaryActionButton {
+  border-color: #2563eb;
+  background: #2563eb;
+  color: #fff;
+}
+
+.primaryActionButton:hover {
+  border-color: #1d4ed8;
+  background: #1d4ed8;
+  color: #fff;
+}
+
 .brand {
   display: flex;
   min-width: 0;

@@ -162,13 +162,13 @@
   height: 16px;
 }
 
-.pdfButton {
+.primaryActionButton {
   border-color: #2563eb;
   background: #2563eb;
   color: #fff;
 }
 
-.pdfButton:hover {
+.primaryActionButton:hover {
   border-color: #1d4ed8;
   background: #1d4ed8;
   color: #fff;

@@ -25,7 +25,6 @@ import {
   generateCommercialProposal,
   approveCommercialProposalInPerson,
   sendCommercialProposal,
-  convertToSalesOrder,
   type AdditionalServiceOrder,
   type AdditionalServiceOrderCurrency,
   type AdditionalServicePaymentConditionType,
@@ -149,9 +148,6 @@ export default function AdditionalServiceOrderPreviewPage() {
   const [sendModalError, setSendModalError] = useState<string | null>(null);
   const [generatingProposal, setGeneratingProposal] = useState(false);
   const [deliveryMessage, setDeliveryMessage] = useState<string | null>(null);
-  const [converting, setConverting] = useState(false);
-  const [conversionModalOpen, setConversionModalOpen] = useState(false);
-  const [conversionError, setConversionError] = useState<string | null>(null);
   const [approvalModalOpen, setApprovalModalOpen] = useState(false);
   const [approvingInPerson, setApprovingInPerson] = useState(false);
   const [approvalError, setApprovalError] = useState<string | null>(null);
@@ -285,28 +281,6 @@ export default function AdditionalServiceOrderPreviewPage() {
     }
   }
 
-  async function handleConvertToSalesOrder() {
-    if (!order || converting || order.salesOrder) return;
-    setConverting(true);
-    setConversionError(null);
-    try {
-      const salesOrder = await convertToSalesOrder(order.id);
-      setOrder((current) => current ? { ...current, salesOrder } : current);
-      setConversionModalOpen(false);
-      setDeliveryMessage(
-        `Orden de Venta ${salesOrder.orderNumber} creada correctamente.`,
-      );
-    } catch (requestError) {
-      setConversionError(
-        requestError instanceof Error
-          ? requestError.message
-          : 'No se pudo crear la orden de venta.',
-      );
-    } finally {
-      setConverting(false);
-    }
-  }
-
   async function handleApproveInPerson() {
     if (!order || approvingInPerson) return;
     setApprovingInPerson(true);
@@ -316,7 +290,11 @@ export default function AdditionalServiceOrderPreviewPage() {
       const persistedOrder = await getAdditionalServiceOrder(order.id);
       setOrder(persistedOrder);
       setApprovalModalOpen(false);
-      setDeliveryMessage('Aprobación presencial registrada correctamente.');
+      setDeliveryMessage(
+        persistedOrder.salesOrder
+          ? `Aprobación registrada. Orden de Venta: ${persistedOrder.salesOrder.orderNumber}.`
+          : 'Aprobación registrada correctamente.',
+      );
     } catch (requestError) {
       setApprovalError(
         requestError instanceof Error
@@ -405,6 +383,7 @@ export default function AdditionalServiceOrderPreviewPage() {
             {order.commercialStatus === 'DRAFT' && (
               <Button
                 type="button"
+                className={styles.primaryActionButton}
                 onClick={handleGenerateProposal}
                 disabled={generatingProposal}
               >
@@ -419,7 +398,11 @@ export default function AdditionalServiceOrderPreviewPage() {
               </Button>
             )}
             {proposal && (
-              <Button asChild type="button" className={styles.pdfButton}>
+              <Button
+                asChild
+                type="button"
+                className={styles.primaryActionButton}
+              >
                 <a href={proposal.url} target="_blank" rel="noreferrer">
                   <ExternalLink aria-hidden="true" />
                   Ver PDF
@@ -429,6 +412,7 @@ export default function AdditionalServiceOrderPreviewPage() {
             {proposal && order.commercialStatus === 'PDF_GENERATED' && (
               <Button
                 type="button"
+                className={styles.primaryActionButton}
                 onClick={openSendModal}
                 disabled={sendingProposal}
               >
@@ -454,23 +438,6 @@ export default function AdditionalServiceOrderPreviewPage() {
                 Registrar aprobación presencial
               </Button>
             )}
-            {order.commercialStatus === 'APPROVED' && !order.salesOrder && (
-              <Button
-                type="button"
-                onClick={() => {
-                  setConversionError(null);
-                  setConversionModalOpen(true);
-                }}
-                disabled={converting}
-              >
-                {converting ? (
-                  <LoaderCircle className={styles.spin} aria-hidden="true" />
-                ) : (
-                  <ReceiptText aria-hidden="true" />
-                )}
-                {converting ? 'Convirtiendo...' : 'Convertir en orden de venta'}
-              </Button>
-            )}
           </div>
         </header>
 
@@ -486,58 +453,10 @@ export default function AdditionalServiceOrderPreviewPage() {
         )}
         {order.salesOrder && (
           <p className={styles.deliveryMessage} role="status">
-            Convertida en Orden de Venta{' '}
+            Orden de Venta:{' '}
             <strong>{order.salesOrder.orderNumber}</strong>.
           </p>
         )}
-
-        <ConfirmModal
-          isOpen={conversionModalOpen}
-          title="Convertir en orden de venta"
-          confirmText={converting ? 'Convirtiendo...' : 'Confirmar conversión'}
-          cancelText="Cancelar"
-          isLoading={converting}
-          onCancel={() => {
-            setConversionModalOpen(false);
-            setConversionError(null);
-          }}
-          onConfirm={() => void handleConvertToSalesOrder()}
-          message={
-            <div className={styles.approvalConfirmation}>
-              <p>
-                ¿Desea convertir esta propuesta aprobada en una orden de venta?
-              </p>
-              <dl>
-                <div>
-                  <dt>Cotización</dt>
-                  <dd>{order.orderNumber}</dd>
-                </div>
-                <div>
-                  <dt>Cliente</dt>
-                  <dd>{order.quoteCustomer?.fullName ?? 'No disponible'}</dd>
-                </div>
-                <div>
-                  <dt>Total</dt>
-                  <dd>
-                    {formatCurrency(
-                      order.totalSellingPrice,
-                      order.quotationCurrency,
-                    )}
-                  </dd>
-                </div>
-              </dl>
-              <p>
-                La propuesta permanecerá como evidencia histórica y la Orden
-                de Venta se creará únicamente al confirmar esta acción.
-              </p>
-              {conversionError && (
-                <p className={styles.sendError} role="alert">
-                  {conversionError}
-                </p>
-              )}
-            </div>
-          }
-        />
 
         <ConfirmModal
           isOpen={sendModalOpen}
@@ -626,11 +545,7 @@ export default function AdditionalServiceOrderPreviewPage() {
                   </dd>
                 </div>
               </dl>
-              <p>
-                Esta acción registrará la cotización como aprobada y permitirá
-                continuar con la Orden de Venta. La conversión no se realizará
-                automáticamente.
-              </p>
+              <p>Esta acción registrará la aprobación de la cotización.</p>
               {approvalError && (
                 <p className={styles.sendError} role="alert">
                   {approvalError}
