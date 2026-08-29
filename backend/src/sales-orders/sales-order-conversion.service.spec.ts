@@ -4,37 +4,34 @@ import { SalesOrderConversionService } from "./sales-order-conversion.service";
 
 describe("SalesOrderConversionService", () => {
   it("rejects a source outside the authenticated tenant", async () => {
-    const { service, query } = setup([[]]);
+    const { materialize, query } = setup([[]]);
 
     await expect(
-      service.convertAdditionalServiceOrder("tenant-b", "proposal-a", actor),
+      materialize("tenant-b"),
     ).rejects.toBeInstanceOf(NotFoundException);
     expect(query).toHaveBeenCalledTimes(1);
   });
 
   it("validates the persisted commercial status", async () => {
-    const { service, execute } = setup([[proposal({ commercialStatus: "SENT" })]]);
+    const { materialize, execute } = setup([[proposal({ commercialStatus: "SENT" })]]);
 
     await expect(
-      service.convertAdditionalServiceOrder("tenant-a", "proposal-a", actor),
+      materialize(),
     ).rejects.toBeInstanceOf(ConflictException);
     expect(execute).toHaveBeenCalledTimes(1); // advisory lock only
   });
 
   it("returns the existing sales order without inserting a duplicate", async () => {
     const existing = salesOrder();
-    const { service, execute, query } = setup([
+    const { materialize, execute, query } = setup([
       [proposal({ commercialStatus: "APPROVED" })],
       [existing],
     ]);
 
-    const result = await service.convertAdditionalServiceOrder(
-      "tenant-a",
-      "proposal-a",
-      actor,
-    );
+    const result = await materialize();
 
-    expect(result.orderNumber).toBe("SO-2026-000001");
+    expect(result.salesOrder.orderNumber).toBe("SO-2026-000001");
+    expect(result.reusedExisting).toBe(true);
     expect(execute).toHaveBeenCalledTimes(1); // no INSERT after lock
     expect(String(execute.mock.calls)).not.toMatch(/UPDATE/i);
     expect(query).toHaveBeenCalledTimes(2);
@@ -56,7 +53,7 @@ describe("SalesOrderConversionService", () => {
       total: "113.0000",
       participants: [{ fullName: "Traveler A" }],
     };
-    const { service, execute } = setup([
+    const { materialize, execute } = setup([
       [proposal({ commercialStatus: "APPROVED" })],
       [],
       [acceptedLine],
@@ -64,7 +61,7 @@ describe("SalesOrderConversionService", () => {
       [existing],
     ]);
 
-    await service.convertAdditionalServiceOrder("tenant-a", "proposal-a", actor);
+    await materialize();
 
     expect(execute).toHaveBeenCalledTimes(4);
     const lineInsertSql = String(execute.mock.calls[3][0]);
@@ -97,7 +94,7 @@ describe("SalesOrderConversionService", () => {
   });
 
   it("copies mixed SERVICE and MERCHANDISE categories without per-line queries", async () => {
-    const { service, execute, query } = setup([
+    const { materialize, execute, query } = setup([
       [proposal({ commercialStatus: "APPROVED" })],
       [],
       [
@@ -118,7 +115,7 @@ describe("SalesOrderConversionService", () => {
       [salesOrder()],
     ]);
 
-    await service.convertAdditionalServiceOrder("tenant-a", "proposal-a", actor);
+    await materialize();
 
     expect(execute).toHaveBeenCalledTimes(5);
     expect(execute.mock.calls[3]).toContain("catalog-baggage");
@@ -131,14 +128,14 @@ describe("SalesOrderConversionService", () => {
   });
 
   it("rejects a missing source catalog identity before Sales Order persistence", async () => {
-    const { service, execute, query } = setup([
+    const { materialize, execute, query } = setup([
       [proposal({ commercialStatus: "APPROVED" })],
       [],
       [sourceLine({ additionalServiceCatalogId: null })],
     ]);
 
     await expect(
-      service.convertAdditionalServiceOrder("tenant-a", "proposal-a", actor),
+      materialize(),
     ).rejects.toMatchObject({
       response: expect.objectContaining({
         code: "SALES_ORDER_LINE_CATALOG_IDENTITY_MISSING",
@@ -149,7 +146,7 @@ describe("SalesOrderConversionService", () => {
   });
 
   it("uses the tenant-scoped source line identity without a catalog lookup", async () => {
-    const { service, query, execute } = setup([
+    const { materialize, query, execute } = setup([
       [proposal({ commercialStatus: "APPROVED" })],
       [],
       [sourceLine({ additionalServiceCatalogId: "tenant-a-catalog" })],
@@ -157,7 +154,7 @@ describe("SalesOrderConversionService", () => {
       [salesOrder()],
     ]);
 
-    await service.convertAdditionalServiceOrder("tenant-a", "proposal-a", actor);
+    await materialize();
 
     const sourceLinesSql = String(query.mock.calls[2][0]);
     expect(sourceLinesSql).toContain('l."tenantId" =');
@@ -171,14 +168,14 @@ describe("SalesOrderConversionService", () => {
   it.each([null, undefined, "UNSUPPORTED"])(
     "rejects an invalid fiscal item category before Sales Order persistence",
     async (fiscalItemCategory) => {
-      const { service, execute, query } = setup([
+      const { materialize, execute, query } = setup([
         [proposal({ commercialStatus: "APPROVED" })],
         [],
         [sourceLine({ fiscalItemCategory })],
       ]);
 
       await expect(
-        service.convertAdditionalServiceOrder("tenant-a", "proposal-a", actor),
+        materialize(),
       ).rejects.toMatchObject({
         response: expect.objectContaining({
           code: "SALES_ORDER_LINE_FISCAL_ITEM_CATEGORY_INVALID",
@@ -258,8 +255,20 @@ function setup(queryResults: unknown[][]) {
     $transaction: jest.fn((work: (client: typeof tx) => unknown) => work(tx)),
     $queryRaw: query,
   } as unknown as PrismaService;
+  const service = new SalesOrderConversionService(prisma);
   return {
-    service: new SalesOrderConversionService(prisma),
+    service,
+    materialize: (
+      tenantId = "tenant-a",
+      sourceId = "proposal-a",
+      materializationActor = actor,
+    ) =>
+      service.materializeAdditionalServiceOrder(
+        tx as never,
+        tenantId,
+        sourceId,
+        materializationActor,
+      ),
     query,
     execute,
   };

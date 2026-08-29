@@ -53,22 +53,6 @@ export interface SalesOrderMaterializationResult {
 export class SalesOrderConversionService {
   constructor(private readonly prisma: PrismaService) {}
 
-  convertAdditionalServiceOrder(
-    tenantId: string,
-    sourceId: string,
-    actor: { id: string; fullName: string },
-  ): Promise<SalesOrderSummary> {
-    return this.prisma.$transaction(async (tx) => {
-      const result = await this.materializeAdditionalServiceOrder(
-        tx,
-        tenantId,
-        sourceId,
-        actor,
-      );
-      return result.salesOrder;
-    });
-  }
-
   async materializeAdditionalServiceOrder(
     tx: Prisma.TransactionClient,
     tenantId: string,
