@@ -119,6 +119,77 @@ describe("PrismaBillingDocumentRepository CR_V44_DECIMAL_V1 draft", () => {
     },
   );
 
+  it("persists the customer-visible SalesOrderLine snapshot as the immutable description", async () => {
+    const line = sourceLine({
+      serviceCode: "INSURANCE",
+      serviceName: "Seguro",
+      serviceDetailsVersion: 1,
+      serviceDetails: {
+        coverage: "USD_60000",
+        customCoverageAmount: null,
+        currency: "USD",
+        supplierName: "Internal Provider",
+        supplierCost: "100.00",
+        marginAmount: "25.00",
+      },
+      commercialNotes: "Internal commercial note",
+      participants: [
+        {
+          fullName: "Private Participant",
+          identification: "private-id",
+        },
+      ],
+    });
+    const context = setup({ order: salesOrder({ lines: [line] }) });
+
+    await context.repository.createCrV44SalesOrderDraft(command());
+
+    const persisted = firstLine(createdData(context));
+    expect(persisted.description).toBe(
+      "Seguro · Cobertura: USD 60,000",
+    );
+    expect(persisted.description).not.toMatch(
+      /Internal Provider|100\.00|25\.00|commercial note|Private Participant|private-id/,
+    );
+    expect(persisted).toMatchObject({
+      cabysCode: "1234567890123",
+      itemCode: "INSURANCE",
+      unitOfMeasureCode: "Sp",
+    });
+    expect(decimals(persisted, [
+      "quantity",
+      "unitPrice",
+      "taxableBase",
+      "taxAmount",
+      "lineTotal",
+    ])).toEqual({
+      quantity: "1",
+      unitPrice: "31.25",
+      taxableBase: "31.25",
+      taxAmount: "4.0625",
+      lineTotal: "35.3125",
+    });
+  });
+
+  it("falls back to serviceName when the persisted detail version is unsupported", async () => {
+    const context = setup({
+      order: salesOrder({
+        lines: [
+          sourceLine({
+            serviceCode: "INSURANCE",
+            serviceName: "Seguro",
+            serviceDetailsVersion: 2,
+            serviceDetails: { coverage: "USD_60000" },
+          }),
+        ],
+      }),
+    });
+
+    await context.repository.createCrV44SalesOrderDraft(command());
+
+    expect(firstLine(createdData(context)).description).toBe("Seguro");
+  });
+
   it("calculates mixed categories in one bounded aggregate read", async () => {
     const calculate = jest.spyOn(fiscalPolicy, "calculateCrV44FiscalDocument");
     const order = salesOrder({

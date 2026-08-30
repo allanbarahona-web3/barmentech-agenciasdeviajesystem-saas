@@ -40,6 +40,7 @@ import {
 } from "./fiscal-draft-selection";
 import { validateCrV44CalculatedSnapshot } from "./cr-v44-calculated-snapshot-validator";
 import { FiscalCalculationError } from "./fiscal-decimal";
+import { buildSalesOrderLineFiscalDescription } from "./sales-order-line-fiscal-description";
 
 const MAX_SEQUENCE_NUMBER = 9_999_999_999n;
 const SUPPORTED_DOCUMENT_TYPES = new Set<string>([
@@ -1357,7 +1358,12 @@ function crV44InputFromSalesOrder(order: AuthoritativeSalesOrder): {
       lineNumber,
       cabysCode: profile.cabysCode,
       itemCode: line.serviceCode,
-      description: line.serviceName,
+      description: buildSalesOrderLineFiscalDescription({
+        serviceName: line.serviceName,
+        serviceCode: line.serviceCode,
+        serviceDetailsVersion: line.serviceDetailsVersion,
+        serviceDetails: line.serviceDetails,
+      }),
       unitOfMeasureCode: profile.unitOfMeasureCode,
       taxCode: "01",
       taxRateCode: profile.taxRateCode,
