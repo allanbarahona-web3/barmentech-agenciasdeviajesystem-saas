@@ -73,6 +73,7 @@ export type FiscalPreparationLine = {
   additionalServiceCatalogId: string | null;
   serviceCode: string;
   serviceName: string;
+  description: string;
   serviceDetailsVersion: number | null;
   serviceDetails: unknown;
   commercialNotes: string | null;
