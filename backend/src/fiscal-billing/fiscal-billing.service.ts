@@ -37,6 +37,7 @@ import {
   clientFiscalReceiverPrefill,
   type FiscalReceiverIdentityPrefill,
 } from "./client-fiscal-receiver-prefill";
+import { buildSalesOrderLineFiscalDescription } from "./sales-order-line-fiscal-description";
 
 type CreateDraftInput = {
   fiscalIssuerId: string;
@@ -119,6 +120,12 @@ export class SalesOrderFiscalBillingService {
         additionalServiceCatalogId: source.additionalServiceCatalogId,
         serviceCode: source.serviceCode,
         serviceName: source.serviceName,
+        description: buildSalesOrderLineFiscalDescription({
+          serviceName: source.serviceName,
+          serviceCode: source.serviceCode,
+          serviceDetailsVersion: source.serviceDetailsVersion,
+          serviceDetails: source.serviceDetails,
+        }),
         serviceDetailsVersion: source.serviceDetailsVersion,
         serviceDetails: source.serviceDetails,
         commercialNotes: source.commercialNotes,

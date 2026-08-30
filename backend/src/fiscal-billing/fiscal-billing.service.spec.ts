@@ -39,6 +39,38 @@ describe("SalesOrderFiscalBillingService", () => {
     expect(fiscalCatalog.evaluateFiscalProfiles).toHaveBeenCalledTimes(1);
   });
 
+  it("returns the same authoritative customer-visible line description used by draft persistence", async () => {
+    const { service } = setup({
+      salesOrder: salesOrder({
+        lines: [
+          sourceLine({
+            serviceCode: "INSURANCE",
+            serviceName: "Seguro",
+            serviceDetailsVersion: 1,
+            serviceDetails: {
+              coverage: "USD_60000",
+              customCoverageAmount: null,
+              currency: "USD",
+              supplierName: "Internal Provider",
+              supplierCost: "100.00",
+              marginAmount: "25.00",
+            },
+          }),
+        ],
+      }),
+    });
+
+    const result = await service.prepare("tenant-a", "sales-a");
+
+    expect(result.lines[0]).toMatchObject({
+      serviceName: "Seguro",
+      description: "Seguro · Cobertura: USD 60,000",
+    });
+    expect(result.lines[0].description).not.toMatch(
+      /Internal Provider|100\.00|25\.00/,
+    );
+  });
+
   it.each([
     ["CEDULA_FISICA", "1-2345-6789", "01", "123456789"],
     ["CEDULA_JURIDICA", "3-101-123456", "02", "3101123456"],
