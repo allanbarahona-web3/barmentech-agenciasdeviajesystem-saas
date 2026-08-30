@@ -10,6 +10,9 @@ export const ACCOUNT_RECEIVABLE_RECOGNITION_REQUESTED_EVENT_VERSION = 1;
 export const FISCAL_INVOICE_AUTO_DELIVERY_REQUESTED_EVENT_TYPE =
   "billing-document.invoice-auto-delivery-requested";
 export const FISCAL_INVOICE_AUTO_DELIVERY_REQUESTED_EVENT_VERSION = 1;
+export const FISCAL_INVOICE_MANUAL_RESEND_REQUESTED_EVENT_TYPE =
+  "billing-document.invoice-manual-resend-requested";
+export const FISCAL_INVOICE_MANUAL_RESEND_REQUESTED_EVENT_VERSION = 1;
 
 export const FISCAL_ACCEPTED_FANOUT_POLL_INTERVAL_MS = 1_000;
 export const FISCAL_ACCEPTED_FANOUT_BATCH_SIZE = 25;
@@ -27,4 +30,11 @@ export function fiscalInvoiceAutoDeliveryDeduplicationKey(
   billingDocumentId: string,
 ): string {
   return `billing-document.invoice-auto-delivery:${billingDocumentId}:v1`;
+}
+
+export function fiscalInvoiceManualResendDeduplicationKey(
+  billingDocumentId: string,
+  requestId: string,
+): string {
+  return `billing-document.invoice-manual-resend:${billingDocumentId}:${requestId}:v1`;
 }

@@ -5,8 +5,10 @@ import {
   IsArray,
   IsIn,
   IsInt,
+  IsEmail,
   IsOptional,
   IsString,
+  MaxLength,
   Max,
   Min,
 } from "class-validator";
@@ -23,6 +25,21 @@ export class ListEligibleSalesOrdersDto {
   @Min(1)
   @Max(100)
   pageSize = 20;
+}
+
+export class ManualInvoiceEmailResendDto {
+  @IsOptional()
+  @Transform(({ value }) => typeof value === "string" ? value.trim() || undefined : value)
+  @IsEmail()
+  @MaxLength(254)
+  to?: string;
+
+  @IsOptional()
+  @Transform(({ value }) => Array.isArray(value) ? value.map((item) => typeof item === "string" ? item.trim() : item) : value)
+  @IsArray()
+  @ArrayMaxSize(10)
+  @IsEmail({}, { each: true })
+  cc?: string[];
 }
 
 export class CreateBillingDraftDto {

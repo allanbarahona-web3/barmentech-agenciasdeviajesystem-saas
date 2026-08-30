@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
+import { isEmail } from "class-validator";
 import { JobDispatcherService } from "../../infrastructure/job-dispatcher";
 import { PLATFORM_QUEUE_KEYS } from "../../infrastructure/queue";
 import { PrismaService } from "../../prisma/prisma.service";
@@ -9,6 +10,7 @@ import {
   FISCAL_ACCEPTED_FANOUT_AGGREGATE_TYPE,
   FISCAL_INVOICE_AUTO_DELIVERY_REQUESTED_EVENT_TYPE,
   FISCAL_INVOICE_AUTO_DELIVERY_REQUESTED_EVENT_VERSION,
+  FISCAL_INVOICE_MANUAL_RESEND_REQUESTED_EVENT_TYPE,
 } from "./fiscal-accepted-fanout.constants";
 import {
   FISCAL_INVOICE_AUTO_DELIVERY_BATCH_SIZE,
@@ -24,6 +26,7 @@ import {
 interface ClaimedEvent {
   id: string; tenantId: string; eventType: string; eventVersion: number;
   aggregateType: string; aggregateId: string; causationId: string | null;
+  correlationId: string | null;
   payload: Prisma.JsonValue; attemptCount: number; maximumAttempts: number;
 }
 const INVALID = "FISCAL_INVOICE_AUTO_DELIVERY_OUTBOX_INVALID";
@@ -66,7 +69,7 @@ export class FiscalInvoiceAutoDeliveryPublisher implements OnModuleInit, OnModul
     return this.prisma.$transaction((tx) => tx.$queryRaw<ClaimedEvent[]>`
       WITH eligible AS (
         SELECT "id" FROM "billing_outbox_events"
-        WHERE "eventType" = ${FISCAL_INVOICE_AUTO_DELIVERY_REQUESTED_EVENT_TYPE}
+        WHERE "eventType" IN (${FISCAL_INVOICE_AUTO_DELIVERY_REQUESTED_EVENT_TYPE}, ${FISCAL_INVOICE_MANUAL_RESEND_REQUESTED_EVENT_TYPE})
           AND "eventVersion" = ${FISCAL_INVOICE_AUTO_DELIVERY_REQUESTED_EVENT_VERSION}
           AND "attemptCount" < "maximumAttempts"
           AND (("status" = 'PENDING' AND "availableAt" <= ${now})
@@ -81,7 +84,7 @@ export class FiscalInvoiceAutoDeliveryPublisher implements OnModuleInit, OnModul
           "lastAttemptAt" = ${now}, "updatedAt" = ${now}
       FROM eligible WHERE event."id" = eligible."id"
       RETURNING event."id", event."tenantId", event."eventType", event."eventVersion",
-        event."aggregateType", event."aggregateId", event."causationId", event."payload",
+        event."aggregateType", event."aggregateId", event."causationId", event."correlationId", event."payload",
         event."attemptCount", event."maximumAttempts"
     `);
   }
@@ -113,9 +116,14 @@ export class FiscalInvoiceAutoDeliveryPublisher implements OnModuleInit, OnModul
 }
 
 function validJobPayload(event: ClaimedEvent, lockOwner: string): FiscalInvoiceAutoDeliveryJobPayload | null {
-  if (event.eventType !== FISCAL_INVOICE_AUTO_DELIVERY_REQUESTED_EVENT_TYPE || event.eventVersion !== 1 || event.aggregateType !== FISCAL_ACCEPTED_FANOUT_AGGREGATE_TYPE || !safe(event.causationId) || !json(event.payload) || Object.keys(event.payload).length !== 3) return null;
+  if (event.eventVersion !== 1 || event.aggregateType !== FISCAL_ACCEPTED_FANOUT_AGGREGATE_TYPE || !json(event.payload) || !safe(lockOwner, 100)) return null;
   const payload = event.payload;
-  if (payload.tenantId !== event.tenantId || payload.billingDocumentId !== event.aggregateId || payload.eventVersion !== 1 || !safe(payload.billingDocumentId) || !safe(lockOwner, 100)) return null;
+  if (payload.tenantId !== event.tenantId || payload.billingDocumentId !== event.aggregateId || payload.eventVersion !== 1 || !safe(payload.billingDocumentId)) return null;
+  if (event.eventType === FISCAL_INVOICE_AUTO_DELIVERY_REQUESTED_EVENT_TYPE) {
+    if (!safe(event.causationId) || Object.keys(payload).length !== 3) return null;
+  } else if (event.eventType === FISCAL_INVOICE_MANUAL_RESEND_REQUESTED_EVENT_TYPE) {
+    if (event.causationId !== null || Object.keys(payload).length !== 7 || !safe(payload.requestId) || event.correlationId !== payload.requestId || !safe(payload.to, 254) || !isEmail(payload.to) || !Array.isArray(payload.cc) || payload.cc.length > 10 || !payload.cc.every((value) => typeof value === "string" && isEmail(value)) || !safe(payload.requestedByUserId)) return null;
+  } else return null;
   return { tenantId: event.tenantId, outboxEventId: event.id, lockOwner, eventVersion: 1 };
 }
 function safe(value: unknown, max = 191): value is string { return typeof value === "string" && value.length > 0 && value.length <= max && value.trim() === value && !value.includes(":"); }

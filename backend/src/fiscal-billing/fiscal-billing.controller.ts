@@ -7,11 +7,13 @@ import { RolesGuard } from "../auth/roles.guard";
 import {
   CreateBillingDraftDto,
   ListEligibleSalesOrdersDto,
+  ManualInvoiceEmailResendDto,
 } from "./dto/fiscal-billing.dto";
 import { BillingDocumentService } from "./billing-document.service";
 import { SalesOrderFiscalBillingService } from "./fiscal-billing.service";
 import { FiscalArtifactReadService } from './fiscal-artifact-read.service';
 import { FiscalInvoicePdfService } from "./fiscal-invoice-pdf.service";
+import { FiscalInvoiceAutoDeliveryService } from "./fiscal-invoice-auto-delivery.service";
 
 type FiscalBillingRequest = {
   user: { id: string; tenantId: string; role: UserRole };
@@ -26,6 +28,7 @@ export class FiscalBillingController {
     private readonly billingDocumentService: BillingDocumentService,
     private readonly artifactReadService: FiscalArtifactReadService,
     private readonly fiscalInvoicePdfService: FiscalInvoicePdfService,
+    private readonly fiscalInvoiceAutoDeliveryService: FiscalInvoiceAutoDeliveryService,
   ) {}
 
   @Get("sales-orders/eligible")
@@ -93,6 +96,21 @@ export class FiscalBillingController {
       request.user.tenantId,
       billingDocumentId,
     );
+  }
+
+  @Post("invoices/:billingDocumentId/email")
+  resendInvoiceEmail(
+    @Req() request: FiscalBillingRequest,
+    @Param("billingDocumentId") billingDocumentId: string,
+    @Body() body: ManualInvoiceEmailResendDto,
+  ) {
+    return this.fiscalInvoiceAutoDeliveryService.requestManualResend({
+      tenantId: request.user.tenantId,
+      billingDocumentId,
+      requestedByUserId: request.user.id,
+      to: body.to,
+      cc: body.cc,
+    });
   }
 
   @Get('documents/:billingDocumentId/artifacts')

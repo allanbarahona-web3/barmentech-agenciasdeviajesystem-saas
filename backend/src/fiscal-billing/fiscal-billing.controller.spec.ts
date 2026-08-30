@@ -12,7 +12,7 @@ import { RolesGuard } from "../auth/roles.guard";
 import { BillingDocumentService } from "./billing-document.service";
 import { FiscalBillingController } from "./fiscal-billing.controller";
 import { fiscalBillingError } from "./fiscal-billing.errors";
-import { CreateBillingDraftDto } from "./dto/fiscal-billing.dto";
+import { CreateBillingDraftDto, ManualInvoiceEmailResendDto } from "./dto/fiscal-billing.dto";
 
 describe("FiscalBillingController authorization", () => {
   it("declares only ADMIN and FACTURACION_COBROS roles", () => {
@@ -66,7 +66,7 @@ describe("FiscalBillingController draft request validation", () => {
 });
 
 describe("FiscalBillingController workspace",()=>{
-  it("keeps the existing guarded route and delegates once with authenticated tenant identity",async()=>{const workspace={id:"document-a",allocatedSequenceNumber:"9999999999"},getWorkspace=jest.fn().mockResolvedValue(workspace),controller=new FiscalBillingController({} as never,{getWorkspace} as unknown as BillingDocumentService,{} as never,{} as never),handler=FiscalBillingController.prototype.workspace;expect(Reflect.getMetadata(PATH_METADATA,handler)).toBe("documents/:billingDocumentId/workspace");expect(Reflect.getMetadata(METHOD_METADATA,handler)).toBe(RequestMethod.GET);await expect(controller.workspace({user:{id:"user-a",tenantId:"tenant-a",role:UserRole.ADMIN}},"document-a")).resolves.toBe(workspace);expect(getWorkspace).toHaveBeenCalledTimes(1);expect(getWorkspace).toHaveBeenCalledWith("tenant-a","document-a");});
+  it("keeps the existing guarded route and delegates once with authenticated tenant identity",async()=>{const workspace={id:"document-a",allocatedSequenceNumber:"9999999999"},getWorkspace=jest.fn().mockResolvedValue(workspace),controller=new FiscalBillingController({} as never,{getWorkspace} as unknown as BillingDocumentService,{} as never,{} as never,{} as never),handler=FiscalBillingController.prototype.workspace;expect(Reflect.getMetadata(PATH_METADATA,handler)).toBe("documents/:billingDocumentId/workspace");expect(Reflect.getMetadata(METHOD_METADATA,handler)).toBe(RequestMethod.GET);await expect(controller.workspace({user:{id:"user-a",tenantId:"tenant-a",role:UserRole.ADMIN}},"document-a")).resolves.toBe(workspace);expect(getWorkspace).toHaveBeenCalledTimes(1);expect(getWorkspace).toHaveBeenCalledWith("tenant-a","document-a");});
 });
 
 describe("FiscalBillingController accepted invoice", () => {
@@ -76,6 +76,7 @@ describe("FiscalBillingController accepted invoice", () => {
     const controller = new FiscalBillingController(
       {} as never,
       { getAcceptedInvoice } as unknown as BillingDocumentService,
+      {} as never,
       {} as never,
       {} as never,
     );
@@ -108,7 +109,7 @@ describe('FiscalBillingController artifact reads', () => {
   it('keeps artifact routes behind the existing guards and trusted tenant context', async () => {
     const artifacts = [{ artifactType: 'SIGNED_FISCAL_XML', version: 1, status: 'AVAILABLE', downloadAvailable: true }];
     const read = { list: jest.fn().mockResolvedValue(artifacts), download: jest.fn().mockResolvedValue({ bytes: Buffer.from('<xml/>'), mimeType: 'application/xml', filename: 'signed-fiscal-document-v1.xml' }) };
-    const controller = new FiscalBillingController({} as never, {} as never, read as never, {} as never);
+    const controller = new FiscalBillingController({} as never, {} as never, read as never, {} as never, {} as never);
     const request = { user: { id: 'user-a', tenantId: 'tenant-a', role: UserRole.FACTURACION_COBROS } };
     expect(Reflect.getMetadata(PATH_METADATA, FiscalBillingController.prototype.listArtifacts)).toBe('documents/:billingDocumentId/artifacts');
     expect(Reflect.getMetadata(PATH_METADATA, FiscalBillingController.prototype.downloadArtifact)).toBe('documents/:billingDocumentId/artifacts/:artifactType/versions/:version/download');
@@ -131,6 +132,7 @@ describe("FiscalBillingController invoice PDF", () => {
       {} as never,
       {} as never,
       { generateAndPersist } as never,
+      {} as never,
     );
     const handler = FiscalBillingController.prototype.generateInvoicePdf;
     expect(Reflect.getMetadata(PATH_METADATA, handler)).toBe("invoices/:billingDocumentId/pdf");
@@ -140,6 +142,24 @@ describe("FiscalBillingController invoice PDF", () => {
       "document-a",
     )).resolves.toBe(result);
     expect(generateAndPersist).toHaveBeenCalledWith("tenant-a", "document-a");
+  });
+});
+
+describe("FiscalBillingController manual invoice email resend", () => {
+  it("exposes the guarded POST route and delegates only trusted tenant/user identity plus DTO recipients", async () => {
+    const queued = { queued: true, requestId: "request-a" };
+    const requestManualResend = jest.fn().mockResolvedValue(queued);
+    const controller = new FiscalBillingController({} as never, {} as never, {} as never, {} as never, { requestManualResend } as never);
+    const handler = FiscalBillingController.prototype.resendInvoiceEmail;
+    expect(Reflect.getMetadata(PATH_METADATA, handler)).toBe("invoices/:billingDocumentId/email");
+    expect(Reflect.getMetadata(METHOD_METADATA, handler)).toBe(RequestMethod.POST);
+    await expect(controller.resendInvoiceEmail({ user: { id: "user-a", tenantId: "tenant-a", role: UserRole.FACTURACION_COBROS } }, "document-a", { to: "to@example.com", cc: ["cc@example.com"] })).resolves.toBe(queued);
+    expect(requestManualResend).toHaveBeenCalledWith({ tenantId: "tenant-a", billingDocumentId: "document-a", requestedByUserId: "user-a", to: "to@example.com", cc: ["cc@example.com"] });
+  });
+
+  it("rejects invalid primary and CC addresses through the existing validation pipe", async () => {
+    const pipe = new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: true });
+    await expect(pipe.transform({ to: "invalid", cc: ["valid@example.com", "bad"] }, { type: "body", metatype: ManualInvoiceEmailResendDto })).rejects.toBeDefined();
   });
 });
 
@@ -246,6 +266,7 @@ function createController(billingDocumentService: {
   return new FiscalBillingController(
     {} as never,
     billingDocumentService as unknown as BillingDocumentService,
+    {} as never,
     {} as never,
     {} as never,
   );
