@@ -219,6 +219,13 @@ export type AcceptedBillingInvoice = {
   taxAuthorityStatus: 'ACCEPTED';
   issuedDate: string;
   currencyCode: string;
+  issuer: {
+    name: string;
+    identificationType: string;
+    identificationNumber: string;
+    email: string | null;
+    phone: string | null;
+  };
   paymentCondition: {
     code: string | null;
     creditTermDays: number | null;
@@ -259,6 +266,39 @@ export type AcceptedBillingInvoice = {
   };
 };
 
+export type FiscalArtifactType =
+  | 'SIGNED_FISCAL_XML'
+  | 'TAX_AUTHORITY_RESPONSE_XML'
+  | 'INTERNAL_PDF';
+
+export type FiscalArtifactListItem = {
+  artifactType: FiscalArtifactType;
+  version: number;
+  status: 'PENDING' | 'AVAILABLE' | 'FAILED';
+  mimeType?: string | null;
+  byteSize?: string | null;
+  retrievedAt?: string | null;
+  storedAt?: string | null;
+  terminalErrorCode?: string | null;
+  failedAt?: string | null;
+  downloadAvailable: boolean;
+};
+
+export type AcceptedInvoicePdfArtifact = {
+  artifactType: 'INTERNAL_PDF';
+  version: number;
+  status: 'AVAILABLE';
+  mimeType: 'application/pdf';
+  byteSize: string;
+  storedAt: string;
+};
+
+export type FiscalArtifactDownload = {
+  blob: Blob;
+  filename: string;
+  mimeType: string;
+};
+
 export type BillingDocumentFiscalAllocationResult = {
   billingDocumentId: string;
   sequenceId: string;
@@ -296,6 +336,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   BILLING_DRAFT_ALREADY_ADVANCED: 'El documento fiscal existente ya avanzó y solo puede consultarse.',
   BILLING_DOCUMENT_NOT_FOUND: 'El documento fiscal no fue encontrado.',
   BILLING_DOCUMENT_INVOICE_NOT_AVAILABLE: 'La factura aceptada todavía no está disponible.',
+  BILLING_DOCUMENT_INVOICE_PDF_CONFLICT: 'El PDF persistido está en conflicto y no puede descargarse de forma segura.',
+  BILLING_DOCUMENT_INVOICE_PDF_GENERATION_FAILED: 'No se pudo generar el PDF de la factura.',
   BILLING_DOCUMENT_NOT_ELIGIBLE_FOR_ISSUANCE: 'El documento no es elegible para solicitar emisión electrónica.',
   BILLING_DOCUMENT_FISCAL_READINESS_FAILED: 'El documento todavía tiene requisitos fiscales pendientes.',
   BILLING_DOCUMENT_UNSUPPORTED_FISCAL_CURRENCY: 'La moneda del documento no es compatible con la emisión fiscal.',
@@ -313,6 +355,12 @@ const ERROR_MESSAGES: Record<string, string> = {
   BILLING_DOCUMENT_PROVIDER_ATTEMPT_PERSISTENCE_FAILED: 'No fue posible guardar el intento de envío.',
   BILLING_DOCUMENT_SUBMISSION_OUTCOME_CONFLICT: 'El resultado del envío fiscal está en conflicto.',
   BILLING_DOCUMENT_SUBMISSION_READ_FAILED: 'No fue posible leer el documento fiscal de forma segura.',
+  FISCAL_ARTIFACT_INVALID_REQUEST: 'La solicitud del documento no es válida.',
+  FISCAL_ARTIFACT_NOT_FOUND: 'El documento solicitado no fue encontrado.',
+  FISCAL_ARTIFACT_NOT_AVAILABLE: 'El documento todavía no está disponible.',
+  FISCAL_ARTIFACT_UNAVAILABLE: 'El documento no pudo estar disponible.',
+  FISCAL_ARTIFACT_INTEGRITY_FAILURE: 'No fue posible verificar el documento almacenado.',
+  FISCAL_ARTIFACT_DOWNLOAD_FAILED: 'No se pudo descargar el documento.',
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -350,6 +398,16 @@ async function postWithoutBody<T>(path: string): Promise<T> {
   throw new FiscalBillingApiError(
     code,
     ERROR_MESSAGES[code] ?? 'No se pudo solicitar la emisión electrónica.',
+  );
+}
+
+async function artifactError(response: Response): Promise<FiscalBillingApiError> {
+  const payload: unknown = await response.json().catch(() => null);
+  const record = isRecord(payload) ? payload : {};
+  const code = typeof record.code === 'string' ? record.code : 'FISCAL_BILLING_REQUEST_FAILED';
+  return new FiscalBillingApiError(
+    code,
+    ERROR_MESSAGES[code] ?? 'No se pudo completar la operación con el documento.',
   );
 }
 
@@ -392,6 +450,66 @@ export function getAcceptedBillingInvoice(billingDocumentId: string, signal?: Ab
     `/fiscal-billing/invoices/${encodeURIComponent(billingDocumentId)}`,
     signal,
   );
+}
+
+export function generateAcceptedInvoicePdf(billingDocumentId: string) {
+  if (!validRouteId(billingDocumentId)) {
+    return Promise.reject(new FiscalBillingApiError(
+      'BILLING_DOCUMENT_NOT_FOUND',
+      ERROR_MESSAGES.BILLING_DOCUMENT_NOT_FOUND,
+    ));
+  }
+  return postWithoutBody<AcceptedInvoicePdfArtifact>(
+    `/fiscal-billing/invoices/${encodeURIComponent(billingDocumentId)}/pdf`,
+  );
+}
+
+export function listFiscalArtifacts(billingDocumentId: string, signal?: AbortSignal) {
+  if (!validRouteId(billingDocumentId)) {
+    return Promise.reject(new FiscalBillingApiError(
+      'BILLING_DOCUMENT_NOT_FOUND',
+      ERROR_MESSAGES.BILLING_DOCUMENT_NOT_FOUND,
+    ));
+  }
+  return request<FiscalArtifactListItem[]>(
+    `/fiscal-billing/documents/${encodeURIComponent(billingDocumentId)}/artifacts`,
+    signal,
+  );
+}
+
+export async function downloadFiscalArtifact(
+  billingDocumentId: string,
+  artifactType: FiscalArtifactType,
+  version: number,
+): Promise<FiscalArtifactDownload> {
+  if (
+    !validRouteId(billingDocumentId) ||
+    !Number.isSafeInteger(version) ||
+    version < 1
+  ) {
+    throw new FiscalBillingApiError(
+      'FISCAL_ARTIFACT_INVALID_REQUEST',
+      ERROR_MESSAGES.FISCAL_ARTIFACT_INVALID_REQUEST,
+    );
+  }
+  const response = await fetchApi(
+    `/fiscal-billing/documents/${encodeURIComponent(billingDocumentId)}/artifacts/${encodeURIComponent(artifactType)}/versions/${version}/download`,
+    { method: 'GET' },
+  );
+  if (!response.ok) throw await artifactError(response);
+  const mimeType = response.headers.get('content-type')?.split(';', 1)[0]?.trim() || 'application/octet-stream';
+  const disposition = response.headers.get('content-disposition') ?? '';
+  const matchedFilename = /filename="?([^";]+)"?/i.exec(disposition)?.[1]?.trim();
+  const filename = matchedFilename && !/[\\/\u0000-\u001f\u007f]/.test(matchedFilename)
+    ? matchedFilename
+    : fallbackArtifactFilename(artifactType, version);
+  return { blob: await response.blob(), filename, mimeType };
+}
+
+function fallbackArtifactFilename(artifactType: FiscalArtifactType, version: number): string {
+  if (artifactType === 'INTERNAL_PDF') return `fiscal-invoice-v${version}.pdf`;
+  if (artifactType === 'SIGNED_FISCAL_XML') return `signed-fiscal-document-v${version}.xml`;
+  return `tax-authority-response-v${version}.xml`;
 }
 
 export function requestBillingDocumentElectronicIssuance(billingDocumentId: string) {

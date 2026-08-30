@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Download, LoaderCircle } from 'lucide-react';
 import { LoadingSpinner } from '@/components/loading-spinner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -11,8 +11,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { getHomeRouteForRole, getStoredSession } from '@/lib/auth-api';
 import {
   FiscalBillingApiError,
+  downloadFiscalArtifact,
+  generateAcceptedInvoicePdf,
   getAcceptedBillingInvoice,
+  listFiscalArtifacts,
   type AcceptedBillingInvoice,
+  type FiscalArtifactDownload,
+  type FiscalArtifactListItem,
+  type FiscalArtifactType,
 } from '@/lib/fiscal-billing-api';
 import { formatFiscalDecimal, formatFiscalMoney } from '@/lib/fiscal-money';
 import styles from '../../fiscal-billing.module.css';
@@ -64,6 +70,31 @@ function taxDescription(line: AcceptedBillingInvoice['lines'][number], currency:
   )).join(' / ');
 }
 
+function latestAvailableArtifact(
+  artifacts: FiscalArtifactListItem[],
+  artifactType: FiscalArtifactType,
+): FiscalArtifactListItem | null {
+  return artifacts
+    .filter((artifact) => (
+      artifact.artifactType === artifactType &&
+      artifact.status === 'AVAILABLE' &&
+      artifact.downloadAvailable
+    ))
+    .sort((left, right) => right.version - left.version)[0] ?? null;
+}
+
+function saveArtifact(download: FiscalArtifactDownload): void {
+  const url = window.URL.createObjectURL(download.blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = download.filename;
+  anchor.rel = 'noopener';
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => window.URL.revokeObjectURL(url), 0);
+}
+
 export default function AcceptedInvoicePage() {
   const { billingDocumentId } = useParams<{ billingDocumentId: string }>();
   const router = useRouter();
@@ -71,6 +102,12 @@ export default function AcceptedInvoicePage() {
   const [invoice, setInvoice] = useState<AcceptedBillingInvoice | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<FiscalBillingApiError | null>(null);
+  const [artifacts, setArtifacts] = useState<FiscalArtifactListItem[]>([]);
+  const [artifactsLoading, setArtifactsLoading] = useState(true);
+  const [documentError, setDocumentError] = useState<FiscalBillingApiError | null>(null);
+  const [documentAction, setDocumentAction] = useState<
+    'GENERATING_PDF' | 'DOWNLOADING_PDF' | 'SIGNED_XML' | 'RESPONSE_XML' | null
+  >(null);
 
   useEffect(() => {
     const session = getStoredSession();
@@ -108,6 +145,83 @@ export default function AcceptedInvoicePage() {
     return () => controller.abort();
   }, [authorized, billingDocumentId]);
 
+  useEffect(() => {
+    if (!authorized) return;
+    const controller = new AbortController();
+    setArtifactsLoading(true);
+    void listFiscalArtifacts(billingDocumentId, controller.signal)
+      .then((available) => {
+        setArtifacts(available);
+        setDocumentError(null);
+      })
+      .catch((requestError: unknown) => {
+        if (controller.signal.aborted) return;
+        setDocumentError(requestError instanceof FiscalBillingApiError
+          ? requestError
+          : new FiscalBillingApiError(
+            'FISCAL_ARTIFACT_DOWNLOAD_FAILED',
+            'No se pudieron consultar los documentos disponibles.',
+          ));
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setArtifactsLoading(false);
+      });
+    return () => controller.abort();
+  }, [authorized, billingDocumentId]);
+
+  async function downloadAvailableArtifact(
+    artifact: FiscalArtifactListItem,
+    action: 'SIGNED_XML' | 'RESPONSE_XML',
+  ) {
+    if (documentAction) return;
+    setDocumentAction(action);
+    setDocumentError(null);
+    try {
+      saveArtifact(await downloadFiscalArtifact(
+        billingDocumentId,
+        artifact.artifactType,
+        artifact.version,
+      ));
+    } catch (requestError) {
+      setDocumentError(requestError instanceof FiscalBillingApiError
+        ? requestError
+        : new FiscalBillingApiError(
+          'FISCAL_ARTIFACT_DOWNLOAD_FAILED',
+          'No se pudo descargar el documento.',
+        ));
+    } finally {
+      setDocumentAction(null);
+    }
+  }
+
+  async function generateAndDownloadPdf() {
+    if (documentAction) return;
+    setDocumentAction('GENERATING_PDF');
+    setDocumentError(null);
+    try {
+      const artifact = await generateAcceptedInvoicePdf(billingDocumentId);
+      setDocumentAction('DOWNLOADING_PDF');
+      saveArtifact(await downloadFiscalArtifact(
+        billingDocumentId,
+        artifact.artifactType,
+        artifact.version,
+      ));
+      setArtifacts((current) => [
+        ...current.filter((item) => item.artifactType !== 'INTERNAL_PDF' || item.version !== artifact.version),
+        { ...artifact, downloadAvailable: true },
+      ]);
+    } catch (requestError) {
+      setDocumentError(requestError instanceof FiscalBillingApiError
+        ? requestError
+        : new FiscalBillingApiError(
+          'BILLING_DOCUMENT_INVOICE_PDF_GENERATION_FAILED',
+          'No se pudo preparar el PDF de la factura.',
+        ));
+    } finally {
+      setDocumentAction(null);
+    }
+  }
+
   if (!authorized || loading) {
     return <main className="app-shell"><div className={styles.state}><LoadingSpinner message="Cargando factura…" /></div></main>;
   }
@@ -129,6 +243,8 @@ export default function AcceptedInvoicePage() {
   }
 
   const money = (value: string) => formatFiscalMoney(value, invoice.currencyCode);
+  const signedXml = latestAvailableArtifact(artifacts, 'SIGNED_FISCAL_XML');
+  const responseXml = latestAvailableArtifact(artifacts, 'TAX_AUTHORITY_RESPONSE_XML');
 
   return (
     <main className="app-shell">
@@ -217,6 +333,62 @@ export default function AcceptedInvoicePage() {
               <div className={styles.grandTotal}><dt>Total</dt><dd>{money(invoice.totals.total)}</dd></div>
             </dl>
           </div>
+        </section>
+
+        <section className={`${styles.card} ${styles.section} ${styles.sectionGap}`}>
+          <h2>Documentos</h2>
+          <p className={styles.muted}>Descargue los documentos disponibles de esta factura aceptada.</p>
+          <div className={styles.workspaceActions}>
+            <Button
+              type="button"
+              className={styles.primaryAction}
+              disabled={documentAction !== null}
+              onClick={() => void generateAndDownloadPdf()}
+            >
+              {documentAction === 'GENERATING_PDF' || documentAction === 'DOWNLOADING_PDF'
+                ? <LoaderCircle className={styles.spin} aria-hidden="true" />
+                : <Download aria-hidden="true" />}
+              {documentAction === 'GENERATING_PDF'
+                ? 'Generando PDF…'
+                : documentAction === 'DOWNLOADING_PDF'
+                  ? 'Descargando PDF…'
+                  : 'Descargar PDF'}
+            </Button>
+            {signedXml && (
+              <Button
+                type="button"
+                variant="outline"
+                className={styles.secondaryAction}
+                disabled={documentAction !== null}
+                onClick={() => void downloadAvailableArtifact(signedXml, 'SIGNED_XML')}
+              >
+                {documentAction === 'SIGNED_XML' ? <LoaderCircle className={styles.spin} aria-hidden="true" /> : <Download aria-hidden="true" />}
+                {documentAction === 'SIGNED_XML' ? 'Descargando…' : 'Descargar XML firmado'}
+              </Button>
+            )}
+            {responseXml && (
+              <Button
+                type="button"
+                variant="outline"
+                className={styles.secondaryAction}
+                disabled={documentAction !== null}
+                onClick={() => void downloadAvailableArtifact(responseXml, 'RESPONSE_XML')}
+              >
+                {documentAction === 'RESPONSE_XML' ? <LoaderCircle className={styles.spin} aria-hidden="true" /> : <Download aria-hidden="true" />}
+                {documentAction === 'RESPONSE_XML' ? 'Descargando…' : 'Descargar respuesta Hacienda'}
+              </Button>
+            )}
+          </div>
+          {artifactsLoading && <p className={styles.muted}>Consultando documentos disponibles…</p>}
+          {!artifactsLoading && !signedXml && !responseXml && !documentError && (
+            <p className={styles.muted}>Los documentos XML aparecerán cuando estén disponibles.</p>
+          )}
+          {documentError && (
+            <div className={`${styles.statusAlert} ${styles.dangerAlert}`} role="alert">
+              <strong>No se pudo completar la descarga</strong>
+              <p>{documentError.message}</p>
+            </div>
+          )}
         </section>
 
         <div className={styles.workspaceActions}>
