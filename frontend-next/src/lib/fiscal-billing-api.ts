@@ -210,6 +210,55 @@ export type BillingDocumentWorkspace = {
   readiness: { receiverFiscalIdentityMissing: boolean; exchangeRateMissing: boolean };
 };
 
+export type AcceptedBillingInvoice = {
+  billingDocumentId: string;
+  internalNumber: string;
+  fiscalNumber: string;
+  documentTypeCode: string;
+  lifecycleStatus: 'SUBMITTED';
+  taxAuthorityStatus: 'ACCEPTED';
+  issuedDate: string;
+  currencyCode: string;
+  paymentCondition: {
+    code: string | null;
+    creditTermDays: number | null;
+    dueDate: string | null;
+  };
+  receiver: {
+    name: string | null;
+    identificationType: string | null;
+    identificationNumber: string | null;
+    email: string | null;
+  };
+  salesOrder: {
+    id: string;
+    number: string | null;
+  } | null;
+  lines: Array<{
+    lineNumber: number;
+    description: string;
+    quantity: string;
+    unitOfMeasureCode: string;
+    unitPrice: string;
+    subtotal: string;
+    taxableBase: string;
+    taxes: Array<{
+      taxCode: string;
+      rateCode: string;
+      ratePercentage: string;
+      taxableBase: string;
+      taxAmount: string;
+      netTaxAmount: string;
+    }>;
+    lineTotal: string;
+  }>;
+  totals: {
+    subtotal: string;
+    totalTax: string;
+    total: string;
+  };
+};
+
 export type BillingDocumentFiscalAllocationResult = {
   billingDocumentId: string;
   sequenceId: string;
@@ -246,6 +295,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   BILLING_DRAFT_CONFLICT: 'No fue posible crear el borrador porque existe un documento en conflicto.',
   BILLING_DRAFT_ALREADY_ADVANCED: 'El documento fiscal existente ya avanzó y solo puede consultarse.',
   BILLING_DOCUMENT_NOT_FOUND: 'El documento fiscal no fue encontrado.',
+  BILLING_DOCUMENT_INVOICE_NOT_AVAILABLE: 'La factura aceptada todavía no está disponible.',
   BILLING_DOCUMENT_NOT_ELIGIBLE_FOR_ISSUANCE: 'El documento no es elegible para solicitar emisión electrónica.',
   BILLING_DOCUMENT_FISCAL_READINESS_FAILED: 'El documento todavía tiene requisitos fiscales pendientes.',
   BILLING_DOCUMENT_UNSUPPORTED_FISCAL_CURRENCY: 'La moneda del documento no es compatible con la emisión fiscal.',
@@ -329,6 +379,19 @@ export function createOrResumeBillingDraft(salesOrderId: string, input: CreateBi
 
 export function getBillingDocumentWorkspace(billingDocumentId: string, signal?: AbortSignal) {
   return request<BillingDocumentWorkspace>(`/fiscal-billing/documents/${encodeURIComponent(billingDocumentId)}/workspace`, signal);
+}
+
+export function getAcceptedBillingInvoice(billingDocumentId: string, signal?: AbortSignal) {
+  if (!validRouteId(billingDocumentId)) {
+    return Promise.reject(new FiscalBillingApiError(
+      'BILLING_DOCUMENT_NOT_FOUND',
+      ERROR_MESSAGES.BILLING_DOCUMENT_NOT_FOUND,
+    ));
+  }
+  return request<AcceptedBillingInvoice>(
+    `/fiscal-billing/invoices/${encodeURIComponent(billingDocumentId)}`,
+    signal,
+  );
 }
 
 export function requestBillingDocumentElectronicIssuance(billingDocumentId: string) {

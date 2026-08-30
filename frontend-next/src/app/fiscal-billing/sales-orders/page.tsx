@@ -63,7 +63,11 @@ function Action({ order }: { order: EligibleSalesOrder }) {
     return <Button className={styles.primaryAction} disabled size="sm" type="button"><LoaderCircle className={styles.spin} aria-hidden="true" />Procesando…</Button>;
   }
   if (order.existingPrimaryDocument && presentation.actionLabel) {
-    return <Button asChild className={styles.primaryAction} size="sm"><Link href={`/fiscal-billing/documents/${encodeURIComponent(order.existingPrimaryDocument.id)}`}>{presentation.actionLabel}</Link></Button>;
+    const documentId = encodeURIComponent(order.existingPrimaryDocument.id);
+    const href = presentation.kind === 'ACCEPTED'
+      ? `/fiscal-billing/invoices/${documentId}`
+      : `/fiscal-billing/documents/${documentId}`;
+    return <Button asChild className={styles.primaryAction} size="sm"><Link href={href}>{presentation.actionLabel}</Link></Button>;
   }
   return (
     <Button className={styles.primaryAction} disabled size="sm" type="button">
