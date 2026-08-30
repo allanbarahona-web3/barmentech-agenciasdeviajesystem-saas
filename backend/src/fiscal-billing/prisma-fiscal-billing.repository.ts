@@ -72,6 +72,8 @@ export class PrismaSalesOrderFiscalBillingRepository
             sourceId: true,
             internalNumber: true,
             lifecycleStatus: true,
+            providerStatus: true,
+            taxAuthorityStatus: true,
             documentTypeCode: true,
           },
         })
@@ -87,7 +89,22 @@ export class PrismaSalesOrderFiscalBillingRepository
           commercialSubtotal: order.commercialSubtotal.toFixed(4),
           totalVat: order.totalVat.toFixed(4),
           total: order.total.toFixed(4),
-          existingPrimaryDocument: document,
+          existingPrimaryDocument: document
+            ? {
+                id: document.id,
+                sourceId: document.sourceId,
+                internalNumber: document.internalNumber,
+                lifecycleStatus: document.lifecycleStatus,
+                documentTypeCode: document.documentTypeCode,
+              }
+            : null,
+          fiscalStatus: document
+            ? {
+                lifecycleStatus: document.lifecycleStatus,
+                providerStatus: document.providerStatus,
+                taxAuthorityStatus: document.taxAuthorityStatus,
+              }
+            : null,
           action: !document
             ? "START"
             : document.lifecycleStatus === "DRAFT"

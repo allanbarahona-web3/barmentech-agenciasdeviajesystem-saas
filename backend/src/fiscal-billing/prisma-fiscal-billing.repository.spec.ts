@@ -77,7 +77,9 @@ describe("PrismaSalesOrderFiscalBillingRepository", () => {
       "tenant-a",
       1,
       20,
-    )) as { salesOrders: Array<{ action: string }> };
+    )) as {
+      salesOrders: Array<{ action: string; fiscalStatus: unknown }>;
+    };
 
     expect(prisma.salesOrder.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -107,10 +109,82 @@ describe("PrismaSalesOrderFiscalBillingRepository", () => {
       }),
     );
     expect(result.salesOrders[0].action).toBe("START");
+    expect(result.salesOrders[0].fiscalStatus).toBeNull();
     expect(prisma.salesOrder.findMany).toHaveBeenCalledTimes(1);
     expect(prisma.salesOrder.count).toHaveBeenCalledTimes(1);
     expect(prisma.billingDocument.findMany).toHaveBeenCalledTimes(1);
   });
+
+  it.each([
+    ["draft", "DRAFT", "NOT_SUBMITTED", "NOT_SUBMITTED", "RESUME"],
+    ["processing", "SUBMITTED", "PENDING", "PROCESSING", "VIEW"],
+    ["accepted", "SUBMITTED", "PROCESSED", "ACCEPTED", "VIEW"],
+    ["rejected", "SUBMITTED", "PROCESSED", "REJECTED", "VIEW"],
+    ["failed", "SUBMITTED", "FAILED", "PROCESSING", "VIEW"],
+  ])(
+    "projects authoritative %s fiscal status without per-row queries",
+    async (
+      _case,
+      lifecycleStatus,
+      providerStatus,
+      taxAuthorityStatus,
+      action,
+    ) => {
+      const prisma = prismaMock();
+      prisma.salesOrder.findMany.mockResolvedValue([
+        {
+          id: "sales-a",
+          orderNumber: "SO-1",
+          status: "CREATED",
+          sourceType: "ADDITIONAL_SERVICE_ORDER",
+          customerName: "Customer",
+          customerEmail: null,
+          currency: "CRC",
+          commercialSubtotal: decimal("100"),
+          totalVat: decimal("13"),
+          total: decimal("113"),
+          createdAt: new Date("2026-08-29T00:00:00Z"),
+        },
+      ]);
+      prisma.salesOrder.count.mockResolvedValue(1);
+      prisma.billingDocument.findMany.mockResolvedValue([
+        {
+          id: "document-a",
+          sourceId: "sales-a",
+          internalNumber: "BD-SO-sales-a",
+          lifecycleStatus,
+          providerStatus,
+          taxAuthorityStatus,
+          documentTypeCode: "01",
+        },
+      ]);
+      const repository = new PrismaSalesOrderFiscalBillingRepository(
+        prisma as never,
+      );
+
+      const result = await repository.listEligibleSalesOrders(
+        "tenant-a",
+        1,
+        20,
+      );
+
+      expect(result.salesOrders[0]).toMatchObject({
+        action,
+        existingPrimaryDocument: {
+          id: "document-a",
+          lifecycleStatus,
+        },
+        fiscalStatus: {
+          lifecycleStatus,
+          providerStatus,
+          taxAuthorityStatus,
+        },
+      });
+      expect(prisma.salesOrder.findMany).toHaveBeenCalledTimes(1);
+      expect(prisma.salesOrder.count).toHaveBeenCalledTimes(1);
+      expect(prisma.billingDocument.findMany).toHaveBeenCalledTimes(1);
+    },
+  );
 
 });
 
