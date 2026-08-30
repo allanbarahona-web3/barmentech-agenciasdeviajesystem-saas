@@ -13,6 +13,7 @@ import {
   type EligibleSalesOrder,
   type EligibleSalesOrdersPage,
 } from '@/lib/fiscal-billing-api';
+import { formatFiscalDecimal } from '@/lib/fiscal-money';
 import styles from '../fiscal-billing.module.css';
 
 const PAGE_SIZE = 20;
@@ -28,14 +29,6 @@ function formatDate(value: string) {
   return new Intl.DateTimeFormat('es-CR', {
     day: '2-digit', month: 'short', year: 'numeric',
   }).format(new Date(value));
-}
-
-function formatDecimal(value: string) {
-  const [whole = '0', fraction] = value.split('.');
-  const sign = whole.startsWith('-') ? '-' : '';
-  const digits = sign ? whole.slice(1) : whole;
-  const grouped = digits.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-  return `${sign}${grouped}.${(fraction ?? '').padEnd(2, '0').slice(0, 2)}`;
 }
 
 function fiscalPresentation(order: EligibleSalesOrder): FiscalPresentation {
@@ -185,7 +178,7 @@ export default function EligibleFiscalSalesOrdersPage() {
                   <TableCell><div className={styles.stack}><span>{order.customerName}</span>{order.customerEmail && <span className={styles.secondary}>{order.customerEmail}</span>}</div></TableCell>
                   <TableCell>{formatDate(order.createdAt)}</TableCell>
                   <TableCell>{order.currency}</TableCell>
-                  <TableCell className={styles.numeric}>{order.currency} {formatDecimal(order.total)}</TableCell>
+                  <TableCell className={styles.numeric}>{order.currency} {formatFiscalDecimal(order.total)}</TableCell>
                   <TableCell>{(() => { const presentation = fiscalPresentation(order); return <Badge className={statusClass(presentation.kind)} variant="outline">{presentation.kind === 'PROCESSING' && <LoaderCircle className={styles.spin} aria-hidden="true" />}{presentation.label}</Badge>; })()}</TableCell>
                   <TableCell><Action order={order} /></TableCell>
                 </TableRow>

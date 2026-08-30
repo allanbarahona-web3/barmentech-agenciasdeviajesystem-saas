@@ -12,6 +12,7 @@ import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMe
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { getHomeRouteForRole, getStoredSession } from '@/lib/auth-api';
 import { createOrResumeBillingDraft, FiscalBillingApiError, fiscalBillingIssueMessage, getFiscalPreparation, requestBillingDocumentElectronicIssuance, type FiscalPreparation, type FiscalPreparationLine } from '@/lib/fiscal-billing-api';
+import { formatFiscalMoney } from '@/lib/fiscal-money';
 import styles from '../../../fiscal-billing.module.css';
 
 const RECEIVER_TYPES = [['01', 'Cédula física'], ['02', 'Cédula jurídica'], ['03', 'DIMEX'], ['04', 'NITE']] as const;
@@ -20,8 +21,7 @@ type DocumentType = '01' | '04';
 type ReceiverType = '01' | '02' | '03' | '04';
 type Phase = 'IDLE' | 'SAVING' | 'ISSUING';
 
-function decimal(value: string) { const [whole = '0', fraction] = value.split('.'); const sign = whole.startsWith('-') ? '-' : ''; const digits = sign ? whole.slice(1) : whole; return `${sign}${digits.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}.${(fraction ?? '').padEnd(2, '0').slice(0, 2)}`; }
-function money(value: string, currency: string) { return `${currency} ${decimal(value)}`; }
+const money = formatFiscalMoney;
 function condition(p: FiscalPreparation) { return p.paymentCondition.type === 'CASH' ? 'Contado' : p.paymentCondition.type === 'CREDIT' ? 'Crédito' : 'No especificada'; }
 function creditTerm(p: FiscalPreparation) { const c = p.paymentCondition; if (c.type !== 'CREDIT' || !c.termValue || !c.termUnit) return null; const unit = c.termUnit === 'DAYS' ? (c.termValue === 1 ? 'día' : 'días') : (c.termValue === 1 ? 'mes' : 'meses'); return `${c.termValue} ${unit}`; }
 

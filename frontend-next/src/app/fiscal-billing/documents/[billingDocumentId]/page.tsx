@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { getHomeRouteForRole, getStoredSession } from '@/lib/auth-api';
 import { FiscalBillingApiError, getBillingDocumentWorkspace, requestBillingDocumentElectronicIssuance, type BillingDocumentWorkspace } from '@/lib/fiscal-billing-api';
+import { formatFiscalDecimal, formatFiscalMoney } from '@/lib/fiscal-money';
 import styles from '../../fiscal-billing.module.css';
 
 const INTERVAL=5_000, WINDOW=600_000, MAX_ERRORS=3;
@@ -18,8 +19,8 @@ const provider:Record<string,string>={NOT_SUBMITTED:'No enviado',PENDING:'Pendie
 const hacienda:Record<string,string>={NOT_SUBMITTED:'No enviado a Hacienda',PROCESSING:'En procesamiento',ACCEPTED:'Aceptado',REJECTED:'Rechazado'};
 const payments:Record<string,string>={'01':'Efectivo','02':'Tarjeta','03':'Cheque','04':'Transferencia/depósito bancario','05':'Recaudado por terceros','06':'SINPE Móvil','07':'Plataforma digital','99':'Otros'};
 function validId(v:string){return v.length>0&&v.length<=200&&v.trim()===v&&/^[A-Za-z0-9_-]+$/.test(v);}
-function decimal(v:string){const m=/^(-?)(\d+)(?:\.(\d+))?$/.exec(v);if(!m)return v;return `${m[1]}${m[2].replace(/\B(?=(\d{3})+(?!\d))/g,',')}.${(m[3]??'').padEnd(2,'0').slice(0,2)}`;}
-function money(v:string,c:string){return `${c} ${decimal(v)}`;}
+const decimal = formatFiscalDecimal;
+const money = formatFiscalMoney;
 function time(v:string|null){if(!v)return 'No disponible';const d=new Date(v);return Number.isFinite(d.getTime())?new Intl.DateTimeFormat('es-CR',{dateStyle:'medium',timeStyle:'medium',timeZone:'America/Costa_Rica'}).format(d):'No disponible';}
 function date(v:string|null){return v&&/^\d{4}-\d{2}-\d{2}$/.test(v)?v:'No disponible';}
 function badge(v:string){return v==='ACCEPTED'?styles.readyBadge:v==='REJECTED'||v==='FAILED'?styles.errorBadge:v==='PENDING'||v==='PROCESSING'?styles.warningBadge:styles.documentTypeBadge;}
