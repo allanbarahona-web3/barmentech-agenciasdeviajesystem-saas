@@ -11,6 +11,7 @@ import {
 import { BillingDocumentService } from "./billing-document.service";
 import { SalesOrderFiscalBillingService } from "./fiscal-billing.service";
 import { FiscalArtifactReadService } from './fiscal-artifact-read.service';
+import { FiscalInvoicePdfService } from "./fiscal-invoice-pdf.service";
 
 type FiscalBillingRequest = {
   user: { id: string; tenantId: string; role: UserRole };
@@ -24,6 +25,7 @@ export class FiscalBillingController {
     private readonly salesOrderService: SalesOrderFiscalBillingService,
     private readonly billingDocumentService: BillingDocumentService,
     private readonly artifactReadService: FiscalArtifactReadService,
+    private readonly fiscalInvoicePdfService: FiscalInvoicePdfService,
   ) {}
 
   @Get("sales-orders/eligible")
@@ -35,6 +37,17 @@ export class FiscalBillingController {
       request.user.tenantId,
       query.page,
       query.pageSize,
+    );
+  }
+
+  @Post("invoices/:billingDocumentId/pdf")
+  generateInvoicePdf(
+    @Req() request: FiscalBillingRequest,
+    @Param("billingDocumentId") billingDocumentId: string,
+  ) {
+    return this.fiscalInvoicePdfService.generateAndPersist(
+      request.user.tenantId,
+      billingDocumentId,
     );
   }
 

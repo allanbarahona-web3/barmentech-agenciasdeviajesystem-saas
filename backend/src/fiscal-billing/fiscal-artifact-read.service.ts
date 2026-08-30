@@ -3,7 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { IMMUTABLE_BILLING_ARTIFACT_STORAGE_PORT, ImmutableBillingArtifactStorageError, type ImmutableBillingArtifactStoragePort } from '../storage/immutable-billing-artifact-storage.port';
 import { fiscalArtifactReadError } from './fiscal-artifact-read.errors';
 
-const ARTIFACT_TYPES = ['SIGNED_FISCAL_XML', 'TAX_AUTHORITY_RESPONSE_XML'] as const;
+const ARTIFACT_TYPES = ['SIGNED_FISCAL_XML', 'TAX_AUTHORITY_RESPONSE_XML', 'INTERNAL_PDF'] as const;
 type ArtifactType = (typeof ARTIFACT_TYPES)[number];
 const MAX_VERSION = 2_147_483_647;
 const LIST_LIMIT = 100;
@@ -71,7 +71,7 @@ export class FiscalArtifactReadService {
 
 function parseType(value: string): ArtifactType { if ((ARTIFACT_TYPES as readonly string[]).includes(value)) return value as ArtifactType; throw fiscalArtifactReadError('FISCAL_ARTIFACT_INVALID_REQUEST'); }
 function parseVersion(value: string): number { if (!/^[1-9]\d*$/.test(value)) throw fiscalArtifactReadError('FISCAL_ARTIFACT_INVALID_REQUEST'); const version = Number(value); if (!Number.isSafeInteger(version) || version > MAX_VERSION) throw fiscalArtifactReadError('FISCAL_ARTIFACT_INVALID_REQUEST'); return version; }
-function completeMetadata(a: Artifact): a is Artifact & { storageProvider: string; storageKey: string; sha256: string; byteSize: bigint; mimeType: 'application/xml' | 'text/xml' } { return nonEmpty(a.storageProvider) && nonEmpty(a.storageKey) && /^[a-f0-9]{64}$/.test(a.sha256 ?? '') && a.byteSize !== null && a.byteSize > 0n && (a.mimeType === 'application/xml' || a.mimeType === 'text/xml') && validDate(a.retrievedAt) && validDate(a.storedAt); }
+function completeMetadata(a: Artifact): a is Artifact & { storageProvider: string; storageKey: string; sha256: string; byteSize: bigint; mimeType: 'application/xml' | 'text/xml' | 'application/pdf' } { const validMime = a.artifactType === 'INTERNAL_PDF' ? a.mimeType === 'application/pdf' : a.mimeType === 'application/xml' || a.mimeType === 'text/xml'; return nonEmpty(a.storageProvider) && nonEmpty(a.storageKey) && /^[a-f0-9]{64}$/.test(a.sha256 ?? '') && a.byteSize !== null && a.byteSize > 0n && validMime && validDate(a.retrievedAt) && validDate(a.storedAt); }
 function nonEmpty(value: unknown): value is string { return typeof value === 'string' && value.trim().length > 0; }
 function validDate(value: unknown): value is Date { return value instanceof Date && Number.isFinite(value.getTime()); }
-function filename(type: ArtifactType, version: number) { return type === 'SIGNED_FISCAL_XML' ? `signed-fiscal-document-v${version}.xml` : `tax-authority-response-v${version}.xml`; }
+function filename(type: ArtifactType, version: number) { if (type === 'INTERNAL_PDF') return `fiscal-invoice-v${version}.pdf`; return type === 'SIGNED_FISCAL_XML' ? `signed-fiscal-document-v${version}.xml` : `tax-authority-response-v${version}.xml`; }

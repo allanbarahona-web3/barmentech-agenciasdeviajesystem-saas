@@ -66,7 +66,7 @@ describe("FiscalBillingController draft request validation", () => {
 });
 
 describe("FiscalBillingController workspace",()=>{
-  it("keeps the existing guarded route and delegates once with authenticated tenant identity",async()=>{const workspace={id:"document-a",allocatedSequenceNumber:"9999999999"},getWorkspace=jest.fn().mockResolvedValue(workspace),controller=new FiscalBillingController({} as never,{getWorkspace} as unknown as BillingDocumentService,{} as never),handler=FiscalBillingController.prototype.workspace;expect(Reflect.getMetadata(PATH_METADATA,handler)).toBe("documents/:billingDocumentId/workspace");expect(Reflect.getMetadata(METHOD_METADATA,handler)).toBe(RequestMethod.GET);await expect(controller.workspace({user:{id:"user-a",tenantId:"tenant-a",role:UserRole.ADMIN}},"document-a")).resolves.toBe(workspace);expect(getWorkspace).toHaveBeenCalledTimes(1);expect(getWorkspace).toHaveBeenCalledWith("tenant-a","document-a");});
+  it("keeps the existing guarded route and delegates once with authenticated tenant identity",async()=>{const workspace={id:"document-a",allocatedSequenceNumber:"9999999999"},getWorkspace=jest.fn().mockResolvedValue(workspace),controller=new FiscalBillingController({} as never,{getWorkspace} as unknown as BillingDocumentService,{} as never,{} as never),handler=FiscalBillingController.prototype.workspace;expect(Reflect.getMetadata(PATH_METADATA,handler)).toBe("documents/:billingDocumentId/workspace");expect(Reflect.getMetadata(METHOD_METADATA,handler)).toBe(RequestMethod.GET);await expect(controller.workspace({user:{id:"user-a",tenantId:"tenant-a",role:UserRole.ADMIN}},"document-a")).resolves.toBe(workspace);expect(getWorkspace).toHaveBeenCalledTimes(1);expect(getWorkspace).toHaveBeenCalledWith("tenant-a","document-a");});
 });
 
 describe("FiscalBillingController accepted invoice", () => {
@@ -76,6 +76,7 @@ describe("FiscalBillingController accepted invoice", () => {
     const controller = new FiscalBillingController(
       {} as never,
       { getAcceptedInvoice } as unknown as BillingDocumentService,
+      {} as never,
       {} as never,
     );
     const handler = FiscalBillingController.prototype.invoice;
@@ -107,7 +108,7 @@ describe('FiscalBillingController artifact reads', () => {
   it('keeps artifact routes behind the existing guards and trusted tenant context', async () => {
     const artifacts = [{ artifactType: 'SIGNED_FISCAL_XML', version: 1, status: 'AVAILABLE', downloadAvailable: true }];
     const read = { list: jest.fn().mockResolvedValue(artifacts), download: jest.fn().mockResolvedValue({ bytes: Buffer.from('<xml/>'), mimeType: 'application/xml', filename: 'signed-fiscal-document-v1.xml' }) };
-    const controller = new FiscalBillingController({} as never, {} as never, read as never);
+    const controller = new FiscalBillingController({} as never, {} as never, read as never, {} as never);
     const request = { user: { id: 'user-a', tenantId: 'tenant-a', role: UserRole.FACTURACION_COBROS } };
     expect(Reflect.getMetadata(PATH_METADATA, FiscalBillingController.prototype.listArtifacts)).toBe('documents/:billingDocumentId/artifacts');
     expect(Reflect.getMetadata(PATH_METADATA, FiscalBillingController.prototype.downloadArtifact)).toBe('documents/:billingDocumentId/artifacts/:artifactType/versions/:version/download');
@@ -118,6 +119,27 @@ describe('FiscalBillingController artifact reads', () => {
     expect(read.download).toHaveBeenCalledWith('tenant-a', 'document-a', 'SIGNED_FISCAL_XML', '1');
     expect(response.set).toHaveBeenCalledWith({ 'Content-Type': 'application/xml', 'Content-Length': '6', 'Content-Disposition': 'attachment; filename="signed-fiscal-document-v1.xml"', 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' });
     expect(response.send).toHaveBeenCalledWith(Buffer.from('<xml/>'));
+  });
+});
+
+describe("FiscalBillingController invoice PDF", () => {
+  it("exposes the guarded POST route and delegates with the authenticated tenant", async () => {
+    const result = { artifactType: "INTERNAL_PDF", version: 1, status: "AVAILABLE" };
+    const generateAndPersist = jest.fn().mockResolvedValue(result);
+    const controller = new FiscalBillingController(
+      {} as never,
+      {} as never,
+      {} as never,
+      { generateAndPersist } as never,
+    );
+    const handler = FiscalBillingController.prototype.generateInvoicePdf;
+    expect(Reflect.getMetadata(PATH_METADATA, handler)).toBe("invoices/:billingDocumentId/pdf");
+    expect(Reflect.getMetadata(METHOD_METADATA, handler)).toBe(RequestMethod.POST);
+    await expect(controller.generateInvoicePdf(
+      { user: { id: "user-a", tenantId: "tenant-a", role: UserRole.FACTURACION_COBROS } },
+      "document-a",
+    )).resolves.toBe(result);
+    expect(generateAndPersist).toHaveBeenCalledWith("tenant-a", "document-a");
   });
 });
 
@@ -224,6 +246,7 @@ function createController(billingDocumentService: {
   return new FiscalBillingController(
     {} as never,
     billingDocumentService as unknown as BillingDocumentService,
+    {} as never,
     {} as never,
   );
 }

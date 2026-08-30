@@ -258,6 +258,13 @@ export interface AcceptedBillingInvoice {
   taxAuthorityStatus: "ACCEPTED";
   issuedDate: string;
   currencyCode: string;
+  issuer: {
+    name: string;
+    identificationType: string;
+    identificationNumber: string;
+    email: string | null;
+    phone: string | null;
+  };
   paymentCondition: {
     code: string | null;
     creditTermDays: number | null;

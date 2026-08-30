@@ -31,8 +31,15 @@ describe('FiscalArtifactReadService', () => {
     expect(c.storage.readImmutable).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 'tenant-a', billingDocumentId: 'document-a', artifactType, artifactVersion: 1, storageKey: 'private/key', storageProvider: 'PRIVATE_OBJECT_STORAGE' }));
   });
 
+  it('downloads an existing internal invoice PDF through the same immutable artifact path', async () => {
+    const bytes = Buffer.from('%PDF-1.7 invoice'); const row = artifact({ artifactType: 'INTERNAL_PDF', mimeType: 'application/pdf', sha256: hash(bytes), byteSize: BigInt(bytes.length) }); const c = context({ artifact: row, read: { ...storageMetadata(row), bytes } });
+    const result = await c.service.download('tenant-a', 'document-a', 'INTERNAL_PDF', '1');
+    expect(result).toEqual({ bytes, mimeType: 'application/pdf', filename: 'fiscal-invoice-v1.pdf' });
+    expect(c.storage.readImmutable).toHaveBeenCalledWith(expect.objectContaining({ artifactType: 'INTERNAL_PDF', artifactVersion: 1 }));
+  });
+
   it.each([
-    ['unsupported type', 'INTERNAL_PDF', '1', 'FISCAL_ARTIFACT_INVALID_REQUEST'], ['invalid version', 'SIGNED_FISCAL_XML', '0', 'FISCAL_ARTIFACT_INVALID_REQUEST'],
+    ['unsupported type', 'UNKNOWN', '1', 'FISCAL_ARTIFACT_INVALID_REQUEST'], ['invalid version', 'SIGNED_FISCAL_XML', '0', 'FISCAL_ARTIFACT_INVALID_REQUEST'],
   ])('rejects %s before storage', async (_, type, version, code) => { const c = context(); await expect(c.service.download('tenant-a', 'document-a', type, version)).rejects.toMatchObject({ response: expect.objectContaining({ code }) }); expect(c.storage.readImmutable).not.toHaveBeenCalled(); });
 
   it.each([

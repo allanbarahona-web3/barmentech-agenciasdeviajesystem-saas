@@ -266,6 +266,13 @@ function mapAcceptedInvoice(
     taxAuthorityStatus: workspace.taxAuthorityStatus,
     issuedDate: workspace.fiscalIssueDate,
     currencyCode: workspace.currencyCode,
+    issuer: {
+      name: workspace.issuerName,
+      identificationType: workspace.issuerIdentificationType,
+      identificationNumber: workspace.issuerIdentification,
+      email: workspace.issuerEmail,
+      phone: workspace.issuerPhone,
+    },
     paymentCondition: {
       code: workspace.paymentConditionCode,
       creditTermDays: workspace.creditTermDays,

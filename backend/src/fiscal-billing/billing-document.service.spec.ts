@@ -63,6 +63,13 @@ describe("BillingDocumentService generic core", () => {
       taxAuthorityStatus: "ACCEPTED",
       issuedDate: "2026-08-30",
       currencyCode: "USD",
+      issuer: {
+        name: "Issuer",
+        identificationType: "02",
+        identificationNumber: "3101000000",
+        email: "issuer@example.test",
+        phone: null,
+      },
       paymentCondition: {
         code: "01",
         creditTermDays: null,

@@ -64,9 +64,16 @@ import { FiscalArtifactRetrievalProcessor } from "./jobs/fiscal-artifact-retriev
 import { FacturaEnCrFiscalArtifactRetrievalAdapter } from "./providers/factura-en-cr-fiscal-artifact-retrieval.adapter";
 import { FISCAL_ARTIFACT_RETRIEVAL_PORT } from "./providers/fiscal-artifact-retrieval.provider";
 import { FiscalArtifactReadService } from './fiscal-artifact-read.service';
+import { DocumentsModule } from "../documents/documents.module";
+import { FiscalInvoicePdfService } from "./fiscal-invoice-pdf.service";
 
 @Module({
-  imports: [FiscalCatalogModule, OfficialExchangeRateModule, StorageModule],
+  imports: [
+    FiscalCatalogModule,
+    OfficialExchangeRateModule,
+    StorageModule,
+    DocumentsModule,
+  ],
   controllers: [
     FiscalBillingController,
     FiscalBillingAdminController,
@@ -112,6 +119,7 @@ import { FiscalArtifactReadService } from './fiscal-artifact-read.service';
     FacturaEnCrFiscalArtifactRetrievalAdapter,
     FiscalArtifactRetrievalService,
     FiscalArtifactReadService,
+    FiscalInvoicePdfService,
     FiscalArtifactRetrievalPublisher,
     FiscalArtifactRetrievalProcessor,
     BillingDocumentRefreshExecutorService,
