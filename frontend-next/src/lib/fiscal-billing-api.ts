@@ -293,6 +293,16 @@ export type AcceptedInvoicePdfArtifact = {
   storedAt: string;
 };
 
+export type ManualInvoiceEmailResendInput = {
+  to: string;
+  cc?: string[];
+};
+
+export type ManualInvoiceEmailResendResult = {
+  queued: true;
+  requestId: string;
+};
+
 export type FiscalArtifactDownload = {
   blob: Blob;
   filename: string;
@@ -338,6 +348,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   BILLING_DOCUMENT_INVOICE_NOT_AVAILABLE: 'La factura aceptada todavía no está disponible.',
   BILLING_DOCUMENT_INVOICE_PDF_CONFLICT: 'El PDF persistido está en conflicto y no puede descargarse de forma segura.',
   BILLING_DOCUMENT_INVOICE_PDF_GENERATION_FAILED: 'No se pudo generar el PDF de la factura.',
+  FISCAL_INVOICE_MANUAL_RESEND_RECIPIENT_INVALID: 'Ingrese un correo destinatario válido.',
+  FISCAL_INVOICE_MANUAL_RESEND_CC_INVALID: 'Revise los correos incluidos en copia.',
   BILLING_DOCUMENT_NOT_ELIGIBLE_FOR_ISSUANCE: 'El documento no es elegible para solicitar emisión electrónica.',
   BILLING_DOCUMENT_FISCAL_READINESS_FAILED: 'El documento todavía tiene requisitos fiscales pendientes.',
   BILLING_DOCUMENT_UNSUPPORTED_FISCAL_CURRENCY: 'La moneda del documento no es compatible con la emisión fiscal.',
@@ -461,6 +473,30 @@ export function generateAcceptedInvoicePdf(billingDocumentId: string) {
   }
   return postWithoutBody<AcceptedInvoicePdfArtifact>(
     `/fiscal-billing/invoices/${encodeURIComponent(billingDocumentId)}/pdf`,
+  );
+}
+
+export async function requestAcceptedInvoiceEmailResend(
+  billingDocumentId: string,
+  input: ManualInvoiceEmailResendInput,
+): Promise<ManualInvoiceEmailResendResult> {
+  if (!validRouteId(billingDocumentId)) {
+    throw new FiscalBillingApiError(
+      'BILLING_DOCUMENT_NOT_FOUND',
+      ERROR_MESSAGES.BILLING_DOCUMENT_NOT_FOUND,
+    );
+  }
+  const response = await fetchApi(
+    `/fiscal-billing/invoices/${encodeURIComponent(billingDocumentId)}/email`,
+    { method: 'POST', body: JSON.stringify(input) },
+  );
+  if (response.ok) return response.json() as Promise<ManualInvoiceEmailResendResult>;
+  const payload: unknown = await response.json().catch(() => null);
+  const record = isRecord(payload) ? payload : {};
+  const code = typeof record.code === 'string' ? record.code : 'FISCAL_BILLING_REQUEST_FAILED';
+  throw new FiscalBillingApiError(
+    code,
+    ERROR_MESSAGES[code] ?? 'No se pudo programar el reenvío de la factura.',
   );
 }
 

@@ -2,8 +2,8 @@
 
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
-import { ArrowLeft, Download, LoaderCircle } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { ArrowLeft, Download, LoaderCircle, Mail, Plus, X } from 'lucide-react';
 import { LoadingSpinner } from '@/components/loading-spinner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -15,6 +15,7 @@ import {
   generateAcceptedInvoicePdf,
   getAcceptedBillingInvoice,
   listFiscalArtifacts,
+  requestAcceptedInvoiceEmailResend,
   type AcceptedBillingInvoice,
   type FiscalArtifactDownload,
   type FiscalArtifactListItem,
@@ -34,6 +35,8 @@ const IDENTIFICATION_TYPES: Record<string, string> = {
   '03': 'DIMEX',
   '04': 'NITE',
 };
+
+const SIMPLE_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function formatDate(value: string | null): string {
   if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return 'No disponible';
@@ -108,6 +111,14 @@ export default function AcceptedInvoicePage() {
   const [documentAction, setDocumentAction] = useState<
     'GENERATING_PDF' | 'DOWNLOADING_PDF' | 'SIGNED_XML' | 'RESPONSE_XML' | null
   >(null);
+  const [emailDialogOpen, setEmailDialogOpen] = useState(false);
+  const [emailTo, setEmailTo] = useState('');
+  const [ccDraft, setCcDraft] = useState('');
+  const [ccRecipients, setCcRecipients] = useState<string[]>([]);
+  const [emailSubmitting, setEmailSubmitting] = useState(false);
+  const emailRequestInFlight = useRef(false);
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [emailQueued, setEmailQueued] = useState(false);
 
   useEffect(() => {
     const session = getStoredSession();
@@ -144,6 +155,15 @@ export default function AcceptedInvoicePage() {
       });
     return () => controller.abort();
   }, [authorized, billingDocumentId]);
+
+  useEffect(() => {
+    if (!emailDialogOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !emailSubmitting) setEmailDialogOpen(false);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [emailDialogOpen, emailSubmitting]);
 
   useEffect(() => {
     if (!authorized) return;
@@ -219,6 +239,75 @@ export default function AcceptedInvoicePage() {
         ));
     } finally {
       setDocumentAction(null);
+    }
+  }
+
+  function openEmailDialog() {
+    setEmailTo(invoice?.receiver.email ?? '');
+    setCcDraft('');
+    setCcRecipients([]);
+    setEmailError(null);
+    setEmailQueued(false);
+    setEmailDialogOpen(true);
+  }
+
+  function addCcRecipient(): boolean {
+    const candidate = ccDraft.trim();
+    if (!candidate) return true;
+    if (!SIMPLE_EMAIL_PATTERN.test(candidate)) {
+      setEmailError('Ingrese un correo válido para CC.');
+      return false;
+    }
+    if (ccRecipients.length >= 10) {
+      setEmailError('Puede agregar un máximo de 10 correos en CC.');
+      return false;
+    }
+    if (!ccRecipients.some((recipient) => recipient.toLowerCase() === candidate.toLowerCase())) {
+      setCcRecipients((current) => [...current, candidate]);
+    }
+    setCcDraft('');
+    setEmailError(null);
+    return true;
+  }
+
+  async function submitEmailResend() {
+    if (emailRequestInFlight.current) return;
+    const recipient = emailTo.trim();
+    if (!SIMPLE_EMAIL_PATTERN.test(recipient)) {
+      setEmailError('Ingrese un correo válido en Para.');
+      return;
+    }
+    let recipients = ccRecipients;
+    const pendingCc = ccDraft.trim();
+    if (pendingCc) {
+      if (!SIMPLE_EMAIL_PATTERN.test(pendingCc)) {
+        setEmailError('Ingrese un correo válido para CC.');
+        return;
+      }
+      const alreadyAdded = recipients.some((value) => value.toLowerCase() === pendingCc.toLowerCase());
+      if (!alreadyAdded) recipients = [...recipients, pendingCc];
+    }
+    if (recipients.length > 10) {
+      setEmailError('Puede agregar un máximo de 10 correos en CC.');
+      return;
+    }
+    emailRequestInFlight.current = true;
+    setEmailSubmitting(true);
+    setEmailError(null);
+    try {
+      await requestAcceptedInvoiceEmailResend(billingDocumentId, {
+        to: recipient,
+        ...(recipients.length > 0 ? { cc: recipients } : {}),
+      });
+      setEmailDialogOpen(false);
+      setEmailQueued(true);
+    } catch (requestError) {
+      setEmailError(requestError instanceof FiscalBillingApiError
+        ? requestError.message
+        : 'No se pudo programar el reenvío de la factura.');
+    } finally {
+      emailRequestInFlight.current = false;
+      setEmailSubmitting(false);
     }
   }
 
@@ -342,6 +431,15 @@ export default function AcceptedInvoicePage() {
             <Button
               type="button"
               className={styles.primaryAction}
+              disabled={emailSubmitting}
+              onClick={openEmailDialog}
+            >
+              <Mail aria-hidden="true" />
+              Reenviar por correo
+            </Button>
+            <Button
+              type="button"
+              className={styles.primaryAction}
               disabled={documentAction !== null}
               onClick={() => void generateAndDownloadPdf()}
             >
@@ -389,6 +487,12 @@ export default function AcceptedInvoicePage() {
               <p>{documentError.message}</p>
             </div>
           )}
+          {emailQueued && (
+            <div className={`${styles.statusAlert} ${styles.successAlert}`} role="status">
+              <strong>Reenvío programado</strong>
+              <p>La factura y sus documentos fiscales se enviarán en segundo plano.</p>
+            </div>
+          )}
         </section>
 
         <div className={styles.workspaceActions}>
@@ -397,6 +501,95 @@ export default function AcceptedInvoicePage() {
           </Button>
         </div>
       </div>
+      {emailDialogOpen && (
+        <div
+          className="confirm-modal-overlay"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !emailSubmitting) setEmailDialogOpen(false);
+          }}
+        >
+          <section
+            className="confirm-modal-container"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="invoice-email-dialog-title"
+          >
+            <div className="confirm-modal-header">
+              <h2 className="confirm-modal-title" id="invoice-email-dialog-title">Reenviar por correo</h2>
+            </div>
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                void submitEmailResend();
+              }}
+            >
+              <div className="confirm-modal-body">
+                <div className={styles.emailForm}>
+                  <label htmlFor="invoice-email-to"><span>Para</span>
+                    <input
+                      id="invoice-email-to"
+                      type="email"
+                      autoComplete="email"
+                      value={emailTo}
+                      onChange={(event) => setEmailTo(event.target.value)}
+                      disabled={emailSubmitting}
+                    />
+                  </label>
+                  <label htmlFor="invoice-email-cc"><span>CC <small>Opcional · máximo 10</small></span>
+                    <div className={styles.ccInputRow}>
+                      <input
+                        id="invoice-email-cc"
+                        type="email"
+                        value={ccDraft}
+                        placeholder="correo@ejemplo.com"
+                        disabled={emailSubmitting || ccRecipients.length >= 10}
+                        onChange={(event) => setCcDraft(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') {
+                            event.preventDefault();
+                            addCcRecipient();
+                          }
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className={styles.secondaryAction}
+                        disabled={emailSubmitting || !ccDraft.trim() || ccRecipients.length >= 10}
+                        onClick={addCcRecipient}
+                        aria-label="Agregar correo en copia"
+                      ><Plus aria-hidden="true" />Agregar</Button>
+                    </div>
+                  </label>
+                  {ccRecipients.length > 0 && (
+                    <div className={styles.ccList} aria-label="Correos en copia">
+                      {ccRecipients.map((recipient) => (
+                        <span key={recipient.toLowerCase()}>{recipient}
+                          <button
+                            type="button"
+                            disabled={emailSubmitting}
+                            onClick={() => setCcRecipients((current) => current.filter((value) => value !== recipient))}
+                            aria-label={`Quitar ${recipient}`}
+                          ><X aria-hidden="true" /></button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {emailError && <p className={styles.emailFormError} role="alert">{emailError}</p>}
+                </div>
+              </div>
+              <div className="confirm-modal-footer">
+                <Button type="button" variant="outline" className={styles.secondaryAction} disabled={emailSubmitting} onClick={() => setEmailDialogOpen(false)}>Cancelar</Button>
+                <Button type="submit" className={styles.primaryAction} disabled={emailSubmitting}>
+                  {emailSubmitting && <LoaderCircle className={styles.spin} aria-hidden="true" />}
+                  {emailSubmitting ? 'Programando…' : 'Programar reenvío'}
+                </Button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
     </main>
   );
 }
