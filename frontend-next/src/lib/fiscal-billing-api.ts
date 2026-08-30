@@ -38,6 +38,11 @@ export type EligibleSalesOrder = {
   existingPrimaryDocument: (ExistingPrimaryDocumentSummary & {
     sourceId: string | null;
   }) | null;
+  fiscalStatus: {
+    lifecycleStatus: string;
+    providerStatus: string;
+    taxAuthorityStatus: string;
+  } | null;
   action: EligibleSalesOrderAction;
 };
 

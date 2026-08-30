@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertCircle, ReceiptText } from 'lucide-react';
+import { AlertCircle, LoaderCircle, ReceiptText } from 'lucide-react';
 import { LoadingSpinner } from '@/components/loading-spinner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -16,6 +16,13 @@ import {
 import styles from '../fiscal-billing.module.css';
 
 const PAGE_SIZE = 20;
+const POLL_INTERVAL_MS = 5_000;
+
+type FiscalPresentation = {
+  kind: 'NOT_STARTED' | 'DRAFT' | 'PROCESSING' | 'ACCEPTED' | 'REJECTED' | 'FAILED';
+  label: string;
+  actionLabel: string | null;
+};
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat('es-CR', {
@@ -31,8 +38,26 @@ function formatDecimal(value: string) {
   return `${sign}${grouped}.${(fraction ?? '').padEnd(2, '0').slice(0, 2)}`;
 }
 
+function fiscalPresentation(order: EligibleSalesOrder): FiscalPresentation {
+  const status = order.fiscalStatus;
+  if (!status) return { kind: 'NOT_STARTED', label: 'Sin facturar', actionLabel: 'Facturar' };
+  if (status.taxAuthorityStatus === 'ACCEPTED') return { kind: 'ACCEPTED', label: 'Aceptada', actionLabel: 'Ver factura' };
+  if (status.taxAuthorityStatus === 'REJECTED') return { kind: 'REJECTED', label: 'Rechazada', actionLabel: 'Revisar' };
+  if (status.providerStatus === 'FAILED') return { kind: 'FAILED', label: 'Error', actionLabel: 'Revisar' };
+  if (status.lifecycleStatus === 'DRAFT') return { kind: 'DRAFT', label: 'Pendiente', actionLabel: 'Continuar' };
+  return { kind: 'PROCESSING', label: 'Procesando…', actionLabel: null };
+}
+
+function statusClass(kind: FiscalPresentation['kind']) {
+  if (kind === 'ACCEPTED') return styles.readyBadge;
+  if (kind === 'REJECTED' || kind === 'FAILED') return styles.errorBadge;
+  if (kind === 'PROCESSING') return styles.warningBadge;
+  return styles.documentTypeBadge;
+}
+
 function Action({ order }: { order: EligibleSalesOrder }) {
-  if (order.action === 'START') {
+  const presentation = fiscalPresentation(order);
+  if (presentation.kind === 'NOT_STARTED' && order.action === 'START') {
     return (
       <Button asChild className={styles.primaryAction} size="sm">
         <Link href={`/fiscal-billing/sales-orders/${encodeURIComponent(order.id)}/preparation`}>
@@ -41,12 +66,15 @@ function Action({ order }: { order: EligibleSalesOrder }) {
       </Button>
     );
   }
-  if (order.existingPrimaryDocument) {
-    return <Button asChild size="sm" variant="outline"><Link href={`/fiscal-billing/documents/${encodeURIComponent(order.existingPrimaryDocument.id)}`}>{order.action === 'RESUME' ? 'Facturar' : 'Ver documento'}</Link></Button>;
+  if (presentation.kind === 'PROCESSING') {
+    return <Button className={styles.primaryAction} disabled size="sm" type="button"><LoaderCircle className={styles.spin} aria-hidden="true" />Procesando…</Button>;
+  }
+  if (order.existingPrimaryDocument && presentation.actionLabel) {
+    return <Button asChild className={styles.primaryAction} size="sm"><Link href={`/fiscal-billing/documents/${encodeURIComponent(order.existingPrimaryDocument.id)}`}>{presentation.actionLabel}</Link></Button>;
   }
   return (
-    <Button className={styles.disabledAction} disabled size="sm" variant="outline" type="button">
-      {order.action === 'RESUME' ? 'Facturar' : 'Ver documento'}
+    <Button className={styles.primaryAction} disabled size="sm" type="button">
+      {presentation.actionLabel ?? presentation.label}
     </Button>
   );
 }
@@ -58,16 +86,18 @@ export default function EligibleFiscalSalesOrdersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<FiscalBillingApiError | null>(null);
 
-  const load = useCallback(async (signal: AbortSignal) => {
+  const load = useCallback(async (signal: AbortSignal, background = false) => {
     void reload;
-    setLoading(true);
-    setError(null);
+    if (!background) {
+      setLoading(true);
+      setError(null);
+    }
     try {
       const response = await getEligibleSalesOrders(page, PAGE_SIZE, signal);
       setResult(response);
       if (response.totalPages > 0 && page > response.totalPages) setPage(response.totalPages);
     } catch (requestError) {
-      if (signal.aborted) return;
+      if (signal.aborted || background) return;
       setError(requestError instanceof FiscalBillingApiError
         ? requestError
         : new FiscalBillingApiError('FISCAL_BILLING_REQUEST_FAILED', 'No se pudieron cargar las órdenes por facturar.'));
@@ -83,6 +113,24 @@ export default function EligibleFiscalSalesOrdersPage() {
   }, [load]);
 
   const orders = result?.salesOrders ?? [];
+  const hasProcessing = orders.some((order) => fiscalPresentation(order).kind === 'PROCESSING');
+  useEffect(() => {
+    if (!hasProcessing) return;
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let controller: AbortController | null = null;
+    const poll = async () => {
+      controller = new AbortController();
+      await load(controller.signal, true);
+      if (!stopped) timer = setTimeout(() => void poll(), POLL_INTERVAL_MS);
+    };
+    timer = setTimeout(() => void poll(), POLL_INTERVAL_MS);
+    return () => {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+      controller?.abort();
+    };
+  }, [hasProcessing, load]);
   const summary = useMemo(() => {
     if (!result || result.total === 0) return '0 órdenes';
     const first = (result.page - 1) * result.pageSize + 1;
@@ -138,7 +186,7 @@ export default function EligibleFiscalSalesOrdersPage() {
                   <TableCell>{formatDate(order.createdAt)}</TableCell>
                   <TableCell>{order.currency}</TableCell>
                   <TableCell className={styles.numeric}>{order.currency} {formatDecimal(order.total)}</TableCell>
-                  <TableCell><Badge className={styles.readyBadge} variant="outline">{order.status}</Badge></TableCell>
+                  <TableCell>{(() => { const presentation = fiscalPresentation(order); return <Badge className={statusClass(presentation.kind)} variant="outline">{presentation.kind === 'PROCESSING' && <LoaderCircle className={styles.spin} aria-hidden="true" />}{presentation.label}</Badge>; })()}</TableCell>
                   <TableCell><Action order={order} /></TableCell>
                 </TableRow>
               ))}</TableBody>
