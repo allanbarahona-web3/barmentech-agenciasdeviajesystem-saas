@@ -48,6 +48,28 @@ describe("FiscalTerminalArtifactFanoutCoordinatorService", () => {
     }));
   });
 
+  it("logs only safe diagnostics for an unexpected artifact insert failure", async () => {
+    const c = context();
+    const logger = (c.service as unknown as { logger: { error: jest.Mock } }).logger;
+    jest.spyOn(logger, "error").mockImplementation();
+    const failure = Object.assign(new Error("postgres://secret-host:5432/private"), {
+      name: "PrismaClientKnownRequestError",
+      code: "P2003",
+      meta: { target: "private" },
+    });
+    c.tx.$executeRaw.mockRejectedValueOnce(failure);
+
+    await c.service.fanOutAvailableEvents();
+
+    expect(logger.error).toHaveBeenCalledWith(
+      "FISCAL_TERMINAL_ARTIFACT_FANOUT_FAILURE tenantId=tenant-a billingDocumentId=document-a parentOutboxEventId=terminal-a operation=SIGNED_XML_ARTIFACT_INSERT errorName=PrismaClientKnownRequestError prismaCode=P2003",
+    );
+    expect(c.rootOutbox.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ lastError: "FISCAL_TERMINAL_ARTIFACT_FANOUT_FAILED" }),
+    }));
+    expect(JSON.stringify(logger.error.mock.calls)).not.toMatch(/secret-host|postgres|private/);
+  });
+
   it("accepts exact existing PENDING, AVAILABLE, and FAILED artifact winners without overwrite", async () => {
     const c = context({ artifacts: [
       pendingArtifact("SIGNED_FISCAL_XML"),

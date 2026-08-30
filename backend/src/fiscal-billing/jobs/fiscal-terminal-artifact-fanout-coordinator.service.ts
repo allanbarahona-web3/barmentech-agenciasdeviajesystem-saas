@@ -145,6 +145,7 @@ export class FiscalTerminalArtifactFanoutCoordinatorService implements OnModuleI
   }
 
   private async fanOutClaimedEvent(event: ClaimedTerminalEvent): Promise<void> {
+    let operation = "PARENT_LOAD";
     try {
       await this.prisma.$transaction(async (tx) => {
         const locked = await tx.$queryRaw<Array<{ id: string }>>`
@@ -158,6 +159,7 @@ export class FiscalTerminalArtifactFanoutCoordinatorService implements OnModuleI
         const payload = parent && validParentPayload(parent);
         if (!parent || !payload) throw new TerminalArtifactFanoutError(INVALID_PARENT_ERROR);
 
+        operation = "DOCUMENT_LOAD";
         const document = await tx.billingDocument.findUnique({
           where: { id_tenantId: { id: payload.billingDocumentId, tenantId: payload.tenantId } },
           select: { id: true, tenantId: true, taxAuthorityStatus: true, taxAuthorityFinalizedAt: true },
@@ -167,10 +169,17 @@ export class FiscalTerminalArtifactFanoutCoordinatorService implements OnModuleI
         }
 
         for (const artifactType of ARTIFACT_TYPES) {
+          operation = artifactType === "SIGNED_FISCAL_XML"
+            ? "SIGNED_XML_ARTIFACT_INSERT"
+            : "TAX_RESPONSE_ARTIFACT_INSERT";
           await ensureArtifact(tx, payload, artifactType);
+          operation = artifactType === "SIGNED_FISCAL_XML"
+            ? "SIGNED_XML_CHILD_CREATE"
+            : "TAX_RESPONSE_CHILD_CREATE";
           await ensureChild(tx, parent, payload, artifactType);
         }
 
+        operation = "PARENT_COMPLETE";
         const completed = await tx.billingOutboxEvent.updateMany({
           where: { id: parent.id, tenantId: parent.tenantId, status: "PROCESSING", lockedBy: this.lockOwner },
           data: { status: "PROCESSED", processedAt: new Date(), lastError: null, lockedAt: null, lockedBy: null },
@@ -179,8 +188,22 @@ export class FiscalTerminalArtifactFanoutCoordinatorService implements OnModuleI
       });
     } catch (error) {
       if (error instanceof TerminalArtifactFanoutError && error.code === CLAIM_LOST_ERROR) return;
+      if (!(error instanceof TerminalArtifactFanoutError)) {
+        this.logUnexpectedFanoutFailure(event, operation, error);
+      }
       await this.recordFailure(event, error instanceof TerminalArtifactFanoutError ? error.code : FANOUT_ERROR);
     }
+  }
+
+  private logUnexpectedFanoutFailure(
+    event: ClaimedTerminalEvent,
+    operation: string,
+    error: unknown,
+  ): void {
+    const prismaCode = safePrismaCode(error);
+    this.logger.error(
+      `FISCAL_TERMINAL_ARTIFACT_FANOUT_FAILURE tenantId=${event.tenantId} billingDocumentId=${event.aggregateId} parentOutboxEventId=${event.id} operation=${operation} errorName=${safeErrorName(error)}${prismaCode ? ` prismaCode=${prismaCode}` : ""}`,
+    );
   }
 
   private async recordFailure(event: ClaimedTerminalEvent, errorCode: string): Promise<void> {
@@ -353,3 +376,18 @@ function validMime(type: FiscalTerminalArtifactType, value: string | null): bool
 function nonEmpty(value: unknown): value is string { return typeof value === "string" && value.trim().length > 0; }
 function validDate(value: unknown): value is Date { return value instanceof Date && Number.isFinite(value.getTime()); }
 function isJsonObject(value: Prisma.JsonValue): value is Prisma.JsonObject { return typeof value === "object" && value !== null && !Array.isArray(value); }
+function safePrismaCode(error: unknown): string | null {
+  if (!error || typeof error !== "object") return null;
+  const value = error as { code?: unknown; errorCode?: unknown };
+  const codes = [value.code, value.errorCode].filter(
+    (candidate): candidate is string => typeof candidate === "string" && /^P\d{4}$/.test(candidate),
+  );
+  return new Set(codes).size === 1 ? codes[0] ?? null : null;
+}
+function safeErrorName(error: unknown): string {
+  if (!error || typeof error !== "object") return "UnknownError";
+  const name = (error as { name?: unknown }).name;
+  return typeof name === "string" && /^[A-Za-z][A-Za-z0-9_.-]{0,99}$/.test(name)
+    ? name
+    : "UnknownError";
+}
