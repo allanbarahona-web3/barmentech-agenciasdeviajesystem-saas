@@ -19,6 +19,9 @@ import {
   FISCAL_ACCEPTED_FANOUT_PROCESSING_LEASE_MS,
   FISCAL_ACCEPTED_FANOUT_RETRY_BASE_MS,
   FISCAL_ACCEPTED_FANOUT_RETRY_MAX_MS,
+  FISCAL_INVOICE_AUTO_DELIVERY_REQUESTED_EVENT_TYPE,
+  FISCAL_INVOICE_AUTO_DELIVERY_REQUESTED_EVENT_VERSION,
+  fiscalInvoiceAutoDeliveryDeduplicationKey,
 } from "./fiscal-accepted-fanout.constants";
 import { logFiscalPollerFailure } from "./fiscal-poller-error-logging";
 
@@ -164,11 +167,10 @@ export class FiscalAcceptedFanoutCoordinatorService
         const payload = parent && validParentPayload(parent);
         if (!parent || !payload) throw new FanoutError(INVALID_PARENT_ERROR);
 
-        const deduplicationKey = accountReceivableRecognitionDeduplicationKey(
-          payload.billingDocumentId,
-        );
+        const deduplicationKey = accountReceivableRecognitionDeduplicationKey(payload.billingDocumentId);
+        const deliveryDeduplicationKey = fiscalInvoiceAutoDeliveryDeduplicationKey(payload.billingDocumentId);
         await tx.billingOutboxEvent.createMany({
-          data: {
+          data: [{
             tenantId: parent.tenantId,
             eventType: ACCOUNT_RECEIVABLE_RECOGNITION_REQUESTED_EVENT_TYPE,
             eventVersion: ACCOUNT_RECEIVABLE_RECOGNITION_REQUESTED_EVENT_VERSION,
@@ -181,7 +183,20 @@ export class FiscalAcceptedFanoutCoordinatorService
               billingDocumentId: payload.billingDocumentId,
               eventVersion: payload.eventVersion,
             },
-          },
+          }, {
+            tenantId: parent.tenantId,
+            eventType: FISCAL_INVOICE_AUTO_DELIVERY_REQUESTED_EVENT_TYPE,
+            eventVersion: FISCAL_INVOICE_AUTO_DELIVERY_REQUESTED_EVENT_VERSION,
+            aggregateType: parent.aggregateType,
+            aggregateId: parent.aggregateId,
+            causationId: parent.id,
+            deduplicationKey: deliveryDeduplicationKey,
+            payload: {
+              tenantId: payload.tenantId,
+              billingDocumentId: payload.billingDocumentId,
+              eventVersion: payload.eventVersion,
+            },
+          }],
           skipDuplicates: true,
         });
         const child = await tx.billingOutboxEvent.findUnique({
@@ -193,6 +208,17 @@ export class FiscalAcceptedFanoutCoordinatorService
           },
         });
         if (!child || !isExactReceivableChild(child, parent, payload, deduplicationKey)) {
+          throw new FanoutError(CHILD_CONFLICT_ERROR);
+        }
+        const deliveryChild = await tx.billingOutboxEvent.findUnique({
+          where: {
+            tenantId_deduplicationKey: {
+              tenantId: parent.tenantId,
+              deduplicationKey: deliveryDeduplicationKey,
+            },
+          },
+        });
+        if (!deliveryChild || !isExactDeliveryChild(deliveryChild, parent, payload, deliveryDeduplicationKey)) {
           throw new FanoutError(CHILD_CONFLICT_ERROR);
         }
 
@@ -260,6 +286,22 @@ export class FiscalAcceptedFanoutCoordinatorService
       data: { ...data, lockedAt: null, lockedBy: null },
     });
   }
+}
+
+function isExactDeliveryChild(
+  child: Parameters<typeof isExactReceivableChild>[0],
+  parent: Parameters<typeof isExactReceivableChild>[1],
+  payload: AcceptedEventPayload,
+  deduplicationKey: string,
+): boolean {
+  return child.tenantId === parent.tenantId &&
+    child.eventType === FISCAL_INVOICE_AUTO_DELIVERY_REQUESTED_EVENT_TYPE &&
+    child.eventVersion === FISCAL_INVOICE_AUTO_DELIVERY_REQUESTED_EVENT_VERSION &&
+    child.aggregateType === parent.aggregateType &&
+    child.aggregateId === parent.aggregateId &&
+    child.causationId === parent.id &&
+    child.deduplicationKey === deduplicationKey &&
+    isExactPayload(child.payload, payload);
 }
 
 function validParentPayload(

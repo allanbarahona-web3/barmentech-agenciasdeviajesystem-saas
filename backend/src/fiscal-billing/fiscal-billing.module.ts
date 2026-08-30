@@ -66,6 +66,10 @@ import { FISCAL_ARTIFACT_RETRIEVAL_PORT } from "./providers/fiscal-artifact-retr
 import { FiscalArtifactReadService } from './fiscal-artifact-read.service';
 import { DocumentsModule } from "../documents/documents.module";
 import { FiscalInvoicePdfService } from "./fiscal-invoice-pdf.service";
+import { EmailModule } from "../email/email.module";
+import { FiscalInvoiceAutoDeliveryService } from "./fiscal-invoice-auto-delivery.service";
+import { FiscalInvoiceAutoDeliveryPublisher } from "./jobs/fiscal-invoice-auto-delivery.publisher";
+import { FiscalInvoiceAutoDeliveryProcessor } from "./jobs/fiscal-invoice-auto-delivery.processor";
 
 @Module({
   imports: [
@@ -73,6 +77,7 @@ import { FiscalInvoicePdfService } from "./fiscal-invoice-pdf.service";
     OfficialExchangeRateModule,
     StorageModule,
     DocumentsModule,
+    EmailModule,
   ],
   controllers: [
     FiscalBillingController,
@@ -120,6 +125,9 @@ import { FiscalInvoicePdfService } from "./fiscal-invoice-pdf.service";
     FiscalArtifactRetrievalService,
     FiscalArtifactReadService,
     FiscalInvoicePdfService,
+    FiscalInvoiceAutoDeliveryService,
+    FiscalInvoiceAutoDeliveryPublisher,
+    FiscalInvoiceAutoDeliveryProcessor,
     FiscalArtifactRetrievalPublisher,
     FiscalArtifactRetrievalProcessor,
     BillingDocumentRefreshExecutorService,

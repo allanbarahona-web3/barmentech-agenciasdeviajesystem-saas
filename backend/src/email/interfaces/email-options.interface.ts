@@ -41,6 +41,9 @@ export interface SendEmailOptions {
    */
   attachments?: EmailAttachment[];
 
+  /** Stable trusted identity used for provider-level retry idempotency. */
+  idempotencyKey?: string;
+
   /**
    * Usuario que dispara el envío (para auditoría)
    */
