@@ -71,6 +71,17 @@ export class FiscalBillingController {
     );
   }
 
+  @Get("invoices/:billingDocumentId")
+  invoice(
+    @Req() request: FiscalBillingRequest,
+    @Param("billingDocumentId") billingDocumentId: string,
+  ) {
+    return this.billingDocumentService.getAcceptedInvoice(
+      request.user.tenantId,
+      billingDocumentId,
+    );
+  }
+
   @Get('documents/:billingDocumentId/artifacts')
   listArtifacts(
     @Req() request: FiscalBillingRequest,

@@ -9,6 +9,8 @@ import type {
   CrV44SalesOrderDraftCommand,
   BillingDocumentFiscalPreparation,
   BillingDocumentIssuancePreflight,
+  AcceptedBillingInvoice,
+  BillingDocumentWorkspace,
   PrimaryDocumentSummary,
 } from "./billing-document.types";
 import { fiscalBillingError } from "./fiscal-billing.errors";
@@ -202,6 +204,17 @@ export class BillingDocumentService {
     }
   }
 
+  async getAcceptedInvoice(
+    tenantId: string,
+    billingDocumentId: string,
+  ): Promise<AcceptedBillingInvoice> {
+    const workspace = await this.getWorkspace(tenantId, billingDocumentId);
+    if (!isAcceptedInvoiceWorkspace(workspace)) {
+      throw fiscalBillingError("BILLING_DOCUMENT_INVOICE_NOT_AVAILABLE");
+    }
+    return mapAcceptedInvoice(workspace);
+  }
+
   private isUniqueConstraintViolation(error: unknown): boolean {
     return (
       typeof error === "object" &&
@@ -210,6 +223,85 @@ export class BillingDocumentService {
       (error as { code?: unknown }).code === "P2002"
     );
   }
+}
+
+function isAcceptedInvoiceWorkspace(
+  workspace: BillingDocumentWorkspace,
+): workspace is BillingDocumentWorkspace & {
+  lifecycleStatus: "SUBMITTED";
+  taxAuthorityStatus: "ACCEPTED";
+  providerStatus: "PROCESSED";
+  fiscalNumber: string;
+  fiscalIssueDate: string;
+} {
+  return (
+    workspace.lifecycleStatus === "SUBMITTED" &&
+    workspace.providerStatus === "PROCESSED" &&
+    workspace.taxAuthorityStatus === "ACCEPTED" &&
+    typeof workspace.fiscalNumber === "string" &&
+    workspace.fiscalNumber.trim().length > 0 &&
+    typeof workspace.fiscalIssueDate === "string" &&
+    workspace.fiscalIssueDate.length > 0
+  );
+}
+
+function mapAcceptedInvoice(
+  workspace: BillingDocumentWorkspace & {
+    lifecycleStatus: "SUBMITTED";
+    taxAuthorityStatus: "ACCEPTED";
+    fiscalNumber: string;
+    fiscalIssueDate: string;
+  },
+): AcceptedBillingInvoice {
+  const salesOrder =
+    workspace.sourceType === "SALES_ORDER" && workspace.sourceId
+      ? { id: workspace.sourceId, number: workspace.sourceNumber }
+      : null;
+  return {
+    billingDocumentId: workspace.id,
+    internalNumber: workspace.internalNumber,
+    fiscalNumber: workspace.fiscalNumber,
+    documentTypeCode: workspace.documentTypeCode,
+    lifecycleStatus: workspace.lifecycleStatus,
+    taxAuthorityStatus: workspace.taxAuthorityStatus,
+    issuedDate: workspace.fiscalIssueDate,
+    currencyCode: workspace.currencyCode,
+    paymentCondition: {
+      code: workspace.paymentConditionCode,
+      creditTermDays: workspace.creditTermDays,
+      dueDate: workspace.dueDate,
+    },
+    receiver: {
+      name: workspace.receiverName,
+      identificationType: workspace.receiverIdentificationType,
+      identificationNumber: workspace.receiverIdentification,
+      email: workspace.receiverEmail,
+    },
+    salesOrder,
+    lines: workspace.lines.map((line) => ({
+      lineNumber: line.lineNumber,
+      description: line.description,
+      quantity: line.quantity,
+      unitOfMeasureCode: line.unitOfMeasureCode,
+      unitPrice: line.unitPrice,
+      subtotal: line.lineSubtotal,
+      taxableBase: line.taxableBase,
+      taxes: line.taxes.map((tax) => ({
+        taxCode: tax.taxCode,
+        rateCode: tax.rateCode,
+        ratePercentage: tax.ratePercentage,
+        taxableBase: tax.taxableBase,
+        taxAmount: tax.taxAmount,
+        netTaxAmount: tax.netTaxAmount,
+      })),
+      lineTotal: line.lineTotal,
+    })),
+    totals: {
+      subtotal: workspace.grossSubtotal,
+      totalTax: workspace.netTaxTotal,
+      total: workspace.total,
+    },
+  };
 }
 
 function requireGenericDraftCreationPath(

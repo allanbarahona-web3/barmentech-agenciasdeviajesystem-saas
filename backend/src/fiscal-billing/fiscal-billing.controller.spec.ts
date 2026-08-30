@@ -69,6 +69,40 @@ describe("FiscalBillingController workspace",()=>{
   it("keeps the existing guarded route and delegates once with authenticated tenant identity",async()=>{const workspace={id:"document-a",allocatedSequenceNumber:"9999999999"},getWorkspace=jest.fn().mockResolvedValue(workspace),controller=new FiscalBillingController({} as never,{getWorkspace} as unknown as BillingDocumentService,{} as never),handler=FiscalBillingController.prototype.workspace;expect(Reflect.getMetadata(PATH_METADATA,handler)).toBe("documents/:billingDocumentId/workspace");expect(Reflect.getMetadata(METHOD_METADATA,handler)).toBe(RequestMethod.GET);await expect(controller.workspace({user:{id:"user-a",tenantId:"tenant-a",role:UserRole.ADMIN}},"document-a")).resolves.toBe(workspace);expect(getWorkspace).toHaveBeenCalledTimes(1);expect(getWorkspace).toHaveBeenCalledWith("tenant-a","document-a");});
 });
 
+describe("FiscalBillingController accepted invoice", () => {
+  it("exposes the guarded GET route and uses only the authenticated tenant", async () => {
+    const invoice = { billingDocumentId: "document-a" };
+    const getAcceptedInvoice = jest.fn().mockResolvedValue(invoice);
+    const controller = new FiscalBillingController(
+      {} as never,
+      { getAcceptedInvoice } as unknown as BillingDocumentService,
+      {} as never,
+    );
+    const handler = FiscalBillingController.prototype.invoice;
+
+    expect(Reflect.getMetadata(PATH_METADATA, handler)).toBe(
+      "invoices/:billingDocumentId",
+    );
+    expect(Reflect.getMetadata(METHOD_METADATA, handler)).toBe(
+      RequestMethod.GET,
+    );
+    await expect(
+      controller.invoice(
+        {
+          user: {
+            id: "user-a",
+            tenantId: "tenant-a",
+            role: UserRole.FACTURACION_COBROS,
+          },
+        },
+        "document-a",
+      ),
+    ).resolves.toBe(invoice);
+    expect(getAcceptedInvoice).toHaveBeenCalledTimes(1);
+    expect(getAcceptedInvoice).toHaveBeenCalledWith("tenant-a", "document-a");
+  });
+});
+
 describe('FiscalBillingController artifact reads', () => {
   it('keeps artifact routes behind the existing guards and trusted tenant context', async () => {
     const artifacts = [{ artifactType: 'SIGNED_FISCAL_XML', version: 1, status: 'AVAILABLE', downloadAvailable: true }];

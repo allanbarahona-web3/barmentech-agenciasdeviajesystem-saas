@@ -249,6 +249,55 @@ export interface BillingDocumentWorkspace {
   };
 }
 
+export interface AcceptedBillingInvoice {
+  billingDocumentId: string;
+  internalNumber: string;
+  fiscalNumber: string;
+  documentTypeCode: string;
+  lifecycleStatus: "SUBMITTED";
+  taxAuthorityStatus: "ACCEPTED";
+  issuedDate: string;
+  currencyCode: string;
+  paymentCondition: {
+    code: string | null;
+    creditTermDays: number | null;
+    dueDate: string | null;
+  };
+  receiver: {
+    name: string | null;
+    identificationType: string | null;
+    identificationNumber: string | null;
+    email: string | null;
+  };
+  salesOrder: {
+    id: string;
+    number: string | null;
+  } | null;
+  lines: Array<{
+    lineNumber: number;
+    description: string;
+    quantity: string;
+    unitOfMeasureCode: string;
+    unitPrice: string;
+    subtotal: string;
+    taxableBase: string;
+    taxes: Array<{
+      taxCode: string;
+      rateCode: string;
+      ratePercentage: string;
+      taxableBase: string;
+      taxAmount: string;
+      netTaxAmount: string;
+    }>;
+    lineTotal: string;
+  }>;
+  totals: {
+    subtotal: string;
+    totalTax: string;
+    total: string;
+  };
+}
+
 export interface BillingDocumentWorkspacePaymentMethod {
   id: string;
   paymentMethodOrder: number;

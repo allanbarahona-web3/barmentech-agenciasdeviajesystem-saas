@@ -1,6 +1,9 @@
 import { BillingMode } from "@prisma/client";
 import { BillingDocumentService } from "./billing-document.service";
-import type { BillingDocumentDraftCommand } from "./billing-document.types";
+import type {
+  BillingDocumentDraftCommand,
+  BillingDocumentWorkspace,
+} from "./billing-document.types";
 
 describe("BillingDocumentService generic core", () => {
   it.each([
@@ -39,6 +42,111 @@ describe("BillingDocumentService generic core", () => {
   });
   it("reads workspace without invoking BCCR, allocation, outbox, queue, or provider behavior",async()=>{const workspace={id:"document-a",readiness:{receiverFiscalIdentityMissing:false,exchangeRateMissing:false}},repository={findWorkspace:jest.fn().mockResolvedValue(workspace),requestElectronicIssuance:jest.fn(),createDraft:jest.fn()},resolver={resolveExactObservation:jest.fn()},clock={now:jest.fn()},service=new BillingDocumentService(repository as never,resolver as never,clock as never);await expect(service.getWorkspace("tenant-a","document-a")).resolves.toBe(workspace);expect(repository.findWorkspace).toHaveBeenCalledTimes(1);expect(resolver.resolveExactObservation).not.toHaveBeenCalled();expect(clock.now).not.toHaveBeenCalled();expect(repository.requestElectronicIssuance).not.toHaveBeenCalled();expect(repository.createDraft).not.toHaveBeenCalled();});
   it("sanitizes workspace read failures and preserves tenant-scoped not-found",async()=>{let repository={findWorkspace:jest.fn().mockResolvedValue(null)},service=new BillingDocumentService(repository as never,{} as never,{} as never);await expect(service.getWorkspace("tenant-a","foreign-document")).rejects.toMatchObject({response:expect.objectContaining({code:"BILLING_DOCUMENT_NOT_FOUND"})});expect(repository.findWorkspace).toHaveBeenCalledWith("tenant-a","foreign-document");repository={findWorkspace:jest.fn().mockRejectedValue(new Error("raw prisma database-url Hacienda detail"))};service=new BillingDocumentService(repository as never,{} as never,{} as never);const error=await captureWorkspace(service.getWorkspace("tenant-a","document-a"));expect(error.getResponse()).toMatchObject({code:"BILLING_DOCUMENT_SUBMISSION_READ_FAILED"});expect(JSON.stringify(error.getResponse())).not.toMatch(/prisma|database-url|Hacienda detail/);});
+
+  it("projects an accepted document without provider or recovery internals", async () => {
+    const workspace = acceptedWorkspace();
+    const repository = { findWorkspace: jest.fn().mockResolvedValue(workspace) };
+    const service = new BillingDocumentService(
+      repository as never,
+      {} as never,
+      {} as never,
+    );
+
+    await expect(
+      service.getAcceptedInvoice("tenant-a", "document-a"),
+    ).resolves.toEqual({
+      billingDocumentId: "document-a",
+      internalNumber: "BD-SO-order-a",
+      fiscalNumber: "00100001010000000228",
+      documentTypeCode: "01",
+      lifecycleStatus: "SUBMITTED",
+      taxAuthorityStatus: "ACCEPTED",
+      issuedDate: "2026-08-30",
+      currencyCode: "USD",
+      paymentCondition: {
+        code: "01",
+        creditTermDays: null,
+        dueDate: "2026-08-30",
+      },
+      receiver: {
+        name: "Customer",
+        identificationType: "01",
+        identificationNumber: "123456789",
+        email: "customer@example.test",
+      },
+      salesOrder: { id: "order-a", number: "SO-2026-000010" },
+      lines: [
+        {
+          lineNumber: 1,
+          description: "Seguro · Cobertura: USD 60,000",
+          quantity: "1.00000",
+          unitOfMeasureCode: "Sp",
+          unitPrice: "97.50000",
+          subtotal: "97.50000",
+          taxableBase: "97.50000",
+          taxes: [
+            {
+              taxCode: "01",
+              rateCode: "08",
+              ratePercentage: "13.00000",
+              taxableBase: "97.50000",
+              taxAmount: "12.67500",
+              netTaxAmount: "12.67500",
+            },
+          ],
+          lineTotal: "110.17500",
+        },
+      ],
+      totals: {
+        subtotal: "97.50000",
+        totalTax: "12.67500",
+        total: "110.17500",
+      },
+    });
+    expect(repository.findWorkspace).toHaveBeenCalledTimes(1);
+    expect(repository.findWorkspace).toHaveBeenCalledWith(
+      "tenant-a",
+      "document-a",
+    );
+    const result = await service.getAcceptedInvoice("tenant-a", "document-a");
+    expect(result).not.toHaveProperty("providerDocumentId");
+    expect(result).not.toHaveProperty("providerEnvironment");
+    expect(result).not.toHaveProperty("haciendaKey");
+    expect(result).not.toHaveProperty("readiness");
+    expect(result).not.toHaveProperty("providerLastErrorCode");
+    expect(workspace.total).toBe("110.17500");
+  });
+
+  it.each([
+    ["draft", { lifecycleStatus: "DRAFT", providerStatus: "NOT_SUBMITTED", taxAuthorityStatus: "NOT_SUBMITTED" }],
+    ["processing", { providerStatus: "PROCESSING", taxAuthorityStatus: "PROCESSING" }],
+    ["rejected", { taxAuthorityStatus: "REJECTED" }],
+  ])("rejects an ineligible %s document", async (_label, overrides) => {
+    const repository = {
+      findWorkspace: jest.fn().mockResolvedValue(acceptedWorkspace(overrides)),
+    };
+    const service = new BillingDocumentService(repository as never, {} as never, {} as never);
+
+    await expect(
+      service.getAcceptedInvoice("tenant-a", "document-a"),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({
+        code: "BILLING_DOCUMENT_INVOICE_NOT_AVAILABLE",
+      }),
+    });
+  });
+
+  it("preserves tenant-scoped not-found behavior for invoice reads", async () => {
+    const repository = { findWorkspace: jest.fn().mockResolvedValue(null) };
+    const service = new BillingDocumentService(repository as never, {} as never, {} as never);
+
+    await expect(
+      service.getAcceptedInvoice("tenant-b", "document-a"),
+    ).rejects.toMatchObject({
+      response: expect.objectContaining({ code: "BILLING_DOCUMENT_NOT_FOUND" }),
+    });
+    expect(repository.findWorkspace).toHaveBeenCalledWith("tenant-b", "document-a");
+  });
   it("accepts and forwards a source-agnostic draft command unchanged", async () => {
     const command = commandWithoutSalesOrder();
     const repository = {
@@ -364,6 +472,122 @@ describe("BillingDocumentService generic core", () => {
 });
 
 async function captureWorkspace(promise:Promise<unknown>):Promise<{getResponse():unknown}>{try{await promise;throw new Error("expected rejection");}catch(error){return error as {getResponse():unknown};}}
+
+function acceptedWorkspace(
+  overrides: Partial<BillingDocumentWorkspace> = {},
+): BillingDocumentWorkspace {
+  const now = new Date("2026-08-30T18:00:00.000Z");
+  return {
+    id: "document-a",
+    billingMode: "ELECTRONIC_PROVIDER",
+    internalNumber: "BD-SO-order-a",
+    documentTypeCode: "01",
+    sourceType: "SALES_ORDER",
+    sourceId: "order-a",
+    sourceNumber: "SO-2026-000010",
+    sourceRole: "PRIMARY",
+    schemaVersion: "4.4",
+    fiscalCalculationPolicyVersion: "CR_V44_DECIMAL_V1",
+    countryCode: "CR",
+    currencyCode: "USD",
+    exchangeRate: "500.00000",
+    fiscalEmissionAt: now,
+    fiscalIssueDate: "2026-08-30",
+    dueDate: "2026-08-30",
+    confirmedAt: now,
+    submittedAt: now,
+    issuedAt: now,
+    taxAuthorityFinalizedAt: now,
+    createdAt: now,
+    updatedAt: now,
+    paymentConditionCode: "01",
+    creditTermDays: null,
+    lifecycleStatus: "SUBMITTED",
+    providerStatus: "PROCESSED",
+    taxAuthorityStatus: "ACCEPTED",
+    artifactStatus: "PENDING",
+    fiscalNumber: "00100001010000000228",
+    allocatedSequenceNumber: "228",
+    haciendaKey: "sensitive-key",
+    haciendaRejectionDetail: null,
+    providerEnvironment: "SANDBOX",
+    providerDocumentId: "provider-sensitive-id",
+    providerLastErrorCode: "provider-safe-code",
+    providerLastErrorAt: now,
+    issuerName: "Issuer",
+    issuerIdentificationType: "02",
+    issuerIdentification: "3101000000",
+    issuerEconomicActivityCode: "791100",
+    issuerEstablishmentCode: "001",
+    issuerTerminalCode: "00001",
+    issuerEmail: "issuer@example.test",
+    issuerPhone: null,
+    issuerAddressSnapshot: null,
+    receiverName: "Customer",
+    receiverIdentificationType: "01",
+    receiverIdentification: "123456789",
+    receiverEconomicActivityCode: null,
+    receiverEmail: "customer@example.test",
+    receiverPhone: null,
+    receiverAddressSnapshot: null,
+    grossSubtotal: "97.50000",
+    discountTotal: "0.00000",
+    taxableTotal: "97.50000",
+    exemptTotal: "0.00000",
+    exoneratedTotal: "0.00000",
+    grossTaxTotal: "12.67500",
+    exoneratedTaxTotal: "0.00000",
+    netTaxTotal: "12.67500",
+    total: "110.17500",
+    paymentMethods: [],
+    references: [],
+    lines: [
+      {
+        id: "line-a",
+        lineNumber: 1,
+        cabysCode: "78111800",
+        itemCode: "INSURANCE",
+        description: "Seguro · Cobertura: USD 60,000",
+        quantity: "1.00000",
+        unitOfMeasureCode: "Sp",
+        unitPrice: "97.50000",
+        grossAmount: "97.50000",
+        discountAmount: "0.00000",
+        discountCode: null,
+        discountReason: null,
+        taxableBase: "97.50000",
+        taxAmount: "12.67500",
+        exoneratedTaxAmount: "0.00000",
+        netTaxAmount: "12.67500",
+        lineSubtotal: "97.50000",
+        lineTotal: "110.17500",
+        taxes: [
+          {
+            id: "tax-a",
+            taxOrder: 1,
+            taxCode: "01",
+            rateCode: "08",
+            ratePercentage: "13.00000",
+            taxableBase: "97.50000",
+            taxAmount: "12.67500",
+            calculationFactor: null,
+            netTaxAmount: "12.67500",
+            exemption: null,
+          },
+        ],
+      },
+    ],
+    readiness: {
+      receiverFiscalIdentityMissing: false,
+      exchangeRateMissing: false,
+      fiscalCalculationPolicyUnsupported: false,
+      calculatedSnapshotInvalid: false,
+      issuanceReady: true,
+      issues: [],
+    },
+    ...overrides,
+  };
+}
 
 function preflight(overrides: Record<string, unknown> = {}) {
   return {
