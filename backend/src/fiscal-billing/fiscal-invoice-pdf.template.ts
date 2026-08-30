@@ -74,6 +74,10 @@ function invoiceSummary(invoice: AcceptedBillingInvoice): string {
   <article>
     ${sectionHeading("Información de factura")}
     <dl>
+      ${row("Documento", DOCUMENT_TYPES[invoice.documentTypeCode] ?? invoice.documentTypeCode)}
+      ${row("Número fiscal", invoice.fiscalNumber)}
+      ${row("Clave", invoice.haciendaKey)}
+      ${row("Fecha de emisión", formatDate(invoice.issuedDate))}
       ${row("Condición", paymentCondition(invoice))}
       ${invoice.paymentCondition.dueDate ? row("Vencimiento", formatDate(invoice.paymentCondition.dueDate)) : ""}
       ${row("Orden de venta", invoice.salesOrder?.number ?? invoice.salesOrder?.id ?? "No disponible")}

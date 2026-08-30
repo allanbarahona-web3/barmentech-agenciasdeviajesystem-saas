@@ -4,6 +4,7 @@ import { InternalBookingsService } from './internal-bookings.service';
 import { CreateInternalBookingDto } from './dto';
 import { Decimal } from '@prisma/client/runtime/library';
 import { MockFactory } from './test-helpers.mock';
+import { InternalTourBookingParticipantRole } from './enums';
 
 describe('InternalBookingsController', () => {
   let controller: InternalBookingsController;
@@ -98,21 +99,23 @@ describe('InternalBookingsController', () => {
       const bookings = [mockBooking, { ...mockBooking, id: 'booking-456' }];
       jest.spyOn(service, 'listBookings').mockResolvedValue(bookings);
 
-      const result = await controller.listBookings(mockTenant, {});
+      const result = await controller.listBookings(mockTenant);
 
       expect(result).toEqual(bookings);
-      expect(service.listBookings).toHaveBeenCalledWith(mockTenant.id, {});
+      expect(service.listBookings).toHaveBeenCalledWith(mockTenant.id, {
+        internalTripId: undefined, clientId: undefined, status: undefined, skip: 0, take: 50,
+      });
     });
 
     it('should filter by trip id', async () => {
       jest.spyOn(service, 'listBookings').mockResolvedValue([mockBooking]);
 
-      await controller.listBookings(mockTenant, { tripId: 'trip-123' });
+      await controller.listBookings(mockTenant, 'trip-123');
 
       expect(service.listBookings).toHaveBeenCalledWith(
         mockTenant.id,
         expect.objectContaining({
-          tripId: 'trip-123',
+          internalTripId: 'trip-123',
         }),
       );
     });
@@ -120,7 +123,7 @@ describe('InternalBookingsController', () => {
     it('should filter by status', async () => {
       jest.spyOn(service, 'listBookings').mockResolvedValue([mockBooking]);
 
-      await controller.listBookings(mockTenant, { status: 'PENDING' });
+      await controller.listBookings(mockTenant, undefined, undefined, 'PENDING');
 
       expect(service.listBookings).toHaveBeenCalledWith(
         mockTenant.id,
@@ -133,7 +136,7 @@ describe('InternalBookingsController', () => {
     it('should filter by client id', async () => {
       jest.spyOn(service, 'listBookings').mockResolvedValue([mockBooking]);
 
-      await controller.listBookings(mockTenant, { clientId: 'client-123' });
+      await controller.listBookings(mockTenant, undefined, 'client-123');
 
       expect(service.listBookings).toHaveBeenCalledWith(
         mockTenant.id,
@@ -148,7 +151,7 @@ describe('InternalBookingsController', () => {
     it('should get booking details', async () => {
       jest.spyOn(service, 'getBooking').mockResolvedValue(mockBooking);
 
-      const result = await controller.getBooking(mockTenant, 'booking-123');
+      const result = await controller.getBooking('booking-123', mockTenant);
 
       expect(result).toEqual(mockBooking);
       expect(service.getBooking).toHaveBeenCalledWith(mockTenant.id, 'booking-123');
@@ -166,9 +169,7 @@ describe('InternalBookingsController', () => {
 
       jest.spyOn(service, 'recordPayment').mockResolvedValue(paidBooking);
 
-      const result = await controller.recordPayment(mockReq, mockTenant, 'booking-123', {
-        amount: 180000,
-      });
+      const result = await controller.recordPayment('booking-123', mockReq, mockTenant, 180000);
 
       expect(result).toEqual(paidBooking);
       expect(service.recordPayment).toHaveBeenCalledWith(
@@ -190,9 +191,7 @@ describe('InternalBookingsController', () => {
 
       jest.spyOn(service, 'recordPayment').mockResolvedValue(partiallyPaidBooking);
 
-      const result = await controller.recordPayment(mockReq, mockTenant, 'booking-123', {
-        amount: 90000,
-      });
+      const result = await controller.recordPayment('booking-123', mockReq, mockTenant, 90000);
 
       expect(result.status).toBe('PENDING');
       expect(result.paidAmount).toEqual(new Decimal('90000'));
@@ -202,9 +201,7 @@ describe('InternalBookingsController', () => {
     it('should pass user information to service', async () => {
       jest.spyOn(service, 'recordPayment').mockResolvedValue(mockBooking);
 
-      await controller.recordPayment(mockReq, mockTenant, 'booking-123', {
-        amount: 50000,
-      });
+      await controller.recordPayment('booking-123', mockReq, mockTenant, 50000);
 
       expect(service.recordPayment).toHaveBeenCalledWith(
         expect.any(String),
@@ -255,8 +252,10 @@ describe('InternalBookingsController', () => {
 
       const createBookingDto: CreateInternalBookingDto = {
         internalTripId: 'trip-123',
-        clientId: 'client-123',
-        participantCount: 2,
+        participants: [
+          { clientId: 'client-123', role: InternalTourBookingParticipantRole.HOLDER },
+          { clientId: 'client-456', role: InternalTourBookingParticipantRole.COMPANION },
+        ],
       };
 
       await controller.createBooking(mockReq, mockTenant, createBookingDto);
@@ -267,9 +266,7 @@ describe('InternalBookingsController', () => {
     it('should trigger payment email on payment recording', async () => {
       jest.spyOn(service, 'recordPayment').mockResolvedValue(mockBooking);
 
-      await controller.recordPayment(mockReq, mockTenant, 'booking-123', {
-        amount: 50000,
-      });
+      await controller.recordPayment('booking-123', mockReq, mockTenant, 50000);
 
       expect(service.recordPayment).toHaveBeenCalled();
     });
@@ -287,7 +284,7 @@ describe('InternalBookingsController', () => {
     it('should isolate bookings by tenant', async () => {
       jest.spyOn(service, 'listBookings').mockResolvedValue([mockBooking]);
 
-      await controller.listBookings(mockTenant, {});
+      await controller.listBookings(mockTenant);
 
       // Verify that the service is called with the correct tenant ID
       expect(service.listBookings).toHaveBeenCalledWith(mockTenant.id, expect.any(Object));

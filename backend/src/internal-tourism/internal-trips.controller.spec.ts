@@ -91,16 +91,18 @@ describe('InternalTripsController', () => {
       const trips = [mockTrip, { ...mockTrip, id: 'trip-456' }];
       jest.spyOn(service, 'listTrips').mockResolvedValue(trips);
 
-      const result = await controller.listTrips(mockTenant, {});
+      const result = await controller.listTrips(mockTenant);
 
       expect(result).toEqual(trips);
-      expect(service.listTrips).toHaveBeenCalledWith(mockTenant.id, {});
+      expect(service.listTrips).toHaveBeenCalledWith(mockTenant.id, {
+        status: undefined, destination: undefined, skip: 0, take: 50,
+      });
     });
 
     it('should filter by status', async () => {
       jest.spyOn(service, 'listTrips').mockResolvedValue([mockTrip]);
 
-      await controller.listTrips(mockTenant, { status: 'OPEN' });
+      await controller.listTrips(mockTenant, 'OPEN');
 
       expect(service.listTrips).toHaveBeenCalledWith(
         mockTenant.id,
@@ -115,7 +117,7 @@ describe('InternalTripsController', () => {
     it('should get trip details', async () => {
       jest.spyOn(service, 'getTrip').mockResolvedValue(mockTrip);
 
-      const result = await controller.getTrip(mockTenant, 'trip-123');
+      const result = await controller.getTrip('trip-123', mockTenant);
 
       expect(result).toEqual(mockTrip);
       expect(service.getTrip).toHaveBeenCalledWith(mockTenant.id, 'trip-123');
@@ -132,7 +134,7 @@ describe('InternalTripsController', () => {
       const updatedTrip = { ...mockTrip, ...updateTripDto };
       jest.spyOn(service, 'updateTrip').mockResolvedValue(updatedTrip);
 
-      const result = await controller.updateTrip(mockTenant, 'trip-123', updateTripDto);
+      const result = await controller.updateTrip('trip-123', mockTenant, updateTripDto);
 
       expect(result).toEqual(updatedTrip);
       expect(service.updateTrip).toHaveBeenCalledWith(mockTenant.id, 'trip-123', updateTripDto);
@@ -144,7 +146,7 @@ describe('InternalTripsController', () => {
       const cancelledTrip = { ...mockTrip, status: 'CANCELLED' };
       jest.spyOn(service, 'cancelTrip').mockResolvedValue(cancelledTrip);
 
-      const result = await controller.cancelTrip(mockTenant, 'trip-123');
+      const result = await controller.cancelTrip('trip-123', mockTenant);
 
       expect(result).toEqual(cancelledTrip);
       expect(service.cancelTrip).toHaveBeenCalledWith(mockTenant.id, 'trip-123');
@@ -154,17 +156,20 @@ describe('InternalTripsController', () => {
   describe('GET /internal-trips/:id/stats - Get Trip Stats', () => {
     it('should return trip statistics', async () => {
       const stats = {
-        totalCapacity: 20,
-        bookedSlots: 15,
-        availableSlots: 5,
-        occupancyPercentage: 75,
-        totalIncome: new Decimal('1350000'),
-        pendingIncome: new Decimal('450000'),
+        tripCode: 'IT-202605',
+        totalBookings: 10,
+        paidBookings: 7,
+        pendingBookings: 3,
+        totalParticipants: 15,
+        occupancy: 75,
+        totalIncome: 1350000,
+        pendingIncome: 450000,
+        currency: 'CRC',
       };
 
       jest.spyOn(service, 'getTripStats').mockResolvedValue(stats);
 
-      const result = await controller.getTripStats(mockTenant, 'trip-123');
+      const result = await controller.getTripStats('trip-123', mockTenant);
 
       expect(result).toEqual(stats);
       expect(service.getTripStats).toHaveBeenCalledWith(mockTenant.id, 'trip-123');

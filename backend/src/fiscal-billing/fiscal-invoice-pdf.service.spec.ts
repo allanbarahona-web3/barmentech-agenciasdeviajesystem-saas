@@ -190,6 +190,7 @@ function acceptedInvoice(): AcceptedBillingInvoice {
     billingDocumentId: "document-a",
     internalNumber: "BD-SO-order-a",
     fiscalNumber: "00100001010000000228",
+    haciendaKey: "50630082600310100000000100001010000000228123456789",
     documentTypeCode: "01",
     lifecycleStatus: "SUBMITTED",
     taxAuthorityStatus: "ACCEPTED",

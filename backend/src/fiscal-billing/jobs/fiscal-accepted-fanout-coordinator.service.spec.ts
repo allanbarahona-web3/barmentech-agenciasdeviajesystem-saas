@@ -1,3 +1,5 @@
+/// <reference types="jest" />
+
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import {
@@ -6,9 +8,6 @@ import {
   accountReceivableRecognitionDeduplicationKey,
   FISCAL_ACCEPTED_FANOUT_PARENT_EVENT_TYPE,
   FISCAL_ACCEPTED_FANOUT_PARENT_EVENT_VERSION,
-  FISCAL_INVOICE_AUTO_DELIVERY_REQUESTED_EVENT_TYPE,
-  FISCAL_INVOICE_AUTO_DELIVERY_REQUESTED_EVENT_VERSION,
-  fiscalInvoiceAutoDeliveryDeduplicationKey,
 } from "./fiscal-accepted-fanout.constants";
 import { FiscalAcceptedFanoutCoordinatorService } from "./fiscal-accepted-fanout-coordinator.service";
 
@@ -19,7 +18,7 @@ describe("FiscalAcceptedFanoutCoordinatorService", () => {
     await c.service.fanOutAvailableEvents();
 
     expect(c.tx.billingOutboxEvent.createMany).toHaveBeenCalledWith({
-      data: [childData(parent()), deliveryChildData(parent())], skipDuplicates: true,
+      data: [childData(parent())], skipDuplicates: true,
     });
     expect(c.tx.billingOutboxEvent.updateMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({ id: "parent-a", tenantId: "tenant-a", status: "PROCESSING" }),
@@ -29,6 +28,7 @@ describe("FiscalAcceptedFanoutCoordinatorService", () => {
     const data = c.tx.billingOutboxEvent.createMany.mock.calls[0][0].data;
     for (const row of data) expect(Object.keys(row.payload).sort()).toEqual(["billingDocumentId", "eventVersion", "tenantId"]);
     expect(JSON.stringify(data)).not.toMatch(/provider|hacienda|factura|customer|amount|money/i);
+    expect(JSON.stringify(data)).not.toContain("billing-document.invoice-auto-delivery-requested");
   });
 
   it("does not complete the parent when child persistence fails", async () => {
@@ -49,7 +49,7 @@ describe("FiscalAcceptedFanoutCoordinatorService", () => {
 
     await c.service.fanOutAvailableEvents();
 
-    expect(c.tx.billingOutboxEvent.createMany).toHaveBeenCalledWith({ data: [childData(event), deliveryChildData(event)], skipDuplicates: true });
+    expect(c.tx.billingOutboxEvent.createMany).toHaveBeenCalledWith({ data: [childData(event)], skipDuplicates: true });
     expect(c.tx.billingOutboxEvent.updateMany).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ status: "PROCESSED" }),
     }));
@@ -72,7 +72,7 @@ describe("FiscalAcceptedFanoutCoordinatorService", () => {
 
     expect(c.tx.billingOutboxEvent.createMany).toHaveBeenCalledTimes(2);
     expect(c.tx.billingOutboxEvent.createMany.mock.calls.every((call) => call[0].skipDuplicates)).toBe(true);
-    expect(c.tx.billingOutboxEvent.findUnique.mock.calls.filter((call) => "tenantId_deduplicationKey" in call[0].where)).toHaveLength(4);
+    expect(c.tx.billingOutboxEvent.findUnique.mock.calls.filter((call) => "tenantId_deduplicationKey" in call[0].where)).toHaveLength(2);
   });
 
   it.each([
@@ -135,12 +135,11 @@ describe("FiscalAcceptedFanoutCoordinatorService", () => {
     await c.service.fanOutAvailableEvents();
 
     expect(c.tx.billingOutboxEvent.createMany.mock.calls.map((call) => call[0].data)).toEqual([
-      [childData(first), deliveryChildData(first)], [childData(second), deliveryChildData(second)],
+      [childData(first)], [childData(second)],
     ]);
     expect(accountReceivableRecognitionDeduplicationKey("document-a")).toBe(
       "billing-document.fiscal-accepted:receivable:document-a:v1",
     );
-    expect(fiscalInvoiceAutoDeliveryDeduplicationKey("document-a")).toBe("billing-document.invoice-auto-delivery:document-a:v1");
   });
 });
 
@@ -154,7 +153,6 @@ function context(events: ReturnType<typeof parent>[], options: { createCount?: n
       findUnique: jest.fn(async ({ where }: { where: Record<string, unknown> }) => {
         if ("id" in where) return events.find((event) => event.id === where.id) ?? null;
         const deduplicationKey = (where.tenantId_deduplicationKey as { deduplicationKey?: string } | undefined)?.deduplicationKey;
-        if (deduplicationKey?.includes("invoice-auto-delivery")) return deliveryChild(events[0]);
         return options.child === undefined ? child(events[0]) : options.child;
       }),
       createMany: jest.fn().mockResolvedValue({ count: options.createCount ?? 1 }),
@@ -193,23 +191,6 @@ function childData(event: ReturnType<typeof parent>) {
     aggregateType: "BillingDocument", aggregateId: payload.billingDocumentId,
     causationId: event.id,
     deduplicationKey: accountReceivableRecognitionDeduplicationKey(payload.billingDocumentId),
-    payload,
-  };
-}
-
-function deliveryChild(event: ReturnType<typeof parent>, overrides: Record<string, unknown> = {}) {
-  return { id: "delivery-child-a", ...deliveryChildData(event), ...overrides };
-}
-
-function deliveryChildData(event: ReturnType<typeof parent>) {
-  const payload = event.payload as { tenantId: string; billingDocumentId: string; eventVersion: number };
-  return {
-    tenantId: event.tenantId,
-    eventType: FISCAL_INVOICE_AUTO_DELIVERY_REQUESTED_EVENT_TYPE,
-    eventVersion: FISCAL_INVOICE_AUTO_DELIVERY_REQUESTED_EVENT_VERSION,
-    aggregateType: "BillingDocument", aggregateId: payload.billingDocumentId,
-    causationId: event.id,
-    deduplicationKey: fiscalInvoiceAutoDeliveryDeduplicationKey(payload.billingDocumentId),
     payload,
   };
 }

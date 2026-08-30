@@ -60,6 +60,7 @@ describe("AdditionalServicesService suppliers", () => {
       updatePricingConfiguration: jest.fn(),
       findFiscalProfileById: jest.fn(),
       findFiscalProfileByCatalogId: jest.fn(),
+      findFiscalProfilesByCatalogIds: jest.fn(),
       createFiscalProfile: jest.fn(),
       updateFiscalProfile: jest.fn(),
       findSuppliers: jest.fn(),

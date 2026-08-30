@@ -232,6 +232,7 @@ function isAcceptedInvoiceWorkspace(
   taxAuthorityStatus: "ACCEPTED";
   providerStatus: "PROCESSED";
   fiscalNumber: string;
+  haciendaKey: string;
   fiscalIssueDate: string;
 } {
   return (
@@ -240,6 +241,8 @@ function isAcceptedInvoiceWorkspace(
     workspace.taxAuthorityStatus === "ACCEPTED" &&
     typeof workspace.fiscalNumber === "string" &&
     workspace.fiscalNumber.trim().length > 0 &&
+    typeof workspace.haciendaKey === "string" &&
+    workspace.haciendaKey.trim().length > 0 &&
     typeof workspace.fiscalIssueDate === "string" &&
     workspace.fiscalIssueDate.length > 0
   );
@@ -250,6 +253,7 @@ function mapAcceptedInvoice(
     lifecycleStatus: "SUBMITTED";
     taxAuthorityStatus: "ACCEPTED";
     fiscalNumber: string;
+    haciendaKey: string;
     fiscalIssueDate: string;
   },
 ): AcceptedBillingInvoice {
@@ -261,6 +265,7 @@ function mapAcceptedInvoice(
     billingDocumentId: workspace.id,
     internalNumber: workspace.internalNumber,
     fiscalNumber: workspace.fiscalNumber,
+    haciendaKey: workspace.haciendaKey,
     documentTypeCode: workspace.documentTypeCode,
     lifecycleStatus: workspace.lifecycleStatus,
     taxAuthorityStatus: workspace.taxAuthorityStatus,

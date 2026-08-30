@@ -8,6 +8,8 @@ describe("fiscalInvoicePdfTemplate", () => {
 
     expect(html).toContain("Issuer SA");
     expect(html).toContain("00100001010000000228");
+    expect(html).toContain("50630082600310100000000100001010000000228123456789");
+    expect(html).toContain("Clave");
     expect(html).toContain("Customer");
     expect(html).toContain("SO-2026-000010");
     expect(html).toContain("Seguro · Cobertura: USD 60,000");
@@ -29,7 +31,7 @@ describe("fiscalInvoicePdfTemplate", () => {
 
 function fixture(): AcceptedBillingInvoice {
   return {
-    billingDocumentId: "document-a", internalNumber: "BD-SO-order-a", fiscalNumber: "00100001010000000228", documentTypeCode: "01", lifecycleStatus: "SUBMITTED", taxAuthorityStatus: "ACCEPTED", issuedDate: "2026-08-30", currencyCode: "USD",
+    billingDocumentId: "document-a", internalNumber: "BD-SO-order-a", fiscalNumber: "00100001010000000228", haciendaKey: "50630082600310100000000100001010000000228123456789", documentTypeCode: "01", lifecycleStatus: "SUBMITTED", taxAuthorityStatus: "ACCEPTED", issuedDate: "2026-08-30", currencyCode: "USD",
     issuer: { name: "Issuer SA", identificationType: "02", identificationNumber: "3101000000", email: "issuer@example.test", phone: "2222-2222" },
     paymentCondition: { code: "01", creditTermDays: null, dueDate: "2026-08-30" },
     receiver: { name: "Customer", identificationType: "01", identificationNumber: "123456789", email: "customer@example.test" },

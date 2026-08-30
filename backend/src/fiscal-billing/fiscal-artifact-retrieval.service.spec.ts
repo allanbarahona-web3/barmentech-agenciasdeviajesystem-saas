@@ -79,6 +79,50 @@ describe('FiscalArtifactRetrievalService', () => {
     expect(c.tx.billingOutboxEvent.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'PROCESSED' }) }));
   });
 
+  it('does not create automatic delivery when only the first required XML is AVAILABLE', async () => {
+    const c = context({ availableXmlCount: 1 });
+    await c.service.processClaimedArtifact(claim());
+    expect(c.tx.billingDocumentArtifact.count).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ status: 'AVAILABLE', version: 1 }),
+    }));
+    expect(c.tx.billingOutboxEvent.createMany).not.toHaveBeenCalled();
+  });
+
+  it.each(['SIGNED_FISCAL_XML', 'TAX_AUTHORITY_RESPONSE_XML'] as const)(
+    'creates one exact automatic-delivery child after the second XML becomes AVAILABLE: %s last',
+    async (artifactType) => {
+      const scenario = matrix('ACCEPTED', artifactType);
+      const c = context({ ...scenario, availableXmlCount: 2 });
+      await c.service.processClaimedArtifact(claim());
+      expect(c.tx.billingOutboxEvent.createMany).toHaveBeenCalledWith({
+        data: deliveryChildData(),
+        skipDuplicates: true,
+      });
+      expect(deliveryChildData().deduplicationKey).toBe(
+        'billing-document.invoice-auto-delivery:document-a:v1',
+      );
+    },
+  );
+
+  it('accepts the exact concurrent delivery winner without creating a duplicate logical child', async () => {
+    const c = context({ availableXmlCount: 2, deliveryCreateCount: 0 });
+    await c.service.processClaimedArtifact(claim());
+    expect(c.tx.billingOutboxEvent.createMany).toHaveBeenCalledWith({
+      data: deliveryChildData(),
+      skipDuplicates: true,
+    });
+    expect(c.tx.billingOutboxEvent.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: 'PROCESSED' }),
+    }));
+    const parentLock = c.tx.$queryRaw.mock.calls.find((call) =>
+      (call[0] as TemplateStringsArray).join('?').includes('"deduplicationKey"'),
+    );
+    expect((parentLock?.[0] as TemplateStringsArray).join('?')).toContain('FOR UPDATE');
+    expect(c.tx.$queryRaw.mock.invocationCallOrder[4]).toBeLessThan(
+      c.tx.billingDocumentArtifact.count.mock.invocationCallOrder[0],
+    );
+  });
+
   it.each([
     ['malformed payload', { payload: { tenantId: 'tenant-a' } }], ['foreign tenant', { tenantId: 'tenant-b' }],
     ['wrong aggregate', { aggregateId: 'other' }], ['missing causation', { causationId: null }], ['different causation', { causationId: '' }],
@@ -192,10 +236,14 @@ function retrieved() { return { bytes: Buffer.from(`<?xml version="1.0"?><Factur
 function storage(sha256: string, bytes = retrieved().bytes) { return { storageProvider: 'PRIVATE_OBJECT_STORAGE', storageKey: `private/${sha256}.xml`, sha256, byteSize: BigInt(bytes.length), mimeType: 'application/xml', storedAt: new Date('2026-09-09T12:00:01.000Z'), storageEtag: 'storage-etag' }; }
 function hash(bytes: Buffer) { return createHash('sha256').update(bytes).digest('hex'); }
 function matrix(status: 'ACCEPTED' | 'REJECTED', artifactType: 'SIGNED_FISCAL_XML' | 'TAX_AUTHORITY_RESPONSE_XML') { const payload = child({ payload: { tenantId: 'tenant-a', billingDocumentId: 'document-a', artifactType, artifactVersion: 1, eventVersion: 1 } }); const artifact = { ...pending(), artifactType }; const xml = artifactType === 'SIGNED_FISCAL_XML' ? retrieved().bytes : Buffer.from(`<?xml version="1.0"?><MensajeHacienda xmlns="https://cdn.comprobanteselectronicos.go.cr/xml-schemas/v4.4/mensajeHacienda"><Clave>${KEY}</Clave><IndEstado>${status === 'ACCEPTED' ? 'aceptado' : 'rechazado'}</IndEstado></MensajeHacienda>`); return { preparationChild: payload, completionChild: payload, artifact, billingDocument: document({ taxAuthorityStatus: status }), retrieved: { ...retrieved(), bytes: xml } }; }
-function context(options: { artifact?: ReturnType<typeof pending> | ReturnType<typeof available> | ReturnType<typeof failed>; artifactRows?: unknown[]; failureArtifact?: ReturnType<typeof pending>; retrievalError?: Error; storageError?: Error; completionChild?: ReturnType<typeof child>; preparationChild?: ReturnType<typeof child>; billingDocument?: ReturnType<typeof document>; retrieved?: ReturnType<typeof retrieved>; completionUpdateCount?: number } = {}) {
-  const artifact = options.artifact ?? pending(); const invalidPreparationLease = options.preparationChild && (options.preparationChild.lockedBy !== 'worker-a' || (options.preparationChild.lockedAt as Date).getTime() < Date.now() - 60_000); const queries: unknown[][] = [invalidPreparationLease ? [] : [{ id: 'event-a' }], options.artifactRows ?? [artifact], [{ id: 'event-a' }], [artifact]];
+function acceptedParent() { return { id: 'accepted-parent-a', tenantId: 'tenant-a', eventType: 'billing-document.fiscal-accepted', eventVersion: 1, aggregateType: 'BillingDocument', aggregateId: 'document-a', causationId: null, deduplicationKey: 'billing-document.fiscal-accepted:document-a:v1', payload: { tenantId: 'tenant-a', billingDocumentId: 'document-a', eventVersion: 1 } as Prisma.JsonObject }; }
+function deliveryChildData() { return { tenantId: 'tenant-a', eventType: 'billing-document.invoice-auto-delivery-requested', eventVersion: 1, aggregateType: 'BillingDocument', aggregateId: 'document-a', causationId: 'accepted-parent-a', deduplicationKey: 'billing-document.invoice-auto-delivery:document-a:v1', payload: { tenantId: 'tenant-a', billingDocumentId: 'document-a', eventVersion: 1 } }; }
+function deliveryChild() { return { id: 'delivery-a', ...deliveryChildData() }; }
+function context(options: { artifact?: ReturnType<typeof pending> | ReturnType<typeof available> | ReturnType<typeof failed>; artifactRows?: unknown[]; failureArtifact?: ReturnType<typeof pending>; retrievalError?: Error; storageError?: Error; completionChild?: ReturnType<typeof child>; preparationChild?: ReturnType<typeof child>; billingDocument?: ReturnType<typeof document>; retrieved?: ReturnType<typeof retrieved>; completionUpdateCount?: number; availableXmlCount?: number; deliveryCreateCount?: number; acceptedParent?: ReturnType<typeof acceptedParent>; deliveryChild?: ReturnType<typeof deliveryChild> } = {}) {
+  const artifact = options.artifact ?? pending(); const invalidPreparationLease = options.preparationChild && (options.preparationChild.lockedBy !== 'worker-a' || (options.preparationChild.lockedAt as Date).getTime() < Date.now() - 60_000); const queries: unknown[][] = [invalidPreparationLease ? [] : [{ id: 'event-a' }], options.artifactRows ?? [artifact], [{ id: 'event-a' }], [artifact], [{ id: 'accepted-parent-a' }]];
   if (options.failureArtifact) queries.push([{ id: 'event-a' }], [options.failureArtifact]);
-  const tx = { $queryRaw: jest.fn().mockImplementation(async () => queries.shift() ?? []), $executeRaw: jest.fn().mockResolvedValue(1), billingOutboxEvent: { findUnique: jest.fn().mockResolvedValueOnce(options.preparationChild ?? child()).mockResolvedValue(options.completionChild ?? options.preparationChild ?? child()), updateMany: jest.fn().mockResolvedValue({ count: options.completionUpdateCount ?? 1 }) }, billingDocument: { findUnique: jest.fn().mockResolvedValue(options.billingDocument ?? document()) } };
+  let childReads = 0;
+  const tx = { $queryRaw: jest.fn().mockImplementation(async () => queries.shift() ?? []), $executeRaw: jest.fn().mockResolvedValue(1), billingOutboxEvent: { findUnique: jest.fn().mockImplementation(async ({ where }: { where: Record<string, unknown> }) => { if ('id' in where) { childReads += 1; return childReads === 1 ? (options.preparationChild ?? child()) : (options.completionChild ?? options.preparationChild ?? child()); } const key = (where.tenantId_deduplicationKey as { deduplicationKey?: string } | undefined)?.deduplicationKey; if (key?.includes('invoice-auto-delivery')) return options.deliveryChild ?? deliveryChild(); return options.acceptedParent ?? acceptedParent(); }), createMany: jest.fn().mockResolvedValue({ count: options.deliveryCreateCount ?? 1 }), updateMany: jest.fn().mockResolvedValue({ count: options.completionUpdateCount ?? 1 }) }, billingDocument: { findUnique: jest.fn().mockResolvedValue(options.billingDocument ?? document()) }, billingDocumentArtifact: { count: jest.fn().mockResolvedValue(options.availableXmlCount ?? 1) } };
   const prisma = { $transaction: jest.fn(async (work: (value: typeof tx) => unknown) => work(tx)) } as unknown as PrismaService & { $transaction: jest.Mock };
   const retrieval = { retrieveFiscalArtifact: jest.fn().mockImplementation(async () => { if (options.retrievalError) throw options.retrievalError; return options.retrieved ?? retrieved(); }) } as unknown as FiscalArtifactRetrievalPort & { retrieveFiscalArtifact: jest.Mock };
   const immutable = { storeImmutable: jest.fn().mockImplementation(async (value) => { if (options.storageError) throw options.storageError; return storage(value.expectedSha256, value.bytes); }) } as unknown as ImmutableBillingArtifactStoragePort & { storeImmutable: jest.Mock };

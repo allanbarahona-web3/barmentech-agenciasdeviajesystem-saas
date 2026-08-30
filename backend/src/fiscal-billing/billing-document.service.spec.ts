@@ -58,6 +58,7 @@ describe("BillingDocumentService generic core", () => {
       billingDocumentId: "document-a",
       internalNumber: "BD-SO-order-a",
       fiscalNumber: "00100001010000000228",
+      haciendaKey: "50630082600310100000000100001010000000228123456789",
       documentTypeCode: "01",
       lifecycleStatus: "SUBMITTED",
       taxAuthorityStatus: "ACCEPTED",
@@ -118,7 +119,7 @@ describe("BillingDocumentService generic core", () => {
     const result = await service.getAcceptedInvoice("tenant-a", "document-a");
     expect(result).not.toHaveProperty("providerDocumentId");
     expect(result).not.toHaveProperty("providerEnvironment");
-    expect(result).not.toHaveProperty("haciendaKey");
+    expect(result.haciendaKey).toBe("50630082600310100000000100001010000000228123456789");
     expect(result).not.toHaveProperty("readiness");
     expect(result).not.toHaveProperty("providerLastErrorCode");
     expect(workspace.total).toBe("110.17500");
@@ -515,7 +516,7 @@ function acceptedWorkspace(
     artifactStatus: "PENDING",
     fiscalNumber: "00100001010000000228",
     allocatedSequenceNumber: "228",
-    haciendaKey: "sensitive-key",
+    haciendaKey: "50630082600310100000000100001010000000228123456789",
     haciendaRejectionDetail: null,
     providerEnvironment: "SANDBOX",
     providerDocumentId: "provider-sensitive-id",

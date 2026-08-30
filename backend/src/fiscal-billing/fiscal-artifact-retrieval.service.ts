@@ -3,7 +3,9 @@ import { Prisma } from '@prisma/client';
 import { createHash } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { IMMUTABLE_BILLING_ARTIFACT_STORAGE_PORT, type ImmutableBillingArtifactStorageMetadata, type ImmutableBillingArtifactStoragePort, ImmutableBillingArtifactStorageError } from '../storage/immutable-billing-artifact-storage.port';
+import { BILLING_DOCUMENT_FISCAL_ACCEPTED_EVENT_TYPE, BILLING_DOCUMENT_FISCAL_ACCEPTED_EVENT_VERSION, billingDocumentFiscalAcceptedDeduplicationKey } from './billing-document-fiscal-accepted-outbox';
 import { FiscalXmlIdentityValidationError, validateFiscalXmlIdentity } from './fiscal-xml-identity.validator';
+import { FISCAL_ACCEPTED_FANOUT_AGGREGATE_TYPE, FISCAL_INVOICE_AUTO_DELIVERY_REQUESTED_EVENT_TYPE, FISCAL_INVOICE_AUTO_DELIVERY_REQUESTED_EVENT_VERSION, fiscalInvoiceAutoDeliveryDeduplicationKey } from './jobs/fiscal-accepted-fanout.constants';
 import { BILLING_DOCUMENT_ARTIFACT_RETRIEVAL_REQUESTED_EVENT_TYPE, BILLING_DOCUMENT_ARTIFACT_RETRIEVAL_REQUESTED_EVENT_VERSION, FISCAL_TERMINAL_ARTIFACT_FANOUT_AGGREGATE_TYPE, FISCAL_TERMINAL_ARTIFACT_VERSION, type FiscalTerminalArtifactType } from './jobs/fiscal-terminal-artifact-fanout.constants';
 import { FISCAL_ARTIFACT_RETRIEVAL_RETRY_BASE_MS, FISCAL_ARTIFACT_RETRIEVAL_RETRY_MAX_MS } from './jobs/fiscal-artifact-retrieval.constants';
 import { FISCAL_ARTIFACT_RETRIEVAL_PORT, FiscalArtifactRetrievalError, type FiscalArtifactRetrievalPort } from './providers/fiscal-artifact-retrieval.provider';
@@ -16,6 +18,7 @@ const DOCUMENT_ERROR = 'FISCAL_ARTIFACT_RETRIEVAL_DOCUMENT_INVALID';
 const ARTIFACT_ERROR = 'FISCAL_ARTIFACT_RETRIEVAL_ARTIFACT_INVALID';
 const VALIDATION_ERROR = 'FISCAL_ARTIFACT_RETRIEVAL_IDENTITY_INVALID';
 const STORAGE_ERROR = 'FISCAL_ARTIFACT_RETRIEVAL_STORAGE_CONFLICT';
+const DELIVERY_ERROR = 'FISCAL_ARTIFACT_RETRIEVAL_DELIVERY_CONFLICT';
 const RETRYABLE_ERROR = 'FISCAL_ARTIFACT_RETRIEVAL_RETRYABLE_FAILURE';
 export const FISCAL_ARTIFACT_RETRIEVAL_ATTEMPTS_EXHAUSTED = 'FISCAL_ARTIFACT_RETRIEVAL_ATTEMPTS_EXHAUSTED';
 
@@ -137,6 +140,9 @@ export class FiscalArtifactRetrievalService {
           const updated = await tx.$executeRaw`UPDATE "billing_document_artifacts" SET "status" = 'AVAILABLE', "storageProvider" = ${metadata.storageProvider}, "storageKey" = ${metadata.storageKey}, "sha256" = ${metadata.sha256}, "byteSize" = ${metadata.byteSize}, "mimeType" = ${metadata.mimeType}, "sourceEtag" = ${metadata.sourceEtag}, "retrievedAt" = ${metadata.retrievedAt}, "storedAt" = ${metadata.storedAt}, "updatedAt" = ${new Date()} WHERE "id" = ${artifact.id} AND "tenantId" = ${prepared.claim.tenantId} AND "status" = 'PENDING'`;
           if (updated !== 1) throw permanent(ARTIFACT_ERROR);
         } else throw permanent(ARTIFACT_ERROR);
+        if (prepared.document.taxAuthorityStatus === 'ACCEPTED') {
+          await ensureAutomaticDeliveryWhenReady(tx, prepared);
+        }
         const completed = await tx.billingOutboxEvent.updateMany({ where: ownedWhere(prepared.claim), data: { status: 'PROCESSED', processedAt: new Date(), lastError: null, lockedAt: null, lockedBy: null } });
         if (completed.count !== 1) throw permanent(CLAIM_ERROR);
       });
@@ -153,6 +159,119 @@ export class FiscalArtifactRetrievalService {
       await tx.billingOutboxEvent.updateMany({ where: ownedWhere(claim), data: { status: 'FAILED', lastError: safeCode(code), lockedAt: null, lockedBy: null } });
     });
   }
+}
+
+async function ensureAutomaticDeliveryWhenReady(
+  tx: Prisma.TransactionClient,
+  prepared: Prepared,
+): Promise<void> {
+  const acceptedDeduplicationKey = billingDocumentFiscalAcceptedDeduplicationKey(
+    prepared.payload.billingDocumentId,
+  );
+  const locked = await tx.$queryRaw<Array<{ id: string }>>`
+    SELECT "id" FROM "billing_outbox_events"
+    WHERE "tenantId" = ${prepared.payload.tenantId}
+      AND "deduplicationKey" = ${acceptedDeduplicationKey}
+      AND "eventType" = ${BILLING_DOCUMENT_FISCAL_ACCEPTED_EVENT_TYPE}
+      AND "eventVersion" = ${BILLING_DOCUMENT_FISCAL_ACCEPTED_EVENT_VERSION}
+    FOR UPDATE
+  `;
+  if (locked.length !== 1) throw permanent(DELIVERY_ERROR);
+  const acceptedParent = await tx.billingOutboxEvent.findUnique({
+    where: {
+      tenantId_deduplicationKey: {
+        tenantId: prepared.payload.tenantId,
+        deduplicationKey: acceptedDeduplicationKey,
+      },
+    },
+  });
+  const payload = {
+    tenantId: prepared.payload.tenantId,
+    billingDocumentId: prepared.payload.billingDocumentId,
+    eventVersion: FISCAL_INVOICE_AUTO_DELIVERY_REQUESTED_EVENT_VERSION,
+  };
+  if (!acceptedParent || !isExactAcceptedParent(acceptedParent, payload, acceptedDeduplicationKey)) {
+    throw permanent(DELIVERY_ERROR);
+  }
+
+  const available = await tx.billingDocumentArtifact.count({
+    where: {
+      tenantId: prepared.payload.tenantId,
+      billingDocumentId: prepared.payload.billingDocumentId,
+      artifactType: { in: ['SIGNED_FISCAL_XML', 'TAX_AUTHORITY_RESPONSE_XML'] },
+      version: FISCAL_TERMINAL_ARTIFACT_VERSION,
+      status: 'AVAILABLE',
+    },
+  });
+  if (available !== 2) return;
+
+  const deliveryDeduplicationKey = fiscalInvoiceAutoDeliveryDeduplicationKey(
+    prepared.payload.billingDocumentId,
+  );
+  await tx.billingOutboxEvent.createMany({
+    data: {
+      tenantId: prepared.payload.tenantId,
+      eventType: FISCAL_INVOICE_AUTO_DELIVERY_REQUESTED_EVENT_TYPE,
+      eventVersion: FISCAL_INVOICE_AUTO_DELIVERY_REQUESTED_EVENT_VERSION,
+      aggregateType: FISCAL_ACCEPTED_FANOUT_AGGREGATE_TYPE,
+      aggregateId: prepared.payload.billingDocumentId,
+      causationId: acceptedParent.id,
+      deduplicationKey: deliveryDeduplicationKey,
+      payload,
+    },
+    skipDuplicates: true,
+  });
+  const delivery = await tx.billingOutboxEvent.findUnique({
+    where: {
+      tenantId_deduplicationKey: {
+        tenantId: prepared.payload.tenantId,
+        deduplicationKey: deliveryDeduplicationKey,
+      },
+    },
+  });
+  if (!delivery || !isExactDeliveryChild(delivery, acceptedParent.id, payload, deliveryDeduplicationKey)) {
+    throw permanent(DELIVERY_ERROR);
+  }
+}
+
+function isExactAcceptedParent(
+  event: { tenantId: string; eventType: string; eventVersion: number; aggregateType: string; aggregateId: string; deduplicationKey: string | null; payload: Prisma.JsonValue },
+  payload: { tenantId: string; billingDocumentId: string; eventVersion: number },
+  deduplicationKey: string,
+): boolean {
+  return event.tenantId === payload.tenantId &&
+    event.eventType === BILLING_DOCUMENT_FISCAL_ACCEPTED_EVENT_TYPE &&
+    event.eventVersion === BILLING_DOCUMENT_FISCAL_ACCEPTED_EVENT_VERSION &&
+    event.aggregateType === FISCAL_ACCEPTED_FANOUT_AGGREGATE_TYPE &&
+    event.aggregateId === payload.billingDocumentId &&
+    event.deduplicationKey === deduplicationKey &&
+    exactDeliveryPayload(event.payload, payload);
+}
+
+function isExactDeliveryChild(
+  event: { tenantId: string; eventType: string; eventVersion: number; aggregateType: string; aggregateId: string; causationId: string | null; deduplicationKey: string | null; payload: Prisma.JsonValue },
+  causationId: string,
+  payload: { tenantId: string; billingDocumentId: string; eventVersion: number },
+  deduplicationKey: string,
+): boolean {
+  return event.tenantId === payload.tenantId &&
+    event.eventType === FISCAL_INVOICE_AUTO_DELIVERY_REQUESTED_EVENT_TYPE &&
+    event.eventVersion === FISCAL_INVOICE_AUTO_DELIVERY_REQUESTED_EVENT_VERSION &&
+    event.aggregateType === FISCAL_ACCEPTED_FANOUT_AGGREGATE_TYPE &&
+    event.aggregateId === payload.billingDocumentId &&
+    event.causationId === causationId &&
+    event.deduplicationKey === deduplicationKey &&
+    exactDeliveryPayload(event.payload, payload);
+}
+
+function exactDeliveryPayload(
+  value: Prisma.JsonValue,
+  expected: { tenantId: string; billingDocumentId: string; eventVersion: number },
+): boolean {
+  return jsonObject(value) && Object.keys(value).length === 3 &&
+    value.tenantId === expected.tenantId &&
+    value.billingDocumentId === expected.billingDocumentId &&
+    value.eventVersion === expected.eventVersion;
 }
 
 async function lockOwnedChildForFinalization(tx: Prisma.TransactionClient, claim: ClaimedFiscalArtifactRetrieval): Promise<boolean> {
