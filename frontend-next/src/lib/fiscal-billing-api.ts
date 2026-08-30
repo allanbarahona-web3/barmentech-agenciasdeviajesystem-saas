@@ -214,6 +214,7 @@ export type AcceptedBillingInvoice = {
   billingDocumentId: string;
   internalNumber: string;
   fiscalNumber: string;
+  haciendaKey: string;
   documentTypeCode: string;
   lifecycleStatus: 'SUBMITTED';
   taxAuthorityStatus: 'ACCEPTED';

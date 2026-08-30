@@ -344,7 +344,7 @@ export default function AcceptedInvoicePage() {
 
         <header className={styles.header}>
           <p className={styles.eyebrow}>Factura fiscal</p>
-          <h1 className={styles.title}>{invoice.fiscalNumber}</h1>
+          <h1 className={styles.title}>Factura electrónica #{invoice.fiscalNumber}</h1>
           <p className={styles.subtitle}>{DOCUMENT_TYPES[invoice.documentTypeCode] ?? `Documento ${invoice.documentTypeCode}`} · Emitida el {formatDate(invoice.issuedDate)}</p>
           <div className={styles.types}>
             <Badge variant="outline" className={styles.readyBadge}>Aceptada</Badge>
@@ -365,8 +365,10 @@ export default function AcceptedInvoicePage() {
             <h2>Información de factura</h2>
             <dl className={styles.details}>
               <div><dt>Documento</dt><dd>{DOCUMENT_TYPES[invoice.documentTypeCode] ?? invoice.documentTypeCode}</dd></div>
+              <div><dt>Número de factura</dt><dd>{invoice.fiscalNumber}</dd></div>
+              <div><dt>Clave de Hacienda</dt><dd>{invoice.haciendaKey}</dd></div>
               <div><dt>Fecha de emisión</dt><dd>{formatDate(invoice.issuedDate)}</dd></div>
-              <div><dt>Condición</dt><dd>{paymentCondition(invoice)}</dd></div>
+              <div><dt>Condición de pago</dt><dd>{paymentCondition(invoice)}</dd></div>
               {invoice.paymentCondition.dueDate && <div><dt>Fecha de vencimiento</dt><dd>{formatDate(invoice.paymentCondition.dueDate)}</dd></div>}
               <div><dt>Orden de venta</dt><dd>{invoice.salesOrder?.number ?? invoice.salesOrder?.id ?? 'No disponible'}</dd></div>
             </dl>
