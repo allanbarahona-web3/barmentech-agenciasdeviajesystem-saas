@@ -2,6 +2,10 @@ import { Injectable } from "@nestjs/common";
 import { AccountReceivableStatus, Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import {
+  CurrencySettlementError,
+  normalizeCurrencySettlementAmount,
+} from "../finance/currency-settlement.policy";
+import {
   ACCOUNT_RECEIVABLE_RECOGNITION_REQUESTED_EVENT_TYPE,
   ACCOUNT_RECEIVABLE_RECOGNITION_REQUESTED_EVENT_VERSION,
   FISCAL_ACCEPTED_FANOUT_AGGREGATE_TYPE,
@@ -23,6 +27,8 @@ export const ACCOUNT_RECEIVABLE_RECOGNITION_ERRORS = {
   COMMERCIAL_CONDITION_INVALID:
     "ACCOUNT_RECEIVABLE_RECOGNITION_COMMERCIAL_CONDITION_INVALID",
   AMOUNT_INVALID: "ACCOUNT_RECEIVABLE_RECOGNITION_AMOUNT_INVALID",
+  CURRENCY_UNSUPPORTED:
+    "ACCOUNT_RECEIVABLE_RECOGNITION_CURRENCY_UNSUPPORTED",
   RECEIVABLE_CONFLICT: "ACCOUNT_RECEIVABLE_RECOGNITION_RECEIVABLE_CONFLICT",
 } as const;
 
@@ -275,7 +281,23 @@ function mapReceivable(
   if (!nonEmpty(document.fiscalNumber) || !nonEmpty(document.receiverName)) {
     throw new RecognitionError(ACCOUNT_RECEIVABLE_RECOGNITION_ERRORS.DOCUMENT_INVALID);
   }
-  const amount = validAmount(document.total);
+  const fiscalAmount = validAmount(document.total);
+  let amount: Prisma.Decimal;
+  try {
+    amount = normalizeCurrencySettlementAmount(
+      fiscalAmount,
+      document.currencyCode,
+    );
+  } catch (error) {
+    if (error instanceof CurrencySettlementError) {
+      throw new RecognitionError(
+        error.code === "CURRENCY_SETTLEMENT_UNSUPPORTED_CURRENCY"
+          ? ACCOUNT_RECEIVABLE_RECOGNITION_ERRORS.CURRENCY_UNSUPPORTED
+          : ACCOUNT_RECEIVABLE_RECOGNITION_ERRORS.AMOUNT_INVALID,
+      );
+    }
+    throw error;
+  }
   const fiscalIssueDate = validDateOnly(document.fiscalIssueDate);
   const recognizedAt = validTimestamp(document.taxAuthorityFinalizedAt);
   const commercial = dueDateFor(document.paymentConditionCode, document.creditTermDays, fiscalIssueDate);

@@ -10,7 +10,7 @@ import {
 } from "./jobs/fiscal-accepted-fanout.constants";
 
 describe("AccountReceivableRecognitionService", () => {
-  it("creates a CASH OPEN receivable immediately due and preserves five decimals", async () => {
+  it("creates a CASH OPEN receivable immediately due at collectible currency precision", async () => {
     const c = context();
 
     await c.service.recognizeClaimedEvent(claim());
@@ -23,13 +23,30 @@ describe("AccountReceivableRecognitionService", () => {
       currencyCode: "CRC", paymentTermDays: null, status: AccountReceivableStatus.OPEN,
       recognizedAt: FINALIZED, settledAt: null, cancelledAt: null,
     });
-    expect(data.originalAmount.toFixed()).toBe("113.12345");
-    expect(data.outstandingAmount.toFixed()).toBe("113.12345");
+    expect(data.originalAmount.toFixed(5)).toBe("113.12000");
+    expect(data.outstandingAmount.toFixed(5)).toBe("113.12000");
     expect(data.dueDate).toEqual(ISSUE_DATE);
     expect(c.tx.billingOutboxEvent.updateMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({ id: "child-a", tenantId: "tenant-a", status: "PROCESSING", lockedBy: "owner-a" }),
       data: expect.objectContaining({ status: "PROCESSED", lockedAt: null, lockedBy: null }),
     }));
+  });
+
+  it.each([
+    ["USD", "110.17500", "110.18000"],
+    ["USD", "110.18000", "110.18000"],
+    ["USD", "110.17400", "110.17000"],
+    ["CRC", "110.17500", "110.18000"],
+  ])("recognizes %s %s as collectible %s without mutating the fiscal total", async (currencyCode, total, expected) => {
+    const doc = document({ currencyCode, total: d(total) });
+    const c = context({ document: doc });
+
+    await c.service.recognizeClaimedEvent(claim());
+
+    const data = c.tx.accountReceivable.createMany.mock.calls[0][0].data;
+    expect(data.originalAmount.toFixed(5)).toBe(expected);
+    expect(data.outstandingAmount.toFixed(5)).toBe(expected);
+    expect(doc.total.toFixed(5)).toBe(total);
   });
 
   it("derives CREDIT due date with UTC calendar-day arithmetic", async () => {
@@ -208,12 +225,13 @@ function document(overrides: Record<string, unknown> = {}) {
 function receivableFor(doc: ReturnType<typeof document>, overrides: Record<string, unknown> = {}) {
   const credit = doc.paymentConditionCode === "02";
   const dueDate = credit ? new Date(Date.UTC(doc.fiscalIssueDate.getUTCFullYear(), doc.fiscalIssueDate.getUTCMonth(), doc.fiscalIssueDate.getUTCDate() + (doc.creditTermDays ?? 0))) : doc.fiscalIssueDate;
+  const collectibleAmount = doc.total.toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
   return {
     id: "receivable-a", tenantId: doc.tenantId, sourceType: "BILLING_DOCUMENT", sourceId: doc.id,
     sourceNumber: doc.fiscalNumber, sourceDocumentType: doc.documentTypeCode, customerId: doc.customerId,
     debtorDisplayName: doc.receiverName, debtorIdentificationType: doc.receiverIdentificationType,
     debtorIdentificationNumber: doc.receiverIdentification, currencyCode: doc.currencyCode,
-    originalAmount: doc.total, outstandingAmount: doc.total, dueDate,
+    originalAmount: collectibleAmount, outstandingAmount: collectibleAmount, dueDate,
     paymentTermDays: credit ? doc.creditTermDays : null, status: AccountReceivableStatus.OPEN,
     recognizedAt: doc.taxAuthorityFinalizedAt, settledAt: null, cancelledAt: null, ...overrides,
   };
