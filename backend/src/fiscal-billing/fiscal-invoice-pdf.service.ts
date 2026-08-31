@@ -93,6 +93,8 @@ export class FiscalInvoicePdfService {
         logoSrc: tenant.logoUrl,
         contactEmail: tenant.contactEmail,
         contactPhone: tenant.contactPhone,
+        contactWhatsApp: tenant.contactWhatsApp,
+        businessAddress: tenant.businessAddress,
         primaryColor: tenant.primaryColor,
         secondaryColor: tenant.secondaryColor,
       });

@@ -43,6 +43,7 @@ describe("FiscalInvoicePdfService", () => {
     expect(html).toContain("Viajes Tenant");
     expect(html).toContain("https://cdn.example.test/logo.png");
     expect(html).toContain("--invoice-primary: #125ea8");
+    expect(html).toContain("Sabana, San José");
     expect(html).toContain("Issuer SA");
     expect(html).toContain("Seguro · Cobertura: USD 60,000");
     expect(html).toContain("USD&nbsp;12.68");
@@ -166,7 +167,7 @@ function context(options: {
     : jest.fn().mockResolvedValue(created);
   const artifacts = { findUnique, create };
   const prisma = { billingDocumentArtifact: artifacts };
-  const tenant = { getTenantConfig: jest.fn().mockResolvedValue({ name: "Viajes Tenant", logoUrl: "https://cdn.example.test/logo.png", contactEmail: "info@tenant.test", contactPhone: "2222-0000", primaryColor: "#125EA8", secondaryColor: "#17324D" }) };
+  const tenant = { getTenantConfig: jest.fn().mockResolvedValue({ name: "Viajes Tenant", logoUrl: "https://cdn.example.test/logo.png", contactEmail: "info@tenant.test", contactPhone: "2222-0000", contactWhatsApp: "8888-0000", businessAddress: "Sabana, San José", primaryColor: "#125EA8", secondaryColor: "#17324D" }) };
   return {
     service: new FiscalInvoicePdfService(
       billing as unknown as BillingDocumentService,
