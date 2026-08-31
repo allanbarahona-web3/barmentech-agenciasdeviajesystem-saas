@@ -34,6 +34,11 @@ describe("fiscalInvoicePdfTemplate", () => {
     expect(html).toContain("USD&nbsp;110.18");
     expect(html).toContain("width: 205pt");
     expect(html).toContain("Autorizado mediante Resolución DGT-R-033-2019 del 20 de junio del 2019 de la DGT v4.3");
+    const footer = html.match(/<section class="fiscal-footer">[\s\S]*?<\/section>/)?.[0] ?? "";
+    expect(footer).toContain("Issuer SA");
+    expect(footer).toContain("Cédula jurídica · 3101000000");
+    expect(footer).not.toContain("issuer@example.test");
+    expect(footer).not.toContain("2222-2222");
     const header = html.match(/<header class="doc-header invoice-brand-header">[\s\S]*?<\/header>/)?.[0] ?? "";
     expect(header).not.toContain(invoice.fiscalNumber);
     expect(header).not.toContain("30/08/2026");

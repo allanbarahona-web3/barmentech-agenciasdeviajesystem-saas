@@ -119,8 +119,7 @@ function invoiceTotals(invoice: AcceptedBillingInvoice): string {
 }
 
 function fiscalFooter(invoice: AcceptedBillingInvoice): string {
-  const contact = [invoice.issuer.email, invoice.issuer.phone].filter((value): value is string => Boolean(value?.trim())).join(" · ");
-  return `<section class="fiscal-footer"><p><strong>${escapeHtml(invoice.issuer.legalName)}</strong> · ${escapeHtml(identification(invoice.issuer.identificationType, invoice.issuer.identificationNumber))}${contact ? ` · ${escapeHtml(contact)}` : ""}</p><p>Autorizado mediante Resolución DGT-R-033-2019 del 20 de junio del 2019 de la DGT v4.3</p><p>Documento electrónico Costa Rica · Versión 4.4</p><div class="representation-legend" aria-label="Espacio para leyenda de representación fiscal"></div></section>`;
+  return `<section class="fiscal-footer"><p><strong>${escapeHtml(invoice.issuer.legalName)}</strong> · ${escapeHtml(identification(invoice.issuer.identificationType, invoice.issuer.identificationNumber))}</p><p>Autorizado mediante Resolución DGT-R-033-2019 del 20 de junio del 2019 de la DGT v4.3</p><p>Documento electrónico Costa Rica · Versión 4.4</p><div class="representation-legend" aria-label="Espacio para leyenda de representación fiscal"></div></section>`;
 }
 
 function row(label: string, value: string): string { return `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`; }
