@@ -10,17 +10,20 @@ export class FinanceReadService {
   constructor(private readonly prisma: PrismaService) {}
 
   async getAccountReceivableDetail(tenantId: string, id: string) {
-    const receivable = await this.prisma.accountReceivable.findFirst({
-      where: { id, tenantId },
-      include: {
-        paymentAllocations: {
-          orderBy: { allocatedAt: "asc" },
-          include: { reversal: true },
+    const [receivable, tenantCurrentCalendarDate] = await Promise.all([
+      this.prisma.accountReceivable.findFirst({
+        where: { id, tenantId },
+        include: {
+          paymentAllocations: {
+            orderBy: { allocatedAt: "asc" },
+            include: { reversal: true },
+          },
         },
-      },
-    });
+      }),
+      this.getTenantCurrentCalendarDate(tenantId),
+    ]);
     if (!receivable) throw new NotFoundException("ACCOUNT_RECEIVABLE_NOT_FOUND");
-    return accountReceivableDetail(receivable);
+    return accountReceivableDetail(receivable, tenantCurrentCalendarDate);
   }
 
   async getPaymentDetail(tenantId: string, id: string) {
@@ -50,6 +53,7 @@ export class FinanceReadService {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
     const where = accountReceivableWhere(tenantId, query);
+    const tenantCurrentCalendarDate = await this.getTenantCurrentCalendarDate(tenantId);
     const [receivables, total] = await Promise.all([
       this.prisma.accountReceivable.findMany({
         where,
@@ -61,7 +65,9 @@ export class FinanceReadService {
       this.prisma.accountReceivable.count({ where }),
     ]);
     return {
-      accountReceivables: receivables.map(accountReceivableListItem),
+      accountReceivables: receivables.map((receivable) =>
+        accountReceivableListItem(receivable, tenantCurrentCalendarDate),
+      ),
       total,
       page,
       pageSize,
@@ -72,14 +78,7 @@ export class FinanceReadService {
   async getCustomerFinancialBalance(tenantId: string, customerId: string) {
     const openStatuses = [AccountReceivableStatus.OPEN, AccountReceivableStatus.PARTIALLY_SETTLED];
     const where = { tenantId, customerId, status: { in: openStatuses } };
-    const configuration = await this.prisma.tenantBillingConfiguration.findUnique({
-      where: { tenantId },
-      select: { fiscalTimezone: true },
-    });
-    const tenantCurrentCalendarDate = tenantCalendarDate(
-      new Date(),
-      configuration?.fiscalTimezone ?? DEFAULT_FISCAL_TIMEZONE,
-    );
+    const tenantCurrentCalendarDate = await this.getTenantCurrentCalendarDate(tenantId);
     const overdueWhere = { ...where, dueDate: { lt: dateOnly(tenantCurrentCalendarDate) } };
     const [balances, overdueBalances] = await Promise.all([
       this.prisma.accountReceivable.groupBy({
@@ -125,6 +124,17 @@ export class FinanceReadService {
       cancelledAt: payment.cancelledAt,
     };
   }
+
+  private async getTenantCurrentCalendarDate(tenantId: string): Promise<string> {
+    const configuration = await this.prisma.tenantBillingConfiguration.findUnique({
+      where: { tenantId },
+      select: { fiscalTimezone: true },
+    });
+    return tenantCalendarDate(
+      new Date(),
+      configuration?.fiscalTimezone ?? DEFAULT_FISCAL_TIMEZONE,
+    );
+  }
 }
 
 const accountReceivableListSelect = {
@@ -159,7 +169,10 @@ function accountReceivableWhere(tenantId: string, query: ListAccountReceivablesD
   };
 }
 
-function accountReceivableListItem(receivable: Prisma.AccountReceivableGetPayload<{ select: typeof accountReceivableListSelect }>) {
+function accountReceivableListItem(
+  receivable: Prisma.AccountReceivableGetPayload<{ select: typeof accountReceivableListSelect }>,
+  tenantCurrentCalendarDate: string,
+) {
   return {
     id: receivable.id,
     customerId: receivable.customerId,
@@ -171,6 +184,7 @@ function accountReceivableListItem(receivable: Prisma.AccountReceivableGetPayloa
     outstandingAmount: money(receivable.outstandingAmount),
     dueDate: receivable.dueDate,
     status: receivable.status,
+    isOverdue: isOverdue(receivable.status, receivable.dueDate, tenantCurrentCalendarDate),
     recognizedAt: receivable.recognizedAt,
     settledAt: receivable.settledAt,
     source: {
@@ -203,6 +217,18 @@ function tenantCalendarDate(instant: Date, timezone: string): string {
     throw new Error("FINANCE_TENANT_CALENDAR_DATE_UNAVAILABLE");
   }
   return `${year}-${month}-${day}`;
+}
+
+function isOverdue(
+  status: AccountReceivableStatus,
+  dueDate: Date,
+  tenantCurrentCalendarDate: string,
+): boolean {
+  return (
+    (status === AccountReceivableStatus.OPEN ||
+      status === AccountReceivableStatus.PARTIALLY_SETTLED) &&
+    dueDate.getTime() < dateOnly(tenantCurrentCalendarDate).getTime()
+  );
 }
 
 function paymentDetail(payment: Prisma.PaymentGetPayload<{
@@ -247,7 +273,7 @@ function paymentDetail(payment: Prisma.PaymentGetPayload<{
 
 function accountReceivableDetail(receivable: Prisma.AccountReceivableGetPayload<{
   include: { paymentAllocations: { include: { reversal: true } } };
-}>) {
+}>, tenantCurrentCalendarDate: string) {
   return {
     id: receivable.id,
     sourceType: receivable.sourceType,
@@ -264,6 +290,7 @@ function accountReceivableDetail(receivable: Prisma.AccountReceivableGetPayload<
     dueDate: receivable.dueDate,
     paymentTermDays: receivable.paymentTermDays,
     status: receivable.status,
+    isOverdue: isOverdue(receivable.status, receivable.dueDate, tenantCurrentCalendarDate),
     recognizedAt: receivable.recognizedAt,
     settledAt: receivable.settledAt,
     cancelledAt: receivable.cancelledAt,
