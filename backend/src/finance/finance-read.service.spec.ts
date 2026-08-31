@@ -20,6 +20,99 @@ describe("FinanceReadService", () => {
     const service = new FinanceReadService(prisma as unknown as PrismaService);
     await expect(service.getPaymentDetail("tenant-a", "payment-other")).rejects.toBeInstanceOf(NotFoundException);
   });
+
+  it("paginates ARs with customer, status, currency, and inclusive due-date filters", async () => {
+    const findMany = jest.fn().mockResolvedValue([receivable()]);
+    const count = jest.fn().mockResolvedValue(21);
+    const prisma = { accountReceivable: { findMany, count } };
+    const service = new FinanceReadService(prisma as unknown as PrismaService);
+
+    await expect(service.listAccountReceivables("tenant-a", {
+      page: 2, pageSize: 10, customerId: "customer-a", status: "PARTIALLY_SETTLED", currency: "CRC",
+      dueDateFrom: "2026-08-01", dueDateTo: "2026-08-31",
+    })).resolves.toMatchObject({
+      total: 21, page: 2, pageSize: 10, totalPages: 3,
+      accountReceivables: [{ id: "ar-a", originalAmount: "10.12345", outstandingAmount: "3.33333", source: { billingDocumentId: "document-a", sourceNumber: "001" } }],
+    });
+
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ tenantId: "tenant-a", customerId: "customer-a", status: "PARTIALLY_SETTLED", currencyCode: "CRC", dueDate: { gte: new Date("2026-08-01T00:00:00.000Z"), lte: new Date("2026-08-31T00:00:00.000Z") } }),
+      skip: 10, take: 10,
+    }));
+    expect(count).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ tenantId: "tenant-a" }) }));
+  });
+
+  it("keeps AR list reads tenant-scoped", async () => {
+    const findMany = jest.fn().mockResolvedValue([]);
+    const count = jest.fn().mockResolvedValue(0);
+    const service = new FinanceReadService({ accountReceivable: { findMany, count } } as unknown as PrismaService);
+
+    await service.listAccountReceivables("tenant-auth", {});
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { tenantId: "tenant-auth" } }));
+  });
+
+  it("groups customer open and partial balances by currency with exact serialized amounts", async () => {
+    jest.useFakeTimers().setSystemTime(new Date("2026-08-31T17:00:00.000Z"));
+    const groupBy = jest.fn()
+      .mockResolvedValueOnce([
+        { currencyCode: "CRC", _sum: { outstandingAmount: new Prisma.Decimal("3.33333") }, _count: { _all: 2 } },
+        { currencyCode: "USD", _sum: { outstandingAmount: new Prisma.Decimal("9.87654") }, _count: { _all: 1 } },
+      ])
+      .mockResolvedValueOnce([
+        { currencyCode: "CRC", _sum: { outstandingAmount: new Prisma.Decimal("1.11111") }, _count: { _all: 1 } },
+      ]);
+    const findUnique = jest.fn().mockResolvedValue({ fiscalTimezone: "America/Costa_Rica" });
+    const service = new FinanceReadService({ accountReceivable: { groupBy }, tenantBillingConfiguration: { findUnique } } as unknown as PrismaService);
+
+    await expect(service.getCustomerFinancialBalance("tenant-a", "customer-a")).resolves.toEqual({
+      customerId: "customer-a",
+      balances: [
+        { currencyCode: "CRC", totalOutstandingAmount: "3.33333", openOrPartiallySettledCount: 2, overdueOutstandingAmount: "1.11111", overdueCount: 1 },
+        { currencyCode: "USD", totalOutstandingAmount: "9.87654", openOrPartiallySettledCount: 1, overdueOutstandingAmount: "0", overdueCount: 0 },
+      ],
+    });
+
+    expect(groupBy).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      where: { tenantId: "tenant-a", customerId: "customer-a", status: { in: ["OPEN", "PARTIALLY_SETTLED"] } },
+    }));
+    expect(groupBy).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      where: { tenantId: "tenant-a", customerId: "customer-a", status: { in: ["OPEN", "PARTIALLY_SETTLED"] }, dueDate: { lt: new Date("2026-08-31T00:00:00.000Z") } },
+    }));
+    expect(findUnique).toHaveBeenCalledWith({ where: { tenantId: "tenant-a" }, select: { fiscalTimezone: true } });
+    jest.useRealTimers();
+  });
+
+  it("does not mark an AR due today in the tenant timezone overdue after UTC rolls over", async () => {
+    jest.useFakeTimers().setSystemTime(new Date("2026-09-01T02:30:00.000Z")); // Aug 31 in Costa Rica
+    const groupBy = jest.fn().mockResolvedValue([]);
+    const service = new FinanceReadService({
+      tenantBillingConfiguration: { findUnique: jest.fn().mockResolvedValue({ fiscalTimezone: "America/Costa_Rica" }) },
+      accountReceivable: { groupBy },
+    } as unknown as PrismaService);
+
+    await service.getCustomerFinancialBalance("tenant-a", "customer-a");
+
+    expect(groupBy).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      where: expect.objectContaining({ dueDate: { lt: new Date("2026-08-31T00:00:00.000Z") } }),
+    }));
+    jest.useRealTimers();
+  });
+
+  it("marks ARs due before the tenant current calendar date overdue", async () => {
+    jest.useFakeTimers().setSystemTime(new Date("2026-08-31T17:00:00.000Z"));
+    const groupBy = jest.fn().mockResolvedValue([]);
+    const service = new FinanceReadService({
+      tenantBillingConfiguration: { findUnique: jest.fn().mockResolvedValue({ fiscalTimezone: "America/Costa_Rica" }) },
+      accountReceivable: { groupBy },
+    } as unknown as PrismaService);
+
+    await service.getCustomerFinancialBalance("tenant-a", "customer-a");
+
+    expect(groupBy).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      where: expect.objectContaining({ dueDate: { lt: new Date("2026-08-31T00:00:00.000Z") } }),
+    }));
+    jest.useRealTimers();
+  });
 });
 
 function payment() {
@@ -27,5 +120,13 @@ function payment() {
     id: "payment-a", customerId: "customer-a", payerDisplayName: "Payer", payerIdentificationType: null, payerIdentificationNumber: null,
     currencyCode: "CRC", receivedAmount: new Prisma.Decimal("10.12345"), availableAmount: new Prisma.Decimal("6.00000"), receivedAt: new Date(), paymentMethod: "CASH", externalReference: null, description: null, status: "PARTIALLY_ALLOCATED", cancelledAt: null,
     allocations: [{ id: "allocation-a", accountReceivableId: "ar-a", amount: new Prisma.Decimal("4.12345"), status: "ACTIVE", allocatedAt: new Date(), reversal: null, accountReceivable: { id: "ar-a", currencyCode: "CRC", originalAmount: new Prisma.Decimal("10"), outstandingAmount: new Prisma.Decimal("5.87655"), status: "PARTIALLY_SETTLED" } }],
+  };
+}
+
+function receivable() {
+  return {
+    id: "ar-a", customerId: "customer-a", debtorDisplayName: "Debtor", debtorIdentificationType: "01", debtorIdentificationNumber: "123",
+    currencyCode: "CRC", originalAmount: new Prisma.Decimal("10.12345"), outstandingAmount: new Prisma.Decimal("3.33333"), dueDate: new Date("2026-08-15T00:00:00.000Z"), status: "PARTIALLY_SETTLED", recognizedAt: new Date("2026-08-01T00:00:00.000Z"), settledAt: null,
+    sourceType: "BILLING_DOCUMENT", sourceId: "document-a", sourceNumber: "001", sourceDocumentType: "01",
   };
 }

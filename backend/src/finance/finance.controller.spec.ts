@@ -96,6 +96,19 @@ describe("FinanceController", () => {
     await expect(pipe.transform({ ...valid, receivedAmount: 123.12345 }, { type: "body", metatype: RegisterPaymentDto })).rejects.toBeDefined();
     await expect(pipe.transform({ ...valid, tenantId: "tenant-other" }, { type: "body", metatype: RegisterPaymentDto })).rejects.toBeDefined();
   });
+
+  it("delegates operational AR reads and balance summaries using only the authenticated tenant", async () => {
+    const c = context();
+    const page = { accountReceivables: [], total: 0, page: 1, pageSize: 20, totalPages: 0 };
+    const balance = { customerId: "customer-a", balances: [] };
+    c.reads.listAccountReceivables.mockResolvedValue(page);
+    c.reads.getCustomerFinancialBalance.mockResolvedValue(balance);
+
+    await expect(c.controller.listAccountReceivables(request("tenant-auth"), { customerId: "customer-a" })).resolves.toBe(page);
+    await expect(c.controller.getCustomerFinancialBalance(request("tenant-auth"), "customer-a")).resolves.toBe(balance);
+    expect(c.reads.listAccountReceivables).toHaveBeenCalledWith("tenant-auth", { customerId: "customer-a" });
+    expect(c.reads.getCustomerFinancialBalance).toHaveBeenCalledWith("tenant-auth", "customer-a");
+  });
 });
 
 function context() {
@@ -103,7 +116,7 @@ function context() {
   const allocations = { allocate: jest.fn().mockResolvedValue(undefined) };
   const reversals = { reverse: jest.fn() };
   const cancellations = { cancel: jest.fn() };
-  const reads = { paymentSummary: jest.fn((value) => ({ id: value.id, receivedAmount: value.receivedAmount.toFixed(), availableAmount: value.availableAmount.toFixed() })), getPaymentDetail: jest.fn(), getPaymentIdForAllocation: jest.fn(), getAccountReceivableDetail: jest.fn() };
+  const reads = { paymentSummary: jest.fn((value) => ({ id: value.id, receivedAmount: value.receivedAmount.toFixed(), availableAmount: value.availableAmount.toFixed() })), getPaymentDetail: jest.fn(), getPaymentIdForAllocation: jest.fn(), getAccountReceivableDetail: jest.fn(), listAccountReceivables: jest.fn(), getCustomerFinancialBalance: jest.fn() };
   return { registrations, allocations, reversals, cancellations, reads, controller: new FinanceController(registrations as never, allocations as never, reversals as never, cancellations as never, reads as never) };
 }
 

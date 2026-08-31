@@ -1,13 +1,18 @@
 import { Transform, Type } from "class-transformer";
+import { AccountReceivableStatus, Currency } from "@prisma/client";
 import {
   ArrayMinSize,
   ArrayMaxSize,
   IsArray,
   IsDateString,
+  IsEnum,
+  IsInt,
   IsOptional,
   IsString,
   Matches,
   MaxLength,
+  Max,
+  Min,
   ValidateNested,
 } from "class-validator";
 
@@ -44,4 +49,21 @@ export class AllocatePaymentDto {
 export class ReversePaymentAllocationDto {
   @Transform(trim) @IsString() @MaxLength(200) @Matches(/\S/) reversalDeduplicationKey!: string;
   @Transform(trim) @IsString() @MaxLength(500) @Matches(/\S/) reason!: string;
+}
+
+export class ListAccountReceivablesDto {
+  @IsOptional() @Transform(({ value }) => Number.parseInt(String(value), 10)) @IsInt() @Min(1)
+  page?: number;
+  @IsOptional() @Transform(({ value }) => Number.parseInt(String(value), 10)) @IsInt() @Min(1) @Max(100)
+  pageSize?: number;
+  @IsOptional() @Transform(trim) @IsString() @MaxLength(191) @Matches(/\S/)
+  customerId?: string;
+  @IsOptional() @IsEnum(AccountReceivableStatus)
+  status?: AccountReceivableStatus;
+  @IsOptional() @IsEnum(Currency)
+  currency?: Currency;
+  @IsOptional() @IsDateString({ strict: true }) @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  dueDateFrom?: string;
+  @IsOptional() @IsDateString({ strict: true }) @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  dueDateTo?: string;
 }

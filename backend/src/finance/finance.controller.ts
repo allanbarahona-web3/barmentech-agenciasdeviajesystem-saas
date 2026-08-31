@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
 import { Prisma, UserRole } from "@prisma/client";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { Roles } from "../auth/roles.decorator";
@@ -7,7 +7,7 @@ import { PaymentAllocationReversalService } from "./payment-allocation-reversal.
 import { PaymentAllocationService } from "./payment-allocation.service";
 import { PaymentCancellationService } from "./payment-cancellation.service";
 import { PaymentRegistrationService } from "./payment-registration.service";
-import { AllocatePaymentDto, RegisterPaymentDto, ReversePaymentAllocationDto } from "./dto/finance.dto";
+import { AllocatePaymentDto, ListAccountReceivablesDto, RegisterPaymentDto, ReversePaymentAllocationDto } from "./dto/finance.dto";
 import { translateFinanceError } from "./finance.errors";
 import { FinanceReadService } from "./finance-read.service";
 
@@ -118,6 +118,18 @@ export class FinanceController {
     @Param("accountReceivableId") accountReceivableId: string,
   ) {
     return this.reads.getAccountReceivableDetail(request.user.tenantId, accountReceivableId);
+  }
+
+  @Get("account-receivables")
+  @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.CONTADOR)
+  listAccountReceivables(@Req() request: FinanceRequest, @Query() query: ListAccountReceivablesDto) {
+    return this.reads.listAccountReceivables(request.user.tenantId, query);
+  }
+
+  @Get("customers/:customerId/financial-balance")
+  @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.CONTADOR)
+  getCustomerFinancialBalance(@Req() request: FinanceRequest, @Param("customerId") customerId: string) {
+    return this.reads.getCustomerFinancialBalance(request.user.tenantId, customerId);
   }
 
   @Get("payments/:paymentId")
