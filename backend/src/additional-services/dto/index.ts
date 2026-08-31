@@ -1,4 +1,5 @@
 export * from "./calculate-additional-service-price.dto";
+export * from "./calculate-many-additional-service-prices.dto";
 export * from "./commercial-proposal-pdf.dto";
 export * from "./commercial-proposal-preview.dto";
 export * from "./create-additional-service-order.dto";
@@ -9,6 +10,9 @@ export * from "./list-additional-service-pricing-configurations.dto";
 export * from "./request-new-supplier.dto";
 export * from "./update-additional-service-pricing-configuration.dto";
 export * from "./update-additional-service-pricing-configuration-status.dto";
+export * from "./create-additional-service-fiscal-profile.dto";
+export * from "./update-additional-service-fiscal-profile.dto";
+export * from "./update-additional-service-fiscal-profile-status.dto";
 export * from "./create-supplier.dto";
 export * from "./update-supplier.dto";
 export * from "./send-commercial-proposal.dto";

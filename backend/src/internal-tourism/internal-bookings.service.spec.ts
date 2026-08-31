@@ -6,6 +6,7 @@ import { EmailService } from '../email/email.service';
 import { CreateInternalBookingDto } from './dto';
 import { Decimal } from '@prisma/client/runtime/library';
 import { MockFactory } from './test-helpers.mock';
+import { InternalTourBookingParticipantRole } from './enums';
 
 describe('InternalBookingsService', () => {
   let service: InternalBookingsService;
@@ -195,7 +196,7 @@ describe('InternalBookingsService', () => {
     it('should filter by trip id', async () => {
       jest.spyOn(prismaService.internalTourBooking, 'findMany').mockResolvedValue([mockBooking]);
 
-      await service.listBookings(mockTenantId, { tripId: 'trip-123' });
+      await service.listBookings(mockTenantId, { internalTripId: 'trip-123' });
 
       expect(prismaService.internalTourBooking.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -341,6 +342,7 @@ describe('InternalBookingsService', () => {
         const code = await (service as any).generateBookingCode();
 
         expect(code).toMatch(/^IT-\d{6}-\d{3}$/);
+      });
     });
 
     describe('generateInvoiceNumber', () => {
@@ -377,12 +379,12 @@ describe('InternalBookingsService', () => {
       jest.spyOn(emailService, 'sendEmail').mockResolvedValue({} as any);
 
       const result = await service.createBooking(mockTenantId, mockUserId, mockUserName, {
-        ...{
-          internalTripId: 'trip-123',
-          clientId: 'client-123',
-          participantCount: 3,
-          notes: null,
-        },
+        internalTripId: 'trip-123',
+        participants: [
+          { clientId: 'client-123', role: InternalTourBookingParticipantRole.HOLDER },
+          { clientId: 'client-456', role: InternalTourBookingParticipantRole.COMPANION },
+          { clientId: 'client-789', role: InternalTourBookingParticipantRole.COMPANION },
+        ],
       });
 
       expect(result.booking.totalAmount).toEqual(new Decimal('270000'));

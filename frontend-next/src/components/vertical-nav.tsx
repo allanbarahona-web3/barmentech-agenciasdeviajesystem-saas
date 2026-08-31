@@ -246,6 +246,15 @@ export function VerticalNav() {
             icon: "💰",
             adminOnly: true,
             items: [
+              ...(isAdmin || role === "FACTURACION_COBROS"
+                ? [
+                    {
+                      href: "/fiscal-billing/sales-orders",
+                      label: "Órdenes por facturar",
+                      icon: "🧾",
+                    },
+                  ]
+                : []),
               {
                 href: "/billing",
                 label: "Estados de cuenta",
@@ -332,6 +341,12 @@ export function VerticalNav() {
               },
               ...(isAdmin
                 ? [
+                    {
+                      href: "/admin/fiscal-billing",
+                      label: "Configuración fiscal",
+                      icon: "🧾",
+                      adminOnly: true,
+                    },
                     {
                       href: "/admin/bank-accounts",
                       label: "Cuentas Bancarias",

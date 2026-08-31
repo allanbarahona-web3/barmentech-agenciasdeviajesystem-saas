@@ -5,6 +5,7 @@ import { PrismaService } from "../../prisma/prisma.service";
 import {
   AdditionalServiceCatalogAdminRecord,
   AdditionalServiceCatalogRecord,
+  AdditionalServiceFiscalProfileRecord,
   AdditionalServiceOrderDashboardPageRecord,
   AdditionalServiceOrderDashboardQuery,
   AdditionalServiceOrderRecord,
@@ -18,10 +19,12 @@ import {
   AdditionalServiceTravelReference,
   CreateAdditionalServiceOrderData,
   CreateAdditionalServiceCatalogItemData,
+  CreateAdditionalServiceFiscalProfileData,
   CreateAdditionalServicePricingConfigurationData,
   CreateSupplierData,
   SupplierRecord,
   UpdateAdditionalServicePricingConfigurationData,
+  UpdateAdditionalServiceFiscalProfileData,
   UpdateSupplierData,
 } from "./additional-services.repository.interface";
 
@@ -51,6 +54,12 @@ interface AdditionalServicesPrismaClient {
     findMany(args: unknown): Promise<unknown>;
   };
   additionalServicePricingConfiguration: {
+    create(args: unknown): Promise<unknown>;
+    findFirst(args: unknown): Promise<unknown>;
+    findMany(args: unknown): Promise<unknown>;
+    update(args: unknown): Promise<unknown>;
+  };
+  additionalServiceFiscalProfile: {
     create(args: unknown): Promise<unknown>;
     findFirst(args: unknown): Promise<unknown>;
     findMany(args: unknown): Promise<unknown>;
@@ -265,6 +274,13 @@ export class PrismaAdditionalServicesRepository
     return this.findCatalogById(this.client, id);
   }
 
+  findAdditionalServiceCatalogByTenantAndId(
+    tenantId: string,
+    id: string,
+  ): Promise<AdditionalServiceCatalogRecord | null> {
+    return this.findCatalogByTenantAndId(this.client, tenantId, id);
+  }
+
   findAdditionalServiceCatalogByCode(
     tenantId: string,
     code: string,
@@ -344,6 +360,43 @@ export class PrismaAdditionalServicesRepository
     data: UpdateAdditionalServicePricingConfigurationData,
   ): Promise<AdditionalServicePricingConfigurationRecord> {
     return this.updatePricing(this.client, tenantId, id, data);
+  }
+
+  findFiscalProfileById(
+    tenantId: string,
+    id: string,
+  ): Promise<AdditionalServiceFiscalProfileRecord | null> {
+    return this.findFiscalById(this.client, tenantId, id);
+  }
+
+  findFiscalProfileByCatalogId(
+    tenantId: string,
+    additionalServiceCatalogId: string,
+  ): Promise<AdditionalServiceFiscalProfileRecord | null> {
+    return this.findFiscalByCatalogId(
+      this.client,
+      tenantId,
+      additionalServiceCatalogId,
+    );
+  }
+
+  async findFiscalProfilesByCatalogIds(tenantId: string, additionalServiceCatalogIds: string[]): Promise<AdditionalServiceFiscalProfileRecord[]> {
+    const profiles = await this.client.additionalServiceFiscalProfile.findMany({ where: { tenantId, additionalServiceCatalogId: { in: additionalServiceCatalogIds } } });
+    return (profiles as unknown[]).map((profile) => this.toFiscalProfileRecord(profile));
+  }
+
+  createFiscalProfile(
+    data: CreateAdditionalServiceFiscalProfileData,
+  ): Promise<AdditionalServiceFiscalProfileRecord> {
+    return this.createFiscal(this.client, data);
+  }
+
+  updateFiscalProfile(
+    tenantId: string,
+    id: string,
+    data: UpdateAdditionalServiceFiscalProfileData,
+  ): Promise<AdditionalServiceFiscalProfileRecord> {
+    return this.updateFiscal(this.client, tenantId, id, data);
   }
 
   findSuppliers(tenantId: string): Promise<SupplierRecord[]> {
@@ -456,6 +509,8 @@ export class PrismaAdditionalServicesRepository
         this.loadOrderDashboardPage(client, tenantId, query),
       findAdditionalServiceCatalogById: (id) =>
         this.findCatalogById(client, id),
+      findAdditionalServiceCatalogByTenantAndId: (tenantId, id) =>
+        this.findCatalogByTenantAndId(client, tenantId, id),
       findAdditionalServiceCatalogByCode: (tenantId, code) =>
         this.findCatalogByCode(client, tenantId, code),
       findAdditionalServiceCatalogsByCodes: (tenantId, codes) =>
@@ -484,6 +539,17 @@ export class PrismaAdditionalServicesRepository
       createPricingConfiguration: (data) => this.createPricing(client, data),
       updatePricingConfiguration: (tenantId, id, data) =>
         this.updatePricing(client, tenantId, id, data),
+      findFiscalProfileById: (tenantId, id) =>
+        this.findFiscalById(client, tenantId, id),
+      findFiscalProfileByCatalogId: (tenantId, catalogId) =>
+        this.findFiscalByCatalogId(client, tenantId, catalogId),
+      findFiscalProfilesByCatalogIds: async (tenantId, catalogIds) => {
+        const profiles = await client.additionalServiceFiscalProfile.findMany({ where: { tenantId, additionalServiceCatalogId: { in: catalogIds } } });
+        return (profiles as unknown[]).map((profile) => this.toFiscalProfileRecord(profile));
+      },
+      createFiscalProfile: (data) => this.createFiscal(client, data),
+      updateFiscalProfile: (tenantId, id, data) =>
+        this.updateFiscal(client, tenantId, id, data),
       findSuppliers: (tenantId) => this.findSupplierList(client, tenantId),
       findSupplierById: (tenantId, id) =>
         this.findSupplier(client, tenantId, id),
@@ -600,6 +666,23 @@ export class PrismaAdditionalServicesRepository
     })) as AdditionalServiceCatalogRecord | null;
   }
 
+  private async findCatalogByTenantAndId(
+    client: AdditionalServicesPrismaClient,
+    tenantId: string,
+    id: string,
+  ): Promise<AdditionalServiceCatalogRecord | null> {
+    return (await client.additionalServiceCatalog.findFirst({
+      where: { id, tenantId },
+      select: {
+        id: true,
+        tenantId: true,
+        code: true,
+        name: true,
+        isActive: true,
+      },
+    })) as AdditionalServiceCatalogRecord | null;
+  }
+
   private async findCatalogByCode(
     client: AdditionalServicesPrismaClient,
     tenantId: string,
@@ -657,6 +740,17 @@ export class PrismaAdditionalServicesRepository
           },
           take: 1,
         },
+        fiscalProfile: {
+          select: {
+            id: true,
+            cabysCode: true,
+            unitOfMeasureCode: true,
+            taxCode: true,
+            taxRateCode: true,
+            taxPercentage: true,
+            isActive: true,
+          },
+        },
       },
       orderBy: [{ displayOrder: "asc" }, { name: "asc" }],
     })) as Array<
@@ -670,10 +764,19 @@ export class PrismaAdditionalServicesRepository
           taxPercentage: unknown;
           isActive: boolean;
         }>;
+        fiscalProfile: {
+          id: string;
+          cabysCode: string;
+          unitOfMeasureCode: string;
+          taxCode: string | null;
+          taxRateCode: string | null;
+          taxPercentage: unknown | null;
+          isActive: boolean;
+        } | null;
       }
     >;
 
-    return catalog.map(({ pricingConfigurations, ...item }) => {
+    return catalog.map(({ pricingConfigurations, fiscalProfile, ...item }) => {
       const pricingConfiguration = pricingConfigurations[0];
 
       return {
@@ -683,6 +786,15 @@ export class PrismaAdditionalServicesRepository
               ...pricingConfiguration,
               marginValue: String(pricingConfiguration.marginValue),
               taxPercentage: String(pricingConfiguration.taxPercentage),
+            }
+          : null,
+        fiscalProfile: fiscalProfile
+          ? {
+              ...fiscalProfile,
+              taxPercentage:
+                fiscalProfile.taxPercentage === null
+                  ? null
+                  : String(fiscalProfile.taxPercentage),
             }
           : null,
       };
@@ -858,6 +970,67 @@ export class PrismaAdditionalServicesRepository
       });
 
     return this.toPricingConfigurationRecord(configuration);
+  }
+
+  private async findFiscalById(
+    client: AdditionalServicesPrismaClient,
+    tenantId: string,
+    id: string,
+  ): Promise<AdditionalServiceFiscalProfileRecord | null> {
+    const profile = await client.additionalServiceFiscalProfile.findFirst({
+      where: { id, tenantId },
+    });
+    return profile ? this.toFiscalProfileRecord(profile) : null;
+  }
+
+  private async findFiscalByCatalogId(
+    client: AdditionalServicesPrismaClient,
+    tenantId: string,
+    additionalServiceCatalogId: string,
+  ): Promise<AdditionalServiceFiscalProfileRecord | null> {
+    const profile = await client.additionalServiceFiscalProfile.findFirst({
+      where: { tenantId, additionalServiceCatalogId },
+    });
+    return profile ? this.toFiscalProfileRecord(profile) : null;
+  }
+
+  private async createFiscal(
+    client: AdditionalServicesPrismaClient,
+    data: CreateAdditionalServiceFiscalProfileData,
+  ): Promise<AdditionalServiceFiscalProfileRecord> {
+    const profile = await client.additionalServiceFiscalProfile.create({
+      data: {
+        ...data,
+        taxPercentage:
+          data.taxPercentage === null
+            ? null
+            : new Decimal(data.taxPercentage),
+      },
+    });
+    return this.toFiscalProfileRecord(profile);
+  }
+
+  private async updateFiscal(
+    client: AdditionalServicesPrismaClient,
+    tenantId: string,
+    id: string,
+    data: UpdateAdditionalServiceFiscalProfileData,
+  ): Promise<AdditionalServiceFiscalProfileRecord> {
+    const profile = await client.additionalServiceFiscalProfile.update({
+      where: { id, tenantId },
+      data: {
+        ...data,
+        ...(data.taxPercentage !== undefined
+          ? {
+              taxPercentage:
+                data.taxPercentage === null
+                  ? null
+                  : new Decimal(data.taxPercentage),
+            }
+          : {}),
+      },
+    });
+    return this.toFiscalProfileRecord(profile);
   }
 
   private async findSupplierList(
@@ -1390,11 +1563,34 @@ export class PrismaAdditionalServicesRepository
       marginType:
         configuration.marginType as AdditionalServicePricingConfigurationRecord["marginType"],
       marginValue: String(configuration.marginValue),
-      taxPercentage: String(configuration.taxPercentage),
+      taxPercentage: new Decimal(String(configuration.taxPercentage)).toFixed(4),
       isActive: Boolean(configuration.isActive),
       createdAt: configuration.createdAt as Date,
       updatedAt: configuration.updatedAt as Date,
       additionalServiceCatalog: configuration.additionalServiceCatalog,
+    };
+  }
+
+  private toFiscalProfileRecord(
+    value: unknown,
+  ): AdditionalServiceFiscalProfileRecord {
+    const profile = value as Record<string, unknown>;
+    return {
+      id: String(profile.id),
+      tenantId: String(profile.tenantId),
+      additionalServiceCatalogId: String(profile.additionalServiceCatalogId),
+      cabysCode: String(profile.cabysCode),
+      unitOfMeasureCode: String(profile.unitOfMeasureCode),
+      taxCode: profile.taxCode === null ? null : String(profile.taxCode),
+      taxRateCode:
+        profile.taxRateCode === null ? null : String(profile.taxRateCode),
+      taxPercentage:
+        profile.taxPercentage === null
+          ? null
+          : new Decimal(String(profile.taxPercentage)).toFixed(4),
+      isActive: Boolean(profile.isActive),
+      createdAt: profile.createdAt as Date,
+      updatedAt: profile.updatedAt as Date,
     };
   }
 

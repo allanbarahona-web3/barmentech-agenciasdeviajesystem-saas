@@ -28,6 +28,7 @@ export class PackageCompletedWorker implements OnModuleInit {
       PACKAGE_COMPLETED_WORKER_REGISTRATION_KEY,
       PLATFORM_QUEUE_KEYS.PACKAGE_COMPLETED,
       (job: Job<JobEnvelope<PackageCompletedJobPayload>>) => this.process(job),
+      { jobNames: PACKAGE_COMPLETED_JOB_NAME },
     );
   }
 

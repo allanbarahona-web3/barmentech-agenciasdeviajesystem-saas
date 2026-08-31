@@ -1,4 +1,5 @@
 import { IsEmail, IsNotEmpty, IsOptional, IsString, MaxLength } from "class-validator";
+import type { ClientIdentificationType } from "../client-identification";
 
 /**
  * CreateCustomerDto
@@ -18,9 +19,9 @@ export class CreateCustomerDto {
   idNumber!: string;
 
   @IsString()
-  @IsOptional()
+  @IsNotEmpty()
   @MaxLength(50)
-  idType?: string | null;
+  idType!: ClientIdentificationType;
 
   @IsEmail()
   @IsNotEmpty()

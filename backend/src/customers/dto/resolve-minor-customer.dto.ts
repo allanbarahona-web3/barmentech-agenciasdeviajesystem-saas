@@ -5,6 +5,7 @@ import {
   IsString,
   MaxLength,
 } from "class-validator";
+import type { ClientIdentificationType } from "../client-identification";
 
 export class ResolveMinorCustomerDto {
   @IsString()
@@ -15,7 +16,7 @@ export class ResolveMinorCustomerDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(50)
-  idType!: string;
+  idType!: ClientIdentificationType;
 
   @IsString()
   @IsNotEmpty()

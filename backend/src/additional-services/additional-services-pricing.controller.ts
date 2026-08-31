@@ -9,7 +9,10 @@ import {
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { Roles } from "../auth/roles.decorator";
 import { RolesGuard } from "../auth/roles.guard";
-import { CalculateAdditionalServicePriceDto } from "./dto";
+import {
+  CalculateAdditionalServicePriceDto,
+  CalculateManyAdditionalServicePricesDto,
+} from "./dto";
 import { PricingEngineBusinessErrorFilter } from "./infrastructure/pricing-engine-business-error.filter";
 import { AdditionalServicesPricingService } from "./additional-services-pricing.service";
 
@@ -34,5 +37,13 @@ export class AdditionalServicesPricingController {
     @Body() input: CalculateAdditionalServicePriceDto,
   ) {
     return this.pricingService.calculate(req.user.tenantId, input);
+  }
+
+  @Post("calculate-many")
+  calculateMany(
+    @Req() req: PricingRequest,
+    @Body() input: CalculateManyAdditionalServicePricesDto,
+  ) {
+    return this.pricingService.calculateMany(req.user.tenantId, input.lines);
   }
 }

@@ -28,6 +28,11 @@ import { JobDispatcherModule } from "./infrastructure/job-dispatcher";
 import { AdditionalServicesModule } from "./additional-services";
 import { TravelContextModule } from "./travel-context/travel-context.module";
 import { GeneratedDocumentsModule } from "./generated-documents";
+import { FiscalCatalogModule } from "./fiscal-catalogs/fiscal-catalog.module";
+import { FiscalBillingModule } from "./fiscal-billing/fiscal-billing.module";
+import { OfficialExchangeRateModule } from "./official-exchange-rates/official-exchange-rate.module";
+import { TerritorialCatalogModule } from "./territorial-catalogs/territorial-catalog.module";
+import { FinanceModule } from "./finance/finance.module";
 
 @Module({
   controllers: [AppController],
@@ -65,6 +70,11 @@ import { GeneratedDocumentsModule } from "./generated-documents";
     AdditionalServicesModule,
     TravelContextModule,
     GeneratedDocumentsModule,
+    FiscalCatalogModule,
+    FiscalBillingModule,
+    OfficialExchangeRateModule,
+    TerritorialCatalogModule,
+    FinanceModule,
   ],
   providers: [
     {

@@ -1,6 +1,8 @@
+import type { ClientIdentificationType } from '@/features/customers/client-identification';
+
 export type ItineraryKind = "opening" | "custom" | "closing";
 
-export type IdType = "Cedula" | "Pasaporte" | "DIMEX";
+export type IdType = ClientIdentificationType;
 
 export type CivilStatus = "Soltero" | "Casado" | "Divorciado" | "Viudo";
 

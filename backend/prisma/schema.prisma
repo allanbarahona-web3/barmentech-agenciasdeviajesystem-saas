@@ -86,10 +86,27 @@ model Tenant {
   additionalServiceOrderParticipants AdditionalServiceOrderParticipant[]
   additionalServiceCatalogItems      AdditionalServiceCatalog[]
   additionalServicePricingConfigs    AdditionalServicePricingConfiguration[]
+  additionalServiceFiscalProfiles    AdditionalServiceFiscalProfile[]
   suppliers                          Supplier[]
   generatedDocuments                 GeneratedDocument[]
   salesOrders                        SalesOrder[]
   salesOrderLines                    SalesOrderLine[]
+  billingDocuments                   BillingDocument[]
+  billingDocumentArtifacts           BillingDocumentArtifact[]
+  billingDocumentLines               BillingDocumentLine[]
+  billingLineTaxes                   BillingLineTax[]
+  billingLineTaxExemptions           BillingLineTaxExemption[]
+  billingDocumentReferences          BillingDocumentReference[]
+  billingDocumentPaymentMethods      BillingDocumentPaymentMethod[]
+  billingConfiguration               TenantBillingConfiguration?
+  fiscalIssuers                      FiscalIssuer[]
+  fiscalIssuerEconomicActivities     FiscalIssuerEconomicActivity[]
+  billingDocumentNumberSequences     BillingDocumentNumberSequence[]
+  billingOutboxEvents                BillingOutboxEvent[]
+  accountReceivables                 AccountReceivable[]
+  payments                           Payment[]
+  paymentAllocations                 PaymentAllocation[]
+  paymentAllocationReversals         PaymentAllocationReversal[]
 
   @@map("tenants")
 }
@@ -137,25 +154,26 @@ model GeneratedDocumentAccessToken {
 }
 
 model User {
-  id                         String                   @id @default(cuid())
-  email                      String                   @unique
-  fullName                   String
-  passwordHash               String
-  isActive                   Boolean                  @default(true)
-  createdAt                  DateTime                 @default(now())
-  updatedAt                  DateTime                 @updatedAt
-  activeJti                  String?
-  activeAt                   DateTime?
-  mustChangePassword         Boolean                  @default(false)
-  tenantId                   String?
-  role                       UserRole                 @default(AGENT)
-  tenant                     Tenant?                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  attendance_corrections     AttendanceCorrection[]
-  attendance_daily_summaries AttendanceDailySummary[]
-  attendance_entries         AttendanceEntry[]
-  employee                   Employee?
-  passwordResetTokens        PasswordResetToken[]
-  assignedCustomers          Client[]                 @relation("CustomerAssignedTo")
+  id                           String                   @id @default(cuid())
+  email                        String                   @unique
+  fullName                     String
+  passwordHash                 String
+  isActive                     Boolean                  @default(true)
+  createdAt                    DateTime                 @default(now())
+  updatedAt                    DateTime                 @updatedAt
+  activeJti                    String?
+  activeAt                     DateTime?
+  mustChangePassword           Boolean                  @default(false)
+  tenantId                     String?
+  role                         UserRole                 @default(AGENT)
+  tenant                       Tenant?                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  attendance_corrections       AttendanceCorrection[]
+  attendance_daily_summaries   AttendanceDailySummary[]
+  attendance_entries           AttendanceEntry[]
+  employee                     Employee?
+  passwordResetTokens          PasswordResetToken[]
+  assignedCustomers            Client[]                 @relation("CustomerAssignedTo")
+  fiscalCatalogReleasesCreated FiscalCatalogRelease[]
 
   @@index([tenantId])
 }
@@ -313,6 +331,10 @@ model Client {
   city                                 String?
   country                              String?
   postalCode                           String?
+  provinceCode                         String?                             @db.VarChar(1)
+  cantonCode                           String?                             @db.VarChar(2)
+  districtCode                         String?                             @db.VarChar(2)
+  neighborhoodCode                     String?                             @db.VarChar(2)
   secondaryEmail                       String?
   secondaryPhone                       String?
   emergencyContactRelationship         String?
@@ -341,8 +363,10 @@ model Client {
   assignedTo                           User?                               @relation("CustomerAssignedTo", fields: [assignedToUserId], references: [id])
   additionalServiceOrderParticipations AdditionalServiceOrderParticipant[]
   additionalServiceQuoteOrders         AdditionalServiceOrder[]            @relation("AdditionalServiceQuoteCustomer")
+  billingDocuments                     BillingDocument[]                   @relation("BillingDocumentCustomer")
 
   @@unique([tenantId, idType, idNumber])
+  @@unique([id, tenantId], map: "Client_id_tenantId_key")
   @@index([fullName])
   @@index([email])
   @@index([tenantId])
@@ -1263,6 +1287,11 @@ enum Currency {
   CRC
 }
 
+enum OfficialExchangeRateType {
+  REFERENCE_BUY
+  REFERENCE_SELL
+}
+
 enum AdditionalServiceExchangeRateType {
   SELL
 }
@@ -1282,6 +1311,30 @@ enum AdditionalServiceMarginType {
   PERCENTAGE
 }
 
+enum FiscalItemCategory {
+  SERVICE
+  MERCHANDISE
+}
+
+enum FiscalCatalogType {
+  CABYS
+  ELECTRONIC_INVOICE_CODING
+}
+
+enum FiscalCatalogReleaseStatus {
+  DRAFT
+  VALIDATED
+  ACTIVE
+  RETIRED
+}
+
+enum TerritorialCatalogReleaseStatus {
+  DRAFT
+  VALIDATED
+  ACTIVE
+  RETIRED
+}
+
 model AdditionalServiceCatalog {
   id                    String                                  @id @default(cuid())
   tenantId              String
@@ -1291,12 +1344,15 @@ model AdditionalServiceCatalog {
   icon                  String?
   color                 String?
   displayOrder          Int                                     @default(0)
+  fiscalItemCategory    FiscalItemCategory                      @default(SERVICE)
   isActive              Boolean                                 @default(true)
   createdAt             DateTime                                @default(now())
   updatedAt             DateTime                                @updatedAt
   tenant                Tenant                                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   pricingConfigurations AdditionalServicePricingConfiguration[]
+  fiscalProfile         AdditionalServiceFiscalProfile?
   orderLines            AdditionalServiceOrderLine[]
+  salesOrderLines       SalesOrderLine[]
 
   @@unique([tenantId, code])
   @@unique([id, tenantId])
@@ -1344,6 +1400,186 @@ model AdditionalServicePricingConfiguration {
   @@index([tenantId])
   @@index([tenantId, isActive])
   @@map("additional_service_pricing_configurations")
+}
+
+model AdditionalServiceFiscalProfile {
+  id                         String                   @id @default(cuid())
+  tenantId                   String
+  additionalServiceCatalogId String
+  cabysCode                  String                   @db.VarChar(13)
+  unitOfMeasureCode          String                   @db.VarChar(20)
+  taxCode                    String?                  @db.VarChar(4)
+  taxRateCode                String?                  @db.VarChar(4)
+  taxPercentage              Decimal?                 @db.Decimal(7, 4)
+  isActive                   Boolean                  @default(false)
+  createdAt                  DateTime                 @default(now())
+  updatedAt                  DateTime                 @updatedAt
+  tenant                     Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  additionalServiceCatalog   AdditionalServiceCatalog @relation(fields: [additionalServiceCatalogId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "additional_service_fiscal_profiles_catalog_tenant_fkey")
+
+  @@unique([additionalServiceCatalogId, tenantId], map: "additional_service_fiscal_profiles_catalog_tenant_key")
+  @@map("additional_service_fiscal_profiles")
+}
+
+model FiscalCatalogRelease {
+  id                   String                     @id @default(cuid())
+  countryCode          String                     @db.VarChar(2)
+  catalogType          FiscalCatalogType
+  version              String                     @db.VarChar(100)
+  status               FiscalCatalogReleaseStatus @default(DRAFT)
+  sourceAuthority      String                     @db.VarChar(200)
+  sourceUrl            String?                    @db.VarChar(1000)
+  sourcePublishedAt    DateTime?
+  effectiveFrom        DateTime?
+  effectiveTo          DateTime?
+  checksumSha256       String                     @db.VarChar(64)
+  originalFilename     String                     @db.VarChar(255)
+  createdByUserId      String?
+  activatedAt          DateTime?
+  createdAt            DateTime                   @default(now())
+  updatedAt            DateTime                   @updatedAt
+  createdBy            User?                      @relation(fields: [createdByUserId], references: [id], onDelete: Restrict, map: "fiscal_catalog_releases_created_by_fkey")
+  cabysEntries         FiscalCabysEntry[]
+  unitOfMeasureEntries FiscalUnitOfMeasureEntry[]
+  taxEntries           FiscalTaxEntry[]
+  taxRateEntries       FiscalTaxRateEntry[]
+
+  @@unique([countryCode, catalogType, version], map: "fiscal_catalog_releases_country_type_version_key")
+  @@unique([countryCode, catalogType, checksumSha256], map: "fiscal_catalog_releases_country_type_checksum_key")
+  @@index([countryCode, catalogType, status], map: "fiscal_catalog_releases_country_type_status_idx")
+  @@map("fiscal_catalog_releases")
+}
+
+model FiscalCabysEntry {
+  id                     String               @id @default(cuid())
+  releaseId              String
+  code                   String               @db.VarChar(13)
+  description            String               @db.Text
+  searchText             String               @db.Text
+  referenceTaxPercentage Decimal?             @db.Decimal(7, 4)
+  includesText           String?              @db.Text
+  excludesText           String?              @db.Text
+  category1Code          String?              @db.VarChar(1)
+  category1Description   String?              @db.Text
+  category2Code          String?              @db.VarChar(2)
+  category2Description   String?              @db.Text
+  category3Code          String?              @db.VarChar(3)
+  category3Description   String?              @db.Text
+  category4Code          String?              @db.VarChar(4)
+  category4Description   String?              @db.Text
+  category5Code          String?              @db.VarChar(5)
+  category5Description   String?              @db.Text
+  category6Code          String?              @db.VarChar(7)
+  category6Description   String?              @db.Text
+  category7Code          String?              @db.VarChar(9)
+  category7Description   String?              @db.Text
+  category8Code          String?              @db.VarChar(11)
+  category8Description   String?              @db.Text
+  isActive               Boolean              @default(true)
+  sourceCreatedAt        DateTime?
+  sourceEffectiveFrom    DateTime?
+  sourceDeletedAt        DateTime?
+  createdAt              DateTime             @default(now())
+  release                FiscalCatalogRelease @relation(fields: [releaseId], references: [id], onDelete: Restrict, map: "fiscal_cabys_entries_release_fkey")
+
+  @@unique([releaseId, code], map: "fiscal_cabys_entries_release_code_key")
+  @@index([releaseId, isActive, code], map: "fiscal_cabys_entries_release_active_code_idx")
+  @@map("fiscal_cabys_entries")
+}
+
+model FiscalUnitOfMeasureEntry {
+  id        String               @id @default(cuid())
+  releaseId String
+  code      String               @db.VarChar(15)
+  name      String               @db.VarChar(255)
+  isActive  Boolean              @default(true)
+  createdAt DateTime             @default(now())
+  release   FiscalCatalogRelease @relation(fields: [releaseId], references: [id], onDelete: Restrict, map: "fiscal_unit_entries_release_fkey")
+
+  @@unique([releaseId, code], map: "fiscal_unit_entries_release_code_key")
+  @@index([releaseId, isActive, code], map: "fiscal_unit_entries_release_active_code_idx")
+  @@map("fiscal_unit_of_measure_entries")
+}
+
+model FiscalTaxEntry {
+  id        String               @id @default(cuid())
+  releaseId String
+  code      String               @db.VarChar(2)
+  name      String               @db.VarChar(255)
+  isActive  Boolean              @default(true)
+  createdAt DateTime             @default(now())
+  release   FiscalCatalogRelease @relation(fields: [releaseId], references: [id], onDelete: Restrict, map: "fiscal_tax_entries_release_fkey")
+  taxRates  FiscalTaxRateEntry[]
+
+  @@unique([releaseId, code], map: "fiscal_tax_entries_release_code_key")
+  @@unique([id, releaseId], map: "fiscal_tax_entries_id_release_key")
+  @@index([releaseId, isActive, code], map: "fiscal_tax_entries_release_active_code_idx")
+  @@map("fiscal_tax_entries")
+}
+
+model FiscalTaxRateEntry {
+  id         String               @id @default(cuid())
+  releaseId  String
+  taxEntryId String
+  code       String               @db.VarChar(2)
+  name       String               @db.VarChar(255)
+  percentage Decimal              @db.Decimal(7, 4)
+  isActive   Boolean              @default(true)
+  createdAt  DateTime             @default(now())
+  release    FiscalCatalogRelease @relation(fields: [releaseId], references: [id], onDelete: Restrict, map: "fiscal_tax_rate_entries_release_fkey")
+  taxEntry   FiscalTaxEntry       @relation(fields: [taxEntryId, releaseId], references: [id, releaseId], onDelete: Restrict, map: "fiscal_tax_rate_entries_tax_release_fkey")
+
+  @@unique([releaseId, taxEntryId, code], map: "fiscal_tax_rate_entries_release_tax_code_key")
+  @@index([releaseId, taxEntryId, isActive], map: "fiscal_tax_rate_entries_release_tax_active_idx")
+  @@map("fiscal_tax_rate_entries")
+}
+
+model TerritorialCatalogRelease {
+  id                String                          @id @default(cuid())
+  countryCode       String                          @db.VarChar(2)
+  version           String                          @db.VarChar(100)
+  status            TerritorialCatalogReleaseStatus @default(DRAFT)
+  sourceAuthority   String                          @db.VarChar(200)
+  sourceUrl         String?                         @db.VarChar(1000)
+  sourcePublishedAt DateTime?
+  effectiveFrom     DateTime?
+  effectiveTo       DateTime?
+  checksumSha256    String                          @db.VarChar(64)
+  originalFilename  String                          @db.VarChar(255)
+  activatedAt       DateTime?
+  createdAt         DateTime                        @default(now())
+  updatedAt         DateTime                        @updatedAt
+  subdivisions      TerritorialSubdivision[]
+
+  @@unique([countryCode, version], map: "territorial_catalog_releases_country_version_key")
+  @@unique([countryCode, checksumSha256], map: "territorial_catalog_releases_country_checksum_key")
+  @@index([countryCode, status], map: "territorial_catalog_releases_country_status_idx")
+  @@map("territorial_catalog_releases")
+}
+
+model TerritorialSubdivision {
+  id                  String                    @id @default(cuid())
+  releaseId           String
+  parentId            String?
+  administrativeLevel Int
+  subdivisionTypeCode String                    @db.VarChar(30)
+  code                String                    @db.VarChar(20)
+  fullCode            String                    @db.VarChar(50)
+  name                String                    @db.VarChar(255)
+  searchText          String
+  isActive            Boolean                   @default(true)
+  sourceEffectiveFrom DateTime?
+  sourceEffectiveTo   DateTime?
+  createdAt           DateTime                  @default(now())
+  release             TerritorialCatalogRelease @relation(fields: [releaseId], references: [id], onDelete: Restrict, map: "territorial_subdivisions_release_fkey")
+  parent              TerritorialSubdivision?   @relation("TerritorialSubdivisionHierarchy", fields: [parentId, releaseId], references: [id, releaseId], onDelete: Restrict, map: "territorial_subdivisions_parent_release_fkey")
+  children            TerritorialSubdivision[]  @relation("TerritorialSubdivisionHierarchy")
+
+  @@unique([releaseId, fullCode], map: "territorial_subdivisions_release_full_code_key")
+  @@unique([id, releaseId], map: "territorial_subdivisions_id_release_key")
+  @@index([releaseId, parentId, isActive, administrativeLevel, fullCode], map: "territorial_subdivisions_root_read_idx")
+  @@index([releaseId, parentId, isActive, fullCode], map: "territorial_subdivisions_child_read_idx")
+  @@map("territorial_subdivisions")
 }
 
 model AdditionalServiceOrder {
@@ -1502,27 +1738,643 @@ model SalesOrder {
 }
 
 model SalesOrderLine {
-  id                    String     @id @default(cuid())
-  tenantId              String
-  salesOrderId          String
-  serviceCode           String
-  serviceName           String
-  serviceDetailsVersion Int?
-  serviceDetails        Json?
-  commercialNotes       String?
-  subtotal              Decimal    @db.Decimal(18, 4)
-  vatPercentage         Decimal    @db.Decimal(7, 4)
-  vatAmount             Decimal    @db.Decimal(18, 4)
-  total                 Decimal    @db.Decimal(18, 4)
-  participants          Json
-  createdAt             DateTime   @default(now())
-  updatedAt             DateTime   @updatedAt
-  tenant                Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  salesOrder            SalesOrder @relation(fields: [salesOrderId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  id                         String                    @id @default(cuid())
+  tenantId                   String
+  salesOrderId               String
+  additionalServiceCatalogId String?
+  fiscalItemCategory         FiscalItemCategory?
+  serviceCode                String
+  serviceName                String
+  serviceDetailsVersion      Int?
+  serviceDetails             Json?
+  commercialNotes            String?
+  subtotal                   Decimal                   @db.Decimal(18, 4)
+  vatPercentage              Decimal                   @db.Decimal(7, 4)
+  vatAmount                  Decimal                   @db.Decimal(18, 4)
+  total                      Decimal                   @db.Decimal(18, 4)
+  participants               Json
+  createdAt                  DateTime                  @default(now())
+  updatedAt                  DateTime                  @updatedAt
+  tenant                     Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  salesOrder                 SalesOrder                @relation(fields: [salesOrderId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  additionalServiceCatalog   AdditionalServiceCatalog? @relation(fields: [additionalServiceCatalogId, tenantId], references: [id, tenantId], onDelete: Restrict)
 
   @@index([tenantId])
   @@index([salesOrderId])
   @@map("sales_order_lines")
+}
+
+enum BillingMode {
+  EXTERNAL_REGISTRATION
+  ELECTRONIC_PROVIDER
+}
+
+enum BillingDocumentSourceRole {
+  PRIMARY
+  ADJUSTMENT
+}
+
+enum BillingDocumentLifecycleStatus {
+  DRAFT
+  CONFIRMED
+  SUBMITTED
+  CANCELLED
+}
+
+enum BillingProviderStatus {
+  NOT_SUBMITTED
+  PENDING
+  PROCESSED
+  FAILED
+}
+
+enum BillingProviderEnvironment {
+  sandbox
+  production
+}
+
+enum BillingTaxAuthorityStatus {
+  NOT_SUBMITTED
+  PROCESSING
+  ACCEPTED
+  REJECTED
+}
+
+enum BillingArtifactStatus {
+  NOT_GENERATED
+  PENDING
+  AVAILABLE
+  FAILED
+}
+
+enum BillingDocumentArtifactType {
+  SIGNED_FISCAL_XML
+  TAX_AUTHORITY_RESPONSE_XML
+  INTERNAL_PDF
+}
+
+enum BillingDocumentArtifactStatus {
+  PENDING
+  AVAILABLE
+  FAILED
+}
+
+model BillingDocument {
+  id                                String                           @id @default(cuid())
+  tenantId                          String
+  documentTypeCode                  String                           @db.VarChar(4)
+  billingMode                       BillingMode
+  internalNumber                    String                           @db.VarChar(50)
+  fiscalNumber                      String?                          @db.VarChar(50)
+  haciendaKey                       String?                          @db.VarChar(50)
+  haciendaRejectionDetail           String?                          @db.Text
+  customerId                        String?
+  sourceType                        String?                          @db.VarChar(50)
+  sourceId                          String?                          @db.VarChar(100)
+  sourceNumber                      String?                          @db.VarChar(100)
+  sourceRole                        BillingDocumentSourceRole        @default(PRIMARY)
+  creationDeduplicationKey          String?                          @db.VarChar(200)
+  fiscalIssuerId                    String?
+  billingDocumentNumberSequenceId   String?
+  allocatedSequenceNumber           BigInt?
+  issuanceIdempotencyKey            String?                          @db.VarChar(100)
+  providerDocumentId                String?                          @db.VarChar(255)
+  providerEnvironment               BillingProviderEnvironment?
+  providerRequestHash               String?                          @db.VarChar(64)
+  providerLastAttemptAt             DateTime?
+  providerLastErrorCode             String?                          @db.VarChar(100)
+  providerLastErrorAt               DateTime?
+  providerReconciliationRequired    Boolean                          @default(false)
+  providerStatusCheckAttempts       Int                              @default(0)
+  providerLastStatusCheckAt         DateTime?
+  providerNextStatusCheckAt         DateTime?
+  providerStatusCheckLockOwner      String?                          @db.VarChar(100)
+  providerStatusCheckLeaseUntil     DateTime?
+  providerRefreshAttempts           Int                              @default(0)
+  providerLastRefreshAt             DateTime?
+  providerNextRefreshAt             DateTime?
+  providerRefreshLockOwner          String?                          @db.VarChar(100)
+  providerRefreshLeaseUntil         DateTime?
+  schemaVersion                     String                           @db.VarChar(20)
+  fiscalCalculationPolicyVersion    String?                          @db.VarChar(100)
+  countryCode                       String                           @default("CR") @db.VarChar(2)
+  currencyCode                      String                           @db.VarChar(3)
+  exchangeRate                      Decimal?                         @db.Decimal(30, 12)
+  fiscalEmissionAt                  DateTime?
+  fiscalIssueDate                   DateTime?                        @db.Date
+  officialExchangeRateObservationId String?
+  fiscalExchangeRateEffectiveDate   DateTime?                        @db.Date
+  fiscalExchangeRateSourceAuthority String?                          @db.VarChar(100)
+  fiscalExchangeRateIndicatorCode   String?                          @db.VarChar(100)
+  issuedAt                          DateTime?
+  paymentConditionCode              String?                          @db.VarChar(4)
+  creditTermDays                    Int?
+  dueDate                           DateTime?                        @db.Date
+  lifecycleStatus                   BillingDocumentLifecycleStatus   @default(DRAFT)
+  providerStatus                    BillingProviderStatus            @default(NOT_SUBMITTED)
+  taxAuthorityStatus                BillingTaxAuthorityStatus        @default(NOT_SUBMITTED)
+  taxAuthorityFinalizedAt           DateTime?                        @db.Timestamptz(6)
+  artifactStatus                    BillingArtifactStatus            @default(NOT_GENERATED)
+  issuerName                        String
+  issuerIdentificationType          String                           @db.VarChar(4)
+  issuerIdentification              String                           @db.VarChar(30)
+  issuerEconomicActivityCode        String?                          @db.VarChar(10)
+  issuerEstablishmentCode           String?                          @db.VarChar(3)
+  issuerTerminalCode                String?                          @db.VarChar(5)
+  issuerEmail                       String?
+  issuerPhone                       String?
+  issuerAddressSnapshot             Json?
+  receiverName                      String?
+  receiverIdentificationType        String?                          @db.VarChar(4)
+  receiverIdentification            String?                          @db.VarChar(30)
+  receiverEconomicActivityCode      String?                          @db.VarChar(10)
+  receiverEmail                     String?
+  receiverPhone                     String?
+  receiverAddressSnapshot           Json?
+  grossSubtotal                     Decimal                          @db.Decimal(19, 5)
+  discountTotal                     Decimal                          @db.Decimal(19, 5)
+  taxableTotal                      Decimal                          @db.Decimal(19, 5)
+  exemptTotal                       Decimal                          @db.Decimal(19, 5)
+  exoneratedTotal                   Decimal                          @db.Decimal(19, 5)
+  grossTaxTotal                     Decimal                          @db.Decimal(19, 5)
+  exoneratedTaxTotal                Decimal                          @db.Decimal(19, 5)
+  netTaxTotal                       Decimal                          @db.Decimal(19, 5)
+  total                             Decimal                          @db.Decimal(19, 5)
+  confirmedAt                       DateTime?
+  submittedAt                       DateTime?
+  createdBy                         String?
+  createdAt                         DateTime                         @default(now())
+  updatedAt                         DateTime                         @updatedAt
+  tenant                            Tenant                           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer                          Client?                          @relation("BillingDocumentCustomer", fields: [customerId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "billing_documents_customer_tenant_fkey")
+  fiscalIssuer                      FiscalIssuer?                    @relation("BillingDocumentFiscalIssuer", fields: [fiscalIssuerId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "billing_documents_fiscal_issuer_tenant_fkey")
+  billingDocumentNumberSequence     BillingDocumentNumberSequence?   @relation("BillingDocumentAllocatedNumberSequence", fields: [billingDocumentNumberSequenceId, tenantId, fiscalIssuerId, issuerEstablishmentCode, issuerTerminalCode, documentTypeCode], references: [id, tenantId, fiscalIssuerId, establishmentCode, terminalCode, documentTypeCode], onDelete: Restrict, map: "billing_documents_number_sequence_scope_fkey")
+  artifacts                         BillingDocumentArtifact[]
+  lines                             BillingDocumentLine[]
+  references                        BillingDocumentReference[]       @relation("BillingDocumentReferences")
+  referencedBy                      BillingDocumentReference[]       @relation("ReferencedBillingDocuments")
+  paymentMethods                    BillingDocumentPaymentMethod[]
+  officialExchangeRateObservation   OfficialExchangeRateObservation? @relation("BillingDocumentOfficialExchangeRate", fields: [officialExchangeRateObservationId, fiscalExchangeRateEffectiveDate, fiscalExchangeRateSourceAuthority, fiscalExchangeRateIndicatorCode], references: [id, effectiveDate, sourceAuthority, sourceIndicatorCode], onDelete: Restrict, onUpdate: Restrict, map: "billing_documents_official_fx_snapshot_fkey")
+
+  @@unique([tenantId, internalNumber])
+  @@unique([tenantId, fiscalNumber])
+  @@unique([tenantId, haciendaKey])
+  @@unique([tenantId, creationDeduplicationKey])
+  @@unique([billingDocumentNumberSequenceId, allocatedSequenceNumber], map: "billing_documents_sequence_allocated_number_key")
+  @@unique([tenantId, issuanceIdempotencyKey], map: "billing_documents_tenant_issuance_idem_key")
+  @@unique([id, tenantId])
+  @@index([tenantId, lifecycleStatus])
+  @@index([tenantId, documentTypeCode])
+  @@index([tenantId, sourceType, sourceId])
+  @@index([tenantId, customerId], map: "billing_documents_tenant_customer_idx")
+  @@index([tenantId, fiscalIssuerId], map: "billing_documents_tenant_fiscal_issuer_idx")
+  @@index([tenantId, billingDocumentNumberSequenceId], map: "billing_documents_tenant_number_sequence_idx")
+  @@index([tenantId, providerReconciliationRequired, providerLastAttemptAt], map: "billing_docs_tenant_reconciliation_attempt_idx")
+  @@index([providerNextStatusCheckAt, taxAuthorityStatus, lifecycleStatus, providerStatus], map: "billing_docs_status_check_due_idx")
+  @@index([tenantId, taxAuthorityStatus, providerNextStatusCheckAt], map: "billing_docs_tenant_status_check_idx")
+  @@index([tenantId, taxAuthorityStatus, taxAuthorityFinalizedAt], map: "billing_docs_tenant_tax_status_finalized_idx")
+  @@index([providerStatusCheckLeaseUntil], map: "billing_docs_status_check_lease_idx")
+  @@index([providerNextRefreshAt, taxAuthorityStatus, providerReconciliationRequired], map: "billing_docs_refresh_due_idx")
+  @@index([tenantId, providerReconciliationRequired, providerNextRefreshAt], map: "billing_docs_tenant_refresh_idx")
+  @@index([providerRefreshLeaseUntil], map: "billing_docs_refresh_lease_idx")
+  @@index([officialExchangeRateObservationId], map: "billing_documents_official_fx_observation_idx")
+  @@map("billing_documents")
+}
+
+model BillingDocumentArtifact {
+  id                String                        @id @default(cuid())
+  tenantId          String
+  billingDocumentId String
+  artifactType      BillingDocumentArtifactType
+  version           Int                           @default(1)
+  status            BillingDocumentArtifactStatus @default(PENDING)
+  storageProvider   String?                       @db.VarChar(50)
+  storageKey        String?                       @db.VarChar(1024)
+  sha256            String?                       @db.VarChar(64)
+  byteSize          BigInt?
+  mimeType          String?                       @db.VarChar(100)
+  sourceEtag        String?                       @db.VarChar(255)
+  retrievedAt       DateTime?                     @db.Timestamptz(6)
+  storedAt          DateTime?                     @db.Timestamptz(6)
+  terminalErrorCode String?                       @db.VarChar(100)
+  failedAt          DateTime?                     @db.Timestamptz(6)
+  createdAt         DateTime                      @default(now())
+  updatedAt         DateTime                      @updatedAt
+  tenant            Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  billingDocument   BillingDocument               @relation(fields: [billingDocumentId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "billing_document_artifacts_document_tenant_fkey")
+
+  @@unique([tenantId, billingDocumentId, artifactType, version], map: "billing_document_artifacts_identity_key")
+  @@unique([storageProvider, storageKey], map: "billing_document_artifacts_storage_key")
+  @@unique([id, tenantId], map: "billing_document_artifacts_id_tenant_key")
+  @@index([tenantId, status, artifactType], map: "billing_document_artifacts_tenant_status_type_idx")
+  @@index([tenantId, createdAt], map: "billing_document_artifacts_tenant_created_idx")
+  @@map("billing_document_artifacts")
+}
+
+model OfficialExchangeRateObservation {
+  id                  String                   @id @default(cuid())
+  countryCode         String                   @db.VarChar(2)
+  foreignCurrencyCode String                   @db.VarChar(3)
+  localCurrencyCode   String                   @db.VarChar(3)
+  rateType            OfficialExchangeRateType
+  effectiveDate       DateTime                 @db.Date
+  value               Decimal                  @db.Decimal(30, 12)
+  sourceAuthority     String                   @db.VarChar(100)
+  sourceIndicatorCode String                   @db.VarChar(100)
+  retrievedAt         DateTime
+  sourcePublishedAt   DateTime?
+  requestIdentity     String                   @db.VarChar(200)
+  responseHash        String?                  @db.VarChar(64)
+  createdAt           DateTime                 @default(now())
+  billingDocuments    BillingDocument[]        @relation("BillingDocumentOfficialExchangeRate")
+
+  @@unique([countryCode, foreignCurrencyCode, localCurrencyCode, rateType, effectiveDate, sourceAuthority, sourceIndicatorCode], map: "official_fx_obs_authoritative_identity_key")
+  @@unique([requestIdentity], map: "official_fx_obs_request_identity_key")
+  @@unique([id, effectiveDate, sourceAuthority, sourceIndicatorCode], map: "official_fx_obs_snapshot_identity_key")
+  @@index([countryCode, foreignCurrencyCode, localCurrencyCode, rateType, effectiveDate], map: "official_fx_obs_resolution_idx")
+  @@index([sourceAuthority, sourceIndicatorCode, effectiveDate], map: "official_fx_obs_source_audit_idx")
+  @@map("official_exchange_rate_observations")
+}
+
+model BillingDocumentLine {
+  id                  String           @id @default(cuid())
+  tenantId            String
+  billingDocumentId   String
+  lineNumber          Int
+  cabysCode           String?          @db.VarChar(13)
+  itemCode            String?          @db.VarChar(50)
+  description         String
+  quantity            Decimal          @db.Decimal(18, 4)
+  unitOfMeasureCode   String           @db.VarChar(20)
+  unitPrice           Decimal          @db.Decimal(19, 5)
+  grossAmount         Decimal          @db.Decimal(19, 5)
+  discountAmount      Decimal          @db.Decimal(19, 5)
+  discountCode        String?          @db.VarChar(4)
+  discountReason      String?
+  taxableBase         Decimal          @db.Decimal(19, 5)
+  taxAmount           Decimal          @db.Decimal(19, 5)
+  exoneratedTaxAmount Decimal          @db.Decimal(19, 5)
+  netTaxAmount        Decimal          @db.Decimal(19, 5)
+  lineSubtotal        Decimal          @db.Decimal(19, 5)
+  lineTotal           Decimal          @db.Decimal(19, 5)
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+  tenant              Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  billingDocument     BillingDocument  @relation(fields: [billingDocumentId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  taxes               BillingLineTax[]
+
+  @@unique([billingDocumentId, lineNumber])
+  @@unique([id, tenantId])
+  @@index([tenantId])
+  @@map("billing_document_lines")
+}
+
+model BillingLineTax {
+  id                    String                   @id @default(cuid())
+  tenantId              String
+  billingDocumentLineId String
+  taxOrder              Int
+  taxCode               String                   @db.VarChar(4)
+  rateCode              String                   @db.VarChar(4)
+  ratePercentage        Decimal                  @db.Decimal(7, 4)
+  taxableBase           Decimal                  @db.Decimal(19, 5)
+  taxAmount             Decimal                  @db.Decimal(19, 5)
+  calculationFactor     Decimal?                 @db.Decimal(18, 8)
+  netTaxAmount          Decimal                  @db.Decimal(19, 5)
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
+  tenant                Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  billingDocumentLine   BillingDocumentLine      @relation(fields: [billingDocumentLineId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  exemption             BillingLineTaxExemption?
+
+  @@unique([billingDocumentLineId, taxOrder])
+  @@unique([id, tenantId])
+  @@index([tenantId])
+  @@map("billing_line_taxes")
+}
+
+model BillingLineTaxExemption {
+  id                          String         @id @default(cuid())
+  tenantId                    String
+  billingLineTaxId            String         @unique
+  documentTypeCode            String         @db.VarChar(4)
+  documentNumber              String         @db.VarChar(50)
+  legalArticle                String?        @db.VarChar(20)
+  legalSection                String?        @db.VarChar(20)
+  issuingInstitutionCode      String?        @db.VarChar(4)
+  issuingInstitutionName      String?
+  otherInstitutionDescription String?
+  issueDate                   DateTime       @db.Date
+  exemptedPercentage          Decimal        @db.Decimal(7, 4)
+  exemptedAmount              Decimal        @db.Decimal(19, 5)
+  createdAt                   DateTime       @default(now())
+  updatedAt                   DateTime       @updatedAt
+  tenant                      Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  billingLineTax              BillingLineTax @relation(fields: [billingLineTaxId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([billingLineTaxId, tenantId])
+  @@index([tenantId])
+  @@map("billing_line_tax_exemptions")
+}
+
+model BillingDocumentReference {
+  id                          String           @id @default(cuid())
+  tenantId                    String
+  billingDocumentId           String
+  referencedBillingDocumentId String?
+  referenceOrder              Int
+  externalDocumentKey         String?          @db.VarChar(50)
+  externalDocumentNumber      String?          @db.VarChar(50)
+  referencedDocumentTypeCode  String           @db.VarChar(4)
+  reasonCode                  String           @db.VarChar(4)
+  reasonDescription           String?
+  referenceDate               DateTime         @db.Date
+  createdAt                   DateTime         @default(now())
+  updatedAt                   DateTime         @updatedAt
+  tenant                      Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  billingDocument             BillingDocument  @relation("BillingDocumentReferences", fields: [billingDocumentId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  referencedBillingDocument   BillingDocument? @relation("ReferencedBillingDocuments", fields: [referencedBillingDocumentId, tenantId], references: [id, tenantId], onDelete: Restrict)
+
+  @@unique([billingDocumentId, referenceOrder])
+  @@index([tenantId])
+  @@index([referencedBillingDocumentId, tenantId])
+  @@map("billing_document_references")
+}
+
+model BillingDocumentPaymentMethod {
+  id                 String          @id @default(cuid())
+  tenantId           String
+  billingDocumentId  String
+  paymentMethodOrder Int
+  paymentMethodCode  String          @db.VarChar(4)
+  description        String?
+  declaredAmount     Decimal?        @db.Decimal(19, 5)
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  tenant             Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  billingDocument    BillingDocument @relation(fields: [billingDocumentId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([billingDocumentId, paymentMethodOrder])
+  @@index([tenantId])
+  @@map("billing_document_payment_methods")
+}
+
+model TenantBillingConfiguration {
+  id                          String   @id @default(cuid())
+  tenantId                    String   @unique
+  billingEnabled              Boolean  @default(false)
+  externalRegistrationEnabled Boolean  @default(false)
+  electronicIssuanceEnabled   Boolean  @default(false)
+  countryCode                 String   @default("CR") @db.VarChar(2)
+  defaultCurrencyCode         String   @default("CRC") @db.VarChar(3)
+  fiscalTimezone              String   @default("America/Costa_Rica") @db.VarChar(100)
+  fiscalSchemaVersion         String   @default("4.4") @db.VarChar(20)
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
+  tenant                      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("tenant_billing_configurations")
+}
+
+model FiscalIssuer {
+  id                             String                          @id @default(cuid())
+  tenantId                       String
+  displayName                    String
+  isActive                       Boolean                         @default(false)
+  legalName                      String
+  identificationTypeCode         String                          @db.VarChar(4)
+  identificationNumber           String                          @db.VarChar(30)
+  commercialName                 String?
+  countryCode                    String                          @default("CR") @db.VarChar(2)
+  email                          String
+  phoneCountryCode               String?                         @db.VarChar(4)
+  phoneNumber                    String?                         @db.VarChar(20)
+  provinceCode                   String                          @db.VarChar(2)
+  cantonCode                     String                          @db.VarChar(2)
+  districtCode                   String                          @db.VarChar(2)
+  neighborhoodCode               String?                         @db.VarChar(2)
+  otherAddressDetails            String
+  defaultCurrencyCode            String?                         @db.VarChar(3)
+  establishmentCode              String?                         @db.VarChar(3)
+  terminalCode                   String?                         @db.VarChar(5)
+  createdAt                      DateTime                        @default(now())
+  updatedAt                      DateTime                        @updatedAt
+  tenant                         Tenant                          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  economicActivities             FiscalIssuerEconomicActivity[]
+  billingDocumentNumberSequences BillingDocumentNumberSequence[]
+  billingDocuments               BillingDocument[]               @relation("BillingDocumentFiscalIssuer")
+
+  @@unique([id, tenantId])
+  @@index([tenantId, isActive])
+  @@index([tenantId, identificationNumber])
+  @@map("fiscal_issuers")
+}
+
+model BillingDocumentNumberSequence {
+  id                     String            @id @default(cuid())
+  tenantId               String
+  fiscalIssuerId         String
+  establishmentCode      String            @db.VarChar(3)
+  terminalCode           String            @db.VarChar(5)
+  documentTypeCode       String            @db.VarChar(4)
+  startingSequenceNumber BigInt
+  nextSequenceNumber     BigInt
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @updatedAt
+  tenant                 Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  fiscalIssuer           FiscalIssuer      @relation(fields: [fiscalIssuerId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "billing_document_number_sequences_fiscalIssuer_tenant_fkey")
+  billingDocuments       BillingDocument[] @relation("BillingDocumentAllocatedNumberSequence")
+
+  @@unique([tenantId, fiscalIssuerId, establishmentCode, terminalCode, documentTypeCode], map: "billing_document_number_sequences_scope_key")
+  @@unique([id, tenantId, fiscalIssuerId, establishmentCode, terminalCode, documentTypeCode], map: "billing_doc_num_sequences_allocation_scope_key")
+  @@map("billing_document_number_sequences")
+}
+
+model FiscalIssuerEconomicActivity {
+  id                   String       @id @default(cuid())
+  tenantId             String
+  fiscalIssuerId       String
+  economicActivityCode String       @db.VarChar(10)
+  description          String?
+  isPrimary            Boolean      @default(false)
+  displayOrder         Int          @default(0)
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+  tenant               Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  fiscalIssuer         FiscalIssuer @relation(fields: [fiscalIssuerId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([fiscalIssuerId, economicActivityCode])
+  @@index([tenantId])
+  @@index([fiscalIssuerId, displayOrder])
+  @@map("fiscal_issuer_economic_activities")
+}
+
+enum BillingOutboxStatus {
+  PENDING
+  PROCESSING
+  PROCESSED
+  FAILED
+}
+
+model BillingOutboxEvent {
+  id               String              @id @default(cuid())
+  tenantId         String
+  eventType        String              @db.VarChar(150)
+  eventVersion     Int                 @default(1)
+  aggregateType    String              @db.VarChar(100)
+  aggregateId      String              @db.VarChar(100)
+  correlationId    String?             @db.VarChar(100)
+  causationId      String?             @db.VarChar(100)
+  deduplicationKey String?             @db.VarChar(200)
+  payload          Json
+  status           BillingOutboxStatus @default(PENDING)
+  availableAt      DateTime            @default(now())
+  attemptCount     Int                 @default(0)
+  maximumAttempts  Int                 @default(5)
+  lockedAt         DateTime?
+  lockedBy         String?             @db.VarChar(100)
+  processedAt      DateTime?
+  lastAttemptAt    DateTime?
+  lastError        String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  tenant           Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, deduplicationKey])
+  @@index([tenantId, status, availableAt])
+  @@index([status, availableAt])
+  @@index([tenantId, aggregateType, aggregateId])
+  @@index([tenantId, eventType])
+  @@index([tenantId, createdAt])
+  @@index([lockedAt])
+  @@map("billing_outbox_events")
+}
+
+enum AccountReceivableStatus {
+  OPEN
+  PARTIALLY_SETTLED
+  SETTLED
+  CANCELLED
+}
+
+model AccountReceivable {
+  id                         String                  @id @default(cuid())
+  tenantId                   String
+  sourceType                 String                  @db.VarChar(100)
+  sourceId                   String                  @db.VarChar(100)
+  sourceNumber               String?                 @db.VarChar(100)
+  sourceDocumentType         String?                 @db.VarChar(50)
+  customerId                 String?
+  debtorDisplayName          String
+  debtorIdentificationType   String?                 @db.VarChar(4)
+  debtorIdentificationNumber String?                 @db.VarChar(30)
+  currencyCode               String                  @db.VarChar(3)
+  originalAmount             Decimal                 @db.Decimal(19, 5)
+  outstandingAmount          Decimal                 @db.Decimal(19, 5)
+  dueDate                    DateTime                @db.Date
+  paymentTermDays            Int?
+  status                     AccountReceivableStatus @default(OPEN)
+  recognizedAt               DateTime                @default(now())
+  settledAt                  DateTime?
+  cancelledAt                DateTime?
+  createdAt                  DateTime                @default(now())
+  updatedAt                  DateTime                @updatedAt
+  tenant                     Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  paymentAllocations         PaymentAllocation[]
+
+  @@unique([tenantId, sourceType, sourceId])
+  @@unique([id, tenantId])
+  @@index([tenantId, status, dueDate])
+  @@index([tenantId, customerId])
+  @@index([tenantId, dueDate])
+  @@index([tenantId, recognizedAt])
+  @@index([tenantId, sourceNumber])
+  @@map("account_receivables")
+}
+
+enum PaymentStatus {
+  RECEIVED
+  PARTIALLY_ALLOCATED
+  FULLY_ALLOCATED
+  CANCELLED
+}
+
+model Payment {
+  id                           String              @id @default(cuid())
+  tenantId                     String
+  registrationDeduplicationKey String              @db.VarChar(200)
+  customerId                   String?
+  payerDisplayName             String
+  payerIdentificationType      String?             @db.VarChar(4)
+  payerIdentificationNumber    String?             @db.VarChar(30)
+  currencyCode                 String              @db.VarChar(3)
+  receivedAmount               Decimal             @db.Decimal(19, 5)
+  availableAmount              Decimal             @db.Decimal(19, 5)
+  receivedAt                   DateTime
+  paymentMethod                String              @db.VarChar(50)
+  externalReference            String?             @db.VarChar(150)
+  description                  String?             @db.VarChar(500)
+  status                       PaymentStatus       @default(RECEIVED)
+  cancelledAt                  DateTime?
+  createdAt                    DateTime            @default(now())
+  updatedAt                    DateTime            @updatedAt
+  tenant                       Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  allocations                  PaymentAllocation[]
+
+  @@unique([tenantId, registrationDeduplicationKey])
+  @@unique([id, tenantId])
+  @@index([tenantId, status, receivedAt])
+  @@index([tenantId, customerId])
+  @@index([tenantId, receivedAt])
+  @@index([tenantId, externalReference])
+  @@map("payments")
+}
+
+enum PaymentAllocationStatus {
+  ACTIVE
+  REVERSED
+}
+
+model PaymentAllocation {
+  id                         String                     @id @default(cuid())
+  tenantId                   String
+  paymentId                  String
+  accountReceivableId        String
+  allocationDeduplicationKey String                     @db.VarChar(200)
+  amount                     Decimal                    @db.Decimal(19, 5)
+  status                     PaymentAllocationStatus    @default(ACTIVE)
+  allocatedAt                DateTime
+  createdAt                  DateTime                   @default(now())
+  updatedAt                  DateTime                   @updatedAt
+  tenant                     Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  payment                    Payment                    @relation(fields: [paymentId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  accountReceivable          AccountReceivable          @relation(fields: [accountReceivableId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  reversal                   PaymentAllocationReversal?
+
+  @@unique([tenantId, allocationDeduplicationKey])
+  @@unique([id, tenantId])
+  @@index([tenantId, paymentId, status])
+  @@index([tenantId, accountReceivableId, status])
+  @@index([tenantId, allocatedAt])
+  @@map("payment_allocations")
+}
+
+model PaymentAllocationReversal {
+  id                       String            @id @default(cuid())
+  tenantId                 String
+  paymentAllocationId      String
+  reversalDeduplicationKey String            @db.VarChar(200)
+  reason                   String            @db.VarChar(500)
+  reversedAt               DateTime
+  createdAt                DateTime          @default(now())
+  tenant                   Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  paymentAllocation        PaymentAllocation @relation(fields: [paymentAllocationId, tenantId], references: [id, tenantId], onDelete: Restrict)
+
+  @@unique([tenantId, reversalDeduplicationKey])
+  @@unique([tenantId, paymentAllocationId])
+  @@unique([paymentAllocationId, tenantId])
+  @@index([tenantId, reversedAt])
+  @@map("payment_allocation_reversals")
 }
 
 enum PayrollFrequency {

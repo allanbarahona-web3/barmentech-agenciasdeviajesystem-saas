@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, ConflictException } from "@nestjs/common";
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { Client, Prisma } from "@prisma/client";
 import { CreateOrUpdateClientDto } from "./dto/create-or-update-client.dto";
@@ -17,7 +22,10 @@ import { ResolveMinorCustomerDto } from "./dto/resolve-minor-customer.dto";
 import { CustomerIdentityValidationResultDto } from "./dto/customer-identity-validation-result.dto";
 import { CustomerDocumentsService } from "./documents/customer-documents.service";
 import { CustomerNotesService } from "./notes/customer-notes.service";
-import { normalizeIdentification, validateIdentification } from "./utils/normalize-identification";
+import {
+  ClientIdentificationError,
+  normalizeAndValidateClientIdentification,
+} from "./client-identification";
 import { resolveContractParticipation } from "../contracts/contract-participation";
 
 /**
@@ -63,12 +71,6 @@ export class CustomersService {
   async upsertClient(dto: CreateOrUpdateClientDto): Promise<Client> {
     // Step 1: Normalize all fields
     const normalized = this.normalizeClientData(dto);
-
-    // Step 1.5: Validate normalized idNumber
-    const validationResult = validateIdentification(normalized.idType, normalized.idNumber);
-    if (!validationResult.isValid) {
-      throw new ConflictException(validationResult.errorMessage || "Número de identificación inválido");
-    }
 
     // Step 2: Check if client already exists
     const existingClient = await this.prisma.client.findFirst({
@@ -184,22 +186,11 @@ export class CustomersService {
     tenantId: string,
     dto: ResolveMinorCustomerDto,
   ): Promise<{ id: string }> {
-    const normalizedIdNumber = normalizeIdentification(
-      dto.idType,
-      dto.idNumber,
-    );
-    const validationResult = validateIdentification(
-      dto.idType,
-      normalizedIdNumber,
-    );
-    if (!validationResult.isValid) {
-      throw new ConflictException(
-        validationResult.errorMessage || "Número de identificación inválido",
-      );
-    }
+    const identity = requireClientIdentification(dto.idType, dto.idNumber);
+    const normalizedIdNumber = identity.idNumber;
 
     const normalizedFullName = String(dto.fullName || "").trim();
-    const normalizedIdType = String(dto.idType || "").trim();
+    const normalizedIdType = identity.idType;
     const identityWhere = {
       tenantId,
       idType: normalizedIdType,
@@ -394,39 +385,25 @@ export class CustomersService {
         },
       ];
 
-      // If search term contains digits, try normalizing as different ID types
-      if (/\d/.test(searchTerm)) {
-        // Try as Cedula (10 digits)
-        const normalizedAsCedula = normalizeIdentification("Cedula", searchTerm);
-        if (normalizedAsCedula) {
-          orConditions.push({
-            idNumber: {
-              contains: normalizedAsCedula,
-              mode: "insensitive",
-            },
-          });
+      if (dto.idType !== undefined) {
+        let identity: ReturnType<typeof normalizeAndValidateClientIdentification>;
+        try {
+          identity = normalizeAndValidateClientIdentification(
+            dto.idType,
+            searchTerm,
+          );
+        } catch (error) {
+          if (error instanceof ClientIdentificationError) {
+            throw new BadRequestException(error.code);
+          }
+          throw error;
         }
-
-        // Try as DIMEX (12 digits)
-        const normalizedAsDimex = normalizeIdentification("DIMEX", searchTerm);
-        if (normalizedAsDimex && normalizedAsDimex !== normalizedAsCedula) {
-          orConditions.push({
-            idNumber: {
-              contains: normalizedAsDimex,
-              mode: "insensitive",
-            },
-          });
-        }
-
-        // Also search for the raw term (for passport or partial matches)
         orConditions.push({
-          idNumber: {
-            contains: searchTerm,
-            mode: "insensitive",
-          },
+          idType: identity.idType,
+          idNumber: identity.idNumber,
         });
       } else {
-        // Non-numeric search: could be passport or name/email
+        // Untyped free text never guesses a Costa Rica identification type.
         orConditions.push({
           idNumber: {
             contains: searchTerm,
@@ -968,10 +945,6 @@ export class CustomersService {
       updateData.fullName = String(dto.fullName || "").trim();
     }
 
-    if (dto.idType !== undefined) {
-      updateData.idType = String(dto.idType || "").trim() || null;
-    }
-
     if (dto.email !== undefined) {
       updateData.email = String(dto.email || "").trim().toLowerCase();
     }
@@ -1004,6 +977,15 @@ export class CustomersService {
     if (dto.emergencyContactPhone !== undefined) {
       updateData.emergencyContactPhone =
         String(dto.emergencyContactPhone || "").trim() || null;
+    }
+
+    if (dto.idType !== undefined || dto.idNumber !== undefined) {
+      const identity = requireClientIdentification(
+        dto.idType !== undefined ? dto.idType : existingCustomer.idType,
+        dto.idNumber !== undefined ? dto.idNumber : existingCustomer.idNumber,
+      );
+      updateData.idType = identity.idType;
+      updateData.idNumber = identity.idNumber;
     }
 
     // Update customer
@@ -1040,7 +1022,16 @@ export class CustomersService {
     dto: ValidateCustomerIdentityDto
   ): Promise<CustomerIdentityValidationResultDto> {
     // Normalize inputs
-    const normalizedIdNumber = normalizeIdentification(dto.idType, dto.idNumber);
+    let identity: ReturnType<typeof normalizeAndValidateClientIdentification>;
+    try {
+      identity = normalizeAndValidateClientIdentification(dto.idType, dto.idNumber);
+    } catch (error) {
+      if (error instanceof ClientIdentificationError) {
+        return { valid: false, message: error.code };
+      }
+      throw error;
+    }
+    const normalizedIdNumber = identity.idNumber;
     const normalizedFullName = String(dto.fullName || "").trim();
 
     if (!normalizedIdNumber || !normalizedFullName) {
@@ -1051,19 +1042,11 @@ export class CustomersService {
     }
 
     // Validate normalized idNumber
-    const validationResult = validateIdentification(dto.idType, normalizedIdNumber);
-    if (!validationResult.isValid) {
-      return {
-        valid: false,
-        message: validationResult.errorMessage || "Número de identificación inválido",
-      };
-    }
-
     // Check if customer exists with this idNumber
     const existingCustomer = await this.prisma.client.findFirst({
       where: {
         tenantId,
-        idType: String(dto.idType || "").trim() || null,
+        idType: identity.idType,
         idNumber: normalizedIdNumber,
       },
       select: {
@@ -1348,12 +1331,12 @@ export class CustomersService {
     dto: CreateOrUpdateClientDto
   ): CreateOrUpdateClientDto {
     // Normalize idNumber based on idType
-    const normalizedIdNumber = normalizeIdentification(dto.idType, dto.idNumber);
+    const identity = requireClientIdentification(dto.idType, dto.idNumber);
     
     return {
       fullName: String(dto.fullName || "").trim(),
-      idNumber: normalizedIdNumber,
-      idType: String(dto.idType || "").trim() || null,
+      idNumber: identity.idNumber,
+      idType: identity.idType,
       email: String(dto.email || "").trim().toLowerCase(),
       phone: String(dto.phone || "").trim() || null,
       emergencyContactName: String(dto.emergencyContactName || "").trim() || null,
@@ -1381,5 +1364,16 @@ export class CustomersService {
   async getCustomerDocumentsCount(tenantId: string, customerId: string): Promise<number> {
     const documents = await this.customerDocumentsService.listCustomerDocuments(tenantId, customerId);
     return documents.length;
+  }
+}
+
+function requireClientIdentification(idType: unknown, idNumber: unknown) {
+  try {
+    return normalizeAndValidateClientIdentification(idType, idNumber);
+  } catch (error) {
+    if (error instanceof ClientIdentificationError) {
+      throw new ConflictException(error.code);
+    }
+    throw error;
   }
 }

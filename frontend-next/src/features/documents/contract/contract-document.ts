@@ -1,4 +1,5 @@
 import { ContractFormState } from "@/features/contracts-form/types";
+import { getClientIdentificationTypeLabel } from '@/features/customers/client-identification';
 import {
   esc,
   formatDate,
@@ -55,7 +56,7 @@ export const buildContractPdfHtml = (
         <ul>${state.companions
           .map(
             (person) =>
-              `<li>${v(person.fullName)}, mayor de edad, ${v(person.civilStatus)}, ${v(person.profession)}, portador de ${v(person.idType)} número ${v(person.idNumber)}, vecino de ${v(person.address)}, correo electrónico ${v(person.email)}, teléfono ${v(person.phone)}, contacto de emergencia ${v(person.emergencyContactName)}, teléfono de emergencia ${v(person.emergencyContactPhone)}.</li>`,
+              `<li>${v(person.fullName)}, mayor de edad, ${v(person.civilStatus)}, ${v(person.profession)}, portador de ${v(getClientIdentificationTypeLabel(person.idType))} número ${v(person.idNumber)}, vecino de ${v(person.address)}, correo electrónico ${v(person.email)}, teléfono ${v(person.phone)}, contacto de emergencia ${v(person.emergencyContactName)}, teléfono de emergencia ${v(person.emergencyContactPhone)}.</li>`,
           )
           .join("")}</ul>
       </section>`
@@ -113,7 +114,7 @@ export const buildContractPdfHtml = (
           }
         </div>
         <p class="sig-name">${v(person.name)}</p>
-        <p>${v(person.idType)}: ${v(person.idNumber)}</p>
+        <p>${v(getClientIdentificationTypeLabel(person.idType))}: ${v(person.idNumber)}</p>
         <p>${v(person.role)}</p>
         <p>Fecha: ${v(signatureDate)}</p>
       </div>`,
@@ -475,7 +476,7 @@ html, body {
 </section>
 
 <section class="clause">
-  <p>(b) ${v(state.clientFullName)}, mayor de edad, ${v(state.civilStatus)}, ${v(state.profession)}, portador de ${v(state.clientIdType)} número ${v(state.clientIdNumber)}, vecino de ${v(state.clientAddress)}, correo electrónico ${v(state.clientEmail)}, teléfono ${v(state.clientPhone)}, contacto de emergencia ${v(state.emergencyContactName)}, teléfono de emergencia ${v(state.emergencyContactPhone)}, en adelante denominado como el <strong>"Cliente"</strong>.</p>
+  <p>(b) ${v(state.clientFullName)}, mayor de edad, ${v(state.civilStatus)}, ${v(state.profession)}, portador de ${v(getClientIdentificationTypeLabel(state.clientIdType))} número ${v(state.clientIdNumber)}, vecino de ${v(state.clientAddress)}, correo electrónico ${v(state.clientEmail)}, teléfono ${v(state.clientPhone)}, contacto de emergencia ${v(state.emergencyContactName)}, teléfono de emergencia ${v(state.emergencyContactPhone)}, en adelante denominado como el <strong>"Cliente"</strong>.</p>
 </section>
 
 ${companionsIntro}

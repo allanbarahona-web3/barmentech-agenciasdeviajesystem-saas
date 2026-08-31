@@ -1,4 +1,5 @@
-import { IsNotEmpty, IsOptional, IsString } from "class-validator";
+import { IsNotEmpty, IsString } from "class-validator";
+import type { ClientIdentificationType } from "../client-identification";
 
 /**
  * ValidateCustomerIdentityDto
@@ -12,8 +13,8 @@ export class ValidateCustomerIdentityDto {
   idNumber!: string;
 
   @IsString()
-  @IsOptional()
-  idType?: string | null;
+  @IsNotEmpty()
+  idType!: ClientIdentificationType;
 
   @IsNotEmpty({ message: "El nombre completo es requerido" })
   @IsString({ message: "El nombre completo debe ser texto" })

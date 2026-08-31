@@ -533,12 +533,7 @@ export default function AdditionalServiceOrdersDashboardPage() {
                             {order.salesOrder.orderNumber}
                           </Link>
                         ) : (
-                          <Badge
-                            variant="outline"
-                            className={styles.pendingConversionBadge}
-                          >
-                            Pendiente
-                          </Badge>
+                          <span className={styles.muted}>—</span>
                         )}
                       </TableCell>
                       <TableCell>

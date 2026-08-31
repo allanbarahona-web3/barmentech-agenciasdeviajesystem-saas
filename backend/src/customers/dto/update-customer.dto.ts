@@ -1,11 +1,13 @@
 import { IsEmail, IsOptional, IsString, MaxLength } from "class-validator";
+import type { ClientIdentificationType } from "../client-identification";
 
 /**
  * UpdateCustomerDto
  * 
  * DTO for updating customer information.
  * All fields are optional to support partial updates (PATCH).
- * Only includes editable fields - does not allow updating idNumber or tenantId.
+ * Only includes editable fields and never allows updating tenantId.
+ * Identity fields are revalidated together by CustomersService.
  */
 export class UpdateCustomerDto {
   @IsString()
@@ -16,7 +18,12 @@ export class UpdateCustomerDto {
   @IsString()
   @IsOptional()
   @MaxLength(50)
-  idType?: string | null;
+  idType?: ClientIdentificationType;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(80)
+  idNumber?: string;
 
   @IsEmail()
   @IsOptional()

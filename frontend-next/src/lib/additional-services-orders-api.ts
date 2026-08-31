@@ -358,11 +358,3 @@ export function approveCommercialProposalInPerson(
     `/additional-services/orders/${encodeURIComponent(orderId)}/commercial-proposal/approve-in-person`,
   );
 }
-
-export function convertToSalesOrder(
-  orderId: string,
-): Promise<SalesOrderSummary> {
-  return apiPost<SalesOrderSummary>(
-    `/additional-services/orders/${encodeURIComponent(orderId)}/convert-to-sales-order`,
-  );
-}

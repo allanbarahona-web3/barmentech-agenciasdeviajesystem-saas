@@ -15,7 +15,15 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "tsx prisma/seed.ts",
-    "user:create": "tsx prisma/create-user.ts"
+    "user:create": "tsx prisma/create-user.ts",
+    "fiscal:cr-coding:dry-run": "tsx scripts/import-cr-electronic-invoice-coding.ts",
+    "fiscal:cr-coding:import": "tsx scripts/import-cr-electronic-invoice-coding.ts --import",
+    "fiscal:cr-coding:activate": "tsx scripts/activate-cr-electronic-invoice-coding.ts",
+    "fiscal:cr-cabys:initialize": "tsx scripts/initialize-cr-cabys-release.ts",
+    "fiscal:cr-cabys:activate": "tsx scripts/activate-cr-cabys-release.ts",
+    "territorial:cr-dta:validate": "tsx scripts/validate-cr-dta-2026.ts",
+    "territorial:cr-dta:import": "tsx scripts/import-cr-dta-2026.ts",
+    "territorial:cr-dta:activate": "tsx scripts/activate-cr-dta-2026.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.879.0",
@@ -44,6 +52,7 @@
     "reflect-metadata": "^0.2.2",
     "resend": "^6.9.4",
     "rxjs": "^7.8.1",
+    "saxes": "6.0.0",
     "sharp": "^0.34.5"
   },
   "devDependencies": {

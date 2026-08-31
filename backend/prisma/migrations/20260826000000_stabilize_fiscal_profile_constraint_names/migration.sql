@@ -1,0 +1,8 @@
+-- RenameIndex
+ALTER INDEX "additional_service_fiscal_profiles_additionalServiceCatalogId_t"
+RENAME TO "additional_service_fiscal_profiles_catalog_tenant_key";
+
+-- RenameForeignKey
+ALTER TABLE "additional_service_fiscal_profiles"
+RENAME CONSTRAINT "additional_service_fiscal_profiles_additionalServiceCatalogId_t"
+TO "additional_service_fiscal_profiles_catalog_tenant_fkey";

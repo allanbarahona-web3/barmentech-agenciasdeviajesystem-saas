@@ -69,6 +69,7 @@ export class EmailService {
       templateData,
       attachments,
       triggeredBy,
+      idempotencyKey,
     } = options;
 
     try {
@@ -123,7 +124,7 @@ export class EmailService {
           filename: att.filename,
           content: att.content,
         })),
-      });
+      }, idempotencyKey ? { idempotencyKey } : undefined);
 
       const emailId = result.data?.id || 'unknown';
 

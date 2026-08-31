@@ -2,9 +2,11 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
+import { SalesOrderConversionService } from "../sales-orders/sales-order-conversion.service";
 import {
   GENERATED_DOCUMENT_ACCESS_PURPOSES,
   GENERATED_DOCUMENT_OWNER_TYPES,
@@ -14,13 +16,17 @@ import {
   GeneratedDocumentsService,
 } from "../generated-documents";
 import { CommercialProposalStatus } from "./enums";
+import { approvalSalesOrderFailureCode } from "./approval-sales-order.logging";
 
 @Injectable()
 export class CommercialProposalApprovalService {
+  private readonly logger = new Logger(CommercialProposalApprovalService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly documentAccessService: GeneratedDocumentAccessService,
     private readonly generatedDocumentsService: GeneratedDocumentsService,
+    private readonly salesOrderConversionService: SalesOrderConversionService,
   ) {}
 
   async getPublicProposal(token: string) {
@@ -62,46 +68,81 @@ export class CommercialProposalApprovalService {
     }
 
     const approvedAt = new Date();
-    await this.prisma.$transaction(async (transaction) => {
-      const consumed = await transaction.generatedDocumentAccessToken.updateMany({
-        where: {
-          id: context.access.id,
-          isActive: true,
-          usedAt: null,
-          revokedAt: null,
-          OR: [{ expiresAt: null }, { expiresAt: { gt: approvedAt } }],
-        },
-        data: { isActive: false, usedAt: approvedAt },
-      });
-      if (consumed.count !== 1) {
-        throw new ConflictException("This approval link was already used.");
-      }
-      const updated = await transaction.additionalServiceOrder.updateMany({
-        where: {
-          id: context.order.id,
-          tenantId: context.document.tenantId,
-          commercialStatus: {
-            in: [
-              CommercialProposalStatus.PDF_GENERATED,
-              CommercialProposalStatus.SENT,
-            ],
+    let materialization;
+    try {
+      materialization = await this.prisma.$transaction(async (transaction) => {
+        const consumed = await transaction.generatedDocumentAccessToken.updateMany({
+          where: {
+            id: context.access.id,
+            isActive: true,
+            usedAt: null,
+            revokedAt: null,
+            OR: [{ expiresAt: null }, { expiresAt: { gt: approvedAt } }],
           },
-        },
-        data: {
-          commercialStatus: CommercialProposalStatus.APPROVED,
-          proposalApprovedAt: approvedAt,
-          proposalApprovalMethod: "EMAIL_LINK",
-          proposalApprovedByUserId: null,
-          proposalApprovedByName: null,
-          proposalApprovedIp: this.truncate(ip, 128),
-          proposalApprovedUserAgent: this.truncate(userAgent, 1024),
-        },
-      });
-      if (updated.count !== 1) {
-        throw new ConflictException(
-          "This commercial proposal was already processed.",
+          data: { isActive: false, usedAt: approvedAt },
+        });
+        if (consumed.count !== 1) {
+          throw new ConflictException("This approval link was already used.");
+        }
+        await this.salesOrderConversionService.lockAdditionalServiceOrder(
+          transaction,
+          context.document.tenantId,
+          context.order.id,
         );
-      }
+        const updated = await transaction.additionalServiceOrder.updateMany({
+          where: {
+            id: context.order.id,
+            tenantId: context.document.tenantId,
+            commercialStatus: {
+              in: [
+                CommercialProposalStatus.PDF_GENERATED,
+                CommercialProposalStatus.SENT,
+              ],
+            },
+          },
+          data: {
+            commercialStatus: CommercialProposalStatus.APPROVED,
+            proposalApprovedAt: approvedAt,
+            proposalApprovalMethod: "EMAIL_LINK",
+            proposalApprovedByUserId: null,
+            proposalApprovedByName: null,
+            proposalApprovedIp: this.truncate(ip, 128),
+            proposalApprovedUserAgent: this.truncate(userAgent, 1024),
+          },
+        });
+        if (updated.count !== 1) {
+          throw new ConflictException(
+            "This commercial proposal was already processed.",
+          );
+        }
+        return this.salesOrderConversionService.materializeAdditionalServiceOrder(
+          transaction,
+          context.document.tenantId,
+          context.order.id,
+          {
+            id: context.order.createdByUserId,
+            fullName: context.order.createdByName,
+          },
+        );
+      });
+    } catch (error) {
+      this.logger.warn({
+        event: "additional-service-approval-sales-order-failed",
+        tenantId: context.document.tenantId,
+        additionalServiceOrderId: context.order.id,
+        approvalMethod: "EMAIL_LINK",
+        failureCode: approvalSalesOrderFailureCode(error),
+      });
+      throw error;
+    }
+
+    this.logger.log({
+      event: "additional-service-approval-sales-order-completed",
+      tenantId: context.document.tenantId,
+      additionalServiceOrderId: context.order.id,
+      approvalMethod: "EMAIL_LINK",
+      salesOrderId: materialization.salesOrder.id,
+      reusedExistingSalesOrder: materialization.reusedExisting,
     });
 
     return {
@@ -142,6 +183,8 @@ export class CommercialProposalApprovalService {
         id: true,
         orderNumber: true,
         commercialStatus: true,
+        createdByUserId: true,
+        createdByName: true,
       },
     });
     if (!order) {

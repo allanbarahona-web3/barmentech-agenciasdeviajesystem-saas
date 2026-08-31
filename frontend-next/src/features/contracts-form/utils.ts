@@ -1,4 +1,5 @@
 import { Companion, ContractFormState, ItineraryItem, Minor } from "@/features/contracts-form/types";
+import { isClientIdentificationType } from '@/features/customers/client-identification';
 
 /**
  * Get today's date in YYYY-MM-DD format using local timezone
@@ -15,7 +16,7 @@ export const getTodayIsoLocal = (): string => {
 const createCompanion = (): Companion => ({
   id: `companion-${Date.now()}-${Math.random().toString(16).slice(2, 7)}`,
   fullName: "",
-  idType: "Cedula",
+  idType: "CEDULA_FISICA",
   idNumber: "",
   email: "",
   phone: "",
@@ -34,11 +35,11 @@ const createMinor = (): Minor => ({
   id: `minor-${Date.now()}-${Math.random().toString(16).slice(2, 7)}`,
   selectedCustomerId: null,
   minorName: "",
-  minorIdType: "Cedula",
+  minorIdType: "CEDULA_FISICA",
   minorId: "",
   travelsWithParent: false,
   tutorName: "",
-  tutorIdType: "Cedula",
+  tutorIdType: "CEDULA_FISICA",
   tutorId: "",
   tutorEmail: "",
   travelingWith: "",
@@ -111,7 +112,7 @@ export const createInitialFormState = (agent?: { fullName?: string; email?: stri
     accommodationType: "N/A",
     lodgingType: "N/A",
     clientFullName: "",
-    clientIdType: "Cedula",
+    clientIdType: "CEDULA_FISICA",
     clientIdNumber: "",
     clientEmail: "",
     clientPhone: "",
@@ -363,11 +364,16 @@ export const addCompanionFromCustomer = (
     nationality?: string;
   }
 ): ContractFormState => {
+  if (!isClientIdentificationType(customerData.idType)) {
+    throw new Error(
+      'El cliente usa un tipo de identificación heredado. Seleccione un tipo canónico antes de continuar.',
+    );
+  }
   const newCompanion: Companion = {
     id: `companion-${Date.now()}-${Math.random().toString(16).slice(2, 7)}`,
     selectedCustomerId: customerData.id,
     fullName: customerData.fullName,
-    idType: (customerData.idType || "Cedula") as "Cedula" | "Pasaporte" | "DIMEX",
+    idType: customerData.idType,
     idNumber: customerData.idNumber,
     email: customerData.email,
     phone: customerData.phone,

@@ -12,10 +12,6 @@ export class CreateAdditionalServicePricingConfigurationDto {
   @Min(0)
   marginValue!: number;
 
-  @IsNumber()
-  @Min(0)
-  taxPercentage!: number;
-
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;

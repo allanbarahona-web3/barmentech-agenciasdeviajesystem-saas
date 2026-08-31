@@ -17,11 +17,13 @@ import {
   AdditionalServicesRepository,
 } from "./repositories";
 import { AdditionalServicesService } from "./additional-services.service";
+import { FiscalCatalogService } from "../fiscal-catalogs/fiscal-catalog.service";
 
 describe("AdditionalServicesService orders", () => {
   const tenantId = "tenant-1";
   let repository: jest.Mocked<AdditionalServicesRepository>;
   let pricingEngine: jest.Mocked<Pick<PricingEngineService, "calculateMany">>;
+  let fiscalCatalog: { evaluateFiscalProfiles: jest.Mock };
   let service: AdditionalServicesService;
 
   beforeEach(() => {
@@ -40,6 +42,7 @@ describe("AdditionalServicesService orders", () => {
       findByTravel: jest.fn(),
       findOrderDashboardPage: jest.fn(),
       findAdditionalServiceCatalogById: jest.fn(),
+      findAdditionalServiceCatalogByTenantAndId: jest.fn(),
       findAdditionalServiceCatalogByCode: jest.fn(),
       findAdditionalServiceCatalogsByCodes: jest.fn(),
       findAdditionalServiceCatalogs: jest.fn(),
@@ -51,6 +54,11 @@ describe("AdditionalServicesService orders", () => {
       findPricingConfigurationsByCatalogIds: jest.fn(),
       createPricingConfiguration: jest.fn(),
       updatePricingConfiguration: jest.fn(),
+      findFiscalProfileById: jest.fn(),
+      findFiscalProfileByCatalogId: jest.fn(),
+      findFiscalProfilesByCatalogIds: jest.fn(),
+      createFiscalProfile: jest.fn(),
+      updateFiscalProfile: jest.fn(),
       findSuppliers: jest.fn(),
       findSupplierById: jest.fn(),
       findSuppliersByIds: jest.fn(),
@@ -62,9 +70,13 @@ describe("AdditionalServicesService orders", () => {
       work(repository),
     );
     pricingEngine = { calculateMany: jest.fn() };
+    repository.findFiscalProfilesByCatalogIds = jest.fn(async (_tenant: string, ids: string[]) => ids.map((additionalServiceCatalogId) => ({ id: `fiscal-${additionalServiceCatalogId}`, tenantId, additionalServiceCatalogId, cabysCode: "1234567890123", unitOfMeasureCode: "Sp", taxCode: "01", taxRateCode: "08", taxPercentage: "13.0000", isActive: true, createdAt: new Date(), updatedAt: new Date() })));
+    repository.findPricingConfigurationsByCatalogIds.mockImplementation(async (_tenant, ids) => ids.map((additionalServiceCatalogId) => ({ id: `pricing-${additionalServiceCatalogId}`, tenantId, additionalServiceCatalogId, marginType: AdditionalServiceMarginType.PERCENTAGE, marginValue: "10", taxPercentage: "13.0000", isActive: true, createdAt: new Date(), updatedAt: new Date(), additionalServiceCatalog: { id: additionalServiceCatalogId, tenantId, code: "SERVICE", name: "Service", isActive: true } })));
+    fiscalCatalog = { evaluateFiscalProfiles: jest.fn(async (_tenant: string, profiles: Array<{ additionalServiceCatalogId: string }>) => new Map(profiles.map((profile) => [profile.additionalServiceCatalogId, { status: "READY" as const, isReady: true, issues: [] }]))) };
     service = new AdditionalServicesService(
       repository,
       pricingEngine as unknown as PricingEngineService,
+      fiscalCatalog as unknown as FiscalCatalogService,
     );
   });
 
@@ -83,6 +95,27 @@ describe("AdditionalServicesService orders", () => {
     expect(errors.some(({ property }) => property === "quoteCustomerId")).toBe(
       true,
     );
+  });
+
+  it("rejects a forged new-sale line when fiscal readiness is not READY before pricing", async () => {
+    repository.findAdditionalServiceCatalogsByCodes.mockResolvedValue([{ id: "catalog-1", tenantId, code: "TOUR", name: "Tour", isActive: true }]);
+    repository.findSuppliersByIds.mockResolvedValue([{ id: "supplier-1", tenantId, name: "Supplier", website: null, supplierType: null, supplierCategory: null, notes: null, isActive: true, createdAt: new Date(), updatedAt: new Date() }]);
+    fiscalCatalog.evaluateFiscalProfiles.mockResolvedValue(new Map([["catalog-1", { status: "INVALID", isReady: false, issues: ["CABYS_INVALID"] }]]));
+    const internals = service as unknown as { validateAndResolveLines(repository: AdditionalServicesRepository, tenantId: string, dto: CreateAdditionalServiceOrderDto): Promise<unknown> };
+    await expect(internals.validateAndResolveLines(repository, tenantId, { quotationCurrency: AdditionalServiceCurrency.USD, lines: [{ serviceCode: "TOUR", supplierId: "supplier-1", supplierCost: 1, supplierCostCurrency: AdditionalServiceCurrency.USD, participantIds: ["client-1"] }] } as CreateAdditionalServiceOrderDto)).rejects.toMatchObject({ response: expect.objectContaining({ code: "ADDITIONAL_SERVICE_NOT_FISCALLY_READY" }) });
+    expect(pricingEngine.calculateMany).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["missing", []],
+    ["inactive", [{ id: "pricing-catalog-1", tenantId, additionalServiceCatalogId: "catalog-1", marginType: AdditionalServiceMarginType.PERCENTAGE, marginValue: "10", taxPercentage: "13.0000", isActive: false, createdAt: new Date(), updatedAt: new Date(), additionalServiceCatalog: { id: "catalog-1", tenantId, code: "TOUR", name: "Tour", isActive: true } }]],
+  ])("keeps a fiscally READY service unsellable while pricing is %s", async (_state, configurations) => {
+    repository.findAdditionalServiceCatalogsByCodes.mockResolvedValue([{ id: "catalog-1", tenantId, code: "TOUR", name: "Tour", isActive: true }]);
+    repository.findSuppliersByIds.mockResolvedValue([{ id: "supplier-1", tenantId, name: "Supplier", website: null, supplierType: null, supplierCategory: null, notes: null, isActive: true, createdAt: new Date(), updatedAt: new Date() }]);
+    repository.findPricingConfigurationsByCatalogIds.mockResolvedValue(configurations);
+    const internals = service as unknown as { validateAndResolveLines(repository: AdditionalServicesRepository, tenantId: string, dto: CreateAdditionalServiceOrderDto): Promise<unknown> };
+    await expect(internals.validateAndResolveLines(repository, tenantId, { quotationCurrency: AdditionalServiceCurrency.USD, lines: [{ serviceCode: "TOUR", supplierId: "supplier-1", supplierCost: 1, supplierCostCurrency: AdditionalServiceCurrency.USD, participantIds: ["client-1"] }] } as CreateAdditionalServiceOrderDto)).rejects.toMatchObject({ response: expect.objectContaining({ code: "ADDITIONAL_SERVICE_NOT_FISCALLY_READY" }) });
+    expect(pricingEngine.calculateMany).not.toHaveBeenCalled();
   });
 
   it("requires a structured payment term for credit orders", async () => {
@@ -634,6 +667,7 @@ describe("AdditionalServicesService orders", () => {
           currency: AdditionalServiceCurrency.USD,
           status: AdditionalServiceOrderStatus.DRAFT,
           commercialStatus: CommercialProposalStatus.APPROVED,
+          salesOrder: null,
         },
       ],
       total: 1,

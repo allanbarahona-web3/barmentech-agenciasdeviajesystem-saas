@@ -31,6 +31,8 @@ export interface GenericDispatchOptions {
   priority?: number;
   attempts?: number;
   backoff?: number | BackoffOptions;
+  removeOnComplete?: JobsOptions["removeOnComplete"];
+  removeOnFail?: JobsOptions["removeOnFail"];
   timeout?: number;
 }
 
@@ -215,6 +217,12 @@ export class JobDispatcherService implements OnModuleInit {
       ...(options?.priority !== undefined ? { priority: options.priority } : {}),
       ...(options?.attempts !== undefined ? { attempts: options.attempts } : {}),
       ...(options?.backoff !== undefined ? { backoff: options.backoff } : {}),
+      ...(options?.removeOnComplete !== undefined
+        ? { removeOnComplete: options.removeOnComplete }
+        : {}),
+      ...(options?.removeOnFail !== undefined
+        ? { removeOnFail: options.removeOnFail }
+        : {}),
       ...(delayMs !== undefined ? { delay: delayMs } : {}),
     };
   }

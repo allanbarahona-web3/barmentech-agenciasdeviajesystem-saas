@@ -5,6 +5,7 @@ export interface BusinessDocumentAttachmentData {
   documentLabel: string;
   documentNumber: string;
   message: string;
+  attachmentSummary?: string;
   actionUrl?: string;
   actionLabel?: string;
   tenantName: string;
@@ -33,6 +34,9 @@ export function businessDocumentAttachmentTemplate(
   const documentLabel = escapeHtml(data.documentLabel);
   const documentNumber = escapeHtml(data.documentNumber);
   const message = escapeHtml(data.message);
+  const attachmentSummary = escapeHtml(
+    data.attachmentSummary || "El documento PDF se encuentra adjunto a este correo.",
+  );
 
   const options: BaseTemplateOptions = {
     tenantName: data.tenantName,
@@ -48,7 +52,7 @@ export function businessDocumentAttachmentTemplate(
       </p>
       <div style="background-color: #eff6ff; border-left: 4px solid #3b82f6; padding: 16px; border-radius: 4px;">
         <strong>${documentLabel}:</strong> ${documentNumber}<br>
-        El documento PDF se encuentra adjunto a este correo.
+        ${attachmentSummary}
       </div>
     `,
     ...(data.actionUrl

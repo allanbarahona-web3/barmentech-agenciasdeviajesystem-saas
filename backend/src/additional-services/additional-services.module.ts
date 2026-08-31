@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { AdditionalServicesService } from "./additional-services.service";
 import { AdditionalServiceCatalogController } from "./additional-service-catalog.controller";
 import { AdditionalServicePricingConfigurationsController } from "./additional-service-pricing-configurations.controller";
+import { AdditionalServiceFiscalProfilesController } from "./additional-service-fiscal-profiles.controller";
 import { CatalogBootstrapService } from "./catalog-bootstrap.service";
 import { AdditionalServiceSuppliersController } from "./additional-service-suppliers.controller";
 import { SupplierRequestNotificationService } from "./supplier-request-notification.service";
@@ -21,6 +22,7 @@ import { CommercialProposalApprovalService } from "./commercial-proposal-approva
 import { CommercialProposalPublicController } from "./commercial-proposal-public.controller";
 import { SalesOrdersModule } from "../sales-orders/sales-orders.module";
 import { CommercialProposalInPersonApprovalService } from "./commercial-proposal-in-person-approval.service";
+import { FiscalCatalogModule } from "../fiscal-catalogs/fiscal-catalog.module";
 
 @Module({
   imports: [
@@ -31,10 +33,12 @@ import { CommercialProposalInPersonApprovalService } from "./commercial-proposal
     StorageModule,
     EmailModule,
     SalesOrdersModule,
+    FiscalCatalogModule,
   ],
   controllers: [
     AdditionalServiceCatalogController,
     AdditionalServicePricingConfigurationsController,
+    AdditionalServiceFiscalProfilesController,
     AdditionalServicesPricingController,
     AdditionalServiceOrdersController,
     AdditionalServiceSuppliersController,

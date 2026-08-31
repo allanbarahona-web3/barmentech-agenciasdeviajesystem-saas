@@ -1,6 +1,11 @@
 'use client';
 
-import { ID_TYPE_OPTIONS, MARITAL_STATUS_OPTIONS, NATIONALITY_OPTIONS } from '@/features/contracts-form/constants';
+import { MARITAL_STATUS_OPTIONS, NATIONALITY_OPTIONS } from '@/features/contracts-form/constants';
+import {
+  CLIENT_IDENTIFICATION_OPTIONS,
+  getClientIdentificationTypeLabel,
+  type ClientIdentificationType,
+} from '@/features/customers/client-identification';
 
 interface CustomerFormProps {
   title?: string;
@@ -21,7 +26,7 @@ interface CustomerFormProps {
   isEditMode: boolean;
   editForm: {
     fullName: string;
-    idType: string;
+    idType: ClientIdentificationType | '';
     email: string;
     phone: string;
     maritalStatus: string;
@@ -169,7 +174,11 @@ export function CustomerForm({
           {isEditMode ? (
             <select
               value={editForm.idType}
-              onChange={(e) => onEditFormChange({ idType: e.target.value })}
+              onChange={(e) =>
+                onEditFormChange({
+                  idType: e.target.value as ClientIdentificationType | '',
+                })
+              }
               style={{
                 width: '100%',
                 padding: '8px 12px',
@@ -184,7 +193,7 @@ export function CustomerForm({
               onBlur={(e) => (e.currentTarget.style.borderColor = '#e5e7eb')}
             >
               <option value="">Seleccionar</option>
-              {ID_TYPE_OPTIONS.map((option) => (
+              {CLIENT_IDENTIFICATION_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>
@@ -192,7 +201,7 @@ export function CustomerForm({
             </select>
           ) : (
             <div style={{ fontSize: '15px', color: '#1f2937' }}>
-              {customer.idType || '-'}
+              {getClientIdentificationTypeLabel(customer.idType)}
             </div>
           )}
         </div>

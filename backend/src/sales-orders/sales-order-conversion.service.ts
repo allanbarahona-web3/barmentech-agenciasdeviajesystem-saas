@@ -1,10 +1,16 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
 } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
-import { Prisma, type PrismaClient } from "@prisma/client";
+import {
+  Prisma,
+  type FiscalItemCategory,
+  type PrismaClient,
+} from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 
 const SOURCE_TYPE = "ADDITIONAL_SERVICE_ORDER";
@@ -25,6 +31,7 @@ export interface SalesOrderSummary {
   lines: Array<{
     serviceCode: string;
     serviceName: string;
+    fiscalItemCategory: FiscalItemCategory | null;
     serviceDetailsVersion: number | null;
     serviceDetails: unknown;
     commercialNotes: string | null;
@@ -37,19 +44,23 @@ export interface SalesOrderSummary {
   createdAt: Date;
 }
 
+export interface SalesOrderMaterializationResult {
+  salesOrder: SalesOrderSummary;
+  reusedExisting: boolean;
+}
+
 @Injectable()
 export class SalesOrderConversionService {
   constructor(private readonly prisma: PrismaService) {}
 
-  convertAdditionalServiceOrder(
+  async materializeAdditionalServiceOrder(
+    tx: Prisma.TransactionClient,
     tenantId: string,
     sourceId: string,
     actor: { id: string; fullName: string },
-  ): Promise<SalesOrderSummary> {
-    return this.prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`${tenantId}:${SOURCE_TYPE}:${sourceId}`}, 0))`;
-
-      const proposals = await tx.$queryRaw<Array<{
+  ): Promise<SalesOrderMaterializationResult> {
+    await this.lockAdditionalServiceOrder(tx, tenantId, sourceId);
+    const proposals = await tx.$queryRaw<Array<{
         id: string;
         commercialStatus: string | null;
         quoteCustomerId: string | null;
@@ -63,7 +74,7 @@ export class SalesOrderConversionService {
         paymentTermValue: number | null;
         paymentTermUnit: string | null;
         commercialObservations: string | null;
-      }>>`SELECT o."id", o."commercialStatus", o."quoteCustomerId",
+    }>>`SELECT o."id", o."commercialStatus", o."quoteCustomerId",
                  c."fullName" AS "customerName", c."email" AS "customerEmail",
                  o."quotationCurrency", o."commercialSubtotal", o."totalVat",
                  o."totalSellingPrice", o."paymentConditionType", o."paymentTermValue",
@@ -72,18 +83,22 @@ export class SalesOrderConversionService {
           LEFT JOIN "Client" c ON c."id" = o."quoteCustomerId" AND c."tenantId" = o."tenantId"
           WHERE o."id" = ${sourceId} AND o."tenantId" = ${tenantId}
           FOR UPDATE OF o`;
-      const proposal = proposals[0];
-      if (!proposal) throw new NotFoundException("Propuesta comercial no encontrada.");
-      if (proposal.commercialStatus !== "APPROVED") {
-        throw new ConflictException(
-          "Solo una propuesta comercial aprobada puede convertirse en orden de venta.",
-        );
-      }
+    const proposal = proposals[0];
+    if (!proposal) throw new NotFoundException("Propuesta comercial no encontrada.");
+    if (proposal.commercialStatus !== "APPROVED") {
+      throw new ConflictException(
+        "Solo una propuesta comercial aprobada puede convertirse en orden de venta.",
+      );
+    }
 
-      const existing = await this.findBySourceWithClient(tx, tenantId, sourceId);
-      if (existing) return existing;
+    const existing = await this.findBySourceWithClient(tx, tenantId, sourceId);
+    if (existing) {
+      return { salesOrder: existing, reusedExisting: true };
+    }
 
-      const lines = await tx.$queryRaw<Array<{
+    const lines = await tx.$queryRaw<Array<{
+        additionalServiceCatalogId: string | null;
+        fiscalItemCategory: unknown;
         serviceCode: string;
         serviceName: string;
         serviceDetailsVersion: number | null;
@@ -94,7 +109,7 @@ export class SalesOrderConversionService {
         vatAmount: Prisma.Decimal;
         total: Prisma.Decimal;
         participants: unknown;
-      }>>`SELECT l."serviceCode", l."serviceName", l."serviceDetailsVersion",
+    }>>`SELECT l."additionalServiceCatalogId", catalog."fiscalItemCategory", l."serviceCode", l."serviceName", l."serviceDetailsVersion",
                  l."serviceDetails", l."commercialNotes", l."subtotal",
                  l."vatPercentage", l."vatAmount", l."finalSellingPrice" AS "total",
                  COALESCE(jsonb_agg(jsonb_build_object(
@@ -102,20 +117,45 @@ export class SalesOrderConversionService {
                    'identification', p."identification", 'email', p."email", 'phone', p."phone"
                  ) ORDER BY p."createdAt") FILTER (WHERE p."id" IS NOT NULL), '[]'::jsonb) AS "participants"
           FROM "additional_service_order_lines" l
+          LEFT JOIN "additional_service_catalogs" catalog
+            ON catalog."id" = l."additionalServiceCatalogId" AND catalog."tenantId" = l."tenantId"
           LEFT JOIN "additional_service_order_participants" p
             ON p."lineId" = l."id" AND p."tenantId" = l."tenantId"
           WHERE l."orderId" = ${sourceId} AND l."tenantId" = ${tenantId}
-          GROUP BY l."id"
+          GROUP BY l."id", catalog."fiscalItemCategory"
           ORDER BY l."createdAt", l."id"`;
 
-      const year = new Date().getUTCFullYear();
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`${tenantId}:SALES_ORDER_NUMBER:${year}`}, 0))`;
-      const numberRows = await tx.$queryRaw<Array<{ next: bigint }>>`
+    const snapshotLines = lines.map((line) => {
+        if (!line.additionalServiceCatalogId) {
+          throw new BadRequestException({
+            code: "SALES_ORDER_LINE_CATALOG_IDENTITY_MISSING",
+            message:
+              "Una línea del servicio adicional no tiene una identidad de catálogo válida.",
+          });
+        }
+        const fiscalItemCategory = toFiscalItemCategory(line.fiscalItemCategory);
+        if (!fiscalItemCategory) {
+          throw new BadRequestException({
+            code: "SALES_ORDER_LINE_FISCAL_ITEM_CATEGORY_INVALID",
+            message:
+              "Una línea del servicio adicional no tiene una clasificación fiscal válida.",
+          });
+        }
+        return {
+          ...line,
+          additionalServiceCatalogId: line.additionalServiceCatalogId,
+          fiscalItemCategory,
+        };
+    });
+
+    const year = new Date().getUTCFullYear();
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`${tenantId}:SALES_ORDER_NUMBER:${year}`}, 0))`;
+    const numberRows = await tx.$queryRaw<Array<{ next: bigint }>>`
         SELECT COALESCE(MAX(RIGHT("orderNumber", 6)::bigint), 0) + 1 AS "next" FROM "sales_orders"
         WHERE "tenantId" = ${tenantId} AND "orderNumber" LIKE ${`SO-${year}-%`}`;
-      const orderNumber = `SO-${year}-${String(numberRows[0]?.next ?? 1).padStart(6, "0")}`;
-      const salesOrderId = randomUUID();
-      await tx.$executeRaw`INSERT INTO "sales_orders" (
+    const orderNumber = `SO-${year}-${String(numberRows[0]?.next ?? 1).padStart(6, "0")}`;
+    const salesOrderId = randomUUID();
+    await tx.$executeRaw`INSERT INTO "sales_orders" (
           "id", "tenantId", "orderNumber", "sourceType", "sourceId", "customerId",
           "customerName", "customerEmail", "currency", "commercialSubtotal", "totalVat", "total",
           "paymentConditionType", "paymentTermValue", "paymentTermUnit", "commercialObservations",
@@ -128,20 +168,34 @@ export class SalesOrderConversionService {
           ${proposal.commercialObservations}, ${actor.id}, ${actor.fullName}, CURRENT_TIMESTAMP
         )`;
 
-      for (const line of lines) {
-        await tx.$executeRaw`INSERT INTO "sales_order_lines" (
-            "id", "tenantId", "salesOrderId", "serviceCode", "serviceName", "serviceDetailsVersion",
+    for (const line of snapshotLines) {
+      await tx.$executeRaw`INSERT INTO "sales_order_lines" (
+            "id", "tenantId", "salesOrderId", "additionalServiceCatalogId", "fiscalItemCategory", "serviceCode", "serviceName", "serviceDetailsVersion",
             "serviceDetails", "commercialNotes", "subtotal", "vatPercentage", "vatAmount", "total",
             "participants", "updatedAt"
           ) VALUES (
-            ${randomUUID()}, ${tenantId}, ${salesOrderId}, ${line.serviceCode}, ${line.serviceName},
+            ${randomUUID()}, ${tenantId}, ${salesOrderId}, ${line.additionalServiceCatalogId}, ${line.fiscalItemCategory}::"FiscalItemCategory", ${line.serviceCode}, ${line.serviceName},
             ${line.serviceDetailsVersion}, ${JSON.stringify(line.serviceDetails)}::jsonb, ${line.commercialNotes},
             ${line.subtotal}, ${line.vatPercentage}, ${line.vatAmount}, ${line.total},
             ${JSON.stringify(line.participants)}::jsonb, CURRENT_TIMESTAMP
           )`;
-      }
-      return (await this.findBySourceWithClient(tx, tenantId, sourceId))!;
-    });
+    }
+    const created = await this.findBySourceWithClient(tx, tenantId, sourceId);
+    if (!created) {
+      throw new InternalServerErrorException({
+        code: "SALES_ORDER_MATERIALIZATION_NOT_FOUND",
+        message: "No se pudo confirmar la orden de venta materializada.",
+      });
+    }
+    return { salesOrder: created, reusedExisting: false };
+  }
+
+  lockAdditionalServiceOrder(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    sourceId: string,
+  ): Promise<unknown> {
+    return tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`${tenantId}:${SOURCE_TYPE}:${sourceId}`}, 0))`;
   }
 
   findByAdditionalServiceOrder(
@@ -163,6 +217,7 @@ export class SalesOrderConversionService {
              so."commercialObservations", so."customerName", so."customerEmail", so."createdAt",
              COALESCE(jsonb_agg(jsonb_build_object(
                'serviceCode', l."serviceCode", 'serviceName', l."serviceName",
+               'fiscalItemCategory', l."fiscalItemCategory",
                'serviceDetailsVersion', l."serviceDetailsVersion", 'serviceDetails', l."serviceDetails",
                'commercialNotes', l."commercialNotes", 'subtotal', l."subtotal"::text,
                'vatPercentage', l."vatPercentage"::text, 'vatAmount', l."vatAmount"::text,
@@ -186,4 +241,8 @@ export class SalesOrderConversionService {
       lines: row.lines as SalesOrderSummary["lines"], createdAt: row.createdAt as Date,
     };
   }
+}
+
+function toFiscalItemCategory(value: unknown): FiscalItemCategory | null {
+  return value === "SERVICE" || value === "MERCHANDISE" ? value : null;
 }

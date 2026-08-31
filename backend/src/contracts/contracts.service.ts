@@ -13,7 +13,12 @@ import { StorageService } from "../storage/storage.service";
 import { BillingService } from "../billing/billing.service";
 import { ContractsEmailsService } from "./contracts-emails.service";
 import { CustomerDocumentsService } from "../customers/documents/customer-documents.service";
-import { normalizeIdentification } from "../customers/utils/normalize-identification";
+import {
+  ClientIdentificationError,
+  isClientIdentificationType,
+  normalizeAndValidateClientIdentification,
+} from "../customers/client-identification";
+import { normalizeLegacyClientIdentificationForRead } from "../customers/utils/normalize-identification";
 import { DocumentSigningService } from "../documents/document-signing.service";
 import { DocumentSigningAuditService } from "../documents/document-signing-audit.service";
 import { DocumentSignatureFinalizationService } from "../documents/document-signature-finalization.service";
@@ -116,6 +121,22 @@ export class ContractsService {
       .replace(/\s+/g, " ");
   }
 
+  private normalizeCustomerIdentificationForRead(
+    idType: string | null,
+    idNumber: string,
+  ): string {
+    if (isClientIdentificationType(idType)) {
+      try {
+        return normalizeAndValidateClientIdentification(idType, idNumber)
+          .idNumber;
+      } catch (error) {
+        if (error instanceof ClientIdentificationError) return "";
+        throw error;
+      }
+    }
+    return normalizeLegacyClientIdentificationForRead(idType, idNumber);
+  }
+
   private async resolveExistingCustomer(params: {
     tenantId: string;
     selectedCustomerId?: unknown;
@@ -158,14 +179,20 @@ export class ContractsService {
           select,
         });
     } else if (submittedIdType) {
+      const normalizedSubmittedId = this.normalizeCustomerIdentificationForRead(
+        submittedIdType,
+        submittedIdNumber,
+      );
+      if (!normalizedSubmittedId) {
+        throw new BadRequestException(
+          `${params.roleLabel} no contiene una identificación válida.`,
+        );
+      }
       customer = await this.prisma.client.findFirst({
           where: {
             tenantId: params.tenantId,
             idType: submittedIdType,
-            idNumber: normalizeIdentification(
-              submittedIdType,
-              submittedIdNumber,
-            ),
+            idNumber: normalizedSubmittedId,
           },
           select,
         });
@@ -173,19 +200,31 @@ export class ContractsService {
       const legacyIdentityCandidates = [
         {
           idType: "Cedula",
-          idNumber: normalizeIdentification("Cedula", submittedIdNumber),
+          idNumber: normalizeLegacyClientIdentificationForRead(
+            "Cedula",
+            submittedIdNumber,
+          ),
         },
         {
           idType: "DIMEX",
-          idNumber: normalizeIdentification("DIMEX", submittedIdNumber),
+          idNumber: normalizeLegacyClientIdentificationForRead(
+            "DIMEX",
+            submittedIdNumber,
+          ),
         },
         {
           idType: "Pasaporte",
-          idNumber: normalizeIdentification("Pasaporte", submittedIdNumber),
+          idNumber: normalizeLegacyClientIdentificationForRead(
+            "Pasaporte",
+            submittedIdNumber,
+          ),
         },
         {
           idType: null,
-          idNumber: normalizeIdentification(null, submittedIdNumber),
+          idNumber: normalizeLegacyClientIdentificationForRead(
+            null,
+            submittedIdNumber,
+          ),
         },
       ].filter(
         (candidate, index, all) =>
@@ -220,7 +259,7 @@ export class ContractsService {
       );
     }
 
-    const normalizedSubmittedId = normalizeIdentification(
+    const normalizedSubmittedId = this.normalizeCustomerIdentificationForRead(
       customer.idType || submittedIdType,
       submittedIdNumber,
     );

@@ -8,11 +8,16 @@ import { AdditionalServicePricingConfigurationReader } from "./additional-servic
 import { AdditionalServicesPersistenceModule } from "./additional-services-persistence.module";
 import { ExchangeRateModule } from "../../exchange-rate/exchange-rate.module";
 import { CurrentExchangeRateReader } from "./current-exchange-rate.reader";
+import { FiscalCatalogModule } from "../../fiscal-catalogs/fiscal-catalog.module";
 
 @Module({
   imports: [
     PricingEngineModule.register({
-      imports: [AdditionalServicesPersistenceModule, ExchangeRateModule],
+      imports: [
+        AdditionalServicesPersistenceModule,
+        ExchangeRateModule,
+        FiscalCatalogModule,
+      ],
       configurationReaderProvider: {
         provide: PRICING_CONFIGURATION_READER,
         useClass: AdditionalServicePricingConfigurationReader,

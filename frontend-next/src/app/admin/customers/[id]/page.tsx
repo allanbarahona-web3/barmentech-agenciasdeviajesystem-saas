@@ -13,6 +13,7 @@ import AttachmentViewer from '@/components/attachment-viewer';
 import { getContractFiles } from '@/lib/contracts-api';
 import { listCustomerOperationalNotes, createContractNoteForCustomer, updateContractNote, deleteContractNote, type ContractNote } from '@/lib/contract-notes-api';
 import { formatBusinessDate } from '@/shared/regional';
+import type { ClientIdentificationType } from '@/features/customers/client-identification';
 
 export default function CustomerProfilePage() {
   const router = useRouter();
@@ -393,7 +394,7 @@ export default function CustomerProfilePage() {
 
   async function handleSaveEdit(formData: {
     fullName: string;
-    idType: string;
+    idType: ClientIdentificationType;
     email: string;
     phone: string;
     maritalStatus: string;
@@ -412,7 +413,7 @@ export default function CustomerProfilePage() {
 
       const updateData: UpdateCustomerDto = {
         fullName: formData.fullName.trim() || undefined,
-        idType: formData.idType.trim() || undefined,
+        idType: formData.idType,
         email: formData.email.trim() || undefined,
         phone: formData.phone.trim() || undefined,
         maritalStatus: formData.maritalStatus.trim() || undefined,

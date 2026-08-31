@@ -1,0 +1,4724 @@
+{
+  "metadata": {
+    "countryCode": "CR",
+    "version": "dta-2026",
+    "declaredVersion": "DIVISIÓN TERRITORIAL ADMINISTRATIVA, 2026",
+    "sourceAuthority": "Instituto Geográfico Nacional / Registro Nacional",
+    "sourceUrl": "https://www.snitcr.go.cr/pdfs/ign_repositorio/DTA-TABLA%20POR%20PROVINCIA-CANT%C3%93N-DISTRITO%202026.xlsx",
+    "originalFilename": "DTA-TABLA POR PROVINCIA-CANTÓN-DISTRITO 2026.xlsx",
+    "sourceByteSize": 224880,
+    "sourceSha256": "79491cc10a42a1c6ed5287c85beeaef80a506663abcc9b64cd84ad1dace3fef9",
+    "workbookModifiedAt": "2026-02-06T17:52:11Z",
+    "sourceLastModifiedAt": "2026-02-09T14:21:08Z",
+    "datasetChecksumSha256": "e26dbae32e3a94e5e02df6ba38bea9dee0f11c786fda142e9307ffb224437187",
+    "expectedCounts": {
+      "provinces": 7,
+      "cantons": 84,
+      "districts": 494
+    },
+    "canonicalSheets": {
+      "provinces": "CUADRO_PROVINCIA",
+      "cantons": "CUADRO_CANTON",
+      "districts": "CUADRO_DISTRITO"
+    },
+    "excludedSheets": [
+      "DTA OFICIALIZACION"
+    ],
+    "sourceCodeNormalization": "Safe integer-valued numeric cells are read lexically, left-padded to level width, and emitted only as strings.",
+    "sourceInconsistencies": [
+      "CUADRO_DISTRITO row 471 repeats canton 613 as Puerto Jiménez; canonical canton name from CUADRO_CANTON is Puerto Jimenez.",
+      "DTA OFICIALIZACION row 28 spells district 10307 as Patarra; canonical CUADRO_DISTRITO name is Patarrá.",
+      "DTA OFICIALIZACION row 65 spells district 10805 as Ipis; canonical CUADRO_DISTRITO name is Ipís.",
+      "DTA OFICIALIZACION rows 79-83 spell canton 111 as Vazquez de Coronado; canonical CUADRO_CANTON name is Vázquez de Coronado.",
+      "DTA OFICIALIZACION row 123 spells district 11911 as Paramo; canonical CUADRO_DISTRITO name is Páramo.",
+      "DTA OFICIALIZACION row 141 spells district 20111 as Turrucares; canonical CUADRO_DISTRITO name is Turrúcares.",
+      "DTA OFICIALIZACION row 373 pairs district 50405 Pijije with canton code 505 and name Bagaces; canonical parent is code prefix 504.",
+      "DTA OFICIALIZACION row 440 pairs district 60310 Cabagra with canton code 604 and name Buenos Aires; canonical parent is code prefix 603.",
+      "DTA OFICIALIZACION row 471 spells canton 613 as Puerto Jiménez; canonical CUADRO_CANTON name is Puerto Jimenez."
+    ]
+  },
+  "entries": [
+    {
+      "administrativeLevel": 1,
+      "subdivisionTypeCode": "PROVINCE",
+      "code": "1",
+      "fullCode": "1",
+      "name": "San José",
+      "parentFullCode": null
+    },
+    {
+      "administrativeLevel": 1,
+      "subdivisionTypeCode": "PROVINCE",
+      "code": "2",
+      "fullCode": "2",
+      "name": "Alajuela",
+      "parentFullCode": null
+    },
+    {
+      "administrativeLevel": 1,
+      "subdivisionTypeCode": "PROVINCE",
+      "code": "3",
+      "fullCode": "3",
+      "name": "Cartago",
+      "parentFullCode": null
+    },
+    {
+      "administrativeLevel": 1,
+      "subdivisionTypeCode": "PROVINCE",
+      "code": "4",
+      "fullCode": "4",
+      "name": "Heredia",
+      "parentFullCode": null
+    },
+    {
+      "administrativeLevel": 1,
+      "subdivisionTypeCode": "PROVINCE",
+      "code": "5",
+      "fullCode": "5",
+      "name": "Guanacaste",
+      "parentFullCode": null
+    },
+    {
+      "administrativeLevel": 1,
+      "subdivisionTypeCode": "PROVINCE",
+      "code": "6",
+      "fullCode": "6",
+      "name": "Puntarenas",
+      "parentFullCode": null
+    },
+    {
+      "administrativeLevel": 1,
+      "subdivisionTypeCode": "PROVINCE",
+      "code": "7",
+      "fullCode": "7",
+      "name": "Limón",
+      "parentFullCode": null
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "01",
+      "fullCode": "101",
+      "name": "San José",
+      "parentFullCode": "1"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "02",
+      "fullCode": "102",
+      "name": "Escazú",
+      "parentFullCode": "1"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "03",
+      "fullCode": "103",
+      "name": "Desamparados",
+      "parentFullCode": "1"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "04",
+      "fullCode": "104",
+      "name": "Puriscal",
+      "parentFullCode": "1"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "05",
+      "fullCode": "105",
+      "name": "Tarrazú",
+      "parentFullCode": "1"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "06",
+      "fullCode": "106",
+      "name": "Aserrí",
+      "parentFullCode": "1"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "07",
+      "fullCode": "107",
+      "name": "Mora",
+      "parentFullCode": "1"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "08",
+      "fullCode": "108",
+      "name": "Goicoechea",
+      "parentFullCode": "1"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "09",
+      "fullCode": "109",
+      "name": "Santa Ana",
+      "parentFullCode": "1"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "10",
+      "fullCode": "110",
+      "name": "Alajuelita",
+      "parentFullCode": "1"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "11",
+      "fullCode": "111",
+      "name": "Vázquez de Coronado",
+      "parentFullCode": "1"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "12",
+      "fullCode": "112",
+      "name": "Acosta",
+      "parentFullCode": "1"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "13",
+      "fullCode": "113",
+      "name": "Tibás",
+      "parentFullCode": "1"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "14",
+      "fullCode": "114",
+      "name": "Moravia",
+      "parentFullCode": "1"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "15",
+      "fullCode": "115",
+      "name": "Montes de Oca",
+      "parentFullCode": "1"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "16",
+      "fullCode": "116",
+      "name": "Turrubares",
+      "parentFullCode": "1"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "17",
+      "fullCode": "117",
+      "name": "Dota",
+      "parentFullCode": "1"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "18",
+      "fullCode": "118",
+      "name": "Curridabat",
+      "parentFullCode": "1"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "19",
+      "fullCode": "119",
+      "name": "Pérez Zeledón",
+      "parentFullCode": "1"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "20",
+      "fullCode": "120",
+      "name": "León Cortés Castro",
+      "parentFullCode": "1"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "01",
+      "fullCode": "201",
+      "name": "Alajuela",
+      "parentFullCode": "2"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "02",
+      "fullCode": "202",
+      "name": "San Ramón",
+      "parentFullCode": "2"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "03",
+      "fullCode": "203",
+      "name": "Grecia",
+      "parentFullCode": "2"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "04",
+      "fullCode": "204",
+      "name": "San Mateo",
+      "parentFullCode": "2"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "05",
+      "fullCode": "205",
+      "name": "Atenas",
+      "parentFullCode": "2"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "06",
+      "fullCode": "206",
+      "name": "Naranjo",
+      "parentFullCode": "2"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "07",
+      "fullCode": "207",
+      "name": "Palmares",
+      "parentFullCode": "2"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "08",
+      "fullCode": "208",
+      "name": "Poás",
+      "parentFullCode": "2"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "09",
+      "fullCode": "209",
+      "name": "Orotina",
+      "parentFullCode": "2"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "10",
+      "fullCode": "210",
+      "name": "San Carlos",
+      "parentFullCode": "2"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "11",
+      "fullCode": "211",
+      "name": "Zarcero",
+      "parentFullCode": "2"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "12",
+      "fullCode": "212",
+      "name": "Sarchí",
+      "parentFullCode": "2"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "13",
+      "fullCode": "213",
+      "name": "Upala",
+      "parentFullCode": "2"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "14",
+      "fullCode": "214",
+      "name": "Los Chiles",
+      "parentFullCode": "2"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "15",
+      "fullCode": "215",
+      "name": "Guatuso",
+      "parentFullCode": "2"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "16",
+      "fullCode": "216",
+      "name": "Río Cuarto",
+      "parentFullCode": "2"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "01",
+      "fullCode": "301",
+      "name": "Cartago",
+      "parentFullCode": "3"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "02",
+      "fullCode": "302",
+      "name": "Paraíso",
+      "parentFullCode": "3"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "03",
+      "fullCode": "303",
+      "name": "La Unión",
+      "parentFullCode": "3"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "04",
+      "fullCode": "304",
+      "name": "Jiménez",
+      "parentFullCode": "3"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "05",
+      "fullCode": "305",
+      "name": "Turrialba",
+      "parentFullCode": "3"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "06",
+      "fullCode": "306",
+      "name": "Alvarado",
+      "parentFullCode": "3"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "07",
+      "fullCode": "307",
+      "name": "Oreamuno",
+      "parentFullCode": "3"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "08",
+      "fullCode": "308",
+      "name": "El Guarco",
+      "parentFullCode": "3"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "01",
+      "fullCode": "401",
+      "name": "Heredia",
+      "parentFullCode": "4"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "02",
+      "fullCode": "402",
+      "name": "Barva",
+      "parentFullCode": "4"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "03",
+      "fullCode": "403",
+      "name": "Santo Domingo",
+      "parentFullCode": "4"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "04",
+      "fullCode": "404",
+      "name": "Santa Bárbara",
+      "parentFullCode": "4"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "05",
+      "fullCode": "405",
+      "name": "San Rafael",
+      "parentFullCode": "4"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "06",
+      "fullCode": "406",
+      "name": "San Isidro",
+      "parentFullCode": "4"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "07",
+      "fullCode": "407",
+      "name": "Belén",
+      "parentFullCode": "4"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "08",
+      "fullCode": "408",
+      "name": "Flores",
+      "parentFullCode": "4"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "09",
+      "fullCode": "409",
+      "name": "San Pablo",
+      "parentFullCode": "4"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "10",
+      "fullCode": "410",
+      "name": "Sarapiquí",
+      "parentFullCode": "4"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "01",
+      "fullCode": "501",
+      "name": "Liberia",
+      "parentFullCode": "5"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "02",
+      "fullCode": "502",
+      "name": "Nicoya",
+      "parentFullCode": "5"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "03",
+      "fullCode": "503",
+      "name": "Santa Cruz",
+      "parentFullCode": "5"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "04",
+      "fullCode": "504",
+      "name": "Bagaces",
+      "parentFullCode": "5"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "05",
+      "fullCode": "505",
+      "name": "Carrillo",
+      "parentFullCode": "5"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "06",
+      "fullCode": "506",
+      "name": "Cañas",
+      "parentFullCode": "5"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "07",
+      "fullCode": "507",
+      "name": "Abangares",
+      "parentFullCode": "5"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "08",
+      "fullCode": "508",
+      "name": "Tilarán",
+      "parentFullCode": "5"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "09",
+      "fullCode": "509",
+      "name": "Nandayure",
+      "parentFullCode": "5"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "10",
+      "fullCode": "510",
+      "name": "La Cruz",
+      "parentFullCode": "5"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "11",
+      "fullCode": "511",
+      "name": "Hojancha",
+      "parentFullCode": "5"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "01",
+      "fullCode": "601",
+      "name": "Puntarenas",
+      "parentFullCode": "6"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "02",
+      "fullCode": "602",
+      "name": "Esparza",
+      "parentFullCode": "6"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "03",
+      "fullCode": "603",
+      "name": "Buenos Aires",
+      "parentFullCode": "6"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "04",
+      "fullCode": "604",
+      "name": "Montes de Oro",
+      "parentFullCode": "6"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "05",
+      "fullCode": "605",
+      "name": "Osa",
+      "parentFullCode": "6"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "06",
+      "fullCode": "606",
+      "name": "Quepos",
+      "parentFullCode": "6"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "07",
+      "fullCode": "607",
+      "name": "Golfito",
+      "parentFullCode": "6"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "08",
+      "fullCode": "608",
+      "name": "Coto Brus",
+      "parentFullCode": "6"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "09",
+      "fullCode": "609",
+      "name": "Parrita",
+      "parentFullCode": "6"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "10",
+      "fullCode": "610",
+      "name": "Corredores",
+      "parentFullCode": "6"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "11",
+      "fullCode": "611",
+      "name": "Garabito",
+      "parentFullCode": "6"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "12",
+      "fullCode": "612",
+      "name": "Monteverde",
+      "parentFullCode": "6"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "13",
+      "fullCode": "613",
+      "name": "Puerto Jimenez",
+      "parentFullCode": "6"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "01",
+      "fullCode": "701",
+      "name": "Limón",
+      "parentFullCode": "7"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "02",
+      "fullCode": "702",
+      "name": "Pococí",
+      "parentFullCode": "7"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "03",
+      "fullCode": "703",
+      "name": "Siquirres",
+      "parentFullCode": "7"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "04",
+      "fullCode": "704",
+      "name": "Talamanca",
+      "parentFullCode": "7"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "05",
+      "fullCode": "705",
+      "name": "Matina",
+      "parentFullCode": "7"
+    },
+    {
+      "administrativeLevel": 2,
+      "subdivisionTypeCode": "CANTON",
+      "code": "06",
+      "fullCode": "706",
+      "name": "Guácimo",
+      "parentFullCode": "7"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "10101",
+      "name": "Carmen",
+      "parentFullCode": "101"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "10102",
+      "name": "Merced",
+      "parentFullCode": "101"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "10103",
+      "name": "Hospital",
+      "parentFullCode": "101"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "10104",
+      "name": "Catedral",
+      "parentFullCode": "101"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "05",
+      "fullCode": "10105",
+      "name": "Zapote",
+      "parentFullCode": "101"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "06",
+      "fullCode": "10106",
+      "name": "San Francisco de Dos Ríos",
+      "parentFullCode": "101"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "07",
+      "fullCode": "10107",
+      "name": "Uruca",
+      "parentFullCode": "101"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "08",
+      "fullCode": "10108",
+      "name": "Mata Redonda",
+      "parentFullCode": "101"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "09",
+      "fullCode": "10109",
+      "name": "Pavas",
+      "parentFullCode": "101"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "10",
+      "fullCode": "10110",
+      "name": "Hatillo",
+      "parentFullCode": "101"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "11",
+      "fullCode": "10111",
+      "name": "San Sebastián",
+      "parentFullCode": "101"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "10201",
+      "name": "Escazú",
+      "parentFullCode": "102"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "10202",
+      "name": "San Antonio",
+      "parentFullCode": "102"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "10203",
+      "name": "San Rafael",
+      "parentFullCode": "102"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "10301",
+      "name": "Desamparados",
+      "parentFullCode": "103"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "10302",
+      "name": "San Miguel",
+      "parentFullCode": "103"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "10303",
+      "name": "San Juan de Dios",
+      "parentFullCode": "103"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "10304",
+      "name": "San Rafael Arriba",
+      "parentFullCode": "103"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "05",
+      "fullCode": "10305",
+      "name": "San Antonio",
+      "parentFullCode": "103"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "06",
+      "fullCode": "10306",
+      "name": "Frailes",
+      "parentFullCode": "103"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "07",
+      "fullCode": "10307",
+      "name": "Patarrá",
+      "parentFullCode": "103"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "08",
+      "fullCode": "10308",
+      "name": "San Cristobal",
+      "parentFullCode": "103"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "09",
+      "fullCode": "10309",
+      "name": "Rosario",
+      "parentFullCode": "103"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "10",
+      "fullCode": "10310",
+      "name": "Damas",
+      "parentFullCode": "103"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "11",
+      "fullCode": "10311",
+      "name": "San Rafael Abajo",
+      "parentFullCode": "103"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "12",
+      "fullCode": "10312",
+      "name": "Gravilias",
+      "parentFullCode": "103"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "13",
+      "fullCode": "10313",
+      "name": "Los Guido",
+      "parentFullCode": "103"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "10401",
+      "name": "Santiago",
+      "parentFullCode": "104"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "10402",
+      "name": "Mercedes Sur",
+      "parentFullCode": "104"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "10403",
+      "name": "Barbacoas",
+      "parentFullCode": "104"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "10404",
+      "name": "Grifo Alto",
+      "parentFullCode": "104"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "05",
+      "fullCode": "10405",
+      "name": "San Rafael",
+      "parentFullCode": "104"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "06",
+      "fullCode": "10406",
+      "name": "Candelarita",
+      "parentFullCode": "104"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "07",
+      "fullCode": "10407",
+      "name": "Desamparaditos",
+      "parentFullCode": "104"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "08",
+      "fullCode": "10408",
+      "name": "San Antonio",
+      "parentFullCode": "104"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "09",
+      "fullCode": "10409",
+      "name": "Chires",
+      "parentFullCode": "104"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "10501",
+      "name": "San Marcos",
+      "parentFullCode": "105"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "10502",
+      "name": "San Lorenzo",
+      "parentFullCode": "105"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "10503",
+      "name": "San Carlos",
+      "parentFullCode": "105"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "10601",
+      "name": "Aserrí",
+      "parentFullCode": "106"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "10602",
+      "name": "Tarbaca",
+      "parentFullCode": "106"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "10603",
+      "name": "Vuelta de Jorco",
+      "parentFullCode": "106"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "10604",
+      "name": "San Gabriel",
+      "parentFullCode": "106"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "05",
+      "fullCode": "10605",
+      "name": "Legua",
+      "parentFullCode": "106"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "06",
+      "fullCode": "10606",
+      "name": "Monterrey",
+      "parentFullCode": "106"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "07",
+      "fullCode": "10607",
+      "name": "Salitrillos",
+      "parentFullCode": "106"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "10701",
+      "name": "Colón",
+      "parentFullCode": "107"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "10702",
+      "name": "Guayabo",
+      "parentFullCode": "107"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "10703",
+      "name": "Tabarcia",
+      "parentFullCode": "107"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "10704",
+      "name": "Piedras Negras",
+      "parentFullCode": "107"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "05",
+      "fullCode": "10705",
+      "name": "Picagres",
+      "parentFullCode": "107"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "06",
+      "fullCode": "10706",
+      "name": "Jaris",
+      "parentFullCode": "107"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "07",
+      "fullCode": "10707",
+      "name": "Quitirrisí",
+      "parentFullCode": "107"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "10801",
+      "name": "Guadalupe",
+      "parentFullCode": "108"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "10802",
+      "name": "San Francisco",
+      "parentFullCode": "108"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "10803",
+      "name": "Calle Blancos",
+      "parentFullCode": "108"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "10804",
+      "name": "Mata de Plátano",
+      "parentFullCode": "108"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "05",
+      "fullCode": "10805",
+      "name": "Ipís",
+      "parentFullCode": "108"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "06",
+      "fullCode": "10806",
+      "name": "Rancho Redondo",
+      "parentFullCode": "108"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "07",
+      "fullCode": "10807",
+      "name": "Purral",
+      "parentFullCode": "108"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "10901",
+      "name": "Santa Ana",
+      "parentFullCode": "109"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "10902",
+      "name": "Salitral",
+      "parentFullCode": "109"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "10903",
+      "name": "Pozos",
+      "parentFullCode": "109"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "10904",
+      "name": "Uruca",
+      "parentFullCode": "109"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "05",
+      "fullCode": "10905",
+      "name": "Piedades",
+      "parentFullCode": "109"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "06",
+      "fullCode": "10906",
+      "name": "Brasil",
+      "parentFullCode": "109"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "11001",
+      "name": "Alajuelita",
+      "parentFullCode": "110"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "11002",
+      "name": "San Josecito",
+      "parentFullCode": "110"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "11003",
+      "name": "San Antonio",
+      "parentFullCode": "110"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "11004",
+      "name": "Concepción",
+      "parentFullCode": "110"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "05",
+      "fullCode": "11005",
+      "name": "San Felipe",
+      "parentFullCode": "110"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "11101",
+      "name": "San Isidro",
+      "parentFullCode": "111"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "11102",
+      "name": "San Rafael",
+      "parentFullCode": "111"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "11103",
+      "name": "Dulce Nombre de Jesús",
+      "parentFullCode": "111"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "11104",
+      "name": "Patalillo",
+      "parentFullCode": "111"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "05",
+      "fullCode": "11105",
+      "name": "Cascajal",
+      "parentFullCode": "111"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "11201",
+      "name": "San Ignacio",
+      "parentFullCode": "112"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "11202",
+      "name": "Guaitil",
+      "parentFullCode": "112"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "11203",
+      "name": "Palmichal",
+      "parentFullCode": "112"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "11204",
+      "name": "Cangrejal",
+      "parentFullCode": "112"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "05",
+      "fullCode": "11205",
+      "name": "Sabanillas",
+      "parentFullCode": "112"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "11301",
+      "name": "San Juan",
+      "parentFullCode": "113"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "11302",
+      "name": "Cinco Esquinas",
+      "parentFullCode": "113"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "11303",
+      "name": "Anselmo Llorente",
+      "parentFullCode": "113"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "11304",
+      "name": "León XIII",
+      "parentFullCode": "113"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "05",
+      "fullCode": "11305",
+      "name": "Colima",
+      "parentFullCode": "113"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "11401",
+      "name": "San Vicente",
+      "parentFullCode": "114"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "11402",
+      "name": "San Jerónimo",
+      "parentFullCode": "114"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "11403",
+      "name": "La Trinidad",
+      "parentFullCode": "114"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "11501",
+      "name": "San Pedro",
+      "parentFullCode": "115"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "11502",
+      "name": "Sabanilla",
+      "parentFullCode": "115"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "11503",
+      "name": "Mercedes",
+      "parentFullCode": "115"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "11504",
+      "name": "San Rafael",
+      "parentFullCode": "115"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "11601",
+      "name": "San Pablo",
+      "parentFullCode": "116"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "11602",
+      "name": "San Pedro",
+      "parentFullCode": "116"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "11603",
+      "name": "San Juan de Mata",
+      "parentFullCode": "116"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "11604",
+      "name": "San Luis",
+      "parentFullCode": "116"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "05",
+      "fullCode": "11605",
+      "name": "Carara",
+      "parentFullCode": "116"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "11701",
+      "name": "Santa María",
+      "parentFullCode": "117"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "11702",
+      "name": "Jardín",
+      "parentFullCode": "117"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "11703",
+      "name": "Copey",
+      "parentFullCode": "117"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "11801",
+      "name": "Curridabat",
+      "parentFullCode": "118"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "11802",
+      "name": "Granadilla",
+      "parentFullCode": "118"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "11803",
+      "name": "Sánchez",
+      "parentFullCode": "118"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "11804",
+      "name": "Tirrases",
+      "parentFullCode": "118"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "11901",
+      "name": "San Isidro de El General",
+      "parentFullCode": "119"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "11902",
+      "name": "El General",
+      "parentFullCode": "119"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "11903",
+      "name": "Daniel Flores",
+      "parentFullCode": "119"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "11904",
+      "name": "Rivas",
+      "parentFullCode": "119"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "05",
+      "fullCode": "11905",
+      "name": "San Pedro",
+      "parentFullCode": "119"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "06",
+      "fullCode": "11906",
+      "name": "Platanares",
+      "parentFullCode": "119"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "07",
+      "fullCode": "11907",
+      "name": "Pejivalle",
+      "parentFullCode": "119"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "08",
+      "fullCode": "11908",
+      "name": "Cajón",
+      "parentFullCode": "119"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "09",
+      "fullCode": "11909",
+      "name": "Barú",
+      "parentFullCode": "119"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "10",
+      "fullCode": "11910",
+      "name": "Río Nuevo",
+      "parentFullCode": "119"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "11",
+      "fullCode": "11911",
+      "name": "Páramo",
+      "parentFullCode": "119"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "12",
+      "fullCode": "11912",
+      "name": "La  Amistad",
+      "parentFullCode": "119"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "12001",
+      "name": "San Pablo",
+      "parentFullCode": "120"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "12002",
+      "name": "San Andrés",
+      "parentFullCode": "120"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "12003",
+      "name": "Llano Bonito",
+      "parentFullCode": "120"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "12004",
+      "name": "San Isidro",
+      "parentFullCode": "120"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "05",
+      "fullCode": "12005",
+      "name": "Santa Cruz",
+      "parentFullCode": "120"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "06",
+      "fullCode": "12006",
+      "name": "San Antonio",
+      "parentFullCode": "120"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "20101",
+      "name": "Alajuela",
+      "parentFullCode": "201"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "20102",
+      "name": "San José",
+      "parentFullCode": "201"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "20103",
+      "name": "Carrizal",
+      "parentFullCode": "201"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "20104",
+      "name": "San Antonio",
+      "parentFullCode": "201"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "05",
+      "fullCode": "20105",
+      "name": "Guácima",
+      "parentFullCode": "201"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "06",
+      "fullCode": "20106",
+      "name": "San Isidro",
+      "parentFullCode": "201"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "07",
+      "fullCode": "20107",
+      "name": "Sabanilla",
+      "parentFullCode": "201"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "08",
+      "fullCode": "20108",
+      "name": "San Rafael",
+      "parentFullCode": "201"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "09",
+      "fullCode": "20109",
+      "name": "Río Segundo",
+      "parentFullCode": "201"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "10",
+      "fullCode": "20110",
+      "name": "Desamparados",
+      "parentFullCode": "201"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "11",
+      "fullCode": "20111",
+      "name": "Turrúcares",
+      "parentFullCode": "201"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "12",
+      "fullCode": "20112",
+      "name": "Tambor",
+      "parentFullCode": "201"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "13",
+      "fullCode": "20113",
+      "name": "Garita",
+      "parentFullCode": "201"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "14",
+      "fullCode": "20114",
+      "name": "Sarapiquí",
+      "parentFullCode": "201"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "20201",
+      "name": "San Ramón",
+      "parentFullCode": "202"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "20202",
+      "name": "Santiago",
+      "parentFullCode": "202"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "20203",
+      "name": "San Juan",
+      "parentFullCode": "202"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "20204",
+      "name": "Piedades Norte",
+      "parentFullCode": "202"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "05",
+      "fullCode": "20205",
+      "name": "Piedades Sur",
+      "parentFullCode": "202"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "06",
+      "fullCode": "20206",
+      "name": "San Rafael",
+      "parentFullCode": "202"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "07",
+      "fullCode": "20207",
+      "name": "San Isidro",
+      "parentFullCode": "202"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "08",
+      "fullCode": "20208",
+      "name": "Ángeles",
+      "parentFullCode": "202"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "09",
+      "fullCode": "20209",
+      "name": "Alfaro",
+      "parentFullCode": "202"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "10",
+      "fullCode": "20210",
+      "name": "Volio",
+      "parentFullCode": "202"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "11",
+      "fullCode": "20211",
+      "name": "Concepción",
+      "parentFullCode": "202"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "12",
+      "fullCode": "20212",
+      "name": "Zapotal",
+      "parentFullCode": "202"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "13",
+      "fullCode": "20213",
+      "name": "Peñas Blancas",
+      "parentFullCode": "202"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "14",
+      "fullCode": "20214",
+      "name": "San Lorenzo",
+      "parentFullCode": "202"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "20301",
+      "name": "Grecia",
+      "parentFullCode": "203"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "20302",
+      "name": "San Isidro",
+      "parentFullCode": "203"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "20303",
+      "name": "San José",
+      "parentFullCode": "203"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "20304",
+      "name": "San Roque",
+      "parentFullCode": "203"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "05",
+      "fullCode": "20305",
+      "name": "Tacares",
+      "parentFullCode": "203"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "07",
+      "fullCode": "20307",
+      "name": "Puente de Piedra",
+      "parentFullCode": "203"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "08",
+      "fullCode": "20308",
+      "name": "Bolivar",
+      "parentFullCode": "203"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "20401",
+      "name": "San Mateo",
+      "parentFullCode": "204"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "20402",
+      "name": "Desmonte",
+      "parentFullCode": "204"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "20403",
+      "name": "Jesús María",
+      "parentFullCode": "204"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "20404",
+      "name": "Labrador",
+      "parentFullCode": "204"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "20501",
+      "name": "Atenas",
+      "parentFullCode": "205"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "20502",
+      "name": "Jesús",
+      "parentFullCode": "205"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "20503",
+      "name": "Mercedes",
+      "parentFullCode": "205"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "20504",
+      "name": "San Isidro",
+      "parentFullCode": "205"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "05",
+      "fullCode": "20505",
+      "name": "Concepción",
+      "parentFullCode": "205"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "06",
+      "fullCode": "20506",
+      "name": "San José",
+      "parentFullCode": "205"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "07",
+      "fullCode": "20507",
+      "name": "Santa Eulalia",
+      "parentFullCode": "205"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "08",
+      "fullCode": "20508",
+      "name": "Escobal",
+      "parentFullCode": "205"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "20601",
+      "name": "Naranjo",
+      "parentFullCode": "206"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "20602",
+      "name": "San Miguel",
+      "parentFullCode": "206"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "20603",
+      "name": "San José",
+      "parentFullCode": "206"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "20604",
+      "name": "Cirrí Sur",
+      "parentFullCode": "206"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "05",
+      "fullCode": "20605",
+      "name": "San Jerónimo",
+      "parentFullCode": "206"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "06",
+      "fullCode": "20606",
+      "name": "San Juan",
+      "parentFullCode": "206"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "07",
+      "fullCode": "20607",
+      "name": "El Rosario",
+      "parentFullCode": "206"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "08",
+      "fullCode": "20608",
+      "name": "Palmitos",
+      "parentFullCode": "206"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "20701",
+      "name": "Palmares",
+      "parentFullCode": "207"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "20702",
+      "name": "Zaragoza",
+      "parentFullCode": "207"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "20703",
+      "name": "Buenos Aires",
+      "parentFullCode": "207"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "20704",
+      "name": "Santiago",
+      "parentFullCode": "207"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "05",
+      "fullCode": "20705",
+      "name": "Candelaria",
+      "parentFullCode": "207"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "06",
+      "fullCode": "20706",
+      "name": "Esquipulas",
+      "parentFullCode": "207"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "07",
+      "fullCode": "20707",
+      "name": "La Granja",
+      "parentFullCode": "207"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "20801",
+      "name": "San Pedro",
+      "parentFullCode": "208"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "20802",
+      "name": "San Juan",
+      "parentFullCode": "208"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "20803",
+      "name": "San Rafael",
+      "parentFullCode": "208"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "20804",
+      "name": "Carrillos",
+      "parentFullCode": "208"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "05",
+      "fullCode": "20805",
+      "name": "Sabana Redonda",
+      "parentFullCode": "208"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "20901",
+      "name": "Orotina",
+      "parentFullCode": "209"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "20902",
+      "name": "El Mastate",
+      "parentFullCode": "209"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "20903",
+      "name": "Hacienda Vieja",
+      "parentFullCode": "209"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "20904",
+      "name": "Coyolar",
+      "parentFullCode": "209"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "05",
+      "fullCode": "20905",
+      "name": "La Ceiba",
+      "parentFullCode": "209"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "21001",
+      "name": "Quesada",
+      "parentFullCode": "210"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "21002",
+      "name": "Florencia",
+      "parentFullCode": "210"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "21003",
+      "name": "Buenavista",
+      "parentFullCode": "210"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "21004",
+      "name": "Aguas Zarcas",
+      "parentFullCode": "210"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "05",
+      "fullCode": "21005",
+      "name": "Venecia",
+      "parentFullCode": "210"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "06",
+      "fullCode": "21006",
+      "name": "Pital",
+      "parentFullCode": "210"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "07",
+      "fullCode": "21007",
+      "name": "La Fortuna",
+      "parentFullCode": "210"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "08",
+      "fullCode": "21008",
+      "name": "La Tigra",
+      "parentFullCode": "210"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "09",
+      "fullCode": "21009",
+      "name": "La Palmera",
+      "parentFullCode": "210"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "10",
+      "fullCode": "21010",
+      "name": "Venado",
+      "parentFullCode": "210"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "11",
+      "fullCode": "21011",
+      "name": "Cutris",
+      "parentFullCode": "210"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "12",
+      "fullCode": "21012",
+      "name": "Monterrey",
+      "parentFullCode": "210"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "13",
+      "fullCode": "21013",
+      "name": "Pocosol",
+      "parentFullCode": "210"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "21101",
+      "name": "Zarcero",
+      "parentFullCode": "211"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "21102",
+      "name": "Laguna",
+      "parentFullCode": "211"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "21103",
+      "name": "Tapesco",
+      "parentFullCode": "211"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "21104",
+      "name": "Guadalupe",
+      "parentFullCode": "211"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "05",
+      "fullCode": "21105",
+      "name": "Palmira",
+      "parentFullCode": "211"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "06",
+      "fullCode": "21106",
+      "name": "Zapote",
+      "parentFullCode": "211"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "07",
+      "fullCode": "21107",
+      "name": "Brisas",
+      "parentFullCode": "211"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "21201",
+      "name": "Sarchí Norte",
+      "parentFullCode": "212"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "21202",
+      "name": "Sarchí Sur",
+      "parentFullCode": "212"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "21203",
+      "name": "Toro Amarillo",
+      "parentFullCode": "212"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "21204",
+      "name": "San Pedro",
+      "parentFullCode": "212"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "05",
+      "fullCode": "21205",
+      "name": "Rodríguez",
+      "parentFullCode": "212"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "21301",
+      "name": "Upala",
+      "parentFullCode": "213"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "21302",
+      "name": "Aguas Claras",
+      "parentFullCode": "213"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "21303",
+      "name": "San José O Pizote",
+      "parentFullCode": "213"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "21304",
+      "name": "Bijagua",
+      "parentFullCode": "213"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "05",
+      "fullCode": "21305",
+      "name": "Delicias",
+      "parentFullCode": "213"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "06",
+      "fullCode": "21306",
+      "name": "Dos Ríos",
+      "parentFullCode": "213"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "07",
+      "fullCode": "21307",
+      "name": "Yolillal",
+      "parentFullCode": "213"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "08",
+      "fullCode": "21308",
+      "name": "Canalete",
+      "parentFullCode": "213"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "21401",
+      "name": "Los Chiles",
+      "parentFullCode": "214"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "21402",
+      "name": "Caño Negro",
+      "parentFullCode": "214"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "21403",
+      "name": "El Amparo",
+      "parentFullCode": "214"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "21404",
+      "name": "San Jorge",
+      "parentFullCode": "214"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "21501",
+      "name": "San Rafael",
+      "parentFullCode": "215"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "21502",
+      "name": "Buenavista",
+      "parentFullCode": "215"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "21503",
+      "name": "Cote",
+      "parentFullCode": "215"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "21504",
+      "name": "Katira",
+      "parentFullCode": "215"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "21601",
+      "name": "Río Cuarto",
+      "parentFullCode": "216"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "21602",
+      "name": "Santa Rita",
+      "parentFullCode": "216"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "21603",
+      "name": "Santa Isabel",
+      "parentFullCode": "216"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "30101",
+      "name": "Oriental",
+      "parentFullCode": "301"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "30102",
+      "name": "Occidental",
+      "parentFullCode": "301"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "30103",
+      "name": "Carmen",
+      "parentFullCode": "301"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "30104",
+      "name": "San Nicolás",
+      "parentFullCode": "301"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "05",
+      "fullCode": "30105",
+      "name": "Aguacaliente o San Francisco",
+      "parentFullCode": "301"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "06",
+      "fullCode": "30106",
+      "name": "Guadalupe o Arenilla",
+      "parentFullCode": "301"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "07",
+      "fullCode": "30107",
+      "name": "Corralillo",
+      "parentFullCode": "301"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "08",
+      "fullCode": "30108",
+      "name": "Tierra Blanca",
+      "parentFullCode": "301"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "09",
+      "fullCode": "30109",
+      "name": "Dulce Nombre",
+      "parentFullCode": "301"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "10",
+      "fullCode": "30110",
+      "name": "Llano Grande",
+      "parentFullCode": "301"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "11",
+      "fullCode": "30111",
+      "name": "Quebradilla",
+      "parentFullCode": "301"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "30201",
+      "name": "Paraíso",
+      "parentFullCode": "302"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "30202",
+      "name": "Santiago",
+      "parentFullCode": "302"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "30203",
+      "name": "Orosi",
+      "parentFullCode": "302"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "30204",
+      "name": "Cachí",
+      "parentFullCode": "302"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "05",
+      "fullCode": "30205",
+      "name": "Llanos de Santa Lucía",
+      "parentFullCode": "302"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "06",
+      "fullCode": "30206",
+      "name": "Birrisito",
+      "parentFullCode": "302"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "30301",
+      "name": "Tres Ríos",
+      "parentFullCode": "303"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "30302",
+      "name": "San Diego",
+      "parentFullCode": "303"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "30303",
+      "name": "San Juan",
+      "parentFullCode": "303"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "30304",
+      "name": "San Rafael",
+      "parentFullCode": "303"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "05",
+      "fullCode": "30305",
+      "name": "Concepción",
+      "parentFullCode": "303"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "06",
+      "fullCode": "30306",
+      "name": "Dulce Nombre",
+      "parentFullCode": "303"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "07",
+      "fullCode": "30307",
+      "name": "San Ramón",
+      "parentFullCode": "303"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "08",
+      "fullCode": "30308",
+      "name": "Río Azul",
+      "parentFullCode": "303"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "30401",
+      "name": "Juan Viñas",
+      "parentFullCode": "304"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "30402",
+      "name": "Tucurrique",
+      "parentFullCode": "304"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "30403",
+      "name": "Pejibaye",
+      "parentFullCode": "304"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "30404",
+      "name": "La Victoria",
+      "parentFullCode": "304"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "30501",
+      "name": "Turrialba",
+      "parentFullCode": "305"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "30502",
+      "name": "La Suiza",
+      "parentFullCode": "305"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "30503",
+      "name": "Peralta",
+      "parentFullCode": "305"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "30504",
+      "name": "Santa Cruz",
+      "parentFullCode": "305"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "05",
+      "fullCode": "30505",
+      "name": "Santa Teresita",
+      "parentFullCode": "305"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "06",
+      "fullCode": "30506",
+      "name": "Pavones",
+      "parentFullCode": "305"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "07",
+      "fullCode": "30507",
+      "name": "Tuis",
+      "parentFullCode": "305"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "08",
+      "fullCode": "30508",
+      "name": "Tayutic",
+      "parentFullCode": "305"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "09",
+      "fullCode": "30509",
+      "name": "Santa Rosa",
+      "parentFullCode": "305"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "10",
+      "fullCode": "30510",
+      "name": "Tres Equis",
+      "parentFullCode": "305"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "11",
+      "fullCode": "30511",
+      "name": "La Isabel",
+      "parentFullCode": "305"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "12",
+      "fullCode": "30512",
+      "name": "Chirripó",
+      "parentFullCode": "305"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "30601",
+      "name": "Pacayas",
+      "parentFullCode": "306"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "30602",
+      "name": "Cervantes",
+      "parentFullCode": "306"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "30603",
+      "name": "Capellades",
+      "parentFullCode": "306"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "30701",
+      "name": "San Rafael",
+      "parentFullCode": "307"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "30702",
+      "name": "Cot",
+      "parentFullCode": "307"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "30703",
+      "name": "Potrero Cerrado",
+      "parentFullCode": "307"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "30704",
+      "name": "Cipreses",
+      "parentFullCode": "307"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "05",
+      "fullCode": "30705",
+      "name": "Santa Rosa",
+      "parentFullCode": "307"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "30801",
+      "name": "El Tejar",
+      "parentFullCode": "308"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "30802",
+      "name": "San Isidro",
+      "parentFullCode": "308"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "30803",
+      "name": "Tobosi",
+      "parentFullCode": "308"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "30804",
+      "name": "Patio de Agua",
+      "parentFullCode": "308"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "40101",
+      "name": "Heredia",
+      "parentFullCode": "401"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "40102",
+      "name": "Mercedes",
+      "parentFullCode": "401"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "40103",
+      "name": "San Francisco",
+      "parentFullCode": "401"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "40104",
+      "name": "Ulloa",
+      "parentFullCode": "401"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "05",
+      "fullCode": "40105",
+      "name": "Varablanca",
+      "parentFullCode": "401"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "40201",
+      "name": "Barva",
+      "parentFullCode": "402"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "40202",
+      "name": "San Pedro",
+      "parentFullCode": "402"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "40203",
+      "name": "San Pablo",
+      "parentFullCode": "402"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "40204",
+      "name": "San Roque",
+      "parentFullCode": "402"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "05",
+      "fullCode": "40205",
+      "name": "Santa Lucía",
+      "parentFullCode": "402"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "06",
+      "fullCode": "40206",
+      "name": "San José de la Montaña",
+      "parentFullCode": "402"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "07",
+      "fullCode": "40207",
+      "name": "Puente Salas",
+      "parentFullCode": "402"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "40301",
+      "name": "Santo Domingo",
+      "parentFullCode": "403"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "40302",
+      "name": "San Vicente",
+      "parentFullCode": "403"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "40303",
+      "name": "San Miguel",
+      "parentFullCode": "403"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "40304",
+      "name": "Paracito",
+      "parentFullCode": "403"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "05",
+      "fullCode": "40305",
+      "name": "Santo Tomás",
+      "parentFullCode": "403"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "06",
+      "fullCode": "40306",
+      "name": "Santa Rosa",
+      "parentFullCode": "403"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "07",
+      "fullCode": "40307",
+      "name": "Tures",
+      "parentFullCode": "403"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "08",
+      "fullCode": "40308",
+      "name": "Pará",
+      "parentFullCode": "403"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "40401",
+      "name": "Santa Bárbara",
+      "parentFullCode": "404"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "40402",
+      "name": "San Pedro",
+      "parentFullCode": "404"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "40403",
+      "name": "San Juan",
+      "parentFullCode": "404"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "40404",
+      "name": "Jesús",
+      "parentFullCode": "404"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "05",
+      "fullCode": "40405",
+      "name": "Santo Domingo",
+      "parentFullCode": "404"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "06",
+      "fullCode": "40406",
+      "name": "Purabá",
+      "parentFullCode": "404"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "40501",
+      "name": "San Rafael",
+      "parentFullCode": "405"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "40502",
+      "name": "San Josecito",
+      "parentFullCode": "405"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "40503",
+      "name": "Santiago",
+      "parentFullCode": "405"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "40504",
+      "name": "Ángeles",
+      "parentFullCode": "405"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "05",
+      "fullCode": "40505",
+      "name": "Concepción",
+      "parentFullCode": "405"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "40601",
+      "name": "San Isidro",
+      "parentFullCode": "406"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "40602",
+      "name": "San José",
+      "parentFullCode": "406"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "40603",
+      "name": "Concepción",
+      "parentFullCode": "406"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "40604",
+      "name": "San Francisco",
+      "parentFullCode": "406"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "40701",
+      "name": "San Antonio",
+      "parentFullCode": "407"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "40702",
+      "name": "La Ribera",
+      "parentFullCode": "407"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "40703",
+      "name": "La Asunción",
+      "parentFullCode": "407"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "40801",
+      "name": "San Joaquín",
+      "parentFullCode": "408"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "40802",
+      "name": "Barrantes",
+      "parentFullCode": "408"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "40803",
+      "name": "Llorente",
+      "parentFullCode": "408"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "40901",
+      "name": "San Pablo",
+      "parentFullCode": "409"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "40902",
+      "name": "Rincón de Sabanilla",
+      "parentFullCode": "409"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "41001",
+      "name": "Puerto Viejo",
+      "parentFullCode": "410"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "41002",
+      "name": "La Virgen",
+      "parentFullCode": "410"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "41003",
+      "name": "Las Horquetas",
+      "parentFullCode": "410"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "41004",
+      "name": "Llanuras del Gaspar",
+      "parentFullCode": "410"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "05",
+      "fullCode": "41005",
+      "name": "Cureña",
+      "parentFullCode": "410"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "50101",
+      "name": "Liberia",
+      "parentFullCode": "501"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "50102",
+      "name": "Cañas Dulces",
+      "parentFullCode": "501"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "50103",
+      "name": "Mayorga",
+      "parentFullCode": "501"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "50104",
+      "name": "Nacascolo",
+      "parentFullCode": "501"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "05",
+      "fullCode": "50105",
+      "name": "Curubandé",
+      "parentFullCode": "501"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "50201",
+      "name": "Nicoya",
+      "parentFullCode": "502"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "50202",
+      "name": "Mansión",
+      "parentFullCode": "502"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "50203",
+      "name": "San Antonio",
+      "parentFullCode": "502"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "50204",
+      "name": "Quebrada Honda",
+      "parentFullCode": "502"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "05",
+      "fullCode": "50205",
+      "name": "Sámara",
+      "parentFullCode": "502"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "06",
+      "fullCode": "50206",
+      "name": "Nosara",
+      "parentFullCode": "502"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "07",
+      "fullCode": "50207",
+      "name": "Belén de Nosarita",
+      "parentFullCode": "502"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "50301",
+      "name": "Santa Cruz",
+      "parentFullCode": "503"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "50302",
+      "name": "Bolsón",
+      "parentFullCode": "503"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "50303",
+      "name": "Veintisiete de Abril",
+      "parentFullCode": "503"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "50304",
+      "name": "Tempate",
+      "parentFullCode": "503"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "05",
+      "fullCode": "50305",
+      "name": "Cartagena",
+      "parentFullCode": "503"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "06",
+      "fullCode": "50306",
+      "name": "Cuajiniquil",
+      "parentFullCode": "503"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "07",
+      "fullCode": "50307",
+      "name": "Diriá",
+      "parentFullCode": "503"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "08",
+      "fullCode": "50308",
+      "name": "Cabo Velas",
+      "parentFullCode": "503"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "09",
+      "fullCode": "50309",
+      "name": "Tamarindo",
+      "parentFullCode": "503"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "50401",
+      "name": "Bagaces",
+      "parentFullCode": "504"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "50402",
+      "name": "La Fortuna",
+      "parentFullCode": "504"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "50403",
+      "name": "Mogote",
+      "parentFullCode": "504"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "50404",
+      "name": "Río Naranjo",
+      "parentFullCode": "504"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "05",
+      "fullCode": "50405",
+      "name": "Pijije",
+      "parentFullCode": "504"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "50501",
+      "name": "Filadelfia",
+      "parentFullCode": "505"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "50502",
+      "name": "Palmira",
+      "parentFullCode": "505"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "50503",
+      "name": "Sardinal",
+      "parentFullCode": "505"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "50504",
+      "name": "Belén",
+      "parentFullCode": "505"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "50601",
+      "name": "Cañas",
+      "parentFullCode": "506"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "50602",
+      "name": "Palmira",
+      "parentFullCode": "506"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "50603",
+      "name": "San Miguel",
+      "parentFullCode": "506"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "50604",
+      "name": "Bebedero",
+      "parentFullCode": "506"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "05",
+      "fullCode": "50605",
+      "name": "Porozal",
+      "parentFullCode": "506"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "50701",
+      "name": "Las Juntas",
+      "parentFullCode": "507"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "50702",
+      "name": "Sierra",
+      "parentFullCode": "507"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "50703",
+      "name": "San Juan",
+      "parentFullCode": "507"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "50704",
+      "name": "Colorado",
+      "parentFullCode": "507"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "50801",
+      "name": "Tilarán",
+      "parentFullCode": "508"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "50802",
+      "name": "Quebrada Grande",
+      "parentFullCode": "508"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "50803",
+      "name": "Tronadora",
+      "parentFullCode": "508"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "50804",
+      "name": "Santa Rosa",
+      "parentFullCode": "508"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "05",
+      "fullCode": "50805",
+      "name": "Líbano",
+      "parentFullCode": "508"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "06",
+      "fullCode": "50806",
+      "name": "Tierras Morenas",
+      "parentFullCode": "508"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "07",
+      "fullCode": "50807",
+      "name": "Arenal",
+      "parentFullCode": "508"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "08",
+      "fullCode": "50808",
+      "name": "Cabeceras",
+      "parentFullCode": "508"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "50901",
+      "name": "Carmona",
+      "parentFullCode": "509"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "50902",
+      "name": "Santa Rita",
+      "parentFullCode": "509"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "50903",
+      "name": "Zapotal",
+      "parentFullCode": "509"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "50904",
+      "name": "San Pablo",
+      "parentFullCode": "509"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "05",
+      "fullCode": "50905",
+      "name": "Porvenir",
+      "parentFullCode": "509"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "06",
+      "fullCode": "50906",
+      "name": "Bejuco",
+      "parentFullCode": "509"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "51001",
+      "name": "La Cruz",
+      "parentFullCode": "510"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "51002",
+      "name": "Santa Cecilia",
+      "parentFullCode": "510"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "51003",
+      "name": "La Garita",
+      "parentFullCode": "510"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "51004",
+      "name": "Santa Elena",
+      "parentFullCode": "510"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "51101",
+      "name": "Hojancha",
+      "parentFullCode": "511"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "51102",
+      "name": "Monte Romo",
+      "parentFullCode": "511"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "51103",
+      "name": "Puerto Carrillo",
+      "parentFullCode": "511"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "51104",
+      "name": "Huacas",
+      "parentFullCode": "511"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "05",
+      "fullCode": "51105",
+      "name": "Matambú",
+      "parentFullCode": "511"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "60101",
+      "name": "Puntarenas",
+      "parentFullCode": "601"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "60102",
+      "name": "Pitahaya",
+      "parentFullCode": "601"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "60103",
+      "name": "Chomes",
+      "parentFullCode": "601"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "60104",
+      "name": "Lepanto",
+      "parentFullCode": "601"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "05",
+      "fullCode": "60105",
+      "name": "Paquera",
+      "parentFullCode": "601"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "06",
+      "fullCode": "60106",
+      "name": "Manzanillo",
+      "parentFullCode": "601"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "07",
+      "fullCode": "60107",
+      "name": "Guacimal",
+      "parentFullCode": "601"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "08",
+      "fullCode": "60108",
+      "name": "Barranca",
+      "parentFullCode": "601"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "10",
+      "fullCode": "60110",
+      "name": "Isla del Coco",
+      "parentFullCode": "601"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "11",
+      "fullCode": "60111",
+      "name": "Cóbano",
+      "parentFullCode": "601"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "12",
+      "fullCode": "60112",
+      "name": "Chacarita",
+      "parentFullCode": "601"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "13",
+      "fullCode": "60113",
+      "name": "Chira",
+      "parentFullCode": "601"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "14",
+      "fullCode": "60114",
+      "name": "Acapulco",
+      "parentFullCode": "601"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "15",
+      "fullCode": "60115",
+      "name": "El Roble",
+      "parentFullCode": "601"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "16",
+      "fullCode": "60116",
+      "name": "Arancibia",
+      "parentFullCode": "601"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "60201",
+      "name": "Espíritu Santo",
+      "parentFullCode": "602"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "60202",
+      "name": "San Juan Grande",
+      "parentFullCode": "602"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "60203",
+      "name": "Macacona",
+      "parentFullCode": "602"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "60204",
+      "name": "San Rafael",
+      "parentFullCode": "602"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "05",
+      "fullCode": "60205",
+      "name": "San Jerónimo",
+      "parentFullCode": "602"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "06",
+      "fullCode": "60206",
+      "name": "Caldera",
+      "parentFullCode": "602"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "60301",
+      "name": "Buenos Aires",
+      "parentFullCode": "603"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "60302",
+      "name": "Volcán",
+      "parentFullCode": "603"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "60303",
+      "name": "Potrero Grande",
+      "parentFullCode": "603"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "60304",
+      "name": "Boruca",
+      "parentFullCode": "603"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "05",
+      "fullCode": "60305",
+      "name": "Pilas",
+      "parentFullCode": "603"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "06",
+      "fullCode": "60306",
+      "name": "Colinas",
+      "parentFullCode": "603"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "07",
+      "fullCode": "60307",
+      "name": "Chánguena",
+      "parentFullCode": "603"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "08",
+      "fullCode": "60308",
+      "name": "Biolley",
+      "parentFullCode": "603"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "09",
+      "fullCode": "60309",
+      "name": "Brunka",
+      "parentFullCode": "603"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "10",
+      "fullCode": "60310",
+      "name": "Cabagra",
+      "parentFullCode": "603"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "60401",
+      "name": "Miramar",
+      "parentFullCode": "604"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "60402",
+      "name": "La Unión",
+      "parentFullCode": "604"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "60403",
+      "name": "San Isidro",
+      "parentFullCode": "604"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "60501",
+      "name": "Puerto Cortés",
+      "parentFullCode": "605"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "60502",
+      "name": "Palmar",
+      "parentFullCode": "605"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "60503",
+      "name": "Sierpe",
+      "parentFullCode": "605"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "60504",
+      "name": "Bahía Ballena",
+      "parentFullCode": "605"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "05",
+      "fullCode": "60505",
+      "name": "Piedras Blancas",
+      "parentFullCode": "605"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "06",
+      "fullCode": "60506",
+      "name": "Bahía Drake",
+      "parentFullCode": "605"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "60601",
+      "name": "Quepos",
+      "parentFullCode": "606"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "60602",
+      "name": "Savegre",
+      "parentFullCode": "606"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "60603",
+      "name": "Naranjito",
+      "parentFullCode": "606"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "60701",
+      "name": "Golfito",
+      "parentFullCode": "607"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "60703",
+      "name": "Guaycará",
+      "parentFullCode": "607"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "60704",
+      "name": "Pavón",
+      "parentFullCode": "607"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "60801",
+      "name": "San Vito",
+      "parentFullCode": "608"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "60802",
+      "name": "Sabalito",
+      "parentFullCode": "608"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "60803",
+      "name": "Aguabuena",
+      "parentFullCode": "608"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "60804",
+      "name": "Limoncito",
+      "parentFullCode": "608"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "05",
+      "fullCode": "60805",
+      "name": "Pittier",
+      "parentFullCode": "608"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "06",
+      "fullCode": "60806",
+      "name": "Gutiérrez Braun",
+      "parentFullCode": "608"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "60901",
+      "name": "Parrita",
+      "parentFullCode": "609"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "61001",
+      "name": "Corredor",
+      "parentFullCode": "610"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "61002",
+      "name": "La Cuesta",
+      "parentFullCode": "610"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "61003",
+      "name": "Canoas",
+      "parentFullCode": "610"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "61004",
+      "name": "Laurel",
+      "parentFullCode": "610"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "61101",
+      "name": "Jacó",
+      "parentFullCode": "611"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "61102",
+      "name": "Tárcoles",
+      "parentFullCode": "611"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "61103",
+      "name": "Lagunillas",
+      "parentFullCode": "611"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "61201",
+      "name": "Monteverde",
+      "parentFullCode": "612"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "61301",
+      "name": "Puerto Jiménez",
+      "parentFullCode": "613"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "70101",
+      "name": "Limón",
+      "parentFullCode": "701"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "70102",
+      "name": "Valle La Estrella",
+      "parentFullCode": "701"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "70103",
+      "name": "Río Blanco",
+      "parentFullCode": "701"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "70104",
+      "name": "Matama",
+      "parentFullCode": "701"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "70201",
+      "name": "Guápiles",
+      "parentFullCode": "702"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "70202",
+      "name": "Jiménez",
+      "parentFullCode": "702"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "70203",
+      "name": "Rita",
+      "parentFullCode": "702"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "70204",
+      "name": "Roxana",
+      "parentFullCode": "702"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "05",
+      "fullCode": "70205",
+      "name": "Cariari",
+      "parentFullCode": "702"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "06",
+      "fullCode": "70206",
+      "name": "Colorado",
+      "parentFullCode": "702"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "07",
+      "fullCode": "70207",
+      "name": "La Colonia",
+      "parentFullCode": "702"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "70301",
+      "name": "Siquirres",
+      "parentFullCode": "703"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "70302",
+      "name": "Pacuarito",
+      "parentFullCode": "703"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "70303",
+      "name": "Florida",
+      "parentFullCode": "703"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "70304",
+      "name": "Germania",
+      "parentFullCode": "703"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "05",
+      "fullCode": "70305",
+      "name": "El Cairo",
+      "parentFullCode": "703"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "06",
+      "fullCode": "70306",
+      "name": "Alegría",
+      "parentFullCode": "703"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "07",
+      "fullCode": "70307",
+      "name": "Reventazón",
+      "parentFullCode": "703"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "70401",
+      "name": "Bratsi",
+      "parentFullCode": "704"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "70402",
+      "name": "Sixaola",
+      "parentFullCode": "704"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "70403",
+      "name": "Cahuita",
+      "parentFullCode": "704"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "70404",
+      "name": "Telire",
+      "parentFullCode": "704"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "70501",
+      "name": "Matina",
+      "parentFullCode": "705"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "70502",
+      "name": "Batán",
+      "parentFullCode": "705"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "70503",
+      "name": "Carrandí",
+      "parentFullCode": "705"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "01",
+      "fullCode": "70601",
+      "name": "Guácimo",
+      "parentFullCode": "706"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "02",
+      "fullCode": "70602",
+      "name": "Mercedes",
+      "parentFullCode": "706"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "03",
+      "fullCode": "70603",
+      "name": "Pocora",
+      "parentFullCode": "706"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "04",
+      "fullCode": "70604",
+      "name": "Río Jiménez",
+      "parentFullCode": "706"
+    },
+    {
+      "administrativeLevel": 3,
+      "subdivisionTypeCode": "DISTRICT",
+      "code": "05",
+      "fullCode": "70605",
+      "name": "Duacarí",
+      "parentFullCode": "706"
+    }
+  ]
+}
+
+

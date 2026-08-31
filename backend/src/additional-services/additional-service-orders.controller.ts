@@ -85,18 +85,6 @@ export class AdditionalServiceOrdersController {
     );
   }
 
-  @Post(":orderId/convert-to-sales-order")
-  convertToSalesOrder(
-    @Req() req: OrderRequest,
-    @Param("orderId") orderId: string,
-  ) {
-    return this.salesOrderConversionService.convertAdditionalServiceOrder(
-      req.user.tenantId,
-      orderId,
-      { id: req.user.id, fullName: req.user.fullName },
-    );
-  }
-
   @Post(":orderId/commercial-proposal/send")
   async sendCommercialProposal(
     @Req() req: OrderRequest,

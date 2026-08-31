@@ -2,11 +2,22 @@ import {
   Injectable,
   NestMiddleware,
   Logger,
+  NotFoundException,
+  ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
 import { TenantService, ResolvedTenant } from './tenant.service';
 import { runWithRequestContext } from '../common/request-context';
+
+const safePrismaErrorCode = (error: unknown): string | null => {
+  if (!error || typeof error !== 'object' || !('code' in error)) {
+    return null;
+  }
+
+  const code = (error as { code?: unknown }).code;
+  return typeof code === 'string' && /^P\d{4}$/.test(code) ? code : null;
+};
 
 // Extender Request para incluir tenant
 declare global {
@@ -89,14 +100,28 @@ export class TenantMiddleware implements NestMiddleware {
           req.tenant = tenant;
           next();
         } catch (error) {
-          // Si ya es un error de autorización, propagarlo
+          // Preserve explicit tenant authorization failures.
           if (error instanceof UnauthorizedException) {
             throw error;
           }
 
-          this.logger.error(`❌ Error resolviendo tenant para ${host}:`, error);
-          throw new UnauthorizedException(
-            `No se pudo identificar el tenant para este dominio`,
+          // Preserve the established invalid-domain contract without conflating
+          // it with database or infrastructure availability.
+          if (error instanceof NotFoundException) {
+            this.logger.warn('Tenant resolution failed category=TENANT_NOT_FOUND');
+            throw new UnauthorizedException(
+              'No se pudo identificar el tenant para este dominio',
+            );
+          }
+
+          const prismaCode = safePrismaErrorCode(error);
+          this.logger.error(
+            prismaCode
+              ? `Tenant resolution failed category=PRISMA code=${prismaCode}`
+              : 'Tenant resolution failed category=INFRASTRUCTURE',
+          );
+          throw new ServiceUnavailableException(
+            'Servicio temporalmente no disponible',
           );
         }
       },

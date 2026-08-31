@@ -101,7 +101,12 @@ export default function CommercialProposalApprovalPage() {
           </div>
         </div>
         {!approved && (
-          <Button type="button" onClick={approve} disabled={approving}>
+          <Button
+            type="button"
+            className={styles.primaryActionButton}
+            onClick={approve}
+            disabled={approving}
+          >
             {approving ? (
               <LoaderCircle className={styles.spin} aria-hidden="true" />
             ) : (
@@ -122,8 +127,12 @@ export default function CommercialProposalApprovalPage() {
         <section className={styles.success} role="status">
           <CheckCircle2 aria-hidden="true" />
           <h2>Propuesta aprobada</h2>
-          <p>La cotización fue aprobada correctamente.</p>
-          <Button type="button" onClick={closeApproval}>
+          <p>Propuesta aprobada correctamente.</p>
+          <Button
+            type="button"
+            className={styles.primaryActionButton}
+            onClick={closeApproval}
+          >
             Cerrar
           </Button>
         </section>

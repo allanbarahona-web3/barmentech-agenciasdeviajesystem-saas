@@ -81,6 +81,18 @@
   font-weight: 750;
 }
 
+.unavailableReason {
+  color: #9f1239;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.catalogError {
+  margin-top: 20px;
+  color: #b91c1c;
+  font-weight: 600;
+}
+
 @media (max-width: 980px) {
   .grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

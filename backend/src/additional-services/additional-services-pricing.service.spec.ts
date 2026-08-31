@@ -7,6 +7,8 @@ import {
   AdditionalServicesRepository,
 } from "./repositories";
 import { AdditionalServicesPricingService } from "./additional-services-pricing.service";
+import { FiscalCatalogService } from "../fiscal-catalogs/fiscal-catalog.service";
+import { AdditionalServicePricingConfigurationReader } from "./infrastructure/additional-service-pricing-configuration.reader";
 
 describe("AdditionalServicesPricingService", () => {
   let repository: jest.Mocked<AdditionalServicesRepository>;
@@ -16,9 +18,11 @@ describe("AdditionalServicesPricingService", () => {
   beforeEach(() => {
     repository = {
       findAdditionalServiceCatalogByCode: jest.fn(),
+      findAdditionalServiceCatalogsByCodes: jest.fn(),
     } as unknown as jest.Mocked<AdditionalServicesRepository>;
     pricingEngine = {
       calculate: jest.fn(),
+      calculateMany: jest.fn(),
     } as unknown as jest.Mocked<PricingEngineService>;
     service = new AdditionalServicesPricingService(
       repository,
@@ -109,5 +113,54 @@ describe("AdditionalServicesPricingService", () => {
         quotationCurrency: "USD",
       }),
     ).rejects.toBe(pricingError);
+  });
+
+  it("resolves unique catalog codes once and preserves correlated input order", async () => {
+    repository.findAdditionalServiceCatalogsByCodes.mockResolvedValue([
+      { id: "catalog-tour", tenantId: "tenant-1", code: "TOUR", name: "Tour", isActive: true },
+      { id: "catalog-lodging", tenantId: "tenant-1", code: "LODGING", name: "Hospedaje", isActive: true },
+    ]);
+    const breakdowns = [
+      { finalSellingPrice: 10 },
+      { finalSellingPrice: 20 },
+      { finalSellingPrice: 30 },
+    ] as never;
+    pricingEngine.calculateMany.mockResolvedValue(breakdowns);
+
+    const inputs = [
+      { lineId: "line-3", serviceCode: " tour ", supplierCost: 1, costCurrency: "USD" as const, quotationCurrency: "USD" as const },
+      { lineId: "line-1", serviceCode: "LODGING", supplierCost: 2, costCurrency: "USD" as const, quotationCurrency: "USD" as const },
+      { lineId: "line-2", serviceCode: "TOUR", supplierCost: 3, costCurrency: "USD" as const, quotationCurrency: "USD" as const },
+    ];
+    await expect(service.calculateMany("tenant-1", inputs)).resolves.toEqual([
+      { lineId: "line-3", breakdown: breakdowns[0] },
+      { lineId: "line-1", breakdown: breakdowns[1] },
+      { lineId: "line-2", breakdown: breakdowns[2] },
+    ]);
+    expect(repository.findAdditionalServiceCatalogsByCodes).toHaveBeenCalledTimes(1);
+    expect(repository.findAdditionalServiceCatalogsByCodes).toHaveBeenCalledWith(
+      "tenant-1",
+      ["TOUR", "LODGING"],
+    );
+    expect(pricingEngine.calculateMany).toHaveBeenCalledTimes(1);
+    expect(pricingEngine.calculate).not.toHaveBeenCalled();
+  });
+});
+
+describe("Additional Services public pricing path fiscal readiness", () => {
+  it("returns no calculation for active legacy pricing without a fiscal profile", async () => {
+    const repository = {
+      findAdditionalServiceCatalogByCode: jest.fn().mockResolvedValue({ id: "catalog-1", tenantId: "tenant-1", code: "LODGING", name: "Acomodación", isActive: true }),
+      findPricingConfigurationByCatalogId: jest.fn().mockResolvedValue({ id: "pricing-1", tenantId: "tenant-1", additionalServiceCatalogId: "catalog-1", marginType: "PERCENTAGE", marginValue: "10.0000", taxPercentage: "13.0000", isActive: true, createdAt: new Date(), updatedAt: new Date(), additionalServiceCatalog: { id: "catalog-1", tenantId: "tenant-1", code: "LODGING", name: "Acomodación", isActive: true } }),
+      findFiscalProfilesByCatalogIds: jest.fn().mockResolvedValue([]),
+    } as unknown as jest.Mocked<AdditionalServicesRepository>;
+    const fiscal = { evaluateFiscalProfiles: jest.fn().mockResolvedValue(new Map()), resolveFiscalSelection: jest.fn() };
+    const reader = new AdditionalServicePricingConfigurationReader(repository, fiscal as unknown as FiscalCatalogService);
+    const engine = new PricingEngineService(reader, { findCurrent: jest.fn() } as never);
+    const service = new AdditionalServicesPricingService(repository, engine);
+
+    await expect(service.calculate("tenant-1", { serviceCode: "LODGING", supplierCost: 100, costCurrency: "USD", quotationCurrency: "USD" })).rejects.toMatchObject({ response: { code: "ADDITIONAL_SERVICE_NOT_FISCALLY_READY" } });
+    expect(fiscal.evaluateFiscalProfiles).toHaveBeenCalledTimes(1);
+    expect(fiscal.resolveFiscalSelection).not.toHaveBeenCalled();
   });
 });

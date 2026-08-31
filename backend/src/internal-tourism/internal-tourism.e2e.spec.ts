@@ -8,6 +8,8 @@ import { EmailService } from '../email/email.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { Decimal } from '@prisma/client/runtime/library';
 import { MockFactory } from './test-helpers.mock';
+import { TransportType } from '@prisma/client';
+import { InternalTourBookingParticipantRole } from './enums';
 
 /**
  * E2E Tests for Internal Tourism Module
@@ -104,7 +106,7 @@ describe('Internal Tourism Module - E2E Tests', () => {
       capacity: 20,
       price: 90000,
       currency: 'CRC',
-      transportType: 'BUS',
+      transportType: TransportType.BUS,
       itinerary: '<p>Día 1: Salida temprano</p>',
     };
 
@@ -129,7 +131,7 @@ describe('Internal Tourism Module - E2E Tests', () => {
         updatedAt: new Date(),
       };
 
-      jest.spyOn(prismaService.internalTrip, 'create').mockResolvedValue(mockTrip);
+      jest.spyOn(prismaService.internalTrip, 'create').mockResolvedValue(mockTrip as any);
 
       const result = await toursService.createTrip(
         mockTenantId,
@@ -198,8 +200,8 @@ describe('Internal Tourism Module - E2E Tests', () => {
         tenantId: mockTenantId,
       };
 
-      jest.spyOn(prismaService.internalTrip, 'findUnique').mockResolvedValue(mockTrip);
-      jest.spyOn(prismaService.client, 'findUnique').mockResolvedValue(mockClient);
+      jest.spyOn(prismaService.internalTrip, 'findUnique').mockResolvedValue(mockTrip as any);
+      jest.spyOn(prismaService.client, 'findUnique').mockResolvedValue(mockClient as any);
       jest.spyOn(prismaService.internalTourBooking, 'findMany').mockResolvedValue([]);
       jest.spyOn(prismaService.internalTourBooking, 'count').mockResolvedValue(0);
       jest.spyOn(prismaService, '$transaction').mockResolvedValue({
@@ -214,8 +216,10 @@ describe('Internal Tourism Module - E2E Tests', () => {
         mockUserName,
         {
           internalTripId: createdTripId,
-          clientId: 'client-123',
-          participantCount: 2,
+          participants: [
+            { clientId: 'client-123', role: InternalTourBookingParticipantRole.HOLDER },
+            { clientId: 'client-456', role: InternalTourBookingParticipantRole.COMPANION },
+          ],
         },
       );
 
@@ -252,7 +256,7 @@ describe('Internal Tourism Module - E2E Tests', () => {
 
       jest
         .spyOn(prismaService.internalTourBooking, 'findUnique')
-        .mockResolvedValue({ ...paidBooking, client: { email: 'client@example.com', fullName: 'Test' }, internalTrip: { name: 'Trip' } });
+        .mockResolvedValue({ ...paidBooking, client: { email: 'client@example.com', fullName: 'Test' }, internalTrip: { name: 'Trip' } } as any);
       jest.spyOn(prismaService, '$transaction').mockResolvedValue(paidBooking);
       jest.spyOn(emailService, 'sendEmail').mockResolvedValue({} as any);
 
@@ -316,12 +320,12 @@ describe('Internal Tourism Module - E2E Tests', () => {
         },
       ];
 
-      jest.spyOn(prismaService.internalTrip, 'findUnique').mockResolvedValue(mockTrip);
-      jest.spyOn(prismaService.internalTourBooking, 'findMany').mockResolvedValue(mockBookings);
+      jest.spyOn(prismaService.internalTrip, 'findUnique').mockResolvedValue(mockTrip as any);
+      jest.spyOn(prismaService.internalTourBooking, 'findMany').mockResolvedValue(mockBookings as any);
       jest.spyOn(prismaService.internalTrip, 'update').mockResolvedValue({
         ...mockTrip,
         status: 'CANCELLED',
-      });
+      } as any);
       jest.spyOn(emailService, 'sendEmail').mockResolvedValue({} as any);
 
       await toursService.cancelTrip(mockTenantId, 'trip-456');
@@ -377,7 +381,7 @@ describe('Internal Tourism Module - E2E Tests', () => {
 
       const cancelledBooking = { ...paidBooking, status: 'CANCELLED' };
 
-      jest.spyOn(prismaService.internalTourBooking, 'findUnique').mockResolvedValue(paidBooking);
+      jest.spyOn(prismaService.internalTourBooking, 'findUnique').mockResolvedValue(paidBooking as any);
       jest.spyOn(prismaService, '$transaction').mockResolvedValue(cancelledBooking);
       jest.spyOn(emailService, 'sendEmail').mockResolvedValue({} as any);
 
@@ -418,7 +422,7 @@ describe('Internal Tourism Module - E2E Tests', () => {
       // Mock: When tenant A lists bookings, should only get tenant A's bookings
       jest
         .spyOn(prismaService.internalTourBooking, 'findMany')
-        .mockResolvedValueOnce([tenantABooking]); // First call for tenant A
+        .mockResolvedValueOnce([tenantABooking] as any); // First call for tenant A
 
       const resultA = await bookingsService.listBookings('tenant-a', {});
       expect(resultA[0].tenantId).toBe('tenant-a');
@@ -426,7 +430,7 @@ describe('Internal Tourism Module - E2E Tests', () => {
       // Mock: When tenant B lists bookings, should only get tenant B's bookings
       jest
         .spyOn(prismaService.internalTourBooking, 'findMany')
-        .mockResolvedValueOnce([tenantBBooking]); // Second call for tenant B
+        .mockResolvedValueOnce([tenantBBooking] as any); // Second call for tenant B
 
       const resultB = await bookingsService.listBookings('tenant-b', {});
       expect(resultB[0].tenantId).toBe('tenant-b');
@@ -481,8 +485,8 @@ describe('Internal Tourism Module - E2E Tests', () => {
         internalTrip: mockTrip,
       };
 
-      jest.spyOn(prismaService.internalTrip, 'findUnique').mockResolvedValue(mockTrip);
-      jest.spyOn(prismaService.client, 'findUnique').mockResolvedValue(mockClient);
+      jest.spyOn(prismaService.internalTrip, 'findUnique').mockResolvedValue(mockTrip as any);
+      jest.spyOn(prismaService.client, 'findUnique').mockResolvedValue(mockClient as any);
       jest.spyOn(prismaService.internalTourBooking, 'count').mockResolvedValue(0);
       jest.spyOn(prismaService, '$transaction').mockResolvedValue({
         booking: mockBooking,
@@ -501,8 +505,9 @@ describe('Internal Tourism Module - E2E Tests', () => {
         mockUserName,
         {
           internalTripId: 'trip-email-test',
-          clientId: 'client-email-test',
-          participantCount: 1,
+          participants: [
+            { clientId: 'client-email-test', role: InternalTourBookingParticipantRole.HOLDER },
+          ],
         },
       );
 
