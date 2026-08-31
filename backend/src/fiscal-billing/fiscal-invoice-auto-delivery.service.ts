@@ -21,8 +21,10 @@ import {
   FISCAL_INVOICE_AUTO_DELIVERY_RETRY_MAX_MS,
 } from "./jobs/fiscal-invoice-auto-delivery.constants";
 
-const REQUIRED_ARTIFACTS = ["SIGNED_FISCAL_XML", "TAX_AUTHORITY_RESPONSE_XML"] as const;
-const ALL_ARTIFACTS = ["INTERNAL_PDF", ...REQUIRED_ARTIFACTS] as const;
+const DELIVERY_ARTIFACT_TYPES = ["INTERNAL_PDF", "SIGNED_FISCAL_XML", "TAX_AUTHORITY_RESPONSE_XML"] as const;
+const REQUIRED_ARTIFACT_TYPES = DELIVERY_ARTIFACT_TYPES.filter((type) => type !== "INTERNAL_PDF");
+type DeliveryArtifactType = (typeof DELIVERY_ARTIFACT_TYPES)[number];
+interface ResolvedArtifact { type: DeliveryArtifactType; version: number; }
 const SYSTEM_ACTOR_ID = "SYSTEM";
 const SYSTEM_ACTOR_NAME = "Fiscal invoice automatic delivery";
 type DeliveryMode = "INITIAL_AUTOMATIC" | "MANUAL_RESEND";
@@ -85,10 +87,10 @@ export class FiscalInvoiceAutoDeliveryService {
     if (!recipient || !isEmail(recipient)) throw requestError("FISCAL_INVOICE_MANUAL_RESEND_RECIPIENT_INVALID", HttpStatus.BAD_REQUEST);
     const cc = normalizeCc(input.cc, recipient);
     const current = await this.artifacts.list(input.tenantId, input.billingDocumentId);
-    requireArtifactReadiness(current, REQUIRED_ARTIFACTS, true);
+    resolveLatestAvailableArtifacts(current, REQUIRED_ARTIFACT_TYPES, true);
     await this.pdf.generateAndPersist(input.tenantId, input.billingDocumentId);
     const ready = await this.artifacts.list(input.tenantId, input.billingDocumentId);
-    requireArtifactReadiness(ready, ALL_ARTIFACTS, true);
+    resolveLatestAvailableArtifacts(ready, DELIVERY_ARTIFACT_TYPES, true);
     const requestId = randomUUID();
     const payload: ManualPayload = { tenantId: input.tenantId, billingDocumentId: input.billingDocumentId, requestId, to: recipient, cc, requestedByUserId: input.requestedByUserId, eventVersion: 1 };
     await this.prisma.billingOutboxEvent.create({ data: {
@@ -112,16 +114,17 @@ export class FiscalInvoiceAutoDeliveryService {
       throw classifyExternal(error, FISCAL_INVOICE_AUTO_DELIVERY_ERRORS.PDF_FAILED);
     }
 
-    const attachments = await Promise.all(ALL_ARTIFACTS.map(async (artifactType) => {
+    const resolvedArtifacts = await this.resolveLatestAvailableArtifacts(claim.tenantId, prepared.payload.billingDocumentId);
+    const attachments = await Promise.all(resolvedArtifacts.map(async ({ type, version }) => {
       try {
-        const artifact = await this.artifacts.download(claim.tenantId, prepared.payload.billingDocumentId, artifactType, "1");
+        const artifact = await this.artifacts.download(claim.tenantId, prepared.payload.billingDocumentId, type, String(version));
         return { filename: artifact.filename, content: artifact.bytes.toString("base64"), contentType: artifact.mimeType };
       } catch (error) {
         throw classifyExternal(error, FISCAL_INVOICE_AUTO_DELIVERY_ERRORS.ARTIFACT_INVALID);
       }
     }));
 
-    await this.revalidateBeforeDelivery(prepared);
+    await this.revalidateBeforeDelivery(prepared, resolvedArtifacts);
     const result = await this.email.sendEmail({
       tenantId: claim.tenantId,
       to: prepared.recipient,
@@ -175,10 +178,10 @@ export class FiscalInvoiceAutoDeliveryService {
       if (!document || document.lifecycleStatus !== "SUBMITTED" || document.providerStatus !== "PROCESSED" || document.taxAuthorityStatus !== "ACCEPTED" || !nonEmpty(document.receiverName) || !nonEmpty(document.fiscalNumber)) throw permanent(FISCAL_INVOICE_AUTO_DELIVERY_ERRORS.DOCUMENT_INELIGIBLE);
       const recipient = document.receiverEmail?.trim() ?? "";
       const rows = await tx.billingDocumentArtifact.findMany({
-        where: { tenantId: claim.tenantId, billingDocumentId: payload.billingDocumentId, artifactType: { in: [...REQUIRED_ARTIFACTS] }, version: 1 },
-        select: { artifactType: true, status: true }, take: REQUIRED_ARTIFACTS.length,
+        where: { tenantId: claim.tenantId, billingDocumentId: payload.billingDocumentId, artifactType: { in: REQUIRED_ARTIFACT_TYPES } },
+        select: { artifactType: true, version: true, status: true }, orderBy: [{ artifactType: "asc" }, { version: "desc" }],
       });
-      requireArtifactReadiness(rows, REQUIRED_ARTIFACTS, false);
+      resolveLatestAvailableArtifacts(rows, REQUIRED_ARTIFACT_TYPES, false);
       const manual = isManualPayload(payload);
       const resolvedRecipient = manual ? payload.to : recipient;
       if (!resolvedRecipient || !isEmail(resolvedRecipient)) throw permanent(FISCAL_INVOICE_AUTO_DELIVERY_ERRORS.RECIPIENT_INVALID);
@@ -186,15 +189,28 @@ export class FiscalInvoiceAutoDeliveryService {
     });
   }
 
-  private async revalidateBeforeDelivery(prepared: Prepared): Promise<void> {
+  private async resolveLatestAvailableArtifacts(tenantId: string, billingDocumentId: string): Promise<ResolvedArtifact[]> {
+    return this.prisma.$transaction(async (tx) => {
+      const rows = await tx.billingDocumentArtifact.findMany({
+        where: { tenantId, billingDocumentId, artifactType: { in: [...DELIVERY_ARTIFACT_TYPES] } },
+        select: { artifactType: true, version: true, status: true }, orderBy: [{ artifactType: "asc" }, { version: "desc" }],
+      });
+      return resolveLatestAvailableArtifacts(rows, DELIVERY_ARTIFACT_TYPES, false);
+    });
+  }
+
+  private async revalidateBeforeDelivery(prepared: Prepared, resolvedArtifacts: readonly ResolvedArtifact[]): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
       const child = await lockOwnedChild(tx, prepared.claim, true);
       const payload = child && validPayload(child, prepared.claim);
       if (!child || !payload || child.causationId !== prepared.causationId || payload.billingDocumentId !== prepared.payload.billingDocumentId) throw permanent(FISCAL_INVOICE_AUTO_DELIVERY_ERRORS.CLAIM_INVALID);
       const document = await tx.billingDocument.findUnique({ where: { id_tenantId: { id: payload.billingDocumentId, tenantId: prepared.claim.tenantId } }, select: { lifecycleStatus: true, providerStatus: true, taxAuthorityStatus: true, receiverEmail: true } });
       if (!document || document.lifecycleStatus !== "SUBMITTED" || document.providerStatus !== "PROCESSED" || document.taxAuthorityStatus !== "ACCEPTED" || (prepared.mode === "INITIAL_AUTOMATIC" && document.receiverEmail?.trim() !== prepared.recipient)) throw permanent(FISCAL_INVOICE_AUTO_DELIVERY_ERRORS.DOCUMENT_INELIGIBLE);
-      const count = await tx.billingDocumentArtifact.count({ where: { tenantId: prepared.claim.tenantId, billingDocumentId: payload.billingDocumentId, artifactType: { in: [...ALL_ARTIFACTS] }, version: 1, status: "AVAILABLE" } });
-      if (count !== ALL_ARTIFACTS.length) throw retryable(FISCAL_INVOICE_AUTO_DELIVERY_ERRORS.ARTIFACT_NOT_READY);
+      const rows = await tx.billingDocumentArtifact.findMany({
+        where: { tenantId: prepared.claim.tenantId, billingDocumentId: payload.billingDocumentId, OR: resolvedArtifacts.map(({ type, version }) => ({ artifactType: type, version })) },
+        select: { artifactType: true, version: true, status: true },
+      });
+      requireResolvedArtifactReadiness(rows, resolvedArtifacts);
     });
   }
 
@@ -275,11 +291,20 @@ function normalizeCc(value: unknown, recipient: string): string[] {
   return [...new Set(normalized)].filter((email) => email !== recipient);
 }
 function validCc(value: unknown, recipient: string): value is string[] { return Array.isArray(value) && value.length <= 10 && value.every((email) => typeof email === "string" && isEmail(email) && email === email.trim().toLowerCase() && email !== recipient) && new Set(value).size === value.length; }
-function requireArtifactReadiness(rows: ReadonlyArray<{ artifactType: string; status: string }>, types: readonly string[], http: boolean): void {
+function resolveLatestAvailableArtifacts(rows: ReadonlyArray<{ artifactType: string; version: number; status: string }>, types: readonly DeliveryArtifactType[], http: boolean): ResolvedArtifact[] {
+  const resolved: ResolvedArtifact[] = [];
   for (const type of types) {
-    const artifact = rows.find((row) => row.artifactType === type);
-    if (artifact?.status === "FAILED") { if (http) throw requestError("FISCAL_INVOICE_MANUAL_RESEND_ARTIFACT_FAILED", HttpStatus.CONFLICT); throw permanent(FISCAL_INVOICE_AUTO_DELIVERY_ERRORS.ARTIFACT_FAILED); }
-    if (artifact?.status !== "AVAILABLE") { if (http) throw requestError("FISCAL_INVOICE_MANUAL_RESEND_ARTIFACT_NOT_READY", HttpStatus.CONFLICT); throw retryable(FISCAL_INVOICE_AUTO_DELIVERY_ERRORS.ARTIFACT_NOT_READY); }
+    const artifact = rows.filter((row) => row.artifactType === type && row.status === "AVAILABLE").reduce<{ artifactType: string; version: number; status: string } | null>((latest, row) => !latest || row.version > latest.version ? row : latest, null);
+    if (!artifact && rows.some((row) => row.artifactType === type && row.status === "FAILED")) { if (http) throw requestError("FISCAL_INVOICE_MANUAL_RESEND_ARTIFACT_FAILED", HttpStatus.CONFLICT); throw permanent(FISCAL_INVOICE_AUTO_DELIVERY_ERRORS.ARTIFACT_FAILED); }
+    if (!artifact) { if (http) throw requestError("FISCAL_INVOICE_MANUAL_RESEND_ARTIFACT_NOT_READY", HttpStatus.CONFLICT); throw retryable(FISCAL_INVOICE_AUTO_DELIVERY_ERRORS.ARTIFACT_NOT_READY); }
+    resolved.push({ type, version: artifact.version });
+  }
+  return resolved;
+}
+function requireResolvedArtifactReadiness(rows: ReadonlyArray<{ artifactType: string; version: number; status: string }>, requirements: readonly ResolvedArtifact[]): void {
+  for (const requirement of requirements) {
+    const artifact = rows.find((row) => row.artifactType === requirement.type && row.version === requirement.version);
+    if (artifact?.status !== "AVAILABLE") throw retryable(FISCAL_INVOICE_AUTO_DELIVERY_ERRORS.ARTIFACT_NOT_READY);
   }
 }
 function requestError(code: string, status: HttpStatus): HttpException { return new HttpException({ statusCode: status, error: code, code }, status); }

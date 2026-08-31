@@ -12,7 +12,7 @@ import { FISCAL_INVOICE_AUTO_DELIVERY_REQUESTED_EVENT_TYPE, FISCAL_INVOICE_MANUA
 
 describe("FiscalInvoiceAutoDeliveryService", () => {
   it("waits without PDF, reads or email until both required XML artifacts are AVAILABLE", async () => {
-    const c = context({ artifacts: [{ artifactType: "SIGNED_FISCAL_XML", status: "AVAILABLE" }] });
+    const c = context({ artifacts: [{ artifactType: "SIGNED_FISCAL_XML", version: 1, status: "AVAILABLE" }] });
     await expect(c.service.processClaimedDelivery(claim())).rejects.toMatchObject({ code: FISCAL_INVOICE_AUTO_DELIVERY_ERRORS.ARTIFACT_NOT_READY, retryable: true });
     expect(c.pdf).not.toHaveBeenCalled(); expect(c.download).not.toHaveBeenCalled(); expect(c.send).not.toHaveBeenCalled();
   });
@@ -22,7 +22,7 @@ describe("FiscalInvoiceAutoDeliveryService", () => {
     await c.service.processClaimedDelivery(claim());
     expect(c.pdf).toHaveBeenCalledWith("tenant-a", "document-a");
     expect(c.download.mock.calls.map((call) => call.slice(2))).toEqual([
-      ["INTERNAL_PDF", "1"], ["SIGNED_FISCAL_XML", "1"], ["TAX_AUTHORITY_RESPONSE_XML", "1"],
+      ["INTERNAL_PDF", "5"], ["SIGNED_FISCAL_XML", "4"], ["TAX_AUTHORITY_RESPONSE_XML", "3"],
     ]);
     expect(c.send).toHaveBeenCalledWith(expect.objectContaining({
       tenantId: "tenant-a", to: "receiver@example.com", template: "business-document-attachment",
@@ -45,7 +45,7 @@ describe("FiscalInvoiceAutoDeliveryService", () => {
   });
 
   it("treats a permanently failed XML as permanent and never emails", async () => {
-    const c = context({ artifacts: [{ artifactType: "SIGNED_FISCAL_XML", status: "FAILED" }, { artifactType: "TAX_AUTHORITY_RESPONSE_XML", status: "AVAILABLE" }] });
+    const c = context({ artifacts: [{ artifactType: "SIGNED_FISCAL_XML", version: 1, status: "FAILED" }, { artifactType: "TAX_AUTHORITY_RESPONSE_XML", version: 1, status: "AVAILABLE" }] });
     await expect(c.service.processClaimedDelivery(claim())).rejects.toEqual(expect.objectContaining({ code: FISCAL_INVOICE_AUTO_DELIVERY_ERRORS.ARTIFACT_FAILED, retryable: false }));
     expect(c.send).not.toHaveBeenCalled();
   });
@@ -94,6 +94,9 @@ describe("FiscalInvoiceAutoDeliveryService", () => {
     const requestId = "request-a";
     const c = context({ child: manualChild(requestId) });
     await c.service.processClaimedDelivery(claim());
+    expect(c.download.mock.calls.map((call) => call.slice(2))).toEqual([
+      ["INTERNAL_PDF", "5"], ["SIGNED_FISCAL_XML", "4"], ["TAX_AUTHORITY_RESPONSE_XML", "3"],
+    ]);
     expect(c.send).toHaveBeenCalledWith(expect.objectContaining({ to: "manual@example.com", cc: ["copy@example.com"], idempotencyKey: `fiscal-invoice-manual:tenant-a:document-a:${requestId}:v1`, attachments: expect.arrayContaining([expect.objectContaining({ filename: "INTERNAL_PDF.xml" }), expect.objectContaining({ filename: "SIGNED_FISCAL_XML.xml" }), expect.objectContaining({ filename: "TAX_AUTHORITY_RESPONSE_XML.xml" })]) }));
     expect(c.audit).toHaveBeenCalledWith({ data: expect.objectContaining({ action: "MANUAL_RESEND", actorUserId: "user-a", afterJson: expect.objectContaining({ deliveryMode: "MANUAL_RESEND", recipient: "manual@example.com", cc: ["copy@example.com"], requestId, outcome: "SUCCESS" }) }) });
     const retry = context({ child: manualChild(requestId) }); await retry.service.processClaimedDelivery(claim());
@@ -102,19 +105,25 @@ describe("FiscalInvoiceAutoDeliveryService", () => {
   });
 });
 
-function context(overrides: { artifacts?: Array<{ artifactType: string; status: string }>; document?: Record<string, unknown>; emailResult?: Record<string, unknown>; child?: Record<string, unknown> } = {}) {
+function context(overrides: { artifacts?: Array<{ artifactType: string; version: number; status: string }>; document?: Record<string, unknown>; emailResult?: Record<string, unknown>; child?: Record<string, unknown> } = {}) {
   const child = overrides.child ?? { id: "child-a", tenantId: "tenant-a", eventType: FISCAL_INVOICE_AUTO_DELIVERY_REQUESTED_EVENT_TYPE, eventVersion: 1, aggregateType: "BillingDocument", aggregateId: "document-a", causationId: "parent-a", correlationId: null, payload: { tenantId: "tenant-a", billingDocumentId: "document-a", eventVersion: 1 }, attemptCount: 1, maximumAttempts: 5 };
   const document = { id: "document-a", lifecycleStatus: "SUBMITTED", providerStatus: "PROCESSED", taxAuthorityStatus: "ACCEPTED", receiverEmail: "receiver@example.com", receiverName: "Receiver", fiscalNumber: "00100001010000000042", ...overrides.document };
   const findUnique = jest.fn(async (args: { where: Record<string, unknown> }) => "id" in args.where ? child : document);
   const update = jest.fn().mockResolvedValue({ count: 1 });
   const audit = jest.fn().mockResolvedValue({ id: "audit-a" });
-  const tx = { $queryRaw: jest.fn().mockResolvedValue([{ id: "child-a" }]), billingOutboxEvent: { findUnique, updateMany: update }, billingDocument: { findUnique }, billingDocumentArtifact: { findMany: jest.fn().mockResolvedValue(overrides.artifacts ?? [{ artifactType: "SIGNED_FISCAL_XML", status: "AVAILABLE" }, { artifactType: "TAX_AUTHORITY_RESPONSE_XML", status: "AVAILABLE" }]), count: jest.fn().mockResolvedValue(3) }, billingAuditLog: { create: audit } };
+  const requiredArtifacts = overrides.artifacts ?? [
+    { artifactType: "SIGNED_FISCAL_XML", version: 1, status: "AVAILABLE" }, { artifactType: "SIGNED_FISCAL_XML", version: 4, status: "AVAILABLE" },
+    { artifactType: "TAX_AUTHORITY_RESPONSE_XML", version: 1, status: "AVAILABLE" }, { artifactType: "TAX_AUTHORITY_RESPONSE_XML", version: 3, status: "AVAILABLE" },
+  ];
+  const deliveryArtifacts = [{ artifactType: "INTERNAL_PDF", version: 2, status: "AVAILABLE" }, { artifactType: "INTERNAL_PDF", version: 5, status: "AVAILABLE" }, ...requiredArtifacts];
+  const findArtifacts = jest.fn(async (args: { where: { artifactType?: { in: string[] }; OR?: unknown[] } }) => args.where.OR || args.where.artifactType?.in.length === 3 ? deliveryArtifacts : requiredArtifacts);
+  const tx = { $queryRaw: jest.fn().mockResolvedValue([{ id: "child-a" }]), billingOutboxEvent: { findUnique, updateMany: update }, billingDocument: { findUnique }, billingDocumentArtifact: { findMany: findArtifacts }, billingAuditLog: { create: audit } };
   const createEvent = jest.fn().mockResolvedValue({ id: "manual-event" });
   const prisma = { $transaction: jest.fn(async (work: (client: typeof tx) => unknown) => work(tx)), billingOutboxEvent: { create: createEvent } } as unknown as PrismaService;
   const pdf = jest.fn().mockResolvedValue({ status: "AVAILABLE" });
   const download = jest.fn(async (_tenant: string, _document: string, type: string) => ({ bytes: Buffer.from(type), mimeType: type === "INTERNAL_PDF" ? "application/pdf" : "application/xml", filename: `${type}.xml` }));
   const send = jest.fn().mockResolvedValue(overrides.emailResult ?? { success: true, emailId: "message-a" });
-  const list = jest.fn().mockResolvedValue([{ artifactType: "INTERNAL_PDF", status: "AVAILABLE" }, { artifactType: "SIGNED_FISCAL_XML", status: "AVAILABLE" }, { artifactType: "TAX_AUTHORITY_RESPONSE_XML", status: "AVAILABLE" }]);
+  const list = jest.fn().mockResolvedValue(deliveryArtifacts);
   const getAcceptedInvoice = jest.fn().mockResolvedValue({ receiver: { email: "receiver@example.com" } });
   return { service: new FiscalInvoiceAutoDeliveryService(prisma, { generateAndPersist: pdf } as unknown as FiscalInvoicePdfService, { download, list } as unknown as FiscalArtifactReadService, { sendEmail: send } as unknown as EmailService, { getAcceptedInvoice } as unknown as BillingDocumentService), prisma, tx, pdf, download, list, send, audit, update, createEvent, getAcceptedInvoice };
 }
