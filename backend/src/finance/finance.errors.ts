@@ -1,0 +1,45 @@
+import {
+  BadRequestException,
+  ConflictException,
+  HttpException,
+  InternalServerErrorException,
+  NotFoundException,
+} from "@nestjs/common";
+
+const BAD_REQUEST = new Set([
+  "PAYMENT_REGISTRATION_INVALID",
+  "PAYMENT_ALLOCATION_INVALID",
+  "PAYMENT_ALLOCATION_REVERSAL_INVALID",
+  "PAYMENT_CANCELLATION_INVALID",
+]);
+const NOT_FOUND = new Set([
+  "PAYMENT_REGISTRATION_CUSTOMER_INVALID",
+  "PAYMENT_ALLOCATION_PAYMENT_INVALID",
+  "PAYMENT_ALLOCATION_RECEIVABLE_INVALID",
+  "PAYMENT_ALLOCATION_REVERSAL_ALLOCATION_INVALID",
+  "PAYMENT_ALLOCATION_REVERSAL_PAYMENT_INVALID",
+  "PAYMENT_ALLOCATION_REVERSAL_RECEIVABLE_INVALID",
+  "PAYMENT_CANCELLATION_PAYMENT_INVALID",
+]);
+const CONFLICT = new Set([
+  "PAYMENT_REGISTRATION_CONFLICT",
+  "PAYMENT_ALLOCATION_CURRENCY_MISMATCH",
+  "PAYMENT_ALLOCATION_PAYMENT_INSUFFICIENT",
+  "PAYMENT_ALLOCATION_RECEIVABLE_INSUFFICIENT",
+  "PAYMENT_ALLOCATION_CONFLICT",
+  "PAYMENT_ALLOCATION_REVERSAL_CURRENCY_MISMATCH",
+  "PAYMENT_ALLOCATION_REVERSAL_PAYMENT_CAPACITY",
+  "PAYMENT_ALLOCATION_REVERSAL_RECEIVABLE_CAPACITY",
+  "PAYMENT_ALLOCATION_REVERSAL_CONFLICT",
+  "PAYMENT_CANCELLATION_NOT_ELIGIBLE",
+]);
+
+export function translateFinanceError(error: unknown): never {
+  if (error instanceof HttpException) throw error;
+  if (error instanceof Error) {
+    if (BAD_REQUEST.has(error.message)) throw new BadRequestException(error.message);
+    if (NOT_FOUND.has(error.message)) throw new NotFoundException(error.message);
+    if (CONFLICT.has(error.message)) throw new ConflictException(error.message);
+  }
+  throw new InternalServerErrorException("FINANCE_OPERATION_FAILED");
+}

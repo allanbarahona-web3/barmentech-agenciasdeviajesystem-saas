@@ -3,9 +3,12 @@ import { PaymentRegistrationService } from "./payment-registration.service";
 import { PaymentAllocationService } from "./payment-allocation.service";
 import { PaymentAllocationReversalService } from "./payment-allocation-reversal.service";
 import { PaymentCancellationService } from "./payment-cancellation.service";
+import { FinanceController } from "./finance.controller";
+import { FinanceReadService } from "./finance-read.service";
 
 @Module({
-  providers: [PaymentRegistrationService, PaymentAllocationService, PaymentAllocationReversalService, PaymentCancellationService],
+  controllers: [FinanceController],
+  providers: [PaymentRegistrationService, PaymentAllocationService, PaymentAllocationReversalService, PaymentCancellationService, FinanceReadService],
   exports: [PaymentRegistrationService, PaymentAllocationService, PaymentAllocationReversalService, PaymentCancellationService],
 })
 export class FinanceModule {}
