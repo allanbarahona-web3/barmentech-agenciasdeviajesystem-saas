@@ -42,7 +42,7 @@ export class FinanceController {
         externalReference: body.externalReference,
         description: body.description,
       });
-      return this.reads.paymentSummary(payment);
+      return this.reads.getPaymentDetail(request.user.tenantId, payment.id);
     } catch (error) {
       return translateFinanceError(error);
     }
@@ -105,7 +105,7 @@ export class FinanceController {
   async cancelPayment(@Req() request: FinanceRequest, @Param("paymentId") paymentId: string) {
     try {
       const payment = await this.cancellations.cancel({ tenantId: request.user.tenantId, paymentId });
-      return this.reads.paymentSummary(payment);
+      return this.reads.getPaymentDetail(request.user.tenantId, payment.id);
     } catch (error) {
       return translateFinanceError(error);
     }

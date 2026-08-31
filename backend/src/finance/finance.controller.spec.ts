@@ -12,6 +12,8 @@ describe("FinanceController", () => {
   it("registers an exact payment for only the authenticated tenant", async () => {
     const c = context();
     c.registrations.register.mockResolvedValue(payment());
+    const detail = { id: "payment-a", payerDisplayName: "Payer", status: "RECEIVED", availableAmount: "123.12345", allocations: [] };
+    c.reads.getPaymentDetail.mockResolvedValue(detail);
 
     await expect(c.controller.registerPayment(request("tenant-auth"), {
       registrationDeduplicationKey: "payment-registration-a",
@@ -20,10 +22,11 @@ describe("FinanceController", () => {
       receivedAmount: "123.12345",
       receivedAt: "2026-08-31T12:00:00.000Z",
       paymentMethod: "BANK_TRANSFER",
-    })).resolves.toMatchObject({ receivedAmount: "123.12345", availableAmount: "123.12345" });
+    })).resolves.toBe(detail);
 
     expect(c.registrations.register).toHaveBeenCalledWith(expect.objectContaining({ tenantId: "tenant-auth" }));
     expect((c.registrations.register.mock.calls[0][0].receivedAmount as Prisma.Decimal).toFixed()).toBe("123.12345");
+    expect(c.reads.getPaymentDetail).toHaveBeenCalledWith("tenant-auth", "payment-a");
   });
 
   it("returns the updated payment after a partial allocation", async () => {
@@ -75,6 +78,17 @@ describe("FinanceController", () => {
     c.cancellations.cancel.mockRejectedValue(new Error("PAYMENT_CANCELLATION_NOT_ELIGIBLE"));
 
     await expect(c.controller.cancelPayment(request(), "payment-a")).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it("returns full updated payment detail after cancellation", async () => {
+    const c = context();
+    c.cancellations.cancel.mockResolvedValue({ ...payment(), status: "CANCELLED", cancelledAt: new Date("2026-08-31T12:00:00.000Z") });
+    const detail = { id: "payment-a", payerDisplayName: "Payer", status: "CANCELLED", availableAmount: "123.12345", allocations: [] };
+    c.reads.getPaymentDetail.mockResolvedValue(detail);
+
+    await expect(c.controller.cancelPayment(request("tenant-auth"), "payment-a")).resolves.toBe(detail);
+    expect(c.cancellations.cancel).toHaveBeenCalledWith({ tenantId: "tenant-auth", paymentId: "payment-a" });
+    expect(c.reads.getPaymentDetail).toHaveBeenCalledWith("tenant-auth", "payment-a");
   });
 
   it("uses the established JWT and finance roles, rejecting unauthorized roles", () => {
