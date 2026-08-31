@@ -3,6 +3,7 @@ import type { DocumentPdfService } from "../documents/document-pdf.service";
 import type { PrismaService } from "../prisma/prisma.service";
 import type { ImmutableBillingArtifactStoragePort } from "../storage/immutable-billing-artifact-storage.port";
 import type { BillingDocumentService } from "./billing-document.service";
+import type { TenantService } from "../tenant/tenant.service";
 import type { AcceptedBillingInvoice } from "./billing-document.types";
 import { fiscalBillingError } from "./fiscal-billing.errors";
 import { FiscalInvoicePdfService } from "./fiscal-invoice-pdf.service";
@@ -12,14 +13,14 @@ const PDF = Buffer.from("%PDF-1.7 accepted invoice snapshot");
 const HASH = createHash("sha256").update(PDF).digest("hex");
 
 describe("FiscalInvoicePdfService", () => {
-  it("renders the persisted accepted snapshot and stores INTERNAL_PDF version 1", async () => {
+  it("renders the persisted accepted snapshot and stores INTERNAL_PDF version 2", async () => {
     const c = context();
 
     await expect(
       c.service.generateAndPersist("tenant-a", "document-a"),
     ).resolves.toEqual({
       artifactType: "INTERNAL_PDF",
-      version: 1,
+      version: 2,
       status: "AVAILABLE",
       mimeType: "application/pdf",
       byteSize: PDF.length.toString(),
@@ -27,7 +28,22 @@ describe("FiscalInvoicePdfService", () => {
     });
 
     expect(c.billing.getAcceptedInvoice).toHaveBeenCalledWith("tenant-a", "document-a");
+    expect(c.artifacts.findUnique).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        tenantId_billingDocumentId_artifactType_version: {
+          tenantId: "tenant-a",
+          billingDocumentId: "document-a",
+          artifactType: "INTERNAL_PDF",
+          version: 2,
+        },
+      },
+    }));
+    expect(c.tenant.getTenantConfig).toHaveBeenCalledWith("tenant-a");
     const html = c.pdf.renderDocumentToBuffer.mock.calls[0][0] as string;
+    expect(html).toContain("Viajes Tenant");
+    expect(html).toContain("https://cdn.example.test/logo.png");
+    expect(html).toContain("--invoice-primary: #125ea8");
+    expect(html).toContain("Issuer SA");
     expect(html).toContain("Seguro · Cobertura: USD 60,000");
     expect(html).toContain("USD&nbsp;12.68");
     expect(html).toContain("USD&nbsp;110.18");
@@ -35,7 +51,7 @@ describe("FiscalInvoicePdfService", () => {
       tenantId: "tenant-a",
       billingDocumentId: "document-a",
       artifactType: "INTERNAL_PDF",
-      artifactVersion: 1,
+      artifactVersion: 2,
       expectedSha256: HASH,
       mimeType: "application/pdf",
       bytes: PDF,
@@ -45,7 +61,7 @@ describe("FiscalInvoicePdfService", () => {
         tenantId: "tenant-a",
         billingDocumentId: "document-a",
         artifactType: "INTERNAL_PDF",
-        version: 1,
+        version: 2,
         status: "AVAILABLE",
         sha256: HASH,
         byteSize: BigInt(PDF.length),
@@ -70,6 +86,7 @@ describe("FiscalInvoicePdfService", () => {
     expect(c.storage.storeImmutable).not.toHaveBeenCalled();
     expect(c.artifacts.findUnique).not.toHaveBeenCalled();
     expect(c.artifacts.create).not.toHaveBeenCalled();
+    expect(c.tenant.getTenantConfig).not.toHaveBeenCalled();
   });
 
   it("returns an exact available artifact without regenerating it", async () => {
@@ -80,12 +97,13 @@ describe("FiscalInvoicePdfService", () => {
       c.service.generateAndPersist("tenant-a", "document-a"),
     ).resolves.toMatchObject({
       artifactType: "INTERNAL_PDF",
-      version: 1,
+      version: 2,
       status: "AVAILABLE",
     });
     expect(c.pdf.renderDocumentToBuffer).not.toHaveBeenCalled();
     expect(c.storage.storeImmutable).not.toHaveBeenCalled();
     expect(c.artifacts.create).not.toHaveBeenCalled();
+    expect(c.tenant.getTenantConfig).not.toHaveBeenCalled();
   });
 
   it("accepts the exact concurrent unique winner and never overwrites it", async () => {
@@ -94,7 +112,7 @@ describe("FiscalInvoicePdfService", () => {
 
     await expect(
       c.service.generateAndPersist("tenant-a", "document-a"),
-    ).resolves.toMatchObject({ status: "AVAILABLE", version: 1 });
+    ).resolves.toMatchObject({ status: "AVAILABLE", version: 2 });
     expect(c.artifacts.findUnique).toHaveBeenCalledTimes(2);
     expect(c.artifacts.create).toHaveBeenCalledTimes(1);
     expect(c.artifacts.update).toBeUndefined();
@@ -131,7 +149,7 @@ function context(options: {
   const storage = {
     storeImmutable: jest.fn().mockResolvedValue({
       storageProvider: "PRIVATE_OBJECT_STORAGE",
-      storageKey: `dev/tenants/tenant-a/billing-documents/document-a/artifacts/internal-pdf/v1/${HASH}.pdf`,
+      storageKey: `dev/tenants/tenant-a/billing-documents/document-a/artifacts/internal-pdf/v2/${HASH}.pdf`,
       sha256: HASH,
       byteSize: BigInt(PDF.length),
       mimeType: "application/pdf",
@@ -148,18 +166,21 @@ function context(options: {
     : jest.fn().mockResolvedValue(created);
   const artifacts = { findUnique, create };
   const prisma = { billingDocumentArtifact: artifacts };
+  const tenant = { getTenantConfig: jest.fn().mockResolvedValue({ name: "Viajes Tenant", logoUrl: "https://cdn.example.test/logo.png", contactEmail: "info@tenant.test", contactPhone: "2222-0000", primaryColor: "#125EA8", secondaryColor: "#17324D" }) };
   return {
     service: new FiscalInvoicePdfService(
       billing as unknown as BillingDocumentService,
       pdf as unknown as DocumentPdfService,
       prisma as unknown as PrismaService,
       storage as unknown as ImmutableBillingArtifactStoragePort,
+      tenant as unknown as TenantService,
     ),
     invoice,
     billing,
     pdf,
     storage,
     artifacts: artifacts as typeof artifacts & { update?: jest.Mock },
+    tenant,
   };
 }
 
@@ -169,7 +190,7 @@ function artifact(overrides: Record<string, unknown> = {}) {
     tenantId: "tenant-a",
     billingDocumentId: "document-a",
     artifactType: "INTERNAL_PDF",
-    version: 1,
+    version: 2,
     status: "AVAILABLE",
     storageProvider: "PRIVATE_OBJECT_STORAGE",
     storageKey: "private/invoice.pdf",
@@ -196,12 +217,15 @@ function acceptedInvoice(): AcceptedBillingInvoice {
     taxAuthorityStatus: "ACCEPTED",
     issuedDate: "2026-08-30",
     currencyCode: "USD",
-    issuer: { name: "Issuer SA", identificationType: "02", identificationNumber: "3101000000", email: "issuer@example.test", phone: "2222-2222" },
+    issuer: { name: "Issuer SA", legalName: "Issuer SA", identificationType: "02", identificationNumber: "3101000000", email: "issuer@example.test", phone: "2222-2222", address: { provinceCode: "1", cantonCode: "01", districtCode: "01", neighborhoodCode: null, otherAddressDetails: "San José centro" } },
     paymentCondition: { code: "01", creditTermDays: null, dueDate: "2026-08-30" },
     receiver: { name: "Customer", identificationType: "01", identificationNumber: "123456789", email: "customer@example.test" },
     salesOrder: { id: "order-a", number: "SO-2026-000010" },
+    paymentMethods: [{ code: "01", description: null, declaredAmount: null }],
     lines: [{
       lineNumber: 1,
+      cabysCode: "78111800",
+      itemCode: "INSURANCE",
       description: "Seguro · Cobertura: USD 60,000",
       quantity: "1.00000",
       unitOfMeasureCode: "Sp",

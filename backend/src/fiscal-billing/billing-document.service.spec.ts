@@ -66,10 +66,18 @@ describe("BillingDocumentService generic core", () => {
       currencyCode: "USD",
       issuer: {
         name: "Issuer",
+        legalName: "Issuer",
         identificationType: "02",
         identificationNumber: "3101000000",
         email: "issuer@example.test",
         phone: null,
+        address: {
+          provinceCode: "1",
+          cantonCode: "01",
+          districtCode: "01",
+          neighborhoodCode: null,
+          otherAddressDetails: "San José centro",
+        },
       },
       paymentCondition: {
         code: "01",
@@ -83,9 +91,12 @@ describe("BillingDocumentService generic core", () => {
         email: "customer@example.test",
       },
       salesOrder: { id: "order-a", number: "SO-2026-000010" },
+      paymentMethods: [],
       lines: [
         {
           lineNumber: 1,
+          cabysCode: "78111800",
+          itemCode: "INSURANCE",
           description: "Seguro · Cobertura: USD 60,000",
           quantity: "1.00000",
           unitOfMeasureCode: "Sp",
@@ -530,7 +541,7 @@ function acceptedWorkspace(
     issuerTerminalCode: "00001",
     issuerEmail: "issuer@example.test",
     issuerPhone: null,
-    issuerAddressSnapshot: null,
+    issuerAddressSnapshot: { provinceCode: "1", cantonCode: "01", districtCode: "01", neighborhoodCode: null, otherAddressDetails: "San José centro" },
     receiverName: "Customer",
     receiverIdentificationType: "01",
     receiverIdentification: "123456789",

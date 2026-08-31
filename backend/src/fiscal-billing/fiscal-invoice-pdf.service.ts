@@ -9,11 +9,12 @@ import {
   type ImmutableBillingArtifactStoragePort,
 } from "../storage/immutable-billing-artifact-storage.port";
 import { BillingDocumentService } from "./billing-document.service";
+import { TenantService } from "../tenant/tenant.service";
 import { fiscalBillingError } from "./fiscal-billing.errors";
 import { fiscalInvoicePdfTemplate } from "./fiscal-invoice-pdf.template";
 
 const ARTIFACT_TYPE = "INTERNAL_PDF" as const;
-const ARTIFACT_VERSION = 1;
+const ARTIFACT_VERSION = 2;
 const PDF_MIME_TYPE = "application/pdf";
 
 const ARTIFACT_SELECT = {
@@ -71,6 +72,7 @@ export class FiscalInvoicePdfService {
     private readonly prisma: PrismaService,
     @Inject(IMMUTABLE_BILLING_ARTIFACT_STORAGE_PORT)
     private readonly storage: ImmutableBillingArtifactStoragePort,
+    private readonly tenantService: TenantService,
   ) {}
 
   async generateAndPersist(
@@ -85,7 +87,15 @@ export class FiscalInvoicePdfService {
       const existing = await this.findArtifact(tenantId, billingDocumentId);
       if (existing) return this.exactAvailableResult(existing, tenantId, billingDocumentId);
 
-      const html = fiscalInvoicePdfTemplate(invoice);
+      const tenant = await this.tenantService.getTenantConfig(tenantId);
+      const html = fiscalInvoicePdfTemplate(invoice, {
+        commercialName: tenant.name,
+        logoSrc: tenant.logoUrl,
+        contactEmail: tenant.contactEmail,
+        contactPhone: tenant.contactPhone,
+        primaryColor: tenant.primaryColor,
+        secondaryColor: tenant.secondaryColor,
+      });
       const { pdfBuffer } = await this.documentPdfService.renderDocumentToBuffer(html);
       if (!Buffer.isBuffer(pdfBuffer) || pdfBuffer.length === 0) {
         throw fiscalBillingError("BILLING_DOCUMENT_INVOICE_PDF_GENERATION_FAILED");

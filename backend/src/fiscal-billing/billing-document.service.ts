@@ -273,10 +273,12 @@ function mapAcceptedInvoice(
     currencyCode: workspace.currencyCode,
     issuer: {
       name: workspace.issuerName,
+      legalName: workspace.issuerName,
       identificationType: workspace.issuerIdentificationType,
       identificationNumber: workspace.issuerIdentification,
       email: workspace.issuerEmail,
       phone: workspace.issuerPhone,
+      address: fiscalIssuerAddress(workspace.issuerAddressSnapshot),
     },
     paymentCondition: {
       code: workspace.paymentConditionCode,
@@ -290,8 +292,15 @@ function mapAcceptedInvoice(
       email: workspace.receiverEmail,
     },
     salesOrder,
+    paymentMethods: workspace.paymentMethods.map((method) => ({
+      code: method.paymentMethodCode,
+      description: method.description,
+      declaredAmount: method.declaredAmount,
+    })),
     lines: workspace.lines.map((line) => ({
       lineNumber: line.lineNumber,
+      cabysCode: line.cabysCode,
+      itemCode: line.itemCode,
       description: line.description,
       quantity: line.quantity,
       unitOfMeasureCode: line.unitOfMeasureCode,
@@ -314,6 +323,29 @@ function mapAcceptedInvoice(
       total: workspace.total,
     },
   };
+}
+
+function fiscalIssuerAddress(value: unknown): AcceptedBillingInvoice["issuer"]["address"] {
+  if (!plainObject(value)) return null;
+  const provinceCode = requiredString(value.provinceCode);
+  const cantonCode = requiredString(value.cantonCode);
+  const districtCode = requiredString(value.districtCode);
+  const otherAddressDetails = requiredString(value.otherAddressDetails);
+  if (!provinceCode || !cantonCode || !districtCode || !otherAddressDetails) return null;
+  const neighborhoodCode = optionalString(value.neighborhoodCode);
+  return { provinceCode, cantonCode, districtCode, neighborhoodCode, otherAddressDetails };
+}
+
+function plainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function requiredString(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function optionalString(value: unknown): string | null {
+  return value === null || value === undefined ? null : requiredString(value);
 }
 
 function requireGenericDraftCreationPath(

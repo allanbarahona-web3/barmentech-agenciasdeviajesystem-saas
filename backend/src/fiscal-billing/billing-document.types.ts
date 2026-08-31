@@ -261,10 +261,18 @@ export interface AcceptedBillingInvoice {
   currencyCode: string;
   issuer: {
     name: string;
+    legalName: string;
     identificationType: string;
     identificationNumber: string;
     email: string | null;
     phone: string | null;
+    address: {
+      provinceCode: string;
+      cantonCode: string;
+      districtCode: string;
+      neighborhoodCode: string | null;
+      otherAddressDetails: string;
+    } | null;
   };
   paymentCondition: {
     code: string | null;
@@ -281,8 +289,15 @@ export interface AcceptedBillingInvoice {
     id: string;
     number: string | null;
   } | null;
+  paymentMethods: Array<{
+    code: string;
+    description: string | null;
+    declaredAmount: string | null;
+  }>;
   lines: Array<{
     lineNumber: number;
+    cabysCode: string | null;
+    itemCode: string | null;
     description: string;
     quantity: string;
     unitOfMeasureCode: string;
