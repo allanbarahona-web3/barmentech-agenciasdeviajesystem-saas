@@ -30,6 +30,8 @@ describe("FiscalTerminalArtifactFanoutCoordinatorService", () => {
     const completeOrder = c.tx.billingOutboxEvent.updateMany.mock.invocationCallOrder[0];
     expect(c.tx.$executeRaw).toHaveBeenCalledTimes(2);
     expect(c.tx.billingOutboxEvent.createMany).toHaveBeenCalledTimes(2);
+    expect(rawSql(c.tx.$executeRaw, 0)).toContain('?::"BillingDocumentArtifactType"');
+    expect(rawSql(c.tx.$queryRaw, 2)).toContain('?::"BillingDocumentArtifactType"');
     expect(c.tx.$executeRaw.mock.invocationCallOrder.every((order: number) => order < completeOrder)).toBe(true);
     expect(c.tx.billingOutboxEvent.createMany.mock.invocationCallOrder.every((order: number) => order < completeOrder)).toBe(true);
   });
@@ -55,14 +57,14 @@ describe("FiscalTerminalArtifactFanoutCoordinatorService", () => {
     const failure = Object.assign(new Error("postgres://secret-host:5432/private"), {
       name: "PrismaClientKnownRequestError",
       code: "P2003",
-      meta: { target: "private" },
+      meta: { code: "42804", target: "private" },
     });
     c.tx.$executeRaw.mockRejectedValueOnce(failure);
 
     await c.service.fanOutAvailableEvents();
 
     expect(logger.error).toHaveBeenCalledWith(
-      "FISCAL_TERMINAL_ARTIFACT_FANOUT_FAILURE tenantId=tenant-a billingDocumentId=document-a parentOutboxEventId=terminal-a operation=SIGNED_XML_ARTIFACT_INSERT errorName=PrismaClientKnownRequestError prismaCode=P2003",
+      "FISCAL_TERMINAL_ARTIFACT_FANOUT_FAILURE tenantId=tenant-a billingDocumentId=document-a parentOutboxEventId=terminal-a operation=SIGNED_XML_ARTIFACT_INSERT errorName=PrismaClientKnownRequestError prismaCode=P2003 sqlState=42804",
     );
     expect(c.rootOutbox.updateMany).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ lastError: "FISCAL_TERMINAL_ARTIFACT_FANOUT_FAILED" }),

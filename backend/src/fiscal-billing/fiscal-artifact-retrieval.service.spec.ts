@@ -18,6 +18,7 @@ describe('FiscalArtifactRetrievalService', () => {
     await c.service.processClaimedArtifact(claim());
     expect(c.retrieval.retrieveFiscalArtifact).toHaveBeenCalledWith({ providerDocumentId: 'provider-document', artifactType: 'SIGNED_FISCAL_XML', providerEnvironment: 'sandbox' });
     expect(c.storage.storeImmutable).toHaveBeenCalledTimes(1);
+    expect((c.tx.$queryRaw.mock.calls[1][0] as TemplateStringsArray).join('?')).toContain('?::"BillingDocumentArtifactType"');
     expect(c.tx.$executeRaw).toHaveBeenCalledTimes(1);
     expect(c.tx.billingOutboxEvent.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'PROCESSED', lockedAt: null, lockedBy: null }) }));
   });
@@ -155,6 +156,21 @@ describe('FiscalArtifactRetrievalService', () => {
   ])('turns permanent %s into owned FAILED work', async (_, options) => {
     const c = context({ ...options, failureArtifact: pending() }); await expect(c.service.processClaimedArtifact(claim())).rejects.toMatchObject({ retryable: false });
     expect(c.tx.billingOutboxEvent.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'FAILED' }) }));
+  });
+
+  it('logs only the safe validator code while preserving the identity-invalid contract', async () => {
+    const c = context({ retrieved: { ...retrieved(), bytes: Buffer.from('<bad/>') }, failureArtifact: pending() });
+    const logger = (c.service as unknown as { logger: { error: jest.Mock } }).logger;
+    jest.spyOn(logger, 'error').mockImplementation();
+
+    await expect(c.service.processClaimedArtifact(claim())).rejects.toMatchObject({
+      code: 'FISCAL_ARTIFACT_RETRIEVAL_IDENTITY_INVALID', retryable: false,
+    });
+
+    expect(logger.error).toHaveBeenCalledWith(
+      'FISCAL_ARTIFACT_XML_IDENTITY_FAILURE tenantId=tenant-a billingDocumentId=document-a artifactType=SIGNED_FISCAL_XML validatorCode=FISCAL_XML_IDENTITY_WRONG_ROOT_OR_NAMESPACE',
+    );
+    expect(JSON.stringify(logger.error.mock.calls)).not.toMatch(new RegExp(`${KEY}|<bad|stack|cause`, 'i'));
   });
 
   it('does not expose artifact availability when child completion loses its CAS', async () => {

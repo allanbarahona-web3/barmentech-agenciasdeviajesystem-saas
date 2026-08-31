@@ -201,8 +201,9 @@ export class FiscalTerminalArtifactFanoutCoordinatorService implements OnModuleI
     error: unknown,
   ): void {
     const prismaCode = safePrismaCode(error);
+    const sqlState = safeSqlState(error);
     this.logger.error(
-      `FISCAL_TERMINAL_ARTIFACT_FANOUT_FAILURE tenantId=${event.tenantId} billingDocumentId=${event.aggregateId} parentOutboxEventId=${event.id} operation=${operation} errorName=${safeErrorName(error)}${prismaCode ? ` prismaCode=${prismaCode}` : ""}`,
+      `FISCAL_TERMINAL_ARTIFACT_FANOUT_FAILURE tenantId=${event.tenantId} billingDocumentId=${event.aggregateId} parentOutboxEventId=${event.id} operation=${operation} errorName=${safeErrorName(error)}${prismaCode ? ` prismaCode=${prismaCode}` : ""}${sqlState ? ` sqlState=${sqlState}` : ""}`,
     );
   }
 
@@ -243,7 +244,7 @@ async function ensureArtifact(
     INSERT INTO "billing_document_artifacts" (
       "id", "tenantId", "billingDocumentId", "artifactType", "version", "status", "updatedAt"
     ) VALUES (
-      ${randomUUID()}, ${payload.tenantId}, ${payload.billingDocumentId}, ${artifactType},
+      ${randomUUID()}, ${payload.tenantId}, ${payload.billingDocumentId}, ${artifactType}::"BillingDocumentArtifactType",
       ${FISCAL_TERMINAL_ARTIFACT_VERSION}, 'PENDING', ${now}
     )
     ON CONFLICT ("tenantId", "billingDocumentId", "artifactType", "version") DO NOTHING
@@ -255,7 +256,7 @@ async function ensureArtifact(
     FROM "billing_document_artifacts"
     WHERE "tenantId" = ${payload.tenantId}
       AND "billingDocumentId" = ${payload.billingDocumentId}
-      AND "artifactType" = ${artifactType}
+      AND "artifactType" = ${artifactType}::"BillingDocumentArtifactType"
       AND "version" = ${FISCAL_TERMINAL_ARTIFACT_VERSION}
     FOR UPDATE
   `;
@@ -383,6 +384,11 @@ function safePrismaCode(error: unknown): string | null {
     (candidate): candidate is string => typeof candidate === "string" && /^P\d{4}$/.test(candidate),
   );
   return new Set(codes).size === 1 ? codes[0] ?? null : null;
+}
+function safeSqlState(error: unknown): string | null {
+  if (!error || typeof error !== "object") return null;
+  const code = (error as { meta?: { code?: unknown } }).meta?.code;
+  return typeof code === "string" && /^[0-9A-Z]{5}$/.test(code) ? code : null;
 }
 function safeErrorName(error: unknown): string {
   if (!error || typeof error !== "object") return "UnknownError";

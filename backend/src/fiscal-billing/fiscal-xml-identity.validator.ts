@@ -76,10 +76,10 @@ export class FiscalXmlIdentityValidator {
     let elementCount = 0;
     let rootSeen = false;
     let rootClosed = false;
-    let activeIdentity: 'Clave' | 'NumeroConsecutivo' | 'IndEstado' | null = null;
+    let activeIdentity: 'Clave' | 'NumeroConsecutivo' | 'EstadoMensaje' | null = null;
     let identityDepth = 0;
-    const values = new Map<'Clave' | 'NumeroConsecutivo' | 'IndEstado', string>();
-    const counts = new Map<'Clave' | 'NumeroConsecutivo' | 'IndEstado', number>();
+    const values = new Map<'Clave' | 'NumeroConsecutivo' | 'EstadoMensaje', string>();
+    const counts = new Map<'Clave' | 'NumeroConsecutivo' | 'EstadoMensaje', number>();
     const setFailure = (code: FiscalXmlIdentityValidationErrorCode) => { if (!failure) failure = code; };
     const parser = new SaxesParser({ xmlns: true, fragment: false, position: false });
 
@@ -143,7 +143,7 @@ export class FiscalXmlIdentityValidator {
       return { artifactType: input.artifactType, documentTypeCode: input.documentTypeCode, haciendaKey: input.haciendaKey, fiscalNumber };
     }
 
-    const responseStatus = required(values, counts, 'IndEstado');
+    const responseStatus = normalizeResponseStatus(required(values, counts, 'EstadoMensaje'));
     const expectedStatus = input.taxAuthorityStatus === 'ACCEPTED' ? 'aceptado' : 'rechazado';
     if (responseStatus !== expectedStatus) fail('FISCAL_XML_IDENTITY_TERMINAL_STATUS_MISMATCH');
     return { artifactType: input.artifactType, documentTypeCode: input.documentTypeCode, haciendaKey: input.haciendaKey, terminalResponseStatus: expectedStatus };
@@ -154,14 +154,19 @@ export function validateFiscalXmlIdentity(input: FiscalXmlIdentityValidationInpu
   return new FiscalXmlIdentityValidator().validate(input);
 }
 
-function identityFor(tag: SaxesTagNS, artifactType: FiscalXmlArtifactType): 'Clave' | 'NumeroConsecutivo' | 'IndEstado' | null {
+function identityFor(tag: SaxesTagNS, artifactType: FiscalXmlArtifactType): 'Clave' | 'NumeroConsecutivo' | 'EstadoMensaje' | null {
   if (artifactType === 'SIGNED_FISCAL_XML') return tag.local === 'Clave' || tag.local === 'NumeroConsecutivo' ? tag.local : null;
-  return tag.local === 'Clave' || tag.local === 'IndEstado' ? tag.local : null;
+  return tag.local === 'Clave' || tag.local === 'EstadoMensaje' ? tag.local : null;
 }
 
 function required(values: Map<string, string>, counts: Map<string, number>, key: string): string {
   if ((counts.get(key) ?? 0) === 0 || !values.get(key)?.trim()) fail('FISCAL_XML_IDENTITY_MISSING_IDENTITY');
   return values.get(key)!.trim();
+}
+
+function normalizeResponseStatus(value: string): 'aceptado' | 'rechazado' | null {
+  const normalized = value.trim().toLocaleLowerCase('es-CR');
+  return normalized === 'aceptado' || normalized === 'rechazado' ? normalized : null;
 }
 
 function validateInput(input: FiscalXmlIdentityValidationInput): void {

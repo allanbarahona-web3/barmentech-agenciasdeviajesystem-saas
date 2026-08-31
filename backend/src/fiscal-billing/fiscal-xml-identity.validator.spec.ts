@@ -18,18 +18,26 @@ describe('FiscalXmlIdentityValidator', () => {
     expect(validateFiscalXmlIdentity(signed('04'))).toEqual(expect.objectContaining({ documentTypeCode: '04', fiscalNumber: NUMBER }));
   });
 
-  it.each([['ACCEPTED', 'aceptado'], ['REJECTED', 'rechazado']] as const)('validates a %s MensajeHacienda response', (taxAuthorityStatus, state) => {
-    expect(validateFiscalXmlIdentity(response(taxAuthorityStatus, state))).toEqual({ artifactType: 'TAX_AUTHORITY_RESPONSE_XML', documentTypeCode: '01', haciendaKey: KEY, terminalResponseStatus: state });
+  it.each([['ACCEPTED', 'Aceptado', 'aceptado'], ['REJECTED', 'Rechazado', 'rechazado']] as const)('validates a %s MensajeHacienda response', (taxAuthorityStatus, state, normalizedState) => {
+    expect(validateFiscalXmlIdentity(response(taxAuthorityStatus, state))).toEqual({ artifactType: 'TAX_AUTHORITY_RESPONSE_XML', documentTypeCode: '01', haciendaKey: KEY, terminalResponseStatus: normalizedState });
   });
 
   it.each([
     ['Clave', signed('01', '<Clave><![CDATA[' + KEY + ']]></Clave><NumeroConsecutivo>' + NUMBER + '</NumeroConsecutivo>')],
     ['NumeroConsecutivo', signed('01', '<Clave>' + KEY + '</Clave><NumeroConsecutivo><![CDATA[' + NUMBER + ']]></NumeroConsecutivo>')],
-    ['IndEstado', response('ACCEPTED', '<![CDATA[aceptado]]>')],
+    ['EstadoMensaje', response('ACCEPTED', '<![CDATA[Aceptado]]>')],
   ])('accepts CDATA character content in direct %s identities', (_, value) => expect(() => validateFiscalXmlIdentity(value)).not.toThrow());
 
   it('accumulates ordinary text and CDATA chunks in one direct identity', () => {
     expect(validateFiscalXmlIdentity(signed('01', '<Clave> ' + KEY.slice(0, 20) + '<![CDATA[' + KEY.slice(20) + ']]> </Clave><NumeroConsecutivo>' + NUMBER + '</NumeroConsecutivo>'))).toEqual(expect.objectContaining({ haciendaKey: KEY }));
+  });
+
+  it('does not accept IndEstado as the response status identity', () => {
+    const xml = signedXml('MensajeHacienda', 'https://cdn.comprobanteselectronicos.go.cr/xml-schemas/v4.4/mensajeHacienda', `<Clave>${KEY}</Clave><IndEstado>Aceptado</IndEstado>`);
+    expectCode(
+      () => validateFiscalXmlIdentity(input({ artifactType: 'TAX_AUTHORITY_RESPONSE_XML', bytes: Buffer.from(xml) })),
+      'FISCAL_XML_IDENTITY_MISSING_IDENTITY',
+    );
   });
 
   it.each([
@@ -110,9 +118,9 @@ function input(overrides: Record<string, unknown> = {}): FiscalXmlIdentityValida
   return { artifactType: 'SIGNED_FISCAL_XML', documentTypeCode: '01', fiscalNumber: NUMBER, haciendaKey: KEY, taxAuthorityStatus: 'ACCEPTED', bytes: Buffer.from(signedXml('FacturaElectronica', signedNamespace('01'), '<Clave>' + KEY + '</Clave><NumeroConsecutivo>' + NUMBER + '</NumeroConsecutivo>')), normalizedMimeType: 'application/xml', ...overrides } as FiscalXmlIdentityValidationInput;
 }
 function signed(type: '01' | '04', children = '<Clave>' + KEY + '</Clave><NumeroConsecutivo>' + NUMBER + '</NumeroConsecutivo>') { return input({ documentTypeCode: type, bytes: Buffer.from(signedXml(type === '01' ? 'FacturaElectronica' : 'TiqueteElectronico', signedNamespace(type), children)) }); }
-function response(status: 'ACCEPTED' | 'REJECTED', state: string) { return input({ artifactType: 'TAX_AUTHORITY_RESPONSE_XML', taxAuthorityStatus: status, bytes: Buffer.from(signedXml('MensajeHacienda', 'https://cdn.comprobanteselectronicos.go.cr/xml-schemas/v4.4/mensajeHacienda', '<Clave>' + KEY + '</Clave><IndEstado>' + state + '</IndEstado>')) }); }
+function response(status: 'ACCEPTED' | 'REJECTED', state: string) { return input({ artifactType: 'TAX_AUTHORITY_RESPONSE_XML', taxAuthorityStatus: status, bytes: Buffer.from(signedXml('MensajeHacienda', 'https://cdn.comprobanteselectronicos.go.cr/xml-schemas/v4.4/mensajeHacienda', '<Clave>' + KEY + '</Clave><EstadoMensaje>' + state + '</EstadoMensaje>')) }); }
 function signedNamespace(type: '01' | '04') { return `https://cdn.comprobanteselectronicos.go.cr/xml-schemas/v4.4/${type === '01' ? 'facturaElectronica' : 'tiqueteElectronico'}`; }
 function signedXml(root: string, namespace: string, children: string) { return `<?xml version="1.0" encoding="UTF-8"?><${root}${namespace ? ` xmlns="${namespace}"` : ''}>${children}</${root}>`; }
 function realisticSigned(type: '01' | '04') { const root = type === '01' ? 'FacturaElectronica' : 'TiqueteElectronico'; return signedXml(root, signedNamespace(type), `<Clave>${KEY}</Clave><NumeroConsecutivo>${NUMBER}</NumeroConsecutivo><FechaEmision>2026-09-09T12:00:00-06:00</FechaEmision><Emisor><Nombre>Emisor Sintetico</Nombre><Identificacion><Tipo>02</Tipo><Numero>3101000000</Numero></Identificacion></Emisor><ResumenFactura><CodigoTipoMoneda>CRC</CodigoTipoMoneda><TotalComprobante>1.00000</TotalComprobante></ResumenFactura>`); }
-function realisticResponse() { return signedXml('MensajeHacienda', 'https://cdn.comprobanteselectronicos.go.cr/xml-schemas/v4.4/mensajeHacienda', `<Clave>${KEY}</Clave><Fecha>2026-09-09T12:00:00-06:00</Fecha><Emisor><Nombre>Emisor Sintetico</Nombre></Emisor><Receptor><Nombre>Receptor Sintetico</Nombre></Receptor><IndEstado>aceptado</IndEstado>`); }
+function realisticResponse() { return signedXml('MensajeHacienda', 'https://cdn.comprobanteselectronicos.go.cr/xml-schemas/v4.4/mensajeHacienda', `<Clave>${KEY}</Clave><Fecha>2026-09-09T12:00:00-06:00</Fecha><Emisor><Nombre>Emisor Sintetico</Nombre></Emisor><Receptor><Nombre>Receptor Sintetico</Nombre></Receptor><EstadoMensaje>Aceptado</EstadoMensaje>`); }
 function expectCode(action: () => unknown, code: string) { try { action(); throw new Error('expected error'); } catch (error) { expect(error).toBeInstanceOf(FiscalXmlIdentityValidationError); expect((error as FiscalXmlIdentityValidationError).code).toBe(code); expect(String((error as Error).message)).not.toContain(KEY); } }
