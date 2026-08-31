@@ -256,6 +256,11 @@ export function VerticalNav() {
                   ]
                 : []),
               {
+                href: "/finance/accounts-receivable",
+                label: "Cuentas por cobrar",
+                icon: "📒",
+              },
+              {
                 href: "/billing",
                 label: "Estados de cuenta",
                 icon: "💰",
