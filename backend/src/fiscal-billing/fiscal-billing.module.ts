@@ -43,6 +43,7 @@ import { BillingDocumentSubmissionPreparationService } from "./billing-document-
 import { BillingDocumentSubmissionAttemptService } from "./billing-document-submission-attempt.service";
 import { BillingDocumentSubmissionExecutorService } from "./billing-document-submission-executor.service";
 import { BillingDocumentSubmissionOutcomeService } from "./billing-document-submission-outcome.service";
+import { BillingDocumentSubmissionFailureFinalizationService } from "./billing-document-submission-failure-finalization.service";
 import { FiscalBillingSubmissionProcessor } from "./jobs/fiscal-billing-submission.processor";
 import { FacturaEnCrDocumentStatusAdapter } from "./providers/factura-en-cr-document-status.adapter";
 import { ELECTRONIC_DOCUMENT_STATUS_PROVIDER } from "./providers/electronic-document-status.provider";
@@ -113,6 +114,7 @@ import { FiscalInvoiceAutoDeliveryProcessor } from "./jobs/fiscal-invoice-auto-d
     BillingDocumentSubmissionAttemptService,
     BillingDocumentSubmissionExecutorService,
     BillingDocumentSubmissionOutcomeService,
+    BillingDocumentSubmissionFailureFinalizationService,
     FiscalBillingSubmissionProcessor,
     BillingDocumentStatusLookupService,
     BillingDocumentStatusPersistenceService,
