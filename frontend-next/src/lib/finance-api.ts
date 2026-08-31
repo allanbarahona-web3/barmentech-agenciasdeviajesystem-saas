@@ -67,6 +67,113 @@ export type AccountReceivablesPage = {
   totalPages: number;
 };
 
+export type AccountReceivableGroup = {
+  groupKey: string;
+  customerId: string | null;
+  debtor: {
+    displayName: string;
+    identificationType: string | null;
+    identificationNumber: string | null;
+  };
+  currencyCode: FinanceCurrency;
+  totalOriginalAmount: string;
+  totalAllocatedAmount: string;
+  totalOutstandingAmount: string;
+  totalOverdueOutstandingAmount: string;
+  counts: {
+    total: number;
+    open: number;
+    partiallySettled: number;
+    settled: number;
+    cancelled: number;
+    overdue: number;
+  };
+};
+
+export type AccountReceivableGroupsPage = {
+  groups: AccountReceivableGroup[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+};
+
+export type PaymentStatus =
+  | 'RECEIVED'
+  | 'PARTIALLY_ALLOCATED'
+  | 'FULLY_ALLOCATED'
+  | 'CANCELLED';
+
+export type PaymentAllocationDetail = {
+  id: string;
+  accountReceivableId: string;
+  amount: string;
+  status: 'ACTIVE' | 'REVERSED';
+  allocatedAt: string;
+  accountReceivable: {
+    id: string;
+    currencyCode: FinanceCurrency;
+    originalAmount: string;
+    outstandingAmount: string;
+    status: AccountReceivableStatus;
+  };
+  reversal: {
+    id: string;
+    reason: string;
+    reversedAt: string;
+  } | null;
+};
+
+export type PaymentDetail = {
+  id: string;
+  customerId: string | null;
+  payerDisplayName: string;
+  payerIdentificationType: string | null;
+  payerIdentificationNumber: string | null;
+  currencyCode: FinanceCurrency;
+  receivedAmount: string;
+  availableAmount: string;
+  receivedAt: string;
+  paymentMethod: string;
+  externalReference: string | null;
+  description: string | null;
+  status: PaymentStatus;
+  cancelledAt: string | null;
+  allocations: PaymentAllocationDetail[];
+};
+
+export type PaymentListItem = Omit<PaymentDetail, 'allocations'>;
+
+export type PaymentsPage = {
+  payments: PaymentListItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+};
+
+export type RegisterPaymentInput = {
+  registrationDeduplicationKey: string;
+  payerDisplayName: string;
+  currencyCode: FinanceCurrency;
+  receivedAmount: string;
+  receivedAt: string;
+  paymentMethod: 'CASH' | 'BANK_TRANSFER' | 'CARD' | 'CHECK' | 'MOBILE_TRANSFER' | 'OTHER';
+  customerId?: string;
+  payerIdentificationType?: string;
+  payerIdentificationNumber?: string;
+  externalReference?: string;
+  description?: string;
+};
+
+export type AllocatePaymentInput = {
+  allocations: Array<{
+    accountReceivableId: string;
+    amount: string;
+    allocationDeduplicationKey: string;
+  }>;
+};
+
 export type ListAccountReceivablesParams = {
   page?: number;
   pageSize?: number;
@@ -75,6 +182,18 @@ export type ListAccountReceivablesParams = {
   currency?: FinanceCurrency;
   dueDateFrom?: string;
   dueDateTo?: string;
+};
+
+export type PageParams = {
+  page?: number;
+  pageSize?: number;
+};
+
+export type ListPaymentsParams = PageParams & {
+  customerId?: string;
+  currency?: FinanceCurrency;
+  status?: PaymentStatus;
+  availableOnly?: boolean;
 };
 
 export class FinanceApiError extends Error {
@@ -86,8 +205,28 @@ export class FinanceApiError extends Error {
 
 const ERROR_MESSAGES: Record<string, string> = {
   ACCOUNT_RECEIVABLE_NOT_FOUND: 'La cuenta por cobrar ya no está disponible.',
+  ACCOUNT_RECEIVABLE_GROUP_NOT_FOUND: 'El grupo financiero ya no está disponible.',
+  PAYMENT_NOT_FOUND: 'El pago ya no está disponible.',
+  PAYMENT_REGISTRATION_INVALID: 'Revise la fecha, moneda, monto y método del pago.',
+  PAYMENT_REGISTRATION_CUSTOMER_INVALID: 'El cliente indicado no está disponible.',
+  PAYMENT_REGISTRATION_CONFLICT: 'La solicitud de pago ya fue utilizada con información diferente.',
+  PAYMENT_ALLOCATION_INVALID: 'Revise las cuentas seleccionadas y los montos por aplicar.',
+  PAYMENT_ALLOCATION_PAYMENT_INVALID: 'El pago no está disponible para aplicar.',
+  PAYMENT_ALLOCATION_RECEIVABLE_INVALID: 'Una cuenta por cobrar seleccionada ya no está disponible.',
+  PAYMENT_ALLOCATION_CURRENCY_MISMATCH: 'La moneda del pago no coincide con una cuenta seleccionada.',
+  PAYMENT_ALLOCATION_PAYMENT_INSUFFICIENT: 'El backend rechazó la aplicación porque el pago no tiene saldo disponible suficiente.',
+  PAYMENT_ALLOCATION_RECEIVABLE_INSUFFICIENT: 'El backend rechazó la aplicación porque el monto supera el saldo de una cuenta.',
+  PAYMENT_ALLOCATION_CONFLICT: 'La solicitud de aplicación ya fue utilizada con información diferente.',
   FINANCE_OPERATION_FAILED: 'No se pudo completar la consulta financiera.',
 };
+
+function queryString(params: Record<string, unknown>): string {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== '') query.set(key, String(value));
+  });
+  return query.size ? `?${query.toString()}` : '';
+}
 
 function errorMessage(payload: unknown, fallback: string) {
   if (!payload || typeof payload !== 'object') return fallback;
@@ -104,22 +243,47 @@ async function request<T>(path: string, signal?: AbortSignal): Promise<T> {
   const code = typeof (payload as { code?: unknown } | null)?.code === 'string'
     ? String((payload as { code: string }).code)
     : backendMessage;
-  throw new FinanceApiError(
-    code,
-    ERROR_MESSAGES[code] ?? 'No se pudo cargar la información de cuentas por cobrar.',
-  );
+  throw new FinanceApiError(code, ERROR_MESSAGES[code] ?? backendMessage);
+}
+
+async function post<T>(path: string, body: unknown): Promise<T> {
+  const response = await fetchApi(path, { method: 'POST', body: JSON.stringify(body) });
+  if (response.ok) return response.json() as Promise<T>;
+  const payload: unknown = await response.json().catch(() => null);
+  const backendMessage = errorMessage(payload, 'FINANCE_OPERATION_FAILED');
+  const code = typeof (payload as { code?: unknown } | null)?.code === 'string'
+    ? String((payload as { code: string }).code)
+    : backendMessage;
+  throw new FinanceApiError(code, ERROR_MESSAGES[code] ?? backendMessage);
 }
 
 export function listAccountReceivables(
   params: ListAccountReceivablesParams,
   signal?: AbortSignal,
 ): Promise<AccountReceivablesPage> {
-  const query = new URLSearchParams();
-  Object.entries(params).forEach(([key, value]) => {
-    if (value !== undefined && value !== '') query.set(key, String(value));
-  });
-  const suffix = query.size ? `?${query.toString()}` : '';
+  const suffix = queryString(params);
   return request<AccountReceivablesPage>(`/finance/account-receivables${suffix}`, signal);
+}
+
+export function listAccountReceivableGroups(
+  params: PageParams,
+  signal?: AbortSignal,
+): Promise<AccountReceivableGroupsPage> {
+  return request<AccountReceivableGroupsPage>(
+    `/finance/account-receivable-groups${queryString(params)}`,
+    signal,
+  );
+}
+
+export function listAccountReceivableGroupItems(
+  groupKey: string,
+  params: PageParams,
+  signal?: AbortSignal,
+): Promise<AccountReceivablesPage & { groupKey: string }> {
+  return request<AccountReceivablesPage & { groupKey: string }>(
+    `/finance/account-receivable-groups/${encodeURIComponent(groupKey)}/account-receivables${queryString(params)}`,
+    signal,
+  );
 }
 
 export function getAccountReceivable(
@@ -129,6 +293,31 @@ export function getAccountReceivable(
   return request<AccountReceivableDetail>(
     `/finance/account-receivables/${encodeURIComponent(id)}`,
     signal,
+  );
+}
+
+export function listPayments(
+  params: ListPaymentsParams,
+  signal?: AbortSignal,
+): Promise<PaymentsPage> {
+  return request<PaymentsPage>(`/finance/payments${queryString(params)}`, signal);
+}
+
+export function getPayment(id: string, signal?: AbortSignal): Promise<PaymentDetail> {
+  return request<PaymentDetail>(`/finance/payments/${encodeURIComponent(id)}`, signal);
+}
+
+export function registerPayment(input: RegisterPaymentInput): Promise<PaymentDetail> {
+  return post<PaymentDetail>('/finance/payments', input);
+}
+
+export function allocatePayment(
+  paymentId: string,
+  input: AllocatePaymentInput,
+): Promise<PaymentDetail> {
+  return post<PaymentDetail>(
+    `/finance/payments/${encodeURIComponent(paymentId)}/allocations`,
+    input,
   );
 }
 
