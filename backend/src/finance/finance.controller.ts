@@ -7,7 +7,15 @@ import { PaymentAllocationReversalService } from "./payment-allocation-reversal.
 import { PaymentAllocationService } from "./payment-allocation.service";
 import { PaymentCancellationService } from "./payment-cancellation.service";
 import { PaymentRegistrationService } from "./payment-registration.service";
-import { AllocatePaymentDto, ListAccountReceivablesDto, RegisterPaymentDto, ReversePaymentAllocationDto } from "./dto/finance.dto";
+import {
+  AllocatePaymentDto,
+  ListAccountReceivableGroupItemsDto,
+  ListAccountReceivableGroupsDto,
+  ListAccountReceivablesDto,
+  ListPaymentsDto,
+  RegisterPaymentDto,
+  ReversePaymentAllocationDto,
+} from "./dto/finance.dto";
 import { translateFinanceError } from "./finance.errors";
 import { FinanceReadService } from "./finance-read.service";
 
@@ -126,10 +134,39 @@ export class FinanceController {
     return this.reads.listAccountReceivables(request.user.tenantId, query);
   }
 
+  @Get("account-receivable-groups")
+  @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.CONTADOR)
+  listAccountReceivableGroups(
+    @Req() request: FinanceRequest,
+    @Query() query: ListAccountReceivableGroupsDto,
+  ) {
+    return this.reads.listAccountReceivableGroups(request.user.tenantId, query);
+  }
+
+  @Get("account-receivable-groups/:groupKey/account-receivables")
+  @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.CONTADOR)
+  listAccountReceivableGroupItems(
+    @Req() request: FinanceRequest,
+    @Param("groupKey") groupKey: string,
+    @Query() query: ListAccountReceivableGroupItemsDto,
+  ) {
+    return this.reads.listAccountReceivableGroupItems(
+      request.user.tenantId,
+      groupKey,
+      query,
+    );
+  }
+
   @Get("customers/:customerId/financial-balance")
   @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.CONTADOR)
   getCustomerFinancialBalance(@Req() request: FinanceRequest, @Param("customerId") customerId: string) {
     return this.reads.getCustomerFinancialBalance(request.user.tenantId, customerId);
+  }
+
+  @Get("payments")
+  @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.CONTADOR)
+  listPayments(@Req() request: FinanceRequest, @Query() query: ListPaymentsDto) {
+    return this.reads.listPayments(request.user.tenantId, query);
   }
 
   @Get("payments/:paymentId")

@@ -168,6 +168,147 @@ describe("FinanceReadService", () => {
     }));
     jest.useRealTimers();
   });
+
+  it("paginates exact customer/currency groups while isolating every null-customer AR", async () => {
+    jest.useFakeTimers().setSystemTime(new Date("2026-09-01T02:30:00.000Z"));
+    const queryRaw = jest.fn()
+      .mockResolvedValueOnce([
+        groupRow({
+          groupIdentity: "customer-a", customerId: "customer-a", currencyCode: "CRC",
+          totalOriginalAmount: d("30.12345"), totalAllocatedAmount: d("12.10005"),
+          totalOutstandingAmount: d("18.02340"), totalOverdueOutstandingAmount: d("8.00001"),
+          totalCount: 4n, openCount: 1n, partiallySettledCount: 1n, settledCount: 1n,
+          cancelledCount: 1n, overdueCount: 1n,
+        }),
+        groupRow({ groupIdentity: "customer-a", customerId: "customer-a", currencyCode: "USD" }),
+        groupRow({ groupIdentity: "customer-b", customerId: "customer-b", debtorDisplayName: "Second debtor" }),
+        groupRow({ groupKind: "RECEIVABLE", groupIdentity: "ar-null-a", customerId: null }),
+        groupRow({ groupKind: "RECEIVABLE", groupIdentity: "ar-null-b", customerId: null }),
+      ])
+      .mockResolvedValueOnce([{ total: 8n }]);
+    const prisma = {
+      $queryRaw: queryRaw,
+      tenantBillingConfiguration: { findUnique: jest.fn().mockResolvedValue({ fiscalTimezone: "America/Costa_Rica" }) },
+    };
+    const service = new FinanceReadService(prisma as unknown as PrismaService);
+
+    const result = await service.listAccountReceivableGroups("tenant-a", { page: 2, pageSize: 5 });
+
+    expect(result).toMatchObject({ total: 8, page: 2, pageSize: 5, totalPages: 2 });
+    expect(result.groups).toHaveLength(5);
+    expect(result.groups[0]).toEqual(expect.objectContaining({
+      customerId: "customer-a", currencyCode: "CRC",
+      totalOriginalAmount: "30.12345", totalAllocatedAmount: "12.10005",
+      totalOutstandingAmount: "18.0234", totalOverdueOutstandingAmount: "8.00001",
+      counts: { total: 4, open: 1, partiallySettled: 1, settled: 1, cancelled: 1, overdue: 1 },
+    }));
+    expect(result.groups[1]).toEqual(expect.objectContaining({ customerId: "customer-a", currencyCode: "USD" }));
+    expect(result.groups[2]).toEqual(expect.objectContaining({ customerId: "customer-b", currencyCode: "CRC" }));
+    expect(result.groups[3].groupKey).not.toBe(result.groups[4].groupKey);
+    expect(result.groups.slice(3).map((group) => group.customerId)).toEqual([null, null]);
+
+    const pageSql = rawSql(queryRaw, 0);
+    expect(pageSql).toContain('COALESCE("customerId", "id")');
+    expect(pageSql).toContain('GROUP BY');
+    expect(pageSql).toContain('OFFSET');
+    expect(pageSql).toContain('LIMIT');
+    expect(pageSql).toContain('"status" <> \'CANCELLED\'');
+    expect(pageSql).toContain('"originalAmount" - "outstandingAmount"');
+    expect(pageSql).toContain("'OPEN', 'PARTIALLY_SETTLED'");
+    expect(queryRaw.mock.calls[0]).toEqual(expect.arrayContaining([new Date("2026-08-31T00:00:00.000Z"), "tenant-a", 5, 5]));
+    expect(prisma).not.toHaveProperty("client");
+    expect(prisma).not.toHaveProperty("billingDocument");
+    expect(prisma).not.toHaveProperty("payment");
+    jest.useRealTimers();
+  });
+
+  it("loads one opaque group lazily with tenant scope, deterministic AR pagination, and no child relations", async () => {
+    jest.useFakeTimers().setSystemTime(new Date("2026-08-31T17:00:00.000Z"));
+    const findMany = jest.fn().mockResolvedValue([receivable()]);
+    const count = jest.fn().mockResolvedValue(1);
+    const prisma = {
+      accountReceivable: { findMany, count },
+      tenantBillingConfiguration: { findUnique: jest.fn().mockResolvedValue({ fiscalTimezone: "America/Costa_Rica" }) },
+    };
+    const service = new FinanceReadService(prisma as unknown as PrismaService);
+    const key = encodedGroupKey("CUSTOMER", "customer-a", "CRC");
+
+    await expect(service.listAccountReceivableGroupItems("tenant-auth", key, { page: 2, pageSize: 5 })).resolves.toMatchObject({
+      groupKey: key, total: 1, page: 2, pageSize: 5, totalPages: 1,
+      accountReceivables: [{ id: "ar-a", outstandingAmount: "3.33333", isOverdue: true }],
+    });
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { tenantId: "tenant-auth", customerId: "customer-a", currencyCode: "CRC" },
+      orderBy: [{ dueDate: "asc" }, { id: "asc" }], skip: 5, take: 5,
+      select: expect.any(Object),
+    }));
+    expect(findMany.mock.calls[0][0]).not.toHaveProperty("include");
+    expect(count).toHaveBeenCalledWith({ where: { tenantId: "tenant-auth", customerId: "customer-a", currencyCode: "CRC" } });
+    jest.useRealTimers();
+  });
+
+  it("does not expose a foreign-tenant or mismatched defensive AR group", async () => {
+    const findMany = jest.fn().mockResolvedValue([]);
+    const count = jest.fn().mockResolvedValue(0);
+    const prisma = {
+      accountReceivable: { findMany, count },
+      tenantBillingConfiguration: { findUnique: jest.fn().mockResolvedValue({ fiscalTimezone: "America/Costa_Rica" }) },
+    };
+    const service = new FinanceReadService(prisma as unknown as PrismaService);
+    const key = encodedGroupKey("RECEIVABLE", "ar-foreign", "USD");
+
+    await expect(service.listAccountReceivableGroupItems("tenant-a", key, {})).rejects.toBeInstanceOf(NotFoundException);
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { tenantId: "tenant-a", id: "ar-foreign", customerId: null, currencyCode: "USD" },
+    }));
+    expect(count).toHaveBeenCalledTimes(1);
+  });
+
+  it("discovers paginated payments with exact strings and authoritative available-only constraints", async () => {
+    const findMany = jest.fn().mockResolvedValue([
+      paymentListRow({ receivedAmount: d("123.12345"), availableAmount: d("23.00005") }),
+    ]);
+    const count = jest.fn().mockResolvedValue(21);
+    const prisma = { payment: { findMany, count } };
+    const service = new FinanceReadService(prisma as unknown as PrismaService);
+
+    await expect(service.listPayments("tenant-auth", {
+      page: 2, pageSize: 10, customerId: "customer-a", currency: "CRC", availableOnly: true,
+    })).resolves.toEqual({
+      payments: [expect.objectContaining({ id: "payment-a", receivedAmount: "123.12345", availableAmount: "23.00005" })],
+      total: 21, page: 2, pageSize: 10, totalPages: 3,
+    });
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        tenantId: "tenant-auth", customerId: "customer-a", currencyCode: "CRC",
+        AND: [{
+          availableAmount: { gt: new Prisma.Decimal(0) },
+          status: { in: ["RECEIVED", "PARTIALLY_ALLOCATED"] },
+        }],
+      },
+      orderBy: [{ receivedAt: "desc" }, { id: "desc" }], skip: 10, take: 10,
+    }));
+    expect(findMany.mock.calls[0][0]).not.toHaveProperty("include");
+    expect(prisma).not.toHaveProperty("accountReceivable");
+  });
+
+  it.each(["FULLY_ALLOCATED", "CANCELLED"] as const)(
+    "combines explicit %s status with available-only so the payment cannot match",
+    async (status) => {
+    const findMany = jest.fn().mockResolvedValue([]);
+    const prisma = { payment: { findMany, count: jest.fn().mockResolvedValue(0) } };
+    const service = new FinanceReadService(prisma as unknown as PrismaService);
+
+    await service.listPayments("tenant-a", { status, availableOnly: true });
+
+    expect(findMany.mock.calls[0][0].where.AND).toEqual([
+      { status },
+      {
+        availableAmount: { gt: new Prisma.Decimal(0) },
+        status: { in: ["RECEIVED", "PARTIALLY_ALLOCATED"] },
+      },
+    ]);
+  });
 });
 
 function payment() {
@@ -184,5 +325,36 @@ function receivable(overrides: Record<string, unknown> = {}) {
     currencyCode: "CRC", originalAmount: new Prisma.Decimal("10.12345"), outstandingAmount: new Prisma.Decimal("3.33333"), dueDate: new Date("2026-08-15T00:00:00.000Z"), status: "PARTIALLY_SETTLED", recognizedAt: new Date("2026-08-01T00:00:00.000Z"), settledAt: null,
     sourceType: "BILLING_DOCUMENT", sourceId: "document-a", sourceNumber: "001", sourceDocumentType: "01",
     ...overrides,
+  };
+}
+
+function d(value: string) { return new Prisma.Decimal(value); }
+
+function groupRow(overrides: Record<string, unknown> = {}) {
+  return {
+    groupKind: "CUSTOMER", groupIdentity: "customer-a", customerId: "customer-a", currencyCode: "CRC",
+    debtorDisplayName: "Debtor", debtorIdentificationType: "01", debtorIdentificationNumber: "123",
+    totalOriginalAmount: d("10"), totalAllocatedAmount: d("0"), totalOutstandingAmount: d("10"),
+    totalOverdueOutstandingAmount: d("0"), totalCount: 1n, openCount: 1n, partiallySettledCount: 0n,
+    settledCount: 0n, cancelledCount: 0n, overdueCount: 0n,
+    ...overrides,
+  };
+}
+
+function encodedGroupKey(kind: "CUSTOMER" | "RECEIVABLE", identity: string, currencyCode: string) {
+  return Buffer.from(JSON.stringify({ version: 1, kind, identity, currencyCode }), "utf8").toString("base64url");
+}
+
+function rawSql(mock: jest.Mock, call: number): string {
+  return (mock.mock.calls[call][0] as TemplateStringsArray).join("?");
+}
+
+function paymentListRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "payment-a", customerId: "customer-a", payerDisplayName: "Payer",
+    payerIdentificationType: "01", payerIdentificationNumber: "123", currencyCode: "CRC",
+    receivedAmount: d("10"), availableAmount: d("10"), receivedAt: new Date("2026-08-31T12:00:00.000Z"),
+    paymentMethod: "BANK_TRANSFER", externalReference: "bank-a", description: "Payment",
+    status: "RECEIVED", cancelledAt: null, ...overrides,
   };
 }

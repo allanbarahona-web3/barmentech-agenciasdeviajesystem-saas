@@ -6,7 +6,7 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { ROLES_KEY } from "../auth/roles.decorator";
 import { RolesGuard } from "../auth/roles.guard";
 import { FinanceController } from "./finance.controller";
-import { RegisterPaymentDto } from "./dto/finance.dto";
+import { ListPaymentsDto, RegisterPaymentDto } from "./dto/finance.dto";
 
 describe("FinanceController", () => {
   it("registers an exact payment for only the authenticated tenant", async () => {
@@ -123,6 +123,40 @@ describe("FinanceController", () => {
     expect(c.reads.listAccountReceivables).toHaveBeenCalledWith("tenant-auth", { customerId: "customer-a" });
     expect(c.reads.getCustomerFinancialBalance).toHaveBeenCalledWith("tenant-auth", "customer-a");
   });
+
+  it("delegates grouped AR, lazy children, and payment discovery reads using the authenticated tenant", async () => {
+    const c = context();
+    c.reads.listAccountReceivableGroups.mockResolvedValue({ groups: [] });
+    c.reads.listAccountReceivableGroupItems.mockResolvedValue({ accountReceivables: [] });
+    c.reads.listPayments.mockResolvedValue({ payments: [] });
+
+    await c.controller.listAccountReceivableGroups(request("tenant-auth"), { page: 2 });
+    await c.controller.listAccountReceivableGroupItems(request("tenant-auth"), "opaque-key", { pageSize: 5 });
+    await c.controller.listPayments(request("tenant-auth"), { availableOnly: true });
+
+    expect(c.reads.listAccountReceivableGroups).toHaveBeenCalledWith("tenant-auth", { page: 2 });
+    expect(c.reads.listAccountReceivableGroupItems).toHaveBeenCalledWith("tenant-auth", "opaque-key", { pageSize: 5 });
+    expect(c.reads.listPayments).toHaveBeenCalledWith("tenant-auth", { availableOnly: true });
+    expect(canActivate(UserRole.CONTADOR, "listAccountReceivableGroups")).toBe(true);
+    expect(canActivate(UserRole.CONTADOR, "listAccountReceivableGroupItems")).toBe(true);
+    expect(canActivate(UserRole.CONTADOR, "listPayments")).toBe(true);
+  });
+
+  it("validates payment discovery query booleans without accepting caller tenant fields", async () => {
+    const pipe = new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: true });
+    await expect(pipe.transform(
+      { page: "2", pageSize: "10", currency: "CRC", status: "RECEIVED", availableOnly: "true" },
+      { type: "query", metatype: ListPaymentsDto },
+    )).resolves.toMatchObject({ page: 2, pageSize: 10, availableOnly: true });
+    await expect(pipe.transform(
+      { availableOnly: "yes" },
+      { type: "query", metatype: ListPaymentsDto },
+    )).rejects.toBeDefined();
+    await expect(pipe.transform(
+      { tenantId: "tenant-other" },
+      { type: "query", metatype: ListPaymentsDto },
+    )).rejects.toBeDefined();
+  });
 });
 
 function context() {
@@ -130,7 +164,7 @@ function context() {
   const allocations = { allocate: jest.fn().mockResolvedValue(undefined) };
   const reversals = { reverse: jest.fn() };
   const cancellations = { cancel: jest.fn() };
-  const reads = { paymentSummary: jest.fn((value) => ({ id: value.id, receivedAmount: value.receivedAmount.toFixed(), availableAmount: value.availableAmount.toFixed() })), getPaymentDetail: jest.fn(), getPaymentIdForAllocation: jest.fn(), getAccountReceivableDetail: jest.fn(), listAccountReceivables: jest.fn(), getCustomerFinancialBalance: jest.fn() };
+  const reads = { paymentSummary: jest.fn((value) => ({ id: value.id, receivedAmount: value.receivedAmount.toFixed(), availableAmount: value.availableAmount.toFixed() })), getPaymentDetail: jest.fn(), getPaymentIdForAllocation: jest.fn(), getAccountReceivableDetail: jest.fn(), listAccountReceivables: jest.fn(), listAccountReceivableGroups: jest.fn(), listAccountReceivableGroupItems: jest.fn(), listPayments: jest.fn(), getCustomerFinancialBalance: jest.fn() };
   return { registrations, allocations, reversals, cancellations, reads, controller: new FinanceController(registrations as never, allocations as never, reversals as never, cancellations as never, reads as never) };
 }
 

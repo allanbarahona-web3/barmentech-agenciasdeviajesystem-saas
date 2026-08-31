@@ -1,9 +1,10 @@
 import { Transform, Type } from "class-transformer";
-import { AccountReceivableStatus, Currency } from "@prisma/client";
+import { AccountReceivableStatus, Currency, PaymentStatus } from "@prisma/client";
 import {
   ArrayMinSize,
   ArrayMaxSize,
   IsArray,
+  IsBoolean,
   IsDateString,
   IsEnum,
   IsInt,
@@ -20,6 +21,12 @@ const trim = ({ value }: { value: unknown }) =>
   typeof value === "string" ? value.trim() : value;
 
 const moneyText = /^\d+(?:\.\d+)?$/;
+
+const queryBoolean = ({ value }: { value: unknown }) => {
+  if (value === true || value === "true") return true;
+  if (value === false || value === "false") return false;
+  return value;
+};
 
 export class RegisterPaymentDto {
   @Transform(trim) @IsString() @MaxLength(200) @Matches(/\S/) registrationDeduplicationKey!: string;
@@ -66,4 +73,28 @@ export class ListAccountReceivablesDto {
   dueDateFrom?: string;
   @IsOptional() @IsDateString({ strict: true }) @Matches(/^\d{4}-\d{2}-\d{2}$/)
   dueDateTo?: string;
+}
+
+export class ListAccountReceivableGroupsDto {
+  @IsOptional() @Transform(({ value }) => Number.parseInt(String(value), 10)) @IsInt() @Min(1)
+  page?: number;
+  @IsOptional() @Transform(({ value }) => Number.parseInt(String(value), 10)) @IsInt() @Min(1) @Max(100)
+  pageSize?: number;
+}
+
+export class ListAccountReceivableGroupItemsDto extends ListAccountReceivableGroupsDto {}
+
+export class ListPaymentsDto {
+  @IsOptional() @Transform(({ value }) => Number.parseInt(String(value), 10)) @IsInt() @Min(1)
+  page?: number;
+  @IsOptional() @Transform(({ value }) => Number.parseInt(String(value), 10)) @IsInt() @Min(1) @Max(100)
+  pageSize?: number;
+  @IsOptional() @Transform(trim) @IsString() @MaxLength(191) @Matches(/\S/)
+  customerId?: string;
+  @IsOptional() @IsEnum(Currency)
+  currency?: Currency;
+  @IsOptional() @IsEnum(PaymentStatus)
+  status?: PaymentStatus;
+  @IsOptional() @Transform(queryBoolean) @IsBoolean()
+  availableOnly?: boolean;
 }

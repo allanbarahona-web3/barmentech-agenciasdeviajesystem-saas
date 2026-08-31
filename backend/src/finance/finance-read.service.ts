@@ -1,7 +1,12 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
-import { AccountReceivableStatus, Prisma } from "@prisma/client";
+import { AccountReceivableStatus, PaymentStatus, Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
-import { ListAccountReceivablesDto } from "./dto/finance.dto";
+import {
+  ListAccountReceivableGroupItemsDto,
+  ListAccountReceivableGroupsDto,
+  ListAccountReceivablesDto,
+  ListPaymentsDto,
+} from "./dto/finance.dto";
 
 const DEFAULT_FISCAL_TIMEZONE = "America/Costa_Rica";
 
@@ -68,6 +73,153 @@ export class FinanceReadService {
       accountReceivables: receivables.map((receivable) =>
         accountReceivableListItem(receivable, tenantCurrentCalendarDate),
       ),
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+    };
+  }
+
+  async listAccountReceivableGroups(
+    tenantId: string,
+    query: ListAccountReceivableGroupsDto,
+  ) {
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 20;
+    const offset = (page - 1) * pageSize;
+    const tenantCurrentCalendarDate = await this.getTenantCurrentCalendarDate(tenantId);
+    const tenantToday = dateOnly(tenantCurrentCalendarDate);
+    const [rows, totals] = await Promise.all([
+      this.prisma.$queryRaw<AccountReceivableGroupRow[]>`
+        WITH grouped AS (
+          SELECT
+            CASE WHEN "customerId" IS NULL THEN 'RECEIVABLE' ELSE 'CUSTOMER' END AS "groupKind",
+            COALESCE("customerId", "id") AS "groupIdentity",
+            "customerId",
+            "currencyCode",
+            (ARRAY_AGG("debtorDisplayName" ORDER BY "recognizedAt" DESC, "id" DESC))[1] AS "debtorDisplayName",
+            (ARRAY_AGG("debtorIdentificationType" ORDER BY "recognizedAt" DESC, "id" DESC))[1] AS "debtorIdentificationType",
+            (ARRAY_AGG("debtorIdentificationNumber" ORDER BY "recognizedAt" DESC, "id" DESC))[1] AS "debtorIdentificationNumber",
+            SUM(CASE WHEN "status" <> 'CANCELLED' THEN "originalAmount" ELSE 0 END) AS "totalOriginalAmount",
+            SUM(CASE WHEN "status" <> 'CANCELLED' THEN "originalAmount" - "outstandingAmount" ELSE 0 END) AS "totalAllocatedAmount",
+            SUM(CASE WHEN "status" <> 'CANCELLED' THEN "outstandingAmount" ELSE 0 END) AS "totalOutstandingAmount",
+            SUM(CASE WHEN "status" IN ('OPEN', 'PARTIALLY_SETTLED') AND "dueDate" < ${tenantToday} THEN "outstandingAmount" ELSE 0 END) AS "totalOverdueOutstandingAmount",
+            COUNT(*) AS "totalCount",
+            COUNT(*) FILTER (WHERE "status" = 'OPEN') AS "openCount",
+            COUNT(*) FILTER (WHERE "status" = 'PARTIALLY_SETTLED') AS "partiallySettledCount",
+            COUNT(*) FILTER (WHERE "status" = 'SETTLED') AS "settledCount",
+            COUNT(*) FILTER (WHERE "status" = 'CANCELLED') AS "cancelledCount",
+            COUNT(*) FILTER (WHERE "status" IN ('OPEN', 'PARTIALLY_SETTLED') AND "dueDate" < ${tenantToday}) AS "overdueCount"
+          FROM "account_receivables"
+          WHERE "tenantId" = ${tenantId}
+          GROUP BY
+            CASE WHEN "customerId" IS NULL THEN 'RECEIVABLE' ELSE 'CUSTOMER' END,
+            COALESCE("customerId", "id"),
+            "customerId",
+            "currencyCode"
+        )
+        SELECT * FROM grouped
+        ORDER BY LOWER("debtorDisplayName") ASC, "groupKind" ASC, "groupIdentity" ASC, "currencyCode" ASC
+        LIMIT ${pageSize}
+        OFFSET ${offset}
+      `,
+      this.prisma.$queryRaw<Array<{ total: bigint }>>`
+        SELECT COUNT(*) AS "total"
+        FROM (
+          SELECT 1
+          FROM "account_receivables"
+          WHERE "tenantId" = ${tenantId}
+          GROUP BY
+            CASE WHEN "customerId" IS NULL THEN 'RECEIVABLE' ELSE 'CUSTOMER' END,
+            COALESCE("customerId", "id"),
+            "customerId",
+            "currencyCode"
+        ) AS grouped
+      `,
+    ]);
+    const total = exactCount(totals[0]?.total ?? 0);
+    return {
+      groups: rows.map(accountReceivableGroup),
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+    };
+  }
+
+  async listAccountReceivableGroupItems(
+    tenantId: string,
+    groupKey: string,
+    query: ListAccountReceivableGroupItemsDto,
+  ) {
+    const group = decodeAccountReceivableGroupKey(groupKey);
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 20;
+    const where: Prisma.AccountReceivableWhereInput = group.kind === "CUSTOMER"
+      ? {
+          tenantId,
+          customerId: group.identity,
+          currencyCode: group.currencyCode,
+        }
+      : {
+          tenantId,
+          id: group.identity,
+          customerId: null,
+          currencyCode: group.currencyCode,
+        };
+    const tenantCurrentCalendarDate = await this.getTenantCurrentCalendarDate(tenantId);
+    const [receivables, total] = await Promise.all([
+      this.prisma.accountReceivable.findMany({
+        where,
+        select: accountReceivableListSelect,
+        orderBy: [{ dueDate: "asc" }, { id: "asc" }],
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      this.prisma.accountReceivable.count({ where }),
+    ]);
+    if (total === 0) throw new NotFoundException("ACCOUNT_RECEIVABLE_GROUP_NOT_FOUND");
+    return {
+      groupKey,
+      accountReceivables: receivables.map((receivable) =>
+        accountReceivableListItem(receivable, tenantCurrentCalendarDate),
+      ),
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+    };
+  }
+
+  async listPayments(tenantId: string, query: ListPaymentsDto) {
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 20;
+    const constraints: Prisma.PaymentWhereInput[] = [];
+    if (query.status) constraints.push({ status: query.status });
+    if (query.availableOnly) {
+      constraints.push({
+        availableAmount: { gt: new Prisma.Decimal(0) },
+        status: { in: [PaymentStatus.RECEIVED, PaymentStatus.PARTIALLY_ALLOCATED] },
+      });
+    }
+    const where: Prisma.PaymentWhereInput = {
+      tenantId,
+      ...(query.customerId ? { customerId: query.customerId } : {}),
+      ...(query.currency ? { currencyCode: query.currency } : {}),
+      ...(constraints.length ? { AND: constraints } : {}),
+    };
+    const [payments, total] = await Promise.all([
+      this.prisma.payment.findMany({
+        where,
+        select: paymentListSelect,
+        orderBy: [{ receivedAt: "desc" }, { id: "desc" }],
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      this.prisma.payment.count({ where }),
+    ]);
+    return {
+      payments: payments.map(paymentListItem),
       total,
       page,
       pageSize,
@@ -155,6 +307,122 @@ const accountReceivableListSelect = {
   sourceNumber: true,
   sourceDocumentType: true,
 } satisfies Prisma.AccountReceivableSelect;
+
+const paymentListSelect = {
+  id: true,
+  customerId: true,
+  payerDisplayName: true,
+  payerIdentificationType: true,
+  payerIdentificationNumber: true,
+  currencyCode: true,
+  receivedAmount: true,
+  availableAmount: true,
+  receivedAt: true,
+  paymentMethod: true,
+  externalReference: true,
+  description: true,
+  status: true,
+  cancelledAt: true,
+} satisfies Prisma.PaymentSelect;
+
+type AccountReceivableGroupRow = {
+  groupKind: "CUSTOMER" | "RECEIVABLE";
+  groupIdentity: string;
+  customerId: string | null;
+  currencyCode: string;
+  debtorDisplayName: string;
+  debtorIdentificationType: string | null;
+  debtorIdentificationNumber: string | null;
+  totalOriginalAmount: Prisma.Decimal;
+  totalAllocatedAmount: Prisma.Decimal;
+  totalOutstandingAmount: Prisma.Decimal;
+  totalOverdueOutstandingAmount: Prisma.Decimal;
+  totalCount: bigint | number;
+  openCount: bigint | number;
+  partiallySettledCount: bigint | number;
+  settledCount: bigint | number;
+  cancelledCount: bigint | number;
+  overdueCount: bigint | number;
+};
+
+type AccountReceivableGroupKey = {
+  version: 1;
+  kind: "CUSTOMER" | "RECEIVABLE";
+  identity: string;
+  currencyCode: string;
+};
+
+function accountReceivableGroup(row: AccountReceivableGroupRow) {
+  const key: AccountReceivableGroupKey = {
+    version: 1,
+    kind: row.groupKind,
+    identity: row.groupIdentity,
+    currencyCode: row.currencyCode,
+  };
+  return {
+    groupKey: encodeAccountReceivableGroupKey(key),
+    customerId: row.customerId,
+    debtor: {
+      displayName: row.debtorDisplayName,
+      identificationType: row.debtorIdentificationType,
+      identificationNumber: row.debtorIdentificationNumber,
+    },
+    currencyCode: row.currencyCode,
+    totalOriginalAmount: money(row.totalOriginalAmount),
+    totalAllocatedAmount: money(row.totalAllocatedAmount),
+    totalOutstandingAmount: money(row.totalOutstandingAmount),
+    totalOverdueOutstandingAmount: money(row.totalOverdueOutstandingAmount),
+    counts: {
+      total: exactCount(row.totalCount),
+      open: exactCount(row.openCount),
+      partiallySettled: exactCount(row.partiallySettledCount),
+      settled: exactCount(row.settledCount),
+      cancelled: exactCount(row.cancelledCount),
+      overdue: exactCount(row.overdueCount),
+    },
+  };
+}
+
+function encodeAccountReceivableGroupKey(key: AccountReceivableGroupKey): string {
+  return Buffer.from(JSON.stringify(key), "utf8").toString("base64url");
+}
+
+function decodeAccountReceivableGroupKey(value: string): AccountReceivableGroupKey {
+  try {
+    if (!value || value.length > 1000) throw new Error("invalid");
+    const parsed = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as Partial<AccountReceivableGroupKey>;
+    if (
+      parsed.version !== 1 ||
+      (parsed.kind !== "CUSTOMER" && parsed.kind !== "RECEIVABLE") ||
+      typeof parsed.identity !== "string" || !parsed.identity || parsed.identity.length > 191 ||
+      typeof parsed.currencyCode !== "string" || !/^[A-Z]{3}$/.test(parsed.currencyCode) ||
+      Object.keys(parsed).length !== 4
+    ) throw new Error("invalid");
+    const key = parsed as AccountReceivableGroupKey;
+    if (encodeAccountReceivableGroupKey(key) !== value) throw new Error("invalid");
+    return key;
+  } catch {
+    throw new NotFoundException("ACCOUNT_RECEIVABLE_GROUP_NOT_FOUND");
+  }
+}
+
+function exactCount(value: bigint | number): number {
+  const count = typeof value === "bigint" ? Number(value) : value;
+  if (!Number.isSafeInteger(count) || count < 0) {
+    throw new Error("FINANCE_COUNT_OUT_OF_RANGE");
+  }
+  return count;
+}
+
+function paymentListItem(
+  payment: Prisma.PaymentGetPayload<{ select: typeof paymentListSelect }>,
+) {
+  return {
+    ...payment,
+    receivedAmount: money(payment.receivedAmount),
+    availableAmount: money(payment.availableAmount),
+  };
+}
 
 function accountReceivableWhere(tenantId: string, query: ListAccountReceivablesDto): Prisma.AccountReceivableWhereInput {
   const dueDate: Prisma.DateTimeFilter = {};
