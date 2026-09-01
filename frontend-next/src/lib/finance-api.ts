@@ -221,6 +221,9 @@ export type AllocatePaymentInput = {
     allocationDeduplicationKey: string;
   }>;
 };
+export type ReversePaymentAllocationInput = { reversalDeduplicationKey: string; reason: string };
+export type ReversePaymentAllocationResult = { reversal: { id: string; paymentAllocationId: string; reason: string; reversedAt: string }; payment: PaymentDetail };
+export type CancelPaymentInput = { reason: string };
 
 export type CustomerFundsAllocationTarget = { accountReceivableId: string; amount: string };
 export type CustomerFundsAllocationPreview = {
@@ -404,6 +407,14 @@ export function allocatePayment(
     `/finance/payments/${encodeURIComponent(paymentId)}/allocations`,
     input,
   );
+}
+
+export function reversePaymentAllocation(paymentAllocationId: string, input: ReversePaymentAllocationInput): Promise<ReversePaymentAllocationResult> {
+  return post<ReversePaymentAllocationResult>(`/finance/payment-allocations/${encodeURIComponent(paymentAllocationId)}/reversal`, input);
+}
+
+export function cancelPayment(paymentId: string, input: CancelPaymentInput): Promise<PaymentDetail> {
+  return post<PaymentDetail>(`/finance/payments/${encodeURIComponent(paymentId)}/cancellation`, input);
 }
 
 export function previewCustomerFundsAllocation(input: Omit<CustomerFundsAllocationInput, 'portfolioAllocationDeduplicationKey'>): Promise<CustomerFundsAllocationPreview> {

@@ -6,11 +6,13 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   allocatePayment,
+  cancelPayment,
   FinanceApiError,
   formatFinanceMoney,
   getAllocationSuggestion,
   listAccountReceivables,
   registerPayment,
+  reversePaymentAllocation,
   type AccountReceivableDetail,
   type AccountReceivableListItem,
   type AccountReceivableStatus,
@@ -78,7 +80,7 @@ function detailAsCandidate(detail: AccountReceivableDetail): AccountReceivableLi
   };
 }
 
-function PaymentSummary({ payment }: { payment: PaymentDetail }) {
+function PaymentSummary({ payment, onCancel }: { payment: PaymentDetail; onCancel?: () => void }) {
   return (
     <section className={styles.paymentSummary}>
       <div className={styles.paymentSummaryHeader}>
@@ -99,11 +101,12 @@ function PaymentSummary({ payment }: { payment: PaymentDetail }) {
         {payment.registeredBy && <div><dt>Registrado por</dt><dd>{payment.registeredBy.name} · {formatBusinessDate(payment.registeredBy.at)}</dd></div>}
         {payment.cancelledBy && <div><dt>Cancelado por</dt><dd>{payment.cancelledBy.name} · {payment.cancelledAt ? formatBusinessDate(payment.cancelledAt) : formatBusinessDate(payment.cancelledBy.at)}{payment.cancelledBy.reason ? ` · ${payment.cancelledBy.reason}` : ''}</dd></div>}
       </dl>
+      {onCancel && payment.status === 'RECEIVED' && payment.cancelledAt === null && payment.availableAmount === payment.receivedAmount && payment.allocations.every((allocation) => allocation.status !== 'ACTIVE') && <div className={styles.paymentActions}><Button className={styles.secondaryAction} variant="outline" type="button" onClick={onCancel}>Cancelar recibo</Button></div>}
     </section>
   );
 }
 
-function PaymentAllocations({ payment }: { payment: PaymentDetail }) {
+function PaymentAllocations({ payment, onReverse }: { payment: PaymentDetail; onReverse?: (allocation: PaymentDetail['allocations'][number]) => void }) {
   if (payment.allocations.length === 0) return <p className={styles.paymentEmpty}>Este pago todavía no tiene aplicaciones.</p>;
   return (
     <div className={styles.paymentAllocationList}>{payment.allocations.map((allocation) => (
@@ -120,6 +123,7 @@ function PaymentAllocations({ payment }: { payment: PaymentDetail }) {
           {allocation.appliedBy && <div><dt>Aplicado por</dt><dd>{allocation.appliedBy.name}</dd></div>}
         </dl>
         {allocation.reversal && <div className={styles.reversalHistory}><strong>Reversión registrada</strong><p>{allocation.reversal.reason} · {formatBusinessDate(allocation.reversal.reversedAt)}{allocation.reversal.reversedBy ? ` · ${allocation.reversal.reversedBy.name}` : ''}</p></div>}
+        {onReverse && allocation.status === 'ACTIVE' && <div className={styles.paymentActions}><Button className={styles.secondaryAction} variant="outline" type="button" onClick={() => onReverse(allocation)}>Revertir aplicación</Button></div>}
       </article>
     ))}</div>
   );
@@ -156,6 +160,9 @@ export function PaymentFlow({ receivable, initialPayment, canAllocate = true, on
   const [initiatingSuggestion, setInitiatingSuggestion] = useState<AllocationSuggestion | null>(null);
   const [suggestionError, setSuggestionError] = useState<string | null>(null);
   const [suggestionLoading, setSuggestionLoading] = useState(false);
+  const [action, setAction] = useState<{ kind: 'reversal'; allocation: PaymentDetail['allocations'][number] } | { kind: 'cancellation' } | null>(null);
+  const [actionReason, setActionReason] = useState('');
+  const reversalKey = useRef<string | null>(null);
 
   useEffect(() => {
     if (!payment || !canAllocate || allocationComplete) return;
@@ -298,6 +305,23 @@ export function PaymentFlow({ receivable, initialPayment, canAllocate = true, on
     setSuggestionPaymentId(null);
   }
 
+  function startAction(next: typeof action) { setAction(next); setActionReason(''); reversalKey.current = null; }
+  async function confirmAction() {
+    if (!payment || !actionReason.trim()) { setError('Indique el motivo de la operación.'); return; }
+    setSubmitting(true); setError(null);
+    try {
+      if (action?.kind === 'reversal') {
+        reversalKey.current ??= idempotencyKey(`finance-reversal-${action.allocation.id}`);
+        const response = await reversePaymentAllocation(action.allocation.id, { reversalDeduplicationKey: reversalKey.current, reason: actionReason.trim() });
+        setPayment(response.payment);
+      } else if (action?.kind === 'cancellation') {
+        setPayment(await cancelPayment(payment.id, { reason: actionReason.trim() }));
+      }
+      setAction(null); onAllocated();
+    } catch (requestError) { setError(requestError instanceof FinanceApiError ? requestError.message : 'No se pudo completar la operación. Actualice el detalle e intente nuevamente.'); }
+    finally { setSubmitting(false); }
+  }
+
   return (
     <>
       <button className={styles.paymentBackdrop} type="button" aria-label="Cerrar pago" onClick={onClose} />
@@ -329,20 +353,20 @@ export function PaymentFlow({ receivable, initialPayment, canAllocate = true, on
             </form>
           ) : !payment ? null : !canAllocate ? (
             <div className={styles.paymentResult}>
-              <PaymentSummary payment={payment} />
-              <section className={styles.paymentResultSection}><h3>Aplicaciones e historial</h3><PaymentAllocations payment={payment} /></section>
+              <PaymentSummary payment={payment} onCancel={canAllocate ? () => startAction({ kind: 'cancellation' }) : undefined} />
+              <section className={styles.paymentResultSection}><h3>Aplicaciones e historial</h3><PaymentAllocations payment={payment} onReverse={canAllocate ? (allocation) => startAction({ kind: 'reversal', allocation }) : undefined} /></section>
               <div className={styles.paymentActions}><Button className={styles.secondaryAction} variant="outline" type="button" onClick={onClose}>Cerrar</Button></div>
             </div>
           ) : allocationComplete ? (
             <div className={styles.paymentResult}>
               <div className={styles.paymentSuccess}><CheckCircle2 aria-hidden="true" /><div><strong>Aplicación registrada</strong><p>Los saldos y estados mostrados son la respuesta actual del backend.</p></div></div>
-              <PaymentSummary payment={payment} />
-              <section className={styles.paymentResultSection}><h3>Aplicaciones e historial</h3><PaymentAllocations payment={payment} /></section>
+              <PaymentSummary payment={payment} onCancel={canAllocate ? () => startAction({ kind: 'cancellation' }) : undefined} />
+              <section className={styles.paymentResultSection}><h3>Aplicaciones e historial</h3><PaymentAllocations payment={payment} onReverse={canAllocate ? (allocation) => startAction({ kind: 'reversal', allocation }) : undefined} /></section>
               <div className={styles.paymentActions}>{hasAuthoritativeAvailableMoney && <Button className={styles.secondaryAction} variant="outline" type="button" onClick={continueAllocating}>Continuar aplicando saldo</Button>}<Button className={styles.primaryAction} type="button" onClick={onClose}>Cerrar</Button></div>
             </div>
           ) : (
             <form className={styles.allocationForm} onSubmit={submitAllocations}>
-              <PaymentSummary payment={payment} />
+              <PaymentSummary payment={payment} onCancel={canAllocate ? () => startAction({ kind: 'cancellation' }) : undefined} />
               <div className={styles.allocationHeading}><div><h3>Seleccione cuentas por cobrar</h3><p>Indique los montos que desea solicitar al backend. La validación financiera se realiza al enviar.</p></div></div>
               {(suggestionLoading || awaitingInitiatingSuggestion) && <div className={styles.paymentEmpty}>Cargando sugerencia del backend para la cuenta inicial…</div>}
               {suggestionError && <div className={styles.paymentError} role="alert"><AlertCircle aria-hidden="true" /><span>{suggestionError} Puede ingresar un monto manual y solicitar la validación al backend.</span></div>}
@@ -357,12 +381,13 @@ export function PaymentFlow({ receivable, initialPayment, canAllocate = true, on
                 ))}</div>
               )}
               {candidateResult && candidateResult.totalPages > 1 && <nav className={styles.candidatePagination}><Button className={styles.secondaryAction} disabled={candidatePage <= 1} size="sm" type="button" variant="outline" onClick={() => setCandidatePage((value) => Math.max(1, value - 1))}><ChevronLeft aria-hidden="true" />Anterior</Button><span>Página {candidateResult.page} de {candidateResult.totalPages}</span><Button className={styles.secondaryAction} disabled={candidatePage >= candidateResult.totalPages} size="sm" type="button" variant="outline" onClick={() => setCandidatePage((value) => Math.min(candidateResult.totalPages, value + 1))}>Siguiente<ChevronRight aria-hidden="true" /></Button></nav>}
-              <section className={styles.paymentResultSection}><h3>Estado actual del pago</h3><PaymentAllocations payment={payment} /></section>
+              <section className={styles.paymentResultSection}><h3>Estado actual del pago</h3><PaymentAllocations payment={payment} onReverse={canAllocate ? (allocation) => startAction({ kind: 'reversal', allocation }) : undefined} /></section>
               <div className={styles.paymentActions}><Button className={styles.secondaryAction} variant="outline" type="button" onClick={onClose}>Cerrar</Button><Button className={styles.primaryAction} disabled={submitting} type="submit">{submitting ? 'Aplicando…' : 'Aplicar pago'}</Button></div>
             </form>
           )}
         </div>
       </section>
+      {action && <><button className={styles.paymentBackdrop} type="button" aria-label="Cerrar confirmación" onClick={() => setAction(null)} /><section className={styles.decisionModal} role="dialog" aria-modal="true" aria-label={action.kind === 'reversal' ? 'Confirmar reversión' : 'Confirmar cancelación'}><header className={styles.paymentModalHeader}><div><p>Finanzas · confirmación</p><h2>{action.kind === 'reversal' ? 'Revertir aplicación' : 'Cancelar recibo'}</h2></div></header><div className={styles.paymentModalBody}>{action.kind === 'reversal' ? <><p className={styles.decisionCopy}>Se revertirá {formatFinanceMoney(action.allocation.amount, payment?.currencyCode ?? '')} de {payment?.receiptNumber} hacia {action.allocation.accountReceivable.sourceNumber ?? 'la cuenta por cobrar'}. El backend restaurará los saldos autorizados.</p><Badge className={styles.activeBadge} variant="outline">{action.allocation.status === 'ACTIVE' ? 'Activa' : 'Revertida'}</Badge></> : <p className={styles.decisionCopy}>Se cancelará el recibo {payment?.receiptNumber} por {payment && formatFinanceMoney(payment.receivedAmount, payment.currencyCode)}. Esto no cancela ninguna factura.</p>}<label className={styles.paymentNotes}><span>Motivo</span><textarea rows={3} maxLength={500} value={actionReason} onChange={(event) => { setActionReason(event.target.value); if (action.kind === 'reversal') reversalKey.current = null; }} /></label><div className={styles.paymentActions}><Button className={styles.secondaryAction} variant="outline" type="button" onClick={() => setAction(null)}>Volver</Button><Button className={styles.primaryAction} disabled={submitting} type="button" onClick={() => void confirmAction()}>{submitting ? 'Confirmando…' : action.kind === 'reversal' ? 'Confirmar reversión' : 'Confirmar cancelación'}</Button></div></div></section></>}
     </>
   );
 }
