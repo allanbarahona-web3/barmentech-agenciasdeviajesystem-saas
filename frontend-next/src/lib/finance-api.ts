@@ -80,6 +80,8 @@ export type AccountReceivableGroup = {
   totalAllocatedAmount: string;
   totalOutstandingAmount: string;
   totalOverdueOutstandingAmount: string;
+  unallocatedPaymentAmount: string;
+  unallocatedPaymentCount: number;
   counts: {
     total: number;
     open: number;
@@ -152,6 +154,35 @@ export type PaymentsPage = {
   totalPages: number;
 };
 
+export type AllocationSuggestion = {
+  paymentId: string;
+  accountReceivableId: string;
+  currencyCode: FinanceCurrency;
+  paymentAvailableAmount: string;
+  accountReceivableOutstandingAmount: string;
+  suggestedAmount: string;
+};
+
+export type UnallocatedPaymentBalance = {
+  customerId: string;
+  debtor: {
+    displayName: string;
+    identificationType: string | null;
+    identificationNumber: string | null;
+  };
+  currencyCode: FinanceCurrency;
+  unallocatedPaymentAmount: string;
+  unallocatedPaymentCount: number;
+};
+
+export type UnallocatedPaymentBalancesPage = {
+  balances: UnallocatedPaymentBalance[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+};
+
 export type RegisterPaymentInput = {
   registrationDeduplicationKey: string;
   payerDisplayName: string;
@@ -207,6 +238,9 @@ const ERROR_MESSAGES: Record<string, string> = {
   ACCOUNT_RECEIVABLE_NOT_FOUND: 'La cuenta por cobrar ya no está disponible.',
   ACCOUNT_RECEIVABLE_GROUP_NOT_FOUND: 'El grupo financiero ya no está disponible.',
   PAYMENT_NOT_FOUND: 'El pago ya no está disponible.',
+  PAYMENT_OR_ACCOUNT_RECEIVABLE_NOT_FOUND: 'El pago o la cuenta por cobrar ya no está disponible.',
+  PAYMENT_NOT_ALLOCATABLE: 'El pago ya no tiene saldo disponible para aplicar.',
+  ACCOUNT_RECEIVABLE_NOT_ALLOCATABLE: 'La cuenta por cobrar ya no está disponible para aplicar.',
   PAYMENT_REGISTRATION_INVALID: 'Revise la fecha, moneda, monto y método del pago.',
   PAYMENT_REGISTRATION_CUSTOMER_INVALID: 'El cliente indicado no está disponible.',
   PAYMENT_REGISTRATION_CONFLICT: 'La solicitud de pago ya fue utilizada con información diferente.',
@@ -305,6 +339,27 @@ export function listPayments(
 
 export function getPayment(id: string, signal?: AbortSignal): Promise<PaymentDetail> {
   return request<PaymentDetail>(`/finance/payments/${encodeURIComponent(id)}`, signal);
+}
+
+export function getAllocationSuggestion(
+  paymentId: string,
+  accountReceivableId: string,
+  signal?: AbortSignal,
+): Promise<AllocationSuggestion> {
+  return request<AllocationSuggestion>(
+    `/finance/payments/${encodeURIComponent(paymentId)}/allocation-suggestions/${encodeURIComponent(accountReceivableId)}`,
+    signal,
+  );
+}
+
+export function listUnallocatedPaymentBalances(
+  params: PageParams,
+  signal?: AbortSignal,
+): Promise<UnallocatedPaymentBalancesPage> {
+  return request<UnallocatedPaymentBalancesPage>(
+    `/finance/unallocated-payment-balances${queryString(params)}`,
+    signal,
+  );
 }
 
 export function registerPayment(input: RegisterPaymentInput): Promise<PaymentDetail> {

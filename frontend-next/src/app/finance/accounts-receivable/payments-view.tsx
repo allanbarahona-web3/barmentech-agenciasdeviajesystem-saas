@@ -10,10 +10,12 @@ import {
   formatFinanceMoney,
   getPayment,
   listPayments,
+  listUnallocatedPaymentBalances,
   type FinanceCurrency,
   type PaymentDetail,
   type PaymentsPage,
   type PaymentStatus,
+  type UnallocatedPaymentBalancesPage,
 } from '@/lib/finance-api';
 import { formatBusinessDate } from '@/shared/regional';
 import styles from './accounts-receivable.module.css';
@@ -29,6 +31,44 @@ const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
 };
 
 export type PaymentCustomerFilter = { id: string; name: string };
+
+function UnallocatedPaymentBalances({ reloadToken }: { reloadToken: number }) {
+  const [page, setPage] = useState(1);
+  const [result, setResult] = useState<UnallocatedPaymentBalancesPage | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<FinanceApiError | null>(null);
+  const [retry, setRetry] = useState(0);
+
+  const load = useCallback(async (signal: AbortSignal) => {
+    void reloadToken;
+    void retry;
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await listUnallocatedPaymentBalances({ page, pageSize: PAGE_SIZE }, signal);
+      setResult(response);
+      if (response.totalPages > 0 && page > response.totalPages) setPage(response.totalPages);
+    } catch (requestError) {
+      if (!signal.aborted) setError(requestError instanceof FinanceApiError ? requestError : new FinanceApiError('FINANCE_REQUEST_FAILED', 'No se pudieron cargar los saldos a favor.'));
+    } finally {
+      if (!signal.aborted) setLoading(false);
+    }
+  }, [page, reloadToken, retry]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void load(controller.signal);
+    return () => controller.abort();
+  }, [load]);
+
+  if (!loading && !error && (!result || result.balances.length === 0)) return null;
+
+  return <section className={`${styles.tableCard} ${styles.creditBalances}`}>
+    <div className={styles.tableHeading}><div><h2>Saldo a favor — Recibos de dinero</h2><p>Dinero recibido sin aplicar, incluso cuando no existe una cuenta por cobrar para el cliente.</p></div><span>{loading ? 'Cargando…' : `${result?.total ?? 0} cliente(s) / moneda`}</span></div>
+    {error ? <div className={styles.inlineError} role="alert"><AlertCircle aria-hidden="true" /><span>{error.message}</span><Button className={styles.secondaryAction} size="sm" type="button" variant="outline" onClick={() => setRetry((value) => value + 1)}>Intentar nuevamente</Button></div> : <Table className={styles.paymentTable}><TableHeader><TableRow><TableHead>Cliente / deudor</TableHead><TableHead>Moneda</TableHead><TableHead className={styles.numeric}>Saldo a favor</TableHead><TableHead className={styles.numeric}>Recibos de dinero</TableHead></TableRow></TableHeader><TableBody>{loading ? Array.from({ length: 3 }, (_, row) => <TableRow key={row}>{Array.from({ length: 4 }, (_, cell) => <TableCell key={cell}><span className={styles.skeleton} /></TableCell>)}</TableRow>) : result?.balances.map((balance) => <TableRow key={`${balance.customerId}-${balance.currencyCode}`}><TableCell><div className={styles.stack}><strong>{balance.debtor.displayName}</strong><span className={styles.secondary}>{balance.debtor.identificationNumber ?? balance.customerId}</span></div></TableCell><TableCell>{balance.currencyCode}</TableCell><TableCell className={styles.numeric}><strong>{formatFinanceMoney(balance.unallocatedPaymentAmount, balance.currencyCode)}</strong></TableCell><TableCell className={styles.numeric}>{balance.unallocatedPaymentCount}</TableCell></TableRow>)}</TableBody></Table>}
+    {!loading && !error && result && result.totalPages > 1 && <nav className={styles.pagination}><p>Página {result.page} de {result.totalPages}</p><div className={styles.paginationActions}><Button className={styles.secondaryAction} disabled={result.page <= 1} variant="outline" onClick={() => setPage((value) => Math.max(1, value - 1))}>Anterior</Button><Button className={styles.secondaryAction} disabled={result.page >= result.totalPages} variant="outline" onClick={() => setPage((value) => Math.min(result.totalPages, value + 1))}>Siguiente</Button></div></nav>}
+  </section>;
+}
 
 export function PaymentsView({ canWrite, reloadToken, customerFilter, onClearCustomer, onChanged }: {
   canWrite: boolean;
@@ -107,6 +147,7 @@ export function PaymentsView({ canWrite, reloadToken, customerFilter, onClearCus
       {customerFilter && <div className={styles.customerFilterChip}><span>Cliente</span><strong>{customerFilter.name}</strong><button type="button" aria-label="Quitar filtro de cliente" onClick={onClearCustomer}><X aria-hidden="true" /></button></div>}
     </section>
     {openError && <div className={styles.inlineError} role="alert"><AlertCircle aria-hidden="true" /><span>{openError}</span></div>}
+    <UnallocatedPaymentBalances reloadToken={reloadToken} />
     <section className={styles.tableCard}>
       <div className={styles.tableHeading}><div><h2>Pagos registrados</h2><p>Abra un pago disponible para continuar su aplicación sin volver a registrarlo.</p></div><span>{loading ? 'Cargando…' : summary}</span></div>
       {error ? <div className={styles.state}><div><span className={styles.stateIcon}><AlertCircle aria-hidden="true" /></span><h3 className={styles.error}>No se pudieron cargar los pagos</h3><p>{error.message}</p><Button className={styles.secondaryAction} variant="outline" type="button" onClick={() => setRetry((value) => value + 1)}>Intentar nuevamente</Button></div></div> : !loading && (!result || result.payments.length === 0) ? <div className={styles.state}><div><span className={styles.stateIcon}><Search aria-hidden="true" /></span><h3>No se encontraron pagos</h3><p>{availableOnly ? 'No hay pagos con dinero disponible bajo los filtros seleccionados.' : 'No hay pagos bajo los filtros seleccionados.'}</p></div></div> : <Table className={styles.paymentTable}><TableHeader><TableRow><TableHead>Pagador / cliente</TableHead><TableHead>Fecha recibida</TableHead><TableHead>Moneda</TableHead><TableHead className={styles.numeric}>Recibido</TableHead><TableHead className={styles.numeric}>Disponible</TableHead><TableHead>Método</TableHead><TableHead>Estado</TableHead><TableHead>Acción</TableHead></TableRow></TableHeader><TableBody>{loading ? Array.from({ length: 5 }, (_, row) => <TableRow key={row}>{Array.from({ length: 8 }, (_, cell) => <TableCell key={cell}><span className={styles.skeleton} /></TableCell>)}</TableRow>) : result?.payments.map((payment) => <TableRow key={payment.id}><TableCell><div className={styles.stack}><strong>{payment.payerDisplayName}</strong><span className={styles.secondary}>{payment.payerIdentificationNumber ?? 'Sin identificación asociada'}</span></div></TableCell><TableCell>{formatBusinessDate(payment.receivedAt)}</TableCell><TableCell>{payment.currencyCode}</TableCell><TableCell className={styles.numeric}>{formatFinanceMoney(payment.receivedAmount, payment.currencyCode)}</TableCell><TableCell className={styles.numeric}><strong>{formatFinanceMoney(payment.availableAmount, payment.currencyCode)}</strong></TableCell><TableCell>{payment.paymentMethod}</TableCell><TableCell><Badge className={styles.paymentStatusBadge} variant="outline">{PAYMENT_STATUS_LABELS[payment.status]}</Badge></TableCell><TableCell><Button className={canWrite ? styles.actionButton : styles.secondaryAction} disabled={openingId === payment.id} size="sm" type="button" variant={canWrite ? 'default' : 'outline'} onClick={() => void openPayment(payment.id)}>{canWrite ? <WalletCards aria-hidden="true" /> : <Eye aria-hidden="true" />}{openingId === payment.id ? 'Abriendo…' : canWrite ? 'Abrir / aplicar' : 'Ver detalle'}</Button></TableCell></TableRow>)}</TableBody></Table>}

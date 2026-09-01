@@ -8,11 +8,13 @@ import {
   allocatePayment,
   FinanceApiError,
   formatFinanceMoney,
+  getAllocationSuggestion,
   listAccountReceivables,
   registerPayment,
   type AccountReceivableDetail,
   type AccountReceivableListItem,
   type AccountReceivableStatus,
+  type AllocationSuggestion,
   type PaymentDetail,
   type PaymentStatus,
   type RegisterPaymentInput,
@@ -131,6 +133,7 @@ type PaymentFlowProps = {
 export function PaymentFlow({ receivable, initialPayment, canAllocate = true, onClose, onAllocated }: PaymentFlowProps) {
   const [registrationKey] = useState(() => idempotencyKey('finance-payment'));
   const allocationKeys = useRef(new Map<string, string>());
+  const requestedSuggestions = useRef(new Set<string>());
   const [payment, setPayment] = useState<PaymentDetail | null>(initialPayment ?? null);
   const [payerDisplayName, setPayerDisplayName] = useState(receivable?.debtorDisplayName ?? '');
   const [receivedAt, setReceivedAt] = useState(localDateTimeValue);
@@ -146,6 +149,10 @@ export function PaymentFlow({ receivable, initialPayment, canAllocate = true, on
   const [selected, setSelected] = useState<Record<string, boolean>>(receivable ? { [receivable.id]: true } : {});
   const [amounts, setAmounts] = useState<Record<string, string>>(receivable ? { [receivable.id]: '' } : {});
   const [allocationComplete, setAllocationComplete] = useState(false);
+  const [suggestionPaymentId, setSuggestionPaymentId] = useState<string | null>(null);
+  const [initiatingSuggestion, setInitiatingSuggestion] = useState<AllocationSuggestion | null>(null);
+  const [suggestionError, setSuggestionError] = useState<string | null>(null);
+  const [suggestionLoading, setSuggestionLoading] = useState(false);
 
   useEffect(() => {
     if (!payment || !canAllocate || allocationComplete) return;
@@ -166,6 +173,28 @@ export function PaymentFlow({ receivable, initialPayment, canAllocate = true, on
   }, [allocationComplete, canAllocate, candidatePage, payment]);
 
   useEffect(() => {
+    if (!suggestionPaymentId || !receivable || allocationComplete) return;
+    if (requestedSuggestions.current.has(suggestionPaymentId)) return;
+    requestedSuggestions.current.add(suggestionPaymentId);
+    const controller = new AbortController();
+    setSuggestionLoading(true);
+    setSuggestionError(null);
+    getAllocationSuggestion(suggestionPaymentId, receivable.id, controller.signal)
+      .then((response) => {
+        if (controller.signal.aborted) return;
+        setInitiatingSuggestion(response);
+        setAmounts((current) => ({ ...current, [receivable.id]: response.suggestedAmount }));
+      })
+      .catch((requestError) => {
+        if (!controller.signal.aborted) {
+          setSuggestionError(requestError instanceof Error ? requestError.message : 'No se pudo obtener la sugerencia de aplicación.');
+        }
+      })
+      .finally(() => { if (!controller.signal.aborted) setSuggestionLoading(false); });
+    return () => controller.abort();
+  }, [allocationComplete, receivable, suggestionPaymentId]);
+
+  useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
     window.addEventListener('keydown', closeOnEscape);
     return () => window.removeEventListener('keydown', closeOnEscape);
@@ -174,9 +203,8 @@ export function PaymentFlow({ receivable, initialPayment, canAllocate = true, on
   const candidates = useMemo(() => {
     const rows = candidateResult?.accountReceivables ?? [];
     const selectedReceivable = receivable ? detailAsCandidate(receivable) : null;
-    return selectedReceivable
-      ? [selectedReceivable, ...rows.filter((item) => item.id !== selectedReceivable.id)]
-      : rows;
+    if (!selectedReceivable || candidateResult) return rows;
+    return [selectedReceivable];
   }, [candidateResult, receivable]);
 
   async function submitRegistration(event: FormEvent) {
@@ -205,6 +233,7 @@ export function PaymentFlow({ receivable, initialPayment, canAllocate = true, on
         ...(description.trim() ? { description: description.trim() } : {}),
       });
       setPayment(response);
+      setSuggestionPaymentId(response.id);
     } catch (requestError) {
       setError(requestError instanceof FinanceApiError ? requestError.message : 'No se pudo registrar el pago.');
     } finally {
@@ -249,6 +278,18 @@ export function PaymentFlow({ receivable, initialPayment, canAllocate = true, on
   const contextReference = receivable?.sourceNumber ?? receivable?.id ?? payment?.id ?? '—';
   const contextCurrency = receivable?.currencyCode ?? payment?.currencyCode ?? '—';
   const title = !payment ? 'Registrar pago / abono' : canAllocate ? 'Aplicar pago / abono' : 'Detalle del pago';
+  const hasAuthoritativeAvailableMoney = payment?.status === 'RECEIVED' || payment?.status === 'PARTIALLY_ALLOCATED';
+
+  function continueAllocating() {
+    setAllocationComplete(false);
+    setSelected({});
+    setAmounts({});
+    allocationKeys.current = new Map();
+    setCandidatePage(1);
+    setCandidateResult(null);
+    setInitiatingSuggestion(null);
+    setSuggestionError(null);
+  }
 
   return (
     <>
@@ -289,17 +330,19 @@ export function PaymentFlow({ receivable, initialPayment, canAllocate = true, on
               <div className={styles.paymentSuccess}><CheckCircle2 aria-hidden="true" /><div><strong>Aplicación registrada</strong><p>Los saldos y estados mostrados son la respuesta actual del backend.</p></div></div>
               <PaymentSummary payment={payment} />
               <section className={styles.paymentResultSection}><h3>Aplicaciones e historial</h3><PaymentAllocations payment={payment} /></section>
-              <div className={styles.paymentActions}><Button className={styles.primaryAction} type="button" onClick={onClose}>Cerrar</Button></div>
+              <div className={styles.paymentActions}>{hasAuthoritativeAvailableMoney && <Button className={styles.secondaryAction} variant="outline" type="button" onClick={continueAllocating}>Continuar aplicando saldo</Button>}<Button className={styles.primaryAction} type="button" onClick={onClose}>Cerrar</Button></div>
             </div>
           ) : (
             <form className={styles.allocationForm} onSubmit={submitAllocations}>
               <PaymentSummary payment={payment} />
               <div className={styles.allocationHeading}><div><h3>Seleccione cuentas por cobrar</h3><p>Indique los montos que desea solicitar al backend. La validación financiera se realiza al enviar.</p></div></div>
+              {suggestionLoading && <div className={styles.paymentEmpty}>Cargando sugerencia del backend para la cuenta inicial…</div>}
+              {suggestionError && <div className={styles.paymentError} role="alert"><AlertCircle aria-hidden="true" /><span>{suggestionError} Puede ingresar un monto manual y solicitar la validación al backend.</span></div>}
               {candidatesLoading ? <div className={styles.paymentEmpty}>Cargando cuentas candidatas…</div> : candidates.length === 0 ? <div className={styles.paymentEmpty}>No hay cuentas por cobrar en esta página.</div> : (
                 <div className={styles.candidateList}>{candidates.map((candidate) => (
                   <article className={styles.candidate} key={candidate.id}>
                     <label className={styles.candidateSelect}><input type="checkbox" checked={Boolean(selected[candidate.id])} onChange={(event) => setSelected((current) => ({ ...current, [candidate.id]: event.target.checked }))} /><span><strong>{candidate.source.sourceNumber ?? candidate.id}</strong><small>{candidate.debtorDisplayName} · {AR_STATUS_LABELS[candidate.status]}</small></span></label>
-                    <div className={styles.candidateBalance}><span>Saldo backend</span><strong>{formatFinanceMoney(candidate.outstandingAmount, candidate.currencyCode)}</strong></div>
+                    <div className={styles.candidateBalance}><span>Saldo backend</span><strong>{formatFinanceMoney(candidate.outstandingAmount, candidate.currencyCode)}</strong>{initiatingSuggestion?.accountReceivableId === candidate.id && <div className={styles.candidateSuggestion}><span>Sugerencia del backend</span><strong>{formatFinanceMoney(initiatingSuggestion.suggestedAmount, initiatingSuggestion.currencyCode)}</strong><small>Disponible: {formatFinanceMoney(initiatingSuggestion.paymentAvailableAmount, initiatingSuggestion.currencyCode)} · Saldo CxC: {formatFinanceMoney(initiatingSuggestion.accountReceivableOutstandingAmount, initiatingSuggestion.currencyCode)}</small></div>}</div>
                     <label className={styles.allocationAmount}><span>Monto a aplicar</span><input disabled={!selected[candidate.id]} inputMode="decimal" maxLength={100} placeholder="0.00" value={amounts[candidate.id] ?? ''} onChange={(event) => setAmounts((current) => ({ ...current, [candidate.id]: event.target.value }))} /></label>
                   </article>
                 ))}</div>
