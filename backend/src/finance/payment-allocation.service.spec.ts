@@ -8,7 +8,7 @@ import {
 
 describe("PaymentAllocationService", () => {
   it("fully settles one receivable and fully allocates the payment", async () => {
-    const c = context({ payment: payment("10.00000"), receivables: [receivable("ar-a", "10.00000")] });
+    const c = context({ payment: payment("10.00000", { customerId: "customer-a" }), receivables: [receivable("ar-a", "10.00000", { customerId: "customer-a" })] });
     await c.service.allocate(command([{ accountReceivableId: "ar-a", amount: d("10.00000"), allocationDeduplicationKey: "a" }]));
     expect(c.tx.paymentAllocation.createMany.mock.calls[0][0].data[0]).toMatchObject({ tenantId: "tenant-a", paymentId: "payment-a", accountReceivableId: "ar-a", allocationDeduplicationKey: "a", status: PaymentAllocationStatus.ACTIVE });
     expect(c.tx.payment.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ availableAmount: d("0"), status: PaymentStatus.FULLY_ALLOCATED }) }));
@@ -43,6 +43,7 @@ describe("PaymentAllocationService", () => {
     ["foreign payment", { paymentLock: [] }, PAYMENT_ALLOCATION_ERRORS.PAYMENT_INVALID],
     ["foreign receivable", { receivableLockCount: 0 }, PAYMENT_ALLOCATION_ERRORS.RECEIVABLE_INVALID],
     ["cross currency", { receivables: [receivable("ar-a", "10", { currencyCode: "USD" })] }, PAYMENT_ALLOCATION_ERRORS.CURRENCY_MISMATCH],
+    ["different customer", { payment: payment("10", { customerId: "customer-a" }), receivables: [receivable("ar-a", "10", { customerId: "customer-b" })] }, PAYMENT_ALLOCATION_ERRORS.CUSTOMER_MISMATCH],
     ["cancelled payment", { payment: payment("10", { status: PaymentStatus.CANCELLED }) }, PAYMENT_ALLOCATION_ERRORS.PAYMENT_INVALID],
     ["cancelled receivable", { receivables: [receivable("ar-a", "10", { status: AccountReceivableStatus.CANCELLED })] }, PAYMENT_ALLOCATION_ERRORS.RECEIVABLE_INVALID],
     ["settled receivable", { receivables: [receivable("ar-a", "0", { status: AccountReceivableStatus.SETTLED })] }, PAYMENT_ALLOCATION_ERRORS.RECEIVABLE_INVALID],

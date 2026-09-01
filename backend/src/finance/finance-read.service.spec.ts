@@ -68,13 +68,15 @@ describe("FinanceReadService", () => {
     await expect(service.getAllocationSuggestion("tenant-a", "payment-a", "ar-a")).rejects.toBeInstanceOf(error);
   });
 
-  it("uses current allocation customer semantics without inventing a customer-equality rule", async () => {
+  it("rejects an allocation suggestion for different customer-owned records", async () => {
     const service = new FinanceReadService({
       payment: { findFirst: jest.fn().mockResolvedValue(suggestionPayment({ customerId: "customer-payment" })) },
       accountReceivable: { findFirst: jest.fn().mockResolvedValue(suggestionReceivable({ customerId: "customer-ar" })) },
     } as unknown as PrismaService);
 
-    await expect(service.getAllocationSuggestion("tenant-a", "payment-a", "ar-a")).resolves.toMatchObject({ suggestedAmount: "5" });
+    await expect(service.getAllocationSuggestion("tenant-a", "payment-a", "ar-a")).rejects.toMatchObject({
+      message: "PAYMENT_ALLOCATION_CUSTOMER_MISMATCH",
+    });
   });
 
   it("does not disclose cross-tenant payment or receivable suggestions", async () => {

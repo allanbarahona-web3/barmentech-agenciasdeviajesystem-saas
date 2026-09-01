@@ -22,6 +22,7 @@ export const PAYMENT_ALLOCATION_ERRORS = {
   PAYMENT_INVALID: "PAYMENT_ALLOCATION_PAYMENT_INVALID",
   RECEIVABLE_INVALID: "PAYMENT_ALLOCATION_RECEIVABLE_INVALID",
   CURRENCY_MISMATCH: "PAYMENT_ALLOCATION_CURRENCY_MISMATCH",
+  CUSTOMER_MISMATCH: "PAYMENT_ALLOCATION_CUSTOMER_MISMATCH",
   PAYMENT_INSUFFICIENT: "PAYMENT_ALLOCATION_PAYMENT_INSUFFICIENT",
   RECEIVABLE_INSUFFICIENT: "PAYMENT_ALLOCATION_RECEIVABLE_INSUFFICIENT",
   CONFLICT: "PAYMENT_ALLOCATION_CONFLICT",
@@ -121,6 +122,9 @@ export class PaymentAllocationService {
           }
           if (receivable.currencyCode !== payment.currencyCode) {
             fail(PAYMENT_ALLOCATION_ERRORS.CURRENCY_MISMATCH);
+          }
+          if (!hasCompatibleAllocationCustomer(payment.customerId, receivable.customerId)) {
+            fail(PAYMENT_ALLOCATION_ERRORS.CUSTOMER_MISMATCH);
           }
           validateStoredReceivable(receivable);
           if (item.amount.greaterThan(receivable.outstandingAmount)) {
@@ -288,6 +292,10 @@ function validateStoredReceivable(receivable: { originalAmount: Prisma.Decimal; 
   if (!validPositiveAmount(receivable.originalAmount) || !validNonNegativeAmount(receivable.outstandingAmount) || receivable.outstandingAmount.greaterThan(receivable.originalAmount)) {
     fail(PAYMENT_ALLOCATION_ERRORS.RECEIVABLE_INVALID);
   }
+}
+
+export function hasCompatibleAllocationCustomer(paymentCustomerId: string | null, receivableCustomerId: string | null): boolean {
+  return paymentCustomerId === null || receivableCustomerId === null || paymentCustomerId === receivableCustomerId;
 }
 
 function exactAmount(value: unknown): Prisma.Decimal {

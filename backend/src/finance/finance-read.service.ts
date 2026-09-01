@@ -12,6 +12,7 @@ import {
   FINANCE_AUDIT_ACTIONS,
   FINANCE_AUDIT_ENTITY_TYPES,
 } from "./finance-audit";
+import { hasCompatibleAllocationCustomer } from "./payment-allocation.service";
 
 const DEFAULT_FISCAL_TIMEZONE = "America/Costa_Rica";
 
@@ -127,6 +128,9 @@ export class FinanceReadService {
     }
     if (payment.currencyCode !== receivable.currencyCode) {
       throw new ConflictException("PAYMENT_ALLOCATION_CURRENCY_MISMATCH");
+    }
+    if (!hasCompatibleAllocationCustomer(payment.customerId, receivable.customerId)) {
+      throw new ConflictException("PAYMENT_ALLOCATION_CUSTOMER_MISMATCH");
     }
     const suggestedAmount = payment.availableAmount.lessThan(receivable.outstandingAmount)
       ? payment.availableAmount
