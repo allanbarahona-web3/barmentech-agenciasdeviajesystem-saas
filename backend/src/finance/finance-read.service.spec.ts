@@ -1,4 +1,4 @@
-import { NotFoundException } from "@nestjs/common";
+import { ConflictException, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { FinanceReadService } from "./finance-read.service";
@@ -25,6 +25,67 @@ describe("FinanceReadService", () => {
     };
     const service = new FinanceReadService(prisma as unknown as PrismaService);
     await expect(service.getPaymentDetail("tenant-a", "payment-other")).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it.each([
+    ["payment smaller than AR", "3.12345", "10.00000", "3.12345"],
+    ["payment larger than AR", "10.00000", "3.12345", "3.12345"],
+    ["equal exact balances", "5.00000", "5.00000", "5"],
+  ])("suggests the exact maximum applicable amount when %s", async (_, available, outstanding, suggested) => {
+    const paymentFindFirst = jest.fn().mockResolvedValue(suggestionPayment({ availableAmount: d(available), receivedAmount: d("10.00000") }));
+    const receivableFindFirst = jest.fn().mockResolvedValue(suggestionReceivable({ outstandingAmount: d(outstanding), originalAmount: d("10.00000") }));
+    const service = new FinanceReadService({
+      payment: { findFirst: paymentFindFirst },
+      accountReceivable: { findFirst: receivableFindFirst },
+    } as unknown as PrismaService);
+
+    await expect(service.getAllocationSuggestion("tenant-a", "payment-a", "ar-a")).resolves.toEqual({
+      paymentId: "payment-a",
+      accountReceivableId: "ar-a",
+      currencyCode: "CRC",
+      paymentAvailableAmount: new Prisma.Decimal(available).toFixed(),
+      accountReceivableOutstandingAmount: new Prisma.Decimal(outstanding).toFixed(),
+      suggestedAmount: suggested,
+    });
+    expect(paymentFindFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "payment-a", tenantId: "tenant-a" } }));
+    expect(receivableFindFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "ar-a", tenantId: "tenant-a" } }));
+  });
+
+  it.each([
+    ["currency", suggestionPayment({ currencyCode: "USD" }), suggestionReceivable(), ConflictException],
+    ["cancelled payment", suggestionPayment({ status: "CANCELLED" }), suggestionReceivable(), ConflictException],
+    ["fully allocated payment", suggestionPayment({ status: "FULLY_ALLOCATED", availableAmount: d("0") }), suggestionReceivable(), ConflictException],
+    ["settled receivable", suggestionPayment(), suggestionReceivable({ status: "SETTLED", outstandingAmount: d("0") }), ConflictException],
+    ["cancelled receivable", suggestionPayment(), suggestionReceivable({ status: "CANCELLED" }), ConflictException],
+  ])("rejects an allocation suggestion for incompatible %s state", async (_, payment, receivable, error) => {
+    const service = new FinanceReadService({
+      payment: { findFirst: jest.fn().mockResolvedValue(payment) },
+      accountReceivable: { findFirst: jest.fn().mockResolvedValue(receivable) },
+    } as unknown as PrismaService);
+
+    await expect(service.getAllocationSuggestion("tenant-a", "payment-a", "ar-a")).rejects.toBeInstanceOf(error);
+  });
+
+  it("uses current allocation customer semantics without inventing a customer-equality rule", async () => {
+    const service = new FinanceReadService({
+      payment: { findFirst: jest.fn().mockResolvedValue(suggestionPayment({ customerId: "customer-payment" })) },
+      accountReceivable: { findFirst: jest.fn().mockResolvedValue(suggestionReceivable({ customerId: "customer-ar" })) },
+    } as unknown as PrismaService);
+
+    await expect(service.getAllocationSuggestion("tenant-a", "payment-a", "ar-a")).resolves.toMatchObject({ suggestedAmount: "5" });
+  });
+
+  it("does not disclose cross-tenant payment or receivable suggestions", async () => {
+    const paymentFindFirst = jest.fn().mockResolvedValue(null);
+    const receivableFindFirst = jest.fn().mockResolvedValue(suggestionReceivable());
+    const service = new FinanceReadService({
+      payment: { findFirst: paymentFindFirst },
+      accountReceivable: { findFirst: receivableFindFirst },
+    } as unknown as PrismaService);
+
+    await expect(service.getAllocationSuggestion("tenant-a", "payment-foreign", "ar-a")).rejects.toBeInstanceOf(NotFoundException);
+    expect(paymentFindFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "payment-foreign", tenantId: "tenant-a" } }));
+    expect(receivableFindFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "ar-a", tenantId: "tenant-a" } }));
   });
 
   it("paginates ARs with customer, status, currency, and inclusive due-date filters", async () => {
@@ -222,6 +283,7 @@ describe("FinanceReadService", () => {
           totalOutstandingAmount: d("18.02340"), totalOverdueOutstandingAmount: d("8.00001"),
           totalCount: 4n, openCount: 1n, partiallySettledCount: 1n, settledCount: 1n,
           cancelledCount: 1n, overdueCount: 1n,
+          unallocatedPaymentAmount: d("4.50005"), unallocatedPaymentCount: 2n,
         }),
         groupRow({ groupIdentity: "customer-a", customerId: "customer-a", currencyCode: "USD" }),
         groupRow({ groupIdentity: "customer-b", customerId: "customer-b", debtorDisplayName: "Second debtor" }),
@@ -243,12 +305,14 @@ describe("FinanceReadService", () => {
       customerId: "customer-a", currencyCode: "CRC",
       totalOriginalAmount: "30.12345", totalAllocatedAmount: "12.10005",
       totalOutstandingAmount: "18.0234", totalOverdueOutstandingAmount: "8.00001",
+      unallocatedPaymentAmount: "4.50005", unallocatedPaymentCount: 2,
       counts: { total: 4, open: 1, partiallySettled: 1, settled: 1, cancelled: 1, overdue: 1 },
     }));
     expect(result.groups[1]).toEqual(expect.objectContaining({ customerId: "customer-a", currencyCode: "USD" }));
     expect(result.groups[2]).toEqual(expect.objectContaining({ customerId: "customer-b", currencyCode: "CRC" }));
     expect(result.groups[3].groupKey).not.toBe(result.groups[4].groupKey);
     expect(result.groups.slice(3).map((group) => group.customerId)).toEqual([null, null]);
+    expect(result.groups[1]).toMatchObject({ unallocatedPaymentAmount: "0.00", unallocatedPaymentCount: 0 });
 
     const pageSql = rawSql(queryRaw, 0);
     expect(pageSql).toContain('COALESCE("customerId", "id")');
@@ -258,6 +322,9 @@ describe("FinanceReadService", () => {
     expect(pageSql).toContain('"status" <> \'CANCELLED\'');
     expect(pageSql).toContain('"originalAmount" - "outstandingAmount"');
     expect(pageSql).toContain("'OPEN', 'PARTIALLY_SETTLED'");
+    expect(pageSql).toContain("unallocated_payments");
+    expect(pageSql).toContain('"availableAmount" >');
+    expect(pageSql).toContain("'RECEIVED', 'PARTIALLY_ALLOCATED'");
     expect(queryRaw.mock.calls[0]).toEqual(expect.arrayContaining([new Date("2026-08-31T00:00:00.000Z"), "tenant-a", 5, 5]));
     expect(prisma).not.toHaveProperty("client");
     expect(prisma).not.toHaveProperty("billingDocument");
@@ -335,6 +402,46 @@ describe("FinanceReadService", () => {
     expect(prisma).not.toHaveProperty("accountReceivable");
   });
 
+  it("aggregates paginated unallocated payment balances by customer and currency without related lookups", async () => {
+    const queryRaw = jest.fn()
+      .mockResolvedValueOnce([{
+        customerId: "customer-a", currencyCode: "CRC", payerDisplayName: "Payer",
+        payerIdentificationType: "01", payerIdentificationNumber: "123",
+        unallocatedPaymentAmount: d("23.00005"), unallocatedPaymentCount: 2n,
+      }])
+      .mockResolvedValueOnce([{ total: 21n }]);
+    const prisma = { $queryRaw: queryRaw };
+    const service = new FinanceReadService(prisma as unknown as PrismaService);
+
+    await expect(service.listUnallocatedPaymentBalances("tenant-auth", { page: 2, pageSize: 10 })).resolves.toEqual({
+      balances: [{
+        customerId: "customer-a",
+        debtor: { displayName: "Payer", identificationType: "01", identificationNumber: "123" },
+        currencyCode: "CRC",
+        unallocatedPaymentAmount: "23.00005",
+        unallocatedPaymentCount: 2,
+      }],
+      total: 21,
+      page: 2,
+      pageSize: 10,
+      totalPages: 3,
+    });
+    const pageSql = rawSql(queryRaw, 0);
+    const countSql = rawSql(queryRaw, 1);
+    expect(pageSql).toContain('FROM "payments"');
+    expect(pageSql).toContain('"customerId" IS NOT NULL');
+    expect(pageSql).toContain('"availableAmount" >');
+    expect(pageSql).toContain("'RECEIVED', 'PARTIALLY_ALLOCATED'");
+    expect(pageSql).toContain('GROUP BY "customerId", "currencyCode"');
+    expect(pageSql).toContain('LIMIT');
+    expect(pageSql).toContain('OFFSET');
+    expect(countSql).toContain('GROUP BY "customerId", "currencyCode"');
+    expect(queryRaw.mock.calls[0]).toEqual(expect.arrayContaining(["tenant-auth", 10, 10]));
+    expect(prisma).not.toHaveProperty("accountReceivable");
+    expect(prisma).not.toHaveProperty("client");
+    expect(prisma).not.toHaveProperty("billingDocument");
+  });
+
   it.each(["FULLY_ALLOCATED", "CANCELLED"] as const)(
     "combines explicit %s status with available-only so the payment cannot match",
     async (status) => {
@@ -359,6 +466,30 @@ function payment(overrides: Record<string, unknown> = {}) {
     id: "payment-a", customerId: "customer-a", payerDisplayName: "Payer", payerIdentificationType: null, payerIdentificationNumber: null,
     currencyCode: "CRC", receivedAmount: new Prisma.Decimal("10.12345"), availableAmount: new Prisma.Decimal("6.00000"), receivedAt: new Date(), paymentMethod: "CASH", externalReference: null, description: null, status: "PARTIALLY_ALLOCATED", cancelledAt: null,
     allocations: [{ id: "allocation-a", accountReceivableId: "ar-a", amount: new Prisma.Decimal("4.12345"), status: "ACTIVE", allocatedAt: new Date(), reversal: null, accountReceivable: { id: "ar-a", currencyCode: "CRC", originalAmount: new Prisma.Decimal("10"), outstandingAmount: new Prisma.Decimal("5.87655"), status: "PARTIALLY_SETTLED" } }],
+    ...overrides,
+  };
+}
+
+function suggestionPayment(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "payment-a",
+    customerId: "customer-a",
+    currencyCode: "CRC",
+    receivedAmount: d("10"),
+    availableAmount: d("5"),
+    status: "RECEIVED",
+    ...overrides,
+  };
+}
+
+function suggestionReceivable(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "ar-a",
+    customerId: "customer-a",
+    currencyCode: "CRC",
+    originalAmount: d("10"),
+    outstandingAmount: d("5"),
+    status: "OPEN",
     ...overrides,
   };
 }

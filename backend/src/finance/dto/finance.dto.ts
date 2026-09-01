@@ -102,3 +102,10 @@ export class ListPaymentsDto {
   @IsOptional() @Transform(queryBoolean) @IsBoolean()
   availableOnly?: boolean;
 }
+
+export class ListUnallocatedPaymentBalancesDto {
+  @IsOptional() @Transform(({ value }) => Number.parseInt(String(value), 10)) @IsInt() @Min(1)
+  page?: number;
+  @IsOptional() @Transform(({ value }) => Number.parseInt(String(value), 10)) @IsInt() @Min(1) @Max(100)
+  pageSize?: number;
+}

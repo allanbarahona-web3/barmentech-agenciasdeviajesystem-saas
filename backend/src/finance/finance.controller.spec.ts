@@ -6,7 +6,7 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { ROLES_KEY } from "../auth/roles.decorator";
 import { RolesGuard } from "../auth/roles.guard";
 import { FinanceController } from "./finance.controller";
-import { CancelPaymentDto, ListPaymentsDto, RegisterPaymentDto } from "./dto/finance.dto";
+import { CancelPaymentDto, ListPaymentsDto, ListUnallocatedPaymentBalancesDto, RegisterPaymentDto } from "./dto/finance.dto";
 
 describe("FinanceController", () => {
   it("registers an exact payment for only the authenticated tenant", async () => {
@@ -149,6 +149,20 @@ describe("FinanceController", () => {
     expect(canActivate(UserRole.CONTADOR, "listPayments")).toBe(true);
   });
 
+  it("delegates advisory suggestions and unallocated-balance reads using the authenticated tenant", async () => {
+    const c = context();
+    c.reads.getAllocationSuggestion.mockResolvedValue({ suggestedAmount: "5.00000" });
+    c.reads.listUnallocatedPaymentBalances.mockResolvedValue({ balances: [] });
+
+    await c.controller.getAllocationSuggestion(request("tenant-auth"), "payment-a", "ar-a");
+    await c.controller.listUnallocatedPaymentBalances(request("tenant-auth"), { page: 2 });
+
+    expect(c.reads.getAllocationSuggestion).toHaveBeenCalledWith("tenant-auth", "payment-a", "ar-a");
+    expect(c.reads.listUnallocatedPaymentBalances).toHaveBeenCalledWith("tenant-auth", { page: 2 });
+    expect(canActivate(UserRole.CONTADOR, "getAllocationSuggestion")).toBe(true);
+    expect(canActivate(UserRole.CONTADOR, "listUnallocatedPaymentBalances")).toBe(true);
+  });
+
   it("validates payment discovery query booleans without accepting caller tenant fields", async () => {
     const pipe = new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: true });
     await expect(pipe.transform(
@@ -164,6 +178,18 @@ describe("FinanceController", () => {
       { type: "query", metatype: ListPaymentsDto },
     )).rejects.toBeDefined();
   });
+
+  it("validates unallocated-balance pagination without accepting caller tenant fields", async () => {
+    const pipe = new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: true });
+    await expect(pipe.transform(
+      { page: "2", pageSize: "10" },
+      { type: "query", metatype: ListUnallocatedPaymentBalancesDto },
+    )).resolves.toMatchObject({ page: 2, pageSize: 10 });
+    await expect(pipe.transform(
+      { tenantId: "tenant-other" },
+      { type: "query", metatype: ListUnallocatedPaymentBalancesDto },
+    )).rejects.toBeDefined();
+  });
 });
 
 function context() {
@@ -171,7 +197,7 @@ function context() {
   const allocations = { allocate: jest.fn().mockResolvedValue(undefined) };
   const reversals = { reverse: jest.fn() };
   const cancellations = { cancel: jest.fn() };
-  const reads = { paymentSummary: jest.fn((value) => ({ id: value.id, receivedAmount: value.receivedAmount.toFixed(), availableAmount: value.availableAmount.toFixed() })), getPaymentDetail: jest.fn(), getPaymentIdForAllocation: jest.fn(), getAccountReceivableDetail: jest.fn(), listAccountReceivables: jest.fn(), listAccountReceivableGroups: jest.fn(), listAccountReceivableGroupItems: jest.fn(), listPayments: jest.fn(), getCustomerFinancialBalance: jest.fn() };
+  const reads = { paymentSummary: jest.fn((value) => ({ id: value.id, receivedAmount: value.receivedAmount.toFixed(), availableAmount: value.availableAmount.toFixed() })), getPaymentDetail: jest.fn(), getPaymentIdForAllocation: jest.fn(), getAccountReceivableDetail: jest.fn(), getAllocationSuggestion: jest.fn(), listAccountReceivables: jest.fn(), listAccountReceivableGroups: jest.fn(), listAccountReceivableGroupItems: jest.fn(), listPayments: jest.fn(), listUnallocatedPaymentBalances: jest.fn(), getCustomerFinancialBalance: jest.fn() };
   return { registrations, allocations, reversals, cancellations, reads, controller: new FinanceController(registrations as never, allocations as never, reversals as never, cancellations as never, reads as never) };
 }
 

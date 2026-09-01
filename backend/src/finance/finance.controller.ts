@@ -14,6 +14,7 @@ import {
   ListAccountReceivableGroupsDto,
   ListAccountReceivablesDto,
   ListPaymentsDto,
+  ListUnallocatedPaymentBalancesDto,
   RegisterPaymentDto,
   ReversePaymentAllocationDto,
 } from "./dto/finance.dto";
@@ -180,6 +181,29 @@ export class FinanceController {
   @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.CONTADOR)
   listPayments(@Req() request: FinanceRequest, @Query() query: ListPaymentsDto) {
     return this.reads.listPayments(request.user.tenantId, query);
+  }
+
+  @Get("payments/:paymentId/allocation-suggestions/:accountReceivableId")
+  @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.CONTADOR)
+  getAllocationSuggestion(
+    @Req() request: FinanceRequest,
+    @Param("paymentId") paymentId: string,
+    @Param("accountReceivableId") accountReceivableId: string,
+  ) {
+    return this.reads.getAllocationSuggestion(
+      request.user.tenantId,
+      paymentId,
+      accountReceivableId,
+    );
+  }
+
+  @Get("unallocated-payment-balances")
+  @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.CONTADOR)
+  listUnallocatedPaymentBalances(
+    @Req() request: FinanceRequest,
+    @Query() query: ListUnallocatedPaymentBalancesDto,
+  ) {
+    return this.reads.listUnallocatedPaymentBalances(request.user.tenantId, query);
   }
 
   @Get("payments/:paymentId")

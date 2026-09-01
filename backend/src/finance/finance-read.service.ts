@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { AccountReceivableStatus, PaymentStatus, Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import {
@@ -6,6 +6,7 @@ import {
   ListAccountReceivableGroupsDto,
   ListAccountReceivablesDto,
   ListPaymentsDto,
+  ListUnallocatedPaymentBalancesDto,
 } from "./dto/finance.dto";
 import {
   FINANCE_AUDIT_ACTIONS,
@@ -59,6 +60,67 @@ export class FinanceReadService {
       payment.allocations.flatMap((allocation) => allocation.reversal ? [allocation.reversal.id] : []),
     );
     return paymentDetail(payment, auditRows);
+  }
+
+  async getAllocationSuggestion(
+    tenantId: string,
+    paymentId: string,
+    accountReceivableId: string,
+  ) {
+    const [payment, receivable] = await Promise.all([
+      this.prisma.payment.findFirst({
+        where: { id: paymentId, tenantId },
+        select: {
+          id: true,
+          customerId: true,
+          currencyCode: true,
+          receivedAmount: true,
+          availableAmount: true,
+          status: true,
+        },
+      }),
+      this.prisma.accountReceivable.findFirst({
+        where: { id: accountReceivableId, tenantId },
+        select: {
+          id: true,
+          customerId: true,
+          currencyCode: true,
+          originalAmount: true,
+          outstandingAmount: true,
+          status: true,
+        },
+      }),
+    ]);
+    if (!payment || !receivable) {
+      throw new NotFoundException("PAYMENT_OR_ACCOUNT_RECEIVABLE_NOT_FOUND");
+    }
+    if (
+      (payment.status !== PaymentStatus.RECEIVED && payment.status !== PaymentStatus.PARTIALLY_ALLOCATED) ||
+      !isAllocatableMoney(payment.receivedAmount, payment.availableAmount)
+    ) {
+      throw new ConflictException("PAYMENT_NOT_ALLOCATABLE");
+    }
+    if (
+      (receivable.status !== AccountReceivableStatus.OPEN && receivable.status !== AccountReceivableStatus.PARTIALLY_SETTLED) ||
+      !isAllocatableMoney(receivable.originalAmount, receivable.outstandingAmount)
+    ) {
+      throw new ConflictException("ACCOUNT_RECEIVABLE_NOT_ALLOCATABLE");
+    }
+    if (payment.currencyCode !== receivable.currencyCode) {
+      throw new ConflictException("PAYMENT_ALLOCATION_CURRENCY_MISMATCH");
+    }
+    return {
+      paymentId: payment.id,
+      accountReceivableId: receivable.id,
+      currencyCode: payment.currencyCode,
+      paymentAvailableAmount: money(payment.availableAmount),
+      accountReceivableOutstandingAmount: money(receivable.outstandingAmount),
+      suggestedAmount: money(
+        payment.availableAmount.lessThan(receivable.outstandingAmount)
+          ? payment.availableAmount
+          : receivable.outstandingAmount,
+      ),
+    };
   }
 
   async getPaymentIdForAllocation(tenantId: string, id: string): Promise<string> {
@@ -133,11 +195,35 @@ export class FinanceReadService {
             COALESCE("customerId", "id"),
             "customerId",
             "currencyCode"
+        ),
+        paged AS (
+          SELECT * FROM grouped
+          ORDER BY LOWER("debtorDisplayName") ASC, "groupKind" ASC, "groupIdentity" ASC, "currencyCode" ASC
+          LIMIT ${pageSize}
+          OFFSET ${offset}
+        ),
+        unallocated_payments AS (
+          SELECT
+            "customerId",
+            "currencyCode",
+            SUM("availableAmount") AS "unallocatedPaymentAmount",
+            COUNT(*) AS "unallocatedPaymentCount"
+          FROM "payments"
+          WHERE "tenantId" = ${tenantId}
+            AND "customerId" IS NOT NULL
+            AND "availableAmount" > 0
+            AND "status" IN ('RECEIVED', 'PARTIALLY_ALLOCATED')
+          GROUP BY "customerId", "currencyCode"
         )
-        SELECT * FROM grouped
-        ORDER BY LOWER("debtorDisplayName") ASC, "groupKind" ASC, "groupIdentity" ASC, "currencyCode" ASC
-        LIMIT ${pageSize}
-        OFFSET ${offset}
+        SELECT
+          paged.*,
+          unallocated_payments."unallocatedPaymentAmount",
+          unallocated_payments."unallocatedPaymentCount"
+        FROM paged
+        LEFT JOIN unallocated_payments
+          ON paged."customerId" = unallocated_payments."customerId"
+          AND paged."currencyCode" = unallocated_payments."currencyCode"
+        ORDER BY LOWER(paged."debtorDisplayName") ASC, paged."groupKind" ASC, paged."groupIdentity" ASC, paged."currencyCode" ASC
       `,
       this.prisma.$queryRaw<Array<{ total: bigint }>>`
         SELECT COUNT(*) AS "total"
@@ -236,6 +322,56 @@ export class FinanceReadService {
     ]);
     return {
       payments: payments.map(paymentListItem),
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+    };
+  }
+
+  async listUnallocatedPaymentBalances(
+    tenantId: string,
+    query: ListUnallocatedPaymentBalancesDto,
+  ) {
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 20;
+    const offset = (page - 1) * pageSize;
+    const [rows, totals] = await Promise.all([
+      this.prisma.$queryRaw<UnallocatedPaymentBalanceRow[]>`
+        SELECT
+          "customerId",
+          "currencyCode",
+          (ARRAY_AGG("payerDisplayName" ORDER BY "receivedAt" DESC, "id" DESC))[1] AS "payerDisplayName",
+          (ARRAY_AGG("payerIdentificationType" ORDER BY "receivedAt" DESC, "id" DESC))[1] AS "payerIdentificationType",
+          (ARRAY_AGG("payerIdentificationNumber" ORDER BY "receivedAt" DESC, "id" DESC))[1] AS "payerIdentificationNumber",
+          SUM("availableAmount") AS "unallocatedPaymentAmount",
+          COUNT(*) AS "unallocatedPaymentCount"
+        FROM "payments"
+        WHERE "tenantId" = ${tenantId}
+          AND "customerId" IS NOT NULL
+          AND "availableAmount" > 0
+          AND "status" IN ('RECEIVED', 'PARTIALLY_ALLOCATED')
+        GROUP BY "customerId", "currencyCode"
+        ORDER BY LOWER((ARRAY_AGG("payerDisplayName" ORDER BY "receivedAt" DESC, "id" DESC))[1]) ASC, "customerId" ASC, "currencyCode" ASC
+        LIMIT ${pageSize}
+        OFFSET ${offset}
+      `,
+      this.prisma.$queryRaw<Array<{ total: bigint }>>`
+        SELECT COUNT(*) AS "total"
+        FROM (
+          SELECT 1
+          FROM "payments"
+          WHERE "tenantId" = ${tenantId}
+            AND "customerId" IS NOT NULL
+            AND "availableAmount" > 0
+            AND "status" IN ('RECEIVED', 'PARTIALLY_ALLOCATED')
+          GROUP BY "customerId", "currencyCode"
+        ) AS grouped
+      `,
+    ]);
+    const total = exactCount(totals[0]?.total ?? 0);
+    return {
+      balances: rows.map(unallocatedPaymentBalance),
       total,
       page,
       pageSize,
@@ -395,6 +531,18 @@ type AccountReceivableGroupRow = {
   settledCount: bigint | number;
   cancelledCount: bigint | number;
   overdueCount: bigint | number;
+  unallocatedPaymentAmount: Prisma.Decimal | null;
+  unallocatedPaymentCount: bigint | number | null;
+};
+
+type UnallocatedPaymentBalanceRow = {
+  customerId: string;
+  currencyCode: string;
+  payerDisplayName: string;
+  payerIdentificationType: string | null;
+  payerIdentificationNumber: string | null;
+  unallocatedPaymentAmount: Prisma.Decimal;
+  unallocatedPaymentCount: bigint | number;
 };
 
 type AccountReceivableGroupKey = {
@@ -424,6 +572,12 @@ function accountReceivableGroup(row: AccountReceivableGroupRow) {
     totalAllocatedAmount: money(row.totalAllocatedAmount),
     totalOutstandingAmount: money(row.totalOutstandingAmount),
     totalOverdueOutstandingAmount: money(row.totalOverdueOutstandingAmount),
+    unallocatedPaymentAmount: row.unallocatedPaymentAmount
+      ? money(row.unallocatedPaymentAmount)
+      : "0.00",
+    unallocatedPaymentCount: row.unallocatedPaymentCount == null
+      ? 0
+      : exactCount(row.unallocatedPaymentCount),
     counts: {
       total: exactCount(row.totalCount),
       open: exactCount(row.openCount),
@@ -432,6 +586,20 @@ function accountReceivableGroup(row: AccountReceivableGroupRow) {
       cancelled: exactCount(row.cancelledCount),
       overdue: exactCount(row.overdueCount),
     },
+  };
+}
+
+function unallocatedPaymentBalance(row: UnallocatedPaymentBalanceRow) {
+  return {
+    customerId: row.customerId,
+    debtor: {
+      displayName: row.payerDisplayName,
+      identificationType: row.payerIdentificationType,
+      identificationNumber: row.payerIdentificationNumber,
+    },
+    currencyCode: row.currencyCode,
+    unallocatedPaymentAmount: money(row.unallocatedPaymentAmount),
+    unallocatedPaymentCount: exactCount(row.unallocatedPaymentCount),
   };
 }
 
@@ -549,6 +717,13 @@ function isOverdue(
       status === AccountReceivableStatus.PARTIALLY_SETTLED) &&
     dueDate.getTime() < dateOnly(tenantCurrentCalendarDate).getTime()
   );
+}
+
+function isAllocatableMoney(total: Prisma.Decimal, available: Prisma.Decimal): boolean {
+  return total.isFinite() && available.isFinite() &&
+    total.greaterThan(0) && available.greaterThan(0) &&
+    available.lessThanOrEqualTo(total) &&
+    total.decimalPlaces() <= 5 && available.decimalPlaces() <= 5;
 }
 
 const financeAuditSelect = {
