@@ -12,7 +12,7 @@ describe("FinanceReadService", () => {
     const service = new FinanceReadService(prisma as unknown as PrismaService);
 
     await expect(service.getPaymentDetail("tenant-a", "payment-a")).resolves.toMatchObject({
-      receivedAmount: "10.12345", availableAmount: "6",
+      receiptNumber: "RCP-2026-000001", receivedAmount: "10.12345", availableAmount: "6",
       allocations: [{ amount: "4.12345", accountReceivable: { outstandingAmount: "5.87655" } }],
     });
     expect(prisma.payment.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "payment-a", tenantId: "tenant-a" } }));
@@ -431,7 +431,7 @@ describe("FinanceReadService", () => {
     await expect(service.listPayments("tenant-auth", {
       page: 2, pageSize: 10, customerId: "customer-a", currency: "CRC", availableOnly: true,
     })).resolves.toEqual({
-      payments: [expect.objectContaining({ id: "payment-a", receivedAmount: "123.12345", availableAmount: "23.00005" })],
+      payments: [expect.objectContaining({ id: "payment-a", receiptNumber: "RCP-2026-000001", receivedAmount: "123.12345", availableAmount: "23.00005" })],
       total: 21, page: 2, pageSize: 10, totalPages: 3,
     });
     expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
@@ -509,7 +509,7 @@ describe("FinanceReadService", () => {
 
 function payment(overrides: Record<string, unknown> = {}) {
   return {
-    id: "payment-a", customerId: "customer-a", payerDisplayName: "Payer", payerIdentificationType: null, payerIdentificationNumber: null,
+    id: "payment-a", receiptNumber: "RCP-2026-000001", customerId: "customer-a", payerDisplayName: "Payer", payerIdentificationType: null, payerIdentificationNumber: null,
     currencyCode: "CRC", receivedAmount: new Prisma.Decimal("10.12345"), availableAmount: new Prisma.Decimal("6.00000"), receivedAt: new Date(), paymentMethod: "CASH", externalReference: null, description: null, status: "PARTIALLY_ALLOCATED", cancelledAt: null,
     allocations: [{ id: "allocation-a", accountReceivableId: "ar-a", amount: new Prisma.Decimal("4.12345"), status: "ACTIVE", allocatedAt: new Date(), reversal: null, accountReceivable: { id: "ar-a", currencyCode: "CRC", originalAmount: new Prisma.Decimal("10"), outstandingAmount: new Prisma.Decimal("5.87655"), status: "PARTIALLY_SETTLED" } }],
     ...overrides,
@@ -591,7 +591,7 @@ function rawSql(mock: jest.Mock, call: number): string {
 
 function paymentListRow(overrides: Record<string, unknown> = {}) {
   return {
-    id: "payment-a", customerId: "customer-a", payerDisplayName: "Payer",
+    id: "payment-a", receiptNumber: "RCP-2026-000001", customerId: "customer-a", payerDisplayName: "Payer",
     payerIdentificationType: "01", payerIdentificationNumber: "123", currencyCode: "CRC",
     receivedAmount: d("10"), availableAmount: d("10"), receivedAt: new Date("2026-08-31T12:00:00.000Z"),
     paymentMethod: "BANK_TRANSFER", externalReference: "bank-a", description: "Payment",

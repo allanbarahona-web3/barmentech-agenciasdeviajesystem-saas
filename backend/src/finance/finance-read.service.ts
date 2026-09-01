@@ -27,7 +27,7 @@ export class FinanceReadService {
         include: {
           paymentAllocations: {
             orderBy: { allocatedAt: "asc" },
-            include: { reversal: true },
+            include: { payment: { select: { receiptNumber: true } }, reversal: true },
           },
         },
       }),
@@ -437,11 +437,12 @@ export class FinanceReadService {
   }
 
   paymentSummary(payment: {
-    id: string; status: string; currencyCode: string; receivedAmount: Prisma.Decimal;
+    id: string; receiptNumber: string; status: string; currencyCode: string; receivedAmount: Prisma.Decimal;
     availableAmount: Prisma.Decimal; receivedAt: Date; cancelledAt: Date | null;
   }) {
     return {
       id: payment.id,
+      receiptNumber: payment.receiptNumber,
       status: payment.status,
       currencyCode: payment.currencyCode,
       receivedAmount: money(payment.receivedAmount),
@@ -520,6 +521,7 @@ const accountReceivableListSelect = {
 
 const paymentListSelect = {
   id: true,
+  receiptNumber: true,
   customerId: true,
   payerDisplayName: true,
   payerIdentificationType: true,
@@ -774,6 +776,7 @@ function paymentDetail(payment: Prisma.PaymentGetPayload<{
   const cancelled = auditRow(auditRows, FINANCE_AUDIT_ENTITY_TYPES.PAYMENT, payment.id, FINANCE_AUDIT_ACTIONS.CANCELLED);
   return {
     id: payment.id,
+    receiptNumber: payment.receiptNumber,
     customerId: payment.customerId,
     payerDisplayName: payment.payerDisplayName,
     payerIdentificationType: payment.payerIdentificationType,
@@ -817,7 +820,7 @@ function paymentDetail(payment: Prisma.PaymentGetPayload<{
 }
 
 function accountReceivableDetail(receivable: Prisma.AccountReceivableGetPayload<{
-  include: { paymentAllocations: { include: { reversal: true } } };
+  include: { paymentAllocations: { include: { payment: { select: { receiptNumber: true } }; reversal: true } } };
 }>,
 tenantCurrentCalendarDate: string,
 auditRows: FinanceAuditRow[],
@@ -851,6 +854,7 @@ availablePaymentSummary: { _sum: { availableAmount: Prisma.Decimal | null }; _co
     allocations: receivable.paymentAllocations.map((allocation) => ({
       id: allocation.id,
       paymentId: allocation.paymentId,
+      paymentReceiptNumber: allocation.payment.receiptNumber,
       amount: money(allocation.amount),
       status: allocation.status,
       allocatedAt: allocation.allocatedAt,
