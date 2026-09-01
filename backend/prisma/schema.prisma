@@ -108,6 +108,7 @@ model Tenant {
   paymentAllocations                 PaymentAllocation[]
   paymentAllocationReversals         PaymentAllocationReversal[]
   businessNumberSequences            BusinessNumberSequence[]
+  customerFundsAllocationCommands    CustomerFundsAllocationCommand[]
 
   @@map("tenants")
 }
@@ -365,6 +366,7 @@ model Client {
   additionalServiceOrderParticipations AdditionalServiceOrderParticipant[]
   additionalServiceQuoteOrders         AdditionalServiceOrder[]            @relation("AdditionalServiceQuoteCustomer")
   billingDocuments                     BillingDocument[]                   @relation("BillingDocumentCustomer")
+  customerFundsAllocationCommands      CustomerFundsAllocationCommand[]
 
   @@unique([tenantId, idType, idNumber])
   @@unique([id, tenantId], map: "Client_id_tenantId_key")
@@ -2344,6 +2346,33 @@ model BusinessNumberSequence {
 
   @@id([tenantId, sequenceKey, year])
   @@map("business_number_sequences")
+}
+
+enum CustomerFundsAllocationCommandStatus {
+  PENDING
+  COMMITTED
+}
+
+model CustomerFundsAllocationCommand {
+  id                String                               @id @default(cuid())
+  tenantId          String
+  customerId        String
+  currencyCode      String                               @db.VarChar(3)
+  deduplicationKey  String                               @db.VarChar(200)
+  requestHash       String                               @db.VarChar(64)
+  requestedByUserId String
+  status            CustomerFundsAllocationCommandStatus @default(PENDING)
+  resultSnapshot    Json?
+  createdAt         DateTime                             @default(now())
+  committedAt       DateTime?
+  updatedAt         DateTime                             @updatedAt
+  tenant            Tenant                               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer          Client                               @relation(fields: [customerId, tenantId], references: [id, tenantId], onDelete: Restrict)
+
+  @@unique([tenantId, deduplicationKey])
+  @@unique([id, tenantId])
+  @@index([tenantId, customerId, currencyCode, createdAt])
+  @@map("customer_funds_allocation_commands")
 }
 
 enum PaymentAllocationStatus {
