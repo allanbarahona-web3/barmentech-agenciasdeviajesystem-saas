@@ -107,6 +107,7 @@ model Tenant {
   payments                           Payment[]
   paymentAllocations                 PaymentAllocation[]
   paymentAllocationReversals         PaymentAllocationReversal[]
+  businessNumberSequences            BusinessNumberSequence[]
 
   @@map("tenants")
 }
@@ -2303,6 +2304,7 @@ model Payment {
   id                           String              @id @default(cuid())
   tenantId                     String
   registrationDeduplicationKey String              @db.VarChar(200)
+  receiptNumber                String              @db.VarChar(50)
   customerId                   String?
   payerDisplayName             String
   payerIdentificationType      String?             @db.VarChar(4)
@@ -2322,12 +2324,26 @@ model Payment {
   allocations                  PaymentAllocation[]
 
   @@unique([tenantId, registrationDeduplicationKey])
+  @@unique([tenantId, receiptNumber])
   @@unique([id, tenantId])
   @@index([tenantId, status, receivedAt])
   @@index([tenantId, customerId])
   @@index([tenantId, receivedAt])
   @@index([tenantId, externalReference])
   @@map("payments")
+}
+
+model BusinessNumberSequence {
+  tenantId     String
+  sequenceKey  String   @db.VarChar(100)
+  year         Int
+  currentValue BigInt   @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@id([tenantId, sequenceKey, year])
+  @@map("business_number_sequences")
 }
 
 enum PaymentAllocationStatus {
