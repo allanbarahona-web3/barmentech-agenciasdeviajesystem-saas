@@ -96,6 +96,8 @@ function PaymentSummary({ payment }: { payment: PaymentDetail }) {
         <div><dt>Método</dt><dd>{payment.paymentMethod}</dd></div>
         <div><dt>Referencia</dt><dd>{payment.externalReference ?? '—'}</dd></div>
         <div><dt>Notas</dt><dd>{payment.description ?? '—'}</dd></div>
+        {payment.registeredBy && <div><dt>Registrado por</dt><dd>{payment.registeredBy.name} · {formatBusinessDate(payment.registeredBy.at)}</dd></div>}
+        {payment.cancelledBy && <div><dt>Cancelado por</dt><dd>{payment.cancelledBy.name} · {payment.cancelledAt ? formatBusinessDate(payment.cancelledAt) : formatBusinessDate(payment.cancelledBy.at)}{payment.cancelledBy.reason ? ` · ${payment.cancelledBy.reason}` : ''}</dd></div>}
       </dl>
     </section>
   );
@@ -107,7 +109,7 @@ function PaymentAllocations({ payment }: { payment: PaymentDetail }) {
     <div className={styles.paymentAllocationList}>{payment.allocations.map((allocation) => (
       <article className={styles.paymentAllocation} key={allocation.id}>
         <div className={styles.paymentAllocationHeader}>
-          <div><span>Cuenta por cobrar</span><strong>{allocation.accountReceivableId}</strong></div>
+          <div><span>Factura / cuenta por cobrar</span><strong>{allocation.accountReceivable.sourceNumber ?? allocation.accountReceivable.sourceDocumentType ?? 'Cuenta por cobrar'}</strong></div>
           <Badge className={allocation.status === 'ACTIVE' ? styles.activeBadge : styles.reversedBadge} variant="outline">{allocation.status === 'ACTIVE' ? 'Activa' : 'Revertida'}</Badge>
         </div>
         <dl className={styles.paymentFacts}>
@@ -115,8 +117,9 @@ function PaymentAllocations({ payment }: { payment: PaymentDetail }) {
           <div><dt>Saldo actual CxC</dt><dd>{formatFinanceMoney(allocation.accountReceivable.outstandingAmount, allocation.accountReceivable.currencyCode)}</dd></div>
           <div><dt>Estado actual CxC</dt><dd>{AR_STATUS_LABELS[allocation.accountReceivable.status]}</dd></div>
           <div><dt>Fecha de aplicación</dt><dd>{formatBusinessDate(allocation.allocatedAt)}</dd></div>
+          {allocation.appliedBy && <div><dt>Aplicado por</dt><dd>{allocation.appliedBy.name}</dd></div>}
         </dl>
-        {allocation.reversal && <div className={styles.reversalHistory}><strong>Reversión registrada</strong><p>{allocation.reversal.reason} · {formatBusinessDate(allocation.reversal.reversedAt)}</p></div>}
+        {allocation.reversal && <div className={styles.reversalHistory}><strong>Reversión registrada</strong><p>{allocation.reversal.reason} · {formatBusinessDate(allocation.reversal.reversedAt)}{allocation.reversal.reversedBy ? ` · ${allocation.reversal.reversedBy.name}` : ''}</p></div>}
       </article>
     ))}</div>
   );

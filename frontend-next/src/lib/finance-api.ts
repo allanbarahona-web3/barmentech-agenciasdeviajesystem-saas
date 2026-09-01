@@ -40,10 +40,12 @@ export type AccountReceivableAllocation = {
   amount: string;
   status: 'ACTIVE' | 'REVERSED';
   allocatedAt: string;
+  appliedBy: { userId: string; name: string; at: string } | null;
   reversal: {
     id: string;
     reason: string;
     reversedAt: string;
+    reversedBy: { userId: string; name: string; at: string } | null;
   } | null;
 };
 
@@ -118,8 +120,11 @@ export type PaymentAllocationDetail = {
   amount: string;
   status: 'ACTIVE' | 'REVERSED';
   allocatedAt: string;
+  appliedBy: { userId: string; name: string; at: string } | null;
   accountReceivable: {
     id: string;
+    sourceNumber: string | null;
+    sourceDocumentType: string | null;
     currencyCode: FinanceCurrency;
     originalAmount: string;
     outstandingAmount: string;
@@ -129,6 +134,7 @@ export type PaymentAllocationDetail = {
     id: string;
     reason: string;
     reversedAt: string;
+    reversedBy: { userId: string; name: string; at: string } | null;
   } | null;
 };
 
@@ -148,6 +154,8 @@ export type PaymentDetail = {
   description: string | null;
   status: PaymentStatus;
   cancelledAt: string | null;
+  registeredBy: { userId: string; name: string; at: string } | null;
+  cancelledBy: { userId: string; name: string; at: string; reason: string | null } | null;
   allocations: PaymentAllocationDetail[];
 };
 

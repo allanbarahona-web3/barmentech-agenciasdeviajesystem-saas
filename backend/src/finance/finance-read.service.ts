@@ -842,6 +842,8 @@ function paymentDetail(payment: Prisma.PaymentGetPayload<{
       appliedBy: actorProjection(auditRow(auditRows, FINANCE_AUDIT_ENTITY_TYPES.ALLOCATION, allocation.id, FINANCE_AUDIT_ACTIONS.APPLIED)),
       accountReceivable: {
         id: allocation.accountReceivable.id,
+        sourceNumber: allocation.accountReceivable.sourceNumber,
+        sourceDocumentType: allocation.accountReceivable.sourceDocumentType,
         currencyCode: allocation.accountReceivable.currencyCode,
         originalAmount: money(allocation.accountReceivable.originalAmount),
         outstandingAmount: money(allocation.accountReceivable.outstandingAmount),
