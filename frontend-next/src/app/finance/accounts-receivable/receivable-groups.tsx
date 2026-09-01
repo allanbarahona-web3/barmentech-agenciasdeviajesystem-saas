@@ -45,7 +45,7 @@ function GroupRows({ group, canWrite, reloadToken, onOpenDetail, onRegisterPayme
   reloadToken: number;
   onOpenDetail: (id: string) => void;
   onRegisterPayment: (id: string) => void;
-  onViewPayments: (customer: { id: string; name: string }) => void;
+  onViewPayments: (customer: { id: string; name: string; currency: 'CRC' | 'USD' }) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [page, setPage] = useState(1);
@@ -84,9 +84,9 @@ function GroupRows({ group, canWrite, reloadToken, onOpenDetail, onRegisterPayme
         <TableCell className={styles.numeric}>{formatFinanceMoney(group.totalAllocatedAmount, group.currencyCode)}</TableCell>
         <TableCell className={styles.numeric}><strong>{formatFinanceMoney(group.totalOutstandingAmount, group.currencyCode)}</strong></TableCell>
         <TableCell className={styles.numeric}><span className={group.counts.overdue > 0 ? styles.overdueAmount : undefined}>{formatFinanceMoney(group.totalOverdueOutstandingAmount, group.currencyCode)}</span><span className={styles.secondary}>{group.counts.overdue} vencida(s)</span></TableCell>
-        <TableCell className={styles.numeric}>{group.unallocatedPaymentCount > 0 ? <div className={styles.creditBalance}><span>Saldo a favor</span><strong>{formatFinanceMoney(group.unallocatedPaymentAmount, group.currencyCode)}</strong><small>{group.unallocatedPaymentCount} recibo{group.unallocatedPaymentCount === 1 ? '' : 's'} de dinero</small></div> : <span className={styles.secondary}>—</span>}</TableCell>
+        <TableCell className={styles.numeric}>{group.unallocatedPaymentCount > 0 ? <div className={styles.creditBalance}><span>Saldo a favor</span><strong>{formatFinanceMoney(group.unallocatedPaymentAmount, group.currencyCode)}</strong><small>{group.unallocatedPaymentCount} recibo{group.unallocatedPaymentCount === 1 ? '' : 's'} de dinero</small>{canWrite && group.customerId && <Button className={styles.secondaryAction} size="sm" type="button" variant="outline" onClick={() => onViewPayments({ id: group.customerId!, name: group.debtor.displayName, currency: group.currencyCode })}>Aplicar saldo</Button>}</div> : <span className={styles.secondary}>—</span>}</TableCell>
         <TableCell><div className={styles.countList}><span>{group.counts.total} total</span><span>{group.counts.open} abiertas</span><span>{group.counts.partiallySettled} abonadas</span><span>{group.counts.settled} canceladas</span><span>{group.counts.cancelled} anuladas</span></div></TableCell>
-        <TableCell><div className={styles.rowActions}><Button className={styles.secondaryAction} size="sm" type="button" variant="outline" onClick={() => setExpanded((value) => !value)}><ChevronDown aria-hidden="true" />{expanded ? 'Ocultar' : 'Ver cuentas'}</Button>{group.customerId && <Button className={styles.secondaryAction} size="sm" type="button" variant="outline" onClick={() => onViewPayments({ id: group.customerId!, name: group.debtor.displayName })}>Ver pagos</Button>}</div></TableCell>
+        <TableCell><div className={styles.rowActions}><Button className={styles.secondaryAction} size="sm" type="button" variant="outline" onClick={() => setExpanded((value) => !value)}><ChevronDown aria-hidden="true" />{expanded ? 'Ocultar' : 'Ver cuentas'}</Button>{group.customerId && <Button className={styles.secondaryAction} size="sm" type="button" variant="outline" onClick={() => onViewPayments({ id: group.customerId!, name: group.debtor.displayName, currency: group.currencyCode })}>Ver pagos</Button>}</div></TableCell>
       </TableRow>
       {expanded && <TableRow className={styles.childContainerRow}>
         <TableCell colSpan={9}>
@@ -99,7 +99,7 @@ function GroupRows({ group, canWrite, reloadToken, onOpenDetail, onRegisterPayme
                 <TableCell className={styles.numeric}>{formatFinanceMoney(receivable.outstandingAmount, receivable.currencyCode)}</TableCell>
                 <TableCell>{formatBusinessDate(receivable.dueDate)}</TableCell>
                 <TableCell><span className={styles.badgeGroup}><Badge className={statusClass(receivable.status)} variant="outline">{STATUS_LABELS[receivable.status]}</Badge>{receivable.isOverdue === true && <Badge className={styles.overdueBadge} variant="outline">Vencida</Badge>}</span></TableCell>
-                <TableCell><div className={styles.rowActions}><Button className={styles.secondaryAction} size="sm" type="button" variant="outline" onClick={() => onOpenDetail(receivable.id)}><Eye aria-hidden="true" />Detalle</Button>{canWrite && <Button className={styles.actionButton} size="sm" type="button" onClick={() => onRegisterPayment(receivable.id)}><WalletCards aria-hidden="true" />Registrar abono</Button>}</div></TableCell>
+                <TableCell><div className={styles.rowActions}><Button className={styles.secondaryAction} size="sm" type="button" variant="outline" onClick={() => onOpenDetail(receivable.id)}><Eye aria-hidden="true" />Detalle</Button>{canWrite && (receivable.status === 'SETTLED' || receivable.status === 'CANCELLED' ? <Button className={styles.secondaryAction} disabled size="sm" type="button" variant="outline" title="Esta cuenta ya no admite abonos.">No disponible</Button> : <Button className={styles.actionButton} size="sm" type="button" onClick={() => onRegisterPayment(receivable.id)}><WalletCards aria-hidden="true" />Registrar abono</Button>)}</div></TableCell>
               </TableRow>)}</TableBody></Table>
             </div> : <div className={styles.childLoading}>El grupo no contiene cuentas disponibles.</div>}
             {result && result.totalPages > 1 && <nav className={styles.candidatePagination}><Button className={styles.secondaryAction} disabled={result.page <= 1} size="sm" type="button" variant="outline" onClick={() => setPage((value) => Math.max(1, value - 1))}>Anterior</Button><span>Página {result.page} de {result.totalPages}</span><Button className={styles.secondaryAction} disabled={result.page >= result.totalPages} size="sm" type="button" variant="outline" onClick={() => setPage((value) => Math.min(result.totalPages, value + 1))}>Siguiente</Button></nav>}
@@ -115,7 +115,7 @@ export function ReceivableGroupsView({ canWrite, reloadToken, onOpenDetail, onRe
   reloadToken: number;
   onOpenDetail: (id: string) => void;
   onRegisterPayment: (id: string) => void;
-  onViewPayments: (customer: { id: string; name: string }) => void;
+  onViewPayments: (customer: { id: string; name: string; currency: 'CRC' | 'USD' }) => void;
 }) {
   const [page, setPage] = useState(1);
   const [result, setResult] = useState<AccountReceivableGroupsPage | null>(null);

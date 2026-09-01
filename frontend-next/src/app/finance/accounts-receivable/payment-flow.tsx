@@ -149,13 +149,14 @@ export function PaymentFlow({ receivable, initialPayment, canAllocate = true, on
   const [selected, setSelected] = useState<Record<string, boolean>>(receivable ? { [receivable.id]: true } : {});
   const [amounts, setAmounts] = useState<Record<string, string>>(receivable ? { [receivable.id]: '' } : {});
   const [allocationComplete, setAllocationComplete] = useState(false);
-  const [suggestionPaymentId, setSuggestionPaymentId] = useState<string | null>(null);
+  const [suggestionPaymentId, setSuggestionPaymentId] = useState<string | null>(initialPayment && receivable ? initialPayment.id : null);
   const [initiatingSuggestion, setInitiatingSuggestion] = useState<AllocationSuggestion | null>(null);
   const [suggestionError, setSuggestionError] = useState<string | null>(null);
   const [suggestionLoading, setSuggestionLoading] = useState(false);
 
   useEffect(() => {
     if (!payment || !canAllocate || allocationComplete) return;
+    if (receivable && suggestionPaymentId && (!initiatingSuggestion || !initiatingSuggestion.hasRemainingAfterSuggestion)) return;
     const controller = new AbortController();
     setCandidatesLoading(true);
     listAccountReceivables({
@@ -170,7 +171,7 @@ export function PaymentFlow({ receivable, initialPayment, canAllocate = true, on
       })
       .finally(() => { if (!controller.signal.aborted) setCandidatesLoading(false); });
     return () => controller.abort();
-  }, [allocationComplete, canAllocate, candidatePage, payment]);
+  }, [allocationComplete, canAllocate, candidatePage, initiatingSuggestion, payment, receivable, suggestionPaymentId]);
 
   useEffect(() => {
     if (!suggestionPaymentId || !receivable || allocationComplete) return;
@@ -203,9 +204,10 @@ export function PaymentFlow({ receivable, initialPayment, canAllocate = true, on
   const candidates = useMemo(() => {
     const rows = candidateResult?.accountReceivables ?? [];
     const selectedReceivable = receivable ? detailAsCandidate(receivable) : null;
-    if (!selectedReceivable || candidateResult) return rows;
-    return [selectedReceivable];
-  }, [candidateResult, receivable]);
+    if (!selectedReceivable) return rows;
+    if (initiatingSuggestion && !initiatingSuggestion.hasRemainingAfterSuggestion) return [selectedReceivable];
+    return [selectedReceivable, ...rows.filter((row) => row.id !== selectedReceivable.id)];
+  }, [candidateResult, initiatingSuggestion, receivable]);
 
   async function submitRegistration(event: FormEvent) {
     event.preventDefault();
@@ -279,6 +281,7 @@ export function PaymentFlow({ receivable, initialPayment, canAllocate = true, on
   const contextCurrency = receivable?.currencyCode ?? payment?.currencyCode ?? '—';
   const title = !payment ? 'Registrar pago / abono' : canAllocate ? 'Aplicar pago / abono' : 'Detalle del pago';
   const hasAuthoritativeAvailableMoney = payment?.status === 'RECEIVED' || payment?.status === 'PARTIALLY_ALLOCATED';
+  const awaitingInitiatingSuggestion = Boolean(receivable && suggestionPaymentId && !initiatingSuggestion && !suggestionError);
 
   function continueAllocating() {
     setAllocationComplete(false);
@@ -289,6 +292,7 @@ export function PaymentFlow({ receivable, initialPayment, canAllocate = true, on
     setCandidateResult(null);
     setInitiatingSuggestion(null);
     setSuggestionError(null);
+    setSuggestionPaymentId(null);
   }
 
   return (
@@ -336,9 +340,10 @@ export function PaymentFlow({ receivable, initialPayment, canAllocate = true, on
             <form className={styles.allocationForm} onSubmit={submitAllocations}>
               <PaymentSummary payment={payment} />
               <div className={styles.allocationHeading}><div><h3>Seleccione cuentas por cobrar</h3><p>Indique los montos que desea solicitar al backend. La validación financiera se realiza al enviar.</p></div></div>
-              {suggestionLoading && <div className={styles.paymentEmpty}>Cargando sugerencia del backend para la cuenta inicial…</div>}
+              {(suggestionLoading || awaitingInitiatingSuggestion) && <div className={styles.paymentEmpty}>Cargando sugerencia del backend para la cuenta inicial…</div>}
               {suggestionError && <div className={styles.paymentError} role="alert"><AlertCircle aria-hidden="true" /><span>{suggestionError} Puede ingresar un monto manual y solicitar la validación al backend.</span></div>}
-              {candidatesLoading ? <div className={styles.paymentEmpty}>Cargando cuentas candidatas…</div> : candidates.length === 0 ? <div className={styles.paymentEmpty}>No hay cuentas por cobrar en esta página.</div> : (
+              {initiatingSuggestion && <div className={styles.remainingBalance}><strong>{initiatingSuggestion.hasRemainingAfterSuggestion ? 'Saldo disponible después de esta sugerencia' : 'La sugerencia utiliza el saldo disponible para esta confirmación'}</strong>{initiatingSuggestion.hasRemainingAfterSuggestion && <span>{formatFinanceMoney(initiatingSuggestion.remainingAfterSuggestion, initiatingSuggestion.currencyCode)}</span>}</div>}
+              {awaitingInitiatingSuggestion ? null : candidatesLoading ? <div className={styles.paymentEmpty}>Cargando cuentas candidatas…</div> : candidates.length === 0 ? <div className={styles.paymentEmpty}>No hay cuentas por cobrar en esta página.</div> : (
                 <div className={styles.candidateList}>{candidates.map((candidate) => (
                   <article className={styles.candidate} key={candidate.id}>
                     <label className={styles.candidateSelect}><input type="checkbox" checked={Boolean(selected[candidate.id])} onChange={(event) => setSelected((current) => ({ ...current, [candidate.id]: event.target.checked }))} /><span><strong>{candidate.source.sourceNumber ?? candidate.id}</strong><small>{candidate.debtorDisplayName} · {AR_STATUS_LABELS[candidate.status]}</small></span></label>

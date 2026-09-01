@@ -171,6 +171,10 @@
 .reversalHistory strong { font-size: 11px; }
 .reversalHistory p { margin: 3px 0 0; font-size: 10px; }
 .paymentEmpty { margin: 0; border: 1px dashed #b8c8da; border-radius: 9px; background: #f5f8fc; padding: 18px; color: #64748b; font-size: 12px; text-align: center; }
+.remainingBalance { display: flex; align-items: center; justify-content: space-between; gap: 14px; border: 1px solid #9fc0e4; border-radius: 10px; background: #eef5fc; padding: 12px 14px; color: #174f88; font-size: 12px; }
+.remainingBalance span { font-weight: 800; font-variant-numeric: tabular-nums; }
+.decisionModal { position: fixed; top: 18vh; left: 50%; z-index: 91; display: flex; width: min(560px, calc(100vw - 32px)); max-height: 70dvh; transform: translateX(-50%); flex-direction: column; overflow: hidden; border: 1px solid #cdd8e5; border-radius: 14px; background: #f7f9fc; box-shadow: 0 24px 70px rgba(15, 35, 65, .28); }
+.decisionCopy { margin: 0; color: #526175; font-size: 13px; }
 @keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 @media (max-width: 1180px) { .filters { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 900px) { .paymentFilters { align-items: stretch; flex-wrap: wrap; } .availableToggle { width: 100%; } }

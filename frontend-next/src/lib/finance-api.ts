@@ -56,6 +56,9 @@ export type AccountReceivableDetail = Omit<
   sourceDocumentType: string | null;
   paymentTermDays: number | null;
   cancelledAt: string | null;
+  unallocatedPaymentAmount: string;
+  unallocatedPaymentCount: number;
+  hasUnallocatedPayments: boolean;
   allocations: AccountReceivableAllocation[];
 };
 
@@ -161,6 +164,8 @@ export type AllocationSuggestion = {
   paymentAvailableAmount: string;
   accountReceivableOutstandingAmount: string;
   suggestedAmount: string;
+  remainingAfterSuggestion: string;
+  hasRemainingAfterSuggestion: boolean;
 };
 
 export type UnallocatedPaymentBalance = {
