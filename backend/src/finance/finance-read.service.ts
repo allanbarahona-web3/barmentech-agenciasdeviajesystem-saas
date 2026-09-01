@@ -239,15 +239,49 @@ export class FinanceReadService {
             AND "availableAmount" > 0
             AND "status" IN ('RECEIVED', 'PARTIALLY_ALLOCATED')
           GROUP BY "customerId", "currencyCode"
+        ),
+        received_payments AS (
+          SELECT
+            "customerId",
+            "currencyCode",
+            SUM("receivedAmount") AS "totalReceivedAmount"
+          FROM "payments"
+          WHERE "tenantId" = ${tenantId}
+            AND "customerId" IS NOT NULL
+            AND "status" <> 'CANCELLED'
+          GROUP BY "customerId", "currencyCode"
+        ),
+        active_payment_allocations AS (
+          SELECT
+            payment."customerId",
+            payment."currencyCode",
+            SUM(allocation."amount") AS "totalActiveAllocatedAmount"
+          FROM "payments" AS payment
+          INNER JOIN "payment_allocations" AS allocation
+            ON allocation."tenantId" = payment."tenantId"
+            AND allocation."paymentId" = payment."id"
+          WHERE payment."tenantId" = ${tenantId}
+            AND payment."customerId" IS NOT NULL
+            AND payment."status" <> 'CANCELLED'
+            AND allocation."status" = 'ACTIVE'
+          GROUP BY payment."customerId", payment."currencyCode"
         )
         SELECT
           paged.*,
           unallocated_payments."unallocatedPaymentAmount",
-          unallocated_payments."unallocatedPaymentCount"
+          unallocated_payments."unallocatedPaymentCount",
+          received_payments."totalReceivedAmount",
+          active_payment_allocations."totalActiveAllocatedAmount"
         FROM paged
         LEFT JOIN unallocated_payments
           ON paged."customerId" = unallocated_payments."customerId"
           AND paged."currencyCode" = unallocated_payments."currencyCode"
+        LEFT JOIN received_payments
+          ON paged."customerId" = received_payments."customerId"
+          AND paged."currencyCode" = received_payments."currencyCode"
+        LEFT JOIN active_payment_allocations
+          ON paged."customerId" = active_payment_allocations."customerId"
+          AND paged."currencyCode" = active_payment_allocations."currencyCode"
         ORDER BY LOWER(paged."debtorDisplayName") ASC, paged."groupKind" ASC, paged."groupIdentity" ASC, paged."currencyCode" ASC
       `,
       this.prisma.$queryRaw<Array<{ total: bigint }>>`
@@ -557,6 +591,8 @@ type AccountReceivableGroupRow = {
   overdueCount: bigint | number;
   unallocatedPaymentAmount: Prisma.Decimal | null;
   unallocatedPaymentCount: bigint | number | null;
+  totalReceivedAmount: Prisma.Decimal | null;
+  totalActiveAllocatedAmount: Prisma.Decimal | null;
 };
 
 type UnallocatedPaymentBalanceRow = {
@@ -596,6 +632,8 @@ function accountReceivableGroup(row: AccountReceivableGroupRow) {
     totalAllocatedAmount: money(row.totalAllocatedAmount),
     totalOutstandingAmount: money(row.totalOutstandingAmount),
     totalOverdueOutstandingAmount: money(row.totalOverdueOutstandingAmount),
+    totalReceivedAmount: money(row.totalReceivedAmount ?? new Prisma.Decimal(0)),
+    totalActiveAllocatedAmount: money(row.totalActiveAllocatedAmount ?? new Prisma.Decimal(0)),
     unallocatedPaymentAmount: row.unallocatedPaymentAmount
       ? money(row.unallocatedPaymentAmount)
       : "0.00",

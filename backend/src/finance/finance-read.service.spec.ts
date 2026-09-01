@@ -329,6 +329,7 @@ describe("FinanceReadService", () => {
           totalOutstandingAmount: d("18.02340"), totalOverdueOutstandingAmount: d("8.00001"),
           totalCount: 4n, openCount: 1n, partiallySettledCount: 1n, settledCount: 1n,
           cancelledCount: 1n, overdueCount: 1n,
+          totalReceivedAmount: d("20.50010"), totalActiveAllocatedAmount: d("16.00005"),
           unallocatedPaymentAmount: d("4.50005"), unallocatedPaymentCount: 2n,
         }),
         groupRow({ groupIdentity: "customer-a", customerId: "customer-a", currencyCode: "USD" }),
@@ -351,6 +352,7 @@ describe("FinanceReadService", () => {
       customerId: "customer-a", currencyCode: "CRC",
       totalOriginalAmount: "30.12345", totalAllocatedAmount: "12.10005",
       totalOutstandingAmount: "18.0234", totalOverdueOutstandingAmount: "8.00001",
+      totalReceivedAmount: "20.5001", totalActiveAllocatedAmount: "16.00005",
       unallocatedPaymentAmount: "4.50005", unallocatedPaymentCount: 2,
       counts: { total: 4, open: 1, partiallySettled: 1, settled: 1, cancelled: 1, overdue: 1 },
     }));
@@ -359,6 +361,9 @@ describe("FinanceReadService", () => {
     expect(result.groups[3].groupKey).not.toBe(result.groups[4].groupKey);
     expect(result.groups.slice(3).map((group) => group.customerId)).toEqual([null, null]);
     expect(result.groups[1]).toMatchObject({ unallocatedPaymentAmount: "0.00", unallocatedPaymentCount: 0 });
+    expect(d(result.groups[0].totalReceivedAmount)).toEqual(
+      d(result.groups[0].totalActiveAllocatedAmount).plus(d(result.groups[0].unallocatedPaymentAmount)),
+    );
 
     const pageSql = rawSql(queryRaw, 0);
     expect(pageSql).toContain('COALESCE("customerId", "id")');
@@ -369,8 +374,18 @@ describe("FinanceReadService", () => {
     expect(pageSql).toContain('"originalAmount" - "outstandingAmount"');
     expect(pageSql).toContain("'OPEN', 'PARTIALLY_SETTLED'");
     expect(pageSql).toContain("unallocated_payments");
+    expect(pageSql).toContain("received_payments");
+    expect(pageSql).toContain("active_payment_allocations");
+    expect(pageSql).toContain('SUM("receivedAmount") AS "totalReceivedAmount"');
+    expect(pageSql).toContain('SUM(allocation."amount") AS "totalActiveAllocatedAmount"');
     expect(pageSql).toContain('"availableAmount" >');
     expect(pageSql).toContain("'RECEIVED', 'PARTIALLY_ALLOCATED'");
+    expect(pageSql).toContain('payment."status" <> \'CANCELLED\'');
+    expect(pageSql).toContain('allocation."status" = \'ACTIVE\'');
+    expect(pageSql).toContain('payment."customerId" IS NOT NULL');
+    expect(pageSql).toContain('payment."currencyCode"');
+    expect(pageSql).toContain('paged."customerId" = received_payments."customerId"');
+    expect(pageSql).toContain('paged."currencyCode" = active_payment_allocations."currencyCode"');
     expect(queryRaw.mock.calls[0]).toEqual(expect.arrayContaining([new Date("2026-08-31T00:00:00.000Z"), "tenant-a", 5, 5]));
     expect(prisma).not.toHaveProperty("client");
     expect(prisma).not.toHaveProperty("billingDocument");
@@ -577,6 +592,7 @@ function groupRow(overrides: Record<string, unknown> = {}) {
     totalOriginalAmount: d("10"), totalAllocatedAmount: d("0"), totalOutstandingAmount: d("10"),
     totalOverdueOutstandingAmount: d("0"), totalCount: 1n, openCount: 1n, partiallySettledCount: 0n,
     settledCount: 0n, cancelledCount: 0n, overdueCount: 0n,
+    totalReceivedAmount: null, totalActiveAllocatedAmount: null,
     ...overrides,
   };
 }
