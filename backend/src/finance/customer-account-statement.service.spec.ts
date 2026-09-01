@@ -5,11 +5,12 @@ describe("CustomerAccountStatementService", () => {
   const client = { findFirst: jest.fn() };
   const accountReceivable = { findMany: jest.fn() };
   const payment = { findMany: jest.fn(), aggregate: jest.fn() };
+  const tenantBillingConfiguration = { findUnique: jest.fn() };
   const renderDocumentToBuffer = jest.fn();
   const sendEmail = jest.fn();
   const getTenantConfig = jest.fn();
   const service = new CustomerAccountStatementService(
-    { client, accountReceivable, payment } as never,
+    { client, accountReceivable, payment, tenantBillingConfiguration } as never,
     { renderDocumentToBuffer } as never,
     { sendEmail } as never,
     { getTenantConfig } as never,
@@ -21,6 +22,7 @@ describe("CustomerAccountStatementService", () => {
     accountReceivable.findMany.mockResolvedValue([{ id: "ar-1", sourceNumber: "FE-1", sourceId: "source-1", sourceDocumentType: "Factura electrónica", recognizedAt: new Date("2026-08-01"), dueDate: new Date("2026-08-31"), originalAmount: new Prisma.Decimal("100"), outstandingAmount: new Prisma.Decimal("60"), status: "PARTIALLY_SETTLED", paymentAllocations: [{ amount: new Prisma.Decimal("40"), allocatedAt: new Date("2026-08-10"), status: "ACTIVE", payment: { receiptNumber: "RCP-1" } }] }]);
     payment.findMany.mockResolvedValue([{ id: "payment-1", receiptNumber: "RCP-1", receivedAt: new Date("2026-08-10"), receivedAmount: new Prisma.Decimal("50"), availableAmount: new Prisma.Decimal("10"), paymentMethod: "BANK_TRANSFER", status: "PARTIALLY_ALLOCATED", allocations: [{ amount: new Prisma.Decimal("40"), allocatedAt: new Date("2026-08-10"), status: "ACTIVE", accountReceivable: { sourceNumber: "FE-1", sourceId: "source-1" } }] }]);
     payment.aggregate.mockResolvedValue({ _sum: { availableAmount: new Prisma.Decimal("10") } });
+    tenantBillingConfiguration.findUnique.mockResolvedValue({ fiscalTimezone: "America/Costa_Rica" });
     getTenantConfig.mockResolvedValue({ name: "Agencia" });
     renderDocumentToBuffer.mockResolvedValue({ pdfBuffer: Buffer.from("pdf"), signatureAnchors: {} });
     sendEmail.mockResolvedValue({ success: true, emailId: "email-1" });
@@ -31,6 +33,7 @@ describe("CustomerAccountStatementService", () => {
     expect(result.totals).toEqual({ invoicedAmount: "100.00", allocatedAmount: "40.00", outstandingAmount: "60.00", availableAmount: "10.00" });
     expect(result.invoices[0].allocations[0]).toMatchObject({ receiptNumber: "RCP-1", amount: "40.00" });
     expect(result.payments[0].allocations[0]).toMatchObject({ invoiceNumber: "FE-1", amount: "40.00" });
+    expect(result.payments[0].paymentMethodLabel).toBe("Transferencia bancaria");
   });
 
   it("renders the PDF and sends it through the centralized email service", async () => {

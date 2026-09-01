@@ -239,8 +239,8 @@ export type CustomerAccountStatement = {
   customer: { id: string; name: string; identification: string | null; email: string | null };
   currencyCode: FinanceCurrency;
   totals: { invoicedAmount: string; allocatedAmount: string; outstandingAmount: string; availableAmount: string };
-  invoices: Array<{ id: string; number: string; documentType: string | null; recognizedAt: string; dueDate: string; originalAmount: string; allocatedAmount: string; outstandingAmount: string; status: AccountReceivableStatus; allocations: Array<{ receiptNumber: string; amount: string; allocatedAt: string; status: 'ACTIVE' | 'REVERSED' }> }>;
-  payments: Array<{ id: string; receiptNumber: string; receivedAt: string; receivedAmount: string; availableAmount: string; paymentMethod: string; status: PaymentStatus; allocations: Array<{ invoiceNumber: string; amount: string; allocatedAt: string; status: 'ACTIVE' | 'REVERSED' }> }>;
+  invoices: Array<{ id: string; number: string; documentType: string | null; recognizedAt: string; dueDate: string; originalAmount: string; allocatedAmount: string; outstandingAmount: string; status: AccountReceivableStatus; allocations: Array<{ receiptNumber: string; amount: string; allocatedAt: string; status: 'ACTIVE' | 'REVERSED'; statusLabel: string }> }>;
+  payments: Array<{ id: string; receiptNumber: string; receivedAt: string; receivedAmount: string; availableAmount: string; paymentMethod: string; paymentMethodLabel: string; status: PaymentStatus; allocations: Array<{ invoiceNumber: string; amount: string; allocatedAt: string; status: 'ACTIVE' | 'REVERSED'; statusLabel: string }> }>;
 };
 
 export type ListAccountReceivablesParams = {
