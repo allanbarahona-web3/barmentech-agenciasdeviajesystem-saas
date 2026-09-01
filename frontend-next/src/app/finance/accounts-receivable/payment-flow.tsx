@@ -335,7 +335,7 @@ export function PaymentFlow({ receivable, initialPayment, canAllocate = true, on
             <div><span>Deudor / pagador</span><strong>{contextName}</strong></div>
             <div><span>{receivable ? 'Cuenta seleccionada' : 'Recibo existente'}</span><strong>{contextReference}</strong></div>
             <div><span>Moneda</span><strong>{contextCurrency}</strong></div>
-            {receivable && <div><span>Saldo pendiente CxC</span><strong>{formatFinanceMoney(receivable.outstandingAmount, receivable.currencyCode)}</strong></div>}
+            {receivable && <div><span>Saldo pendiente CxC</span><strong className={styles.pendingAmount}>{formatFinanceMoney(receivable.outstandingAmount, receivable.currencyCode)}</strong></div>}
           </section>
           {error && <div className={styles.paymentError} role="alert"><AlertCircle aria-hidden="true" /><span>{error}</span></div>}
           {!payment && receivable ? (
