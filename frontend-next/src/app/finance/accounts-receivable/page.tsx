@@ -13,6 +13,7 @@ import styles from './accounts-receivable.module.css';
 import { PaymentFlow } from './payment-flow';
 import { PaymentsView, type PaymentCustomerFilter } from './payments-view';
 import { ReceivableGroupsView } from './receivable-groups';
+import { CustomerFundsFlow } from './customer-funds-flow';
 
 const READ_ROLES = new Set(['ADMIN', 'FACTURACION_COBROS', 'CONTADOR']);
 const WRITE_ROLES = new Set(['ADMIN', 'FACTURACION_COBROS']);
@@ -25,7 +26,7 @@ function statusClass(status: AccountReceivableStatus) {
   return styles.cancelledBadge;
 }
 
-function ReceivableDrawer({ id, canWrite, onClose, onRegisterPayment }: { id: string; canWrite: boolean; onClose: () => void; onRegisterPayment: (detail: AccountReceivableDetail) => void }) {
+function ReceivableDrawer({ id, canWrite, onClose, onRegisterPayment, onApplyBalance }: { id: string; canWrite: boolean; onClose: () => void; onRegisterPayment: (detail: AccountReceivableDetail) => void; onApplyBalance: (detail: AccountReceivableDetail) => void }) {
   const [detail, setDetail] = useState<AccountReceivableDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -57,7 +58,7 @@ function ReceivableDrawer({ id, canWrite, onClose, onRegisterPayment }: { id: st
         <section className={styles.detailCard}><h3>Factura y origen</h3><dl className={styles.facts}><div><dt>Referencia fiscal</dt><dd>{detail.sourceNumber ?? 'No disponible'}</dd></div><div><dt>BillingDocument</dt><dd>{detail.sourceId}</dd></div><div><dt>Tipo de documento</dt><dd>{detail.sourceDocumentType ?? 'No disponible'}</dd></div><div><dt>Tipo de origen</dt><dd>{detail.sourceType}</dd></div></dl></section>
         <section className={styles.detailCard}><h3>Deudor</h3><dl className={styles.facts}><div><dt>Nombre</dt><dd>{detail.debtorDisplayName}</dd></div><div><dt>Identificación</dt><dd>{detail.debtorIdentificationNumber ?? 'No disponible'}</dd></div></dl></section>
         <section className={styles.detailCard}><h3>Aplicaciones registradas</h3>{detail.allocations.length === 0 ? <p className={styles.secondary}>No hay aplicaciones de pago registradas.</p> : <div className={styles.allocationList}>{detail.allocations.map((allocation) => <article className={styles.allocation} key={allocation.id}><div className={styles.allocationHeader}><strong>{formatFinanceMoney(allocation.amount, detail.currencyCode)}</strong><Badge className={allocation.status === 'ACTIVE' ? styles.activeBadge : styles.reversedBadge} variant="outline">{allocation.status === 'ACTIVE' ? 'Activa' : 'Revertida'}</Badge></div><p>Recibo: {allocation.paymentReceiptNumber ?? allocation.paymentId} · Aplicado: {formatBusinessDate(allocation.allocatedAt)}</p>{allocation.reversal && <p>Reversión: {allocation.reversal.reason} · {formatBusinessDate(allocation.reversal.reversedAt)}</p>}</article>)}</div>}</section>
-        {canWrite && <section className={styles.futureAction}>{detail.status === 'SETTLED' || detail.status === 'CANCELLED' ? <><p>Esta cuenta por cobrar ya está saldada. Seleccione otra cuenta por cobrar para registrar o aplicar un abono.</p><p>Saldo pendiente: {formatFinanceMoney(detail.outstandingAmount, detail.currencyCode)}</p></> : <><p>Registre el pago y solicite su aplicación a una o varias cuentas. El backend validará y devolverá el estado financiero resultante.</p><Button className={styles.primaryAction} type="button" onClick={() => onRegisterPayment(detail)}><WalletCards aria-hidden="true" />Registrar pago / abono</Button></>}</section>}
+        {canWrite && <section className={styles.futureAction}>{detail.status === 'SETTLED' || detail.status === 'CANCELLED' || !detail.customerId || !detail.hasUnallocatedPayments ? <><p>Registre un nuevo pago / abono para esta cuenta. El saldo disponible se habilita cuando el cliente tiene fondos recibidos sin aplicar.</p><p>Saldo pendiente: {formatFinanceMoney(detail.outstandingAmount, detail.currencyCode)}</p><Button className={styles.primaryAction} type="button" onClick={() => onRegisterPayment(detail)}><WalletCards aria-hidden="true" />Registrar pago / abono</Button></> : <><p>El cliente tiene saldo disponible. Aplique el saldo a esta o varias cuentas sin elegir recibos.</p><div className={styles.paymentActions}><Button className={styles.secondaryAction} variant="outline" type="button" onClick={() => onRegisterPayment(detail)}><WalletCards aria-hidden="true" />Registrar nuevo abono</Button><Button className={styles.primaryAction} type="button" onClick={() => onApplyBalance(detail)}>Aplicar saldo disponible</Button></div></>}</section>}
       </>}</div>
     </aside>
   </>;
@@ -101,11 +102,8 @@ export default function AccountsReceivablePage() {
   const [openingRegistration, setOpeningRegistration] = useState(false);
   const [operationError, setOperationError] = useState<string | null>(null);
   const [paymentCustomer, setPaymentCustomer] = useState<PaymentCustomerFilter | null>(null);
-  const [saldoDecisionReceivable, setSaldoDecisionReceivable] = useState<AccountReceivableDetail | null>(null);
-  const [saldoPickerReceivable, setSaldoPickerReceivable] = useState<AccountReceivableDetail | null>(null);
+  const [customerFundsReceivable, setCustomerFundsReceivable] = useState<AccountReceivableDetail | null>(null);
   const [guardedReceivable, setGuardedReceivable] = useState<AccountReceivableDetail | null>(null);
-  const [existingPayment, setExistingPayment] = useState<PaymentDetail | null>(null);
-  const [allocationReceivable, setAllocationReceivable] = useState<AccountReceivableDetail | null>(null);
 
   useEffect(() => {
     const session = getStoredSession();
@@ -117,7 +115,6 @@ export default function AccountsReceivablePage() {
 
   const startRegistration = useCallback((detail: AccountReceivableDetail) => {
     if (detail.status === 'SETTLED' || detail.status === 'CANCELLED') { setGuardedReceivable(detail); return; }
-    if (detail.hasUnallocatedPayments) { setSaldoDecisionReceivable(detail); return; }
     setRegistrationReceivable(detail);
   }, []);
 
@@ -136,11 +133,9 @@ export default function AccountsReceivablePage() {
     {openingRegistration && <div className={styles.operationNotice}>Abriendo la cuenta seleccionada…</div>}
     {view === 'receivables' ? <ReceivableGroupsView canWrite={canWrite} reloadToken={reload} onOpenDetail={setSelectedId} onRegisterPayment={(id) => void openRegistration(id)} onViewPayments={(customer) => { setPaymentCustomer(customer); setView('payments'); }} /> : <PaymentsView canWrite={canWrite} reloadToken={reload} customerFilter={paymentCustomer} onClearCustomer={() => setPaymentCustomer(null)} onChanged={() => setReload((value) => value + 1)} onApplyBalance={(customer) => { setPaymentCustomer(customer); }} />}
   </div>
-  {selectedId && <ReceivableDrawer key={selectedId} id={selectedId} canWrite={canWrite} onClose={() => setSelectedId(null)} onRegisterPayment={startRegistration} />}
+  {selectedId && <ReceivableDrawer key={selectedId} id={selectedId} canWrite={canWrite} onClose={() => setSelectedId(null)} onRegisterPayment={startRegistration} onApplyBalance={setCustomerFundsReceivable} />}
   {registrationReceivable && <PaymentFlow receivable={registrationReceivable} onClose={() => setRegistrationReceivable(null)} onAllocated={() => setReload((value) => value + 1)} />}
-  {saldoDecisionReceivable && <ActionModal title="Recibos con saldo disponible" onClose={() => setSaldoDecisionReceivable(null)}><p className={styles.decisionCopy}>Este cliente tiene dinero recibido sin aplicar. Para continuar, seleccione un recibo específico.</p><section className={styles.detailCard}><dl className={styles.facts}><div><dt>Saldo disponible</dt><dd>{formatFinanceMoney(saldoDecisionReceivable.unallocatedPaymentAmount, saldoDecisionReceivable.currencyCode)}</dd></div><div><dt>Recibos con saldo</dt><dd>{saldoDecisionReceivable.unallocatedPaymentCount}</dd></div></dl></section><div className={styles.paymentActions}><Button className={styles.secondaryAction} variant="outline" type="button" onClick={() => { setSaldoPickerReceivable(saldoDecisionReceivable); setSaldoDecisionReceivable(null); }}>Elegir recibo para aplicar</Button><Button className={styles.primaryAction} type="button" onClick={() => { setRegistrationReceivable(saldoDecisionReceivable); setSaldoDecisionReceivable(null); }}>Registrar nuevo abono</Button></div></ActionModal>}
-  {saldoPickerReceivable && <AvailablePaymentsPicker receivable={saldoPickerReceivable} onClose={() => setSaldoPickerReceivable(null)} onSelect={(payment) => { setAllocationReceivable(saldoPickerReceivable); setExistingPayment(payment); setSaldoPickerReceivable(null); }} />}
-  {existingPayment && <PaymentFlow receivable={allocationReceivable ?? undefined} initialPayment={existingPayment} onClose={() => { setExistingPayment(null); setAllocationReceivable(null); }} onAllocated={() => setReload((value) => value + 1)} />}
+  {customerFundsReceivable && <CustomerFundsFlow receivable={customerFundsReceivable} onClose={() => setCustomerFundsReceivable(null)} onCommitted={() => setReload((value) => value + 1)} />}
   {guardedReceivable && <ActionModal title="Cuenta por cobrar no disponible" onClose={() => setGuardedReceivable(null)}><p className={styles.decisionCopy}>Esta cuenta por cobrar ya está saldada. Seleccione otra cuenta por cobrar para registrar o aplicar un abono.</p><section className={styles.detailCard}><dl className={styles.facts}><div><dt>Saldo pendiente</dt><dd>{formatFinanceMoney(guardedReceivable.outstandingAmount, guardedReceivable.currencyCode)}</dd></div></dl></section><div className={styles.paymentActions}><Button className={styles.primaryAction} type="button" onClick={() => setGuardedReceivable(null)}>Entendido</Button></div></ActionModal>}
   </main>;
 }

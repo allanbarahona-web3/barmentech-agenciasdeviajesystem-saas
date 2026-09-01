@@ -214,6 +214,15 @@ export type AllocatePaymentInput = {
   }>;
 };
 
+export type CustomerFundsAllocationTarget = { accountReceivableId: string; amount: string };
+export type CustomerFundsAllocationPreview = {
+  customerId: string; currencyCode: FinanceCurrency; totalAvailableAmount: string; totalRequestedAmount: string; remainingAvailableAmount: string;
+  targets: Array<{ accountReceivableId: string; requestedAmount: string; currentOutstandingAmount: string; projectedOutstandingAmount: string; resultingStatus?: AccountReceivableStatus }>;
+  fundingBreakdown: Array<{ paymentId: string; receiptNumber: string; accountReceivableId: string; amount: string; paymentAllocationId?: string }>;
+  commandId?: string;
+};
+export type CustomerFundsAllocationInput = { customerId: string; currencyCode: FinanceCurrency; portfolioAllocationDeduplicationKey: string; targets: CustomerFundsAllocationTarget[] };
+
 export type ListAccountReceivablesParams = {
   page?: number;
   pageSize?: number;
@@ -260,6 +269,10 @@ const ERROR_MESSAGES: Record<string, string> = {
   PAYMENT_ALLOCATION_PAYMENT_INSUFFICIENT: 'El backend rechazó la aplicación porque el pago no tiene saldo disponible suficiente.',
   PAYMENT_ALLOCATION_RECEIVABLE_INSUFFICIENT: 'El backend rechazó la aplicación porque el monto supera el saldo de una cuenta.',
   PAYMENT_ALLOCATION_CONFLICT: 'La solicitud de aplicación ya fue utilizada con información diferente.',
+  CUSTOMER_FUNDS_ALLOCATION_INSUFFICIENT: 'El cliente ya no tiene saldo disponible suficiente. Actualice la vista y vuelva a previsualizar.',
+  CUSTOMER_FUNDS_ALLOCATION_TARGET_INVALID: 'Una cuenta o monto ya no está disponible. Actualice la vista y vuelva a previsualizar.',
+  CUSTOMER_FUNDS_ALLOCATION_DUPLICATE_TARGET: 'Una cuenta por cobrar solo puede incluirse una vez.',
+  CUSTOMER_FUNDS_ALLOCATION_IDEMPOTENCY_CONFLICT: 'Esta confirmación ya fue utilizada con una intención diferente.',
   FINANCE_OPERATION_FAILED: 'No se pudo completar la consulta financiera.',
 };
 
@@ -383,6 +396,14 @@ export function allocatePayment(
     `/finance/payments/${encodeURIComponent(paymentId)}/allocations`,
     input,
   );
+}
+
+export function previewCustomerFundsAllocation(input: Omit<CustomerFundsAllocationInput, 'portfolioAllocationDeduplicationKey'>): Promise<CustomerFundsAllocationPreview> {
+  return post<CustomerFundsAllocationPreview>('/finance/customer-funds/allocation-preview', input);
+}
+
+export function allocateCustomerFunds(input: CustomerFundsAllocationInput): Promise<CustomerFundsAllocationPreview> {
+  return post<CustomerFundsAllocationPreview>('/finance/customer-funds/allocations', input);
 }
 
 export function formatFinanceMoney(value: string, currency: string): string {
