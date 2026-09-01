@@ -28,10 +28,10 @@ describe("FinanceReadService", () => {
   });
 
   it.each([
-    ["payment smaller than AR", "3.12345", "10.00000", "3.12345"],
-    ["payment larger than AR", "10.00000", "3.12345", "3.12345"],
-    ["equal exact balances", "5.00000", "5.00000", "5"],
-  ])("suggests the exact maximum applicable amount when %s", async (_, available, outstanding, suggested) => {
+    ["payment smaller than AR", "3.12345", "10.00000", "3.12345", "0", false],
+    ["payment larger than AR", "10.00000", "3.12345", "3.12345", "6.87655", true],
+    ["equal exact balances", "5.00000", "5.00000", "5", "0", false],
+  ])("suggests the exact maximum applicable amount when %s", async (_, available, outstanding, suggested, remaining, hasRemaining) => {
     const paymentFindFirst = jest.fn().mockResolvedValue(suggestionPayment({ availableAmount: d(available), receivedAmount: d("10.00000") }));
     const receivableFindFirst = jest.fn().mockResolvedValue(suggestionReceivable({ outstandingAmount: d(outstanding), originalAmount: d("10.00000") }));
     const service = new FinanceReadService({
@@ -46,6 +46,8 @@ describe("FinanceReadService", () => {
       paymentAvailableAmount: new Prisma.Decimal(available).toFixed(),
       accountReceivableOutstandingAmount: new Prisma.Decimal(outstanding).toFixed(),
       suggestedAmount: suggested,
+      remainingAfterSuggestion: remaining,
+      hasRemainingAfterSuggestion: hasRemaining,
     });
     expect(paymentFindFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "payment-a", tenantId: "tenant-a" } }));
     expect(receivableFindFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "ar-a", tenantId: "tenant-a" } }));
@@ -160,8 +162,10 @@ describe("FinanceReadService", () => {
       cancelledAt: null,
       paymentAllocations: [],
     });
+    const aggregate = jest.fn().mockResolvedValue({ _sum: { availableAmount: d("4.25000") }, _count: { _all: 2 } });
     const service = new FinanceReadService({
       accountReceivable: { findFirst },
+      payment: { aggregate },
       tenantBillingConfiguration: { findUnique: jest.fn().mockResolvedValue({ fiscalTimezone: "America/Costa_Rica" }) },
       billingAuditLog: { findMany: jest.fn().mockResolvedValue([]) },
     } as unknown as PrismaService);
@@ -169,9 +173,49 @@ describe("FinanceReadService", () => {
     await expect(service.getAccountReceivableDetail("tenant-a", "ar-a")).resolves.toMatchObject({
       id: "ar-a",
       isOverdue: false,
+      customerId: "customer-a",
+      currencyCode: "CRC",
+      outstandingAmount: "3.33333",
+      unallocatedPaymentAmount: "4.25",
+      unallocatedPaymentCount: 2,
+      hasUnallocatedPayments: true,
     });
     expect(findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "ar-a", tenantId: "tenant-a" } }));
+    expect(aggregate).toHaveBeenCalledWith({
+      where: {
+        tenantId: "tenant-a",
+        customerId: "customer-a",
+        currencyCode: "CRC",
+        availableAmount: { gt: new Prisma.Decimal(0) },
+        status: { in: ["RECEIVED", "PARTIALLY_ALLOCATED"] },
+      },
+      _sum: { availableAmount: true },
+      _count: { _all: true },
+    });
     jest.useRealTimers();
+  });
+
+  it("keeps null-customer AR availability empty without querying Payments", async () => {
+    const aggregate = jest.fn();
+    const service = new FinanceReadService({
+      accountReceivable: { findFirst: jest.fn().mockResolvedValue({
+        ...receivable({ customerId: null }),
+        paymentTermDays: null,
+        cancelledAt: null,
+        paymentAllocations: [],
+      }) },
+      payment: { aggregate },
+      tenantBillingConfiguration: { findUnique: jest.fn().mockResolvedValue({ fiscalTimezone: "America/Costa_Rica" }) },
+      billingAuditLog: { findMany: jest.fn().mockResolvedValue([]) },
+    } as unknown as PrismaService);
+
+    await expect(service.getAccountReceivableDetail("tenant-a", "ar-null")).resolves.toMatchObject({
+      customerId: null,
+      unallocatedPaymentAmount: "0",
+      unallocatedPaymentCount: 0,
+      hasUnallocatedPayments: false,
+    });
+    expect(aggregate).not.toHaveBeenCalled();
   });
 
   it("projects persisted Finance audit actors in one tenant-scoped batched detail read", async () => {

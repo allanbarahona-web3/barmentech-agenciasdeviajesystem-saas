@@ -33,13 +33,32 @@ export class FinanceReadService {
       this.getTenantCurrentCalendarDate(tenantId),
     ]);
     if (!receivable) throw new NotFoundException("ACCOUNT_RECEIVABLE_NOT_FOUND");
-    const auditRows = await this.financeAuditRows(
-      tenantId,
-      [],
-      receivable.paymentAllocations.map((allocation) => allocation.id),
-      receivable.paymentAllocations.flatMap((allocation) => allocation.reversal ? [allocation.reversal.id] : []),
+    const [auditRows, availablePaymentSummary] = await Promise.all([
+      this.financeAuditRows(
+        tenantId,
+        [],
+        receivable.paymentAllocations.map((allocation) => allocation.id),
+        receivable.paymentAllocations.flatMap((allocation) => allocation.reversal ? [allocation.reversal.id] : []),
+      ),
+      receivable.customerId === null
+        ? Promise.resolve(null)
+        : this.prisma.payment.aggregate({
+            where: {
+              tenantId,
+              customerId: receivable.customerId,
+              currencyCode: receivable.currencyCode,
+              ...availablePaymentConstraint(),
+            },
+            _sum: { availableAmount: true },
+            _count: { _all: true },
+          }),
+    ]);
+    return accountReceivableDetail(
+      receivable,
+      tenantCurrentCalendarDate,
+      auditRows,
+      availablePaymentSummary,
     );
-    return accountReceivableDetail(receivable, tenantCurrentCalendarDate, auditRows);
   }
 
   async getPaymentDetail(tenantId: string, id: string) {
@@ -109,17 +128,19 @@ export class FinanceReadService {
     if (payment.currencyCode !== receivable.currencyCode) {
       throw new ConflictException("PAYMENT_ALLOCATION_CURRENCY_MISMATCH");
     }
+    const suggestedAmount = payment.availableAmount.lessThan(receivable.outstandingAmount)
+      ? payment.availableAmount
+      : receivable.outstandingAmount;
+    const remainingAfterSuggestion = payment.availableAmount.minus(suggestedAmount);
     return {
       paymentId: payment.id,
       accountReceivableId: receivable.id,
       currencyCode: payment.currencyCode,
       paymentAvailableAmount: money(payment.availableAmount),
       accountReceivableOutstandingAmount: money(receivable.outstandingAmount),
-      suggestedAmount: money(
-        payment.availableAmount.lessThan(receivable.outstandingAmount)
-          ? payment.availableAmount
-          : receivable.outstandingAmount,
-      ),
+      suggestedAmount: money(suggestedAmount),
+      remainingAfterSuggestion: money(remainingAfterSuggestion),
+      hasRemainingAfterSuggestion: remainingAfterSuggestion.greaterThan(0),
     };
   }
 
@@ -299,10 +320,7 @@ export class FinanceReadService {
     const constraints: Prisma.PaymentWhereInput[] = [];
     if (query.status) constraints.push({ status: query.status });
     if (query.availableOnly) {
-      constraints.push({
-        availableAmount: { gt: new Prisma.Decimal(0) },
-        status: { in: [PaymentStatus.RECEIVED, PaymentStatus.PARTIALLY_ALLOCATED] },
-      });
+      constraints.push(availablePaymentConstraint());
     }
     const where: Prisma.PaymentWhereInput = {
       tenantId,
@@ -657,6 +675,13 @@ function accountReceivableWhere(tenantId: string, query: ListAccountReceivablesD
   };
 }
 
+function availablePaymentConstraint(): Prisma.PaymentWhereInput {
+  return {
+    availableAmount: { gt: new Prisma.Decimal(0) },
+    status: { in: [PaymentStatus.RECEIVED, PaymentStatus.PARTIALLY_ALLOCATED] },
+  };
+}
+
 function accountReceivableListItem(
   receivable: Prisma.AccountReceivableGetPayload<{ select: typeof accountReceivableListSelect }>,
   tenantCurrentCalendarDate: string,
@@ -789,7 +814,13 @@ function paymentDetail(payment: Prisma.PaymentGetPayload<{
 
 function accountReceivableDetail(receivable: Prisma.AccountReceivableGetPayload<{
   include: { paymentAllocations: { include: { reversal: true } } };
-}>, tenantCurrentCalendarDate: string, auditRows: FinanceAuditRow[]) {
+}>,
+tenantCurrentCalendarDate: string,
+auditRows: FinanceAuditRow[],
+availablePaymentSummary: { _sum: { availableAmount: Prisma.Decimal | null }; _count: { _all: number } } | null,
+) {
+  const unallocatedPaymentAmount = availablePaymentSummary?._sum.availableAmount ?? new Prisma.Decimal(0);
+  const unallocatedPaymentCount = availablePaymentSummary?._count._all ?? 0;
   return {
     id: receivable.id,
     sourceType: receivable.sourceType,
@@ -803,6 +834,9 @@ function accountReceivableDetail(receivable: Prisma.AccountReceivableGetPayload<
     currencyCode: receivable.currencyCode,
     originalAmount: money(receivable.originalAmount),
     outstandingAmount: money(receivable.outstandingAmount),
+    unallocatedPaymentAmount: money(unallocatedPaymentAmount),
+    unallocatedPaymentCount,
+    hasUnallocatedPayments: unallocatedPaymentCount > 0,
     dueDate: receivable.dueDate,
     paymentTermDays: receivable.paymentTermDays,
     status: receivable.status,
