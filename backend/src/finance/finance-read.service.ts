@@ -7,6 +7,10 @@ import {
   ListAccountReceivablesDto,
   ListPaymentsDto,
 } from "./dto/finance.dto";
+import {
+  FINANCE_AUDIT_ACTIONS,
+  FINANCE_AUDIT_ENTITY_TYPES,
+} from "./finance-audit";
 
 const DEFAULT_FISCAL_TIMEZONE = "America/Costa_Rica";
 
@@ -28,7 +32,13 @@ export class FinanceReadService {
       this.getTenantCurrentCalendarDate(tenantId),
     ]);
     if (!receivable) throw new NotFoundException("ACCOUNT_RECEIVABLE_NOT_FOUND");
-    return accountReceivableDetail(receivable, tenantCurrentCalendarDate);
+    const auditRows = await this.financeAuditRows(
+      tenantId,
+      [],
+      receivable.paymentAllocations.map((allocation) => allocation.id),
+      receivable.paymentAllocations.flatMap((allocation) => allocation.reversal ? [allocation.reversal.id] : []),
+    );
+    return accountReceivableDetail(receivable, tenantCurrentCalendarDate, auditRows);
   }
 
   async getPaymentDetail(tenantId: string, id: string) {
@@ -42,7 +52,13 @@ export class FinanceReadService {
       },
     });
     if (!payment) throw new NotFoundException("PAYMENT_NOT_FOUND");
-    return paymentDetail(payment);
+    const auditRows = await this.financeAuditRows(
+      tenantId,
+      [payment.id],
+      payment.allocations.map((allocation) => allocation.id),
+      payment.allocations.flatMap((allocation) => allocation.reversal ? [allocation.reversal.id] : []),
+    );
+    return paymentDetail(payment, auditRows);
   }
 
   async getPaymentIdForAllocation(tenantId: string, id: string): Promise<string> {
@@ -277,6 +293,42 @@ export class FinanceReadService {
     };
   }
 
+  private async financeAuditRows(
+    tenantId: string,
+    paymentIds: string[],
+    allocationIds: string[],
+    reversalIds: string[],
+  ): Promise<FinanceAuditRow[]> {
+    const filters: Prisma.BillingAuditLogWhereInput[] = [];
+    if (paymentIds.length) {
+      filters.push({
+        entityType: FINANCE_AUDIT_ENTITY_TYPES.PAYMENT,
+        entityId: { in: paymentIds },
+        action: { in: [FINANCE_AUDIT_ACTIONS.REGISTERED, FINANCE_AUDIT_ACTIONS.CANCELLED] },
+      });
+    }
+    if (allocationIds.length) {
+      filters.push({
+        entityType: FINANCE_AUDIT_ENTITY_TYPES.ALLOCATION,
+        entityId: { in: allocationIds },
+        action: FINANCE_AUDIT_ACTIONS.APPLIED,
+      });
+    }
+    if (reversalIds.length) {
+      filters.push({
+        entityType: FINANCE_AUDIT_ENTITY_TYPES.REVERSAL,
+        entityId: { in: reversalIds },
+        action: FINANCE_AUDIT_ACTIONS.REVERSED,
+      });
+    }
+    if (!filters.length) return [];
+    return this.prisma.billingAuditLog.findMany({
+      where: { tenantId, OR: filters },
+      select: financeAuditSelect,
+      orderBy: { createdAt: "asc" },
+    });
+  }
+
   private async getTenantCurrentCalendarDate(tenantId: string): Promise<string> {
     const configuration = await this.prisma.tenantBillingConfiguration.findUnique({
       where: { tenantId },
@@ -499,9 +551,23 @@ function isOverdue(
   );
 }
 
+const financeAuditSelect = {
+  entityType: true,
+  entityId: true,
+  action: true,
+  actorUserId: true,
+  actorName: true,
+  createdAt: true,
+  afterJson: true,
+} satisfies Prisma.BillingAuditLogSelect;
+
+type FinanceAuditRow = Prisma.BillingAuditLogGetPayload<{ select: typeof financeAuditSelect }>;
+
 function paymentDetail(payment: Prisma.PaymentGetPayload<{
   include: { allocations: { include: { accountReceivable: true; reversal: true } } };
-}>) {
+}>, auditRows: FinanceAuditRow[]) {
+  const registered = auditRow(auditRows, FINANCE_AUDIT_ENTITY_TYPES.PAYMENT, payment.id, FINANCE_AUDIT_ACTIONS.REGISTERED);
+  const cancelled = auditRow(auditRows, FINANCE_AUDIT_ENTITY_TYPES.PAYMENT, payment.id, FINANCE_AUDIT_ACTIONS.CANCELLED);
   return {
     id: payment.id,
     customerId: payment.customerId,
@@ -517,12 +583,18 @@ function paymentDetail(payment: Prisma.PaymentGetPayload<{
     description: payment.description,
     status: payment.status,
     cancelledAt: payment.cancelledAt,
+    registeredBy: actorProjection(registered),
+    cancelledBy: cancelled && {
+      ...actorProjection(cancelled)!,
+      reason: auditReason(cancelled),
+    },
     allocations: payment.allocations.map((allocation) => ({
       id: allocation.id,
       accountReceivableId: allocation.accountReceivableId,
       amount: money(allocation.amount),
       status: allocation.status,
       allocatedAt: allocation.allocatedAt,
+      appliedBy: actorProjection(auditRow(auditRows, FINANCE_AUDIT_ENTITY_TYPES.ALLOCATION, allocation.id, FINANCE_AUDIT_ACTIONS.APPLIED)),
       accountReceivable: {
         id: allocation.accountReceivable.id,
         currencyCode: allocation.accountReceivable.currencyCode,
@@ -534,6 +606,7 @@ function paymentDetail(payment: Prisma.PaymentGetPayload<{
         id: allocation.reversal.id,
         reason: allocation.reversal.reason,
         reversedAt: allocation.reversal.reversedAt,
+        reversedBy: actorProjection(auditRow(auditRows, FINANCE_AUDIT_ENTITY_TYPES.REVERSAL, allocation.reversal.id, FINANCE_AUDIT_ACTIONS.REVERSED)),
       },
     })),
   };
@@ -541,7 +614,7 @@ function paymentDetail(payment: Prisma.PaymentGetPayload<{
 
 function accountReceivableDetail(receivable: Prisma.AccountReceivableGetPayload<{
   include: { paymentAllocations: { include: { reversal: true } } };
-}>, tenantCurrentCalendarDate: string) {
+}>, tenantCurrentCalendarDate: string, auditRows: FinanceAuditRow[]) {
   return {
     id: receivable.id,
     sourceType: receivable.sourceType,
@@ -568,13 +641,35 @@ function accountReceivableDetail(receivable: Prisma.AccountReceivableGetPayload<
       amount: money(allocation.amount),
       status: allocation.status,
       allocatedAt: allocation.allocatedAt,
+      appliedBy: actorProjection(auditRow(auditRows, FINANCE_AUDIT_ENTITY_TYPES.ALLOCATION, allocation.id, FINANCE_AUDIT_ACTIONS.APPLIED)),
       reversal: allocation.reversal && {
         id: allocation.reversal.id,
         reason: allocation.reversal.reason,
         reversedAt: allocation.reversal.reversedAt,
+        reversedBy: actorProjection(auditRow(auditRows, FINANCE_AUDIT_ENTITY_TYPES.REVERSAL, allocation.reversal.id, FINANCE_AUDIT_ACTIONS.REVERSED)),
       },
     })),
   };
+}
+
+function auditRow(
+  rows: FinanceAuditRow[],
+  entityType: string,
+  entityId: string,
+  action: string,
+): FinanceAuditRow | null {
+  return rows.find((row) => row.entityType === entityType && row.entityId === entityId && row.action === action) ?? null;
+}
+
+function actorProjection(row: FinanceAuditRow | null) {
+  return row && { userId: row.actorUserId, name: row.actorName, at: row.createdAt };
+}
+
+function auditReason(row: FinanceAuditRow): string | null {
+  const value = row.afterJson;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const reason = (value as Record<string, unknown>).reason;
+  return typeof reason === "string" && reason ? reason : null;
 }
 
 function money(value: Prisma.Decimal): string {

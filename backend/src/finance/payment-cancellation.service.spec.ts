@@ -24,6 +24,7 @@ describe("PaymentCancellationService", () => {
     });
     expect(result.receivedAmount.equals(d("10"))).toBe(true);
     expect(result.availableAmount.equals(d("10"))).toBe(true);
+    expect(c.tx.billingAuditLog.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ entityType: "FINANCE_PAYMENT", action: "CANCELLED", actorUserId: "user-a", actorName: "Finance User", afterJson: expect.objectContaining({ reason: "Duplicate receipt" }) }) }));
   });
 
   it("cancels a RECEIVED payment after all allocations were reversed", async () => {
@@ -93,6 +94,7 @@ describe("PaymentCancellationService", () => {
 
     expect(result.cancelledAt).toBe(cancelledAt);
     expect(c.tx.payment.updateMany).not.toHaveBeenCalled();
+    expect(c.tx.billingAuditLog.create).not.toHaveBeenCalled();
   });
 
   it("rejects an inconsistent CANCELLED payment without cancelledAt", async () => {
@@ -156,6 +158,16 @@ describe("PaymentCancellationService", () => {
     expect(error.message).not.toMatch(/database|payment-a|tenant-a/i);
   });
 
+  it("fails its transaction when cancellation audit persistence fails", async () => {
+    const c = context();
+    c.tx.billingAuditLog.create.mockRejectedValueOnce(new Error("audit write failed"));
+
+    await expectCode(c.service.cancel(command()), PAYMENT_CANCELLATION_ERRORS.PERSISTENCE_FAILED);
+
+    expect(c.tx.payment.updateMany).toHaveBeenCalledTimes(1);
+    expect((c.prisma.$transaction as jest.Mock)).toHaveBeenCalledTimes(1);
+  });
+
   it("retains allocation-service rejection for CANCELLED payments", async () => {
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([{ id: "payment-a" }]),
@@ -166,6 +178,7 @@ describe("PaymentCancellationService", () => {
 
     await expect(service.allocate({
       tenantId: "tenant-a",
+      actor: { userId: "user-a", name: "Finance User" },
       paymentId: "payment-a",
       allocations: [{ accountReceivableId: "ar-a", amount: d("1"), allocationDeduplicationKey: "allocation-key" }],
     })).rejects.toThrow(PAYMENT_ALLOCATION_ERRORS.PAYMENT_INVALID);
@@ -181,7 +194,7 @@ describe("PaymentCancellationService", () => {
 
     expect(result.status).toBe(PaymentStatus.CANCELLED);
     expect(result.availableAmount.equals(d("10"))).toBe(true);
-    expect(Object.keys(c.tx).sort()).toEqual(["$queryRaw", "payment", "paymentAllocation"]);
+    expect(Object.keys(c.tx).sort()).toEqual(["$queryRaw", "billingAuditLog", "payment", "paymentAllocation"]);
     expect(c.tx.payment.findFirst).toHaveBeenCalledTimes(1);
     expect(c.tx.paymentAllocation.findMany).toHaveBeenCalledTimes(1);
   });
@@ -189,9 +202,10 @@ describe("PaymentCancellationService", () => {
   it.each([
     [{ tenantId: "", paymentId: "payment-a" }],
     [{ tenantId: "tenant-a", paymentId: "" }],
+    [{ ...command(), reason: "   " }],
   ])("returns stable validation errors", async (invalid) => {
     const c = context();
-    const error = await capture(c.service.cancel(invalid));
+    const error = await capture(c.service.cancel(invalid as PaymentCancellationCommand));
     expect(error.message).toBe(PAYMENT_CANCELLATION_ERRORS.INVALID);
     expect(error.message).not.toMatch(/database|contract|billing|provider|outbox/i);
   });
@@ -206,7 +220,7 @@ type ContextOptions = {
 };
 
 function d(value: string): Prisma.Decimal { return new Prisma.Decimal(value); }
-function command(): PaymentCancellationCommand { return { tenantId: "tenant-a", paymentId: "payment-a" }; }
+function command(): PaymentCancellationCommand { return { tenantId: "tenant-a", actor: { userId: "user-a", name: "Finance User" }, paymentId: "payment-a", reason: "Duplicate receipt" }; }
 function payment(overrides: Record<string, unknown> = {}) {
   return {
     id: "payment-a", tenantId: "tenant-a", registrationDeduplicationKey: "registration-a",
@@ -235,6 +249,7 @@ function context(options: ContextOptions = {}) {
   });
   const tx = {
     $queryRaw: queryRaw,
+    billingAuditLog: { create: jest.fn().mockResolvedValue({ id: "audit-a" }) },
     payment: {
       findFirst: paymentFindFirst,
       updateMany: jest.fn().mockResolvedValue({ count: options.updateCount ?? 1 }),

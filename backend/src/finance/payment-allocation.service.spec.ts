@@ -33,6 +33,10 @@ describe("PaymentAllocationService", () => {
     const [first, second] = c.tx.accountReceivable.update.mock.calls.map((call) => call[0].data.settledAt);
     expect(first).toBe(second);
     expect(rawSql(c.tx.$queryRaw, 1)).toContain('ORDER BY "id" ASC');
+    expect(c.tx.billingAuditLog.createMany).toHaveBeenCalledWith(expect.objectContaining({ data: [
+      expect.objectContaining({ entityType: "FINANCE_PAYMENT_ALLOCATION", entityId: "allocation-b", action: "APPLIED", actorUserId: "user-a", actorName: "Finance User" }),
+      expect.objectContaining({ entityType: "FINANCE_PAYMENT_ALLOCATION", entityId: "allocation-a", action: "APPLIED", actorUserId: "user-a", actorName: "Finance User" }),
+    ] }));
   });
 
   it.each([
@@ -83,6 +87,19 @@ describe("PaymentAllocationService", () => {
     await c.service.allocate(command([{ accountReceivableId: "ar-a", amount: d("3.00000"), allocationDeduplicationKey: "a" }]));
 
     expect(c.tx.paymentAllocation.createMany).not.toHaveBeenCalled();
+    expect(c.tx.payment.update).not.toHaveBeenCalled();
+    expect(c.tx.accountReceivable.update).not.toHaveBeenCalled();
+    expect(c.tx.billingAuditLog.createMany).not.toHaveBeenCalled();
+  });
+
+  it("fails the transaction before balance updates when allocation audit persistence fails", async () => {
+    const c = context();
+    c.tx.billingAuditLog.createMany.mockRejectedValueOnce(new Error("audit write failed"));
+
+    await expectCode(c.service.allocate(command([
+      { accountReceivableId: "ar-a", amount: d("1"), allocationDeduplicationKey: "a" },
+    ])), PAYMENT_ALLOCATION_ERRORS.PERSISTENCE_FAILED);
+
     expect(c.tx.payment.update).not.toHaveBeenCalled();
     expect(c.tx.accountReceivable.update).not.toHaveBeenCalled();
   });
@@ -170,7 +187,7 @@ describe("PaymentAllocationService", () => {
 
   it("uses bounded Payment, AccountReceivable and Allocation access only with safe errors", async () => {
     const c = context(); await c.service.allocate(command([{ accountReceivableId: "ar-a", amount: d("1"), allocationDeduplicationKey: "a" }]));
-    expect(Object.keys(c.tx).sort()).toEqual(["$queryRaw", "accountReceivable", "payment", "paymentAllocation"]);
+    expect(Object.keys(c.tx).sort()).toEqual(["$queryRaw", "accountReceivable", "billingAuditLog", "payment", "paymentAllocation"]);
     expect(c.tx.payment.findFirst).toHaveBeenCalledTimes(1); expect(c.tx.accountReceivable.findMany).toHaveBeenCalledTimes(1);
     const error = await capture(c.service.allocate(command([{ accountReceivableId: "ar-a", amount: {} as Prisma.Decimal, allocationDeduplicationKey: "a" }])));
     expect(error.message).toBe(PAYMENT_ALLOCATION_ERRORS.INVALID); expect(error.message).not.toMatch(/payment-a|database|contract|billing/i);
@@ -178,15 +195,26 @@ describe("PaymentAllocationService", () => {
 });
 
 function d(value: string) { return new Prisma.Decimal(value); }
-function command(allocations: PaymentAllocationCommand["allocations"]): PaymentAllocationCommand { return { tenantId: "tenant-a", paymentId: "payment-a", allocations }; }
+function command(allocations: PaymentAllocationCommand["allocations"]): PaymentAllocationCommand { return { tenantId: "tenant-a", actor: { userId: "user-a", name: "Finance User" }, paymentId: "payment-a", allocations }; }
 function payment(available: string, overrides: Record<string, unknown> = {}) { return { id: "payment-a", tenantId: "tenant-a", currencyCode: "CRC", receivedAmount: d(available), availableAmount: d(available), status: PaymentStatus.RECEIVED, ...overrides }; }
 function receivable(id: string, outstanding: string, overrides: Record<string, unknown> = {}) { return { id, tenantId: "tenant-a", currencyCode: "CRC", originalAmount: d(outstanding), outstandingAmount: d(outstanding), status: AccountReceivableStatus.OPEN, ...overrides }; }
 function allocation(key: string, accountReceivableId: string, amount: string, overrides: Record<string, unknown> = {}) { return { id: `allocation-${key}`, tenantId: "tenant-a", paymentId: "payment-a", accountReceivableId, allocationDeduplicationKey: key, amount: d(amount), status: PaymentAllocationStatus.ACTIVE, ...overrides }; }
 function context(options: { payment?: ReturnType<typeof payment>; receivables?: Array<ReturnType<typeof receivable>>; allocations?: Array<ReturnType<typeof allocation>>; paymentLock?: Array<{ id: string }>; receivableLockCount?: number } = {}) {
   const currentPayment = options.payment ?? payment("10"); const currentReceivables = options.receivables ?? [receivable("ar-a", "10")]; const rows = [...(options.allocations ?? [])];
   const queryRaw = jest.fn(async (strings: TemplateStringsArray) => { const sql = strings.join("?"); if (sql.includes('FROM "payments"')) return options.paymentLock ?? [{ id: currentPayment.id }]; if (sql.includes('FROM "account_receivables"')) return currentReceivables.slice(0, options.receivableLockCount ?? currentReceivables.length).map((item) => ({ id: item.id })); return rows.map((item) => ({ id: item.id })); });
-  const createMany = jest.fn(async ({ data }: { data: Array<Record<string, unknown>> }) => { for (const item of data) if (!rows.some((row) => row.allocationDeduplicationKey === item.allocationDeduplicationKey)) rows.push(item as ReturnType<typeof allocation>); return { count: data.length }; });
-  const tx = { $queryRaw: queryRaw, payment: { findFirst: jest.fn().mockResolvedValue(currentPayment), update: jest.fn().mockResolvedValue(currentPayment) }, accountReceivable: { findMany: jest.fn().mockResolvedValue(currentReceivables), update: jest.fn().mockResolvedValue({}) }, paymentAllocation: { findMany: jest.fn().mockImplementation(async ({ where }: { where: { allocationDeduplicationKey: { in: string[] } } }) => rows.filter((row) => where.allocationDeduplicationKey.in.includes(row.allocationDeduplicationKey))), createMany } };
+  const createMany = jest.fn(async ({ data }: { data: Array<Record<string, unknown>> }) => {
+    for (const item of data) {
+      if (!rows.some((row) => row.allocationDeduplicationKey === item.allocationDeduplicationKey)) {
+        rows.push(allocation(
+          item.allocationDeduplicationKey as string,
+          item.accountReceivableId as string,
+          (item.amount as Prisma.Decimal).toFixed(),
+        ));
+      }
+    }
+    return { count: data.length };
+  });
+  const tx = { $queryRaw: queryRaw, billingAuditLog: { createMany: jest.fn().mockResolvedValue({ count: 1 }) }, payment: { findFirst: jest.fn().mockResolvedValue(currentPayment), update: jest.fn().mockResolvedValue(currentPayment) }, accountReceivable: { findMany: jest.fn().mockResolvedValue(currentReceivables), update: jest.fn().mockResolvedValue({}) }, paymentAllocation: { findMany: jest.fn().mockImplementation(async ({ where }: { where: { allocationDeduplicationKey: { in: string[] } } }) => rows.filter((row) => where.allocationDeduplicationKey.in.includes(row.allocationDeduplicationKey))), createMany } };
   const prisma = { $transaction: jest.fn(async (work: (value: typeof tx) => unknown) => work(tx)) } as unknown as PrismaService;
   return { service: new PaymentAllocationService(prisma), tx };
 }

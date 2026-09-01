@@ -9,6 +9,7 @@ import { PaymentCancellationService } from "./payment-cancellation.service";
 import { PaymentRegistrationService } from "./payment-registration.service";
 import {
   AllocatePaymentDto,
+  CancelPaymentDto,
   ListAccountReceivableGroupItemsDto,
   ListAccountReceivableGroupsDto,
   ListAccountReceivablesDto,
@@ -19,7 +20,7 @@ import {
 import { translateFinanceError } from "./finance.errors";
 import { FinanceReadService } from "./finance-read.service";
 
-type FinanceRequest = { user: { tenantId: string; role: UserRole } };
+type FinanceRequest = { user: { id: string; fullName: string; tenantId: string; role: UserRole } };
 
 @Controller("finance")
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -38,6 +39,7 @@ export class FinanceController {
     try {
       const payment = await this.registrations.register({
         tenantId: request.user.tenantId,
+        actor: { userId: request.user.id, name: request.user.fullName },
         registrationDeduplicationKey: body.registrationDeduplicationKey,
         payerDisplayName: body.payerDisplayName,
         currencyCode: body.currencyCode,
@@ -65,6 +67,7 @@ export class FinanceController {
     try {
       await this.allocations.allocate({
         tenantId: request.user.tenantId,
+        actor: { userId: request.user.id, name: request.user.fullName },
         paymentId,
         allocations: body.allocations.map((item) => ({
           accountReceivableId: item.accountReceivableId,
@@ -91,6 +94,7 @@ export class FinanceController {
       );
       const reversal = await this.reversals.reverse({
         tenantId: request.user.tenantId,
+        actor: { userId: request.user.id, name: request.user.fullName },
         paymentAllocationId,
         reversalDeduplicationKey: body.reversalDeduplicationKey,
         reason: body.reason,
@@ -110,9 +114,18 @@ export class FinanceController {
   }
 
   @Post("payments/:paymentId/cancellation")
-  async cancelPayment(@Req() request: FinanceRequest, @Param("paymentId") paymentId: string) {
+  async cancelPayment(
+    @Req() request: FinanceRequest,
+    @Param("paymentId") paymentId: string,
+    @Body() body: CancelPaymentDto,
+  ) {
     try {
-      const payment = await this.cancellations.cancel({ tenantId: request.user.tenantId, paymentId });
+      const payment = await this.cancellations.cancel({
+        tenantId: request.user.tenantId,
+        actor: { userId: request.user.id, name: request.user.fullName },
+        paymentId,
+        reason: body.reason,
+      });
       return this.reads.getPaymentDetail(request.user.tenantId, payment.id);
     } catch (error) {
       return translateFinanceError(error);

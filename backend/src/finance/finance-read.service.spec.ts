@@ -5,7 +5,10 @@ import { FinanceReadService } from "./finance-read.service";
 
 describe("FinanceReadService", () => {
   it("reads payment detail only within its tenant and preserves exact decimal strings", async () => {
-    const prisma = { payment: { findFirst: jest.fn().mockResolvedValue(payment()) } };
+    const prisma = {
+      payment: { findFirst: jest.fn().mockResolvedValue(payment()) },
+      billingAuditLog: { findMany: jest.fn().mockResolvedValue([]) },
+    };
     const service = new FinanceReadService(prisma as unknown as PrismaService);
 
     await expect(service.getPaymentDetail("tenant-a", "payment-a")).resolves.toMatchObject({
@@ -16,7 +19,10 @@ describe("FinanceReadService", () => {
   });
 
   it("does not expose a payment outside the authenticated tenant", async () => {
-    const prisma = { payment: { findFirst: jest.fn().mockResolvedValue(null) } };
+    const prisma = {
+      payment: { findFirst: jest.fn().mockResolvedValue(null) },
+      billingAuditLog: { findMany: jest.fn() },
+    };
     const service = new FinanceReadService(prisma as unknown as PrismaService);
     await expect(service.getPaymentDetail("tenant-a", "payment-other")).rejects.toBeInstanceOf(NotFoundException);
   });
@@ -96,6 +102,7 @@ describe("FinanceReadService", () => {
     const service = new FinanceReadService({
       accountReceivable: { findFirst },
       tenantBillingConfiguration: { findUnique: jest.fn().mockResolvedValue({ fiscalTimezone: "America/Costa_Rica" }) },
+      billingAuditLog: { findMany: jest.fn().mockResolvedValue([]) },
     } as unknown as PrismaService);
 
     await expect(service.getAccountReceivableDetail("tenant-a", "ar-a")).resolves.toMatchObject({
@@ -104,6 +111,42 @@ describe("FinanceReadService", () => {
     });
     expect(findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "ar-a", tenantId: "tenant-a" } }));
     jest.useRealTimers();
+  });
+
+  it("projects persisted Finance audit actors in one tenant-scoped batched detail read", async () => {
+    const findMany = jest.fn().mockResolvedValue([
+      auditRow("FINANCE_PAYMENT", "payment-a", "REGISTERED", "user-register", "Juan P\u00e9rez"),
+      auditRow("FINANCE_PAYMENT", "payment-a", "CANCELLED", "user-cancel", "Mar\u00eda Sol", { reason: "Receipt voided" }),
+      auditRow("FINANCE_PAYMENT_ALLOCATION", "allocation-a", "APPLIED", "user-apply", "Ana Mora"),
+      auditRow("FINANCE_PAYMENT_ALLOCATION_REVERSAL", "reversal-a", "REVERSED", "user-reverse", "Luis Rojas", { reason: "Applied to the wrong debt" }),
+    ]);
+    const service = new FinanceReadService({
+      payment: {
+        findFirst: jest.fn().mockResolvedValue(payment({
+          status: "CANCELLED",
+          cancelledAt: new Date("2026-08-31T13:00:00.000Z"),
+          allocations: [{
+            ...payment().allocations[0],
+            reversal: { id: "reversal-a", reversedAt: new Date("2026-08-31T14:00:00.000Z"), reason: "Applied to the wrong debt" },
+          }],
+        })),
+      },
+      billingAuditLog: { findMany },
+    } as unknown as PrismaService);
+
+    await expect(service.getPaymentDetail("tenant-a", "payment-a")).resolves.toMatchObject({
+      registeredBy: { userId: "user-register", name: "Juan P\u00e9rez", at: expect.any(Date) },
+      cancelledBy: { userId: "user-cancel", name: "Mar\u00eda Sol", reason: "Receipt voided" },
+      allocations: [{
+        appliedBy: { userId: "user-apply", name: "Ana Mora" },
+        reversal: { reversedBy: { userId: "user-reverse", name: "Luis Rojas" }, reason: "Applied to the wrong debt" },
+      }],
+    });
+    expect(findMany).toHaveBeenCalledTimes(1);
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ tenantId: "tenant-a" }),
+    }));
+    expect(service).not.toHaveProperty("user");
   });
 
   it("groups customer open and partial balances by currency with exact serialized amounts", async () => {
@@ -311,11 +354,31 @@ describe("FinanceReadService", () => {
   });
 });
 
-function payment() {
+function payment(overrides: Record<string, unknown> = {}) {
   return {
     id: "payment-a", customerId: "customer-a", payerDisplayName: "Payer", payerIdentificationType: null, payerIdentificationNumber: null,
     currencyCode: "CRC", receivedAmount: new Prisma.Decimal("10.12345"), availableAmount: new Prisma.Decimal("6.00000"), receivedAt: new Date(), paymentMethod: "CASH", externalReference: null, description: null, status: "PARTIALLY_ALLOCATED", cancelledAt: null,
     allocations: [{ id: "allocation-a", accountReceivableId: "ar-a", amount: new Prisma.Decimal("4.12345"), status: "ACTIVE", allocatedAt: new Date(), reversal: null, accountReceivable: { id: "ar-a", currencyCode: "CRC", originalAmount: new Prisma.Decimal("10"), outstandingAmount: new Prisma.Decimal("5.87655"), status: "PARTIALLY_SETTLED" } }],
+    ...overrides,
+  };
+}
+
+function auditRow(
+  entityType: string,
+  entityId: string,
+  action: string,
+  actorUserId: string,
+  actorName: string,
+  afterJson: Record<string, unknown> = {},
+) {
+  return {
+    entityType,
+    entityId,
+    action,
+    actorUserId,
+    actorName,
+    createdAt: new Date("2026-08-31T12:00:00.000Z"),
+    afterJson,
   };
 }
 

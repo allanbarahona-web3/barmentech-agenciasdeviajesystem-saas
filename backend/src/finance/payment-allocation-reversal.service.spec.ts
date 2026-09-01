@@ -38,6 +38,7 @@ describe("PaymentAllocationReversalService", () => {
     expect(c.tx.accountReceivable.update).toHaveBeenCalledWith(expect.objectContaining({
       data: { outstandingAmount: d("10"), status: AccountReceivableStatus.OPEN, settledAt: null },
     }));
+    expect(c.tx.billingAuditLog.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ entityType: "FINANCE_PAYMENT_ALLOCATION_REVERSAL", action: "REVERSED", actorUserId: "user-a", actorName: "Finance User", afterJson: expect.objectContaining({ reason: "Duplicate receipt" }) }) }));
   });
 
   it("reverses one allocation while others remain and preserves exact five-decimal balances", async () => {
@@ -88,6 +89,7 @@ describe("PaymentAllocationReversalService", () => {
     expect(c.tx.accountReceivable.update).not.toHaveBeenCalled();
     expect(c.tx.payment.findFirst).not.toHaveBeenCalled();
     expect(c.tx.accountReceivable.findFirst).not.toHaveBeenCalled();
+    expect(c.tx.billingAuditLog.create).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -174,6 +176,13 @@ describe("PaymentAllocationReversalService", () => {
 
   it("stops subsequent mutations after any create or update failure", async () => {
     let c = context();
+    c.tx.billingAuditLog.create.mockRejectedValueOnce(new Error("audit write failed"));
+    await expectCode(c.service.reverse(command()), PAYMENT_ALLOCATION_REVERSAL_ERRORS.PERSISTENCE_FAILED);
+    expect(c.tx.paymentAllocation.updateMany).not.toHaveBeenCalled();
+    expect(c.tx.payment.update).not.toHaveBeenCalled();
+    expect(c.tx.accountReceivable.update).not.toHaveBeenCalled();
+
+    c = context();
     c.tx.paymentAllocationReversal.createMany.mockRejectedValueOnce(new Error("write"));
     await expectCode(c.service.reverse(command()), PAYMENT_ALLOCATION_REVERSAL_ERRORS.PERSISTENCE_FAILED);
     expect(c.tx.paymentAllocation.updateMany).not.toHaveBeenCalled();
@@ -204,7 +213,7 @@ describe("PaymentAllocationReversalService", () => {
     expect(rawSql(c.tx.$queryRaw, 3)).toContain('FROM "payment_allocation_reversals"');
     expect(rawSql(c.tx.$queryRaw, 3)).toContain('ORDER BY "reversalDeduplicationKey" ASC');
     expect(Object.keys(c.tx).sort()).toEqual([
-      "$queryRaw", "accountReceivable", "payment", "paymentAllocation", "paymentAllocationReversal",
+      "$queryRaw", "accountReceivable", "billingAuditLog", "payment", "paymentAllocation", "paymentAllocationReversal",
     ]);
     expect(c.tx.paymentAllocation.findFirst).toHaveBeenCalledTimes(2);
     expect(c.tx.payment.findFirst).toHaveBeenCalledTimes(1);
@@ -236,7 +245,7 @@ type ContextOptions = {
 
 function d(value: string): Prisma.Decimal { return new Prisma.Decimal(value); }
 function command(): PaymentAllocationReversalCommand {
-  return { tenantId: "tenant-a", paymentAllocationId: "allocation-a", reversalDeduplicationKey: "reversal-a", reason: "  Duplicate receipt  " };
+  return { tenantId: "tenant-a", actor: { userId: "user-a", name: "Finance User" }, paymentAllocationId: "allocation-a", reversalDeduplicationKey: "reversal-a", reason: "  Duplicate receipt  " };
 }
 function allocation(overrides: Record<string, unknown> = {}) {
   return { id: "allocation-a", tenantId: "tenant-a", paymentId: "payment-a", accountReceivableId: "ar-a", amount: d("10"), status: PaymentAllocationStatus.ACTIVE, ...overrides };
@@ -279,6 +288,7 @@ function context(options: ContextOptions = {}) {
   });
   const tx = {
     $queryRaw: queryRaw,
+    billingAuditLog: { create: jest.fn().mockResolvedValue({ id: "audit-a" }) },
     payment: { findFirst: jest.fn().mockResolvedValue(currentPayment), update: jest.fn().mockResolvedValue(currentPayment) },
     accountReceivable: { findFirst: jest.fn().mockResolvedValue(currentReceivable), update: jest.fn().mockResolvedValue(currentReceivable) },
     paymentAllocation: { findFirst: allocationFindFirst, updateMany: jest.fn().mockResolvedValue({ count: 1 }) },

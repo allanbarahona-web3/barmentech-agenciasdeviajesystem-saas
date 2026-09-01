@@ -7,6 +7,13 @@ import {
   Prisma,
 } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
+import {
+  FINANCE_AUDIT_ACTIONS,
+  FINANCE_AUDIT_ENTITY_TYPES,
+  financeAuditRecord,
+  financeMoney,
+  type FinanceActor,
+} from "./finance-audit";
 
 const MAX_AMOUNT = new Prisma.Decimal("99999999999999.99999");
 
@@ -24,6 +31,7 @@ export const PAYMENT_ALLOCATION_REVERSAL_ERRORS = {
 
 export interface PaymentAllocationReversalCommand {
   tenantId: string;
+  actor: FinanceActor;
   paymentAllocationId: string;
   reversalDeduplicationKey: string;
   reason: string;
@@ -31,6 +39,7 @@ export interface PaymentAllocationReversalCommand {
 
 interface NormalizedReversal {
   tenantId: string;
+  actor: FinanceActor;
   paymentAllocationId: string;
   reversalDeduplicationKey: string;
   reason: string;
@@ -139,6 +148,33 @@ export class PaymentAllocationReversalService {
         const winner = resolveWinner(persisted, input);
         if (!winner) fail(PAYMENT_ALLOCATION_REVERSAL_ERRORS.CONFLICT);
 
+        await tx.billingAuditLog.create({
+          data: financeAuditRecord({
+            tenantId: input.tenantId,
+            entityType: FINANCE_AUDIT_ENTITY_TYPES.REVERSAL,
+            entityId: winner.id,
+            action: FINANCE_AUDIT_ACTIONS.REVERSED,
+            actor: input.actor,
+            occurredAt: now,
+            beforeJson: {
+              paymentAllocationId: allocation.id,
+              paymentId: payment.id,
+              accountReceivableId: receivable.id,
+              amount: financeMoney(allocation.amount),
+              paymentAvailableAmount: financeMoney(payment.availableAmount),
+              accountReceivableOutstandingAmount: financeMoney(receivable.outstandingAmount),
+            },
+            afterJson: {
+              paymentAllocationId: allocation.id,
+              paymentId: payment.id,
+              accountReceivableId: receivable.id,
+              reason: input.reason,
+              paymentAvailableAmount: financeMoney(restoredPaymentAvailable),
+              accountReceivableOutstandingAmount: financeMoney(restoredReceivableOutstanding),
+            },
+          }),
+        });
+
         const allocationUpdate = await tx.paymentAllocation.updateMany({
           where: {
             id: input.paymentAllocationId,
@@ -224,6 +260,10 @@ function resolveWinner(
 function normalize(command: PaymentAllocationReversalCommand): NormalizedReversal {
   return {
     tenantId: required(command.tenantId, 191),
+    actor: {
+      userId: required(command.actor?.userId, 191),
+      name: required(command.actor?.name, 500),
+    },
     paymentAllocationId: required(command.paymentAllocationId, 191),
     reversalDeduplicationKey: required(command.reversalDeduplicationKey, 200),
     reason: required(command.reason, 500),

@@ -6,6 +6,13 @@ import {
   Prisma,
 } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
+import {
+  FINANCE_AUDIT_ACTIONS,
+  FINANCE_AUDIT_ENTITY_TYPES,
+  financeAuditRecord,
+  financeMoney,
+  type FinanceActor,
+} from "./finance-audit";
 
 const MAX_ALLOCATION_AMOUNT = new Prisma.Decimal("99999999999999.99999");
 const MAX_ALLOCATIONS_PER_COMMAND = 25;
@@ -23,6 +30,7 @@ export const PAYMENT_ALLOCATION_ERRORS = {
 
 export interface PaymentAllocationCommand {
   tenantId: string;
+  actor: FinanceActor;
   paymentId: string;
   allocations: ReadonlyArray<{
     accountReceivableId: string;
@@ -156,6 +164,38 @@ export class PaymentAllocationService {
           fail(PAYMENT_ALLOCATION_ERRORS.CONFLICT);
         }
 
+        const persistedByKey = new Map(
+          persisted.map((item) => [item.allocationDeduplicationKey, item]),
+        );
+        await tx.billingAuditLog.createMany({
+          data: newAllocations.map((item) => {
+            const receivable = receivableById.get(item.accountReceivableId)!;
+            const allocation = persistedByKey.get(item.allocationDeduplicationKey)!;
+            const outstandingAfter = receivable.outstandingAmount.minus(item.amount);
+            return financeAuditRecord({
+              tenantId: input.tenantId,
+              entityType: FINANCE_AUDIT_ENTITY_TYPES.ALLOCATION,
+              entityId: allocation.id,
+              action: FINANCE_AUDIT_ACTIONS.APPLIED,
+              actor: input.actor,
+              occurredAt: now,
+              beforeJson: {
+                paymentId: payment.id,
+                accountReceivableId: receivable.id,
+                paymentAvailableAmount: financeMoney(payment.availableAmount),
+                accountReceivableOutstandingAmount: financeMoney(receivable.outstandingAmount),
+              },
+              afterJson: {
+                paymentId: payment.id,
+                accountReceivableId: receivable.id,
+                amount: financeMoney(item.amount),
+                paymentAvailableAmount: financeMoney(newPaymentAvailable),
+                accountReceivableOutstandingAmount: financeMoney(outstandingAfter),
+              },
+            });
+          }),
+        });
+
         await tx.payment.update({
           where: { id: payment.id },
           data: {
@@ -186,8 +226,12 @@ export class PaymentAllocationService {
   }
 }
 
-function normalize(command: PaymentAllocationCommand): { tenantId: string; paymentId: string; allocations: NormalizedAllocation[] } {
+function normalize(command: PaymentAllocationCommand): { tenantId: string; actor: FinanceActor; paymentId: string; allocations: NormalizedAllocation[] } {
   const tenantId = required(command.tenantId, 191);
+  const actor = {
+    userId: required(command.actor?.userId, 191),
+    name: required(command.actor?.name, 500),
+  };
   const paymentId = required(command.paymentId, 191);
   if (!Array.isArray(command.allocations) || command.allocations.length < 1 || command.allocations.length > MAX_ALLOCATIONS_PER_COMMAND) {
     fail(PAYMENT_ALLOCATION_ERRORS.INVALID);
@@ -204,7 +248,7 @@ function normalize(command: PaymentAllocationCommand): { tenantId: string; payme
     receivableIds.add(accountReceivableId); keys.add(allocationDeduplicationKey);
     return { accountReceivableId, allocationDeduplicationKey, amount: exactAmount(item.amount) };
   });
-  return { tenantId, paymentId, allocations };
+  return { tenantId, actor, paymentId, allocations };
 }
 
 async function lockedExistingAllocations(

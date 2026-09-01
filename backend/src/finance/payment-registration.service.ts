@@ -1,6 +1,13 @@
 import { Injectable } from "@nestjs/common";
 import { Currency, Payment, PaymentStatus, Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
+import {
+  FINANCE_AUDIT_ACTIONS,
+  FINANCE_AUDIT_ENTITY_TYPES,
+  financeAuditRecord,
+  financeMoney,
+  type FinanceActor,
+} from "./finance-audit";
 
 const MAX_AMOUNT = new Prisma.Decimal("99999999999999.99999");
 const FINANCIAL_PAYMENT_METHODS = new Set([
@@ -24,6 +31,7 @@ export type FinancialPaymentMethod =
 
 export interface PaymentRegistrationCommand {
   tenantId: string;
+  actor: FinanceActor;
   registrationDeduplicationKey: string;
   payerDisplayName: string;
   currencyCode: string;
@@ -45,6 +53,7 @@ class PaymentRegistrationError extends Error {
 
 interface NormalizedRegistration {
   tenantId: string;
+  actor: FinanceActor;
   registrationDeduplicationKey: string;
   payerDisplayName: string;
   currencyCode: Currency;
@@ -77,7 +86,28 @@ export class PaymentRegistrationService {
         }
 
         try {
-          return await tx.payment.create({ data: initialPaymentData(input) });
+          const payment = await tx.payment.create({ data: initialPaymentData(input) });
+          await tx.billingAuditLog.create({
+            data: financeAuditRecord({
+              tenantId: input.tenantId,
+              entityType: FINANCE_AUDIT_ENTITY_TYPES.PAYMENT,
+              entityId: payment.id,
+              action: FINANCE_AUDIT_ACTIONS.REGISTERED,
+              actor: input.actor,
+              occurredAt: payment.createdAt,
+              afterJson: {
+                paymentId: payment.id,
+                customerId: payment.customerId,
+                currencyCode: payment.currencyCode,
+                receivedAmount: financeMoney(payment.receivedAmount),
+                availableAmount: financeMoney(payment.availableAmount),
+                receivedAt: payment.receivedAt.toISOString(),
+                paymentMethod: payment.paymentMethod,
+                status: payment.status,
+              },
+            }),
+          });
+          return payment;
         } catch (error) {
           if (!isP2002(error)) {
             throw new PaymentRegistrationError(PAYMENT_REGISTRATION_ERRORS.PERSISTENCE_FAILED);
@@ -113,6 +143,10 @@ export const FINANCIAL_PAYMENT_METHOD_REGISTRY: readonly FinancialPaymentMethod[
 
 function normalize(command: PaymentRegistrationCommand): NormalizedRegistration {
   const tenantId = required(command.tenantId, 191);
+  const actor = {
+    userId: required(command.actor?.userId, 191),
+    name: required(command.actor?.name, 500),
+  };
   const registrationDeduplicationKey = required(command.registrationDeduplicationKey, 200);
   const payerDisplayName = required(command.payerDisplayName, 500);
   const currencyCode = currency(command.currencyCode);
@@ -126,7 +160,7 @@ function normalize(command: PaymentRegistrationCommand): NormalizedRegistration 
     invalid();
   }
   return {
-    tenantId, registrationDeduplicationKey, payerDisplayName, currencyCode,
+    tenantId, actor, registrationDeduplicationKey, payerDisplayName, currencyCode,
     receivedAmount, receivedAt, paymentMethod, customerId,
     payerIdentificationType, payerIdentificationNumber,
     externalReference: optional(command.externalReference, 150),

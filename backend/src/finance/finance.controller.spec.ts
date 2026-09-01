@@ -6,7 +6,7 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { ROLES_KEY } from "../auth/roles.decorator";
 import { RolesGuard } from "../auth/roles.guard";
 import { FinanceController } from "./finance.controller";
-import { ListPaymentsDto, RegisterPaymentDto } from "./dto/finance.dto";
+import { CancelPaymentDto, ListPaymentsDto, RegisterPaymentDto } from "./dto/finance.dto";
 
 describe("FinanceController", () => {
   it("registers an exact payment for only the authenticated tenant", async () => {
@@ -24,7 +24,7 @@ describe("FinanceController", () => {
       paymentMethod: "BANK_TRANSFER",
     })).resolves.toBe(detail);
 
-    expect(c.registrations.register).toHaveBeenCalledWith(expect.objectContaining({ tenantId: "tenant-auth" }));
+    expect(c.registrations.register).toHaveBeenCalledWith(expect.objectContaining({ tenantId: "tenant-auth", actor: { userId: "user-a", name: "Finance User" } }));
     expect((c.registrations.register.mock.calls[0][0].receivedAmount as Prisma.Decimal).toFixed()).toBe("123.12345");
     expect(c.reads.getPaymentDetail).toHaveBeenCalledWith("tenant-auth", "payment-a");
   });
@@ -38,7 +38,7 @@ describe("FinanceController", () => {
       allocations: [{ accountReceivableId: "ar-a", amount: "3.00000", allocationDeduplicationKey: "allocation-a" }],
     })).resolves.toBe(updated);
 
-    expect(c.allocations.allocate).toHaveBeenCalledWith(expect.objectContaining({ tenantId: "tenant-a", paymentId: "payment-a" }));
+    expect(c.allocations.allocate).toHaveBeenCalledWith(expect.objectContaining({ tenantId: "tenant-a", paymentId: "payment-a", actor: { userId: "user-a", name: "Finance User" } }));
     expect((c.allocations.allocate.mock.calls[0][0].allocations[0].amount as Prisma.Decimal).toFixed()).toBe("3");
     expect(c.reads.getPaymentDetail).toHaveBeenCalledWith("tenant-a", "payment-a");
   });
@@ -70,14 +70,14 @@ describe("FinanceController", () => {
     })).resolves.toMatchObject({ reversal: { id: "reversal-a" }, payment: { id: "payment-a", status: "RECEIVED" } });
 
     expect(c.reads.getPaymentIdForAllocation).toHaveBeenCalledWith("tenant-a", "allocation-a");
-    expect(c.reversals.reverse).toHaveBeenCalledWith(expect.objectContaining({ tenantId: "tenant-a", paymentAllocationId: "allocation-a" }));
+    expect(c.reversals.reverse).toHaveBeenCalledWith(expect.objectContaining({ tenantId: "tenant-a", paymentAllocationId: "allocation-a", actor: { userId: "user-a", name: "Finance User" } }));
   });
 
   it("maps the unallocated-payment cancellation guard to conflict", async () => {
     const c = context();
     c.cancellations.cancel.mockRejectedValue(new Error("PAYMENT_CANCELLATION_NOT_ELIGIBLE"));
 
-    await expect(c.controller.cancelPayment(request(), "payment-a")).rejects.toBeInstanceOf(ConflictException);
+    await expect(c.controller.cancelPayment(request(), "payment-a", { reason: "Registro duplicado" })).rejects.toBeInstanceOf(ConflictException);
   });
 
   it("returns full updated payment detail after cancellation", async () => {
@@ -86,8 +86,8 @@ describe("FinanceController", () => {
     const detail = { id: "payment-a", payerDisplayName: "Payer", status: "CANCELLED", availableAmount: "123.12345", allocations: [] };
     c.reads.getPaymentDetail.mockResolvedValue(detail);
 
-    await expect(c.controller.cancelPayment(request("tenant-auth"), "payment-a")).resolves.toBe(detail);
-    expect(c.cancellations.cancel).toHaveBeenCalledWith({ tenantId: "tenant-auth", paymentId: "payment-a" });
+    await expect(c.controller.cancelPayment(request("tenant-auth"), "payment-a", { reason: "Registro duplicado" })).resolves.toBe(detail);
+    expect(c.cancellations.cancel).toHaveBeenCalledWith({ tenantId: "tenant-auth", actor: { userId: "user-a", name: "Finance User" }, paymentId: "payment-a", reason: "Registro duplicado" });
     expect(c.reads.getPaymentDetail).toHaveBeenCalledWith("tenant-auth", "payment-a");
   });
 
@@ -109,6 +109,13 @@ describe("FinanceController", () => {
     await expect(pipe.transform(valid, { type: "body", metatype: RegisterPaymentDto })).resolves.toBeDefined();
     await expect(pipe.transform({ ...valid, receivedAmount: 123.12345 }, { type: "body", metatype: RegisterPaymentDto })).rejects.toBeDefined();
     await expect(pipe.transform({ ...valid, tenantId: "tenant-other" }, { type: "body", metatype: RegisterPaymentDto })).rejects.toBeDefined();
+  });
+
+  it("requires a non-empty cancellation reason without accepting caller actor fields", async () => {
+    const pipe = new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: true });
+    await expect(pipe.transform({ reason: "Registro duplicado" }, { type: "body", metatype: CancelPaymentDto })).resolves.toMatchObject({ reason: "Registro duplicado" });
+    await expect(pipe.transform({}, { type: "body", metatype: CancelPaymentDto })).rejects.toBeDefined();
+    await expect(pipe.transform({ reason: "Registro duplicado", actor: "other-user" }, { type: "body", metatype: CancelPaymentDto })).rejects.toBeDefined();
   });
 
   it("delegates operational AR reads and balance summaries using only the authenticated tenant", async () => {
@@ -169,7 +176,7 @@ function context() {
 }
 
 function request(tenantId = "tenant-a") {
-  return { user: { tenantId, role: UserRole.ADMIN } };
+  return { user: { id: "user-a", fullName: "Finance User", tenantId, role: UserRole.ADMIN } };
 }
 
 function payment() {

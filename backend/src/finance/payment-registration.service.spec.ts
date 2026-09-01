@@ -20,6 +20,7 @@ describe("PaymentRegistrationService", () => {
     expect((data.receivedAmount as Prisma.Decimal).toFixed()).toBe("123.12345");
     expect((data.availableAmount as Prisma.Decimal).toFixed()).toBe("123.12345");
     expect(c.tx.client.findFirst).toHaveBeenCalledWith({ where: { id: "customer-a", tenantId: "tenant-a" }, select: { id: true } });
+    expect(c.tx.billingAuditLog.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ entityType: "FINANCE_PAYMENT", entityId: "payment-a", action: "REGISTERED", actorUserId: "user-a", actorName: "Finance User" }) }));
   });
 
   it.each(FINANCIAL_PAYMENT_METHOD_REGISTRY)("accepts the provider-neutral financial method %s", async (paymentMethod) => {
@@ -64,6 +65,17 @@ describe("PaymentRegistrationService", () => {
     const result = await c.service.register(input);
     expect(result.id).toBe("payment-a");
     expect(c.tx.payment.findUnique).toHaveBeenCalledWith({ where: { tenantId_registrationDeduplicationKey: { tenantId: "tenant-a", registrationDeduplicationKey: "payment-a" } } });
+    expect(c.tx.billingAuditLog.create).not.toHaveBeenCalled();
+  });
+
+  it("fails the transaction when registered-payment audit persistence fails", async () => {
+    const c = context();
+    c.tx.billingAuditLog.create.mockRejectedValueOnce(new Error("audit write failed"));
+
+    await expectCode(c.service.register(command()), PAYMENT_REGISTRATION_ERRORS.PERSISTENCE_FAILED);
+
+    expect(c.tx.payment.create).toHaveBeenCalledTimes(1);
+    expect(c.tx.payment.findUnique).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -92,7 +104,7 @@ describe("PaymentRegistrationService", () => {
 
   it("uses only tenant-scoped Client and Payment access with bounded queries", async () => {
     const c = context(); await c.service.register(command());
-    expect(Object.keys(c.tx).sort()).toEqual(["client", "payment"]);
+    expect(Object.keys(c.tx).sort()).toEqual(["billingAuditLog", "client", "payment"]);
     expect(c.tx.client.findFirst).toHaveBeenCalledTimes(1); expect(c.tx.payment.create).toHaveBeenCalledTimes(1);
     expect(c.tx.payment.findUnique).not.toHaveBeenCalled();
   });
@@ -106,8 +118,8 @@ describe("PaymentRegistrationService", () => {
 
 const RECEIVED_AT = new Date("2026-08-27T12:34:56.789Z");
 function d(value: string) { return new Prisma.Decimal(value); }
-function command(overrides: Record<string, unknown> = {}): PaymentRegistrationCommand { return { tenantId: "tenant-a", registrationDeduplicationKey: "payment-a", payerDisplayName: "Payer", currencyCode: "CRC", receivedAmount: d("123.12345"), receivedAt: RECEIVED_AT, paymentMethod: "BANK_TRANSFER", customerId: "customer-a", payerIdentificationType: "02", payerIdentificationNumber: "3101999999", externalReference: "bank-42", description: "Payment", ...overrides } as PaymentRegistrationCommand; }
+function command(overrides: Record<string, unknown> = {}): PaymentRegistrationCommand { return { tenantId: "tenant-a", actor: { userId: "user-a", name: "Finance User" }, registrationDeduplicationKey: "payment-a", payerDisplayName: "Payer", currencyCode: "CRC", receivedAmount: d("123.12345"), receivedAt: RECEIVED_AT, paymentMethod: "BANK_TRANSFER", customerId: "customer-a", payerIdentificationType: "02", payerIdentificationNumber: "3101999999", externalReference: "bank-42", description: "Payment", ...overrides } as PaymentRegistrationCommand; }
 function payment(input: PaymentRegistrationCommand, overrides: Record<string, unknown> = {}) { return { id: "payment-a", tenantId: input.tenantId, registrationDeduplicationKey: input.registrationDeduplicationKey, customerId: input.customerId ?? null, payerDisplayName: input.payerDisplayName, payerIdentificationType: input.payerIdentificationType ?? null, payerIdentificationNumber: input.payerIdentificationNumber ?? null, currencyCode: input.currencyCode, receivedAmount: input.receivedAmount, availableAmount: input.receivedAmount, receivedAt: input.receivedAt, paymentMethod: input.paymentMethod, externalReference: input.externalReference ?? null, description: input.description ?? null, status: PaymentStatus.RECEIVED, cancelledAt: null, createdAt: RECEIVED_AT, updatedAt: RECEIVED_AT, ...overrides }; }
-function context(options: { customer?: { id: string } | null; createError?: unknown; winner?: ReturnType<typeof payment> | null } = {}) { const create = jest.fn(async ({ data }: { data: Record<string, unknown> }) => { if (options.createError) throw options.createError; return payment(command(), data); }); const tx = { client: { findFirst: jest.fn().mockResolvedValue(options.customer === undefined ? { id: "customer-a" } : options.customer) }, payment: { create, findUnique: jest.fn().mockResolvedValue(options.winner ?? null) } }; const prisma = { $transaction: jest.fn(async (work: (value: typeof tx) => unknown) => work(tx)) } as unknown as PrismaService; return { service: new PaymentRegistrationService(prisma), tx }; }
+function context(options: { customer?: { id: string } | null; createError?: unknown; winner?: ReturnType<typeof payment> | null } = {}) { const create = jest.fn(async ({ data }: { data: Record<string, unknown> }) => { if (options.createError) throw options.createError; return payment(command(), data); }); const tx = { billingAuditLog: { create: jest.fn().mockResolvedValue({ id: "audit-a" }) }, client: { findFirst: jest.fn().mockResolvedValue(options.customer === undefined ? { id: "customer-a" } : options.customer) }, payment: { create, findUnique: jest.fn().mockResolvedValue(options.winner ?? null) } }; const prisma = { $transaction: jest.fn(async (work: (value: typeof tx) => unknown) => work(tx)) } as unknown as PrismaService; return { service: new PaymentRegistrationService(prisma), tx }; }
 async function expectCode(value: Promise<unknown>, code: string) { await expect(value).rejects.toThrow(code); }
 async function capture(value: Promise<unknown>): Promise<Error> { try { await value; throw new Error("expected error"); } catch (error) { return error as Error; } }

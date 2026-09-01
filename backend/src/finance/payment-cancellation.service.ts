@@ -1,6 +1,13 @@
 import { Injectable } from "@nestjs/common";
 import { Payment, PaymentAllocationStatus, PaymentStatus, Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
+import {
+  FINANCE_AUDIT_ACTIONS,
+  FINANCE_AUDIT_ENTITY_TYPES,
+  financeAuditRecord,
+  financeMoney,
+  type FinanceActor,
+} from "./finance-audit";
 
 const MAX_AMOUNT = new Prisma.Decimal("99999999999999.99999");
 
@@ -13,7 +20,9 @@ export const PAYMENT_CANCELLATION_ERRORS = {
 
 export interface PaymentCancellationCommand {
   tenantId: string;
+  actor: FinanceActor;
   paymentId: string;
+  reason: string;
 }
 
 class PaymentCancellationError extends Error {
@@ -83,6 +92,28 @@ export class PaymentCancellationService {
           if (winner?.status === PaymentStatus.CANCELLED && validInstant(winner.cancelledAt)) return winner;
           fail(PAYMENT_CANCELLATION_ERRORS.PERSISTENCE_FAILED);
         }
+        await tx.billingAuditLog.create({
+          data: financeAuditRecord({
+            tenantId: input.tenantId,
+            entityType: FINANCE_AUDIT_ENTITY_TYPES.PAYMENT,
+            entityId: payment.id,
+            action: FINANCE_AUDIT_ACTIONS.CANCELLED,
+            actor: input.actor,
+            occurredAt: cancelledAt,
+            beforeJson: {
+              status: payment.status,
+              receivedAmount: financeMoney(payment.receivedAmount),
+              availableAmount: financeMoney(payment.availableAmount),
+            },
+            afterJson: {
+              status: PaymentStatus.CANCELLED,
+              cancelledAt: cancelledAt.toISOString(),
+              reason: input.reason,
+              receivedAmount: financeMoney(payment.receivedAmount),
+              availableAmount: financeMoney(payment.availableAmount),
+            },
+          }),
+        });
         return { ...payment, status: PaymentStatus.CANCELLED, cancelledAt };
       });
     } catch (error) {
@@ -92,8 +123,16 @@ export class PaymentCancellationService {
   }
 }
 
-function normalize(command: PaymentCancellationCommand): { tenantId: string; paymentId: string } {
-  return { tenantId: required(command.tenantId, 191), paymentId: required(command.paymentId, 191) };
+function normalize(command: PaymentCancellationCommand): { tenantId: string; actor: FinanceActor; paymentId: string; reason: string } {
+  return {
+    tenantId: required(command.tenantId, 191),
+    actor: {
+      userId: required(command.actor?.userId, 191),
+      name: required(command.actor?.name, 500),
+    },
+    paymentId: required(command.paymentId, 191),
+    reason: required(command.reason, 500),
+  };
 }
 
 function validPositiveAmount(value: unknown): value is Prisma.Decimal {

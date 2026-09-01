@@ -58,6 +58,10 @@ export class ReversePaymentAllocationDto {
   @Transform(trim) @IsString() @MaxLength(500) @Matches(/\S/) reason!: string;
 }
 
+export class CancelPaymentDto {
+  @Transform(trim) @IsString() @MaxLength(500) @Matches(/\S/) reason!: string;
+}
+
 export class ListAccountReceivablesDto {
   @IsOptional() @Transform(({ value }) => Number.parseInt(String(value), 10)) @IsInt() @Min(1)
   page?: number;
