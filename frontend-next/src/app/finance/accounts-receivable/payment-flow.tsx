@@ -82,7 +82,7 @@ function PaymentSummary({ payment }: { payment: PaymentDetail }) {
   return (
     <section className={styles.paymentSummary}>
       <div className={styles.paymentSummaryHeader}>
-        <div><span>Pago</span><strong>{payment.id}</strong></div>
+        <div><span>Recibo de dinero</span><strong>{payment.receiptNumber}</strong></div>
         <Badge className={styles.paymentStatusBadge} variant="outline">{PAYMENT_STATUS_LABELS[payment.status]}</Badge>
       </div>
       <dl className={styles.paymentFacts}>
@@ -277,7 +277,7 @@ export function PaymentFlow({ receivable, initialPayment, canAllocate = true, on
   }
 
   const contextName = receivable?.debtorDisplayName ?? payment?.payerDisplayName ?? 'Pago';
-  const contextReference = receivable?.sourceNumber ?? receivable?.id ?? payment?.id ?? '—';
+  const contextReference = receivable?.sourceNumber ?? receivable?.id ?? payment?.receiptNumber ?? '—';
   const contextCurrency = receivable?.currencyCode ?? payment?.currencyCode ?? '—';
   const title = !payment ? 'Registrar pago / abono' : canAllocate ? 'Aplicar pago / abono' : 'Detalle del pago';
   const hasAuthoritativeAvailableMoney = payment?.status === 'RECEIVED' || payment?.status === 'PARTIALLY_ALLOCATED';
@@ -306,8 +306,9 @@ export function PaymentFlow({ receivable, initialPayment, canAllocate = true, on
         <div className={styles.paymentModalBody}>
           <section className={styles.paymentContext}>
             <div><span>Deudor / pagador</span><strong>{contextName}</strong></div>
-            <div><span>{receivable ? 'Cuenta seleccionada' : 'Pago existente'}</span><strong>{contextReference}</strong></div>
+            <div><span>{receivable ? 'Cuenta seleccionada' : 'Recibo existente'}</span><strong>{contextReference}</strong></div>
             <div><span>Moneda</span><strong>{contextCurrency}</strong></div>
+            {receivable && <div><span>Saldo pendiente CxC</span><strong>{formatFinanceMoney(receivable.outstandingAmount, receivable.currencyCode)}</strong></div>}
           </section>
           {error && <div className={styles.paymentError} role="alert"><AlertCircle aria-hidden="true" /><span>{error}</span></div>}
           {!payment && receivable ? (

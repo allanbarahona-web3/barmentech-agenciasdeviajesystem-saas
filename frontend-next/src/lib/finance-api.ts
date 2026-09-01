@@ -36,6 +36,7 @@ export type AccountReceivableListItem = {
 export type AccountReceivableAllocation = {
   id: string;
   paymentId: string;
+  paymentReceiptNumber: string | null;
   amount: string;
   status: 'ACTIVE' | 'REVERSED';
   allocatedAt: string;
@@ -83,6 +84,8 @@ export type AccountReceivableGroup = {
   totalAllocatedAmount: string;
   totalOutstandingAmount: string;
   totalOverdueOutstandingAmount: string;
+  totalReceivedAmount: string;
+  totalActiveAllocatedAmount: string;
   unallocatedPaymentAmount: string;
   unallocatedPaymentCount: number;
   counts: {
@@ -131,6 +134,7 @@ export type PaymentAllocationDetail = {
 
 export type PaymentDetail = {
   id: string;
+  receiptNumber: string;
   customerId: string | null;
   payerDisplayName: string;
   payerIdentificationType: string | null;
