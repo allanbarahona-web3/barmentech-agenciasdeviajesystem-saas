@@ -53,6 +53,22 @@ export class AllocatePaymentDto {
   allocations!: PaymentAllocationItemDto[];
 }
 
+export class CustomerFundsTargetDto {
+  @Transform(trim) @IsString() @MaxLength(191) @Matches(/\S/) accountReceivableId!: string;
+  @Transform(trim) @IsString() @MaxLength(100) @Matches(moneyText) amount!: string;
+}
+
+export class CustomerFundsAllocationPreviewDto {
+  @Transform(trim) @IsString() @MaxLength(191) @Matches(/\S/) customerId!: string;
+  @Transform(trim) @IsString() @Matches(/^[A-Za-z]{3}$/) currencyCode!: string;
+  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(25) @ValidateNested({ each: true }) @Type(() => CustomerFundsTargetDto)
+  targets!: CustomerFundsTargetDto[];
+}
+
+export class CustomerFundsAllocationDto extends CustomerFundsAllocationPreviewDto {
+  @Transform(trim) @IsString() @MaxLength(200) @Matches(/\S/) portfolioAllocationDeduplicationKey!: string;
+}
+
 export class ReversePaymentAllocationDto {
   @Transform(trim) @IsString() @MaxLength(200) @Matches(/\S/) reversalDeduplicationKey!: string;
   @Transform(trim) @IsString() @MaxLength(500) @Matches(/\S/) reason!: string;

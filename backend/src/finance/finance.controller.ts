@@ -17,9 +17,12 @@ import {
   ListUnallocatedPaymentBalancesDto,
   RegisterPaymentDto,
   ReversePaymentAllocationDto,
+  CustomerFundsAllocationDto,
+  CustomerFundsAllocationPreviewDto,
 } from "./dto/finance.dto";
 import { translateFinanceError } from "./finance.errors";
 import { FinanceReadService } from "./finance-read.service";
+import { CustomerFundsAllocationService } from "./customer-funds-allocation.service";
 
 type FinanceRequest = { user: { id: string; fullName: string; tenantId: string; role: UserRole } };
 
@@ -33,7 +36,19 @@ export class FinanceController {
     private readonly reversals: PaymentAllocationReversalService,
     private readonly cancellations: PaymentCancellationService,
     private readonly reads: FinanceReadService,
+    private readonly customerFunds?: CustomerFundsAllocationService,
   ) {}
+
+  @Post("customer-funds/allocation-preview")
+  @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.CONTADOR)
+  async previewCustomerFunds(@Req() request: FinanceRequest, @Body() body: CustomerFundsAllocationPreviewDto) {
+    try { return await this.customerFunds!.preview({ tenantId: request.user.tenantId, actor: { userId: request.user.id, name: request.user.fullName }, customerId: body.customerId, currencyCode: body.currencyCode, targets: body.targets.map(x => ({ accountReceivableId: x.accountReceivableId, amount: decimal(x.amount) })) }); } catch (error) { return translateFinanceError(error); }
+  }
+
+  @Post("customer-funds/allocations")
+  async allocateCustomerFunds(@Req() request: FinanceRequest, @Body() body: CustomerFundsAllocationDto) {
+    try { return await this.customerFunds!.commit({ tenantId: request.user.tenantId, actor: { userId: request.user.id, name: request.user.fullName }, customerId: body.customerId, currencyCode: body.currencyCode, deduplicationKey: body.portfolioAllocationDeduplicationKey, targets: body.targets.map(x => ({ accountReceivableId: x.accountReceivableId, amount: decimal(x.amount) })) }); } catch (error) { return translateFinanceError(error); }
+  }
 
   @Post("payments")
   async registerPayment(@Req() request: FinanceRequest, @Body() body: RegisterPaymentDto) {
