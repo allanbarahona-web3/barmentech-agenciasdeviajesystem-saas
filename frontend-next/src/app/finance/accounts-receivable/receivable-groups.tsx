@@ -1,7 +1,7 @@
 'use client';
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertCircle, ChevronDown, ChevronRight, Eye, FileSearch, WalletCards } from 'lucide-react';
+import { AlertCircle, ChevronDown, ChevronRight, Eye, WalletCards } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -39,7 +39,7 @@ function invoiceReference(source: { sourceNumber: string | null; billingDocument
   return source.sourceNumber || source.billingDocumentId || source.sourceId;
 }
 
-function GroupRows({ group, canWrite, reloadToken, onOpenDetail, onRegisterPayment, onApplyBalance, onApplyGroupBalance, onViewPayments }: {
+function GroupRows({ group, canWrite, reloadToken, onOpenDetail, onRegisterPayment, onApplyBalance, onApplyGroupBalance, onViewPayments, onStatement }: {
   group: AccountReceivableGroup;
   canWrite: boolean;
   reloadToken: number;
@@ -48,6 +48,7 @@ function GroupRows({ group, canWrite, reloadToken, onOpenDetail, onRegisterPayme
   onApplyBalance: (id: string) => void;
   onApplyGroupBalance: (group: AccountReceivableGroup) => void;
   onViewPayments: (customer: { id: string; name: string; currency: 'CRC' | 'USD' }) => void;
+  onStatement: (group: AccountReceivableGroup) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [page, setPage] = useState(1);
@@ -84,7 +85,7 @@ function GroupRows({ group, canWrite, reloadToken, onOpenDetail, onRegisterPayme
         <TableCell>{group.currencyCode}</TableCell>
         <TableCell className={styles.numeric}><strong className={styles.pendingAmount}>{formatFinanceMoney(group.totalOutstandingAmount, group.currencyCode)}</strong><span className={styles.tableSubtext}>{group.counts.open + group.counts.partiallySettled} abierta(s)</span></TableCell>
         <TableCell className={styles.numeric}><strong className={styles.availableAmount}>{formatFinanceMoney(group.unallocatedPaymentAmount, group.currencyCode)}</strong><span className={styles.tableSubtext}>{group.unallocatedPaymentCount} recibo(s)</span></TableCell>
-        <TableCell><div className={styles.rowActions}><Button className={styles.secondaryAction} size="sm" type="button" variant="outline" onClick={() => setExpanded((value) => !value)}><ChevronDown aria-hidden="true" />{expanded ? 'Ocultar' : 'Ver cuentas'}</Button>{canWrite && group.unallocatedPaymentCount > 0 && <Button className={styles.creditAction} size="sm" type="button" onClick={() => onApplyGroupBalance(group)}>Aplicar saldo</Button>}{group.customerId && <Button className={styles.secondaryAction} size="sm" type="button" variant="outline" onClick={() => onViewPayments({ id: group.customerId!, name: group.debtor.displayName, currency: group.currencyCode })}>Ver pagos</Button>}</div></TableCell>
+        <TableCell><div className={styles.rowActions}><Button className={styles.secondaryAction} size="sm" type="button" variant="outline" onClick={() => setExpanded((value) => !value)}><ChevronDown aria-hidden="true" />{expanded ? 'Ocultar' : 'Ver cuentas'}</Button>{canWrite && group.unallocatedPaymentCount > 0 && <Button className={styles.creditAction} size="sm" type="button" onClick={() => onApplyGroupBalance(group)}>Aplicar saldo</Button>}{group.customerId && <><Button className={styles.secondaryAction} size="sm" type="button" variant="outline" onClick={() => onViewPayments({ id: group.customerId!, name: group.debtor.displayName, currency: group.currencyCode })}>Ver pagos</Button><Button className={styles.secondaryAction} size="sm" type="button" variant="outline" onClick={() => onStatement(group)}>Estado de cuenta</Button></>}</div></TableCell>
       </TableRow>
       {expanded && <TableRow className={styles.childContainerRow}>
         <TableCell colSpan={5}>
@@ -108,7 +109,7 @@ function GroupRows({ group, canWrite, reloadToken, onOpenDetail, onRegisterPayme
   );
 }
 
-export function ReceivableGroupsView({ canWrite, reloadToken, onOpenDetail, onRegisterPayment, onApplyBalance, onApplyGroupBalance, onViewPayments }: {
+export function ReceivableGroupsView({ canWrite, reloadToken, onOpenDetail, onRegisterPayment, onApplyBalance, onApplyGroupBalance, onViewPayments, onStatement }: {
   canWrite: boolean;
   reloadToken: number;
   onOpenDetail: (id: string) => void;
@@ -116,6 +117,7 @@ export function ReceivableGroupsView({ canWrite, reloadToken, onOpenDetail, onRe
   onApplyBalance: (id: string) => void;
   onApplyGroupBalance: (group: AccountReceivableGroup) => void;
   onViewPayments: (customer: { id: string; name: string; currency: 'CRC' | 'USD' }) => void;
+  onStatement: (group: AccountReceivableGroup) => void;
 }) {
   const [page, setPage] = useState(1);
   const [result, setResult] = useState<AccountReceivableGroupsPage | null>(null);
@@ -150,7 +152,7 @@ export function ReceivableGroupsView({ canWrite, reloadToken, onOpenDetail, onRe
 
   return <section className={styles.tableCard}>
     <div className={styles.tableHeading}><div><h2>Cartera por cliente y moneda</h2><p>Los totales provienen del modelo de lectura de Finanzas.</p></div><span>{loading ? 'Cargando…' : summary}</span></div>
-    {error ? <div className={styles.state}><div><span className={styles.stateIcon}><AlertCircle aria-hidden="true" /></span><h3 className={styles.error}>No se pudo cargar la cartera</h3><p>{error.message}</p><Button className={styles.secondaryAction} variant="outline" type="button" onClick={() => setRetry((value) => value + 1)}>Intentar nuevamente</Button></div></div> : !loading && (!result || result.groups.length === 0) ? <div className={styles.state}><div><span className={styles.stateIcon}><AlertCircle aria-hidden="true" /></span><h3>No hay grupos de cuentas por cobrar</h3><p>Las deudas reconocidas aparecerán aquí después de la aceptación fiscal.</p></div></div> : <Table className={styles.groupTable}><TableHeader><TableRow><TableHead>Cliente / deudor</TableHead><TableHead>Moneda</TableHead><TableHead className={styles.numeric}>Saldo CxC</TableHead><TableHead className={styles.numeric}>Saldo disponible</TableHead><TableHead>Acciones</TableHead></TableRow></TableHeader><TableBody>{loading ? Array.from({ length: 5 }, (_, row) => <TableRow key={row}>{Array.from({ length: 5 }, (_, cell) => <TableCell key={cell}><span className={styles.skeleton} /></TableCell>)}</TableRow>) : result?.groups.map((group) => <GroupRows key={group.groupKey} group={group} canWrite={canWrite} reloadToken={reloadToken} onOpenDetail={onOpenDetail} onRegisterPayment={onRegisterPayment} onApplyBalance={onApplyBalance} onApplyGroupBalance={onApplyGroupBalance} onViewPayments={onViewPayments} />)}</TableBody></Table>}
+    {error ? <div className={styles.state}><div><span className={styles.stateIcon}><AlertCircle aria-hidden="true" /></span><h3 className={styles.error}>No se pudo cargar la cartera</h3><p>{error.message}</p><Button className={styles.secondaryAction} variant="outline" type="button" onClick={() => setRetry((value) => value + 1)}>Intentar nuevamente</Button></div></div> : !loading && (!result || result.groups.length === 0) ? <div className={styles.state}><div><span className={styles.stateIcon}><AlertCircle aria-hidden="true" /></span><h3>No hay grupos de cuentas por cobrar</h3><p>Las deudas reconocidas aparecerán aquí después de la aceptación fiscal.</p></div></div> : <Table className={styles.groupTable}><TableHeader><TableRow><TableHead>Cliente / deudor</TableHead><TableHead>Moneda</TableHead><TableHead className={styles.numeric}>Saldo CxC</TableHead><TableHead className={styles.numeric}>Saldo disponible</TableHead><TableHead>Acciones</TableHead></TableRow></TableHeader><TableBody>{loading ? Array.from({ length: 5 }, (_, row) => <TableRow key={row}>{Array.from({ length: 5 }, (_, cell) => <TableCell key={cell}><span className={styles.skeleton} /></TableCell>)}</TableRow>) : result?.groups.map((group) => <GroupRows key={group.groupKey} group={group} canWrite={canWrite} reloadToken={reloadToken} onOpenDetail={onOpenDetail} onRegisterPayment={onRegisterPayment} onApplyBalance={onApplyBalance} onApplyGroupBalance={onApplyGroupBalance} onViewPayments={onViewPayments} onStatement={onStatement} />)}</TableBody></Table>}
     {!loading && !error && result && result.totalPages > 1 && <nav className={styles.pagination}><p>Página {result.page} de {result.totalPages} · {summary}</p><div className={styles.paginationActions}><Button className={styles.secondaryAction} disabled={result.page <= 1} variant="outline" onClick={() => setPage((value) => Math.max(1, value - 1))}>Anterior</Button><Button className={styles.secondaryAction} disabled={result.page >= result.totalPages} variant="outline" onClick={() => setPage((value) => Math.min(result.totalPages, value + 1))}>Siguiente</Button></div></nav>}
   </section>;
 }

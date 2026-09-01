@@ -163,6 +163,16 @@ describe("FinanceController", () => {
     expect(canActivate(UserRole.CONTADOR, "listUnallocatedPaymentBalances")).toBe(true);
   });
 
+  it("delegates customer statements and email delivery using authenticated tenant and actor", async () => {
+    const c = context();
+    c.statements.get.mockResolvedValue({ customer: { id: "customer-a" }, invoices: [], payments: [] });
+    c.statements.send.mockResolvedValue({ ok: true, sentTo: "client@example.com" });
+    await c.controller.getCustomerAccountStatement(request("tenant-auth"), "customer-a", { currencyCode: "USD" });
+    await c.controller.sendCustomerAccountStatement(request("tenant-auth"), "customer-a", { currencyCode: "USD", to: "client@example.com" });
+    expect(c.statements.get).toHaveBeenCalledWith("tenant-auth", "customer-a", "USD");
+    expect(c.statements.send).toHaveBeenCalledWith("tenant-auth", { userId: "user-a", email: "finance@example.com", fullName: "Finance User" }, "customer-a", "USD", "client@example.com", undefined);
+  });
+
   it("validates payment discovery query booleans without accepting caller tenant fields", async () => {
     const pipe = new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: true });
     await expect(pipe.transform(
@@ -198,11 +208,12 @@ function context() {
   const reversals = { reverse: jest.fn() };
   const cancellations = { cancel: jest.fn() };
   const reads = { paymentSummary: jest.fn((value) => ({ id: value.id, receivedAmount: value.receivedAmount.toFixed(), availableAmount: value.availableAmount.toFixed() })), getPaymentDetail: jest.fn(), getPaymentIdForAllocation: jest.fn(), getAccountReceivableDetail: jest.fn(), getAllocationSuggestion: jest.fn(), listAccountReceivables: jest.fn(), listAccountReceivableGroups: jest.fn(), listAccountReceivableGroupItems: jest.fn(), listPayments: jest.fn(), listUnallocatedPaymentBalances: jest.fn(), getCustomerFinancialBalance: jest.fn() };
-  return { registrations, allocations, reversals, cancellations, reads, controller: new FinanceController(registrations as never, allocations as never, reversals as never, cancellations as never, reads as never) };
+  const statements = { get: jest.fn(), render: jest.fn(), send: jest.fn() };
+  return { registrations, allocations, reversals, cancellations, reads, statements, controller: new FinanceController(registrations as never, allocations as never, reversals as never, cancellations as never, reads as never, undefined, statements as never) };
 }
 
 function request(tenantId = "tenant-a") {
-  return { user: { id: "user-a", fullName: "Finance User", tenantId, role: UserRole.ADMIN } };
+  return { user: { id: "user-a", email: "finance@example.com", fullName: "Finance User", tenantId, role: UserRole.ADMIN } };
 }
 
 function payment() {

@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, Post, Query, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Post, Query, Req, Res, UseGuards } from "@nestjs/common";
+import type { Response } from "express";
 import { Prisma, UserRole } from "@prisma/client";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { Roles } from "../auth/roles.decorator";
@@ -19,12 +20,15 @@ import {
   ReversePaymentAllocationDto,
   CustomerFundsAllocationDto,
   CustomerFundsAllocationPreviewDto,
+  CustomerAccountStatementQueryDto,
+  SendCustomerAccountStatementDto,
 } from "./dto/finance.dto";
 import { translateFinanceError } from "./finance.errors";
 import { FinanceReadService } from "./finance-read.service";
 import { CustomerFundsAllocationService } from "./customer-funds-allocation.service";
+import { CustomerAccountStatementService } from "./customer-account-statement.service";
 
-type FinanceRequest = { user: { id: string; fullName: string; tenantId: string; role: UserRole } };
+type FinanceRequest = { user: { id: string; email?: string; fullName: string; tenantId: string; role: UserRole } };
 
 @Controller("finance")
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -37,7 +41,27 @@ export class FinanceController {
     private readonly cancellations: PaymentCancellationService,
     private readonly reads: FinanceReadService,
     private readonly customerFunds?: CustomerFundsAllocationService,
+    private readonly statements?: CustomerAccountStatementService,
   ) {}
+
+  @Get("customers/:customerId/account-statement")
+  @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.CONTADOR)
+  getCustomerAccountStatement(@Req() request: FinanceRequest, @Param("customerId") customerId: string, @Query() query: CustomerAccountStatementQueryDto) {
+    return this.statements!.get(request.user.tenantId, customerId, query.currencyCode.toUpperCase());
+  }
+
+  @Get("customers/:customerId/account-statement/pdf")
+  @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.CONTADOR)
+  async getCustomerAccountStatementPdf(@Req() request: FinanceRequest, @Param("customerId") customerId: string, @Query() query: CustomerAccountStatementQueryDto, @Res() response: Response) {
+    const result = await this.statements!.render(request.user.tenantId, customerId, query.currencyCode.toUpperCase());
+    response.set({ "Content-Type": "application/pdf", "Content-Length": result.pdfBuffer.length.toString(), "Content-Disposition": `attachment; filename="${result.fileName}"`, "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" });
+    response.send(result.pdfBuffer);
+  }
+
+  @Post("customers/:customerId/account-statement/email")
+  async sendCustomerAccountStatement(@Req() request: FinanceRequest, @Param("customerId") customerId: string, @Body() body: SendCustomerAccountStatementDto) {
+    return this.statements!.send(request.user.tenantId, { userId: request.user.id, email: request.user.email ?? "", fullName: request.user.fullName }, customerId, body.currencyCode.toUpperCase(), body.to, body.cc);
+  }
 
   @Post("customer-funds/allocation-preview")
   @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.CONTADOR)

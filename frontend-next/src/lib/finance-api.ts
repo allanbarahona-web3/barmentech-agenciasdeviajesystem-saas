@@ -234,6 +234,15 @@ export type CustomerFundsAllocationPreview = {
 };
 export type CustomerFundsAllocationInput = { customerId: string; currencyCode: FinanceCurrency; portfolioAllocationDeduplicationKey: string; targets: CustomerFundsAllocationTarget[] };
 
+export type CustomerAccountStatement = {
+  generatedAt: string;
+  customer: { id: string; name: string; identification: string | null; email: string | null };
+  currencyCode: FinanceCurrency;
+  totals: { invoicedAmount: string; allocatedAmount: string; outstandingAmount: string; availableAmount: string };
+  invoices: Array<{ id: string; number: string; documentType: string | null; recognizedAt: string; dueDate: string; originalAmount: string; allocatedAmount: string; outstandingAmount: string; status: AccountReceivableStatus; allocations: Array<{ receiptNumber: string; amount: string; allocatedAt: string; status: 'ACTIVE' | 'REVERSED' }> }>;
+  payments: Array<{ id: string; receiptNumber: string; receivedAt: string; receivedAmount: string; availableAmount: string; paymentMethod: string; status: PaymentStatus; allocations: Array<{ invoiceNumber: string; amount: string; allocatedAt: string; status: 'ACTIVE' | 'REVERSED' }> }>;
+};
+
 export type ListAccountReceivablesParams = {
   page?: number;
   pageSize?: number;
@@ -284,6 +293,10 @@ const ERROR_MESSAGES: Record<string, string> = {
   CUSTOMER_FUNDS_ALLOCATION_TARGET_INVALID: 'Una cuenta o monto ya no está disponible. Actualice la vista y vuelva a previsualizar.',
   CUSTOMER_FUNDS_ALLOCATION_DUPLICATE_TARGET: 'Una cuenta por cobrar solo puede incluirse una vez.',
   CUSTOMER_FUNDS_ALLOCATION_IDEMPOTENCY_CONFLICT: 'Esta confirmación ya fue utilizada con una intención diferente.',
+  CUSTOMER_ACCOUNT_STATEMENT_NOT_FOUND: 'No se encontró información financiera para este cliente.',
+  CUSTOMER_ACCOUNT_STATEMENT_EMAIL_INVALID: 'El cliente no tiene un correo válido. Indique un destinatario.',
+  CUSTOMER_ACCOUNT_STATEMENT_CC_INVALID: 'El correo CC no es válido.',
+  CUSTOMER_ACCOUNT_STATEMENT_EMAIL_FAILED: 'No se pudo enviar el estado de cuenta.',
   FINANCE_OPERATION_FAILED: 'No se pudo completar la consulta financiera.',
 };
 
@@ -423,6 +436,22 @@ export function previewCustomerFundsAllocation(input: Omit<CustomerFundsAllocati
 
 export function allocateCustomerFunds(input: CustomerFundsAllocationInput): Promise<CustomerFundsAllocationPreview> {
   return post<CustomerFundsAllocationPreview>('/finance/customer-funds/allocations', input);
+}
+
+export function getCustomerAccountStatement(customerId: string, currencyCode: FinanceCurrency, signal?: AbortSignal): Promise<CustomerAccountStatement> {
+  return request<CustomerAccountStatement>(`/finance/customers/${encodeURIComponent(customerId)}/account-statement${queryString({ currencyCode })}`, signal);
+}
+
+export async function downloadCustomerAccountStatement(customerId: string, currencyCode: FinanceCurrency): Promise<{ blob: Blob; fileName: string }> {
+  const response = await fetchApi(`/finance/customers/${encodeURIComponent(customerId)}/account-statement/pdf${queryString({ currencyCode })}`, { method: 'GET' });
+  if (!response.ok) throw new FinanceApiError('CUSTOMER_ACCOUNT_STATEMENT_PDF_FAILED', 'No se pudo generar el PDF del estado de cuenta.');
+  const disposition = response.headers.get('content-disposition') ?? '';
+  const fileName = /filename="([^"]+)"/.exec(disposition)?.[1] ?? `estado-cuenta-${customerId}-${currencyCode}.pdf`;
+  return { blob: await response.blob(), fileName };
+}
+
+export function sendCustomerAccountStatement(customerId: string, input: { currencyCode: FinanceCurrency; to?: string; cc?: string }): Promise<{ ok: true; sentTo: string; cc: string | null; emailId: string | null }> {
+  return post(`/finance/customers/${encodeURIComponent(customerId)}/account-statement/email`, input);
 }
 
 export function formatFinanceMoney(value: string, currency: string): string {

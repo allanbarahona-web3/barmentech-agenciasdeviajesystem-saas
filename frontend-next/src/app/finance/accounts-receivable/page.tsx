@@ -7,13 +7,14 @@ import { LoadingSpinner } from '@/components/loading-spinner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { getHomeRouteForRole, getStoredSession } from '@/lib/auth-api';
-import { formatFinanceMoney, getAccountReceivable, getPayment, listAccountReceivables, listPayments, type AccountReceivableDetail, type AccountReceivableGroup, type AccountReceivableStatus, type PaymentDetail } from '@/lib/finance-api';
+import { formatFinanceMoney, getAccountReceivable, listAccountReceivables, type AccountReceivableDetail, type AccountReceivableGroup, type AccountReceivableStatus } from '@/lib/finance-api';
 import { formatBusinessDate } from '@/shared/regional';
 import styles from './accounts-receivable.module.css';
 import { PaymentFlow } from './payment-flow';
 import { PaymentsView, type PaymentCustomerFilter } from './payments-view';
 import { ReceivableGroupsView } from './receivable-groups';
 import { CustomerFundsFlow } from './customer-funds-flow';
+import { CustomerAccountStatementModal } from './customer-account-statement';
 
 const READ_ROLES = new Set(['ADMIN', 'FACTURACION_COBROS', 'CONTADOR']);
 const WRITE_ROLES = new Set(['ADMIN', 'FACTURACION_COBROS']);
@@ -68,29 +69,6 @@ function ActionModal({ title, children, onClose }: { title: string; children: Re
   return <><button className={styles.paymentBackdrop} type="button" aria-label="Cerrar" onClick={onClose} /><section className={styles.decisionModal} role="dialog" aria-modal="true" aria-labelledby="finance-action-title"><header className={styles.paymentModalHeader}><div><p>Finanzas · Cuentas por cobrar</p><h2 id="finance-action-title">{title}</h2></div><Button className={styles.closeButton} size="icon" variant="ghost" type="button" aria-label="Cerrar" onClick={onClose}><X aria-hidden="true" /></Button></header><div className={styles.paymentModalBody}>{children}</div></section></>;
 }
 
-function AvailablePaymentsPicker({ receivable, onClose, onSelect }: { receivable: AccountReceivableDetail; onClose: () => void; onSelect: (payment: PaymentDetail) => void }) {
-  const [payments, setPayments] = useState<Awaited<ReturnType<typeof listPayments>>['payments'] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [openingId, setOpeningId] = useState<string | null>(null);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    listPayments({ customerId: receivable.customerId ?? undefined, currency: receivable.currencyCode, availableOnly: true, page: 1, pageSize: 100 }, controller.signal)
-      .then((result) => setPayments(result.payments))
-      .catch((requestError) => { if (!controller.signal.aborted) setError(requestError instanceof Error ? requestError.message : 'No se pudieron cargar los recibos de dinero disponibles.'); });
-    return () => controller.abort();
-  }, [receivable.customerId, receivable.currencyCode]);
-
-  async function selectPayment(id: string) {
-    setOpeningId(id); setError(null);
-    try { onSelect(await getPayment(id)); }
-    catch (requestError) { setError(requestError instanceof Error ? requestError.message : 'No se pudo abrir el recibo de dinero.'); }
-    finally { setOpeningId(null); }
-  }
-
-  return <ActionModal title="Elegir recibo para aplicar" onClose={onClose}><p className={styles.decisionCopy}>Seleccione un recibo específico con saldo disponible. La aplicación continuará únicamente con ese pago.</p>{error && <div className={styles.paymentError} role="alert"><AlertCircle aria-hidden="true" /><span>{error}</span></div>}{!payments ? <div className={styles.paymentEmpty}>Cargando recibos de dinero disponibles…</div> : payments.length === 0 ? <div className={styles.paymentEmpty}>No hay recibos de dinero disponibles para esta cuenta.</div> : <div className={styles.candidateList}>{payments.map((payment) => <article className={styles.candidate} key={payment.id}><div className={styles.stack}><strong className={styles.reference}>{payment.receiptNumber}</strong><span>{payment.payerDisplayName}</span><span className={styles.secondary}>{payment.externalReference ? `Ref. ${payment.externalReference} · ` : ''}{formatBusinessDate(payment.receivedAt)} · {payment.paymentMethod}</span></div><div className={styles.candidateBalance}><span>Saldo disponible</span><strong>{formatFinanceMoney(payment.availableAmount, payment.currencyCode)}</strong><small>Recibido: {formatFinanceMoney(payment.receivedAmount, payment.currencyCode)}</small></div><Button className={styles.primaryAction} disabled={openingId === payment.id} type="button" onClick={() => void selectPayment(payment.id)}>{openingId === payment.id ? 'Abriendo…' : 'Elegir este recibo'}</Button></article>)}</div>}<div className={styles.paymentActions}><Button className={styles.secondaryAction} variant="outline" type="button" onClick={onClose}>Cancelar</Button></div></ActionModal>;
-}
-
 export default function AccountsReceivablePage() {
   const router = useRouter();
   const [authorized, setAuthorized] = useState(false);
@@ -102,6 +80,7 @@ export default function AccountsReceivablePage() {
   const [openingRegistration, setOpeningRegistration] = useState(false);
   const [operationError, setOperationError] = useState<string | null>(null);
   const [paymentCustomer, setPaymentCustomer] = useState<PaymentCustomerFilter | null>(null);
+  const [statementGroup, setStatementGroup] = useState<AccountReceivableGroup | null>(null);
   const [customerFundsReceivable, setCustomerFundsReceivable] = useState<AccountReceivableDetail | null>(null);
   const [guardedReceivable, setGuardedReceivable] = useState<AccountReceivableDetail | null>(null);
 
@@ -150,11 +129,12 @@ export default function AccountsReceivablePage() {
     <nav className={styles.viewTabs} aria-label="Espacios de Finanzas"><button className={view === 'receivables' ? styles.viewTabActive : styles.viewTab} type="button" onClick={() => setView('receivables')}>Cartera por cliente</button><button className={view === 'payments' ? styles.viewTabActive : styles.viewTab} type="button" onClick={() => setView('payments')}>Pagos</button></nav>
     {operationError && <div className={styles.inlineError} role="alert"><AlertCircle aria-hidden="true" /><span>{operationError}</span></div>}
     {openingRegistration && <div className={styles.operationNotice}>Abriendo la cuenta seleccionada…</div>}
-    {view === 'receivables' ? <ReceivableGroupsView canWrite={canWrite} reloadToken={reload} onOpenDetail={setSelectedId} onRegisterPayment={(id) => void openRegistration(id)} onApplyBalance={(id) => void openCustomerFunds(id)} onApplyGroupBalance={(group) => void openGroupCustomerFunds(group)} onViewPayments={(customer) => { setPaymentCustomer(customer); setView('payments'); }} /> : <PaymentsView canWrite={canWrite} reloadToken={reload} customerFilter={paymentCustomer} onClearCustomer={() => setPaymentCustomer(null)} onChanged={() => setReload((value) => value + 1)} onApplyBalance={(customer) => { setPaymentCustomer(customer); setView('receivables'); }} />}
+    {view === 'receivables' ? <ReceivableGroupsView canWrite={canWrite} reloadToken={reload} onOpenDetail={setSelectedId} onRegisterPayment={(id) => void openRegistration(id)} onApplyBalance={(id) => void openCustomerFunds(id)} onApplyGroupBalance={(group) => void openGroupCustomerFunds(group)} onViewPayments={(customer) => { setPaymentCustomer(customer); setView('payments'); }} onStatement={setStatementGroup} /> : <PaymentsView reloadToken={reload} customerFilter={paymentCustomer} onClearCustomer={() => setPaymentCustomer(null)} />}
   </div>
   {selectedId && <ReceivableDrawer key={selectedId} id={selectedId} canWrite={canWrite} onClose={() => setSelectedId(null)} onRegisterPayment={startRegistration} onApplyBalance={setCustomerFundsReceivable} />}
   {registrationReceivable && <PaymentFlow receivable={registrationReceivable} onClose={() => setRegistrationReceivable(null)} onAllocated={() => setReload((value) => value + 1)} />}
   {customerFundsReceivable && <CustomerFundsFlow receivable={customerFundsReceivable} onClose={() => setCustomerFundsReceivable(null)} onCommitted={() => setReload((value) => value + 1)} />}
+  {statementGroup && <CustomerAccountStatementModal group={statementGroup} canSend={canWrite} onClose={() => setStatementGroup(null)} />}
   {guardedReceivable && <ActionModal title="Cuenta por cobrar no disponible" onClose={() => setGuardedReceivable(null)}><p className={styles.decisionCopy}>Esta cuenta por cobrar ya está saldada. Seleccione otra cuenta por cobrar para registrar o aplicar un abono.</p><section className={styles.detailCard}><dl className={styles.facts}><div><dt>Saldo pendiente</dt><dd className={styles.pendingAmount}>{formatFinanceMoney(guardedReceivable.outstandingAmount, guardedReceivable.currencyCode)}</dd></div></dl></section><div className={styles.paymentActions}><Button className={styles.primaryAction} type="button" onClick={() => setGuardedReceivable(null)}>Entendido</Button></div></ActionModal>}
   </main>;
 }

@@ -6,6 +6,7 @@ import {
   IsArray,
   IsBoolean,
   IsDateString,
+  IsEmail,
   IsEnum,
   IsInt,
   IsOptional,
@@ -124,4 +125,13 @@ export class ListUnallocatedPaymentBalancesDto {
   page?: number;
   @IsOptional() @Transform(({ value }) => Number.parseInt(String(value), 10)) @IsInt() @Min(1) @Max(100)
   pageSize?: number;
+}
+
+export class CustomerAccountStatementQueryDto {
+  @IsEnum(Currency) currencyCode!: Currency;
+}
+
+export class SendCustomerAccountStatementDto extends CustomerAccountStatementQueryDto {
+  @IsOptional() @Transform(trim) @IsEmail() to?: string;
+  @IsOptional() @Transform(trim) @IsEmail() cc?: string;
 }

@@ -7,11 +7,14 @@ import { FinanceController } from "./finance.controller";
 import { FinanceReadService } from "./finance-read.service";
 import { CustomerFundsAllocationService } from "./customer-funds-allocation.service";
 import { BusinessNumberingModule } from "../business-numbering/business-numbering.module";
+import { DocumentsModule } from "../documents/documents.module";
+import { EmailModule } from "../email/email.module";
+import { CustomerAccountStatementService } from "./customer-account-statement.service";
 
 @Module({
-  imports: [BusinessNumberingModule],
+  imports: [BusinessNumberingModule, DocumentsModule, EmailModule],
   controllers: [FinanceController],
-  providers: [PaymentRegistrationService, PaymentAllocationService, PaymentAllocationReversalService, PaymentCancellationService, FinanceReadService, CustomerFundsAllocationService],
+  providers: [PaymentRegistrationService, PaymentAllocationService, PaymentAllocationReversalService, PaymentCancellationService, FinanceReadService, CustomerFundsAllocationService, CustomerAccountStatementService],
   exports: [PaymentRegistrationService, PaymentAllocationService, PaymentAllocationReversalService, PaymentCancellationService],
 })
 export class FinanceModule {}
