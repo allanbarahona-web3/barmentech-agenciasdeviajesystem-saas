@@ -40,6 +40,9 @@
 .secondaryAction { border-color: #9eb3cb !important; background: #eef4fb !important; color: #174f88 !important; box-shadow: none !important; }
 .secondaryAction:hover { border-color: #5e86b0 !important; background: #dfeaf6 !important; color: #102f57 !important; }
 .secondaryAction svg { width: 15px; height: 15px; }
+.paymentRegisterAction { border-color: #d97706 !important; background: #fff3e0 !important; color: #a34b00 !important; box-shadow: none !important; }
+.paymentRegisterAction:hover { border-color: #b45309 !important; background: #ffe3bd !important; color: #7c2d12 !important; }
+.paymentRegisterAction svg { width: 15px; height: 15px; }
 .creditAction { border-color: #17663b !important; background: #17663b !important; color: #fff !important; box-shadow: 0 2px 5px rgba(23, 102, 59, .2); }
 .creditAction:hover { border-color: #11502d !important; background: #11502d !important; color: #fff !important; }
 .viewTabs { display: flex; gap: 4px; width: fit-content; margin: 0 0 20px; border: 1px solid #cdd8e5; border-radius: 10px; background: #eef4fb; padding: 4px; }

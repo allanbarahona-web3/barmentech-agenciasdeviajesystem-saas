@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { AlertCircle, CheckCircle2, ChevronLeft, ChevronRight, Download, Mail, WalletCards, X } from 'lucide-react';
+import { AlertCircle, CheckCircle2, ChevronLeft, ChevronRight, CircleDollarSign, Download, Mail, PiggyBank, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -393,7 +393,7 @@ export function PaymentFlow({ receivable, customer, initialPayment, canAllocate 
                 <label><span>Referencia externa</span><input value={externalReference} maxLength={150} onChange={(event) => setExternalReference(event.target.value)} /></label>
               </div>
               <label className={styles.paymentNotes}><span>Notas</span><textarea value={description} maxLength={500} rows={3} onChange={(event) => setDescription(event.target.value)} /></label>
-              <div className={styles.paymentActions}><Button className={styles.secondaryAction} variant="outline" type="button" onClick={onClose}>Cancelar</Button><Button className={styles.primaryAction} disabled={submitting} type="submit"><WalletCards aria-hidden="true" />{submitting ? 'Registrando…' : receivable ? 'Registrar abono' : 'Registrar pago'}</Button></div>
+              <div className={styles.paymentActions}><Button className={styles.secondaryAction} variant="outline" type="button" onClick={onClose}>Cancelar</Button><Button className={styles.primaryAction} disabled={submitting} type="submit">{receivable ? <CircleDollarSign aria-hidden="true" /> : <PiggyBank aria-hidden="true" />}{submitting ? 'Registrando…' : receivable ? 'Registrar abono' : 'Registrar pago'}</Button></div>
             </form>
           ) : !payment ? null : !canAllocate ? (
             <div className={styles.paymentResult}>
