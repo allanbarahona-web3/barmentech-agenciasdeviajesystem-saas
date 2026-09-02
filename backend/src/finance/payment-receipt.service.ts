@@ -1,5 +1,5 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
-import { Prisma } from "@prisma/client";
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { PaymentStatus, Prisma } from "@prisma/client";
 import { isEmail } from "class-validator";
 import { randomUUID } from "node:crypto";
 import { DocumentPdfService } from "../documents/document-pdf.service";
@@ -16,11 +16,12 @@ export class PaymentReceiptService {
   async get(tenantId: string, paymentId: string): Promise<PaymentReceipt> {
     const payment = await this.prisma.payment.findFirst({ where: { id: paymentId, tenantId }, include: { allocations: { orderBy: [{ allocatedAt: "asc" }, { id: "asc" }], include: { accountReceivable: { select: { sourceNumber: true, sourceId: true } } } } } });
     if (!payment) throw new NotFoundException("PAYMENT_NOT_FOUND");
+    const receiptNumber = eligibleReceiptNumber(payment.status, payment.receiptNumber);
     const customer = payment.customerId ? await this.prisma.client.findFirst({ where: { id: payment.customerId, tenantId }, select: { fullName: true, idNumber: true, email: true } }) : null;
     const applied = payment.allocations.filter((allocation) => allocation.status === "ACTIVE").reduce((total, allocation) => total.plus(allocation.amount), new Prisma.Decimal(0));
     const money = (value: Prisma.Decimal) => value.toFixed(Math.max(2, value.decimalPlaces()));
     const registered = await this.prisma.billingAuditLog.findFirst({ where: { tenantId, entityType: FINANCE_AUDIT_ENTITY_TYPES.PAYMENT, entityId: payment.id, action: FINANCE_AUDIT_ACTIONS.REGISTERED }, orderBy: { createdAt: "asc" }, select: { actorName: true } });
-    return { receiptNumber: payment.receiptNumber, customer: { name: customer?.fullName ?? payment.payerDisplayName, identification: customer?.idNumber ?? payment.payerIdentificationNumber, email: customer?.email ?? null }, currencyCode: payment.currencyCode, receivedAmount: money(payment.receivedAmount), appliedAmount: money(applied), availableAmount: money(payment.availableAmount), receivedAt: payment.receivedAt, paymentMethodLabel: paymentMethodLabel(payment.paymentMethod), externalReference: payment.externalReference, description: payment.description, statusLabel: paymentStatusLabel(payment.status), registeredBy: registered?.actorName ?? null, allocations: payment.allocations.map((allocation) => ({ sourceNumber: allocation.accountReceivable.sourceNumber ?? allocation.accountReceivable.sourceId, amount: money(allocation.amount), statusLabel: allocationStatusLabel(allocation.status), allocatedAt: allocation.allocatedAt })) };
+    return { receiptNumber, customer: { name: customer?.fullName ?? payment.payerDisplayName, identification: customer?.idNumber ?? payment.payerIdentificationNumber, email: customer?.email ?? null }, currencyCode: payment.currencyCode, receivedAmount: money(payment.receivedAmount), appliedAmount: money(applied), availableAmount: money(payment.availableAmount), receivedAt: payment.receivedAt, paymentMethodLabel: paymentMethodLabel(payment.paymentMethod), externalReference: payment.externalReference, description: payment.description, statusLabel: paymentStatusLabel(payment.status), registeredBy: registered?.actorName ?? null, allocations: payment.allocations.map((allocation) => ({ sourceNumber: allocation.accountReceivable.sourceNumber ?? allocation.accountReceivable.sourceId, amount: money(allocation.amount), statusLabel: allocationStatusLabel(allocation.status), allocatedAt: allocation.allocatedAt })) };
   }
 
   async render(tenantId: string, paymentId: string) {
@@ -38,4 +39,15 @@ export class PaymentReceiptService {
     await this.prisma.billingAuditLog.create({ data: financeAuditRecord({ tenantId, entityType: FINANCE_AUDIT_ENTITY_TYPES.PAYMENT, entityId: paymentId, action: FINANCE_AUDIT_ACTIONS.RECEIPT_SENT, actor: { userId: actor.userId, name: actor.fullName }, occurredAt: new Date(), afterJson: { receiptNumber: rendered.receipt.receiptNumber, recipient, cc: cc ?? null, emailId: result.emailId ?? null } }) });
     return { ok: true, sentTo: recipient, cc: cc ?? null, emailId: result.emailId ?? null };
   }
+}
+
+function eligibleReceiptNumber(status: PaymentStatus, receiptNumber: string | null): string {
+  const eligible = status === PaymentStatus.RECEIVED ||
+    status === PaymentStatus.PARTIALLY_ALLOCATED ||
+    status === PaymentStatus.FULLY_ALLOCATED ||
+    status === PaymentStatus.CANCELLED;
+  if (!eligible || typeof receiptNumber !== "string" || !receiptNumber.trim()) {
+    throw new ConflictException("PAYMENT_RECEIPT_UNAVAILABLE");
+  }
+  return receiptNumber;
 }

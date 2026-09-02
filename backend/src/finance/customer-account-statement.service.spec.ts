@@ -34,6 +34,35 @@ describe("CustomerAccountStatementService", () => {
     expect(result.invoices[0].allocations[0]).toMatchObject({ receiptNumber: "RCP-1", amount: "40.00" });
     expect(result.payments[0].allocations[0]).toMatchObject({ invoiceNumber: "FE-1", amount: "40.00" });
     expect(result.payments[0].paymentMethodLabel).toBe("Transferencia bancaria");
+    expect(payment.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        status: { in: ["RECEIVED", "PARTIALLY_ALLOCATED", "FULLY_ALLOCATED", "CANCELLED"] },
+        receiptNumber: { not: null },
+      }),
+    }));
+  });
+
+  it("excludes pending and rejected submissions while retaining confirmed payments", async () => {
+    const confirmed = (await payment.findMany())[0];
+    payment.findMany.mockResolvedValue([
+      confirmed,
+      { ...confirmed, id: "pending", status: "PENDING_VERIFICATION", receiptNumber: null },
+      { ...confirmed, id: "rejected", status: "REJECTED", receiptNumber: null },
+    ]);
+    const result = await service.get("tenant-1", "customer-1", "USD");
+    expect(result.payments.map((item) => item.id)).toEqual(["payment-1"]);
+  });
+
+  it("throws instead of fabricating a missing confirmed receipt number", async () => {
+    const confirmed = (await payment.findMany())[0];
+    payment.findMany.mockResolvedValue([{ ...confirmed, receiptNumber: null }]);
+    await expect(service.get("tenant-1", "customer-1", "USD")).rejects.toThrow("FINANCE_RECEIPT_NUMBER_INVARIANT_VIOLATION");
+  });
+
+  it("enforces the receipt invariant for allocation projections", async () => {
+    const receivables = await accountReceivable.findMany();
+    accountReceivable.findMany.mockResolvedValue([{ ...receivables[0], paymentAllocations: [{ ...receivables[0].paymentAllocations[0], payment: { receiptNumber: null } }] }]);
+    await expect(service.get("tenant-1", "customer-1", "USD")).rejects.toThrow("FINANCE_RECEIPT_NUMBER_INVARIANT_VIOLATION");
   });
 
   it("renders the PDF and sends it through the centralized email service", async () => {

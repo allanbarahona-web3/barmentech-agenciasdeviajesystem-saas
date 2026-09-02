@@ -2316,7 +2316,7 @@ model Payment {
   id                           String              @id @default(cuid())
   tenantId                     String
   registrationDeduplicationKey String              @db.VarChar(200)
-  receiptNumber                String              @db.VarChar(50)
+  receiptNumber                String?             @db.VarChar(50)
   customerId                   String?
   payerDisplayName             String
   payerIdentificationType      String?             @db.VarChar(4)
