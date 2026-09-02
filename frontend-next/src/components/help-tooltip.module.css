@@ -31,10 +31,8 @@
 }
 
 .tooltip {
-  position: absolute;
+  position: fixed;
   z-index: 50;
-  top: calc(100% + 8px);
-  left: 50%;
   width: max-content;
   max-width: min(280px, 80vw);
   padding: 9px 11px;
@@ -54,9 +52,7 @@
   visibility: hidden;
 }
 
-.root:hover .tooltip,
-.root:focus-within .tooltip,
-.open .tooltip {
+.visible {
   opacity: 1;
   visibility: visible;
 }

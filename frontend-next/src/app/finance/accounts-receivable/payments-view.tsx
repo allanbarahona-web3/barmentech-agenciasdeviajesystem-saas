@@ -30,10 +30,12 @@ const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
 
 export type PaymentCustomerFilter = { id: string; name: string; currency?: FinanceCurrency };
 
-export function PaymentsView({ reloadToken, customerFilter, onClearCustomer }: {
+export function PaymentsView({ reloadToken, customerFilter, onClearCustomer, canWrite, onPaymentChanged }: {
   reloadToken: number;
   customerFilter: PaymentCustomerFilter | null;
   onClearCustomer: () => void;
+  canWrite: boolean;
+  onPaymentChanged: () => void;
 }) {
   const [page, setPage] = useState(1);
   const [currency, setCurrency] = useState<FinanceCurrency | ''>('');
@@ -107,6 +109,6 @@ export function PaymentsView({ reloadToken, customerFilter, onClearCustomer }: {
       {error ? <div className={styles.state}><div><span className={styles.stateIcon}><AlertCircle aria-hidden="true" /></span><h3 className={styles.error}>No se pudieron cargar los pagos</h3><p>{error.message}</p><Button className={styles.secondaryAction} variant="outline" type="button" onClick={() => setRetry((value) => value + 1)}>Intentar nuevamente</Button></div></div> : !loading && (!result || result.payments.length === 0) ? <div className={styles.state}><div><span className={styles.stateIcon}><Search aria-hidden="true" /></span><h3>No se encontraron pagos</h3><p>No hay pagos bajo los filtros seleccionados.</p></div></div> : <Table className={styles.paymentTable}><TableHeader><TableRow><TableHead>Recibo / pagador</TableHead><TableHead>Fecha recibida</TableHead><TableHead>Moneda</TableHead><TableHead className={styles.numeric}>Recibido</TableHead><TableHead className={styles.numeric}>Disponible</TableHead><TableHead>Método</TableHead><TableHead>Estado</TableHead><TableHead>Detalle</TableHead></TableRow></TableHeader><TableBody>{loading ? Array.from({ length: 5 }, (_, row) => <TableRow key={row}>{Array.from({ length: 8 }, (_, cell) => <TableCell key={cell}><span className={styles.skeleton} /></TableCell>)}</TableRow>) : result?.payments.map((payment) => <TableRow key={payment.id}><TableCell><div className={styles.stack}><strong className={styles.reference}>{payment.receiptNumber}</strong><span>{payment.payerDisplayName}</span><span className={styles.secondary}>{payment.externalReference ? `Ref. ${payment.externalReference}` : payment.payerIdentificationNumber ?? 'Sin referencia externa'}</span></div></TableCell><TableCell>{formatBusinessDate(payment.receivedAt)}</TableCell><TableCell>{payment.currencyCode}</TableCell><TableCell className={styles.numeric}>{formatFinanceMoney(payment.receivedAmount, payment.currencyCode)}</TableCell><TableCell className={styles.numeric}><strong className={styles.availableAmount}>{formatFinanceMoney(payment.availableAmount, payment.currencyCode)}</strong></TableCell><TableCell>{payment.paymentMethod}</TableCell><TableCell><Badge className={styles.paymentStatusBadge} variant="outline">{PAYMENT_STATUS_LABELS[payment.status]}</Badge></TableCell><TableCell><Button className={styles.secondaryAction} disabled={openingId === payment.id} size="sm" type="button" variant="outline" onClick={() => void openPayment(payment.id)}><Eye aria-hidden="true" />{openingId === payment.id ? 'Abriendo…' : 'Ver detalle'}</Button></TableCell></TableRow>)}</TableBody></Table>}
       {!loading && !error && result && result.totalPages > 1 && <nav className={styles.pagination}><p>Página {result.page} de {result.totalPages} · {summary}</p><div className={styles.paginationActions}><Button className={styles.secondaryAction} disabled={result.page <= 1} variant="outline" onClick={() => setPage((value) => Math.max(1, value - 1))}>Anterior</Button><Button className={styles.secondaryAction} disabled={result.page >= result.totalPages} variant="outline" onClick={() => setPage((value) => Math.min(result.totalPages, value + 1))}>Siguiente</Button></div></nav>}
     </section>
-    {openedPayment && <PaymentFlow initialPayment={openedPayment} canAllocate={false} onClose={() => setOpenedPayment(null)} onAllocated={() => undefined} />}
+    {openedPayment && <PaymentFlow initialPayment={openedPayment} canAllocate={false} canManage={canWrite} onClose={() => setOpenedPayment(null)} onAllocated={() => { onPaymentChanged(); void openPayment(openedPayment.id); }} />}
   </>;
 }

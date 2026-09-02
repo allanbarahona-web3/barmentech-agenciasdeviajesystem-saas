@@ -77,8 +77,10 @@ export default function AccountsReceivablePage() {
   const [reload, setReload] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [registrationReceivable, setRegistrationReceivable] = useState<AccountReceivableDetail | null>(null);
+  const [registrationCustomer, setRegistrationCustomer] = useState<AccountReceivableGroup | null>(null);
   const [openingRegistration, setOpeningRegistration] = useState(false);
   const [operationError, setOperationError] = useState<string | null>(null);
+  const [operationNotice, setOperationNotice] = useState<string | null>(null);
   const [paymentCustomer, setPaymentCustomer] = useState<PaymentCustomerFilter | null>(null);
   const [statementGroup, setStatementGroup] = useState<AccountReceivableGroup | null>(null);
   const [customerFundsReceivable, setCustomerFundsReceivable] = useState<AccountReceivableDetail | null>(null);
@@ -128,11 +130,13 @@ export default function AccountsReceivablePage() {
     <header className={styles.header}><p className={styles.eyebrow}>Finanzas</p><h1 className={styles.title}>Cuentas por cobrar</h1><p className={styles.subtitle}>Consulte la cartera agrupada y recupere pagos pendientes de aplicar.</p></header>
     <nav className={styles.viewTabs} aria-label="Espacios de Finanzas"><button className={view === 'receivables' ? styles.viewTabActive : styles.viewTab} type="button" onClick={() => setView('receivables')}>Cartera por cliente</button><button className={view === 'payments' ? styles.viewTabActive : styles.viewTab} type="button" onClick={() => setView('payments')}>Pagos</button></nav>
     {operationError && <div className={styles.inlineError} role="alert"><AlertCircle aria-hidden="true" /><span>{operationError}</span></div>}
+    {operationNotice && <div className={styles.operationNotice} role="status">{operationNotice}</div>}
     {openingRegistration && <div className={styles.operationNotice}>Abriendo la cuenta seleccionada…</div>}
-    {view === 'receivables' ? <ReceivableGroupsView canWrite={canWrite} reloadToken={reload} onOpenDetail={setSelectedId} onRegisterPayment={(id) => void openRegistration(id)} onApplyBalance={(id) => void openCustomerFunds(id)} onApplyGroupBalance={(group) => void openGroupCustomerFunds(group)} onViewPayments={(customer) => { setPaymentCustomer(customer); setView('payments'); }} onStatement={setStatementGroup} /> : <PaymentsView reloadToken={reload} customerFilter={paymentCustomer} onClearCustomer={() => setPaymentCustomer(null)} />}
+    {view === 'receivables' ? <ReceivableGroupsView canWrite={canWrite} reloadToken={reload} onOpenDetail={setSelectedId} onRegisterPayment={(id) => void openRegistration(id)} onRegisterCustomerPayment={setRegistrationCustomer} onApplyBalance={(id) => void openCustomerFunds(id)} onApplyGroupBalance={(group) => void openGroupCustomerFunds(group)} onViewPayments={(customer) => { setPaymentCustomer(customer); setView('payments'); }} onStatement={setStatementGroup} /> : <PaymentsView reloadToken={reload} customerFilter={paymentCustomer} onClearCustomer={() => setPaymentCustomer(null)} canWrite={canWrite} onPaymentChanged={() => setReload((value) => value + 1)} />}
   </div>
   {selectedId && <ReceivableDrawer key={selectedId} id={selectedId} canWrite={canWrite} onClose={() => setSelectedId(null)} onRegisterPayment={startRegistration} onApplyBalance={setCustomerFundsReceivable} />}
-  {registrationReceivable && <PaymentFlow receivable={registrationReceivable} onClose={() => setRegistrationReceivable(null)} onAllocated={() => setReload((value) => value + 1)} />}
+  {registrationReceivable && <PaymentFlow receivable={registrationReceivable} onClose={() => setRegistrationReceivable(null)} onAllocated={() => setReload((value) => value + 1)} onCompleted={setOperationNotice} />}
+  {registrationCustomer?.customerId && <PaymentFlow customer={{ id: registrationCustomer.customerId, name: registrationCustomer.debtor.displayName, currency: registrationCustomer.currencyCode, identificationType: registrationCustomer.debtor.identificationType, identificationNumber: registrationCustomer.debtor.identificationNumber }} onClose={() => setRegistrationCustomer(null)} onAllocated={() => setReload((value) => value + 1)} onCompleted={setOperationNotice} />}
   {customerFundsReceivable && <CustomerFundsFlow receivable={customerFundsReceivable} onClose={() => setCustomerFundsReceivable(null)} onCommitted={() => setReload((value) => value + 1)} />}
   {statementGroup && <CustomerAccountStatementModal group={statementGroup} canSend={canWrite} onClose={() => setStatementGroup(null)} />}
   {guardedReceivable && <ActionModal title="Cuenta por cobrar no disponible" onClose={() => setGuardedReceivable(null)}><p className={styles.decisionCopy}>Esta cuenta por cobrar ya está saldada. Seleccione otra cuenta por cobrar para registrar o aplicar un abono.</p><section className={styles.detailCard}><dl className={styles.facts}><div><dt>Saldo pendiente</dt><dd className={styles.pendingAmount}>{formatFinanceMoney(guardedReceivable.outstandingAmount, guardedReceivable.currencyCode)}</dd></div></dl></section><div className={styles.paymentActions}><Button className={styles.primaryAction} type="button" onClick={() => setGuardedReceivable(null)}>Entendido</Button></div></ActionModal>}

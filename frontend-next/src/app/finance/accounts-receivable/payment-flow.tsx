@@ -1,17 +1,20 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { AlertCircle, CheckCircle2, ChevronLeft, ChevronRight, WalletCards, X } from 'lucide-react';
+import { AlertCircle, CheckCircle2, ChevronLeft, ChevronRight, Download, Mail, WalletCards, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   allocatePayment,
   cancelPayment,
+  downloadPaymentReceipt,
   FinanceApiError,
   formatFinanceMoney,
   getAllocationSuggestion,
   listAccountReceivables,
   registerPayment,
+  registerPaymentAndApply,
+  sendPaymentReceipt,
   reversePaymentAllocation,
   type AccountReceivableDetail,
   type AccountReceivableListItem,
@@ -95,7 +98,7 @@ function PaymentSummary({ payment, onCancel }: { payment: PaymentDetail; onCance
   return (
     <section className={styles.paymentSummary}>
       <div className={styles.paymentSummaryHeader}>
-        <div><span>Recibo a aplicar</span><strong>{payment.receiptNumber}</strong></div>
+        <div><span>RCP / recibo</span><strong>{payment.receiptNumber}</strong></div>
         <Badge className={styles.paymentStatusBadge} variant="outline">{PAYMENT_STATUS_LABELS[payment.status]}</Badge>
       </div>
       <dl className={styles.paymentFacts}>
@@ -104,14 +107,15 @@ function PaymentSummary({ payment, onCancel }: { payment: PaymentDetail; onCance
         <div><dt>Fecha</dt><dd>{formatBusinessDate(payment.receivedAt)}</dd></div>
         <div><dt>Moneda</dt><dd>{payment.currencyCode}</dd></div>
         <div><dt>Monto recibido</dt><dd>{formatFinanceMoney(payment.receivedAmount, payment.currencyCode)}</dd></div>
-        <div><dt>Disponible sin aplicar</dt><dd>{formatFinanceMoney(payment.availableAmount, payment.currencyCode)}</dd></div>
+        <div><dt>Monto aplicado</dt><dd>{formatFinanceMoney(payment.appliedAmount, payment.currencyCode)}</dd></div>
+        <div><dt>Saldo disponible</dt><dd>{formatFinanceMoney(payment.availableAmount, payment.currencyCode)}</dd></div>
         <div><dt>Método</dt><dd>{PAYMENT_METHOD_LABELS[payment.paymentMethod as RegisterPaymentInput['paymentMethod']] ?? payment.paymentMethod}</dd></div>
         <div><dt>Referencia</dt><dd>{payment.externalReference ?? '—'}</dd></div>
         <div><dt>Notas</dt><dd>{payment.description ?? '—'}</dd></div>
         {payment.registeredBy && <div><dt>Registrado por</dt><dd>{payment.registeredBy.name} · {formatBusinessDate(payment.registeredBy.at)}</dd></div>}
         {payment.cancelledBy && <div><dt>Cancelado por</dt><dd>{payment.cancelledBy.name} · {payment.cancelledAt ? formatBusinessDate(payment.cancelledAt) : formatBusinessDate(payment.cancelledBy.at)}{payment.cancelledBy.reason ? ` · ${payment.cancelledBy.reason}` : ''}</dd></div>}
       </dl>
-      {onCancel && payment.status === 'RECEIVED' && payment.cancelledAt === null && payment.availableAmount === payment.receivedAmount && payment.allocations.every((allocation) => allocation.status !== 'ACTIVE') && <div className={styles.paymentActions}><Button className={styles.secondaryAction} variant="outline" type="button" onClick={onCancel}>Cancelar recibo</Button></div>}
+      {onCancel && payment.canCancel && <div className={styles.paymentActions}><Button className={styles.secondaryAction} variant="outline" type="button" onClick={onCancel}>Cancelar recibo</Button></div>}
     </section>
   );
 }
@@ -132,7 +136,7 @@ function PaymentAllocations({ payment, onReverse }: { payment: PaymentDetail; on
           <div><dt>Fecha de aplicación</dt><dd>{formatBusinessDate(allocation.allocatedAt)}</dd></div>
           {allocation.appliedBy && <div><dt>Aplicado por</dt><dd>{allocation.appliedBy.name}</dd></div>}
         </dl>
-        {allocation.reversal && <div className={styles.reversalHistory}><strong>Reversión registrada</strong><p>{allocation.reversal.reason} · {formatBusinessDate(allocation.reversal.reversedAt)}{allocation.reversal.reversedBy ? ` · ${allocation.reversal.reversedBy.name}` : ''}</p></div>}
+        {allocation.reversal && <div className={styles.reversalHistory}><strong>Revertido</strong><p>{allocation.reversal.reason} · {formatBusinessDate(allocation.reversal.reversedAt)}{allocation.reversal.reversedBy ? ` · ${allocation.reversal.reversedBy.name}` : ''}</p></div>}
         {onReverse && allocation.status === 'ACTIVE' && <div className={styles.paymentActions}><Button className={styles.secondaryAction} variant="outline" type="button" onClick={() => onReverse(allocation)}>Revertir aplicación</Button></div>}
       </article>
     ))}</div>
@@ -141,18 +145,21 @@ function PaymentAllocations({ payment, onReverse }: { payment: PaymentDetail; on
 
 type PaymentFlowProps = {
   receivable?: AccountReceivableDetail;
+  customer?: { id: string; name: string; currency: RegisterPaymentInput['currencyCode']; identificationType: string | null; identificationNumber: string | null };
   initialPayment?: PaymentDetail;
   canAllocate?: boolean;
+  canManage?: boolean;
   onClose: () => void;
   onAllocated: () => void;
+  onCompleted?: (message: string) => void;
 };
 
-export function PaymentFlow({ receivable, initialPayment, canAllocate = true, onClose, onAllocated }: PaymentFlowProps) {
+export function PaymentFlow({ receivable, customer, initialPayment, canAllocate = true, canManage = canAllocate, onClose, onAllocated, onCompleted }: PaymentFlowProps) {
   const [registrationKey] = useState(() => idempotencyKey('finance-payment'));
   const allocationKeys = useRef(new Map<string, string>());
   const requestedSuggestions = useRef(new Set<string>());
   const [payment, setPayment] = useState<PaymentDetail | null>(initialPayment ?? null);
-  const [payerDisplayName, setPayerDisplayName] = useState(receivable?.debtorDisplayName ?? '');
+  const [payerDisplayName, setPayerDisplayName] = useState(receivable?.debtorDisplayName ?? customer?.name ?? '');
   const [receivedAt, setReceivedAt] = useState(localDateTimeValue);
   const [receivedAmount, setReceivedAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<RegisterPaymentInput['paymentMethod']>('BANK_TRANSFER');
@@ -172,6 +179,10 @@ export function PaymentFlow({ receivable, initialPayment, canAllocate = true, on
   const [suggestionLoading, setSuggestionLoading] = useState(false);
   const [action, setAction] = useState<{ kind: 'reversal'; allocation: PaymentDetail['allocations'][number] } | { kind: 'cancellation' } | null>(null);
   const [actionReason, setActionReason] = useState('');
+  const [receiptEmailOpen, setReceiptEmailOpen] = useState(false);
+  const [receiptTo, setReceiptTo] = useState('');
+  const [receiptCc, setReceiptCc] = useState('');
+  const [receiptBusy, setReceiptBusy] = useState(false);
   const reversalKey = useRef<string | null>(null);
 
   useEffect(() => {
@@ -231,7 +242,7 @@ export function PaymentFlow({ receivable, initialPayment, canAllocate = true, on
 
   async function submitRegistration(event: FormEvent) {
     event.preventDefault();
-    if (!receivable) return;
+    if (!receivable && !customer) return;
     setError(null);
     if (!payerDisplayName.trim() || !receivedAt || !DECIMAL_TEXT.test(receivedAmount.trim())) {
       setError('Complete el cliente, la fecha y un monto decimal válido.');
@@ -239,23 +250,30 @@ export function PaymentFlow({ receivable, initialPayment, canAllocate = true, on
     }
     setSubmitting(true);
     try {
-      const identification = receivable.debtorIdentificationType && receivable.debtorIdentificationNumber
-        ? { payerIdentificationType: receivable.debtorIdentificationType, payerIdentificationNumber: receivable.debtorIdentificationNumber }
+      const identificationType = receivable?.debtorIdentificationType ?? customer?.identificationType;
+      const identificationNumber = receivable?.debtorIdentificationNumber ?? customer?.identificationNumber;
+      const identification = identificationType && identificationNumber
+        ? { payerIdentificationType: identificationType, payerIdentificationNumber: identificationNumber }
         : {};
-      const response = await registerPayment({
+      const input = {
         registrationDeduplicationKey: registrationKey,
         payerDisplayName: payerDisplayName.trim(),
-        currencyCode: receivable.currencyCode,
+        currencyCode: receivable?.currencyCode ?? customer!.currency,
         receivedAmount: receivedAmount.trim(),
         receivedAt: new Date(receivedAt).toISOString(),
         paymentMethod,
-        ...(receivable.customerId ? { customerId: receivable.customerId } : {}),
+        ...(receivable?.customerId ? { customerId: receivable.customerId } : customer ? { customerId: customer.id } : {}),
         ...identification,
         ...(externalReference.trim() ? { externalReference: externalReference.trim() } : {}),
         ...(description.trim() ? { description: description.trim() } : {}),
-      });
-      setPayment(response);
-      setSuggestionPaymentId(response.id);
+      } satisfies RegisterPaymentInput;
+      if (receivable) {
+        const response = await registerPaymentAndApply(receivable.id, input);
+        onAllocated(); onCompleted?.(`Abono registrado: ${response.payment.receiptNumber} · aplicado ${formatFinanceMoney(response.allocation.amount, receivable.currencyCode)} · disponible ${formatFinanceMoney(response.payment.availableAmount, receivable.currencyCode)}.`); onClose();
+      } else {
+        const response = await registerPayment(input);
+        onAllocated(); onCompleted?.(`Pago registrado: ${response.receiptNumber} · disponible ${formatFinanceMoney(response.availableAmount, response.currencyCode)}.`); onClose();
+      }
     } catch (requestError) {
       setError(requestError instanceof FinanceApiError ? requestError.message : 'No se pudo registrar el pago.');
     } finally {
@@ -296,10 +314,10 @@ export function PaymentFlow({ receivable, initialPayment, canAllocate = true, on
     }
   }
 
-  const contextName = receivable?.debtorDisplayName ?? payment?.payerDisplayName ?? 'Pago';
+  const contextName = receivable?.debtorDisplayName ?? customer?.name ?? payment?.payerDisplayName ?? 'Pago';
   const contextReference = receivable?.sourceNumber ?? (receivable ? 'Cuenta por cobrar' : payment?.receiptNumber ?? '—');
-  const contextCurrency = receivable?.currencyCode ?? payment?.currencyCode ?? '—';
-  const title = !payment ? 'Registrar pago / abono' : canAllocate ? 'Aplicar pago / abono' : 'Detalle del pago';
+  const contextCurrency = receivable?.currencyCode ?? customer?.currency ?? payment?.currencyCode ?? '—';
+  const title = !payment ? (receivable ? 'Registrar abono' : 'Registrar pago') : canAllocate ? 'Aplicar pago / abono' : 'Detalle del pago';
   const hasAuthoritativeAvailableMoney = payment?.status === 'RECEIVED' || payment?.status === 'PARTIALLY_ALLOCATED';
   const awaitingInitiatingSuggestion = Boolean(receivable && suggestionPaymentId && !initiatingSuggestion && !suggestionError);
 
@@ -332,6 +350,21 @@ export function PaymentFlow({ receivable, initialPayment, canAllocate = true, on
     finally { setSubmitting(false); }
   }
 
+  async function downloadReceipt() {
+    if (!payment) return;
+    setReceiptBusy(true); setError(null);
+    try { const file = await downloadPaymentReceipt(payment.id); const url = URL.createObjectURL(file.blob); const link = document.createElement('a'); link.href = url; link.download = file.fileName; link.click(); URL.revokeObjectURL(url); }
+    catch (requestError) { setError(requestError instanceof Error ? requestError.message : 'No se pudo descargar el recibo.'); }
+    finally { setReceiptBusy(false); }
+  }
+  async function sendReceipt(event: FormEvent) {
+    event.preventDefault(); if (!payment) return;
+    setReceiptBusy(true); setError(null);
+    try { const result = await sendPaymentReceipt(payment.id, { ...(receiptTo.trim() ? { to: receiptTo.trim() } : {}), ...(receiptCc.trim() ? { cc: receiptCc.trim() } : {}) }); setReceiptEmailOpen(false); setReceiptTo(''); setReceiptCc(''); onCompleted?.(`Recibo ${payment.receiptNumber} enviado a ${result.sentTo}.`); }
+    catch (requestError) { setError(requestError instanceof Error ? requestError.message : 'No se pudo enviar el recibo.'); }
+    finally { setReceiptBusy(false); }
+  }
+
   return (
     <>
       <button className={styles.paymentBackdrop} type="button" aria-label="Cerrar pago" onClick={onClose} />
@@ -343,40 +376,41 @@ export function PaymentFlow({ receivable, initialPayment, canAllocate = true, on
         <div className={styles.paymentModalBody}>
           <section className={styles.paymentContext}>
             <div><span>Cliente</span><strong>{contextName}</strong></div>
-            <div><span>{receivable ? 'Cuenta seleccionada' : 'Recibo existente'}</span><strong>{contextReference}</strong></div>
+            {(receivable || payment) && <div><span>{receivable ? 'Cuenta seleccionada' : 'Recibo existente'}</span><strong>{contextReference}</strong></div>}
             <div><span>Moneda</span><strong>{contextCurrency}</strong></div>
             {receivable && <div><span>Saldo pendiente CxC</span><strong className={styles.pendingAmount}>{formatFinanceMoney(receivable.outstandingAmount, receivable.currencyCode)}</strong></div>}
           </section>
           {error && <div className={styles.paymentError} role="alert"><AlertCircle aria-hidden="true" /><span>{error}</span></div>}
-          {!payment && receivable ? (
+          {payment && <div className={styles.paymentActions}><Button className={styles.secondaryAction} disabled={receiptBusy} variant="outline" type="button" onClick={() => void downloadReceipt()}><Download aria-hidden="true" />{receiptBusy ? 'Procesando…' : 'Descargar recibo'}</Button><Button className={styles.secondaryAction} disabled={receiptBusy} variant="outline" type="button" onClick={() => setReceiptEmailOpen(true)}><Mail aria-hidden="true" />Enviar recibo</Button></div>}
+          {!payment && (receivable || customer) ? (
             <form className={styles.paymentForm} onSubmit={submitRegistration}>
               <div className={styles.paymentFormGrid}>
                 <label><span>Cliente</span><input value={payerDisplayName} maxLength={500} required onChange={(event) => setPayerDisplayName(event.target.value)} /></label>
                 <label><span>Fecha del pago</span><input type="datetime-local" value={receivedAt} required onChange={(event) => setReceivedAt(event.target.value)} /></label>
-                <label><span>Moneda</span><input value={receivable.currencyCode} readOnly /></label>
+                <label><span>Moneda</span><input value={contextCurrency} readOnly /></label>
                 <label><span>Monto recibido</span><input inputMode="decimal" maxLength={100} placeholder="0.00" value={receivedAmount} required onChange={(event) => setReceivedAmount(event.target.value)} /></label>
                 <label><span>Método de pago</span><select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value as RegisterPaymentInput['paymentMethod'])}><option value="CASH">Efectivo</option><option value="BANK_TRANSFER">Transferencia bancaria</option><option value="CARD">Tarjeta</option><option value="CHECK">Cheque</option><option value="MOBILE_TRANSFER">Transferencia móvil</option><option value="OTHER">Otro</option></select></label>
                 <label><span>Referencia externa</span><input value={externalReference} maxLength={150} onChange={(event) => setExternalReference(event.target.value)} /></label>
               </div>
               <label className={styles.paymentNotes}><span>Notas</span><textarea value={description} maxLength={500} rows={3} onChange={(event) => setDescription(event.target.value)} /></label>
-              <div className={styles.paymentActions}><Button className={styles.secondaryAction} variant="outline" type="button" onClick={onClose}>Cancelar</Button><Button className={styles.primaryAction} disabled={submitting} type="submit"><WalletCards aria-hidden="true" />{submitting ? 'Registrando…' : 'Registrar pago'}</Button></div>
+              <div className={styles.paymentActions}><Button className={styles.secondaryAction} variant="outline" type="button" onClick={onClose}>Cancelar</Button><Button className={styles.primaryAction} disabled={submitting} type="submit"><WalletCards aria-hidden="true" />{submitting ? 'Registrando…' : receivable ? 'Registrar abono' : 'Registrar pago'}</Button></div>
             </form>
           ) : !payment ? null : !canAllocate ? (
             <div className={styles.paymentResult}>
-              <PaymentSummary payment={payment} onCancel={canAllocate ? () => startAction({ kind: 'cancellation' }) : undefined} />
-              <section className={styles.paymentResultSection}><h3>Aplicaciones e historial</h3><PaymentAllocations payment={payment} onReverse={canAllocate ? (allocation) => startAction({ kind: 'reversal', allocation }) : undefined} /></section>
+              <PaymentSummary payment={payment} onCancel={canManage ? () => startAction({ kind: 'cancellation' }) : undefined} />
+              <section className={styles.paymentResultSection}><h3>Pagos / abonos aplicados</h3><PaymentAllocations payment={payment} onReverse={canManage ? (allocation) => startAction({ kind: 'reversal', allocation }) : undefined} /></section>
               <div className={styles.paymentActions}><Button className={styles.secondaryAction} variant="outline" type="button" onClick={onClose}>Cerrar</Button></div>
             </div>
           ) : allocationComplete ? (
             <div className={styles.paymentResult}>
               <div className={styles.paymentSuccess}><CheckCircle2 aria-hidden="true" /><div><strong>Aplicación registrada</strong><p>Los saldos y estados mostrados corresponden al estado financiero actual.</p></div></div>
-              <PaymentSummary payment={payment} onCancel={canAllocate ? () => startAction({ kind: 'cancellation' }) : undefined} />
-              <section className={styles.paymentResultSection}><h3>Aplicaciones e historial</h3><PaymentAllocations payment={payment} onReverse={canAllocate ? (allocation) => startAction({ kind: 'reversal', allocation }) : undefined} /></section>
+              <PaymentSummary payment={payment} onCancel={canManage ? () => startAction({ kind: 'cancellation' }) : undefined} />
+              <section className={styles.paymentResultSection}><h3>Pagos / abonos aplicados</h3><PaymentAllocations payment={payment} onReverse={canManage ? (allocation) => startAction({ kind: 'reversal', allocation }) : undefined} /></section>
               <div className={styles.paymentActions}>{hasAuthoritativeAvailableMoney && <Button className={styles.secondaryAction} variant="outline" type="button" onClick={continueAllocating}>Continuar aplicando saldo</Button>}<Button className={styles.primaryAction} type="button" onClick={onClose}>Cerrar</Button></div>
             </div>
           ) : (
             <form className={styles.allocationForm} onSubmit={submitAllocations}>
-              <PaymentSummary payment={payment} onCancel={canAllocate ? () => startAction({ kind: 'cancellation' }) : undefined} />
+              <PaymentSummary payment={payment} onCancel={canManage ? () => startAction({ kind: 'cancellation' }) : undefined} />
               <div className={styles.allocationHeading}><div><h3>Seleccione cuentas por cobrar</h3><p>Indique los montos que desea aplicar. La validación financiera se realiza al confirmar.</p></div></div>
               {(suggestionLoading || awaitingInitiatingSuggestion) && <div className={styles.paymentEmpty}>Cargando monto sugerido para la cuenta inicial…</div>}
               {suggestionError && <div className={styles.paymentError} role="alert"><AlertCircle aria-hidden="true" /><span>{suggestionError} Puede ingresar un monto manual y solicitar la validación financiera.</span></div>}
@@ -391,13 +425,14 @@ export function PaymentFlow({ receivable, initialPayment, canAllocate = true, on
                 ))}</div>
               )}
               {candidateResult && candidateResult.totalPages > 1 && <nav className={styles.candidatePagination}><Button className={styles.secondaryAction} disabled={candidatePage <= 1} size="sm" type="button" variant="outline" onClick={() => setCandidatePage((value) => Math.max(1, value - 1))}><ChevronLeft aria-hidden="true" />Anterior</Button><span>Página {candidateResult.page} de {candidateResult.totalPages}</span><Button className={styles.secondaryAction} disabled={candidatePage >= candidateResult.totalPages} size="sm" type="button" variant="outline" onClick={() => setCandidatePage((value) => Math.min(candidateResult.totalPages, value + 1))}>Siguiente<ChevronRight aria-hidden="true" /></Button></nav>}
-              <section className={styles.paymentResultSection}><h3>Estado actual del pago</h3><PaymentAllocations payment={payment} onReverse={canAllocate ? (allocation) => startAction({ kind: 'reversal', allocation }) : undefined} /></section>
+              <section className={styles.paymentResultSection}><h3>Pagos / abonos aplicados</h3><PaymentAllocations payment={payment} onReverse={canManage ? (allocation) => startAction({ kind: 'reversal', allocation }) : undefined} /></section>
               <div className={styles.paymentActions}><Button className={styles.secondaryAction} variant="outline" type="button" onClick={onClose}>Cerrar</Button><Button className={styles.primaryAction} disabled={submitting} type="submit">{submitting ? 'Aplicando…' : 'Confirmar aplicación'}</Button></div>
             </form>
           )}
         </div>
       </section>
       {action && <><button className={styles.paymentBackdrop} type="button" aria-label="Cerrar confirmación" onClick={() => setAction(null)} /><section className={styles.decisionModal} role="dialog" aria-modal="true" aria-label={action.kind === 'reversal' ? 'Confirmar reversión' : 'Confirmar cancelación'}><header className={styles.paymentModalHeader}><div><p>Finanzas · confirmación</p><h2>{action.kind === 'reversal' ? 'Revertir aplicación' : 'Cancelar recibo'}</h2></div></header><div className={styles.paymentModalBody}>{action.kind === 'reversal' ? <><p className={styles.decisionCopy}>Se revertirá {formatFinanceMoney(action.allocation.amount, payment?.currencyCode ?? '')} de {payment?.receiptNumber} hacia {action.allocation.accountReceivable.sourceNumber ?? 'la cuenta por cobrar'}. Los saldos autorizados se restaurarán.</p><Badge className={styles.activeBadge} variant="outline">{ALLOCATION_STATUS_LABELS[action.allocation.status]}</Badge></> : <p className={styles.decisionCopy}>Se cancelará el recibo {payment?.receiptNumber} por {payment && formatFinanceMoney(payment.receivedAmount, payment.currencyCode)}. Esto no cancela ninguna factura.</p>}<label className={styles.paymentNotes}><span>Motivo</span><textarea rows={3} maxLength={500} value={actionReason} onChange={(event) => { setActionReason(event.target.value); if (action.kind === 'reversal') reversalKey.current = null; }} /></label><div className={styles.paymentActions}><Button className={styles.secondaryAction} variant="outline" type="button" onClick={() => setAction(null)}>Volver</Button><Button className={styles.primaryAction} disabled={submitting} type="button" onClick={() => void confirmAction()}>{submitting ? 'Confirmando…' : action.kind === 'reversal' ? 'Confirmar reversión' : 'Confirmar cancelación'}</Button></div></div></section></>}
+      {receiptEmailOpen && <><button className={styles.paymentBackdrop} type="button" aria-label="Cerrar envío de recibo" onClick={() => setReceiptEmailOpen(false)} /><section className={styles.decisionModal} role="dialog" aria-modal="true" aria-label="Enviar recibo"><header className={styles.paymentModalHeader}><div><p>Finanzas · recibo</p><h2>Enviar recibo</h2></div></header><form className={styles.paymentModalBody} onSubmit={sendReceipt}><p className={styles.decisionCopy}>Se enviará el PDF actualizado de {payment?.receiptNumber}.</p><div className={styles.paymentFormGrid}><label><span>Destinatario</span><input type="email" value={receiptTo} onChange={(event) => setReceiptTo(event.target.value)} placeholder="Correo del cliente" /></label><label><span>CC</span><input type="email" value={receiptCc} onChange={(event) => setReceiptCc(event.target.value)} placeholder="Opcional" /></label></div><div className={styles.paymentActions}><Button className={styles.secondaryAction} variant="outline" type="button" onClick={() => setReceiptEmailOpen(false)}>Cancelar</Button><Button className={styles.primaryAction} disabled={receiptBusy} type="submit">{receiptBusy ? 'Enviando…' : 'Enviar recibo'}</Button></div></form></section></>}
     </>
   );
 }

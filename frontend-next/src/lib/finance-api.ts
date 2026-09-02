@@ -147,7 +147,9 @@ export type PaymentDetail = {
   payerIdentificationNumber: string | null;
   currencyCode: FinanceCurrency;
   receivedAmount: string;
+  appliedAmount: string;
   availableAmount: string;
+  canCancel: boolean;
   receivedAt: string;
   paymentMethod: string;
   externalReference: string | null;
@@ -221,6 +223,7 @@ export type AllocatePaymentInput = {
     allocationDeduplicationKey: string;
   }>;
 };
+export type RegisterPaymentAndApplyResult = { payment: { id: string; receiptNumber: string; receivedAmount: string; availableAmount: string; status: PaymentStatus }; allocation: { accountReceivableId: string; sourceNumber: string | null; amount: string; outstandingAmount: string; status: AccountReceivableStatus } };
 export type ReversePaymentAllocationInput = { reversalDeduplicationKey: string; reason: string };
 export type ReversePaymentAllocationResult = { reversal: { id: string; paymentAllocationId: string; reason: string; reversedAt: string }; payment: PaymentDetail };
 export type CancelPaymentInput = { reason: string };
@@ -297,6 +300,9 @@ const ERROR_MESSAGES: Record<string, string> = {
   CUSTOMER_ACCOUNT_STATEMENT_EMAIL_INVALID: 'El cliente no tiene un correo válido. Indique un destinatario.',
   CUSTOMER_ACCOUNT_STATEMENT_CC_INVALID: 'El correo CC no es válido.',
   CUSTOMER_ACCOUNT_STATEMENT_EMAIL_FAILED: 'No se pudo enviar el estado de cuenta.',
+  PAYMENT_RECEIPT_EMAIL_INVALID: 'El cliente no tiene un correo válido. Indique un destinatario.',
+  PAYMENT_RECEIPT_CC_INVALID: 'El correo CC no es válido.',
+  PAYMENT_RECEIPT_EMAIL_FAILED: 'No se pudo enviar el recibo.',
   FINANCE_OPERATION_FAILED: 'No se pudo completar la consulta financiera.',
 };
 
@@ -387,6 +393,17 @@ export function getPayment(id: string, signal?: AbortSignal): Promise<PaymentDet
   return request<PaymentDetail>(`/finance/payments/${encodeURIComponent(id)}`, signal);
 }
 
+export async function downloadPaymentReceipt(paymentId: string): Promise<{ blob: Blob; fileName: string }> {
+  const response = await fetchApi(`/finance/payments/${encodeURIComponent(paymentId)}/receipt`, { method: 'GET' });
+  if (!response.ok) throw new FinanceApiError('PAYMENT_RECEIPT_PDF_FAILED', 'No se pudo generar el PDF del recibo.');
+  const disposition = response.headers.get('content-disposition') ?? '';
+  return { blob: await response.blob(), fileName: /filename="([^"]+)"/.exec(disposition)?.[1] ?? `recibo-${paymentId}.pdf` };
+}
+
+export function sendPaymentReceipt(paymentId: string, input: { to?: string; cc?: string }): Promise<{ ok: true; sentTo: string; cc: string | null; emailId: string | null }> {
+  return post(`/finance/payments/${encodeURIComponent(paymentId)}/receipt/email`, input);
+}
+
 export function getAllocationSuggestion(
   paymentId: string,
   accountReceivableId: string,
@@ -410,6 +427,10 @@ export function listUnallocatedPaymentBalances(
 
 export function registerPayment(input: RegisterPaymentInput): Promise<PaymentDetail> {
   return post<PaymentDetail>('/finance/payments', input);
+}
+
+export function registerPaymentAndApply(accountReceivableId: string, input: RegisterPaymentInput): Promise<RegisterPaymentAndApplyResult> {
+  return post<RegisterPaymentAndApplyResult>(`/finance/account-receivables/${encodeURIComponent(accountReceivableId)}/payments`, input);
 }
 
 export function allocatePayment(
