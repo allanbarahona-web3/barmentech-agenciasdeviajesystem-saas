@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "test:pending-payments": "node --experimental-strip-types tests/contract-reservation-review.test.mjs",
     "start": "next start",
     "lint": "eslint",
     "generate:airports": "node scripts/generate-airports-dataset.mjs"

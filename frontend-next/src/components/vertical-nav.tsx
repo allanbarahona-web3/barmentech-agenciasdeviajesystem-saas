@@ -265,13 +265,15 @@ export function VerticalNav() {
                 label: "Estados de cuenta",
                 icon: "💰",
               },
-              {
-                href: "/admin/pending-payments",
-                label: "Pagos Pendientes",
-                icon: "⏳",
-                badge: pendingCounts.pendingReceipts || 0,
-                adminOnly: true,
-              },
+              ...(isAdmin || role === "FACTURACION_COBROS"
+                ? [{
+                    href: "/admin/pending-payments",
+                    label: "Pagos Pendientes",
+                    icon: "⏳",
+                    badge: pendingCounts.pendingReceipts || 0,
+                    adminOnly: true,
+                  }]
+                : []),
               {
                 href: "/admin/pending-receipts",
                 label: "Recibos por Enviar",

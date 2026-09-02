@@ -1,4 +1,5 @@
 import { fetchApi } from '@/lib/api-client';
+import { contractReservationApprovePath, contractReservationEvidencePath, contractReservationPendingPath, contractReservationRejectPath } from '@/lib/contract-reservation-review';
 
 export type AccountReceivableStatus =
   | 'OPEN'
@@ -7,6 +8,42 @@ export type AccountReceivableStatus =
   | 'CANCELLED';
 
 export type FinanceCurrency = 'CRC' | 'USD';
+
+export type ContractReservationEvidence = {
+  id: string;
+  originalFileName: string;
+  mimeType: string;
+  size: number;
+};
+
+export type ContractReservationPayment = {
+  id: string;
+  customerId: string | null;
+  contractId: string;
+  currencyCode: string;
+  receivedAmount: string;
+  availableAmount: string;
+  receivedAt: string;
+  paymentMethod: string;
+  externalReference: string | null;
+  description: string | null;
+  purpose: 'CONTRACT_RESERVATION';
+  status: 'PENDING_VERIFICATION';
+  receiptNumber: null;
+  evidence: ContractReservationEvidence[];
+  contract: {
+    id: string;
+    contractNumber: string;
+    status: string;
+    destination: string;
+    clientId: string;
+    client: { id: string; fullName: string; idNumber: string; email: string; phone: string | null };
+    travelPackage: { id: string; name: string; departureDate: string; returnDate: string } | null;
+    internalTrip: { id: string; name: string; departureDate: string; returnDate: string } | null;
+  };
+};
+
+export type ContractReservationEvidenceAccess = ContractReservationEvidence & { url: string };
 
 export type AccountReceivableSource = {
   type: string;
@@ -304,6 +341,13 @@ const ERROR_MESSAGES: Record<string, string> = {
   PAYMENT_RECEIPT_CC_INVALID: 'El correo CC no es válido.',
   PAYMENT_RECEIPT_EMAIL_FAILED: 'No se pudo enviar el recibo.',
   FINANCE_OPERATION_FAILED: 'No se pudo completar la consulta financiera.',
+  CONTRACT_RESERVATION_PAYMENT_NOT_FOUND: 'El pago de reserva ya no está disponible.',
+  CONTRACT_RESERVATION_REVIEW_ALREADY_DECIDED: 'Este pago de reserva ya fue revisado.',
+  CONTRACT_RESERVATION_REVIEW_CONFLICT: 'El pago cambió mientras se procesaba. Actualice la lista.',
+  CONTRACT_RESERVATION_REVIEW_STATE_CONFLICT: 'El pago tiene un estado de revisión incompatible.',
+  CONTRACT_RESERVATION_PENDING_STATE_INVALID: 'El pago pendiente ya no tiene un estado válido para revisión.',
+  CONTRACT_RESERVATION_EVIDENCE_NOT_FOUND: 'El comprobante ya no está disponible.',
+  CONTRACT_RESERVATION_CAPACITY_UNAVAILABLE: 'Ya no hay capacidad suficiente para aprobar esta reserva.',
 };
 
 function queryString(params: Record<string, unknown>): string {
@@ -473,6 +517,22 @@ export async function downloadCustomerAccountStatement(customerId: string, curre
 
 export function sendCustomerAccountStatement(customerId: string, input: { currencyCode: FinanceCurrency; to?: string; cc?: string }): Promise<{ ok: true; sentTo: string; cc: string | null; emailId: string | null }> {
   return post(`/finance/customers/${encodeURIComponent(customerId)}/account-statement/email`, input);
+}
+
+export function listPendingContractReservationPayments(limit = 100, signal?: AbortSignal): Promise<{ payments: ContractReservationPayment[] }> {
+  return request<{ payments: ContractReservationPayment[] }>(`${contractReservationPendingPath()}${queryString({ limit })}`, signal);
+}
+
+export function approveContractReservationPayment(paymentId: string): Promise<{ ok: true; paymentId: string; status: 'RECEIVED'; receiptNumber: string }> {
+  return post(contractReservationApprovePath(paymentId), {});
+}
+
+export function rejectContractReservationPayment(paymentId: string, reason: string): Promise<{ ok: true; paymentId: string; status: 'REJECTED' }> {
+  return post(contractReservationRejectPath(paymentId), { reason });
+}
+
+export function getContractReservationEvidence(paymentId: string, evidenceId: string, signal?: AbortSignal): Promise<ContractReservationEvidenceAccess> {
+  return request<ContractReservationEvidenceAccess>(contractReservationEvidencePath(paymentId, evidenceId), signal);
 }
 
 export function formatFinanceMoney(value: string, currency: string): string {
