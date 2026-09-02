@@ -110,6 +110,11 @@ export class ContractsService {
     return String(value).padStart(size, "0");
   }
 
+  private normalizeReservationCurrency(value: unknown): "CRC" | "USD" | null {
+    const currency = String(value || "").trim().toUpperCase();
+    return currency === "CRC" || currency === "USD" ? currency : null;
+  }
+
   private randomHex(bytes = 2) {
     return randomBytes(bytes).toString("hex").toUpperCase();
   }
@@ -1522,6 +1527,55 @@ export class ContractsService {
       payload && typeof payload === "object" && !Array.isArray(payload)
         ? (payload as Record<string, unknown>)
         : {};
+    const reservationAmount = Number.parseFloat(
+      String(payloadRecord.reservationAmount ?? "").trim(),
+    );
+    const hasPositiveReservation =
+      Number.isFinite(reservationAmount) && reservationAmount > 0;
+    const requestedInternalTripId =
+      String(dto.internalTripId || "").trim() || null;
+    const requestedTravelPackageId =
+      String(payloadRecord.travelPackageId || "").trim() || null;
+
+    let internalTripId: string | null = null;
+    let travelPackageId: string | null = null;
+    let reservationCurrencyCode: "CRC" | "USD" | null = null;
+
+    if (requestedInternalTripId) {
+      const internalTrip = await this.prisma.internalTrip.findFirst({
+        where: { id: requestedInternalTripId, tenantId: user.tenantId },
+        select: { id: true, currency: true },
+      });
+      if (!internalTrip) {
+        throw new BadRequestException(
+          "El viaje interno no existe o no pertenece al tenant del contrato.",
+        );
+      }
+      internalTripId = internalTrip.id;
+      reservationCurrencyCode = this.normalizeReservationCurrency(
+        internalTrip.currency,
+      );
+    } else if (requestedTravelPackageId) {
+      const travelPackage = await this.prisma.travelPackage.findFirst({
+        where: { id: requestedTravelPackageId, tenantId: user.tenantId },
+        select: { id: true, priceCurrency: true },
+      });
+      if (!travelPackage) {
+        throw new BadRequestException(
+          "El paquete de viaje no existe o no pertenece al tenant del contrato.",
+        );
+      }
+      travelPackageId = travelPackage.id;
+      reservationCurrencyCode = this.normalizeReservationCurrency(
+        travelPackage.priceCurrency,
+      );
+    }
+
+    if (hasPositiveReservation && !reservationCurrencyCode) {
+      throw new BadRequestException(
+        "No se pudo resolver una moneda soportada para la reserva del contrato.",
+      );
+    }
 
     const companionsArray = Array.isArray(payloadRecord.companions)
       ? payloadRecord.companions
@@ -1577,6 +1631,8 @@ export class ContractsService {
 
     const enrichedPayload = {
       ...payloadRecord,
+      travelPackageId,
+      reservationCurrencyCode,
       selectedCustomerId: client.id,
       companions: enrichedCompanions,
       minors: enrichedMinors,
@@ -1615,14 +1671,11 @@ export class ContractsService {
     console.log(`  Menores válidos: ${minorsWithId.length} de ${minors.length}`);
     console.log(`  TOTAL: ${participantCount} personas`);
 
-    // Obtener travelPackageId si viene del payload (contratos desde paquetes programados)
-    const travelPackageId = String(payloadRecord.travelPackageId || "").trim() || null;
-
     // ✅ VALIDACIÓN DE CAPACIDAD (Capa 2 - Backend)
     // Valida ANTES de crear el contrato para evitar reservas imposibles
     await this.billingService.validateTripCapacity(
       travelPackageId,
-      isInternalTrip ? (dto.internalTripId || null) : null,
+      internalTripId,
       participantCount,
       'archiveContract'
     );
@@ -1703,7 +1756,7 @@ export class ContractsService {
           source: contractSource,
           participantCount: participantCount,
           travelPackageId: travelPackageId, // Para viajes internacionales programados
-          internalTripId: isInternalTrip ? dto.internalTripId : null, // Para viajes internos
+          internalTripId, // Resuelto dentro del tenant del contrato
           documents: {
             create: uploadedDocuments.map((doc) => ({
               kind: null,

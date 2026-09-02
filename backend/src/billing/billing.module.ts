@@ -6,9 +6,10 @@ import { TravelPackagesModule } from "../travel-packages/travel-packages.module"
 import { InternalTourismModule } from "../internal-tourism/internal-tourism.module";
 import { StorageModule } from "../storage/storage.module";
 import { ReceiptProcessingWorker } from "./jobs/receipt-processing.worker";
+import { FinanceModule } from "../finance/finance.module";
 
 @Module({
-  imports: [EmailModule, TravelPackagesModule, InternalTourismModule, StorageModule],
+  imports: [EmailModule, TravelPackagesModule, InternalTourismModule, StorageModule, FinanceModule],
   controllers: [BillingController],
   providers: [BillingService, ReceiptProcessingWorker],
   exports: [BillingService],

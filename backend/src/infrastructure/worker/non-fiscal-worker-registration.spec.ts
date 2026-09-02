@@ -15,6 +15,7 @@ describe("non-fiscal multi-name worker registration", () => {
       { registerWorker } as never,
       {} as never,
       {} as never,
+      {} as never,
     );
 
     worker.onModuleInit();

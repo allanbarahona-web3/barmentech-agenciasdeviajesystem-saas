@@ -12,11 +12,12 @@ import { EmailModule } from "../email/email.module";
 import { CustomerAccountStatementService } from "./customer-account-statement.service";
 import { RegisterPaymentAndApplyService } from "./register-payment-and-apply.service";
 import { PaymentReceiptService } from "./payment-receipt.service";
+import { ContractReservationPaymentService } from "./contract-reservation-payment.service";
 
 @Module({
   imports: [BusinessNumberingModule, DocumentsModule, EmailModule],
   controllers: [FinanceController],
-  providers: [PaymentRegistrationService, PaymentAllocationService, PaymentAllocationReversalService, PaymentCancellationService, FinanceReadService, CustomerFundsAllocationService, CustomerAccountStatementService, RegisterPaymentAndApplyService, PaymentReceiptService],
-  exports: [PaymentRegistrationService, PaymentAllocationService, PaymentAllocationReversalService, PaymentCancellationService],
+  providers: [PaymentRegistrationService, PaymentAllocationService, PaymentAllocationReversalService, PaymentCancellationService, FinanceReadService, CustomerFundsAllocationService, CustomerAccountStatementService, RegisterPaymentAndApplyService, PaymentReceiptService, ContractReservationPaymentService],
+  exports: [PaymentRegistrationService, PaymentAllocationService, PaymentAllocationReversalService, PaymentCancellationService, ContractReservationPaymentService],
 })
 export class FinanceModule {}

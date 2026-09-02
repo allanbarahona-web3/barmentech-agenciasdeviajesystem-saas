@@ -2450,6 +2450,23 @@ export class BillingService {
     }
 
     if (!contract.billingInvoice) {
+      const reservationPayment = await this.prisma.payment.findFirst({
+        where: {
+          tenantId: contract.tenantId,
+          contractId: contract.id,
+          purpose: "CONTRACT_RESERVATION",
+          status: { in: ["PENDING_VERIFICATION", "RECEIVED", "PARTIALLY_ALLOCATED", "FULLY_ALLOCATED"] },
+        },
+        select: { id: true },
+      });
+      if (reservationPayment) {
+        return {
+          ok: true,
+          skipped: true,
+          reason: "CONTRACT_RESERVATION_MANAGED_BY_FINANCE",
+          paymentId: reservationPayment.id,
+        };
+      }
       await this.bootstrapContractBilling(
         {
           id: input.actorUserId,

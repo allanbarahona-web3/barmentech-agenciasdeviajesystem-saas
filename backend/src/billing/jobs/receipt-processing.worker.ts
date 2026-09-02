@@ -5,6 +5,7 @@ import { PLATFORM_QUEUE_KEYS } from "../../infrastructure/queue";
 import { WorkerService } from "../../infrastructure/worker";
 import { PrismaService } from "../../prisma/prisma.service";
 import { BillingService } from "../billing.service";
+import { ContractReservationPaymentService } from "../../finance/contract-reservation-payment.service";
 import { BILLING_BOOTSTRAP_JOB_NAME } from "./billing-bootstrap-job.constants";
 import { BillingBootstrapJobPayload } from "./billing-bootstrap-job.types";
 import {
@@ -19,6 +20,7 @@ export class ReceiptProcessingWorker implements OnModuleInit {
     private readonly workerService: WorkerService,
     private readonly billingService: BillingService,
     private readonly prisma: PrismaService,
+    private readonly contractReservationPayments: ContractReservationPaymentService,
   ) {}
 
   onModuleInit(): void {
@@ -53,9 +55,25 @@ export class ReceiptProcessingWorker implements OnModuleInit {
       const contract = await this.prisma.contract.findUnique({
         where: { id: contractId },
         select: {
+          id: true,
+          tenantId: true,
+          clientId: true,
+          createdAt: true,
+          paymentReference: true,
+          payload: true,
           generatedByUserId: true,
           generatedByEmail: true,
           generatedByName: true,
+          client: { select: { fullName: true } },
+          documents: {
+            select: {
+              kind: true,
+              objectKey: true,
+              originalFileName: true,
+              mimeType: true,
+              size: true,
+            },
+          },
         },
       });
 
@@ -63,16 +81,10 @@ export class ReceiptProcessingWorker implements OnModuleInit {
         throw new Error(`Contract not found: ${contractId}.`);
       }
 
-      await this.billingService.bootstrapContractBilling(
-        {
-          id: contract.generatedByUserId,
-          email: contract.generatedByEmail,
-          fullName: contract.generatedByName,
-        },
-        contractId,
-        null,
-        null,
-      );
+      await this.contractReservationPayments.submit({
+        contract,
+        actor: { userId: contract.generatedByUserId, name: contract.generatedByName },
+      });
       return;
     }
 

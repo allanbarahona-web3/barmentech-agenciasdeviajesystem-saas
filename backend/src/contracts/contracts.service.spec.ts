@@ -135,6 +135,24 @@ function createArchiveService(records: CustomerRecord[]) {
     tenant: {
       findUnique: jest.fn().mockResolvedValue({ subdomain: "tenant-one" }),
     },
+    internalTrip: {
+      findFirst: jest.fn(({ where }: any) =>
+        Promise.resolve(
+          where.id === "internal-trip-1" && where.tenantId === "tenant-1"
+            ? { id: "internal-trip-1", currency: "CRC" }
+            : null,
+        ),
+      ),
+    },
+    travelPackage: {
+      findFirst: jest.fn(({ where }: any) =>
+        Promise.resolve(
+          where.id === "package-1" && where.tenantId === "tenant-1"
+            ? { id: "package-1", priceCurrency: "USD" }
+            : null,
+        ),
+      ),
+    },
     contract: {
       findUnique: jest.fn().mockResolvedValue(null),
       create: contractCreate,
@@ -162,7 +180,7 @@ function createArchiveService(records: CustomerRecord[]) {
     {},
     {},
     {},
-    {},
+    { uploadObject: jest.fn().mockResolvedValue(undefined) },
     jobDispatcher,
     {},
   ];
@@ -173,6 +191,8 @@ function createArchiveService(records: CustomerRecord[]) {
     contractCreate,
     customerCreate,
     customerUpdate,
+    internalTripFindFirst: prisma.internalTrip.findFirst,
+    travelPackageFindFirst: prisma.travelPackage.findFirst,
   };
 }
 
@@ -427,6 +447,7 @@ describe("ContractsService archive customer identity resolution", () => {
       contractCreate,
       customerCreate,
       customerUpdate,
+      internalTripFindFirst,
     } = createArchiveService([holder, companionOne, minor]);
     const companion = companionPayload(companionOne);
 
@@ -446,6 +467,8 @@ describe("ContractsService archive customer identity resolution", () => {
         payloadJson: JSON.stringify({
           selectedCustomerId: holder.id,
           clientIdType: holder.idType,
+          reservationAmount: "50.00",
+          reservationCurrencyCode: "USD",
           companions: [companion],
           minors: [
             {
@@ -467,6 +490,8 @@ describe("ContractsService archive customer identity resolution", () => {
           clientId: holder.id,
           payload: expect.objectContaining({
             selectedCustomerId: holder.id,
+            reservationAmount: "50.00",
+            reservationCurrencyCode: "CRC",
             companions: [
               expect.objectContaining({
                 selectedCustomerId: companionOne.id,
@@ -481,8 +506,96 @@ describe("ContractsService archive customer identity resolution", () => {
         }),
       }),
     );
+    expect(internalTripFindFirst).toHaveBeenCalledWith({
+      where: { id: "internal-trip-1", tenantId: "tenant-1" },
+      select: { id: true, currency: true },
+    });
     expect(customerCreate).not.toHaveBeenCalled();
     expect(customerUpdate).not.toHaveBeenCalled();
+  });
+
+  it("archives a server-owned TravelPackage currency snapshot using a tenant-scoped source", async () => {
+    const { service, contractCreate, travelPackageFindFirst } =
+      createArchiveService([holder]);
+
+    await service.archiveContract(
+      { id: "agent-1", email: "agent@example.com", fullName: "Agent", tenantId: "tenant-1" },
+      {
+        contractNumber: "CT-PACKAGE",
+        clientFullName: holder.fullName,
+        clientIdNumber: holder.idNumber,
+        clientEmail: "holder@example.com",
+        destination: "Destination",
+        contractHtml: "<html></html>",
+        payloadJson: JSON.stringify({
+          selectedCustomerId: holder.id,
+          clientIdType: holder.idType,
+          travelPackageId: "package-1",
+          reservationAmount: "75.00",
+          reservationCurrencyCode: "CRC",
+        }),
+      },
+      [],
+    );
+
+    expect(travelPackageFindFirst).toHaveBeenCalledWith({
+      where: { id: "package-1", tenantId: "tenant-1" },
+      select: { id: true, priceCurrency: true },
+    });
+    expect(contractCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        tenantId: "tenant-1",
+        travelPackageId: "package-1",
+        payload: expect.objectContaining({
+          reservationAmount: "75.00",
+          reservationCurrencyCode: "USD",
+        }),
+      }),
+    }));
+  });
+
+  it("rejects positive reservations without an authoritative commercial currency", async () => {
+    const { service, contractCreate } = createArchiveService([holder]);
+
+    await expect(service.archiveContract(
+      { id: "agent-1", email: "agent@example.com", fullName: "Agent", tenantId: "tenant-1" },
+      {
+        contractNumber: "CT-NO-SOURCE",
+        clientFullName: holder.fullName,
+        clientIdNumber: holder.idNumber,
+        clientEmail: "holder@example.com",
+        destination: "Destination",
+        contractHtml: "<html></html>",
+        payloadJson: JSON.stringify({
+          selectedCustomerId: holder.id,
+          clientIdType: holder.idType,
+          reservationAmount: "25.00",
+          reservationCurrencyCode: "USD",
+        }),
+      },
+      [],
+    )).rejects.toThrow(/moneda soportada/);
+    expect(contractCreate).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["internal trip", { internalTripId: "foreign-trip", payloadJson: JSON.stringify({ selectedCustomerId: holder.id, clientIdType: holder.idType }) }],
+    ["travel package", { contractHtml: "<html></html>", payloadJson: JSON.stringify({ selectedCustomerId: holder.id, clientIdType: holder.idType, travelPackageId: "foreign-package" }) }],
+  ])("rejects a client-selected %s outside the Contract tenant", async (_label, source) => {
+    const { service, contractCreate } = createArchiveService([holder]);
+    await expect(service.archiveContract(
+      { id: "agent-1", email: "agent@example.com", fullName: "Agent", tenantId: "tenant-1" },
+      {
+        contractNumber: "CT-FOREIGN",
+        clientFullName: holder.fullName,
+        clientIdNumber: holder.idNumber,
+        clientEmail: "holder@example.com",
+        destination: "Destination",
+        ...source,
+      },
+      [],
+    )).rejects.toThrow(/no existe o no pertenece/);
+    expect(contractCreate).not.toHaveBeenCalled();
   });
 
   it("resolves existing minors without retaining an archive-time Customer creation path", async () => {
