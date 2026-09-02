@@ -1,0 +1,5 @@
+ALTER INDEX "customer_funds_allocation_commands_tenantId_customerId_currency"
+RENAME TO "customer_funds_allocation_commands_tenantId_customerId_curr_idx";
+
+ALTER INDEX "customer_funds_allocation_commands_tenantId_deduplicationKey_ke"
+RENAME TO "customer_funds_allocation_commands_tenantId_deduplicationKe_key";

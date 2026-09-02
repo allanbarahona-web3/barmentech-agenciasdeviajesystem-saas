@@ -107,6 +107,7 @@ model Tenant {
   payments                           Payment[]
   paymentAllocations                 PaymentAllocation[]
   paymentAllocationReversals         PaymentAllocationReversal[]
+  paymentEvidence                    PaymentEvidence[]
   businessNumberSequences            BusinessNumberSequence[]
   customerFundsAllocationCommands    CustomerFundsAllocationCommand[]
 
@@ -280,7 +281,9 @@ model Contract {
   usedTokens            ContractUsedToken[]
   signingSessions       DocumentSigningSession[]
   notes                 ContractNote[]
+  financePayments       Payment[]                @relation("ContractFinancePayments")
 
+  @@unique([id, tenantId], map: "Contract_id_tenantId_key")
   @@index([clientId])
   @@index([travelPackageId])
   @@index([internalTripId])
@@ -2296,10 +2299,17 @@ model AccountReceivable {
 }
 
 enum PaymentStatus {
+  PENDING_VERIFICATION
   RECEIVED
   PARTIALLY_ALLOCATED
   FULLY_ALLOCATED
+  REJECTED
   CANCELLED
+}
+
+enum PaymentPurpose {
+  GENERAL
+  CONTRACT_RESERVATION
 }
 
 model Payment {
@@ -2318,12 +2328,20 @@ model Payment {
   paymentMethod                String              @db.VarChar(50)
   externalReference            String?             @db.VarChar(150)
   description                  String?             @db.VarChar(500)
+  purpose                      PaymentPurpose      @default(GENERAL)
+  contractId                   String?
   status                       PaymentStatus       @default(RECEIVED)
+  reviewedAt                   DateTime?
+  reviewedByUserId             String?
+  reviewedByName               String?
+  rejectionReason              String?             @db.VarChar(500)
   cancelledAt                  DateTime?
   createdAt                    DateTime            @default(now())
   updatedAt                    DateTime            @updatedAt
   tenant                       Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contract                     Contract?           @relation("ContractFinancePayments", fields: [contractId, tenantId], references: [id, tenantId], onDelete: Restrict)
   allocations                  PaymentAllocation[]
+  evidence                     PaymentEvidence[]
 
   @@unique([tenantId, registrationDeduplicationKey])
   @@unique([tenantId, receiptNumber])
@@ -2332,7 +2350,26 @@ model Payment {
   @@index([tenantId, customerId])
   @@index([tenantId, receivedAt])
   @@index([tenantId, externalReference])
+  @@index([tenantId, contractId])
+  @@index([tenantId, purpose, status])
   @@map("payments")
+}
+
+model PaymentEvidence {
+  id               String   @id @default(cuid())
+  tenantId         String
+  paymentId        String
+  objectKey        String   @unique
+  originalFileName String
+  mimeType         String
+  size             Int
+  createdAt        DateTime @default(now())
+  tenant           Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  payment          Payment  @relation(fields: [paymentId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@index([tenantId, paymentId])
+  @@index([tenantId, createdAt])
+  @@map("payment_evidence")
 }
 
 model BusinessNumberSequence {
