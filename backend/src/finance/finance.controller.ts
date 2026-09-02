@@ -24,6 +24,8 @@ import {
   CustomerAccountStatementQueryDto,
   SendCustomerAccountStatementDto,
   SendPaymentReceiptDto,
+  RejectContractReservationPaymentDto,
+  ListContractReservationPaymentsDto,
 } from "./dto/finance.dto";
 import { translateFinanceError } from "./finance.errors";
 import { FinanceReadService } from "./finance-read.service";
@@ -31,6 +33,7 @@ import { CustomerFundsAllocationService } from "./customer-funds-allocation.serv
 import { CustomerAccountStatementService } from "./customer-account-statement.service";
 import { RegisterPaymentAndApplyService } from "./register-payment-and-apply.service";
 import { PaymentReceiptService } from "./payment-receipt.service";
+import { ContractReservationReviewService } from "./contract-reservation-review.service";
 
 type FinanceRequest = { user: { id: string; email?: string; fullName: string; tenantId: string; role: UserRole } };
 
@@ -48,7 +51,34 @@ export class FinanceController {
     private readonly statements?: CustomerAccountStatementService,
     private readonly paymentAndApply?: RegisterPaymentAndApplyService,
     private readonly receipts?: PaymentReceiptService,
+    private readonly contractReservations?: ContractReservationReviewService,
   ) {}
+
+  @Get("contract-reservation-payments/pending")
+  @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS)
+  async listPendingContractReservations(@Req() request: FinanceRequest, @Query() query: ListContractReservationPaymentsDto) {
+    return this.contractReservations!.listPending(request.user.tenantId, query.limit ?? 100);
+  }
+
+  @Post("contract-reservation-payments/:paymentId/approve")
+  @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS)
+  async approveContractReservation(@Req() request: FinanceRequest, @Param("paymentId") paymentId: string) {
+    const payment = await this.contractReservations!.approve(request.user.tenantId, paymentId, { userId: request.user.id, name: request.user.fullName });
+    return { ok: true, paymentId: payment.id, status: payment.status, receiptNumber: payment.receiptNumber };
+  }
+
+  @Post("contract-reservation-payments/:paymentId/reject")
+  @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS)
+  async rejectContractReservation(@Req() request: FinanceRequest, @Param("paymentId") paymentId: string, @Body() body: RejectContractReservationPaymentDto) {
+    const payment = await this.contractReservations!.reject(request.user.tenantId, paymentId, body.reason, { userId: request.user.id, name: request.user.fullName });
+    return { ok: true, paymentId: payment.id, status: payment.status };
+  }
+
+  @Get("contract-reservation-payments/:paymentId/evidence/:evidenceId")
+  @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS)
+  async getContractReservationEvidence(@Req() request: FinanceRequest, @Param("paymentId") paymentId: string, @Param("evidenceId") evidenceId: string) {
+    return this.contractReservations!.getEvidenceUrl(request.user.tenantId, paymentId, evidenceId);
+  }
 
   @Get("customers/:customerId/account-statement")
   @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.CONTADOR)

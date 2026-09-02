@@ -13,11 +13,14 @@ import { CustomerAccountStatementService } from "./customer-account-statement.se
 import { RegisterPaymentAndApplyService } from "./register-payment-and-apply.service";
 import { PaymentReceiptService } from "./payment-receipt.service";
 import { ContractReservationPaymentService } from "./contract-reservation-payment.service";
+import { ContractReservationReviewService } from "./contract-reservation-review.service";
+import { ContractReservationApprovalModule } from "../contracts/contract-reservation-approval.module";
+import { StorageModule } from "../storage/storage.module";
 
 @Module({
-  imports: [BusinessNumberingModule, DocumentsModule, EmailModule],
+  imports: [BusinessNumberingModule, DocumentsModule, EmailModule, StorageModule, ContractReservationApprovalModule],
   controllers: [FinanceController],
-  providers: [PaymentRegistrationService, PaymentAllocationService, PaymentAllocationReversalService, PaymentCancellationService, FinanceReadService, CustomerFundsAllocationService, CustomerAccountStatementService, RegisterPaymentAndApplyService, PaymentReceiptService, ContractReservationPaymentService],
-  exports: [PaymentRegistrationService, PaymentAllocationService, PaymentAllocationReversalService, PaymentCancellationService, ContractReservationPaymentService],
+  providers: [PaymentRegistrationService, PaymentAllocationService, PaymentAllocationReversalService, PaymentCancellationService, FinanceReadService, CustomerFundsAllocationService, CustomerAccountStatementService, RegisterPaymentAndApplyService, PaymentReceiptService, ContractReservationPaymentService, ContractReservationReviewService],
+  exports: [PaymentRegistrationService, PaymentAllocationService, PaymentAllocationReversalService, PaymentCancellationService, ContractReservationPaymentService, ContractReservationReviewService],
 })
 export class FinanceModule {}

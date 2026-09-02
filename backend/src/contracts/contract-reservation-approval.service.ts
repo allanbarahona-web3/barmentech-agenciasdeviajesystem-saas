@@ -1,0 +1,178 @@
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
+import {
+  TravelPackageParticipantsRepository,
+  type TravelPackageParticipantWrite,
+} from "../travel-packages/repositories/travel-package-participants.repository";
+
+const APPROVABLE_CONTRACT_STATUSES = ["PENDING_PAYMENT_RESERVE", "RESERVE_IN_REVIEW"];
+
+@Injectable()
+export class ContractReservationApprovalService {
+  constructor(
+    private readonly participantsRepository: TravelPackageParticipantsRepository,
+  ) {}
+
+  async approveInTransaction(
+    tx: Prisma.TransactionClient,
+    input: { tenantId: string; contractId: string },
+  ): Promise<{ applied: boolean }> {
+    await tx.$queryRaw`
+      SELECT "id" FROM "Contract"
+      WHERE "id" = ${input.contractId} AND "tenantId" = ${input.tenantId}
+      FOR UPDATE
+    `;
+    const contract = await tx.contract.findFirst({
+      where: { id: input.contractId, tenantId: input.tenantId },
+      select: {
+        id: true,
+        tenantId: true,
+        clientId: true,
+        status: true,
+        participantCount: true,
+        travelPackageId: true,
+        internalTripId: true,
+        payload: true,
+      },
+    });
+    if (!contract) throw new NotFoundException("CONTRACT_RESERVATION_CONTRACT_NOT_FOUND");
+    if (contract.status === "PENDING_SIGNATURE") return { applied: false };
+    if (!APPROVABLE_CONTRACT_STATUSES.includes(contract.status)) {
+      throw new BadRequestException("CONTRACT_RESERVATION_CONTRACT_STATE_CONFLICT");
+    }
+
+    const participantCount = requireParticipantCount(contract.participantCount);
+    if (contract.travelPackageId && contract.internalTripId) {
+      throw new BadRequestException("CONTRACT_RESERVATION_TRAVEL_CONTEXT_CONFLICT");
+    }
+    if (contract.travelPackageId) {
+      await this.lockTravelPackage(tx, contract.travelPackageId, contract.tenantId, participantCount);
+    }
+    if (contract.internalTripId) {
+      await this.lockInternalTrip(tx, contract.internalTripId, contract.tenantId, participantCount);
+    }
+
+    const transitioned = await tx.contract.updateMany({
+      where: {
+        id: contract.id,
+        tenantId: contract.tenantId,
+        status: { in: APPROVABLE_CONTRACT_STATUSES },
+      },
+      data: { status: "PENDING_SIGNATURE" },
+    });
+    if (transitioned.count !== 1) {
+      throw new BadRequestException("CONTRACT_RESERVATION_CONTRACT_STATE_CONFLICT");
+    }
+
+    if (contract.travelPackageId) {
+      await this.createInternationalTravelRoster(tx, {
+        ...contract,
+        travelPackageId: contract.travelPackageId,
+      });
+      const travelPackage = await tx.travelPackage.update({
+        where: { id: contract.travelPackageId },
+        data: { occupiedSlots: { increment: participantCount } },
+        select: { occupiedSlots: true, capacity: true, status: true },
+      });
+      if (travelPackage.occupiedSlots >= travelPackage.capacity && travelPackage.status !== "CLOSED") {
+        await tx.travelPackage.update({ where: { id: contract.travelPackageId }, data: { status: "CLOSED" } });
+      }
+    }
+
+    if (contract.internalTripId) {
+      const internalTrip = await tx.internalTrip.update({
+        where: { id: contract.internalTripId },
+        data: { occupiedSlots: { increment: participantCount } },
+        select: { occupiedSlots: true, capacity: true, status: true },
+      });
+      if (internalTrip.occupiedSlots >= internalTrip.capacity && internalTrip.status !== "CLOSED") {
+        await tx.internalTrip.update({ where: { id: contract.internalTripId }, data: { status: "CLOSED" } });
+      }
+    }
+
+    return { applied: true };
+  }
+
+  private async lockTravelPackage(
+    tx: Prisma.TransactionClient,
+    travelPackageId: string,
+    tenantId: string,
+    participantCount: number,
+  ): Promise<void> {
+    await tx.$queryRaw`
+      SELECT "id" FROM "TravelPackage"
+      WHERE "id" = ${travelPackageId} AND "tenantId" = ${tenantId}
+      FOR UPDATE
+    `;
+    const travelPackage = await tx.travelPackage.findFirst({
+      where: { id: travelPackageId, tenantId },
+      select: { capacity: true, occupiedSlots: true, name: true },
+    });
+    if (!travelPackage) throw new NotFoundException("CONTRACT_RESERVATION_TRAVEL_PACKAGE_NOT_FOUND");
+    if (participantCount > travelPackage.capacity - travelPackage.occupiedSlots) {
+      throw new BadRequestException("CONTRACT_RESERVATION_CAPACITY_UNAVAILABLE");
+    }
+  }
+
+  private async lockInternalTrip(
+    tx: Prisma.TransactionClient,
+    internalTripId: string,
+    tenantId: string,
+    participantCount: number,
+  ): Promise<void> {
+    await tx.$queryRaw`
+      SELECT "id" FROM "internal_trips"
+      WHERE "id" = ${internalTripId} AND "tenantId" = ${tenantId}
+      FOR UPDATE
+    `;
+    const internalTrip = await tx.internalTrip.findFirst({
+      where: { id: internalTripId, tenantId },
+      select: { capacity: true, occupiedSlots: true, name: true },
+    });
+    if (!internalTrip) throw new NotFoundException("CONTRACT_RESERVATION_INTERNAL_TRIP_NOT_FOUND");
+    if (participantCount > internalTrip.capacity - internalTrip.occupiedSlots) {
+      throw new BadRequestException("CONTRACT_RESERVATION_CAPACITY_UNAVAILABLE");
+    }
+  }
+
+  private async createInternationalTravelRoster(
+    tx: Prisma.TransactionClient,
+    contract: { clientId: string; tenantId: string; travelPackageId: string; payload: unknown },
+  ): Promise<void> {
+    const payload = contract.payload && typeof contract.payload === "object" && !Array.isArray(contract.payload)
+      ? contract.payload as Record<string, unknown>
+      : {};
+    const companions = Array.isArray(payload.companions)
+      ? payload.companions.filter((item: any) => item && String(item.fullName || "").trim() && String(item.idNumber || "").trim())
+      : [];
+    const minors = Array.isArray(payload.minors)
+      ? payload.minors.filter((item: any) => item && String(item.minorName || item.name || "").trim() && String(item.minorId || item.idNumber || "").trim())
+      : [];
+    const companionIds = companions.map((item: any) => String(item.selectedCustomerId || "").trim());
+    const minorIds = minors.map((item: any) => String(item.selectedCustomerId || "").trim());
+    if ([...companionIds, ...minorIds].some((id) => !id)) {
+      throw new BadRequestException("CONTRACT_RESERVATION_PARTICIPANT_IDENTITY_INVALID");
+    }
+    const clientIds = [contract.clientId, ...companionIds, ...minorIds];
+    if (new Set(clientIds).size !== clientIds.length) {
+      throw new BadRequestException("CONTRACT_RESERVATION_PARTICIPANT_DUPLICATE");
+    }
+    const clients = await this.participantsRepository.findClients(tx, contract.tenantId, clientIds);
+    if (clients.length !== clientIds.length) {
+      throw new BadRequestException("CONTRACT_RESERVATION_PARTICIPANT_TENANT_INVALID");
+    }
+    const participants: TravelPackageParticipantWrite[] = [
+      { tenantId: contract.tenantId, travelPackageId: contract.travelPackageId, clientId: contract.clientId, role: "HOLDER" },
+      ...companionIds.map((clientId) => ({ tenantId: contract.tenantId, travelPackageId: contract.travelPackageId, clientId, role: "COMPANION" as const })),
+      ...minorIds.map((clientId) => ({ tenantId: contract.tenantId, travelPackageId: contract.travelPackageId, clientId, role: "MINOR" as const })),
+    ];
+    await this.participantsRepository.createMany(tx, participants);
+  }
+}
+
+function requireParticipantCount(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || !Number.isInteger(value) || value < 1) {
+    throw new BadRequestException("CONTRACT_RESERVATION_PARTICIPANT_COUNT_INVALID");
+  }
+  return value;
+}

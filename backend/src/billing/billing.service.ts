@@ -34,10 +34,7 @@ import {
   RECEIPT_PROCESSING_JOB_OPTIONS,
 } from "./jobs/receipt-processing-job.constants";
 import type { ReceiptProcessingJobPayload } from "./jobs/receipt-processing-job.types";
-import {
-  TravelPackageParticipantsRepository,
-  type TravelPackageParticipantWrite,
-} from "../travel-packages/repositories/travel-package-participants.repository";
+import { ContractReservationApprovalService } from "../contracts/contract-reservation-approval.service";
 
 @Injectable()
 export class BillingService {
@@ -56,7 +53,7 @@ export class BillingService {
     private readonly configService: ConfigService,
     private readonly jobDispatcher: JobDispatcherService,
     private readonly travelPackagesService: TravelPackagesService,
-    private readonly travelPackageParticipantsRepository: TravelPackageParticipantsRepository,
+    private readonly contractReservationApprovals: ContractReservationApprovalService,
     private readonly internalToursService: InternalToursService,
     private readonly storageService: StorageService,
   ) {}
@@ -4318,75 +4315,7 @@ export class BillingService {
           throw new BadRequestException("Solo se pueden verificar abonos reportados o en revision.");
         }
 
-        // 3. ✅ VALIDACIÓN DE CAPACIDAD (previene sobreventa)
         const contract = payment.invoice?.contract;
-        if (
-          String(payment.type || "") === "RESERVATION" &&
-          contract &&
-          ["PENDING_PAYMENT_RESERVE", "RESERVE_IN_REVIEW"].includes(String(contract.status || ""))
-        ) {
-          const participantCount = contract.participantCount || 1;
-
-          // Validar viajes internacionales
-          if (contract.travelPackageId) {
-            const travelPackage = await tx.travelPackage.findUnique({
-              where: { id: contract.travelPackageId },
-              select: {
-                capacity: true,
-                occupiedSlots: true,
-                name: true,
-                tenantId: true,
-              },
-            });
-
-            if (
-              !travelPackage ||
-              travelPackage.tenantId !== contract.tenantId
-            ) {
-              throw new NotFoundException(`Paquete de viaje ${contract.travelPackageId} no encontrado.`);
-            }
-
-            const availableSlots = travelPackage.capacity - travelPackage.occupiedSlots;
-            if (participantCount > availableSlots) {
-              this.logger.warn(
-                `[verifyPayment] ⚠️ Capacidad insuficiente: ${travelPackage.name} tiene ${availableSlots} cupos disponibles, se solicitan ${participantCount}`
-              );
-              throw new BadRequestException(
-                `Capacidad insuficiente. El viaje "${travelPackage.name}" solo tiene ${availableSlots} cupos disponibles de ${travelPackage.capacity} totales. Se solicitan ${participantCount} cupos.`
-              );
-            }
-
-            this.logger.log(
-              `[verifyPayment] ✅ Validación de capacidad OK: ${participantCount} cupos disponibles de ${availableSlots} en "${travelPackage.name}"`
-            );
-          }
-
-          // Validar viajes internos
-          if (contract.internalTripId) {
-            const internalTrip = await tx.internalTrip.findUnique({
-              where: { id: contract.internalTripId },
-              select: { capacity: true, occupiedSlots: true, name: true },
-            });
-
-            if (!internalTrip) {
-              throw new NotFoundException(`Viaje interno ${contract.internalTripId} no encontrado.`);
-            }
-
-            const availableSlots = internalTrip.capacity - internalTrip.occupiedSlots;
-            if (participantCount > availableSlots) {
-              this.logger.warn(
-                `[verifyPayment] ⚠️ Capacidad insuficiente: ${internalTrip.name} tiene ${availableSlots} cupos disponibles, se solicitan ${participantCount}`
-              );
-              throw new BadRequestException(
-                `Capacidad insuficiente. El viaje "${internalTrip.name}" solo tiene ${availableSlots} cupos disponibles de ${internalTrip.capacity} totales. Se solicitan ${participantCount} cupos.`
-              );
-            }
-
-            this.logger.log(
-              `[verifyPayment] ✅ Validación de capacidad OK: ${participantCount} cupos disponibles de ${availableSlots} en "${internalTrip.name}"`
-            );
-          }
-        }
 
         // 4. Actualizar payment a ABONO_VERIFICADO
         updated = await tx.billingPayment.update({
@@ -4403,96 +4332,11 @@ export class BillingService {
         // 5. Recalcular montos del invoice
         await this.recalcInvoiceAmounts(updated.invoiceId, tx);
 
-        // 6. Si es pago de reserva, actualizar contrato y incrementar occupiedSlots
-        if (
-          String(payment.type || "") === "RESERVATION" &&
-          contract &&
-          ["PENDING_PAYMENT_RESERVE", "RESERVE_IN_REVIEW"].includes(String(contract.status || ""))
-        ) {
-          // 6a. Actualizar status del contrato
-          await tx.contract.update({
-            where: { id: contract.id },
-            data: { status: "PENDING_SIGNATURE" },
+        if (String(payment.type || "") === "RESERVATION" && contract) {
+          await this.contractReservationApprovals.approveInTransaction(tx, {
+            tenantId: contract.tenantId,
+            contractId: contract.id,
           });
-
-          this.logger.log(
-            `[verifyPayment] ✅ Contrato ${contract.id} habilitado para firma tras pago de reserva aprobado.`
-          );
-
-          const participantCount = contract.participantCount || 1;
-
-          // 6b. Incrementar occupiedSlots del paquete de viaje internacional
-          if (contract.travelPackageId) {
-            await this.createInternationalTravelRoster(tx, contract);
-
-            const travelPackage = await tx.travelPackage.update({
-  where: { id: contract.travelPackageId },
-  data: {
-    occupiedSlots: { increment: participantCount },
-  },
-  select: {
-    occupiedSlots: true,
-    capacity: true,
-    status: true,
-  },
-});
-
-if (
-  travelPackage.occupiedSlots >= travelPackage.capacity &&
-  travelPackage.status !== "CLOSED"
-) {
-  await tx.travelPackage.update({
-    where: { id: contract.travelPackageId },
-    data: {
-      status: "CLOSED",
-    },
-  });
-
-  this.logger.log(
-    `[verifyPayment] 🔒 Paquete ${contract.travelPackageId} cerrado automáticamente por capacidad completa.`
-  );
-}
-
-this.logger.log(
-  `[verifyPayment] ✅ Incrementados ${participantCount} cupos en paquete ${contract.travelPackageId}`
-);
-          }
-
-          // 6c. Incrementar occupiedSlots del viaje interno
-          if (contract.internalTripId) {
-
-            const internalTrip = await tx.internalTrip.update({
-  where: { id: contract.internalTripId },
-  data: {
-    occupiedSlots: { increment: participantCount },
-  },
-  select: {
-    occupiedSlots: true,
-    capacity: true,
-    status: true,
-  },
-});
-
-if (
-  internalTrip.occupiedSlots >= internalTrip.capacity &&
-  internalTrip.status !== "CLOSED"
-) {
-  await tx.internalTrip.update({
-    where: { id: contract.internalTripId },
-    data: {
-      status: "CLOSED",
-    },
-  });
-
-  this.logger.log(
-    `[verifyPayment] 🔒 Viaje interno ${contract.internalTripId} cerrado automáticamente por capacidad completa.`
-  );
-}
-
-this.logger.log(
-  `[verifyPayment] ✅ Incrementados ${participantCount} cupos en viaje interno ${contract.internalTripId}`
-);
-          }
         }
 
         // 7. Si es pago de viaje interno (booking), incrementar cuando esté completamente pagado
@@ -4587,115 +4431,6 @@ this.logger.log(
       throw transactionError;
     }
     return updated;
-  }
-
-  private async createInternationalTravelRoster(
-    tx: any,
-    contract: {
-      clientId: string;
-      tenantId: string;
-      travelPackageId: string;
-      payload: unknown;
-    },
-  ): Promise<void> {
-    const payload =
-      contract.payload &&
-      typeof contract.payload === "object" &&
-      !Array.isArray(contract.payload)
-        ? (contract.payload as Record<string, unknown>)
-        : {};
-
-    const companions = Array.isArray(payload.companions)
-      ? payload.companions.filter(
-          (companion: any) =>
-            companion &&
-            String(companion.fullName || "").trim() &&
-            String(companion.idNumber || "").trim(),
-        )
-      : [];
-    const minors = Array.isArray(payload.minors)
-      ? payload.minors.filter(
-          (minor: any) =>
-            minor &&
-            String(minor.minorName || minor.name || "").trim() &&
-            String(minor.minorId || minor.idNumber || "").trim(),
-        )
-      : [];
-
-    const companionClientIds = companions.map((companion: any) =>
-      String(companion.selectedCustomerId || "").trim(),
-    );
-    if (companionClientIds.some((clientId) => !clientId)) {
-      throw new BadRequestException(
-        "No se puede aprobar la reserva porque un acompañante no tiene una identidad de cliente autoritativa.",
-      );
-    }
-
-    const minorClientIds = minors.map((minor: any) =>
-      String(minor.selectedCustomerId || "").trim(),
-    );
-    if (minorClientIds.some((clientId) => !clientId)) {
-      throw new BadRequestException(
-        "No se puede aprobar la reserva porque un menor no tiene una identidad de cliente autoritativa.",
-      );
-    }
-
-    const clientIds = [
-      contract.clientId,
-      ...companionClientIds,
-      ...minorClientIds,
-    ];
-    const clients =
-      await this.travelPackageParticipantsRepository.findClients(
-        tx,
-        contract.tenantId,
-        clientIds,
-      );
-    const clientsById = new Map(clients.map((client) => [client.id, client]));
-
-    const participants: TravelPackageParticipantWrite[] = [
-      {
-        tenantId: contract.tenantId,
-        travelPackageId: contract.travelPackageId,
-        clientId: contract.clientId,
-        role: "HOLDER",
-      },
-      ...companionClientIds.map((clientId) => ({
-        tenantId: contract.tenantId,
-        travelPackageId: contract.travelPackageId,
-        clientId,
-        role: "COMPANION" as const,
-      })),
-      ...minorClientIds.map((clientId) => ({
-        tenantId: contract.tenantId,
-        travelPackageId: contract.travelPackageId,
-        clientId,
-        role: "MINOR" as const,
-      })),
-    ];
-
-    if (
-      clientIds.some((clientId) => !clientsById.has(clientId)) ||
-      participants.some((participant) => !participant.clientId)
-    ) {
-      throw new BadRequestException(
-        "No se puede aprobar la reserva porque uno o más participantes no pertenecen al tenant o no existen como clientes.",
-      );
-    }
-
-    const uniqueClientIds = new Set(
-      participants.map((participant) => participant.clientId),
-    );
-    if (uniqueClientIds.size !== participants.length) {
-      throw new BadRequestException(
-        "No se puede aprobar la reserva porque un cliente está duplicado en la lista de participantes.",
-      );
-    }
-
-    await this.travelPackageParticipantsRepository.createMany(
-      tx,
-      participants,
-    );
   }
 
   private async recordPaymentVerificationAudit(

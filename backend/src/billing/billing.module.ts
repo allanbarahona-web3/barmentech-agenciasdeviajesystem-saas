@@ -7,9 +7,10 @@ import { InternalTourismModule } from "../internal-tourism/internal-tourism.modu
 import { StorageModule } from "../storage/storage.module";
 import { ReceiptProcessingWorker } from "./jobs/receipt-processing.worker";
 import { FinanceModule } from "../finance/finance.module";
+import { ContractReservationApprovalModule } from "../contracts/contract-reservation-approval.module";
 
 @Module({
-  imports: [EmailModule, TravelPackagesModule, InternalTourismModule, StorageModule, FinanceModule],
+  imports: [EmailModule, TravelPackagesModule, InternalTourismModule, StorageModule, FinanceModule, ContractReservationApprovalModule],
   controllers: [BillingController],
   providers: [BillingService, ReceiptProcessingWorker],
   exports: [BillingService],

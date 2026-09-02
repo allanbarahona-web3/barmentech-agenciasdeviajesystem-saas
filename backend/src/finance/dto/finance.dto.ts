@@ -142,3 +142,13 @@ export class SendPaymentReceiptDto {
   @IsOptional() @Transform(trim) @IsEmail() to?: string;
   @IsOptional() @Transform(trim) @IsEmail() cc?: string;
 }
+
+export class RejectContractReservationPaymentDto {
+  @IsString() @Matches(/\S/) @MaxLength(500)
+  reason!: string;
+}
+
+export class ListContractReservationPaymentsDto {
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(200)
+  limit?: number;
+}

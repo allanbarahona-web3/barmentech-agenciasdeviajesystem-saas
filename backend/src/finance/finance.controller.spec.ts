@@ -6,7 +6,7 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { ROLES_KEY } from "../auth/roles.decorator";
 import { RolesGuard } from "../auth/roles.guard";
 import { FinanceController } from "./finance.controller";
-import { CancelPaymentDto, ListPaymentsDto, ListUnallocatedPaymentBalancesDto, RegisterPaymentDto } from "./dto/finance.dto";
+import { CancelPaymentDto, ListContractReservationPaymentsDto, ListPaymentsDto, ListUnallocatedPaymentBalancesDto, RegisterPaymentDto } from "./dto/finance.dto";
 
 describe("FinanceController", () => {
   it("registers an exact payment for only the authenticated tenant", async () => {
@@ -108,6 +108,35 @@ describe("FinanceController", () => {
     expect(canActivate(UserRole.FACTURACION_COBROS, "allocatePayment")).toBe(true);
     expect(() => canActivate(UserRole.AGENT, "registerPayment")).toThrow(ForbiddenException);
     expect(canActivate(UserRole.CONTADOR, "getPayment")).toBe(true);
+  });
+
+  it.each([
+    "listPendingContractReservations",
+    "approveContractReservation",
+    "rejectContractReservation",
+    "getContractReservationEvidence",
+  ] as const)("restricts %s explicitly to ADMIN and FACTURACION_COBROS", (handler) => {
+    expect(Reflect.getMetadata(ROLES_KEY, FinanceController.prototype[handler])).toEqual([
+      UserRole.ADMIN,
+      UserRole.FACTURACION_COBROS,
+    ]);
+    expect(canActivate(UserRole.ADMIN, handler)).toBe(true);
+    expect(canActivate(UserRole.FACTURACION_COBROS, handler)).toBe(true);
+    expect(() => canActivate(UserRole.AGENT, handler)).toThrow(ForbiddenException);
+    expect(() => canActivate(UserRole.CONTADOR, handler)).toThrow(ForbiddenException);
+  });
+
+  it("validates and defaults the pending reservation list limit before delegation", async () => {
+    const pipe = new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: true });
+    await expect(pipe.transform({ limit: "200" }, { type: "query", metatype: ListContractReservationPaymentsDto })).resolves.toMatchObject({ limit: 200 });
+    for (const limit of ["NaN", "1.5", "0", "-1", "201"]) {
+      await expect(pipe.transform({ limit }, { type: "query", metatype: ListContractReservationPaymentsDto })).rejects.toBeDefined();
+    }
+
+    const c = context();
+    c.contractReservations.listPending.mockResolvedValue({ payments: [] });
+    await c.controller.listPendingContractReservations(request("tenant-auth"), {});
+    expect(c.contractReservations.listPending).toHaveBeenCalledWith("tenant-auth", 100);
   });
 
   it("renders and sends a payment receipt only within the authenticated tenant", async () => {
@@ -233,7 +262,8 @@ function context() {
   const statements = { get: jest.fn(), render: jest.fn(), send: jest.fn() };
   const paymentAndApply = { execute: jest.fn() };
   const receipts = { render: jest.fn(), send: jest.fn() };
-  return { registrations, allocations, reversals, cancellations, reads, statements, paymentAndApply, receipts, controller: new FinanceController(registrations as never, allocations as never, reversals as never, cancellations as never, reads as never, undefined, statements as never, paymentAndApply as never, receipts as never) };
+  const contractReservations = { listPending: jest.fn(), approve: jest.fn(), reject: jest.fn(), getEvidenceUrl: jest.fn() };
+  return { registrations, allocations, reversals, cancellations, reads, statements, paymentAndApply, receipts, contractReservations, controller: new FinanceController(registrations as never, allocations as never, reversals as never, cancellations as never, reads as never, undefined, statements as never, paymentAndApply as never, receipts as never, contractReservations as never) };
 }
 
 function request(tenantId = "tenant-a") {
