@@ -10,11 +10,13 @@ import { BusinessNumberingModule } from "../business-numbering/business-numberin
 import { DocumentsModule } from "../documents/documents.module";
 import { EmailModule } from "../email/email.module";
 import { CustomerAccountStatementService } from "./customer-account-statement.service";
+import { RegisterPaymentAndApplyService } from "./register-payment-and-apply.service";
+import { PaymentReceiptService } from "./payment-receipt.service";
 
 @Module({
   imports: [BusinessNumberingModule, DocumentsModule, EmailModule],
   controllers: [FinanceController],
-  providers: [PaymentRegistrationService, PaymentAllocationService, PaymentAllocationReversalService, PaymentCancellationService, FinanceReadService, CustomerFundsAllocationService, CustomerAccountStatementService],
+  providers: [PaymentRegistrationService, PaymentAllocationService, PaymentAllocationReversalService, PaymentCancellationService, FinanceReadService, CustomerFundsAllocationService, CustomerAccountStatementService, RegisterPaymentAndApplyService, PaymentReceiptService],
   exports: [PaymentRegistrationService, PaymentAllocationService, PaymentAllocationReversalService, PaymentCancellationService],
 })
 export class FinanceModule {}

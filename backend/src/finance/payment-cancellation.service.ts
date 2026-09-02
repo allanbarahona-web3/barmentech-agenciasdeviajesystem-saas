@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import { Payment, PaymentAllocationStatus, PaymentStatus, Prisma } from "@prisma/client";
+import { Payment, PaymentStatus } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import {
   FINANCE_AUDIT_ACTIONS,
@@ -8,8 +8,7 @@ import {
   financeMoney,
   type FinanceActor,
 } from "./finance-audit";
-
-const MAX_AMOUNT = new Prisma.Decimal("99999999999999.99999");
+import { canCancelPayment } from "./payment-cancellation-eligibility";
 
 export const PAYMENT_CANCELLATION_ERRORS = {
   INVALID: "PAYMENT_CANCELLATION_INVALID",
@@ -66,12 +65,7 @@ export class PaymentCancellationService {
           if (!validInstant(payment.cancelledAt)) fail(PAYMENT_CANCELLATION_ERRORS.PAYMENT_INVALID);
           return payment;
         }
-        if (
-          payment.status !== PaymentStatus.RECEIVED || payment.cancelledAt !== null ||
-          !validPositiveAmount(payment.receivedAmount) || !validNonNegativeAmount(payment.availableAmount) ||
-          !payment.availableAmount.equals(payment.receivedAmount) ||
-          allocations.some((allocation) => allocation.status === PaymentAllocationStatus.ACTIVE)
-        ) {
+        if (!canCancelPayment(payment, allocations)) {
           fail(PAYMENT_CANCELLATION_ERRORS.NOT_ELIGIBLE);
         }
 
@@ -133,15 +127,6 @@ function normalize(command: PaymentCancellationCommand): { tenantId: string; act
     paymentId: required(command.paymentId, 191),
     reason: required(command.reason, 500),
   };
-}
-
-function validPositiveAmount(value: unknown): value is Prisma.Decimal {
-  return validNonNegativeAmount(value) && !value.isZero();
-}
-
-function validNonNegativeAmount(value: unknown): value is Prisma.Decimal {
-  return value instanceof Prisma.Decimal && value.isFinite() && !value.isNegative() &&
-    value.decimalPlaces() <= 5 && value.lessThanOrEqualTo(MAX_AMOUNT);
 }
 
 function validInstant(value: unknown): value is Date {

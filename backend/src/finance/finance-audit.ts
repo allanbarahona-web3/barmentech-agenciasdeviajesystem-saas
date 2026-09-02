@@ -11,6 +11,7 @@ export const FINANCE_AUDIT_ACTIONS = {
   APPLIED: "APPLIED",
   REVERSED: "REVERSED",
   CANCELLED: "CANCELLED",
+  RECEIPT_SENT: "RECEIPT_SENT",
 } as const;
 
 export interface FinanceActor {

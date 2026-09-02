@@ -172,6 +172,8 @@ describe("PaymentCancellationService", () => {
     const tx = {
       $queryRaw: jest.fn().mockResolvedValue([{ id: "payment-a" }]),
       payment: { findFirst: jest.fn().mockResolvedValue(payment({ status: PaymentStatus.CANCELLED, cancelledAt: new Date() })) },
+      accountReceivable: { findMany: jest.fn().mockResolvedValue([{ id: "ar-a", customerId: null, currencyCode: "CRC", originalAmount: d("10"), outstandingAmount: d("10"), status: "OPEN" }]) },
+      paymentAllocation: { findMany: jest.fn().mockResolvedValue([]) },
     };
     const prisma = { $transaction: jest.fn(async (work: (value: typeof tx) => unknown) => work(tx)) } as unknown as PrismaService;
     const service = new PaymentAllocationService(prisma);

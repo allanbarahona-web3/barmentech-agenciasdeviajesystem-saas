@@ -17,16 +17,20 @@ import {
   ListPaymentsDto,
   ListUnallocatedPaymentBalancesDto,
   RegisterPaymentDto,
+  RegisterPaymentAndApplyDto,
   ReversePaymentAllocationDto,
   CustomerFundsAllocationDto,
   CustomerFundsAllocationPreviewDto,
   CustomerAccountStatementQueryDto,
   SendCustomerAccountStatementDto,
+  SendPaymentReceiptDto,
 } from "./dto/finance.dto";
 import { translateFinanceError } from "./finance.errors";
 import { FinanceReadService } from "./finance-read.service";
 import { CustomerFundsAllocationService } from "./customer-funds-allocation.service";
 import { CustomerAccountStatementService } from "./customer-account-statement.service";
+import { RegisterPaymentAndApplyService } from "./register-payment-and-apply.service";
+import { PaymentReceiptService } from "./payment-receipt.service";
 
 type FinanceRequest = { user: { id: string; email?: string; fullName: string; tenantId: string; role: UserRole } };
 
@@ -42,6 +46,8 @@ export class FinanceController {
     private readonly reads: FinanceReadService,
     private readonly customerFunds?: CustomerFundsAllocationService,
     private readonly statements?: CustomerAccountStatementService,
+    private readonly paymentAndApply?: RegisterPaymentAndApplyService,
+    private readonly receipts?: PaymentReceiptService,
   ) {}
 
   @Get("customers/:customerId/account-statement")
@@ -96,6 +102,13 @@ export class FinanceController {
     } catch (error) {
       return translateFinanceError(error);
     }
+  }
+
+  @Post("account-receivables/:accountReceivableId/payments")
+  async registerPaymentAndApply(@Req() request: FinanceRequest, @Param("accountReceivableId") accountReceivableId: string, @Body() body: RegisterPaymentAndApplyDto) {
+    try {
+      return await this.paymentAndApply!.execute({ tenantId: request.user.tenantId, actor: { userId: request.user.id, name: request.user.fullName }, accountReceivableId, registrationDeduplicationKey: body.registrationDeduplicationKey, payerDisplayName: body.payerDisplayName, currencyCode: body.currencyCode, receivedAmount: decimal(body.receivedAmount), receivedAt: new Date(body.receivedAt), paymentMethod: body.paymentMethod, customerId: body.customerId, payerIdentificationType: body.payerIdentificationType, payerIdentificationNumber: body.payerIdentificationNumber, externalReference: body.externalReference, description: body.description });
+    } catch (error) { return translateFinanceError(error); }
   }
 
   @Post("payments/:paymentId/allocations")
@@ -170,6 +183,19 @@ export class FinanceController {
     } catch (error) {
       return translateFinanceError(error);
     }
+  }
+
+  @Get("payments/:paymentId/receipt")
+  @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.CONTADOR)
+  async getPaymentReceipt(@Req() request: FinanceRequest, @Param("paymentId") paymentId: string, @Res() response: Response) {
+    const result = await this.receipts!.render(request.user.tenantId, paymentId);
+    response.set({ "Content-Type": "application/pdf", "Content-Length": result.pdfBuffer.length.toString(), "Content-Disposition": `attachment; filename="${result.fileName}"`, "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" });
+    response.send(result.pdfBuffer);
+  }
+
+  @Post("payments/:paymentId/receipt/email")
+  async sendPaymentReceipt(@Req() request: FinanceRequest, @Param("paymentId") paymentId: string, @Body() body: SendPaymentReceiptDto) {
+    return this.receipts!.send(request.user.tenantId, { userId: request.user.id, email: request.user.email ?? "", fullName: request.user.fullName }, paymentId, body.to, body.cc);
   }
 
   @Get("account-receivables/:accountReceivableId")

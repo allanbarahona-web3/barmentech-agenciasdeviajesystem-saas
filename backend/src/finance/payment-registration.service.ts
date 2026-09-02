@@ -47,7 +47,7 @@ export interface PaymentRegistrationCommand {
   description?: string | null;
 }
 
-class PaymentRegistrationError extends Error {
+export class PaymentRegistrationError extends Error {
   constructor(readonly code: (typeof PAYMENT_REGISTRATION_ERRORS)[keyof typeof PAYMENT_REGISTRATION_ERRORS]) {
     super(code);
   }
@@ -79,67 +79,31 @@ export class PaymentRegistrationService {
   async register(command: PaymentRegistrationCommand): Promise<Payment> {
     const input = normalize(command);
     try {
-      return await this.prisma.$transaction(async (tx) => {
-        const existing = await tx.payment.findUnique({
-          where: {
-            tenantId_registrationDeduplicationKey: {
-              tenantId: input.tenantId,
-              registrationDeduplicationKey: input.registrationDeduplicationKey,
-            },
-          },
-        });
-        if (existing) {
-          if (!isExactRegistrationWinner(existing, input)) {
-            throw new PaymentRegistrationError(PAYMENT_REGISTRATION_ERRORS.CONFLICT);
-          }
-          return existing;
-        }
-        if (input.customerId !== null) {
-          const customer = await tx.client.findFirst({
-            where: { id: input.customerId, tenantId: input.tenantId },
-            select: { id: true },
-          });
-          if (!customer) {
-            throw new PaymentRegistrationError(PAYMENT_REGISTRATION_ERRORS.CUSTOMER_INVALID);
-          }
-        }
-
-        const sequence = await this.businessNumbers.next(tx, {
-          tenantId: input.tenantId,
-          sequenceKey: FINANCE_RECEIPT_SEQUENCE_KEY,
-          year: input.receivedAt.getUTCFullYear(),
-        });
-        const payment = await tx.payment.create({
-          data: initialPaymentData(input, financeReceiptNumber(input.receivedAt.getUTCFullYear(), sequence)),
-        });
-        await tx.billingAuditLog.create({
-          data: financeAuditRecord({
-            tenantId: input.tenantId,
-            entityType: FINANCE_AUDIT_ENTITY_TYPES.PAYMENT,
-            entityId: payment.id,
-            action: FINANCE_AUDIT_ACTIONS.REGISTERED,
-            actor: input.actor,
-            occurredAt: payment.createdAt,
-            afterJson: {
-              paymentId: payment.id,
-              receiptNumber: payment.receiptNumber,
-              customerId: payment.customerId,
-              currencyCode: payment.currencyCode,
-              receivedAmount: financeMoney(payment.receivedAmount),
-              availableAmount: financeMoney(payment.availableAmount),
-              receivedAt: payment.receivedAt.toISOString(),
-              paymentMethod: payment.paymentMethod,
-              status: payment.status,
-            },
-          }),
-        });
-        return payment;
-      });
+      const payment = await this.prisma.$transaction(async (tx) => (await this.registerInTransaction(tx, command)).payment);
+      return payment;
     } catch (error) {
       if (error instanceof PaymentRegistrationError) throw error;
       if (isP2002(error)) return this.findConcurrentWinner(input);
       throw new PaymentRegistrationError(PAYMENT_REGISTRATION_ERRORS.PERSISTENCE_FAILED);
     }
+  }
+
+  /** Shared registration primitive for larger atomic Finance commands. */
+  async registerInTransaction(tx: Prisma.TransactionClient, command: PaymentRegistrationCommand): Promise<{ payment: Payment; created: boolean }> {
+    const input = normalize(command);
+    const existing = await tx.payment.findUnique({ where: { tenantId_registrationDeduplicationKey: { tenantId: input.tenantId, registrationDeduplicationKey: input.registrationDeduplicationKey } } });
+    if (existing) {
+      if (!isExactRegistrationWinner(existing, input)) throw new PaymentRegistrationError(PAYMENT_REGISTRATION_ERRORS.CONFLICT);
+      return { payment: existing, created: false };
+    }
+    if (input.customerId !== null) {
+      const customer = await tx.client.findFirst({ where: { id: input.customerId, tenantId: input.tenantId }, select: { id: true } });
+      if (!customer) throw new PaymentRegistrationError(PAYMENT_REGISTRATION_ERRORS.CUSTOMER_INVALID);
+    }
+    const sequence = await this.businessNumbers.next(tx, { tenantId: input.tenantId, sequenceKey: FINANCE_RECEIPT_SEQUENCE_KEY, year: input.receivedAt.getUTCFullYear() });
+    const payment = await tx.payment.create({ data: initialPaymentData(input, financeReceiptNumber(input.receivedAt.getUTCFullYear(), sequence)) });
+    await tx.billingAuditLog.create({ data: financeAuditRecord({ tenantId: input.tenantId, entityType: FINANCE_AUDIT_ENTITY_TYPES.PAYMENT, entityId: payment.id, action: FINANCE_AUDIT_ACTIONS.REGISTERED, actor: input.actor, occurredAt: payment.createdAt, afterJson: { paymentId: payment.id, receiptNumber: payment.receiptNumber, customerId: payment.customerId, currencyCode: payment.currencyCode, receivedAmount: financeMoney(payment.receivedAmount), availableAmount: financeMoney(payment.availableAmount), receivedAt: payment.receivedAt.toISOString(), paymentMethod: payment.paymentMethod, status: payment.status } }) });
+    return { payment, created: true };
   }
 
   private async findConcurrentWinner(input: NormalizedRegistration): Promise<Payment> {

@@ -29,6 +29,16 @@ describe("FinanceController", () => {
     expect(c.reads.getPaymentDetail).toHaveBeenCalledWith("tenant-auth", "payment-a");
   });
 
+  it("delegates an AR-specific payment and application as one authenticated command", async () => {
+    const c = context();
+    c.paymentAndApply.execute.mockResolvedValue({ payment: { receiptNumber: "RCP-2026-000001" }, allocation: { accountReceivableId: "ar-a", amount: "10.00" } });
+    await expect(c.controller.registerPaymentAndApply(request("tenant-auth"), "ar-a", {
+      registrationDeduplicationKey: "atomic-abono-a", payerDisplayName: "Cliente", currencyCode: "USD", receivedAmount: "10.00", receivedAt: "2026-08-31T12:00:00.000Z", paymentMethod: "BANK_TRANSFER", customerId: "customer-a",
+    })).resolves.toMatchObject({ allocation: { accountReceivableId: "ar-a" } });
+    expect(c.paymentAndApply.execute).toHaveBeenCalledWith(expect.objectContaining({ tenantId: "tenant-auth", accountReceivableId: "ar-a", actor: { userId: "user-a", name: "Finance User" } }));
+    expect((c.paymentAndApply.execute.mock.calls[0][0].receivedAmount as Prisma.Decimal).toFixed()).toBe("10");
+  });
+
   it("returns the updated payment after a partial allocation", async () => {
     const c = context();
     const updated = { id: "payment-a", status: "PARTIALLY_ALLOCATED", availableAmount: "7.00000", allocations: [] };
@@ -98,6 +108,18 @@ describe("FinanceController", () => {
     expect(canActivate(UserRole.FACTURACION_COBROS, "allocatePayment")).toBe(true);
     expect(() => canActivate(UserRole.AGENT, "registerPayment")).toThrow(ForbiddenException);
     expect(canActivate(UserRole.CONTADOR, "getPayment")).toBe(true);
+  });
+
+  it("renders and sends a payment receipt only within the authenticated tenant", async () => {
+    const c = context();
+    c.receipts.render.mockResolvedValue({ pdfBuffer: Buffer.from("pdf"), fileName: "recibo-RCP-1.pdf" });
+    c.receipts.send.mockResolvedValue({ ok: true, sentTo: "cliente@example.com", cc: "copy@example.com", emailId: "email-1" });
+    const response = { set: jest.fn(), send: jest.fn() };
+    await c.controller.getPaymentReceipt(request("tenant-auth"), "payment-a", response as never);
+    await expect(c.controller.sendPaymentReceipt(request("tenant-auth"), "payment-a", { to: "cliente@example.com", cc: "copy@example.com" })).resolves.toMatchObject({ ok: true });
+    expect(c.receipts.render).toHaveBeenCalledWith("tenant-auth", "payment-a");
+    expect(c.receipts.send).toHaveBeenCalledWith("tenant-auth", expect.objectContaining({ userId: "user-a" }), "payment-a", "cliente@example.com", "copy@example.com");
+    expect(response.set).toHaveBeenCalledWith(expect.objectContaining({ "Content-Type": "application/pdf" }));
   });
 
   it("accepts monetary JSON only as exact decimal text and rejects caller tenant fields", async () => {
@@ -209,7 +231,9 @@ function context() {
   const cancellations = { cancel: jest.fn() };
   const reads = { paymentSummary: jest.fn((value) => ({ id: value.id, receivedAmount: value.receivedAmount.toFixed(), availableAmount: value.availableAmount.toFixed() })), getPaymentDetail: jest.fn(), getPaymentIdForAllocation: jest.fn(), getAccountReceivableDetail: jest.fn(), getAllocationSuggestion: jest.fn(), listAccountReceivables: jest.fn(), listAccountReceivableGroups: jest.fn(), listAccountReceivableGroupItems: jest.fn(), listPayments: jest.fn(), listUnallocatedPaymentBalances: jest.fn(), getCustomerFinancialBalance: jest.fn() };
   const statements = { get: jest.fn(), render: jest.fn(), send: jest.fn() };
-  return { registrations, allocations, reversals, cancellations, reads, statements, controller: new FinanceController(registrations as never, allocations as never, reversals as never, cancellations as never, reads as never, undefined, statements as never) };
+  const paymentAndApply = { execute: jest.fn() };
+  const receipts = { render: jest.fn(), send: jest.fn() };
+  return { registrations, allocations, reversals, cancellations, reads, statements, paymentAndApply, receipts, controller: new FinanceController(registrations as never, allocations as never, reversals as never, cancellations as never, reads as never, undefined, statements as never, paymentAndApply as never, receipts as never) };
 }
 
 function request(tenantId = "tenant-a") {

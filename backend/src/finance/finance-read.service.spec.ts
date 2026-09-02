@@ -12,10 +12,28 @@ describe("FinanceReadService", () => {
     const service = new FinanceReadService(prisma as unknown as PrismaService);
 
     await expect(service.getPaymentDetail("tenant-a", "payment-a")).resolves.toMatchObject({
-      receiptNumber: "RCP-2026-000001", receivedAmount: "10.12345", availableAmount: "6",
+      receiptNumber: "RCP-2026-000001", receivedAmount: "10.12345", appliedAmount: "4.12345", availableAmount: "6", canCancel: false,
       allocations: [{ amount: "4.12345", accountReceivable: { outstandingAmount: "5.87655" } }],
     });
     expect(prisma.payment.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "payment-a", tenantId: "tenant-a" } }));
+  });
+
+  it("returns zero appliedAmount and canCancel for a pristine payment with only reversed history", async () => {
+    const prisma = { payment: { findFirst: jest.fn().mockResolvedValue(payment({ status: "RECEIVED", receivedAmount: d("123.45678"), availableAmount: d("123.45678"), allocations: [{ ...payment().allocations[0], amount: d("10.00001"), status: "REVERSED" }] })) }, billingAuditLog: { findMany: jest.fn().mockResolvedValue([]) } };
+    const service = new FinanceReadService(prisma as unknown as PrismaService);
+    await expect(service.getPaymentDetail("tenant-a", "payment-a")).resolves.toMatchObject({ appliedAmount: "0", canCancel: true });
+  });
+
+  it("returns zero appliedAmount for a fully unapplied payment", async () => {
+    const prisma = { payment: { findFirst: jest.fn().mockResolvedValue(payment({ status: "RECEIVED", receivedAmount: d("10.00000"), availableAmount: d("10.00000"), allocations: [] })) }, billingAuditLog: { findMany: jest.fn().mockResolvedValue([]) } };
+    const service = new FinanceReadService(prisma as unknown as PrismaService);
+    await expect(service.getPaymentDetail("tenant-a", "payment-a")).resolves.toMatchObject({ appliedAmount: "0", canCancel: true });
+  });
+
+  it("sums only current allocations and rejects cancellation while money remains applied", async () => {
+    const prisma = { payment: { findFirst: jest.fn().mockResolvedValue(payment({ status: "PARTIALLY_ALLOCATED", receivedAmount: d("100.00000"), availableAmount: d("60.00000"), allocations: [{ ...payment().allocations[0], amount: d("40.00000"), status: "ACTIVE" }, { ...payment().allocations[0], id: "allocation-reversed", amount: d("10.00000"), status: "REVERSED" }] })) }, billingAuditLog: { findMany: jest.fn().mockResolvedValue([]) } };
+    const service = new FinanceReadService(prisma as unknown as PrismaService);
+    await expect(service.getPaymentDetail("tenant-a", "payment-a")).resolves.toMatchObject({ appliedAmount: "40", canCancel: false });
   });
 
   it("does not expose a payment outside the authenticated tenant", async () => {

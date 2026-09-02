@@ -43,6 +43,8 @@ export class RegisterPaymentDto {
   @IsOptional() @Transform(trim) @IsString() @MaxLength(500) @Matches(/\S/) description?: string | null;
 }
 
+export class RegisterPaymentAndApplyDto extends RegisterPaymentDto {}
+
 export class PaymentAllocationItemDto {
   @Transform(trim) @IsString() @MaxLength(191) @Matches(/\S/) accountReceivableId!: string;
   @Transform(trim) @IsString() @MaxLength(100) @Matches(moneyText) amount!: string;
@@ -132,6 +134,11 @@ export class CustomerAccountStatementQueryDto {
 }
 
 export class SendCustomerAccountStatementDto extends CustomerAccountStatementQueryDto {
+  @IsOptional() @Transform(trim) @IsEmail() to?: string;
+  @IsOptional() @Transform(trim) @IsEmail() cc?: string;
+}
+
+export class SendPaymentReceiptDto {
   @IsOptional() @Transform(trim) @IsEmail() to?: string;
   @IsOptional() @Transform(trim) @IsEmail() cc?: string;
 }

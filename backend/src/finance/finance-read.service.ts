@@ -1,5 +1,5 @@
 import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
-import { AccountReceivableStatus, PaymentStatus, Prisma } from "@prisma/client";
+import { AccountReceivableStatus, PaymentAllocationStatus, PaymentStatus, Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import {
   ListAccountReceivableGroupItemsDto,
@@ -13,6 +13,7 @@ import {
   FINANCE_AUDIT_ENTITY_TYPES,
 } from "./finance-audit";
 import { hasCompatibleAllocationCustomer } from "./payment-allocation.service";
+import { canCancelPayment } from "./payment-cancellation-eligibility";
 
 const DEFAULT_FISCAL_TIMEZONE = "America/Costa_Rica";
 
@@ -812,6 +813,9 @@ function paymentDetail(payment: Prisma.PaymentGetPayload<{
 }>, auditRows: FinanceAuditRow[]) {
   const registered = auditRow(auditRows, FINANCE_AUDIT_ENTITY_TYPES.PAYMENT, payment.id, FINANCE_AUDIT_ACTIONS.REGISTERED);
   const cancelled = auditRow(auditRows, FINANCE_AUDIT_ENTITY_TYPES.PAYMENT, payment.id, FINANCE_AUDIT_ACTIONS.CANCELLED);
+  const appliedAmount = payment.allocations
+    .filter((allocation) => allocation.status === PaymentAllocationStatus.ACTIVE)
+    .reduce((total, allocation) => total.plus(allocation.amount), new Prisma.Decimal(0));
   return {
     id: payment.id,
     receiptNumber: payment.receiptNumber,
@@ -821,7 +825,9 @@ function paymentDetail(payment: Prisma.PaymentGetPayload<{
     payerIdentificationNumber: payment.payerIdentificationNumber,
     currencyCode: payment.currencyCode,
     receivedAmount: money(payment.receivedAmount),
+    appliedAmount: money(appliedAmount),
     availableAmount: money(payment.availableAmount),
+    canCancel: canCancelPayment(payment, payment.allocations),
     receivedAt: payment.receivedAt,
     paymentMethod: payment.paymentMethod,
     externalReference: payment.externalReference,
