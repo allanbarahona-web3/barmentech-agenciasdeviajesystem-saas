@@ -30,7 +30,7 @@ export class InternalTripsController {
    * Crear nuevo viaje interno
    */
   @Post()
-  @Roles('ADMIN', 'OPERACIONES')
+  @Roles('ADMIN')
   async createTrip(
     @Req() req: any,
     @Tenant() tenant: ResolvedTenant,
@@ -79,7 +79,7 @@ export class InternalTripsController {
    * Actualizar viaje
    */
   @Put(':id')
-  @Roles('ADMIN', 'OPERACIONES')
+  @Roles('ADMIN')
   async updateTrip(
     @Param('id') id: string,
     @Tenant() tenant: ResolvedTenant,

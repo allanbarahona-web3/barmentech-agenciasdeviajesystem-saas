@@ -8,6 +8,7 @@ import {
   PaymentTermUnit,
 } from "../enums";
 import type { AdditionalServiceDetails } from "../service-details";
+import type { AdditionalServiceCatalogUsageType } from "../catalog-usage";
 
 export interface AdditionalServiceOrderLineRecord {
   id: string;
@@ -180,6 +181,7 @@ export interface AdditionalServiceCatalogRecord {
   code: string;
   name: string;
   isActive: boolean;
+  usages?: AdditionalServiceCatalogUsageType[];
 }
 
 export interface AdditionalServiceCatalogPricingRecord {
@@ -211,6 +213,7 @@ export type AdditionalServiceCatalogFiscalProfileRecord = Omit<
 
 export interface AdditionalServiceCatalogAdminRecord
   extends AdditionalServiceCatalogRecord {
+  usages: AdditionalServiceCatalogUsageType[];
   pricingConfiguration: AdditionalServiceCatalogPricingRecord | null;
   fiscalProfile: AdditionalServiceCatalogFiscalProfileRecord | null;
 }
@@ -219,6 +222,23 @@ export interface CreateAdditionalServiceCatalogItemData {
   code: string;
   name: string;
   displayOrder: number;
+}
+
+export interface CreateAdditionalServiceCatalogData {
+  tenantId: string;
+  code: string;
+  name: string;
+  displayOrder: number;
+  isActive: boolean;
+  fiscalItemCategory: "SERVICE" | "MERCHANDISE";
+}
+
+export interface UpdateAdditionalServiceCatalogData {
+  code?: string;
+  name?: string;
+  displayOrder?: number;
+  isActive?: boolean;
+  fiscalItemCategory?: "SERVICE" | "MERCHANDISE";
 }
 
 export interface AdditionalServicePricingConfigurationRecord {
@@ -450,6 +470,27 @@ export interface AdditionalServicesRepository {
   findAdditionalServiceCatalogs(
     tenantId: string,
   ): Promise<AdditionalServiceCatalogAdminRecord[]>;
+
+  findAdditionalServiceCatalogsByUsage(
+    tenantId: string,
+    usage: AdditionalServiceCatalogUsageType,
+  ): Promise<AdditionalServiceCatalogAdminRecord[]>;
+
+  createAdditionalServiceCatalog(
+    data: CreateAdditionalServiceCatalogData,
+  ): Promise<AdditionalServiceCatalogRecord>;
+
+  updateAdditionalServiceCatalog(
+    tenantId: string,
+    id: string,
+    data: UpdateAdditionalServiceCatalogData,
+  ): Promise<AdditionalServiceCatalogRecord>;
+
+  replaceAdditionalServiceCatalogUsages(
+    tenantId: string,
+    catalogId: string,
+    usages: AdditionalServiceCatalogUsageType[],
+  ): Promise<void>;
 
   findAdditionalServiceCatalogCodes(tenantId: string): Promise<string[]>;
 

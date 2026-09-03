@@ -1,4 +1,14 @@
-import { Controller, Get, Query, Req, UseGuards } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+} from "@nestjs/common";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { Roles } from "../auth/roles.decorator";
 import { RolesGuard } from "../auth/roles.guard";
@@ -7,6 +17,10 @@ import {
   requireTravelFiscalClassificationUsage,
   TravelFiscalClassificationService,
 } from "./travel-fiscal-classification.service";
+import {
+  CreateAdditionalServiceCatalogDto,
+  UpdateAdditionalServiceCatalogDto,
+} from "./dto";
 
 type AdminRequest = {
   user: {
@@ -30,6 +44,30 @@ export class AdditionalServiceCatalogController {
     );
   }
 
+  @Post()
+  create(
+    @Req() req: AdminRequest,
+    @Body() dto: CreateAdditionalServiceCatalogDto,
+  ) {
+    return this.additionalServicesService.createAdditionalServiceCatalog(
+      req.user.tenantId,
+      dto,
+    );
+  }
+
+  @Patch(":catalogId")
+  update(
+    @Req() req: AdminRequest,
+    @Param("catalogId") catalogId: string,
+    @Body() dto: UpdateAdditionalServiceCatalogDto,
+  ) {
+    return this.additionalServicesService.updateAdditionalServiceCatalog(
+      req.user.tenantId,
+      catalogId,
+      dto,
+    );
+  }
+
   @Get("selectable")
   @Roles("ADMIN", "AGENT", "OPERACIONES")
   listSelectable(@Req() req: AdminRequest) {
@@ -39,7 +77,7 @@ export class AdditionalServiceCatalogController {
   }
 
   @Get("travel-fiscal-classifications")
-  @Roles("ADMIN", "OPERACIONES")
+  @Roles("ADMIN")
   listTravelFiscalClassifications(
     @Req() req: AdminRequest,
     @Query("usage") usage: string,

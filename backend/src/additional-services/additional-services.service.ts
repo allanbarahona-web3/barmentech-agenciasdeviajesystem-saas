@@ -20,6 +20,8 @@ import {
   UpdateAdditionalServicePricingConfigurationDto,
   UpdateAdditionalServiceFiscalProfileDto,
   UpdateSupplierDto,
+  CreateAdditionalServiceCatalogDto,
+  UpdateAdditionalServiceCatalogDto,
 } from "./dto";
 import { DateUtils } from "../common/utils/date.utils";
 import {
@@ -33,10 +35,15 @@ import {
   CreateAdditionalServiceOrderLineData,
   SupplierRecord,
   UpdateSupplierData,
+  UpdateAdditionalServiceCatalogData,
 } from "./repositories";
 import { normalizeAdditionalServiceDetails } from "./service-details";
 import { PaymentConditionType } from "./enums";
 import { FiscalCatalogService } from "../fiscal-catalogs/fiscal-catalog.service";
+import {
+  ADDITIONAL_SERVICE_CATALOG_USAGE_TYPES,
+  AdditionalServiceCatalogUsageType,
+} from "./catalog-usage";
 
 export interface AdditionalServiceOrderActor {
   id: string;
@@ -48,6 +55,7 @@ export interface AdditionalServiceCatalogAdminItem {
   code: string;
   name: string;
   isActive: boolean;
+  usages: AdditionalServiceCatalogUsageType[];
   pricingConfiguration: {
     id: string;
     marginType: AdditionalServicePricingConfigurationRecord["marginType"];
@@ -119,11 +127,12 @@ export class AdditionalServicesService {
     const readiness = await this.fiscalCatalog().evaluateFiscalProfiles(tenantId, profiles);
 
     return catalog.map(
-      ({ id, code, name, isActive, pricingConfiguration, fiscalProfile }) => ({
+      ({ id, code, name, isActive, usages, pricingConfiguration, fiscalProfile }) => ({
         id,
         code,
         name,
         isActive,
+        usages,
         pricingConfiguration,
         fiscalProfile,
         fiscalReadiness: fiscalProfile ? readiness.get(id) ?? { status: "INVALID", isReady: false, issues: ["FISCAL_CATALOG_NOT_READY"] } : { status: "ABSENT", isReady: false, issues: [] },
@@ -134,7 +143,11 @@ export class AdditionalServicesService {
   async listSelectableAdditionalServices(
     tenantId: string,
   ): Promise<SelectableAdditionalServiceItem[]> {
-    const catalog = await this.repository.findAdditionalServiceCatalogs(tenantId);
+    const catalog =
+      await this.repository.findAdditionalServiceCatalogsByUsage(
+        tenantId,
+        "ADDITIONAL_SERVICE",
+      );
     const profiles = catalog.flatMap((item) =>
       item.fiscalProfile
         ? [{
@@ -169,6 +182,95 @@ export class AdditionalServicesService {
           readinessCode: fiscalReadiness.issues[0] ?? null,
         };
       });
+  }
+
+  async createAdditionalServiceCatalog(
+    tenantId: string,
+    dto: CreateAdditionalServiceCatalogDto,
+  ): Promise<AdditionalServiceCatalogAdminItem> {
+    const usages = this.normalizeCatalogUsages(dto.usages, true);
+
+    try {
+      const catalogId = await this.repository.executeInTransaction(
+        async (repository) => {
+          const catalog = await repository.createAdditionalServiceCatalog({
+            tenantId,
+            code: dto.code.trim().toUpperCase(),
+            name: dto.name.trim(),
+            displayOrder: dto.displayOrder ?? 0,
+            isActive: dto.isActive ?? true,
+            fiscalItemCategory: dto.fiscalItemCategory ?? "SERVICE",
+          });
+          await repository.replaceAdditionalServiceCatalogUsages(
+            tenantId,
+            catalog.id,
+            usages,
+          );
+          return catalog.id;
+        },
+      );
+      return this.getAdditionalServiceCatalogAdminItem(tenantId, catalogId);
+    } catch (error) {
+      if (this.isUniqueConstraintViolation(error)) {
+        throw new ConflictException(
+          "Ya existe un elemento de catálogo con este código.",
+        );
+      }
+      throw error;
+    }
+  }
+
+  async updateAdditionalServiceCatalog(
+    tenantId: string,
+    catalogId: string,
+    dto: UpdateAdditionalServiceCatalogDto,
+  ): Promise<AdditionalServiceCatalogAdminItem> {
+    const usages =
+      dto.usages === undefined
+        ? undefined
+        : this.normalizeCatalogUsages(dto.usages, false);
+    const data: UpdateAdditionalServiceCatalogData = {};
+    if (dto.code !== undefined) data.code = dto.code.trim().toUpperCase();
+    if (dto.name !== undefined) data.name = dto.name.trim();
+    if (dto.displayOrder !== undefined) data.displayOrder = dto.displayOrder;
+    if (dto.isActive !== undefined) data.isActive = dto.isActive;
+    if (dto.fiscalItemCategory !== undefined) {
+      data.fiscalItemCategory = dto.fiscalItemCategory;
+    }
+
+    try {
+      await this.repository.executeInTransaction(async (repository) => {
+        const existing =
+          await repository.findAdditionalServiceCatalogByTenantAndId(
+            tenantId,
+            catalogId,
+          );
+        if (!existing) {
+          throw new NotFoundException("Elemento de catálogo no encontrado.");
+        }
+
+        await repository.updateAdditionalServiceCatalog(
+          tenantId,
+          catalogId,
+          data,
+        );
+        if (usages !== undefined) {
+          await repository.replaceAdditionalServiceCatalogUsages(
+            tenantId,
+            catalogId,
+            usages,
+          );
+        }
+      });
+      return this.getAdditionalServiceCatalogAdminItem(tenantId, catalogId);
+    } catch (error) {
+      if (this.isUniqueConstraintViolation(error)) {
+        throw new ConflictException(
+          "Ya existe un elemento de catálogo con este código.",
+        );
+      }
+      throw error;
+    }
   }
 
   listPricingConfigurations(
@@ -900,6 +1002,45 @@ export class AdditionalServicesService {
       );
     }
 
+  }
+
+  private normalizeCatalogUsages(
+    usages: AdditionalServiceCatalogUsageType[] | undefined,
+    defaultToAdditionalService: boolean,
+  ): AdditionalServiceCatalogUsageType[] {
+    if (usages === undefined && defaultToAdditionalService) {
+      return ["ADDITIONAL_SERVICE"];
+    }
+    if (!Array.isArray(usages) || usages.length === 0) {
+      throw new BadRequestException({
+        code: "ADDITIONAL_SERVICE_CATALOG_USAGES_REQUIRED",
+      });
+    }
+
+    const allowed = new Set<string>(ADDITIONAL_SERVICE_CATALOG_USAGE_TYPES);
+    if (usages.some((usage) => !allowed.has(usage))) {
+      throw new BadRequestException({
+        code: "ADDITIONAL_SERVICE_CATALOG_USAGE_INVALID",
+      });
+    }
+    if (new Set(usages).size !== usages.length) {
+      throw new BadRequestException({
+        code: "ADDITIONAL_SERVICE_CATALOG_USAGE_DUPLICATE",
+      });
+    }
+    return [...usages];
+  }
+
+  private async getAdditionalServiceCatalogAdminItem(
+    tenantId: string,
+    catalogId: string,
+  ): Promise<AdditionalServiceCatalogAdminItem> {
+    const catalog = await this.listAdditionalServiceCatalog(tenantId);
+    const item = catalog.find((candidate) => candidate.id === catalogId);
+    if (!item) {
+      throw new NotFoundException("Elemento de catálogo no encontrado.");
+    }
+    return item;
   }
 
   private isUniqueConstraintViolation(error: unknown): boolean {

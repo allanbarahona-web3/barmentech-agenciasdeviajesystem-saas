@@ -1,6 +1,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { randomUUID } from "crypto";
 import { Decimal } from "@prisma/client/runtime/library";
+import { Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import {
   AdditionalServiceCatalogAdminRecord,
@@ -19,14 +20,17 @@ import {
   AdditionalServiceTravelReference,
   CreateAdditionalServiceOrderData,
   CreateAdditionalServiceCatalogItemData,
+  CreateAdditionalServiceCatalogData,
   CreateAdditionalServiceFiscalProfileData,
   CreateAdditionalServicePricingConfigurationData,
   CreateSupplierData,
   SupplierRecord,
   UpdateAdditionalServicePricingConfigurationData,
   UpdateAdditionalServiceFiscalProfileData,
+  UpdateAdditionalServiceCatalogData,
   UpdateSupplierData,
 } from "./additional-services.repository.interface";
+import type { AdditionalServiceCatalogUsageType } from "../catalog-usage";
 
 interface AdditionalServicesPrismaClient {
   tenant: {
@@ -49,9 +53,11 @@ interface AdditionalServicesPrismaClient {
     findMany(args: unknown): Promise<unknown>;
   };
   additionalServiceCatalog: {
+    create(args: unknown): Promise<unknown>;
     createMany(args: unknown): Promise<{ count: number }>;
     findFirst(args: unknown): Promise<unknown>;
     findMany(args: unknown): Promise<unknown>;
+    update(args: unknown): Promise<unknown>;
   };
   additionalServicePricingConfiguration: {
     create(args: unknown): Promise<unknown>;
@@ -87,6 +93,8 @@ interface AdditionalServicesPrismaClient {
   salesOrder: {
     findMany(args: unknown): Promise<unknown>;
   };
+  $queryRaw<T>(query: Prisma.Sql): Promise<T>;
+  $executeRaw(query: Prisma.Sql): Promise<number>;
 }
 
 interface AdditionalServicesPrismaRoot extends AdditionalServicesPrismaClient {
@@ -301,6 +309,40 @@ export class PrismaAdditionalServicesRepository
     return this.findCatalogs(this.client, tenantId);
   }
 
+  findAdditionalServiceCatalogsByUsage(
+    tenantId: string,
+    usage: AdditionalServiceCatalogUsageType,
+  ): Promise<AdditionalServiceCatalogAdminRecord[]> {
+    return this.findCatalogsByUsage(this.client, tenantId, usage);
+  }
+
+  createAdditionalServiceCatalog(
+    data: CreateAdditionalServiceCatalogData,
+  ): Promise<AdditionalServiceCatalogRecord> {
+    return this.createCatalog(this.client, data);
+  }
+
+  updateAdditionalServiceCatalog(
+    tenantId: string,
+    id: string,
+    data: UpdateAdditionalServiceCatalogData,
+  ): Promise<AdditionalServiceCatalogRecord> {
+    return this.updateCatalog(this.client, tenantId, id, data);
+  }
+
+  replaceAdditionalServiceCatalogUsages(
+    tenantId: string,
+    catalogId: string,
+    usages: AdditionalServiceCatalogUsageType[],
+  ): Promise<void> {
+    return this.replaceCatalogUsages(
+      this.client,
+      tenantId,
+      catalogId,
+      usages,
+    );
+  }
+
   findAdditionalServiceCatalogCodes(tenantId: string): Promise<string[]> {
     return this.findCatalogCodes(this.client, tenantId);
   }
@@ -309,7 +351,9 @@ export class PrismaAdditionalServicesRepository
     tenantId: string,
     items: readonly CreateAdditionalServiceCatalogItemData[],
   ): Promise<number> {
-    return this.createCatalogItems(this.client, tenantId, items);
+    return this.client.$transaction((client) =>
+      this.createCatalogItems(client, tenantId, items),
+    );
   }
 
   findPricingConfigurations(
@@ -517,6 +561,17 @@ export class PrismaAdditionalServicesRepository
         this.findCatalogsByCodes(client, tenantId, codes),
       findAdditionalServiceCatalogs: (tenantId) =>
         this.findCatalogs(client, tenantId),
+      findAdditionalServiceCatalogsByUsage: (tenantId, usage) =>
+        this.findCatalogsByUsage(client, tenantId, usage),
+      createAdditionalServiceCatalog: (data) =>
+        this.createCatalog(client, data),
+      updateAdditionalServiceCatalog: (tenantId, id, data) =>
+        this.updateCatalog(client, tenantId, id, data),
+      replaceAdditionalServiceCatalogUsages: (
+        tenantId,
+        catalogId,
+        usages,
+      ) => this.replaceCatalogUsages(client, tenantId, catalogId, usages),
       findAdditionalServiceCatalogCodes: (tenantId) =>
         this.findCatalogCodes(client, tenantId),
       createAdditionalServiceCatalogItems: (tenantId, items) =>
@@ -688,7 +743,7 @@ export class PrismaAdditionalServicesRepository
     tenantId: string,
     code: string,
   ): Promise<AdditionalServiceCatalogRecord | null> {
-    return (await client.additionalServiceCatalog.findFirst({
+    const catalog = (await client.additionalServiceCatalog.findFirst({
       where: { tenantId, code },
       select: {
         id: true,
@@ -698,6 +753,19 @@ export class PrismaAdditionalServicesRepository
         isActive: true,
       },
     })) as AdditionalServiceCatalogRecord | null;
+
+    if (
+      !catalog ||
+      !(await this.catalogHasUsage(
+        client,
+        tenantId,
+        catalog.id,
+        "ADDITIONAL_SERVICE",
+      ))
+    ) {
+      return null;
+    }
+    return catalog;
   }
 
   private async findCatalogsByCodes(
@@ -705,8 +773,15 @@ export class PrismaAdditionalServicesRepository
     tenantId: string,
     codes: string[],
   ): Promise<AdditionalServiceCatalogRecord[]> {
+    const eligibleIds = await this.findCatalogIdsByUsage(
+      client,
+      tenantId,
+      "ADDITIONAL_SERVICE",
+    );
+    if (eligibleIds.length === 0) return [];
+
     return (await client.additionalServiceCatalog.findMany({
-      where: { tenantId, code: { in: codes } },
+      where: { tenantId, id: { in: eligibleIds }, code: { in: codes } },
       select: {
         id: true,
         tenantId: true,
@@ -720,9 +795,15 @@ export class PrismaAdditionalServicesRepository
   private async findCatalogs(
     client: AdditionalServicesPrismaClient,
     tenantId: string,
+    catalogIds?: string[],
   ): Promise<AdditionalServiceCatalogAdminRecord[]> {
+    if (catalogIds && catalogIds.length === 0) return [];
+
     const catalog = (await client.additionalServiceCatalog.findMany({
-      where: { tenantId },
+      where: {
+        tenantId,
+        ...(catalogIds ? { id: { in: catalogIds } } : {}),
+      },
       select: {
         id: true,
         tenantId: true,
@@ -776,11 +857,18 @@ export class PrismaAdditionalServicesRepository
       }
     >;
 
+    const usagesByCatalogId = await this.findCatalogUsages(
+      client,
+      tenantId,
+      catalog.map((item) => item.id),
+    );
+
     return catalog.map(({ pricingConfigurations, fiscalProfile, ...item }) => {
       const pricingConfiguration = pricingConfigurations[0];
 
       return {
         ...item,
+        usages: usagesByCatalogId.get(item.id) ?? [],
         pricingConfiguration: pricingConfiguration
           ? {
               ...pricingConfiguration,
@@ -801,6 +889,85 @@ export class PrismaAdditionalServicesRepository
     });
   }
 
+  private async findCatalogsByUsage(
+    client: AdditionalServicesPrismaClient,
+    tenantId: string,
+    usage: AdditionalServiceCatalogUsageType,
+  ): Promise<AdditionalServiceCatalogAdminRecord[]> {
+    const catalogIds = await this.findCatalogIdsByUsage(
+      client,
+      tenantId,
+      usage,
+    );
+    return this.findCatalogs(client, tenantId, catalogIds);
+  }
+
+  private async findCatalogIdsByUsage(
+    client: AdditionalServicesPrismaClient,
+    tenantId: string,
+    usage: AdditionalServiceCatalogUsageType,
+  ): Promise<string[]> {
+    const rows = await client.$queryRaw<Array<{ catalogId: string }>>(
+      Prisma.sql`
+        SELECT usage."catalogId"
+        FROM "additional_service_catalog_usages" usage
+        WHERE usage."tenantId" = ${tenantId}
+          AND usage."usage" = CAST(${usage} AS "AdditionalServiceCatalogUsageType")
+      `,
+    );
+    return rows.map((row) => row.catalogId);
+  }
+
+  private async findCatalogUsages(
+    client: AdditionalServicesPrismaClient,
+    tenantId: string,
+    catalogIds: string[],
+  ): Promise<Map<string, AdditionalServiceCatalogUsageType[]>> {
+    const byCatalogId = new Map<
+      string,
+      AdditionalServiceCatalogUsageType[]
+    >();
+    if (catalogIds.length === 0) return byCatalogId;
+
+    const rows = await client.$queryRaw<
+      Array<{ catalogId: string; usage: AdditionalServiceCatalogUsageType }>
+    >(
+      Prisma.sql`
+        SELECT usage."catalogId", usage."usage"::text AS "usage"
+        FROM "additional_service_catalog_usages" usage
+        WHERE usage."tenantId" = ${tenantId}
+          AND usage."catalogId" IN (${Prisma.join(catalogIds)})
+        ORDER BY usage."createdAt" ASC
+      `,
+    );
+    for (const row of rows) {
+      const usages = byCatalogId.get(row.catalogId) ?? [];
+      usages.push(row.usage);
+      byCatalogId.set(row.catalogId, usages);
+    }
+    return byCatalogId;
+  }
+
+  private async catalogHasUsage(
+    client: AdditionalServicesPrismaClient,
+    tenantId: string,
+    catalogId: string,
+    usage: AdditionalServiceCatalogUsageType,
+  ): Promise<boolean> {
+    const rows = await client.$queryRaw<Array<{ present: boolean }>>(
+      Prisma.sql`
+        SELECT EXISTS (
+          SELECT 1
+          FROM "additional_service_catalog_usages" catalog_usage
+          WHERE catalog_usage."tenantId" = ${tenantId}
+            AND catalog_usage."catalogId" = ${catalogId}
+            AND catalog_usage."usage" = CAST(${usage} AS "AdditionalServiceCatalogUsageType")
+        ) AS "present"
+      `,
+    );
+    return rows[0]?.present === true;
+  }
+
   private async findCatalogCodes(
     client: AdditionalServicesPrismaClient,
     tenantId: string,
@@ -811,6 +978,73 @@ export class PrismaAdditionalServicesRepository
     })) as Array<{ code: string }>;
 
     return catalog.map((item) => item.code);
+  }
+
+  private async createCatalog(
+    client: AdditionalServicesPrismaClient,
+    data: CreateAdditionalServiceCatalogData,
+  ): Promise<AdditionalServiceCatalogRecord> {
+    return (await client.additionalServiceCatalog.create({
+      data,
+      select: {
+        id: true,
+        tenantId: true,
+        code: true,
+        name: true,
+        isActive: true,
+      },
+    })) as AdditionalServiceCatalogRecord;
+  }
+
+  private async updateCatalog(
+    client: AdditionalServicesPrismaClient,
+    tenantId: string,
+    id: string,
+    data: UpdateAdditionalServiceCatalogData,
+  ): Promise<AdditionalServiceCatalogRecord> {
+    return (await client.additionalServiceCatalog.update({
+      where: { id_tenantId: { id, tenantId } },
+      data,
+      select: {
+        id: true,
+        tenantId: true,
+        code: true,
+        name: true,
+        isActive: true,
+      },
+    })) as AdditionalServiceCatalogRecord;
+  }
+
+  private async replaceCatalogUsages(
+    client: AdditionalServicesPrismaClient,
+    tenantId: string,
+    catalogId: string,
+    usages: AdditionalServiceCatalogUsageType[],
+  ): Promise<void> {
+    await client.$executeRaw(
+      Prisma.sql`
+        DELETE FROM "additional_service_catalog_usages"
+        WHERE "tenantId" = ${tenantId}
+          AND "catalogId" = ${catalogId}
+      `,
+    );
+
+    const values = usages.map(
+      (usage) =>
+        Prisma.sql`(
+          ${randomUUID()},
+          ${tenantId},
+          ${catalogId},
+          CAST(${usage} AS "AdditionalServiceCatalogUsageType")
+        )`,
+    );
+    await client.$executeRaw(
+      Prisma.sql`
+        INSERT INTO "additional_service_catalog_usages"
+          ("id", "tenantId", "catalogId", "usage")
+        VALUES ${Prisma.join(values)}
+      `,
+    );
   }
 
   private async createCatalogItems(
@@ -832,6 +1066,23 @@ export class PrismaAdditionalServicesRepository
       })),
       skipDuplicates: true,
     });
+
+    const codes = items.map((item) => item.code);
+    await client.$executeRaw(
+      Prisma.sql`
+        INSERT INTO "additional_service_catalog_usages"
+          ("id", "tenantId", "catalogId", "usage")
+        SELECT
+          md5(catalog."tenantId" || ':' || catalog."id" || ':ADDITIONAL_SERVICE'),
+          catalog."tenantId",
+          catalog."id",
+          CAST('ADDITIONAL_SERVICE' AS "AdditionalServiceCatalogUsageType")
+        FROM "additional_service_catalogs" catalog
+        WHERE catalog."tenantId" = ${tenantId}
+          AND catalog."code" IN (${Prisma.join(codes)})
+        ON CONFLICT ("tenantId", "catalogId", "usage") DO NOTHING
+      `,
+    );
 
     return result.count;
   }
