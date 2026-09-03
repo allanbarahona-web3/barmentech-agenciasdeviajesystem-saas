@@ -85,6 +85,7 @@ model Tenant {
   additionalServiceOrderLines        AdditionalServiceOrderLine[]
   additionalServiceOrderParticipants AdditionalServiceOrderParticipant[]
   additionalServiceCatalogItems      AdditionalServiceCatalog[]
+  additionalServiceCatalogUsages     AdditionalServiceCatalogUsage[]
   additionalServicePricingConfigs    AdditionalServicePricingConfiguration[]
   additionalServiceFiscalProfiles    AdditionalServiceFiscalProfile[]
   suppliers                          Supplier[]
@@ -842,27 +843,29 @@ model PaymentReceiptImage {
 }
 
 model TravelPackage {
-  id                      String                     @id @default(cuid())
-  name                    String
-  destination             String
-  departureDate           DateTime
-  returnDate              DateTime
-  capacity                Int
-  occupiedSlots           Int                        @default(0)
-  status                  String                     @default("OPEN")
-  travelType              TravelPackageType          @default(INTERNATIONAL)
-  packagePrice            Decimal?                   @db.Decimal(14, 2)
-  priceCurrency           String                     @default("USD")
-  createdByUserId         String
-  createdAt               DateTime                   @default(now())
-  updatedAt               DateTime                   @updatedAt
-  packageCode             String                     @unique
-  tenantId                String
-  minReservation          Decimal?                   @db.Decimal(14, 2)
-  contracts               Contract[]
-  tenant                  Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  additionalServiceOrders AdditionalServiceOrder[]
-  participants            TravelPackageParticipant[]
+  id                            String                     @id @default(cuid())
+  name                          String
+  destination                   String
+  departureDate                 DateTime
+  returnDate                    DateTime
+  capacity                      Int
+  occupiedSlots                 Int                        @default(0)
+  status                        String                     @default("OPEN")
+  travelType                    TravelPackageType          @default(INTERNATIONAL)
+  packagePrice                  Decimal?                   @db.Decimal(14, 2)
+  priceCurrency                 String                     @default("USD")
+  createdByUserId               String
+  createdAt                     DateTime                   @default(now())
+  updatedAt                     DateTime                   @updatedAt
+  packageCode                   String                     @unique
+  tenantId                      String
+  minReservation                Decimal?                   @db.Decimal(14, 2)
+  fiscalClassificationCatalogId String?
+  contracts                     Contract[]
+  tenant                        Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  fiscalClassificationCatalog   AdditionalServiceCatalog?  @relation("TravelPackageFiscalClassification", fields: [fiscalClassificationCatalogId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "travel_packages_fiscal_classification_tenant_fkey")
+  additionalServiceOrders       AdditionalServiceOrder[]
+  participants                  TravelPackageParticipant[]
 
   @@index([departureDate])
   @@index([status])
@@ -870,6 +873,7 @@ model TravelPackage {
   @@index([packageCode])
   @@index([tenantId])
   @@index([tenantId, travelType])
+  @@index([tenantId, fiscalClassificationCatalogId], map: "travel_packages_tenant_fiscal_classification_idx")
 }
 
 model TravelPackageParticipant {
@@ -955,36 +959,39 @@ model EmployeeDocument {
 }
 
 model InternalTrip {
-  id              String                @id @default(cuid())
-  tripCode        String                @unique
-  name            String
-  destination     String
-  description     String?
-  departureDate   DateTime
-  returnDate      DateTime
-  departureTime   String?
-  returnTime      String?
-  capacity        Int
-  occupiedSlots   Int                   @default(0)
-  price           Decimal               @db.Decimal(12, 2)
-  currency        String
-  minReservation  Decimal?              @db.Decimal(12, 2)
-  transportType   TransportType
-  itinerary       String
-  status          String                @default("OPEN")
-  createdByUserId String
-  createdByName   String
-  createdAt       DateTime              @default(now())
-  updatedAt       DateTime              @updatedAt
-  tenantId        String
-  contracts       Contract[]
-  bookings        InternalTourBooking[]
-  tenant          Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  id                            String                    @id @default(cuid())
+  tripCode                      String                    @unique
+  name                          String
+  destination                   String
+  description                   String?
+  departureDate                 DateTime
+  returnDate                    DateTime
+  departureTime                 String?
+  returnTime                    String?
+  capacity                      Int
+  occupiedSlots                 Int                       @default(0)
+  price                         Decimal                   @db.Decimal(12, 2)
+  currency                      String
+  minReservation                Decimal?                  @db.Decimal(12, 2)
+  transportType                 TransportType
+  itinerary                     String
+  status                        String                    @default("OPEN")
+  createdByUserId               String
+  createdByName                 String
+  createdAt                     DateTime                  @default(now())
+  updatedAt                     DateTime                  @updatedAt
+  tenantId                      String
+  fiscalClassificationCatalogId String?
+  contracts                     Contract[]
+  bookings                      InternalTourBooking[]
+  tenant                        Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  fiscalClassificationCatalog   AdditionalServiceCatalog? @relation("InternalTripFiscalClassification", fields: [fiscalClassificationCatalogId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "internal_trips_fiscal_classification_tenant_fkey")
 
   @@index([departureDate])
   @@index([tenantId])
   @@index([status])
   @@index([tripCode])
+  @@index([tenantId, fiscalClassificationCatalogId], map: "internal_trips_tenant_fiscal_classification_idx")
   @@map("internal_trips")
 }
 
@@ -1342,23 +1349,26 @@ enum TerritorialCatalogReleaseStatus {
 }
 
 model AdditionalServiceCatalog {
-  id                    String                                  @id @default(cuid())
-  tenantId              String
-  code                  String
-  name                  String
-  description           String?
-  icon                  String?
-  color                 String?
-  displayOrder          Int                                     @default(0)
-  fiscalItemCategory    FiscalItemCategory                      @default(SERVICE)
-  isActive              Boolean                                 @default(true)
-  createdAt             DateTime                                @default(now())
-  updatedAt             DateTime                                @updatedAt
-  tenant                Tenant                                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  pricingConfigurations AdditionalServicePricingConfiguration[]
-  fiscalProfile         AdditionalServiceFiscalProfile?
-  orderLines            AdditionalServiceOrderLine[]
-  salesOrderLines       SalesOrderLine[]
+  id                                 String                                  @id @default(cuid())
+  tenantId                           String
+  code                               String
+  name                               String
+  description                        String?
+  icon                               String?
+  color                              String?
+  displayOrder                       Int                                     @default(0)
+  fiscalItemCategory                 FiscalItemCategory                      @default(SERVICE)
+  isActive                           Boolean                                 @default(true)
+  createdAt                          DateTime                                @default(now())
+  updatedAt                          DateTime                                @updatedAt
+  tenant                             Tenant                                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  pricingConfigurations              AdditionalServicePricingConfiguration[]
+  fiscalProfile                      AdditionalServiceFiscalProfile?
+  orderLines                         AdditionalServiceOrderLine[]
+  salesOrderLines                    SalesOrderLine[]
+  usages                             AdditionalServiceCatalogUsage[]
+  fiscalClassificationTravelPackages TravelPackage[]                         @relation("TravelPackageFiscalClassification")
+  fiscalClassificationInternalTrips  InternalTrip[]                          @relation("InternalTripFiscalClassification")
 
   @@unique([tenantId, code])
   @@unique([id, tenantId])
@@ -1366,6 +1376,26 @@ model AdditionalServiceCatalog {
   @@index([tenantId, isActive])
   @@index([tenantId, displayOrder])
   @@map("additional_service_catalogs")
+}
+
+enum AdditionalServiceCatalogUsageType {
+  ADDITIONAL_SERVICE
+  TRAVEL_PACKAGE
+  INTERNAL_TRIP
+}
+
+model AdditionalServiceCatalogUsage {
+  id        String                            @id @default(cuid())
+  tenantId  String
+  catalogId String
+  usage     AdditionalServiceCatalogUsageType
+  createdAt DateTime                          @default(now())
+  tenant    Tenant                            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  catalog   AdditionalServiceCatalog          @relation(fields: [catalogId, tenantId], references: [id, tenantId], onDelete: Cascade, map: "additional_service_catalog_usages_catalog_tenant_fkey")
+
+  @@unique([tenantId, catalogId, usage], map: "additional_service_catalog_usages_tenant_catalog_usage_key")
+  @@index([tenantId, usage], map: "additional_service_catalog_usages_tenant_usage_idx")
+  @@map("additional_service_catalog_usages")
 }
 
 model Supplier {
