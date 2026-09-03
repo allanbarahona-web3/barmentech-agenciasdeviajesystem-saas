@@ -1,5 +1,4 @@
 import { Module, forwardRef } from "@nestjs/common";
-import { BillingModule } from "../billing/billing.module";
 import { EmailModule } from "../email/email.module";
 import { StorageModule } from "../storage/storage.module";
 import { DocumentsService } from "./documents.service";
@@ -48,7 +47,6 @@ import { PackageCompletedDeliveryService } from "./package-completed-delivery.se
 @Module({
   imports: [
     EmailModule,
-    BillingModule,
     StorageModule,
     forwardRef(() => require("../contracts/contracts.module").ContractsModule),
   ],
