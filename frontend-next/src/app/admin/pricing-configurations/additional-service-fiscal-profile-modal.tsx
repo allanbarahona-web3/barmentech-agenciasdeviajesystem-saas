@@ -149,7 +149,7 @@ export function AdditionalServiceFiscalProfileModal({ item, onClose, onSaved, on
 
   return <ConfirmModal isOpen={item !== null} title={profile ? "Editar perfil fiscal" : "Configurar perfil fiscal"} confirmText={saving ? "Guardando..." : "Guardar valores"} cancelText="Cancelar" isLoading={saving} onConfirm={() => void handleSave()} onCancel={onClose} message={item ? (
     <form className="space-y-4 text-left" onSubmit={(event) => { event.preventDefault(); void handleSave(); }}>
-      <ReadOnlyField id="fiscal-service" label="Servicio" value={item.name} />
+      <ReadOnlyField id="fiscal-service" label="Elemento de catálogo" value={item.name} />
       <div className="relative">
         <label htmlFor="fiscal-cabys-search" className="mb-1 block text-sm font-medium text-slate-700">CABYS</label>
         <input id="fiscal-cabys-search" value={cabysQuery} autoComplete="off" disabled={saving} placeholder="Busque por código o descripción (mínimo 3 caracteres)" onChange={(event) => { setCabysQuery(event.target.value); setSelectedCabys(null); setForm((current) => ({ ...current, cabysCode: "" })); setError(""); }} className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm text-slate-900 focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200" />

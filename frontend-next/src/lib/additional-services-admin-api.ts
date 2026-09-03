@@ -3,6 +3,17 @@ import { resolveApiBase } from "@/lib/runtime-config";
 
 export type AdditionalServiceMarginType = "FIXED" | "PERCENTAGE";
 
+export const ADDITIONAL_SERVICE_CATALOG_USAGES = [
+  "ADDITIONAL_SERVICE",
+  "TRAVEL_PACKAGE",
+  "INTERNAL_TRIP",
+] as const;
+
+export type AdditionalServiceCatalogUsage =
+  (typeof ADDITIONAL_SERVICE_CATALOG_USAGES)[number];
+
+export type FiscalItemCategory = "SERVICE" | "MERCHANDISE";
+
 export interface AdditionalServiceCatalogPricingConfiguration {
   id: string;
   marginType: AdditionalServiceMarginType;
@@ -38,9 +49,25 @@ export interface AdditionalServiceAdminCatalogItem {
   code: string;
   name: string;
   isActive: boolean;
+  usages: AdditionalServiceCatalogUsage[];
+  fiscalItemCategory?: FiscalItemCategory;
   pricingConfiguration: AdditionalServiceCatalogPricingConfiguration | null;
   fiscalProfile: AdditionalServiceFiscalProfile | null;
   fiscalReadiness: AdditionalServiceFiscalReadiness;
+}
+
+export interface CreateAdditionalServiceCatalogInput {
+  code: string;
+  name: string;
+  fiscalItemCategory: FiscalItemCategory;
+  usages: AdditionalServiceCatalogUsage[];
+}
+
+export interface UpdateAdditionalServiceCatalogInput {
+  code?: string;
+  name?: string;
+  fiscalItemCategory?: FiscalItemCategory;
+  usages?: AdditionalServiceCatalogUsage[];
 }
 
 export interface CreateAdditionalServiceFiscalProfileInput {
@@ -193,6 +220,56 @@ export async function getAdditionalServiceAdminCatalog(): Promise<
   }
 
   return response.json();
+}
+
+async function sendCatalogRequest(
+  path: string,
+  method: "POST" | "PATCH",
+  body: CreateAdditionalServiceCatalogInput | UpdateAdditionalServiceCatalogInput,
+): Promise<AdditionalServiceAdminCatalogItem> {
+  const apiBase = resolveApiBase();
+  const token = getStoredToken();
+
+  if (!apiBase) {
+    throw new Error("No hay API configurada.");
+  }
+
+  const response = await authenticatedFetch(`${apiBase}${path}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      await readErrorMessage(
+        response,
+        "No se pudo guardar el elemento del catálogo.",
+      ),
+    );
+  }
+
+  return response.json();
+}
+
+export function createAdditionalServiceCatalog(
+  input: CreateAdditionalServiceCatalogInput,
+): Promise<AdditionalServiceAdminCatalogItem> {
+  return sendCatalogRequest("/additional-services/catalog", "POST", input);
+}
+
+export function updateAdditionalServiceCatalog(
+  catalogId: string,
+  input: UpdateAdditionalServiceCatalogInput,
+): Promise<AdditionalServiceAdminCatalogItem> {
+  return sendCatalogRequest(
+    `/additional-services/catalog/${encodeURIComponent(catalogId)}`,
+    "PATCH",
+    input,
+  );
 }
 
 async function getFiscalCatalogResponse<T>(path: string, fallback: string): Promise<T> {

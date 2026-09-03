@@ -11,6 +11,7 @@ import {
   CirclePause,
   Hourglass,
   PencilLine,
+  Plus,
   ReceiptText,
   SlidersHorizontal,
 } from "lucide-react";
@@ -27,14 +28,23 @@ import {
   getHomeRouteForRole,
 } from "@/lib/auth-api";
 import {
+  createAdditionalServiceCatalog,
   createAdditionalServicePricingConfiguration,
   getAdditionalServiceAdminCatalog,
+  updateAdditionalServiceCatalog,
   updateAdditionalServicePricingConfiguration,
   updateAdditionalServicePricingConfigurationStatus,
   type AdditionalServiceAdminCatalogItem,
   type AdditionalServiceCatalogPricingConfiguration,
   type AdditionalServiceMarginType,
+  type CreateAdditionalServiceCatalogInput,
+  type UpdateAdditionalServiceCatalogInput,
 } from "@/lib/additional-services-admin-api";
+import {
+  catalogUsageLabels,
+  hasAdditionalServiceUsage,
+} from "@/lib/additional-service-catalog-admin";
+import { AdditionalServiceCatalogModal } from "./additional-service-catalog-modal";
 import { AdditionalServiceFiscalProfileModal } from "./additional-service-fiscal-profile-modal";
 
 const fiscalReadinessPresentation = {
@@ -104,6 +114,10 @@ export default function PricingConfigurationsPage() {
     useState<PricingConfigurationFormState>(emptyForm);
   const [formError, setFormError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [catalogEditorOpen, setCatalogEditorOpen] = useState(false);
+  const [catalogEditorItem, setCatalogEditorItem] =
+    useState<AdditionalServiceAdminCatalogItem | null>(null);
+  const [catalogSaving, setCatalogSaving] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const { toasts, showSuccess, showError, dismissToast } = useToast();
 
@@ -182,6 +196,57 @@ export default function PricingConfigurationsPage() {
           ? error.message
           : "El perfil se guardó, pero no se pudo actualizar el catálogo.",
       );
+    }
+  };
+
+  const openCatalogEditor = (item: AdditionalServiceAdminCatalogItem | null) => {
+    setCatalogEditorItem(item);
+    setCatalogEditorOpen(true);
+  };
+
+  const closeCatalogEditor = () => {
+    if (catalogSaving) return;
+    setCatalogEditorOpen(false);
+    setCatalogEditorItem(null);
+  };
+
+  const handleCatalogCreate = async (
+    input: CreateAdditionalServiceCatalogInput,
+  ) => {
+    setCatalogSaving(true);
+    try {
+      const created = await createAdditionalServiceCatalog(input);
+      setCatalog((current) => [created, ...current]);
+      setCurrentPage(1);
+      setCatalogEditorOpen(false);
+      setCatalogEditorItem(null);
+      showSuccess("Elemento del catálogo creado correctamente.");
+    } finally {
+      setCatalogSaving(false);
+    }
+  };
+
+  const handleCatalogUpdate = async (
+    catalogId: string,
+    input: UpdateAdditionalServiceCatalogInput,
+  ) => {
+    if (Object.keys(input).length === 0) {
+      setCatalogEditorOpen(false);
+      setCatalogEditorItem(null);
+      return;
+    }
+
+    setCatalogSaving(true);
+    try {
+      const updated = await updateAdditionalServiceCatalog(catalogId, input);
+      setCatalog((current) =>
+        current.map((item) => (item.id === catalogId ? updated : item)),
+      );
+      setCatalogEditorOpen(false);
+      setCatalogEditorItem(null);
+      showSuccess("Elemento del catálogo actualizado correctamente.");
+    } finally {
+      setCatalogSaving(false);
     }
   };
 
@@ -422,25 +487,45 @@ export default function PricingConfigurationsPage() {
         onSaved={handleFiscalSaved}
         onError={showError}
       />
+      <AdditionalServiceCatalogModal
+        isOpen={catalogEditorOpen}
+        item={catalogEditorItem}
+        saving={catalogSaving}
+        onClose={closeCatalogEditor}
+        onCreate={handleCatalogCreate}
+        onUpdate={handleCatalogUpdate}
+      />
 
       <div>
-        <header className="mb-[30px] flex items-center justify-between gap-4">
+        <header className="mb-[30px] flex flex-wrap items-center justify-between gap-4">
           <div>
             <h1 className="mb-2 text-[1.8rem] font-semibold text-slate-900">
-              Margen Adicionales
+              Catálogo fiscal y márgenes
             </h1>
             <p className="m-0 text-slate-500">
-              Configure primero el perfil fiscal; después defina el margen comercial. El IVA se deriva del perfil fiscal activo.
+              Administre los usos y el perfil fiscal. Los márgenes aplican únicamente a servicios adicionales.
             </p>
           </div>
-          {!loadError && catalog.length > 0 ? (
-            <Badge
-              variant="outline"
-              className="shrink-0 rounded-md border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 shadow-sm dark:border-slate-200 dark:bg-white dark:text-slate-600"
-            >
-              {catalog.length} servicios
-            </Badge>
-          ) : null}
+          <div className="flex items-center gap-3">
+            {!loadError && catalog.length > 0 ? (
+              <Badge
+                variant="outline"
+                className="shrink-0 rounded-md border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 shadow-sm dark:border-slate-200 dark:bg-white dark:text-slate-600"
+              >
+                {catalog.length} elementos
+              </Badge>
+            ) : null}
+            {!loadError ? (
+              <Button
+                type="button"
+                onClick={() => openCatalogEditor(null)}
+                className="gap-2 bg-blue-600 text-white hover:bg-blue-700"
+              >
+                <Plus className="h-4 w-4" aria-hidden="true" />
+                Crear elemento
+              </Button>
+            ) : null}
+          </div>
         </header>
 
         <section className="rounded-xl bg-white p-[30px] shadow-[0_1px_3px_rgba(0,0,0,0.1)]">
@@ -466,38 +551,59 @@ export default function PricingConfigurationsPage() {
             <div className="px-5 py-10 text-center text-slate-400">
               <div className="mb-3 text-5xl">📋</div>
               <h2 className="mb-2 text-lg font-semibold text-slate-700">
-                No hay servicios adicionales disponibles
+                No hay elementos configurados
               </h2>
               <p className="m-0 text-sm text-slate-500">
-                Los servicios del catálogo aparecerán aquí cuando estén
-                disponibles.
+                Cree el primer servicio adicional o clasificación fiscal de viaje.
               </p>
             </div>
           ) : (
             <>
               <div className="history-table-wrap">
-                <table className="history-table min-w-[1180px] table-fixed">
+                <table className="history-table min-w-[1320px] table-fixed">
                   <thead>
                     <tr>
-                      <th className="w-[22%]">Servicio</th>
-                      <th className="w-[11%] text-center">Margen</th>
-                      <th className="w-[10%] text-center">Impuesto</th>
-                      <th className="w-[12%] text-center">Estado precio</th>
-                      <th className="w-[20%] text-center">Fiscal</th>
-                      <th className="w-[25%] text-center">Acciones</th>
+                      <th className="w-[17%]">Elemento</th>
+                      <th className="w-[19%] text-center">Uso</th>
+                      <th className="w-[9%] text-center">Margen</th>
+                      <th className="w-[8%] text-center">Impuesto</th>
+                      <th className="w-[10%] text-center">Estado precio</th>
+                      <th className="w-[15%] text-center">Fiscal</th>
+                      <th className="w-[22%] text-center">Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
                     {visibleCatalog.map((item) => {
                       const configuration = item.pricingConfiguration;
+                      const supportsPricing = hasAdditionalServiceUsage(item);
                       const fiscalPresentation =
                         fiscalReadinessPresentation[item.fiscalReadiness.status];
 
                       return (
                         <tr key={item.id}>
-                          <td className="history-col-name">{item.name}</td>
+                          <td className="history-col-name">
+                            <div>{item.name}</div>
+                            <div className="mt-1 font-mono text-xs font-normal text-slate-500">
+                              {item.code}
+                            </div>
+                          </td>
                           <td className="text-center">
-                            {configuration ? (
+                            <div className="flex flex-wrap justify-center gap-1.5">
+                              {item.usages.map((usage) => (
+                                <Badge
+                                  key={usage}
+                                  variant="outline"
+                                  className="whitespace-normal border-blue-200 bg-blue-50 text-center text-blue-700 dark:border-blue-200 dark:bg-blue-50 dark:text-blue-700"
+                                >
+                                  {catalogUsageLabels[usage]}
+                                </Badge>
+                              ))}
+                            </div>
+                          </td>
+                          <td className="text-center">
+                            {!supportsPricing ? (
+                              <span className="text-slate-500">No aplica</span>
+                            ) : configuration ? (
                               <>
                                 <div className="font-bold">
                                   {formatMargin(configuration)}
@@ -522,12 +628,21 @@ export default function PricingConfigurationsPage() {
                             )}
                           </td>
                           <td className="text-center">
-                            {configuration
+                            {!supportsPricing
+                              ? "—"
+                              : configuration
                               ? `${configuration.taxPercentage}%`
                               : "—"}
                           </td>
                           <td className="text-center">
-                            <Badge
+                            {!supportsPricing ? (
+                              <Badge
+                                variant="outline"
+                                className="border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-200 dark:bg-slate-50 dark:text-slate-600"
+                              >
+                                No aplica
+                              </Badge>
+                            ) : <Badge
                               style={
                                 !configuration
                                   ? {
@@ -568,7 +683,7 @@ export default function PricingConfigurationsPage() {
                                   ? "Activo"
                                   : "Inactivo"
                                 : "Pendiente"}
-                            </Badge>
+                            </Badge>}
                           </td>
                           <td className="text-center">
                             <Badge
@@ -582,6 +697,16 @@ export default function PricingConfigurationsPage() {
                           <td>
                             <div className="flex flex-wrap justify-center gap-2">
                               <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => openCatalogEditor(item)}
+                                className="min-w-[128px] gap-2 border-blue-500 bg-white text-blue-600 shadow-sm hover:bg-blue-50 hover:text-blue-700"
+                              >
+                                <PencilLine className="h-4 w-4" aria-hidden="true" />
+                                Editar catálogo
+                              </Button>
+                              {supportsPricing ? <Button
                                 type="button"
                                 variant="outline"
                                 size="sm"
@@ -606,8 +731,8 @@ export default function PricingConfigurationsPage() {
                                   />
                                 )}
                                 {configuration ? "Editar" : "Configurar"}
-                              </Button>
-                              {item.fiscalReadiness.status !== "READY" && !configuration?.isActive ? <span className="basis-full text-xs text-amber-700">Configure y active el perfil fiscal primero.</span> : null}
+                              </Button> : null}
+                              {supportsPricing && item.fiscalReadiness.status !== "READY" && !configuration?.isActive ? <span className="basis-full text-xs text-amber-700">Configure y active el perfil fiscal primero.</span> : null}
                               <Button
                                 type="button"
                                 variant="outline"
