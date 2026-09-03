@@ -143,8 +143,12 @@ export class MockFactory {
       name: 'Viaje a Arenal',
       destination: 'La Fortuna, Arenal',
       description: 'Descubre las maravillas',
-      departureDate: '2026-06-15',
-      returnDate: '2026-06-16',
+      departureDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+        .toISOString()
+        .split('T')[0],
+      returnDate: new Date(Date.now() + 31 * 24 * 60 * 60 * 1000)
+        .toISOString()
+        .split('T')[0],
       departureTime: '08:00',
       returnTime: '18:00',
       capacity: 20,

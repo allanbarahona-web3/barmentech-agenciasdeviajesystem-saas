@@ -23,6 +23,7 @@ import { CommercialProposalPublicController } from "./commercial-proposal-public
 import { SalesOrdersModule } from "../sales-orders/sales-orders.module";
 import { CommercialProposalInPersonApprovalService } from "./commercial-proposal-in-person-approval.service";
 import { FiscalCatalogModule } from "../fiscal-catalogs/fiscal-catalog.module";
+import { TravelFiscalClassificationModule } from "./travel-fiscal-classification.module";
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { FiscalCatalogModule } from "../fiscal-catalogs/fiscal-catalog.module";
     EmailModule,
     SalesOrdersModule,
     FiscalCatalogModule,
+    TravelFiscalClassificationModule,
   ],
   controllers: [
     AdditionalServiceCatalogController,

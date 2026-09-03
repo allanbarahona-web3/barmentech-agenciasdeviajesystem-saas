@@ -7,11 +7,13 @@ import { TransportType } from '@prisma/client';
 import { CreateInternalTripDto, UpdateInternalTripDto } from './dto';
 import { Decimal } from '@prisma/client/runtime/library';
 import { MockFactory } from './test-helpers.mock';
+import { TravelFiscalClassificationService } from '../additional-services/travel-fiscal-classification.service';
 
 describe('InternalToursService', () => {
   let service: InternalToursService;
   let prismaService: PrismaService;
   let emailService: EmailService;
+  let travelFiscalClassifications: { validate: jest.Mock };
 
   // Mock data
   const mockTenantId = 'tenant-123';
@@ -37,6 +39,7 @@ describe('InternalToursService', () => {
               findMany: jest.fn(),
               update: jest.fn(),
               delete: jest.fn(),
+              count: jest.fn().mockResolvedValue(0),
             },
             internalTourBooking: {
               findFirst: jest.fn(),
@@ -51,12 +54,17 @@ describe('InternalToursService', () => {
             sendEmail: jest.fn(),
           },
         },
+        {
+          provide: TravelFiscalClassificationService,
+          useValue: { validate: jest.fn() },
+        },
       ],
     }).compile();
 
     service = module.get<InternalToursService>(InternalToursService);
     prismaService = module.get<PrismaService>(PrismaService);
     emailService = module.get<EmailService>(EmailService);
+    travelFiscalClassifications = module.get(TravelFiscalClassificationService);
   });
 
   afterEach(() => {
@@ -144,6 +152,51 @@ describe('InternalToursService', () => {
         }),
       );
     });
+
+    it('validates and persists a valid INTERNAL_TRIP classification', async () => {
+      travelFiscalClassifications.validate.mockResolvedValue('catalog-1');
+      jest.spyOn(prismaService.internalTrip, 'create').mockResolvedValue(mockTrip);
+
+      await service.createTrip(
+        mockTenantId,
+        mockUserId,
+        mockUserName,
+        { ...createTripDto, fiscalClassificationCatalogId: 'catalog-1' },
+        mockTenantConfig,
+      );
+
+      expect(travelFiscalClassifications.validate).toHaveBeenCalledWith(
+        mockTenantId,
+        'catalog-1',
+        'INTERNAL_TRIP',
+      );
+      expect(prismaService.internalTrip.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            fiscalClassificationCatalogId: 'catalog-1',
+          }),
+        }),
+      );
+    });
+
+    it('rejects an INTERNAL_TRIP classification with incompatible usage', async () => {
+      travelFiscalClassifications.validate.mockRejectedValue(
+        new BadRequestException(
+          'TRAVEL_FISCAL_CLASSIFICATION_USAGE_INCOMPATIBLE',
+        ),
+      );
+
+      await expect(
+        service.createTrip(
+          mockTenantId,
+          mockUserId,
+          mockUserName,
+          { ...createTripDto, fiscalClassificationCatalogId: 'catalog-1' },
+          mockTenantConfig,
+        ),
+      ).rejects.toThrow('TRAVEL_FISCAL_CLASSIFICATION_USAGE_INCOMPATIBLE');
+      expect(prismaService.internalTrip.create).not.toHaveBeenCalled();
+    });
   });
 
   describe('getTrip', () => {
@@ -152,10 +205,15 @@ describe('InternalToursService', () => {
 
       const result = await service.getTrip(mockTenantId, 'trip-123');
 
-      expect(result).toEqual(mockTrip);
+      expect(result).toEqual({
+        ...mockTrip,
+        totalBookings: 0,
+        paidBookings: 0,
+        pendingBookings: 0,
+      });
       expect(prismaService.internalTrip.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { id: 'trip-123' },
+          where: { id: 'trip-123', tenantId: mockTenantId },
         }),
       );
     });
@@ -239,6 +297,33 @@ describe('InternalToursService', () => {
 
       await expect(service.updateTrip(mockTenantId, 'trip-123', dtoWithDepartureDate)).rejects.toThrow(
         BadRequestException,
+      );
+    });
+
+    it('updates and clears the INTERNAL_TRIP fiscal classification', async () => {
+      jest.spyOn(prismaService.internalTrip, 'findFirst').mockResolvedValue(mockTrip);
+      jest.spyOn(prismaService.internalTourBooking, 'findFirst').mockResolvedValue(null);
+      jest.spyOn(prismaService.internalTrip, 'update').mockResolvedValue(mockTrip);
+      travelFiscalClassifications.validate.mockResolvedValue('catalog-2');
+
+      await service.updateTrip(mockTenantId, 'trip-123', {
+        fiscalClassificationCatalogId: 'catalog-2',
+      });
+      await service.updateTrip(mockTenantId, 'trip-123', {
+        fiscalClassificationCatalogId: null,
+      });
+
+      expect(prismaService.internalTrip.update).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({
+          data: { fiscalClassificationCatalogId: 'catalog-2' },
+        }),
+      );
+      expect(prismaService.internalTrip.update).toHaveBeenNthCalledWith(
+        2,
+        expect.objectContaining({
+          data: { fiscalClassificationCatalogId: null },
+        }),
       );
     });
   });

@@ -59,4 +59,8 @@ export class CreateInternalTripDto {
   @IsNumber()
   @IsOptional()
   minReservation?: number; // Monto de reserva mínima (opcional)
+
+  @IsString()
+  @IsOptional()
+  fiscalClassificationCatalogId?: string | null;
 }

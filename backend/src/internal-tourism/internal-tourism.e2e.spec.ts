@@ -10,6 +10,7 @@ import { Decimal } from '@prisma/client/runtime/library';
 import { MockFactory } from './test-helpers.mock';
 import { TransportType } from '@prisma/client';
 import { InternalTourBookingParticipantRole } from './enums';
+import { TravelFiscalClassificationService } from '../additional-services/travel-fiscal-classification.service';
 
 /**
  * E2E Tests for Internal Tourism Module
@@ -74,6 +75,10 @@ describe('Internal Tourism Module - E2E Tests', () => {
           useValue: {
             sendEmail: jest.fn(),
           },
+        },
+        {
+          provide: TravelFiscalClassificationService,
+          useValue: { validate: jest.fn() },
         },
       ],
     }).compile();

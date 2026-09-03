@@ -29,6 +29,7 @@ describe('Travel context domain reads', () => {
     const service = new TravelPackagesService(
       prisma as any,
       participantRepository as any,
+      {} as any,
     );
 
     await expect(

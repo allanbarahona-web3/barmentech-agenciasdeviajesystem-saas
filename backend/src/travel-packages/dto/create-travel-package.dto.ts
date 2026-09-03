@@ -44,4 +44,8 @@ export class CreateTravelPackageDto {
   @IsNumber()
   @Min(0)
   minReservation?: number; // Monto de reserva mínima (opcional)
+
+  @IsOptional()
+  @IsString()
+  fiscalClassificationCatalogId?: string | null;
 }

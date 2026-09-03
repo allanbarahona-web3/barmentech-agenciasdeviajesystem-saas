@@ -5,12 +5,14 @@ import { EmailService } from '../email/email.service';
 import { TransportType } from '@prisma/client';
 import { CreateInternalTripDto, UpdateInternalTripDto } from './dto';
 import { TripGenerationResult } from './types';
+import { TravelFiscalClassificationService } from '../additional-services/travel-fiscal-classification.service';
 
 @Injectable()
 export class InternalToursService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly emailService: EmailService,
+    private readonly travelFiscalClassifications: TravelFiscalClassificationService,
   ) {}
 
   /**
@@ -73,12 +75,24 @@ export class InternalToursService {
       throw new BadRequestException('El precio debe ser mayor a 0');
     }
 
+    const requestedFiscalClassificationId =
+      dto.fiscalClassificationCatalogId;
+    const fiscalClassificationCatalogId =
+      requestedFiscalClassificationId !== undefined &&
+      requestedFiscalClassificationId !== null
+      ? await this.travelFiscalClassifications.validate(
+          tenantId,
+          requestedFiscalClassificationId,
+          'INTERNAL_TRIP',
+        )
+      : null;
+
     // Usar moneda especificada o default del tenant
     const currency = dto.currency || tenantConfig?.preferredCurrency || 'CRC';
 
     const tripCode = await this.generateTripCode(departureDate, tenantId);
 
-    const trip = await this.prisma.internalTrip.create({
+    const trip = await (this.prisma.internalTrip as any).create({
       data: {
         tripCode,
         name: dto.name,
@@ -98,6 +112,7 @@ export class InternalToursService {
         createdByUserId: userId,
         createdByName: userName,
         tenantId,
+        fiscalClassificationCatalogId,
       },
     });
 
@@ -193,6 +208,21 @@ export class InternalToursService {
       throw new NotFoundException('Viaje no encontrado');
     }
 
+    const updatesFiscalClassification = Object.prototype.hasOwnProperty.call(
+      dto,
+      'fiscalClassificationCatalogId',
+    );
+    const fiscalClassificationCatalogId =
+      updatesFiscalClassification &&
+      dto.fiscalClassificationCatalogId !== null &&
+      dto.fiscalClassificationCatalogId !== undefined
+        ? await this.travelFiscalClassifications.validate(
+            tenantId,
+            dto.fiscalClassificationCatalogId,
+            'INTERNAL_TRIP',
+          )
+        : null;
+
     // No permitir cambios si hay reservas
     const hasBookings = await this.prisma.internalTourBooking.findFirst({
       where: { internalTripId: tripId },
@@ -216,8 +246,11 @@ export class InternalToursService {
     if (dto.transportType) updateData.transportType = dto.transportType;
     if (dto.itinerary) updateData.itinerary = dto.itinerary;
     if (dto.status) updateData.status = dto.status;
+    if (updatesFiscalClassification) {
+      updateData.fiscalClassificationCatalogId = fiscalClassificationCatalogId;
+    }
 
-    return this.prisma.internalTrip.update({
+    return (this.prisma.internalTrip as any).update({
       where: { id: tripId },
       data: updateData,
     });

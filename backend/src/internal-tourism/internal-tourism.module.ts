@@ -5,9 +5,10 @@ import { InternalToursService } from './internal-tours.service';
 import { InternalBookingsService } from './internal-bookings.service';
 import { InternalTripsController } from './internal-trips.controller';
 import { InternalBookingsController } from './internal-bookings.controller';
+import { TravelFiscalClassificationModule } from '../additional-services/travel-fiscal-classification.module';
 
 @Module({
-  imports: [PrismaModule, EmailModule],
+  imports: [PrismaModule, EmailModule, TravelFiscalClassificationModule],
   providers: [InternalToursService, InternalBookingsService],
   controllers: [InternalTripsController, InternalBookingsController],
   exports: [InternalToursService, InternalBookingsService],

@@ -60,4 +60,8 @@ export class UpdateInternalTripDto {
   @IsString()
   @IsOptional()
   status?: string; // OPEN | CLOSED | CANCELLED | COMPLETED
+
+  @IsString()
+  @IsOptional()
+  fiscalClassificationCatalogId?: string | null;
 }

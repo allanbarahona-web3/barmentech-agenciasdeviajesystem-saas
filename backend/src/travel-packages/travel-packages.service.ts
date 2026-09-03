@@ -20,6 +20,7 @@ import {
   TravelContextType,
 } from '../travel-context/dto/travel-context.dto';
 import { mapTravelContext } from '../travel-context/travel-context.mapper';
+import { TravelFiscalClassificationService } from '../additional-services/travel-fiscal-classification.service';
 
 @Injectable()
 export class TravelPackagesService {
@@ -28,6 +29,7 @@ export class TravelPackagesService {
   constructor(
     private prisma: PrismaService,
     private readonly travelPackageParticipantsRepository: TravelPackageParticipantsRepository,
+    private readonly travelFiscalClassifications: TravelFiscalClassificationService,
   ) {}
 
   getParticipantRoster(
@@ -142,6 +144,18 @@ export class TravelPackagesService {
       );
     }
 
+    const requestedFiscalClassificationId =
+      dto.fiscalClassificationCatalogId;
+    const fiscalClassificationCatalogId =
+      requestedFiscalClassificationId !== undefined &&
+      requestedFiscalClassificationId !== null
+      ? await this.travelFiscalClassifications.validate(
+          tenantId,
+          requestedFiscalClassificationId,
+          'TRAVEL_PACKAGE',
+        )
+      : null;
+
     // Generar código con reintentos para manejar colisiones concurrentes (P2002)
     let travelPackage: any = null;
     const maxAttempts = 5;
@@ -150,7 +164,7 @@ export class TravelPackagesService {
       const packageCode = await this.generatePackageCode();
 
       try {
-        travelPackage = await this.prisma.travelPackage.create({
+        travelPackage = await (this.prisma.travelPackage as any).create({
           data: {
             packageCode,
             name: dto.name,
@@ -164,6 +178,7 @@ export class TravelPackagesService {
             priceCurrency: dto.priceCurrency || 'USD',
             travelType: (dto.travelType || 'INTERNATIONAL') as TravelPackageType,
             minReservation: dto.minReservation ? new Decimal(String(dto.minReservation)) : null,
+            fiscalClassificationCatalogId,
             createdByUserId,
             tenantId,
           },
@@ -281,6 +296,21 @@ export class TravelPackagesService {
       throw new BadRequestException('Cannot update a completed travel package (trip already occurred)');
     }
 
+    const updatesFiscalClassification = Object.prototype.hasOwnProperty.call(
+      dto,
+      'fiscalClassificationCatalogId',
+    );
+    const fiscalClassificationCatalogId =
+      updatesFiscalClassification &&
+      dto.fiscalClassificationCatalogId !== null &&
+      dto.fiscalClassificationCatalogId !== undefined
+        ? await this.travelFiscalClassifications.validate(
+            tenantId,
+            dto.fiscalClassificationCatalogId,
+            'TRAVEL_PACKAGE',
+          )
+        : null;
+
     // Si se intenta cambiar capacidad, validar que no sea menor a ocupados
     if (dto.capacity !== undefined && dto.capacity < travelPackage.occupiedSlots) {
       throw new BadRequestException(
@@ -305,7 +335,7 @@ export class TravelPackagesService {
     const newStatus =
       updatedCapacity === travelPackage.occupiedSlots ? 'CLOSED' : dto.status;
 
-    const updated = await this.prisma.travelPackage.update({
+    const updated = await (this.prisma.travelPackage as any).update({
       where: { id },
       data: {
         ...(dto.name && { name: dto.name }),
@@ -317,6 +347,7 @@ export class TravelPackagesService {
         ...(dto.priceCurrency && { priceCurrency: dto.priceCurrency }),
         ...(dto.minReservation !== undefined && { minReservation: dto.minReservation ? new Decimal(String(dto.minReservation)) : null }),
         ...(dto.travelType && { travelType: dto.travelType as TravelPackageType }),
+        ...(updatesFiscalClassification && { fiscalClassificationCatalogId }),
         ...(newStatus && { status: newStatus }),
       },
     });

@@ -49,4 +49,8 @@ export class UpdateTravelPackageDto {
     message: 'travelType must be INTERNATIONAL or MIGRATION',
   })
   travelType?: string;
+
+  @IsOptional()
+  @IsString()
+  fiscalClassificationCatalogId?: string | null;
 }
