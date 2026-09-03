@@ -57,6 +57,8 @@ model Tenant {
   clientPortalUsers                  ClientPortalUser[]
   companyBankAccounts                CompanyBankAccount[]
   contracts                          Contract[]
+  contractFiscalSnapshots            ContractFiscalSnapshot[]
+  contractFiscalSnapshotLines        ContractFiscalSnapshotLine[]
   contractDrafts                     ContractDraft[]
   contractNumbers                    ContractNumber[]
   contractNotes                      ContractNote[]
@@ -283,6 +285,7 @@ model Contract {
   signingSessions       DocumentSigningSession[]
   notes                 ContractNote[]
   financePayments       Payment[]                @relation("ContractFinancePayments")
+  fiscalSnapshot        ContractFiscalSnapshot?
 
   @@unique([id, tenantId], map: "Contract_id_tenantId_key")
   @@index([clientId])
@@ -291,6 +294,64 @@ model Contract {
   @@index([contractType])
   @@index([createdAt])
   @@index([tenantId])
+}
+
+model ContractFiscalSnapshot {
+  id                         String                       @id @default(cuid())
+  tenantId                   String
+  contractId                 String
+  snapshotVersion            Int                          @default(1)
+  currencyCode               Currency
+  total                      Decimal                      @db.Decimal(19, 5)
+  paymentConditionType       PaymentConditionType
+  paymentTermValue           Int?
+  paymentTermUnit            PaymentTermUnit?
+  customerId                 String
+  receiverName               String
+  receiverIdentificationType String?                      @db.VarChar(4)
+  receiverIdentification     String?                      @db.VarChar(30)
+  receiverEmail              String?
+  source                     ContractSource
+  sourceReferenceId          String?                      @db.VarChar(100)
+  createdAt                  DateTime                     @default(now())
+  tenant                     Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contract                   Contract                     @relation(fields: [contractId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "contract_fiscal_snapshots_contract_tenant_fkey")
+  customer                   Client                       @relation(fields: [customerId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "contract_fiscal_snapshots_customer_tenant_fkey")
+  lines                      ContractFiscalSnapshotLine[]
+
+  @@unique([contractId, tenantId], map: "contract_fiscal_snapshots_contract_tenant_key")
+  @@unique([id, tenantId], map: "contract_fiscal_snapshots_id_tenant_key")
+  @@index([tenantId, source, sourceReferenceId], map: "contract_fiscal_snapshots_tenant_source_idx")
+  @@index([tenantId, createdAt], map: "contract_fiscal_snapshots_tenant_created_idx")
+  @@map("contract_fiscal_snapshots")
+}
+
+model ContractFiscalSnapshotLine {
+  id                       String                 @id @default(cuid())
+  tenantId                 String
+  contractFiscalSnapshotId String
+  lineNumber               Int
+  description              String
+  fiscalItemCategory       FiscalItemCategory
+  quantity                 Decimal                @db.Decimal(18, 4)
+  unitPrice                Decimal                @db.Decimal(19, 5)
+  grossAmount              Decimal                @db.Decimal(19, 5)
+  taxableBase              Decimal                @db.Decimal(19, 5)
+  cabysCode                String                 @db.VarChar(13)
+  unitOfMeasureCode        String                 @db.VarChar(20)
+  taxCode                  String                 @db.VarChar(4)
+  taxRateCode              String                 @db.VarChar(4)
+  taxPercentage            Decimal                @db.Decimal(7, 4)
+  taxAmount                Decimal                @db.Decimal(19, 5)
+  lineSubtotal             Decimal                @db.Decimal(19, 5)
+  lineTotal                Decimal                @db.Decimal(19, 5)
+  createdAt                DateTime               @default(now())
+  tenant                   Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contractFiscalSnapshot   ContractFiscalSnapshot @relation(fields: [contractFiscalSnapshotId, tenantId], references: [id, tenantId], onDelete: Cascade, map: "contract_fiscal_snapshot_lines_snapshot_tenant_fkey")
+
+  @@unique([tenantId, contractFiscalSnapshotId, lineNumber], map: "contract_fiscal_snapshot_lines_tenant_snapshot_line_key")
+  @@unique([id, tenantId], map: "contract_fiscal_snapshot_lines_id_tenant_key")
+  @@map("contract_fiscal_snapshot_lines")
 }
 
 model ContractDraft {
@@ -361,6 +422,7 @@ model Client {
   tenant                               Tenant                              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   portalUsers                          ClientPortalUser[]
   contracts                            Contract[]
+  contractFiscalSnapshots              ContractFiscalSnapshot[]
   internalBookings                     InternalTourBooking[]
   internalBookingParticipations        InternalTourBookingParticipant[]
   travelPackageParticipations          TravelPackageParticipant[]
