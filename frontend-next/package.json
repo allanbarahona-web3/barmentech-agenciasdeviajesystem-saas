@@ -6,6 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "test:pending-payments": "node --experimental-strip-types tests/contract-reservation-review.test.mjs",
+    "test:travel-fiscal-classification": "node --experimental-strip-types tests/travel-fiscal-classification.test.mjs",
     "start": "next start",
     "lint": "eslint",
     "generate:airports": "node scripts/generate-airports-dataset.mjs"

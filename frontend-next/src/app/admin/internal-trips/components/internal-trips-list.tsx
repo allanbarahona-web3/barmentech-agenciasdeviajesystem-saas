@@ -6,6 +6,11 @@ import { resolveApiBase } from '@/lib/runtime-config';
 import { ConfirmModal } from '@/components/confirm-modal';
 import { LoadingModal } from '@/components/loading-modal';
 import { formatBusinessDate, toLocalDateIso } from '@/shared/regional';
+import {
+  TravelFiscalClassificationField,
+  useAdminTravelFiscalClassifications,
+} from '@/components/travel-fiscal-classification-field';
+import { withFiscalClassification } from '@/lib/travel-fiscal-classification';
 
 interface InternalTrip {
   id: string;
@@ -25,6 +30,7 @@ interface InternalTrip {
   minReservation?: number;
   transportType?: string;
   itinerary?: string;
+  fiscalClassificationCatalogId?: string | null;
 }
 
 interface InternalTripsListProps {
@@ -77,7 +83,10 @@ export function InternalTripsList({ trips, onTripsUpdated }: InternalTripsListPr
     minReservation: '',
     currency: 'CRC',
     status: 'OPEN',
+    fiscalClassificationCatalogId: '',
   });
+  const fiscalSelector =
+    useAdminTravelFiscalClassifications('INTERNAL_TRIP');
 
   // Modal de confirmación
   const [confirmModal, setConfirmModal] = useState<{
@@ -152,6 +161,8 @@ export function InternalTripsList({ trips, onTripsUpdated }: InternalTripsListPr
       minReservation: trip.minReservation ? String(trip.minReservation) : '',
       currency: trip.currency,
       status: trip.status,
+      fiscalClassificationCatalogId:
+        trip.fiscalClassificationCatalogId || '',
     });
   };
 
@@ -167,6 +178,7 @@ export function InternalTripsList({ trips, onTripsUpdated }: InternalTripsListPr
       minReservation: '',
       currency: 'CRC',
       status: 'OPEN',
+      fiscalClassificationCatalogId: '',
     });
   };
 
@@ -245,17 +257,23 @@ export function InternalTripsList({ trips, onTripsUpdated }: InternalTripsListPr
       const token = getStoredToken();
       const apiBase = resolveApiBase();
 
-      const updateData = {
-        name: formData.name.trim(),
-        destination: formData.destination.trim(),
-        departureDate: departureDateTime.toISOString(),
-        returnDate: returnDateTime.toISOString(),
-        capacity: parseInt(formData.capacity),
-        price: parseFloat(formData.price),
-        minReservation: formData.minReservation ? parseFloat(formData.minReservation) : undefined,
-        currency: formData.currency,
-        status: formData.status,
-      };
+      const updateData = withFiscalClassification(
+        {
+          name: formData.name.trim(),
+          destination: formData.destination.trim(),
+          departureDate: departureDateTime.toISOString(),
+          returnDate: returnDateTime.toISOString(),
+          capacity: parseInt(formData.capacity),
+          price: parseFloat(formData.price),
+          minReservation: formData.minReservation
+            ? parseFloat(formData.minReservation)
+            : undefined,
+          currency: formData.currency,
+          status: formData.status,
+        },
+        fiscalSelector.enabled,
+        formData.fiscalClassificationCatalogId,
+      );
 
       const response = await fetch(`${apiBase}/internal-trips/${editingTrip.id}`, {
         method: 'PUT',
@@ -742,6 +760,17 @@ export function InternalTripsList({ trips, onTripsUpdated }: InternalTripsListPr
                     }}
                   />
                 </label>
+
+                <TravelFiscalClassificationField
+                  value={formData.fiscalClassificationCatalogId}
+                  onChange={(value) =>
+                    setFormData({
+                      ...formData,
+                      fiscalClassificationCatalogId: value,
+                    })
+                  }
+                  state={fiscalSelector}
+                />
 
                 {/* Mensaje informativo */}
                 <div

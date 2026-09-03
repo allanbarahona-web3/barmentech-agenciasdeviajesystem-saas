@@ -15,6 +15,11 @@ import { ConfirmModal } from "@/components/confirm-modal";
 import { LoadingModal } from "@/components/loading-modal";
 import { PageLoader } from "@/components/loading-spinner";
 import { formatBusinessDate, toLocalDateIso } from "@/shared/regional";
+import {
+  TravelFiscalClassificationField,
+  useAdminTravelFiscalClassifications,
+} from "@/components/travel-fiscal-classification-field";
+import { withFiscalClassification } from "@/lib/travel-fiscal-classification";
 
 const formatPrice = (price: number | string | null | undefined, currency: string): string => {
   if (price === null || price === undefined) return "Sin precio";
@@ -73,6 +78,10 @@ export function TravelPackagesManager({ travelType, title, icon }: TravelPackage
   const [minReservation, setMinReservation] = useState("");
   const [priceCurrency, setPriceCurrency] = useState<"USD" | "CRC">("USD");
   const [status, setStatus] = useState<"OPEN" | "CLOSED" | "CANCELLED" | "COMPLETED">("OPEN");
+  const [fiscalClassificationCatalogId, setFiscalClassificationCatalogId] =
+    useState("");
+  const fiscalSelector =
+    useAdminTravelFiscalClassifications("TRAVEL_PACKAGE");
 
   // Modal de confirmación
   const [confirmModal, setConfirmModal] = useState<{
@@ -176,6 +185,7 @@ export function TravelPackagesManager({ travelType, title, icon }: TravelPackage
     setMinReservation("");
     setPriceCurrency("USD");
     setStatus("OPEN");
+    setFiscalClassificationCatalogId("");
     setEditingPackage(null);
   };
 
@@ -195,6 +205,9 @@ export function TravelPackagesManager({ travelType, title, icon }: TravelPackage
     setMinReservation(pkg.minReservation ? String(pkg.minReservation) : "");
     setPriceCurrency(pkg.priceCurrency as "USD" | "CRC");
     setStatus(pkg.status);
+    setFiscalClassificationCatalogId(
+      pkg.fiscalClassificationCatalogId || "",
+    );
     setShowForm(true);
   };
 
@@ -227,18 +240,22 @@ export function TravelPackagesManager({ travelType, title, icon }: TravelPackage
       return;
     }
 
-    const data: CreateTravelPackageInput = {
-      name: name.trim(),
-      destination: destination.trim(),
-      departureDate,
-      returnDate,
-      capacity: capacityNum,
-      packagePrice: priceNum,
-      minReservation: minResNum,
-      priceCurrency,
-      travelType,
-      status,
-    };
+    const data: CreateTravelPackageInput = withFiscalClassification(
+      {
+        name: name.trim(),
+        destination: destination.trim(),
+        departureDate,
+        returnDate,
+        capacity: capacityNum,
+        packagePrice: priceNum,
+        minReservation: minResNum,
+        priceCurrency,
+        travelType,
+        status,
+      },
+      fiscalSelector.enabled,
+      fiscalClassificationCatalogId,
+    );
 
     try {
       setSaving(true);
@@ -744,6 +761,12 @@ export function TravelPackagesManager({ travelType, title, icon }: TravelPackage
                   step="0.01"
                 />
               </div>
+
+              <TravelFiscalClassificationField
+                value={fiscalClassificationCatalogId}
+                onChange={setFiscalClassificationCatalogId}
+                state={fiscalSelector}
+              />
 
               <div>
                 <label style={{ display: "block", marginBottom: 6, fontSize: 14, fontWeight: 500 }}>

@@ -14,6 +14,7 @@ export type TravelPackage = {
   travelType: "INTERNATIONAL" | "MIGRATION";
   packagePrice: number | string | null; // Decimal comes as string from API
   minReservation?: number | string | null; // Monto de reserva mínima
+  fiscalClassificationCatalogId?: string | null;
   priceCurrency: string;
   createdByUserId: string;
   createdAt: string;
@@ -28,6 +29,7 @@ export type CreateTravelPackageInput = {
   capacity: number;
   packagePrice?: number;
   minReservation?: number;
+  fiscalClassificationCatalogId?: string | null;
   priceCurrency?: "USD" | "CRC";
   travelType?: "INTERNATIONAL" | "MIGRATION";
   status?: "OPEN" | "CLOSED" | "CANCELLED" | "COMPLETED";
@@ -169,6 +171,9 @@ export const createTravelPackage = async (data: CreateTravelPackageInput): Promi
     ...(data.priceCurrency && { priceCurrency: data.priceCurrency }),
     ...(data.travelType && { travelType: data.travelType }),
     ...(data.status && { status: data.status }),
+    ...(data.fiscalClassificationCatalogId !== undefined && {
+      fiscalClassificationCatalogId: data.fiscalClassificationCatalogId,
+    }),
   };
 
   const response = await authenticatedFetch(`${apiBase}/travel-packages`, {
@@ -210,6 +215,10 @@ export const updateTravelPackage = async (id: string, data: UpdateTravelPackageI
   if (data.priceCurrency !== undefined) payload.priceCurrency = data.priceCurrency;
   if (data.travelType !== undefined) payload.travelType = data.travelType;
   if (data.status !== undefined) payload.status = data.status;
+  if (data.fiscalClassificationCatalogId !== undefined) {
+    payload.fiscalClassificationCatalogId =
+      data.fiscalClassificationCatalogId;
+  }
 
   const response = await authenticatedFetch(`${apiBase}/travel-packages/${id}`, {
     method: "PATCH",

@@ -1,9 +1,18 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ConfirmModal } from '@/components/confirm-modal';
 import { LoadingModal } from '@/components/loading-modal';
+import {
+  TravelFiscalClassificationField,
+  useAdminTravelFiscalClassifications,
+} from '@/components/travel-fiscal-classification-field';
+import {
+  selectionForUsageChange,
+  travelFiscalUsageForType,
+  withFiscalClassification,
+} from '@/lib/travel-fiscal-classification';
 
 interface CreateTripModalProps {
   title: string;
@@ -56,6 +65,22 @@ export function CreateTripModal({
   const [currency, setCurrency] = useState<'USD' | 'CRC'>('USD');
   const [transportType, setTransportType] = useState<'BUS' | 'PRIVATE' | 'WALKING' | 'MIXED'>('BUS');
   const [status, setStatus] = useState<'OPEN' | 'CLOSED' | 'CANCELLED'>('OPEN');
+  const [fiscalClassificationCatalogId, setFiscalClassificationCatalogId] =
+    useState('');
+  const fiscalUsage = travelFiscalUsageForType(tripType);
+  const fiscalSelector = useAdminTravelFiscalClassifications(fiscalUsage);
+  const previousFiscalUsage = useRef(fiscalUsage);
+
+  useEffect(() => {
+    setFiscalClassificationCatalogId((current) =>
+      selectionForUsageChange(
+        previousFiscalUsage.current,
+        fiscalUsage,
+        current,
+      ),
+    );
+    previousFiscalUsage.current = fiscalUsage;
+  }, [fiscalUsage]);
 
   // Calcular el porcentaje basado en capacidad máxima de 50 personas
   const capacityNum = capacity ? parseInt(capacity) : 0;
@@ -179,7 +204,13 @@ export function CreateTripModal({
               ...(minReservation ? { minReservation: parseFloat(minReservation) } : {}),
             };
 
-      await onSubmit(data);
+      await onSubmit(
+        withFiscalClassification(
+          data,
+          fiscalSelector.enabled,
+          fiscalClassificationCatalogId,
+        ),
+      );
       showLoadingSuccess('Viaje creado exitosamente');
 
       setTimeout(() => {
@@ -533,6 +564,15 @@ export function CreateTripModal({
                 </select>
               </div>
             )}
+          </div>
+
+          <div style={{ marginBottom: 12 }}>
+            <TravelFiscalClassificationField
+              value={fiscalClassificationCatalogId}
+              onChange={setFiscalClassificationCatalogId}
+              state={fiscalSelector}
+              compact
+            />
           </div>
 
           {/* Botones */}

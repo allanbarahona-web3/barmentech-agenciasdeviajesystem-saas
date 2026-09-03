@@ -4,6 +4,14 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ConfirmModal } from '@/components/confirm-modal';
 import { LoadingModal } from '@/components/loading-modal';
+import {
+  TravelFiscalClassificationField,
+  useAdminTravelFiscalClassifications,
+} from '@/components/travel-fiscal-classification-field';
+import {
+  travelFiscalUsageForType,
+  withFiscalClassification,
+} from '@/lib/travel-fiscal-classification';
 
 interface CreateTripFormProps {
   title: string;
@@ -59,6 +67,11 @@ export function CreateTripForm({
   const [currency, setCurrency] = useState<'CRC' | 'USD'>('USD');
   const [transportType, setTransportType] = useState<'AIR' | 'BUS' | 'PRIVATE' | 'CRUISE' | 'WALKING' | 'MIXED'>('AIR');
   const [itinerary, setItinerary] = useState('');
+  const [fiscalClassificationCatalogId, setFiscalClassificationCatalogId] =
+    useState('');
+  const fiscalSelector = useAdminTravelFiscalClassifications(
+    travelFiscalUsageForType(tripType),
+  );
 
   const showConfirm = (config: Omit<typeof confirmModal, 'isOpen'>) => {
     setConfirmModal({ ...config, isOpen: true });
@@ -159,7 +172,13 @@ export function CreateTripForm({
         ...(showItinerary && { itinerary: itinerary.trim() || 'Itinerario a detalle' }),
       };
 
-      await onSubmit(data);
+      await onSubmit(
+        withFiscalClassification(
+          data,
+          fiscalSelector.enabled,
+          fiscalClassificationCatalogId,
+        ),
+      );
       showLoadingSuccess('Viaje creado exitosamente');
 
       setTimeout(() => {
@@ -555,6 +574,30 @@ export function CreateTripForm({
               )}
             </fieldset>
           )}
+
+          {fiscalSelector.allowed &&
+          (fiscalSelector.loading ||
+            fiscalSelector.enabled ||
+            fiscalSelector.error) ? (
+            <fieldset
+              style={{
+                border: '1px solid #e5e7eb',
+                borderRadius: 8,
+                padding: 20,
+                marginBottom: 20,
+                background: '#fff',
+              }}
+            >
+              <legend style={{ fontSize: 14, fontWeight: 600, color: '#111827', padding: '0 8px' }}>
+                Facturación fiscal
+              </legend>
+              <TravelFiscalClassificationField
+                value={fiscalClassificationCatalogId}
+                onChange={setFiscalClassificationCatalogId}
+                state={fiscalSelector}
+              />
+            </fieldset>
+          ) : null}
 
           {/* Botones */}
           <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>

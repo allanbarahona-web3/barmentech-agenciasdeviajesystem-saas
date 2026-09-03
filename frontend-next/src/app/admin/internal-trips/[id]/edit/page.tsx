@@ -11,6 +11,11 @@ import { PageLoader } from '@/components/loading-spinner';
 import { ConfirmModal } from '@/components/confirm-modal';
 import { LoadingModal } from '@/components/loading-modal';
 import { toLocalDateIso } from '@/shared/regional';
+import {
+  TravelFiscalClassificationField,
+  useAdminTravelFiscalClassifications,
+} from '@/components/travel-fiscal-classification-field';
+import { withFiscalClassification } from '@/lib/travel-fiscal-classification';
 
 interface InternalTrip {
   id: string;
@@ -30,6 +35,7 @@ interface InternalTrip {
   transportType?: string;
   itinerary?: string;
   status: string;
+  fiscalClassificationCatalogId?: string | null;
 }
 
 export default function EditInternalTripPage() {
@@ -73,6 +79,10 @@ export default function EditInternalTripPage() {
   const [transportType, setTransportType] = useState('BUS');
   const [itinerary, setItinerary] = useState('');
   const [status, setStatus] = useState('OPEN');
+  const [fiscalClassificationCatalogId, setFiscalClassificationCatalogId] =
+    useState('');
+  const fiscalSelector =
+    useAdminTravelFiscalClassifications('INTERNAL_TRIP');
 
   const showConfirm = (config: Omit<typeof confirmModal, 'isOpen'>) => {
     setConfirmModal({ ...config, isOpen: true });
@@ -155,6 +165,9 @@ export default function EditInternalTripPage() {
         setTransportType(data.transportType || 'BUS');
         setItinerary(data.itinerary || '');
         setStatus(data.status);
+        setFiscalClassificationCatalogId(
+          data.fiscalClassificationCatalogId || '',
+        );
       } else {
         showWarningModal('Error al cargar viaje', `Error al cargar el viaje: ${response.statusText}`);
       }
@@ -198,22 +211,28 @@ export default function EditInternalTripPage() {
       const token = getStoredToken();
       const apiBase = resolveApiBase();
 
-      const updateData = {
-        name: name.trim(),
-        destination: destination.trim(),
-        description: description.trim() || undefined,
-        departureDate: departureDateTime.toISOString(),
-        returnDate: returnDateTime.toISOString(),
-        departureTime: departureTime || undefined,
-        returnTime: returnTime || undefined,
-        capacity: parseInt(capacity),
-        price: parseFloat(price),
-        currency,
-        minReservation: minReservation ? parseFloat(minReservation) : undefined,
-        transportType,
-        itinerary: itinerary.trim() || undefined,
-        status,
-      };
+      const updateData = withFiscalClassification(
+        {
+          name: name.trim(),
+          destination: destination.trim(),
+          description: description.trim() || undefined,
+          departureDate: departureDateTime.toISOString(),
+          returnDate: returnDateTime.toISOString(),
+          departureTime: departureTime || undefined,
+          returnTime: returnTime || undefined,
+          capacity: parseInt(capacity),
+          price: parseFloat(price),
+          currency,
+          minReservation: minReservation
+            ? parseFloat(minReservation)
+            : undefined,
+          transportType,
+          itinerary: itinerary.trim() || undefined,
+          status,
+        },
+        fiscalSelector.enabled,
+        fiscalClassificationCatalogId,
+      );
 
       const response = await fetch(`${apiBase}/internal-trips/${tripId}`, {
         method: 'PUT',
@@ -467,6 +486,14 @@ export default function EditInternalTripPage() {
               onChange={(e) => setItinerary(e.target.value)}
               rows={3}
               style={{ width: '100%', padding: '10px 12px', fontSize: '1rem', border: '1px solid #d1d5db', borderRadius: 8 }}
+            />
+          </div>
+
+          <div style={{ marginBottom: 20 }}>
+            <TravelFiscalClassificationField
+              value={fiscalClassificationCatalogId}
+              onChange={setFiscalClassificationCatalogId}
+              state={fiscalSelector}
             />
           </div>
 

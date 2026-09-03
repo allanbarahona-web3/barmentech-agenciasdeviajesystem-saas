@@ -15,6 +15,7 @@ export interface CreateInternalTripInput {
   currency: string;
   transportType: 'AIR' | 'BUS' | 'PRIVATE' | 'CRUISE' | 'WALKING' | 'MIXED';
   itinerary: string;
+  fiscalClassificationCatalogId?: string | null;
 }
 
 export interface InternalTripDetail {
@@ -30,6 +31,7 @@ export interface InternalTripDetail {
   minReservation?: number | string | null;
   currency: string;
   status: string;
+  fiscalClassificationCatalogId?: string | null;
 }
 
 export async function createInternalTrip(data: CreateInternalTripInput) {
