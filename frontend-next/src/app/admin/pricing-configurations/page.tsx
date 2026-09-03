@@ -31,14 +31,12 @@ import {
   createAdditionalServiceCatalog,
   createAdditionalServicePricingConfiguration,
   getAdditionalServiceAdminCatalog,
-  updateAdditionalServiceCatalog,
   updateAdditionalServicePricingConfiguration,
   updateAdditionalServicePricingConfigurationStatus,
   type AdditionalServiceAdminCatalogItem,
   type AdditionalServiceCatalogPricingConfiguration,
   type AdditionalServiceMarginType,
   type CreateAdditionalServiceCatalogInput,
-  type UpdateAdditionalServiceCatalogInput,
 } from "@/lib/additional-services-admin-api";
 import {
   catalogUsageLabels,
@@ -115,8 +113,6 @@ export default function PricingConfigurationsPage() {
   const [formError, setFormError] = useState("");
   const [saving, setSaving] = useState(false);
   const [catalogEditorOpen, setCatalogEditorOpen] = useState(false);
-  const [catalogEditorItem, setCatalogEditorItem] =
-    useState<AdditionalServiceAdminCatalogItem | null>(null);
   const [catalogSaving, setCatalogSaving] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const { toasts, showSuccess, showError, dismissToast } = useToast();
@@ -199,15 +195,9 @@ export default function PricingConfigurationsPage() {
     }
   };
 
-  const openCatalogEditor = (item: AdditionalServiceAdminCatalogItem | null) => {
-    setCatalogEditorItem(item);
-    setCatalogEditorOpen(true);
-  };
-
   const closeCatalogEditor = () => {
     if (catalogSaving) return;
     setCatalogEditorOpen(false);
-    setCatalogEditorItem(null);
   };
 
   const handleCatalogCreate = async (
@@ -219,32 +209,7 @@ export default function PricingConfigurationsPage() {
       setCatalog((current) => [created, ...current]);
       setCurrentPage(1);
       setCatalogEditorOpen(false);
-      setCatalogEditorItem(null);
       showSuccess("Elemento del catálogo creado correctamente.");
-    } finally {
-      setCatalogSaving(false);
-    }
-  };
-
-  const handleCatalogUpdate = async (
-    catalogId: string,
-    input: UpdateAdditionalServiceCatalogInput,
-  ) => {
-    if (Object.keys(input).length === 0) {
-      setCatalogEditorOpen(false);
-      setCatalogEditorItem(null);
-      return;
-    }
-
-    setCatalogSaving(true);
-    try {
-      const updated = await updateAdditionalServiceCatalog(catalogId, input);
-      setCatalog((current) =>
-        current.map((item) => (item.id === catalogId ? updated : item)),
-      );
-      setCatalogEditorOpen(false);
-      setCatalogEditorItem(null);
-      showSuccess("Elemento del catálogo actualizado correctamente.");
     } finally {
       setCatalogSaving(false);
     }
@@ -489,21 +454,19 @@ export default function PricingConfigurationsPage() {
       />
       <AdditionalServiceCatalogModal
         isOpen={catalogEditorOpen}
-        item={catalogEditorItem}
         saving={catalogSaving}
         onClose={closeCatalogEditor}
         onCreate={handleCatalogCreate}
-        onUpdate={handleCatalogUpdate}
       />
 
       <div>
         <header className="mb-[30px] flex flex-wrap items-center justify-between gap-4">
           <div>
             <h1 className="mb-2 text-[1.8rem] font-semibold text-slate-900">
-              Catálogo fiscal y márgenes
+              Margen Adicionales
             </h1>
             <p className="m-0 text-slate-500">
-              Administre los usos y el perfil fiscal. Los márgenes aplican únicamente a servicios adicionales.
+              Configure primero el perfil fiscal; después defina el margen comercial. El IVA se deriva del perfil fiscal activo.
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -518,11 +481,11 @@ export default function PricingConfigurationsPage() {
             {!loadError ? (
               <Button
                 type="button"
-                onClick={() => openCatalogEditor(null)}
+                onClick={() => setCatalogEditorOpen(true)}
                 className="gap-2 bg-blue-600 text-white hover:bg-blue-700"
               >
                 <Plus className="h-4 w-4" aria-hidden="true" />
-                Crear elemento
+                Agregar clasificación fiscal
               </Button>
             ) : null}
           </div>
@@ -560,16 +523,15 @@ export default function PricingConfigurationsPage() {
           ) : (
             <>
               <div className="history-table-wrap">
-                <table className="history-table min-w-[1320px] table-fixed">
+                <table className="history-table min-w-[1180px] table-fixed">
                   <thead>
                     <tr>
-                      <th className="w-[17%]">Elemento</th>
-                      <th className="w-[19%] text-center">Uso</th>
-                      <th className="w-[9%] text-center">Margen</th>
-                      <th className="w-[8%] text-center">Impuesto</th>
-                      <th className="w-[10%] text-center">Estado precio</th>
-                      <th className="w-[15%] text-center">Fiscal</th>
-                      <th className="w-[22%] text-center">Acciones</th>
+                      <th className="w-[22%]">Servicio</th>
+                      <th className="w-[11%] text-center">Margen</th>
+                      <th className="w-[10%] text-center">Impuesto</th>
+                      <th className="w-[12%] text-center">Estado precio</th>
+                      <th className="w-[20%] text-center">Fiscal</th>
+                      <th className="w-[25%] text-center">Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -583,22 +545,19 @@ export default function PricingConfigurationsPage() {
                         <tr key={item.id}>
                           <td className="history-col-name">
                             <div>{item.name}</div>
-                            <div className="mt-1 font-mono text-xs font-normal text-slate-500">
-                              {item.code}
-                            </div>
-                          </td>
-                          <td className="text-center">
-                            <div className="flex flex-wrap justify-center gap-1.5">
-                              {item.usages.map((usage) => (
+                            {!supportsPricing ? (
+                              <div className="mt-1.5 flex flex-wrap gap-1.5">
+                                {item.usages.map((usage) => (
                                 <Badge
                                   key={usage}
                                   variant="outline"
-                                  className="whitespace-normal border-blue-200 bg-blue-50 text-center text-blue-700 dark:border-blue-200 dark:bg-blue-50 dark:text-blue-700"
+                                  className="whitespace-normal border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-200 dark:bg-blue-50 dark:text-blue-700"
                                 >
                                   {catalogUsageLabels[usage]}
                                 </Badge>
-                              ))}
-                            </div>
+                                ))}
+                              </div>
+                            ) : null}
                           </td>
                           <td className="text-center">
                             {!supportsPricing ? (
@@ -696,16 +655,6 @@ export default function PricingConfigurationsPage() {
                           </td>
                           <td>
                             <div className="flex flex-wrap justify-center gap-2">
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={() => openCatalogEditor(item)}
-                                className="min-w-[128px] gap-2 border-blue-500 bg-white text-blue-600 shadow-sm hover:bg-blue-50 hover:text-blue-700"
-                              >
-                                <PencilLine className="h-4 w-4" aria-hidden="true" />
-                                Editar catálogo
-                              </Button>
                               {supportsPricing ? <Button
                                 type="button"
                                 variant="outline"

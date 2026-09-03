@@ -2,12 +2,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
-  catalogAdminFormForItem,
   catalogUsageLabels,
   createCatalogInput,
   hasAdditionalServiceUsage,
-  updateCatalogInput,
-  validateCatalogAdminForm,
+  TRAVEL_FISCAL_CLASSIFICATION_USAGES,
+  validateTravelClassificationForm,
 } from '../src/lib/additional-service-catalog-admin.ts';
 
 const readSource = (relativePath) =>
@@ -39,12 +38,11 @@ test('presents every usage with its human-friendly label, including multiple usa
 });
 
 for (const usages of [
-  ['ADDITIONAL_SERVICE'],
   ['TRAVEL_PACKAGE'],
   ['INTERNAL_TRIP'],
-  ['ADDITIONAL_SERVICE', 'TRAVEL_PACKAGE', 'INTERNAL_TRIP'],
+  ['TRAVEL_PACKAGE', 'INTERNAL_TRIP'],
 ]) {
-  test(`creates catalog input with usages ${usages.join(', ')}`, () => {
+  test(`creates a travel fiscal classification with usages ${usages.join(', ')}`, () => {
     assert.deepEqual(
       createCatalogInput({
         code: ' travel ',
@@ -62,51 +60,47 @@ for (const usages of [
   });
 }
 
-test('rejects blank names, blank codes, and zero usages client-side', () => {
+test('offers only travel usages and rejects blank fields, zero usages, or Add-on usage', () => {
+  assert.deepEqual(TRAVEL_FISCAL_CLASSIFICATION_USAGES, [
+    'TRAVEL_PACKAGE',
+    'INTERNAL_TRIP',
+  ]);
   assert.equal(
-    validateCatalogAdminForm({
+    validateTravelClassificationForm({
       code: '',
       name: 'Item',
       fiscalItemCategory: 'SERVICE',
-      usages: ['ADDITIONAL_SERVICE'],
+      usages: ['TRAVEL_PACKAGE'],
     }),
     'El código es requerido.',
   );
   assert.equal(
-    validateCatalogAdminForm({
+    validateTravelClassificationForm({
       code: 'ITEM',
       name: ' ',
       fiscalItemCategory: 'SERVICE',
-      usages: ['ADDITIONAL_SERVICE'],
+      usages: ['INTERNAL_TRIP'],
     }),
     'El nombre es requerido.',
   );
   assert.equal(
-    validateCatalogAdminForm({
+    validateTravelClassificationForm({
       code: 'ITEM',
       name: 'Item',
       fiscalItemCategory: 'SERVICE',
       usages: [],
     }),
-    'Seleccione al menos un uso.',
+    'Seleccione al menos un uso de viaje válido.',
   );
-});
-
-test('preloads usages and PATCHes only added or removed usages and changed metadata', () => {
-  const initial = catalogAdminFormForItem(
-    item(['ADDITIONAL_SERVICE', 'TRAVEL_PACKAGE']),
+  assert.equal(
+    validateTravelClassificationForm({
+      code: 'ITEM',
+      name: 'Item',
+      fiscalItemCategory: 'SERVICE',
+      usages: ['ADDITIONAL_SERVICE'],
+    }),
+    'Seleccione al menos un uso de viaje válido.',
   );
-  assert.deepEqual(initial.usages, ['ADDITIONAL_SERVICE', 'TRAVEL_PACKAGE']);
-
-  assert.deepEqual(
-    updateCatalogInput(
-      initial,
-      { ...initial, name: 'Tour fiscal', usages: ['TRAVEL_PACKAGE'] },
-      false,
-    ),
-    { name: 'Tour fiscal', usages: ['TRAVEL_PACKAGE'] },
-  );
-  assert.deepEqual(updateCatalogInput(initial, initial, false), {});
 });
 
 test('travel-only items do not support Add-on pricing while Additional Services do', () => {
@@ -118,23 +112,124 @@ test('travel-only items do not support Add-on pricing while Additional Services 
   );
 });
 
-test('reuses the existing profile modal and hides pricing actions for travel-only rows', () => {
+test('restores existing Add-on actions and adds no row-level catalog editor', () => {
+  const page = readSource('../src/app/admin/pricing-configurations/page.tsx');
+  assert.doesNotMatch(page, /Editar catálogo/);
+  assert.match(page, /openConfigurationModal\(item\)/);
+  assert.match(page, /Editar fiscal/);
+  assert.match(page, /Configurar fiscal/);
+  assert.match(page, /supportsPricing \? <Button/);
+});
+
+test('adds one page-level creation action and no generic usage editor', () => {
+  const page = readSource('../src/app/admin/pricing-configurations/page.tsx');
+  const modal = readSource(
+    '../src/app/admin/pricing-configurations/additional-service-catalog-modal.tsx',
+  );
+  assert.equal(
+    page.match(/Agregar clasificación fiscal/g)?.length,
+    1,
+  );
+  assert.doesNotMatch(modal, /ADDITIONAL_SERVICE/);
+  assert.doesNotMatch(page, /updateAdditionalServiceCatalog/);
+});
+
+test('travel-only rows show no pricing and retain the shared fiscal action', () => {
   const page = readSource('../src/app/admin/pricing-configurations/page.tsx');
   const profileModal = readSource(
     '../src/app/admin/pricing-configurations/additional-service-fiscal-profile-modal.tsx',
   );
-  assert.match(page, /AdditionalServiceFiscalProfileModal/);
-  assert.match(page, /supportsPricing \? <Button/);
   assert.match(page, /No aplica/);
+  assert.match(page, /setSelectedFiscalItem\(item\)/);
+  assert.match(page, /AdditionalServiceFiscalProfileModal/);
   assert.match(profileModal, /updateAdditionalServiceFiscalProfile/);
   assert.match(profileModal, /createAdditionalServiceFiscalProfile/);
+  assert.match(profileModal, /Clasificación fiscal/);
 });
 
-test('uses the existing authenticated catalog client for POST and PATCH and surfaces API messages', () => {
+test('travel-only Configure fiscal passes the selected catalog item to the existing modal', () => {
+  const page = readSource('../src/app/admin/pricing-configurations/page.tsx');
+  const profileModal = readSource(
+    '../src/app/admin/pricing-configurations/additional-service-fiscal-profile-modal.tsx',
+  );
+  assert.match(page, /onClick=\{\(\) => setSelectedFiscalItem\(item\)\}/);
+  assert.match(page, /item=\{selectedFiscalItem\}/);
+  assert.match(profileModal, /isOpen=\{item !== null\}/);
+  assert.match(profileModal, /value=\{item\.name\}/);
+  assert.match(
+    profileModal,
+    /additionalServiceCatalogId: item\.id/,
+  );
+});
+
+test('the existing fiscal modal initializes create mode and preloads edit mode', () => {
+  const profileModal = readSource(
+    '../src/app/admin/pricing-configurations/additional-service-fiscal-profile-modal.tsx',
+  );
+  assert.match(profileModal, /const profile = item\.fiscalProfile/);
+  assert.match(profileModal, /return profile \? \{/);
+  assert.match(profileModal, /\} : emptyForm/);
+  assert.match(profileModal, /profile \? "Editar perfil fiscal" : "Configurar perfil fiscal"/);
+  assert.match(profileModal, /if \(profile\) await updateAdditionalServiceFiscalProfile/);
+  assert.match(profileModal, /else await createAdditionalServiceFiscalProfile/);
+});
+
+test('the shared CABYS, UOM, tax, rate, percentage, and status workflow remains intact', () => {
+  const profileModal = readSource(
+    '../src/app/admin/pricing-configurations/additional-service-fiscal-profile-modal.tsx',
+  );
+  for (const expected of [
+    'searchFiscalCatalogCabys',
+    'confirmFiscalCatalogCabys',
+    'getFiscalCatalogUnits',
+    'getFiscalCatalogTaxes',
+    'getFiscalCatalogTaxRates',
+    'Porcentaje fiscal de la tarifa seleccionada',
+    'updateAdditionalServiceFiscalProfileStatus',
+  ]) {
+    assert.match(profileModal, new RegExp(expected));
+  }
+});
+
+test('saving closes the same modal and refreshes readiness without a page reload', () => {
+  const page = readSource('../src/app/admin/pricing-configurations/page.tsx');
+  assert.match(
+    page,
+    /const handleFiscalSaved[\s\S]*setSelectedFiscalItem\(null\)[\s\S]*getAdditionalServiceAdminCatalog\(\)[\s\S]*setCatalog\(refreshedCatalog\)/,
+  );
+  assert.doesNotMatch(page, /window\.location\.reload/);
+});
+
+test('catalog category stays on creation with the established labels', () => {
+  const catalogModal = readSource(
+    '../src/app/admin/pricing-configurations/additional-service-catalog-modal.tsx',
+  );
+  assert.match(catalogModal, /value="SERVICE">Servicio/);
+  assert.match(catalogModal, /value="MERCHANDISE">Mercadería/);
+  assert.doesNotMatch(
+    readSource('../src/app/admin/pricing-configurations/additional-service-fiscal-profile-modal.tsx'),
+    /fiscalItemCategory/,
+  );
+});
+
+test('does not introduce a duplicate fiscal modal or fiscal API flow', () => {
+  const page = readSource('../src/app/admin/pricing-configurations/page.tsx');
+  assert.equal(
+    page.match(/<AdditionalServiceFiscalProfileModal/g)?.length,
+    1,
+  );
+  const api = readSource('../src/lib/additional-services-admin-api.ts');
+  assert.equal(
+    api.match(/export function createAdditionalServiceFiscalProfile/g)?.length,
+    1,
+  );
+});
+
+test('uses the existing authenticated catalog client only to create and surfaces API messages', () => {
   const api = readSource('../src/lib/additional-services-admin-api.ts');
   assert.match(api, /authenticatedFetch\(`\$\{apiBase\}\$\{path\}`/);
   assert.match(api, /sendCatalogRequest\("\/additional-services\/catalog", "POST"/);
-  assert.match(api, /additional-services\/catalog\/\$\{encodeURIComponent\(catalogId\)\}/);
+  assert.doesNotMatch(api, /updateAdditionalServiceCatalog/);
   assert.match(api, /typeof message === "string" && message\.trim\(\)/);
   assert.doesNotMatch(api, /payload\.stack/);
 });

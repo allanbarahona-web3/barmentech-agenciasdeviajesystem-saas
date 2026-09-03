@@ -63,13 +63,6 @@ export interface CreateAdditionalServiceCatalogInput {
   usages: AdditionalServiceCatalogUsage[];
 }
 
-export interface UpdateAdditionalServiceCatalogInput {
-  code?: string;
-  name?: string;
-  fiscalItemCategory?: FiscalItemCategory;
-  usages?: AdditionalServiceCatalogUsage[];
-}
-
 export interface CreateAdditionalServiceFiscalProfileInput {
   additionalServiceCatalogId: string;
   cabysCode: string;
@@ -224,8 +217,8 @@ export async function getAdditionalServiceAdminCatalog(): Promise<
 
 async function sendCatalogRequest(
   path: string,
-  method: "POST" | "PATCH",
-  body: CreateAdditionalServiceCatalogInput | UpdateAdditionalServiceCatalogInput,
+  method: "POST",
+  body: CreateAdditionalServiceCatalogInput,
 ): Promise<AdditionalServiceAdminCatalogItem> {
   const apiBase = resolveApiBase();
   const token = getStoredToken();
@@ -259,17 +252,6 @@ export function createAdditionalServiceCatalog(
   input: CreateAdditionalServiceCatalogInput,
 ): Promise<AdditionalServiceAdminCatalogItem> {
   return sendCatalogRequest("/additional-services/catalog", "POST", input);
-}
-
-export function updateAdditionalServiceCatalog(
-  catalogId: string,
-  input: UpdateAdditionalServiceCatalogInput,
-): Promise<AdditionalServiceAdminCatalogItem> {
-  return sendCatalogRequest(
-    `/additional-services/catalog/${encodeURIComponent(catalogId)}`,
-    "PATCH",
-    input,
-  );
 }
 
 async function getFiscalCatalogResponse<T>(path: string, fallback: string): Promise<T> {
