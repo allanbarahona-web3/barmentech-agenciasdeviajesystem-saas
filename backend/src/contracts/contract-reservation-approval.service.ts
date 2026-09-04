@@ -1,5 +1,16 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
-import { Prisma } from "@prisma/client";
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
+import { PaymentConditionType, PriceTaxTreatment, Prisma } from "@prisma/client";
+import {
+  COMMERCIAL_OBLIGATION_ERRORS,
+  CommercialObligationError,
+  CommercialObligationService,
+} from "../finance/commercial-obligation.service";
+import type { FinanceActor } from "../finance/finance-audit";
 import {
   TravelPackageParticipantsRepository,
   type TravelPackageParticipantWrite,
@@ -11,11 +22,12 @@ const APPROVABLE_CONTRACT_STATUSES = ["PENDING_PAYMENT_RESERVE", "RESERVE_IN_REV
 export class ContractReservationApprovalService {
   constructor(
     private readonly participantsRepository: TravelPackageParticipantsRepository,
+    private readonly commercialObligations: CommercialObligationService,
   ) {}
 
   async approveInTransaction(
     tx: Prisma.TransactionClient,
-    input: { tenantId: string; contractId: string },
+    input: { tenantId: string; contractId: string; actor: FinanceActor },
   ): Promise<{ applied: boolean }> {
     await tx.$queryRaw`
       SELECT "id" FROM "Contract"
@@ -29,10 +41,16 @@ export class ContractReservationApprovalService {
         tenantId: true,
         clientId: true,
         status: true,
+        contractNumber: true,
         participantCount: true,
         travelPackageId: true,
         internalTripId: true,
         payload: true,
+        commercialTotal: true,
+        commercialCurrency: true,
+        paymentConditionType: true,
+        paymentDueDate: true,
+        commercialTaxTreatment: true,
       },
     });
     if (!contract) throw new NotFoundException("CONTRACT_RESERVATION_CONTRACT_NOT_FOUND");
@@ -50,6 +68,34 @@ export class ContractReservationApprovalService {
     }
     if (contract.internalTripId) {
       await this.lockInternalTrip(tx, contract.internalTripId, contract.tenantId, participantCount);
+    }
+
+    const commercialTerms = requireCommercialTerms(contract);
+    try {
+      await this.commercialObligations.createInTransaction(tx, {
+        tenantId: contract.tenantId,
+        customerId: contract.clientId,
+        sourceType: "CONTRACT",
+        sourceId: contract.id,
+        sourceReference: contract.contractNumber,
+        currencyCode: commercialTerms.currencyCode,
+        originalAmount: commercialTerms.total,
+        dueDate: commercialTerms.dueDate,
+        actor: input.actor,
+      });
+    } catch (error) {
+      if (error instanceof CommercialObligationError) {
+        if (error.code === COMMERCIAL_OBLIGATION_ERRORS.CONFLICT) {
+          throw new ConflictException(error.code);
+        }
+        if (
+          error.code === COMMERCIAL_OBLIGATION_ERRORS.INVALID ||
+          error.code === COMMERCIAL_OBLIGATION_ERRORS.CUSTOMER_INVALID
+        ) {
+          throw new BadRequestException(error.code);
+        }
+      }
+      throw error;
     }
 
     const transitioned = await tx.contract.updateMany({
@@ -175,4 +221,37 @@ function requireParticipantCount(value: unknown): number {
     throw new BadRequestException("CONTRACT_RESERVATION_PARTICIPANT_COUNT_INVALID");
   }
   return value;
+}
+
+function requireCommercialTerms(contract: {
+  commercialTotal: Prisma.Decimal | null;
+  commercialCurrency: string | null;
+  paymentConditionType: PaymentConditionType | null;
+  paymentDueDate: Date | null;
+  commercialTaxTreatment: PriceTaxTreatment | null;
+}): { total: Prisma.Decimal; currencyCode: string; dueDate: Date | null } {
+  const total = contract.commercialTotal;
+  const condition = contract.paymentConditionType;
+  const dueDate = contract.paymentDueDate;
+  const coherentPaymentTerms =
+    (condition === PaymentConditionType.CASH && dueDate === null) ||
+    (condition === PaymentConditionType.CREDIT &&
+      dueDate instanceof Date &&
+      !Number.isNaN(dueDate.getTime()));
+  if (
+    !(total instanceof Prisma.Decimal) ||
+    !total.isFinite() ||
+    total.isNegative() ||
+    total.decimalPlaces() > 5 ||
+    !contract.commercialCurrency ||
+    contract.commercialTaxTreatment !== PriceTaxTreatment.TAX_INCLUDED ||
+    !coherentPaymentTerms
+  ) {
+    throw new BadRequestException("CONTRACT_COMMERCIAL_TERMS_INCOMPLETE");
+  }
+  return {
+    total,
+    currencyCode: contract.commercialCurrency,
+    dueDate: condition === PaymentConditionType.CREDIT ? dueDate : null,
+  };
 }

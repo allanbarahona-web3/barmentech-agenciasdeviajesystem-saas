@@ -1,4 +1,5 @@
-import { IsEmail, IsNotEmpty, IsOptional, IsString, MaxLength } from "class-validator";
+import { PaymentConditionType } from "@prisma/client";
+import { IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString, MaxLength } from "class-validator";
 
 export class ArchiveContractDto {
   @IsOptional()
@@ -32,6 +33,9 @@ export class ArchiveContractDto {
   @IsString()
   @IsNotEmpty()
   payloadJson!: string;
+
+  @IsEnum(PaymentConditionType)
+  paymentConditionType!: PaymentConditionType;
 
   @IsOptional()
   @IsString()

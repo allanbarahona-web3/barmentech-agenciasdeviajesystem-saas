@@ -29,7 +29,13 @@ import { DocumentGenerationService } from "../documents/document-generation.serv
 import { DocumentPdfService } from "../documents/document-pdf.service";
 import { ContractSigningSessionBuilder } from "./contract-signing-session.builder";
 import { ArchiveContractDto } from "./dto/archive-contract.dto";
-import { CustomerDocumentCategory } from "@prisma/client";
+import {
+  Currency,
+  CustomerDocumentCategory,
+  PaymentConditionType,
+  PriceTaxTreatment,
+  Prisma,
+} from "@prisma/client";
 
 import { SendContractEmailDto } from "./dto/send-contract-email.dto";
 import { SendSigningEmailDto } from "./dto/send-signing-email.dto";
@@ -110,9 +116,11 @@ export class ContractsService {
     return String(value).padStart(size, "0");
   }
 
-  private normalizeReservationCurrency(value: unknown): "CRC" | "USD" | null {
+  private normalizeReservationCurrency(value: unknown): Currency | null {
     const currency = String(value || "").trim().toUpperCase();
-    return currency === "CRC" || currency === "USD" ? currency : null;
+    return currency === Currency.CRC || currency === Currency.USD
+      ? currency
+      : null;
   }
 
   private randomHex(bytes = 2) {
@@ -1527,11 +1535,14 @@ export class ContractsService {
       payload && typeof payload === "object" && !Array.isArray(payload)
         ? (payload as Record<string, unknown>)
         : {};
-    const reservationAmount = Number.parseFloat(
-      String(payloadRecord.reservationAmount ?? "").trim(),
+    const commercialTotal = requireCommercialTotal(payloadRecord.totalAmount);
+    const paymentConditionType = requirePaymentConditionType(
+      dto.paymentConditionType,
     );
-    const hasPositiveReservation =
-      Number.isFinite(reservationAmount) && reservationAmount > 0;
+    const paymentDueDate = requireCommercialPaymentDueDate(
+      paymentConditionType,
+      payloadRecord.paymentDueDate,
+    );
     const requestedInternalTripId =
       String(dto.internalTripId || "").trim() || null;
     const requestedTravelPackageId =
@@ -1539,7 +1550,7 @@ export class ContractsService {
 
     let internalTripId: string | null = null;
     let travelPackageId: string | null = null;
-    let reservationCurrencyCode: "CRC" | "USD" | null = null;
+    let authoritativeTravelCurrency: Currency | null = null;
 
     if (requestedInternalTripId) {
       const internalTrip = await this.prisma.internalTrip.findFirst({
@@ -1552,7 +1563,7 @@ export class ContractsService {
         );
       }
       internalTripId = internalTrip.id;
-      reservationCurrencyCode = this.normalizeReservationCurrency(
+      authoritativeTravelCurrency = this.normalizeReservationCurrency(
         internalTrip.currency,
       );
     } else if (requestedTravelPackageId) {
@@ -1566,14 +1577,14 @@ export class ContractsService {
         );
       }
       travelPackageId = travelPackage.id;
-      reservationCurrencyCode = this.normalizeReservationCurrency(
+      authoritativeTravelCurrency = this.normalizeReservationCurrency(
         travelPackage.priceCurrency,
       );
     }
 
-    if (hasPositiveReservation && !reservationCurrencyCode) {
+    if (!authoritativeTravelCurrency) {
       throw new BadRequestException(
-        "No se pudo resolver una moneda soportada para la reserva del contrato.",
+        "CONTRACT_COMMERCIAL_CURRENCY_UNAVAILABLE",
       );
     }
 
@@ -1632,7 +1643,10 @@ export class ContractsService {
     const enrichedPayload = {
       ...payloadRecord,
       travelPackageId,
-      reservationCurrencyCode,
+      reservationCurrencyCode: authoritativeTravelCurrency,
+      paymentConditionType,
+      paymentDueDate: paymentDueDate?.toISOString().slice(0, 10) ?? null,
+      commercialTaxTreatment: PriceTaxTreatment.TAX_INCLUDED,
       selectedCustomerId: client.id,
       companions: enrichedCompanions,
       minors: enrichedMinors,
@@ -1754,6 +1768,11 @@ export class ContractsService {
           payload: enrichedPayload as any,
           htmlObjectKey: htmlKey,
           source: contractSource,
+          commercialTotal,
+          commercialCurrency: authoritativeTravelCurrency,
+          paymentConditionType,
+          paymentDueDate,
+          commercialTaxTreatment: PriceTaxTreatment.TAX_INCLUDED,
           participantCount: participantCount,
           travelPackageId: travelPackageId, // Para viajes internacionales programados
           internalTripId, // Resuelto dentro del tenant del contrato
@@ -3351,4 +3370,60 @@ export class ContractsService {
 
     return billingData;
   }
+}
+
+const MAX_DECIMAL_19_5 = new Prisma.Decimal("99999999999999.99999");
+const DATE_ONLY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+function requireCommercialTotal(value: unknown): Prisma.Decimal {
+  if (
+    (typeof value !== "string" && typeof value !== "number") ||
+    (typeof value === "string" && !value.trim()) ||
+    (typeof value === "number" && !Number.isFinite(value))
+  ) {
+    throw new BadRequestException("CONTRACT_COMMERCIAL_TOTAL_INVALID");
+  }
+  try {
+    const total = new Prisma.Decimal(value);
+    if (
+      !total.isFinite() ||
+      total.isNegative() ||
+      total.decimalPlaces() > 5 ||
+      total.greaterThan(MAX_DECIMAL_19_5)
+    ) {
+      throw new BadRequestException("CONTRACT_COMMERCIAL_TOTAL_INVALID");
+    }
+    return total;
+  } catch (error) {
+    if (error instanceof BadRequestException) throw error;
+    throw new BadRequestException("CONTRACT_COMMERCIAL_TOTAL_INVALID");
+  }
+}
+
+function requirePaymentConditionType(value: unknown): PaymentConditionType {
+  if (
+    value !== PaymentConditionType.CASH &&
+    value !== PaymentConditionType.CREDIT
+  ) {
+    throw new BadRequestException("CONTRACT_PAYMENT_CONDITION_INVALID");
+  }
+  return value;
+}
+
+function requireCommercialPaymentDueDate(
+  paymentConditionType: PaymentConditionType,
+  value: unknown,
+): Date | null {
+  if (paymentConditionType === PaymentConditionType.CASH) return null;
+  if (typeof value !== "string" || !DATE_ONLY_PATTERN.test(value)) {
+    throw new BadRequestException("CONTRACT_PAYMENT_DUE_DATE_INVALID");
+  }
+  const dueDate = new Date(`${value}T00:00:00.000Z`);
+  if (
+    Number.isNaN(dueDate.getTime()) ||
+    dueDate.toISOString().slice(0, 10) !== value
+  ) {
+    throw new BadRequestException("CONTRACT_PAYMENT_DUE_DATE_INVALID");
+  }
+  return dueDate;
 }

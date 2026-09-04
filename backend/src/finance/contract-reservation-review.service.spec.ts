@@ -12,7 +12,7 @@ describe("ContractReservationReviewService", () => {
       where: expect.objectContaining({ tenantId: "tenant-1", status: PaymentStatus.PENDING_VERIFICATION, receiptNumber: null }),
       data: expect.objectContaining({ status: PaymentStatus.RECEIVED, receiptNumber: "RCP-2026-000007", reviewedByUserId: "reviewer-1", rejectionReason: null }),
     }));
-    expect(c.contracts.approveInTransaction).toHaveBeenCalledWith(c.tx, { tenantId: "tenant-1", contractId: "contract-1" });
+    expect(c.contracts.approveInTransaction).toHaveBeenCalledWith(c.tx, { tenantId: "tenant-1", contractId: "contract-1", actor });
     expect(c.tx.billingAuditLog.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ action: "RESERVATION_APPROVED" }) }));
     expect(result).toMatchObject({ status: PaymentStatus.RECEIVED, receiptNumber: "RCP-2026-000007" });
     expect(result.availableAmount.toFixed()).toBe("125.5");
@@ -47,6 +47,20 @@ describe("ContractReservationReviewService", () => {
     expect(c.contracts.approveInTransaction).not.toHaveBeenCalled();
     expect(c.tx.billingAuditLog.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ action: "RESERVATION_REJECTED" }) }));
     expect(result.availableAmount.toFixed()).toBe("0");
+  });
+
+  it("rolls back the approval callback when Contract obligation activation fails", async () => {
+    const c = context();
+    c.contracts.approveInTransaction.mockRejectedValueOnce(
+      new Error("COMMERCIAL_OBLIGATION_PERSISTENCE_FAILED"),
+    );
+
+    await expect(
+      c.service.approve("tenant-1", "payment-1", actor),
+    ).rejects.toThrow("COMMERCIAL_OBLIGATION_PERSISTENCE_FAILED");
+
+    expect(c.prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(c.tx.billingAuditLog.create).not.toHaveBeenCalled();
   });
 
   it("makes identical rejection retries idempotent and rejects the opposite terminal decision", async () => {

@@ -70,7 +70,7 @@ export class ContractReservationReviewService {
       });
       if (updated.count !== 1) throw new ConflictException("CONTRACT_RESERVATION_REVIEW_CONFLICT");
 
-      await this.contracts.approveInTransaction(tx, { tenantId, contractId });
+      await this.contracts.approveInTransaction(tx, { tenantId, contractId, actor });
       const confirmed = await tx.payment.findFirst({ where: { id: payment.id, tenantId } });
       if (!confirmed) throw new Error("CONTRACT_RESERVATION_APPROVAL_PERSISTENCE_FAILED");
       await tx.billingAuditLog.create({

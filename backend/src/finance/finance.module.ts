@@ -16,11 +16,12 @@ import { ContractReservationPaymentService } from "./contract-reservation-paymen
 import { ContractReservationReviewService } from "./contract-reservation-review.service";
 import { ContractReservationApprovalModule } from "../contracts/contract-reservation-approval.module";
 import { StorageModule } from "../storage/storage.module";
+import { CommercialObligationModule } from "./commercial-obligation.module";
 
 @Module({
-  imports: [BusinessNumberingModule, DocumentsModule, EmailModule, StorageModule, ContractReservationApprovalModule],
+  imports: [BusinessNumberingModule, DocumentsModule, EmailModule, StorageModule, CommercialObligationModule, ContractReservationApprovalModule],
   controllers: [FinanceController],
   providers: [PaymentRegistrationService, PaymentAllocationService, PaymentAllocationReversalService, PaymentCancellationService, FinanceReadService, CustomerFundsAllocationService, CustomerAccountStatementService, RegisterPaymentAndApplyService, PaymentReceiptService, ContractReservationPaymentService, ContractReservationReviewService],
-  exports: [PaymentRegistrationService, PaymentAllocationService, PaymentAllocationReversalService, PaymentCancellationService, ContractReservationPaymentService, ContractReservationReviewService],
+  exports: [PaymentRegistrationService, PaymentAllocationService, PaymentAllocationReversalService, PaymentCancellationService, ContractReservationPaymentService, ContractReservationReviewService, CommercialObligationModule],
 })
 export class FinanceModule {}

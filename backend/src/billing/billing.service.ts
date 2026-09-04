@@ -4336,6 +4336,7 @@ export class BillingService {
           await this.contractReservationApprovals.approveInTransaction(tx, {
             tenantId: contract.tenantId,
             contractId: contract.id,
+            actor: { userId: user.id, name: user.fullName },
           });
         }
 
