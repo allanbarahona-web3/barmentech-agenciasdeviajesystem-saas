@@ -8,111 +8,114 @@ datasource db {
 }
 
 model Tenant {
-  id                                 String                                  @id @default(cuid())
-  name                               String                                  @unique
-  subdomain                          String?                                 @unique
-  contractPrefix                     String                                  @unique
-  isActive                           Boolean                                 @default(true)
-  createdAt                          DateTime                                @default(now())
-  updatedAt                          DateTime                                @updatedAt
-  customDomain                       String?                                 @unique
-  emailLogoUrl                       String?
-  logoUrl                            String?
-  primaryColor                       String?
-  secondaryColor                     String?
-  signatureUrl                       String?
-  legalId                            String?
-  legalName                          String?
-  representativeAddress              String?
-  representativeId                   String?
-  representativeMaritalStatus        String?
-  representativeName                 String?
-  representativePowers               String?
-  representativeTitle                String?
-  planExpiresAt                      DateTime?
-  planType                           String?                                 @default("FREE")
-  suspendReason                      String?
-  suspendedAt                        DateTime?
-  businessAddress                    String?                                 @map("business_address")
-  contactEmail                       String?                                 @map("contact_email")
-  contactPhone                       String?                                 @map("contact_phone")
-  contactWhatsApp                    String?                                 @map("contact_whatsapp")
-  emailVerified                      Boolean                                 @default(false)
-  emailQuotaDaily                    Int                                     @default(1000) @map("email_quota_daily")
-  emailQuotaMonthly                  Int                                     @default(30000) @map("email_quota_monthly")
-  emailsSentMonth                    Int                                     @default(0) @map("emails_sent_month")
-  emailsSentToday                    Int                                     @default(0) @map("emails_sent_today")
-  fromEmail                          String?
-  lastEmailResetDate                 DateTime?                               @map("last_email_reset_date")
-  preferredCurrency                  String                                  @default("CRC") @map("preferred_currency")
-  replyToEmail                       String?
-  websiteUrl                         String?                                 @map("website_url")
-  billingAuditLogs                   BillingAuditLog[]
-  billingClientBalances              BillingClientBalance[]
-  billingCreditNotes                 BillingCreditNote[]
-  billingInvoices                    BillingInvoice[]
-  billingPayments                    BillingPayment[]
-  billingReceipts                    BillingReceipt[]
-  clients                            Client[]
-  clientPortalUsers                  ClientPortalUser[]
-  companyBankAccounts                CompanyBankAccount[]
-  contracts                          Contract[]
-  contractFiscalSnapshots            ContractFiscalSnapshot[]
-  contractFiscalSnapshotLines        ContractFiscalSnapshotLine[]
-  contractDrafts                     ContractDraft[]
-  contractNumbers                    ContractNumber[]
-  contractNotes                      ContractNote[]
-  customerDocuments                  CustomerDocument[]
-  documentSigningSessions            DocumentSigningSession[]
-  customerNotes                      CustomerNote[]
-  exchangeRates                      ExchangeRate[]
-  travelPackages                     TravelPackage[]
-  users                              User[]
-  attendance_config                  AttendanceConfig?
-  attendance_corrections             AttendanceCorrection[]
-  attendance_daily_summaries         AttendanceDailySummary[]
-  attendance_entries                 AttendanceEntry[]
-  employeeDocuments                  EmployeeDocument[]
-  employees                          Employee[]
-  internalBookings                   InternalTourBooking[]
-  internalBookingParticipants        InternalTourBookingParticipant[]
-  internalInvoices                   InternalTourInvoice[]
-  internalTrips                      InternalTrip[]
-  travelPackageParticipants          TravelPackageParticipant[]
-  payrollConfig                      PayrollConfig?
-  payrollPeriods                     PayrollPeriod[]
-  payrollAdjustments                 PayrollAdjustment[]
-  payrollRuns                        PayrollRun[]
-  additionalServiceOrders            AdditionalServiceOrder[]
-  additionalServiceOrderLines        AdditionalServiceOrderLine[]
-  additionalServiceOrderParticipants AdditionalServiceOrderParticipant[]
-  additionalServiceCatalogItems      AdditionalServiceCatalog[]
-  additionalServiceCatalogUsages     AdditionalServiceCatalogUsage[]
-  additionalServicePricingConfigs    AdditionalServicePricingConfiguration[]
-  additionalServiceFiscalProfiles    AdditionalServiceFiscalProfile[]
-  suppliers                          Supplier[]
-  generatedDocuments                 GeneratedDocument[]
-  salesOrders                        SalesOrder[]
-  salesOrderLines                    SalesOrderLine[]
-  billingDocuments                   BillingDocument[]
-  billingDocumentArtifacts           BillingDocumentArtifact[]
-  billingDocumentLines               BillingDocumentLine[]
-  billingLineTaxes                   BillingLineTax[]
-  billingLineTaxExemptions           BillingLineTaxExemption[]
-  billingDocumentReferences          BillingDocumentReference[]
-  billingDocumentPaymentMethods      BillingDocumentPaymentMethod[]
-  billingConfiguration               TenantBillingConfiguration?
-  fiscalIssuers                      FiscalIssuer[]
-  fiscalIssuerEconomicActivities     FiscalIssuerEconomicActivity[]
-  billingDocumentNumberSequences     BillingDocumentNumberSequence[]
-  billingOutboxEvents                BillingOutboxEvent[]
-  accountReceivables                 AccountReceivable[]
-  payments                           Payment[]
-  paymentAllocations                 PaymentAllocation[]
-  paymentAllocationReversals         PaymentAllocationReversal[]
-  paymentEvidence                    PaymentEvidence[]
-  businessNumberSequences            BusinessNumberSequence[]
-  customerFundsAllocationCommands    CustomerFundsAllocationCommand[]
+  id                                      String                                   @id @default(cuid())
+  name                                    String                                   @unique
+  subdomain                               String?                                  @unique
+  contractPrefix                          String                                   @unique
+  isActive                                Boolean                                  @default(true)
+  createdAt                               DateTime                                 @default(now())
+  updatedAt                               DateTime                                 @updatedAt
+  customDomain                            String?                                  @unique
+  emailLogoUrl                            String?
+  logoUrl                                 String?
+  primaryColor                            String?
+  secondaryColor                          String?
+  signatureUrl                            String?
+  legalId                                 String?
+  legalName                               String?
+  representativeAddress                   String?
+  representativeId                        String?
+  representativeMaritalStatus             String?
+  representativeName                      String?
+  representativePowers                    String?
+  representativeTitle                     String?
+  planExpiresAt                           DateTime?
+  planType                                String?                                  @default("FREE")
+  suspendReason                           String?
+  suspendedAt                             DateTime?
+  businessAddress                         String?                                  @map("business_address")
+  contactEmail                            String?                                  @map("contact_email")
+  contactPhone                            String?                                  @map("contact_phone")
+  contactWhatsApp                         String?                                  @map("contact_whatsapp")
+  emailVerified                           Boolean                                  @default(false)
+  emailQuotaDaily                         Int                                      @default(1000) @map("email_quota_daily")
+  emailQuotaMonthly                       Int                                      @default(30000) @map("email_quota_monthly")
+  emailsSentMonth                         Int                                      @default(0) @map("emails_sent_month")
+  emailsSentToday                         Int                                      @default(0) @map("emails_sent_today")
+  fromEmail                               String?
+  lastEmailResetDate                      DateTime?                                @map("last_email_reset_date")
+  preferredCurrency                       String                                   @default("CRC") @map("preferred_currency")
+  replyToEmail                            String?
+  websiteUrl                              String?                                  @map("website_url")
+  billingAuditLogs                        BillingAuditLog[]
+  billingClientBalances                   BillingClientBalance[]
+  billingCreditNotes                      BillingCreditNote[]
+  billingInvoices                         BillingInvoice[]
+  billingPayments                         BillingPayment[]
+  billingReceipts                         BillingReceipt[]
+  clients                                 Client[]
+  clientPortalUsers                       ClientPortalUser[]
+  companyBankAccounts                     CompanyBankAccount[]
+  contracts                               Contract[]
+  contractFiscalSnapshots                 ContractFiscalSnapshot[]
+  contractFiscalSnapshotLines             ContractFiscalSnapshotLine[]
+  contractDrafts                          ContractDraft[]
+  contractNumbers                         ContractNumber[]
+  contractNotes                           ContractNote[]
+  customerDocuments                       CustomerDocument[]
+  documentSigningSessions                 DocumentSigningSession[]
+  customerNotes                           CustomerNote[]
+  exchangeRates                           ExchangeRate[]
+  travelPackages                          TravelPackage[]
+  users                                   User[]
+  attendance_config                       AttendanceConfig?
+  attendance_corrections                  AttendanceCorrection[]
+  attendance_daily_summaries              AttendanceDailySummary[]
+  attendance_entries                      AttendanceEntry[]
+  employeeDocuments                       EmployeeDocument[]
+  employees                               Employee[]
+  internalBookings                        InternalTourBooking[]
+  internalBookingParticipants             InternalTourBookingParticipant[]
+  internalInvoices                        InternalTourInvoice[]
+  internalTrips                           InternalTrip[]
+  travelPackageParticipants               TravelPackageParticipant[]
+  payrollConfig                           PayrollConfig?
+  payrollPeriods                          PayrollPeriod[]
+  payrollAdjustments                      PayrollAdjustment[]
+  payrollRuns                             PayrollRun[]
+  additionalServiceOrders                 AdditionalServiceOrder[]
+  additionalServiceOrderLines             AdditionalServiceOrderLine[]
+  additionalServiceOrderParticipants      AdditionalServiceOrderParticipant[]
+  additionalServiceCatalogItems           AdditionalServiceCatalog[]
+  additionalServiceCatalogUsages          AdditionalServiceCatalogUsage[]
+  additionalServicePricingConfigs         AdditionalServicePricingConfiguration[]
+  additionalServiceFiscalProfiles         AdditionalServiceFiscalProfile[]
+  suppliers                               Supplier[]
+  generatedDocuments                      GeneratedDocument[]
+  salesOrders                             SalesOrder[]
+  salesOrderLines                         SalesOrderLine[]
+  billingDocuments                        BillingDocument[]
+  billingDocumentArtifacts                BillingDocumentArtifact[]
+  billingDocumentLines                    BillingDocumentLine[]
+  billingLineTaxes                        BillingLineTax[]
+  billingLineTaxExemptions                BillingLineTaxExemption[]
+  billingDocumentReferences               BillingDocumentReference[]
+  billingDocumentPaymentMethods           BillingDocumentPaymentMethod[]
+  billingConfiguration                    TenantBillingConfiguration?
+  fiscalIssuers                           FiscalIssuer[]
+  fiscalIssuerEconomicActivities          FiscalIssuerEconomicActivity[]
+  billingDocumentNumberSequences          BillingDocumentNumberSequence[]
+  billingOutboxEvents                     BillingOutboxEvent[]
+  accountReceivables                      AccountReceivable[]
+  commercialObligations                   CommercialObligation[]
+  commercialObligationAllocations         CommercialObligationAllocation[]
+  commercialObligationAllocationReversals CommercialObligationAllocationReversal[]
+  payments                                Payment[]
+  paymentAllocations                      PaymentAllocation[]
+  paymentAllocationReversals              PaymentAllocationReversal[]
+  paymentEvidence                         PaymentEvidence[]
+  businessNumberSequences                 BusinessNumberSequence[]
+  customerFundsAllocationCommands         CustomerFundsAllocationCommand[]
 
   @@map("tenants")
 }
@@ -433,6 +436,7 @@ model Client {
   additionalServiceQuoteOrders         AdditionalServiceOrder[]            @relation("AdditionalServiceQuoteCustomer")
   billingDocuments                     BillingDocument[]                   @relation("BillingDocumentCustomer")
   customerFundsAllocationCommands      CustomerFundsAllocationCommand[]
+  commercialObligations                CommercialObligation[]
 
   @@unique([tenantId, idType, idNumber])
   @@unique([id, tenantId], map: "Client_id_tenantId_key")
@@ -2355,6 +2359,41 @@ enum AccountReceivableStatus {
   CANCELLED
 }
 
+enum CommercialObligationStatus {
+  OPEN
+  PARTIALLY_SETTLED
+  SETTLED
+  CANCELLED
+}
+
+model CommercialObligation {
+  id                String                           @id @default(cuid())
+  tenantId          String
+  customerId        String
+  sourceType        String                           @db.VarChar(100)
+  sourceId          String                           @db.VarChar(100)
+  sourceReference   String?                          @db.VarChar(100)
+  currencyCode      String                           @db.VarChar(3)
+  originalAmount    Decimal                          @db.Decimal(19, 5)
+  outstandingAmount Decimal                          @db.Decimal(19, 5)
+  dueDate           DateTime?                        @db.Date
+  status            CommercialObligationStatus       @default(OPEN)
+  createdAt         DateTime                         @default(now())
+  updatedAt         DateTime                         @updatedAt
+  settledAt         DateTime?
+  cancelledAt       DateTime?
+  tenant            Tenant                           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer          Client                           @relation(fields: [customerId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  allocations       CommercialObligationAllocation[]
+
+  @@unique([tenantId, sourceType, sourceId])
+  @@unique([id, tenantId])
+  @@index([tenantId, customerId, status])
+  @@index([tenantId, customerId, currencyCode])
+  @@index([tenantId, status, dueDate])
+  @@map("commercial_obligations")
+}
+
 model AccountReceivable {
   id                         String                  @id @default(cuid())
   tenantId                   String
@@ -2405,35 +2444,36 @@ enum PaymentPurpose {
 }
 
 model Payment {
-  id                           String              @id @default(cuid())
-  tenantId                     String
-  registrationDeduplicationKey String              @db.VarChar(200)
-  receiptNumber                String?             @db.VarChar(50)
-  customerId                   String?
-  payerDisplayName             String
-  payerIdentificationType      String?             @db.VarChar(4)
-  payerIdentificationNumber    String?             @db.VarChar(30)
-  currencyCode                 String              @db.VarChar(3)
-  receivedAmount               Decimal             @db.Decimal(19, 5)
-  availableAmount              Decimal             @db.Decimal(19, 5)
-  receivedAt                   DateTime
-  paymentMethod                String              @db.VarChar(50)
-  externalReference            String?             @db.VarChar(150)
-  description                  String?             @db.VarChar(500)
-  purpose                      PaymentPurpose      @default(GENERAL)
-  contractId                   String?
-  status                       PaymentStatus       @default(RECEIVED)
-  reviewedAt                   DateTime?
-  reviewedByUserId             String?
-  reviewedByName               String?
-  rejectionReason              String?             @db.VarChar(500)
-  cancelledAt                  DateTime?
-  createdAt                    DateTime            @default(now())
-  updatedAt                    DateTime            @updatedAt
-  tenant                       Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  contract                     Contract?           @relation("ContractFinancePayments", fields: [contractId, tenantId], references: [id, tenantId], onDelete: Restrict)
-  allocations                  PaymentAllocation[]
-  evidence                     PaymentEvidence[]
+  id                              String                           @id @default(cuid())
+  tenantId                        String
+  registrationDeduplicationKey    String                           @db.VarChar(200)
+  receiptNumber                   String?                          @db.VarChar(50)
+  customerId                      String?
+  payerDisplayName                String
+  payerIdentificationType         String?                          @db.VarChar(4)
+  payerIdentificationNumber       String?                          @db.VarChar(30)
+  currencyCode                    String                           @db.VarChar(3)
+  receivedAmount                  Decimal                          @db.Decimal(19, 5)
+  availableAmount                 Decimal                          @db.Decimal(19, 5)
+  receivedAt                      DateTime
+  paymentMethod                   String                           @db.VarChar(50)
+  externalReference               String?                          @db.VarChar(150)
+  description                     String?                          @db.VarChar(500)
+  purpose                         PaymentPurpose                   @default(GENERAL)
+  contractId                      String?
+  status                          PaymentStatus                    @default(RECEIVED)
+  reviewedAt                      DateTime?
+  reviewedByUserId                String?
+  reviewedByName                  String?
+  rejectionReason                 String?                          @db.VarChar(500)
+  cancelledAt                     DateTime?
+  createdAt                       DateTime                         @default(now())
+  updatedAt                       DateTime                         @updatedAt
+  tenant                          Tenant                           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contract                        Contract?                        @relation("ContractFinancePayments", fields: [contractId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  allocations                     PaymentAllocation[]
+  commercialObligationAllocations CommercialObligationAllocation[]
+  evidence                        PaymentEvidence[]
 
   @@unique([tenantId, registrationDeduplicationKey])
   @@unique([tenantId, receiptNumber])
@@ -2549,6 +2589,48 @@ model PaymentAllocationReversal {
   @@unique([paymentAllocationId, tenantId])
   @@index([tenantId, reversedAt])
   @@map("payment_allocation_reversals")
+}
+
+model CommercialObligationAllocation {
+  id                         String                                  @id @default(cuid())
+  tenantId                   String
+  commercialObligationId     String
+  paymentId                  String
+  allocationDeduplicationKey String                                  @db.VarChar(200)
+  amount                     Decimal                                 @db.Decimal(19, 5)
+  status                     PaymentAllocationStatus                 @default(ACTIVE)
+  allocatedAt                DateTime
+  createdAt                  DateTime                                @default(now())
+  updatedAt                  DateTime                                @updatedAt
+  tenant                     Tenant                                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  commercialObligation       CommercialObligation                    @relation(fields: [commercialObligationId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "commercial_obligation_allocations_obligation_tenant_fkey")
+  payment                    Payment                                 @relation(fields: [paymentId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  reversal                   CommercialObligationAllocationReversal?
+
+  @@unique([tenantId, allocationDeduplicationKey], map: "commercial_obligation_allocations_tenant_dedup_key")
+  @@unique([id, tenantId])
+  @@index([tenantId, commercialObligationId, status], map: "commercial_obligation_allocations_tenant_obligation_idx")
+  @@index([tenantId, paymentId, status], map: "commercial_obligation_allocations_tenant_payment_idx")
+  @@index([tenantId, allocatedAt], map: "commercial_obligation_allocations_tenant_allocated_idx")
+  @@map("commercial_obligation_allocations")
+}
+
+model CommercialObligationAllocationReversal {
+  id                               String                         @id @default(cuid())
+  tenantId                         String
+  commercialObligationAllocationId String
+  reversalDeduplicationKey         String                         @db.VarChar(200)
+  reason                           String                         @db.VarChar(500)
+  reversedAt                       DateTime
+  createdAt                        DateTime                       @default(now())
+  tenant                           Tenant                         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  commercialObligationAllocation   CommercialObligationAllocation @relation(fields: [commercialObligationAllocationId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "commercial_obligation_allocation_reversals_allocation_fkey")
+
+  @@unique([tenantId, reversalDeduplicationKey], map: "commercial_obligation_reversals_tenant_dedup_key")
+  @@unique([tenantId, commercialObligationAllocationId], map: "commercial_obligation_reversals_tenant_allocation_key")
+  @@unique([commercialObligationAllocationId, tenantId], map: "commercial_obligation_reversals_allocation_tenant_key")
+  @@index([tenantId, reversedAt], map: "commercial_obligation_reversals_tenant_reversed_idx")
+  @@map("commercial_obligation_allocation_reversals")
 }
 
 enum PayrollFrequency {
