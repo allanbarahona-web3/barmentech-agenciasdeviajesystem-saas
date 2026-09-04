@@ -109,7 +109,7 @@ export class ContractReservationReviewService {
         }),
       });
       return allocated;
-    });
+    }, { timeout: 15000 });
   }
 
   async reject(tenantId: string, paymentId: string, reason: string, actor: FinanceActor): Promise<Payment> {

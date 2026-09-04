@@ -20,6 +20,8 @@ describe("ContractReservationReviewService", () => {
     expect(c.tx.billingAuditLog.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ action: "RESERVATION_APPROVED" }) }));
     expect(result).toMatchObject({ status: PaymentStatus.FULLY_ALLOCATED, receiptNumber: "RCP-2026-000007" });
     expect(result.availableAmount.toFixed()).toBe("0");
+    expect(c.prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(c.prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), { timeout: 15000 });
     expect((c.tx as Record<string, unknown>).billingPayment).toBeUndefined();
     expect((c.tx as Record<string, unknown>).billingReceipt).toBeUndefined();
     expect((c.tx as Record<string, unknown>).billingInvoice).toBeUndefined();
