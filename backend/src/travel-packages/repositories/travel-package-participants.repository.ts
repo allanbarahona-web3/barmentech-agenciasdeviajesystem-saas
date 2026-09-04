@@ -116,6 +116,27 @@ export class TravelPackageParticipantsRepository {
     });
   }
 
+  async findExistingClientIds(
+    tx: any,
+    tenantId: string,
+    travelPackageId: string,
+    clientIds: string[],
+  ): Promise<string[]> {
+    if (clientIds.length === 0) {
+      return [];
+    }
+
+    const existing = await tx.travelPackageParticipant.findMany({
+      where: {
+        tenantId,
+        travelPackageId,
+        clientId: { in: clientIds },
+      },
+      select: { clientId: true },
+    });
+    return existing.map((participant: { clientId: string }) => participant.clientId);
+  }
+
   async createMany(
     tx: any,
     participants: TravelPackageParticipantWrite[],

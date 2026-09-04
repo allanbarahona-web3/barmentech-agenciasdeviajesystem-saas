@@ -85,4 +85,21 @@ describe('TravelPackageParticipantsRepository', () => {
       },
     });
   });
+
+  it('loads only existing tenant-scoped membership client IDs through the supplied transaction', async () => {
+    const findMany = jest.fn().mockResolvedValue([{ clientId: 'client-1' }]);
+    const repository = new TravelPackageParticipantsRepository({} as any);
+    const tx = { travelPackageParticipant: { findMany } };
+
+    await expect(repository.findExistingClientIds(tx, 'tenant-1', 'travel-1', ['client-1', 'client-2']))
+      .resolves.toEqual(['client-1']);
+    expect(findMany).toHaveBeenCalledWith({
+      where: {
+        tenantId: 'tenant-1',
+        travelPackageId: 'travel-1',
+        clientId: { in: ['client-1', 'client-2'] },
+      },
+      select: { clientId: true },
+    });
+  });
 });

@@ -17,6 +17,7 @@ import {
 } from "../travel-packages/repositories/travel-package-participants.repository";
 
 const APPROVABLE_CONTRACT_STATUSES = ["PENDING_PAYMENT_RESERVE", "RESERVE_IN_REVIEW"];
+const PARTICIPANT_ALREADY_ASSIGNED = "CONTRACT_RESERVATION_PARTICIPANT_ALREADY_ASSIGNED";
 
 @Injectable()
 export class ContractReservationApprovalService {
@@ -120,6 +121,13 @@ export class ContractReservationApprovalService {
     participantCount: number,
     commercialObligationId: string,
   ): Promise<{ applied: boolean; commercialObligationId: string }> {
+    if (contract.travelPackageId) {
+      await this.createInternationalTravelRoster(tx, {
+        ...contract,
+        travelPackageId: contract.travelPackageId,
+      });
+    }
+
     const transitioned = await tx.contract.updateMany({
       where: {
         id: contract.id,
@@ -133,10 +141,6 @@ export class ContractReservationApprovalService {
     }
 
     if (contract.travelPackageId) {
-      await this.createInternationalTravelRoster(tx, {
-        ...contract,
-        travelPackageId: contract.travelPackageId,
-      });
       const travelPackage = await tx.travelPackage.update({
         where: { id: contract.travelPackageId },
         data: { occupiedSlots: { increment: participantCount } },
@@ -229,13 +233,40 @@ export class ContractReservationApprovalService {
     if (clients.length !== clientIds.length) {
       throw new BadRequestException("CONTRACT_RESERVATION_PARTICIPANT_TENANT_INVALID");
     }
+    const existingClientIds = await this.participantsRepository.findExistingClientIds(
+      tx,
+      contract.tenantId,
+      contract.travelPackageId,
+      clientIds,
+    );
+    if (existingClientIds.length > 0) {
+      throw new ConflictException(PARTICIPANT_ALREADY_ASSIGNED);
+    }
     const participants: TravelPackageParticipantWrite[] = [
       { tenantId: contract.tenantId, travelPackageId: contract.travelPackageId, clientId: contract.clientId, role: "HOLDER" },
       ...companionIds.map((clientId) => ({ tenantId: contract.tenantId, travelPackageId: contract.travelPackageId, clientId, role: "COMPANION" as const })),
       ...minorIds.map((clientId) => ({ tenantId: contract.tenantId, travelPackageId: contract.travelPackageId, clientId, role: "MINOR" as const })),
     ];
-    await this.participantsRepository.createMany(tx, participants);
+    try {
+      await this.participantsRepository.createMany(tx, participants);
+    } catch (error) {
+      if (isTravelPackageParticipantMembershipConflict(error)) {
+        throw new ConflictException(PARTICIPANT_ALREADY_ASSIGNED);
+      }
+      throw error;
+    }
   }
+}
+
+function isTravelPackageParticipantMembershipConflict(error: unknown): boolean {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2002") {
+    return false;
+  }
+  const target = error.meta?.target;
+  if (Array.isArray(target)) {
+    return target.length === 2 && target.includes("travelPackageId") && target.includes("clientId");
+  }
+  return typeof target === "string" && target.includes("travelPackageId") && target.includes("clientId");
 }
 
 function requireParticipantCount(value: unknown): number {

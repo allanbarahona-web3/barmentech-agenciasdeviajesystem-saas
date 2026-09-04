@@ -29,7 +29,9 @@ describe("ContractReservationApprovalService", () => {
     expect(c.tx.contract.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "contract-1", tenantId: "tenant-1" } }));
     expect(c.tx.contract.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ tenantId: "tenant-1" }), data: { status: "PENDING_SIGNATURE" } }));
     expect(c.participants.findClients).toHaveBeenCalledWith(c.tx, "tenant-1", ["customer-1"]);
+    expect(c.participants.findExistingClientIds).toHaveBeenCalledWith(c.tx, "tenant-1", "package-1", ["customer-1"]);
     expect(c.participants.createMany).toHaveBeenCalledWith(c.tx, [{ tenantId: "tenant-1", travelPackageId: "package-1", clientId: "customer-1", role: "HOLDER" }]);
+    expect(c.tx.travelPackage.update).toHaveBeenCalledTimes(2);
     expect(c.tx.travelPackage.update).toHaveBeenNthCalledWith(1, expect.objectContaining({ data: { occupiedSlots: { increment: 1 } } }));
     expect(c.tx.travelPackage.update).toHaveBeenNthCalledWith(2, { where: { id: "package-1" }, data: { status: "CLOSED" } });
     expect(c.commercialObligations.createInTransaction).toHaveBeenCalledWith(c.tx, {
@@ -44,6 +46,8 @@ describe("ContractReservationApprovalService", () => {
       actor,
     });
     expect(c.commercialObligations.createInTransaction.mock.invocationCallOrder[0])
+      .toBeLessThan(c.tx.contract.updateMany.mock.invocationCallOrder[0]);
+    expect(c.participants.createMany.mock.invocationCallOrder[0])
       .toBeLessThan(c.tx.contract.updateMany.mock.invocationCallOrder[0]);
   });
 
@@ -80,6 +84,7 @@ describe("ContractReservationApprovalService", () => {
     await expect(c.service.approveInTransaction(c.tx as never, approvalInput)).resolves.toEqual({ applied: false, commercialObligationId: null });
     expect(c.tx.contract.updateMany).not.toHaveBeenCalled();
     expect(c.tx.travelPackage.update).not.toHaveBeenCalled();
+    expect(c.participants.findExistingClientIds).not.toHaveBeenCalled();
     expect(c.participants.createMany).not.toHaveBeenCalled();
     expect(c.commercialObligations.createInTransaction).not.toHaveBeenCalled();
   });
@@ -89,6 +94,62 @@ describe("ContractReservationApprovalService", () => {
     c.tx.travelPackage.findFirst.mockResolvedValue({ capacity: 3, occupiedSlots: 0, name: "Peru" });
     c.participants.findClients.mockResolvedValue([{ id: "customer-1" }]);
     await expect(c.service.approveInTransaction(c.tx as never, approvalInput)).rejects.toThrow("CONTRACT_RESERVATION_PARTICIPANT_TENANT_INVALID");
+    expect(c.tx.travelPackage.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects an approvable Contract with an existing expected roster member before transition or capacity mutation", async () => {
+    const c = context({ travelPackageId: "package-1" });
+    c.tx.travelPackage.findFirst.mockResolvedValue({ capacity: 3, occupiedSlots: 0, name: "Peru" });
+    c.participants.findExistingClientIds.mockResolvedValue(["customer-1"]);
+
+    await expect(c.service.approveInTransaction(c.tx as never, approvalInput))
+      .rejects.toThrow("CONTRACT_RESERVATION_PARTICIPANT_ALREADY_ASSIGNED");
+
+    expect(c.participants.createMany).not.toHaveBeenCalled();
+    expect(c.tx.contract.updateMany).not.toHaveBeenCalled();
+    expect(c.tx.travelPackage.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects duplicate participant input before membership lookup or mutation", async () => {
+    const c = context({
+      travelPackageId: "package-1",
+      payload: { companions: [{ fullName: "Holder again", idNumber: "1", selectedCustomerId: "customer-1" }] },
+    });
+    c.tx.travelPackage.findFirst.mockResolvedValue({ capacity: 3, occupiedSlots: 0, name: "Peru" });
+
+    await expect(c.service.approveInTransaction(c.tx as never, approvalInput))
+      .rejects.toThrow("CONTRACT_RESERVATION_PARTICIPANT_DUPLICATE");
+
+    expect(c.participants.findExistingClientIds).not.toHaveBeenCalled();
+    expect(c.participants.createMany).not.toHaveBeenCalled();
+    expect(c.tx.contract.updateMany).not.toHaveBeenCalled();
+    expect(c.tx.travelPackage.update).not.toHaveBeenCalled();
+  });
+
+  it("translates the exact roster uniqueness race to the participant conflict before transition or capacity mutation", async () => {
+    const c = context({ travelPackageId: "package-1" });
+    c.tx.travelPackage.findFirst.mockResolvedValue({ capacity: 3, occupiedSlots: 0, name: "Peru" });
+    c.participants.createMany.mockRejectedValueOnce(participantMembershipP2002());
+
+    await expect(c.service.approveInTransaction(c.tx as never, approvalInput))
+      .rejects.toThrow("CONTRACT_RESERVATION_PARTICIPANT_ALREADY_ASSIGNED");
+
+    expect(c.tx.contract.updateMany).not.toHaveBeenCalled();
+    expect(c.tx.travelPackage.update).not.toHaveBeenCalled();
+  });
+
+  it("rethrows unrelated Prisma errors from roster insertion", async () => {
+    const c = context({ travelPackageId: "package-1" });
+    const error = new Prisma.PrismaClientKnownRequestError("other unique constraint", {
+      code: "P2002",
+      clientVersion: "5.22.0",
+      meta: { target: ["otherUnique"] },
+    });
+    c.tx.travelPackage.findFirst.mockResolvedValue({ capacity: 3, occupiedSlots: 0, name: "Peru" });
+    c.participants.createMany.mockRejectedValueOnce(error);
+
+    await expect(c.service.approveInTransaction(c.tx as never, approvalInput)).rejects.toBe(error);
+    expect(c.tx.contract.updateMany).not.toHaveBeenCalled();
     expect(c.tx.travelPackage.update).not.toHaveBeenCalled();
   });
 
@@ -160,6 +221,7 @@ function context(overrides: Record<string, unknown> = {}) {
   };
   const participants = {
     findClients: jest.fn().mockResolvedValue([{ id: "customer-1" }]),
+    findExistingClientIds: jest.fn().mockResolvedValue([]),
     createMany: jest.fn().mockResolvedValue(undefined),
   };
   const commercialObligations = {
@@ -174,4 +236,12 @@ function context(overrides: Record<string, unknown> = {}) {
     participants,
     commercialObligations,
   };
+}
+
+function participantMembershipP2002() {
+  return new Prisma.PrismaClientKnownRequestError("duplicate roster membership", {
+    code: "P2002",
+    clientVersion: "5.22.0",
+    meta: { target: ["travelPackageId", "clientId"] },
+  });
 }
