@@ -27,8 +27,13 @@ export class ContractReservationApprovalService {
 
   async approveInTransaction(
     tx: Prisma.TransactionClient,
-    input: { tenantId: string; contractId: string; actor: FinanceActor },
-  ): Promise<{ applied: boolean }> {
+    input: {
+      tenantId: string;
+      contractId: string;
+      actor: FinanceActor;
+      afterCommercialObligation?: (input: { commercialObligationId: string }) => Promise<void>;
+    },
+  ): Promise<{ applied: boolean; commercialObligationId: string | null }> {
     await tx.$queryRaw`
       SELECT "id" FROM "Contract"
       WHERE "id" = ${input.contractId} AND "tenantId" = ${input.tenantId}
@@ -54,7 +59,7 @@ export class ContractReservationApprovalService {
       },
     });
     if (!contract) throw new NotFoundException("CONTRACT_RESERVATION_CONTRACT_NOT_FOUND");
-    if (contract.status === "PENDING_SIGNATURE") return { applied: false };
+    if (contract.status === "PENDING_SIGNATURE") return { applied: false, commercialObligationId: null };
     if (!APPROVABLE_CONTRACT_STATUSES.includes(contract.status)) {
       throw new BadRequestException("CONTRACT_RESERVATION_CONTRACT_STATE_CONFLICT");
     }
@@ -72,7 +77,7 @@ export class ContractReservationApprovalService {
 
     const commercialTerms = requireCommercialTerms(contract);
     try {
-      await this.commercialObligations.createInTransaction(tx, {
+      const commercialObligation = await this.commercialObligations.createInTransaction(tx, {
         tenantId: contract.tenantId,
         customerId: contract.clientId,
         sourceType: "CONTRACT",
@@ -83,6 +88,12 @@ export class ContractReservationApprovalService {
         dueDate: commercialTerms.dueDate,
         actor: input.actor,
       });
+
+      await input.afterCommercialObligation?.({
+        commercialObligationId: commercialObligation.obligation.id,
+      });
+
+      return this.completeApproval(tx, contract, participantCount, commercialObligation.obligation.id);
     } catch (error) {
       if (error instanceof CommercialObligationError) {
         if (error.code === COMMERCIAL_OBLIGATION_ERRORS.CONFLICT) {
@@ -98,6 +109,17 @@ export class ContractReservationApprovalService {
       throw error;
     }
 
+  }
+
+  private async completeApproval(
+    tx: Prisma.TransactionClient,
+    contract: {
+      id: string; tenantId: string; clientId: string; contractNumber: string; participantCount: number;
+      travelPackageId: string | null; internalTripId: string | null; payload: unknown;
+    },
+    participantCount: number,
+    commercialObligationId: string,
+  ): Promise<{ applied: boolean; commercialObligationId: string }> {
     const transitioned = await tx.contract.updateMany({
       where: {
         id: contract.id,
@@ -136,7 +158,7 @@ export class ContractReservationApprovalService {
       }
     }
 
-    return { applied: true };
+    return { applied: true, commercialObligationId };
   }
 
   private async lockTravelPackage(

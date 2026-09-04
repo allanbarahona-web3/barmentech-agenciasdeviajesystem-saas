@@ -5,6 +5,11 @@ import { ContractReservationApprovalService } from "../contracts/contract-reserv
 import { PrismaService } from "../prisma/prisma.service";
 import { StorageService } from "../storage/storage.service";
 import {
+  COMMERCIAL_OBLIGATION_ALLOCATION_ERRORS,
+  CommercialObligationAllocationError,
+  CommercialObligationAllocationService,
+} from "./commercial-obligation-allocation.service";
+import {
   FINANCE_AUDIT_ACTIONS,
   FINANCE_AUDIT_ENTITY_TYPES,
   financeAuditRecord,
@@ -25,6 +30,7 @@ export class ContractReservationReviewService {
     private readonly prisma: PrismaService,
     private readonly businessNumbers: BusinessNumberingService,
     private readonly contracts: ContractReservationApprovalService,
+    private readonly commercialObligationAllocations: CommercialObligationAllocationService,
     private readonly storage: StorageService,
   ) {}
 
@@ -70,22 +76,39 @@ export class ContractReservationReviewService {
       });
       if (updated.count !== 1) throw new ConflictException("CONTRACT_RESERVATION_REVIEW_CONFLICT");
 
-      await this.contracts.approveInTransaction(tx, { tenantId, contractId, actor });
       const confirmed = await tx.payment.findFirst({ where: { id: payment.id, tenantId } });
       if (!confirmed) throw new Error("CONTRACT_RESERVATION_APPROVAL_PERSISTENCE_FAILED");
+      const approval = await this.contracts.approveInTransaction(tx, {
+        tenantId,
+        contractId,
+        actor,
+        afterCommercialObligation: async ({ commercialObligationId }) => {
+          await this.allocateReservationPayment(tx, {
+            tenantId,
+            payment: confirmed,
+            commercialObligationId,
+            actor,
+          });
+        },
+      });
+      if (!approval.applied || !approval.commercialObligationId) {
+        throw new ConflictException("CONTRACT_RESERVATION_APPROVAL_STATE_CONFLICT");
+      }
+      const allocated = await tx.payment.findFirst({ where: { id: payment.id, tenantId } });
+      if (!allocated) throw new Error("CONTRACT_RESERVATION_ALLOCATION_PERSISTENCE_FAILED");
       await tx.billingAuditLog.create({
         data: financeAuditRecord({
           tenantId,
           entityType: FINANCE_AUDIT_ENTITY_TYPES.PAYMENT,
-          entityId: confirmed.id,
+          entityId: allocated.id,
           action: FINANCE_AUDIT_ACTIONS.RESERVATION_APPROVED,
           actor,
           occurredAt: reviewedAt,
           beforeJson: { status: payment.status, availableAmount: financeMoney(payment.availableAmount), receiptNumber: null },
-          afterJson: { status: confirmed.status, availableAmount: financeMoney(confirmed.availableAmount), receiptNumber: confirmed.receiptNumber, contractId: confirmed.contractId },
+          afterJson: { status: allocated.status, availableAmount: financeMoney(allocated.availableAmount), receiptNumber: allocated.receiptNumber, contractId: allocated.contractId },
         }),
       });
-      return confirmed;
+      return allocated;
     });
   }
 
@@ -202,6 +225,35 @@ export class ContractReservationReviewService {
   private validateReservationIdentity(payment: Payment): void {
     if (payment.purpose !== PaymentPurpose.CONTRACT_RESERVATION || !payment.contractId) {
       throw new BadRequestException("CONTRACT_RESERVATION_PAYMENT_INVALID");
+    }
+  }
+
+  private async allocateReservationPayment(
+    tx: Prisma.TransactionClient,
+    input: {
+      tenantId: string;
+      payment: Payment;
+      commercialObligationId: string;
+      actor: FinanceActor;
+    },
+  ): Promise<void> {
+    try {
+      await this.commercialObligationAllocations.allocateInTransaction(tx, {
+        tenantId: input.tenantId,
+        paymentId: input.payment.id,
+        commercialObligationId: input.commercialObligationId,
+        amount: input.payment.receivedAmount,
+        allocationDeduplicationKey: `contract-reservation:${input.payment.id}:${input.commercialObligationId}`,
+        actor: input.actor,
+      });
+    } catch (error) {
+      if (error instanceof CommercialObligationAllocationError) {
+        if (error.code === COMMERCIAL_OBLIGATION_ALLOCATION_ERRORS.CONFLICT) {
+          throw new ConflictException(error.code);
+        }
+        throw new BadRequestException(error.code);
+      }
+      throw error;
     }
   }
 }

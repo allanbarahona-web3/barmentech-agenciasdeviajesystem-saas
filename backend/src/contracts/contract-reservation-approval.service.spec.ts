@@ -24,7 +24,7 @@ describe("ContractReservationApprovalService", () => {
       .mockResolvedValueOnce({ capacity: 2, occupiedSlots: 2, status: "OPEN" })
       .mockResolvedValueOnce({ capacity: 2, occupiedSlots: 2, status: "CLOSED" });
 
-    await expect(c.service.approveInTransaction(c.tx as never, approvalInput)).resolves.toEqual({ applied: true });
+    await expect(c.service.approveInTransaction(c.tx as never, approvalInput)).resolves.toEqual({ applied: true, commercialObligationId: "obligation-1" });
 
     expect(c.tx.contract.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "contract-1", tenantId: "tenant-1" } }));
     expect(c.tx.contract.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ tenantId: "tenant-1" }), data: { status: "PENDING_SIGNATURE" } }));
@@ -59,9 +59,25 @@ describe("ContractReservationApprovalService", () => {
     expect(c.participants.createMany).not.toHaveBeenCalled();
   });
 
+  it("runs the commercial allocation hook after obligation creation and before PENDING_SIGNATURE", async () => {
+    const c = context();
+    const afterCommercialObligation = jest.fn().mockResolvedValue(undefined);
+
+    await c.service.approveInTransaction(c.tx as never, {
+      ...approvalInput,
+      afterCommercialObligation,
+    });
+
+    expect(afterCommercialObligation).toHaveBeenCalledWith({ commercialObligationId: "obligation-1" });
+    expect(c.commercialObligations.createInTransaction.mock.invocationCallOrder[0])
+      .toBeLessThan(afterCommercialObligation.mock.invocationCallOrder[0]);
+    expect(afterCommercialObligation.mock.invocationCallOrder[0])
+      .toBeLessThan(c.tx.contract.updateMany.mock.invocationCallOrder[0]);
+  });
+
   it("is idempotent after the Contract has reached PENDING_SIGNATURE", async () => {
     const c = context({ status: "PENDING_SIGNATURE", travelPackageId: "package-1" });
-    await expect(c.service.approveInTransaction(c.tx as never, approvalInput)).resolves.toEqual({ applied: false });
+    await expect(c.service.approveInTransaction(c.tx as never, approvalInput)).resolves.toEqual({ applied: false, commercialObligationId: null });
     expect(c.tx.contract.updateMany).not.toHaveBeenCalled();
     expect(c.tx.travelPackage.update).not.toHaveBeenCalled();
     expect(c.participants.createMany).not.toHaveBeenCalled();

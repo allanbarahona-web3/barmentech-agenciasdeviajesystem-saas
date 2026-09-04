@@ -12,10 +12,14 @@ describe("ContractReservationReviewService", () => {
       where: expect.objectContaining({ tenantId: "tenant-1", status: PaymentStatus.PENDING_VERIFICATION, receiptNumber: null }),
       data: expect.objectContaining({ status: PaymentStatus.RECEIVED, receiptNumber: "RCP-2026-000007", reviewedByUserId: "reviewer-1", rejectionReason: null }),
     }));
-    expect(c.contracts.approveInTransaction).toHaveBeenCalledWith(c.tx, { tenantId: "tenant-1", contractId: "contract-1", actor });
+    expect(c.contracts.approveInTransaction).toHaveBeenCalledWith(c.tx, expect.objectContaining({ tenantId: "tenant-1", contractId: "contract-1", actor, afterCommercialObligation: expect.any(Function) }));
+    expect(c.commercialObligationAllocations.allocateInTransaction).toHaveBeenCalledWith(c.tx, expect.objectContaining({
+      tenantId: "tenant-1", paymentId: "payment-1", commercialObligationId: "obligation-1",
+      allocationDeduplicationKey: "contract-reservation:payment-1:obligation-1",
+    }));
     expect(c.tx.billingAuditLog.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ action: "RESERVATION_APPROVED" }) }));
-    expect(result).toMatchObject({ status: PaymentStatus.RECEIVED, receiptNumber: "RCP-2026-000007" });
-    expect(result.availableAmount.toFixed()).toBe("125.5");
+    expect(result).toMatchObject({ status: PaymentStatus.FULLY_ALLOCATED, receiptNumber: "RCP-2026-000007" });
+    expect(result.availableAmount.toFixed()).toBe("0");
     expect((c.tx as Record<string, unknown>).billingPayment).toBeUndefined();
     expect((c.tx as Record<string, unknown>).billingReceipt).toBeUndefined();
     expect((c.tx as Record<string, unknown>).billingInvoice).toBeUndefined();
@@ -32,6 +36,7 @@ describe("ContractReservationReviewService", () => {
     await expect(c.service.approve("tenant-1", "payment-1", actor)).resolves.toBe(approved);
     expect(c.businessNumbers.next).not.toHaveBeenCalled();
     expect(c.contracts.approveInTransaction).not.toHaveBeenCalled();
+    expect(c.commercialObligationAllocations.allocateInTransaction).not.toHaveBeenCalled();
     expect(c.tx.payment.updateMany).not.toHaveBeenCalled();
     expect(c.tx.billingAuditLog.create).not.toHaveBeenCalled();
   });
@@ -45,6 +50,7 @@ describe("ContractReservationReviewService", () => {
     expect(c.tx.payment.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: PaymentStatus.REJECTED, receiptNumber: null, rejectionReason: "Comprobante ilegible" }) }));
     expect(c.businessNumbers.next).not.toHaveBeenCalled();
     expect(c.contracts.approveInTransaction).not.toHaveBeenCalled();
+    expect(c.commercialObligationAllocations.allocateInTransaction).not.toHaveBeenCalled();
     expect(c.tx.billingAuditLog.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ action: "RESERVATION_REJECTED" }) }));
     expect(result.availableAmount.toFixed()).toBe("0");
   });
@@ -58,6 +64,21 @@ describe("ContractReservationReviewService", () => {
     await expect(
       c.service.approve("tenant-1", "payment-1", actor),
     ).rejects.toThrow("COMMERCIAL_OBLIGATION_PERSISTENCE_FAILED");
+
+    expect(c.prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(c.commercialObligationAllocations.allocateInTransaction).not.toHaveBeenCalled();
+    expect(c.tx.billingAuditLog.create).not.toHaveBeenCalled();
+  });
+
+  it("rolls back reservation approval when commercial allocation fails", async () => {
+    const c = context();
+    c.commercialObligationAllocations.allocateInTransaction.mockRejectedValueOnce(
+      new Error("COMMERCIAL_OBLIGATION_ALLOCATION_PERSISTENCE_FAILED"),
+    );
+
+    await expect(
+      c.service.approve("tenant-1", "payment-1", actor),
+    ).rejects.toThrow("COMMERCIAL_OBLIGATION_ALLOCATION_PERSISTENCE_FAILED");
 
     expect(c.prisma.$transaction).toHaveBeenCalledTimes(1);
     expect(c.tx.billingAuditLog.create).not.toHaveBeenCalled();
@@ -124,11 +145,15 @@ function approvedPayment(status: PaymentStatus = PaymentStatus.RECEIVED, availab
   };
 }
 
-function context(initial: any = pendingPayment(), final: any = approvedPayment()) {
+function allocatedPayment() {
+  return approvedPayment(PaymentStatus.FULLY_ALLOCATED, "0");
+}
+
+function context(initial: any = pendingPayment(), final: any = allocatedPayment()) {
   const tx = {
     $queryRaw: jest.fn().mockResolvedValue([{ id: "payment-1" }]),
     payment: {
-      findFirst: jest.fn().mockResolvedValueOnce(initial).mockResolvedValueOnce(final),
+      findFirst: jest.fn().mockResolvedValue(final).mockResolvedValueOnce(initial),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
     billingAuditLog: { create: jest.fn().mockResolvedValue({ id: "audit-1" }) },
@@ -139,10 +164,16 @@ function context(initial: any = pendingPayment(), final: any = approvedPayment()
     paymentEvidence: { findFirst: jest.fn() },
   };
   const businessNumbers = { next: jest.fn().mockResolvedValue(7n) };
-  const contracts = { approveInTransaction: jest.fn().mockResolvedValue({ applied: true }) };
+  const contracts = {
+    approveInTransaction: jest.fn(async (_tx, input) => {
+      await input.afterCommercialObligation?.({ commercialObligationId: "obligation-1" });
+      return { applied: true, commercialObligationId: "obligation-1" };
+    }),
+  };
+  const commercialObligationAllocations = { allocateInTransaction: jest.fn().mockResolvedValue({ allocation: { id: "allocation-1" }, applied: true }) };
   const storage = { generateSignedUrl: jest.fn().mockResolvedValue("signed-url") };
   return {
-    service: Reflect.construct(ContractReservationReviewService, [prisma, businessNumbers, contracts, storage]),
-    prisma, tx, businessNumbers, contracts, storage,
+    service: Reflect.construct(ContractReservationReviewService, [prisma, businessNumbers, contracts, commercialObligationAllocations, storage]),
+    prisma, tx, businessNumbers, contracts, commercialObligationAllocations, storage,
   };
 }
