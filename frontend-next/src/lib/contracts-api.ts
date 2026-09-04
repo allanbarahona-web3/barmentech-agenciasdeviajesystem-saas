@@ -118,6 +118,7 @@ type ArchiveContractInput = {
   issuedAt: string;
   startDate: string;
   endDate: string;
+  paymentConditionType: "CASH" | "CREDIT";
   payloadJson: string;
   contractHtml: string;
   documents: File[];
@@ -259,6 +260,7 @@ export const archiveContract = async (input: ArchiveContractInput): Promise<Arch
   formData.append("issuedAt", input.issuedAt);
   formData.append("startDate", input.startDate);
   formData.append("endDate", input.endDate);
+  formData.append("paymentConditionType", input.paymentConditionType);
   formData.append("payloadJson", input.payloadJson);
   formData.append("contractHtml", input.contractHtml);
   if (input.source) {

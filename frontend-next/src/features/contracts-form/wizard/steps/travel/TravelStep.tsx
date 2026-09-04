@@ -380,6 +380,24 @@ export function TravelStep({
 
         <div className="contracts-grid">
         <label>
+          Condición de pago
+          <select
+            value={state.paymentConditionType || ""}
+            onChange={(event) => {
+              const value = event.target.value;
+              setState((prev) => ({
+                ...prev,
+                paymentConditionType: value === "CASH" || value === "CREDIT" ? value : null,
+              }));
+            }}
+          >
+            <option value="">Seleccione una opción</option>
+            <option value="CASH">Contado</option>
+            <option value="CREDIT">Crédito</option>
+          </select>
+        </label>
+
+        <label>
           Monto total USD
           <input
             type="number"

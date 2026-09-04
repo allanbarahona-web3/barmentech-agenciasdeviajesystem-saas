@@ -8,6 +8,8 @@ export type CivilStatus = "Soltero" | "Casado" | "Divorciado" | "Viudo";
 
 export type PaymentFrequency = "QUINCENAL" | "MENSUAL";
 
+export type PaymentConditionType = "CASH" | "CREDIT";
+
 export type Companion = {
   id: string;
   selectedCustomerId?: string | null;
@@ -89,6 +91,7 @@ export type ContractFormState = {
   balanceAmount: string;
   installmentCount: string;
   paymentFrequency: PaymentFrequency;
+  paymentConditionType: PaymentConditionType | null;
   monthlyInstallmentAmount: string;
   lastInstallmentAmount: string;
   paymentDueDate: string;

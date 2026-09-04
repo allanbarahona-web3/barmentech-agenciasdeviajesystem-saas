@@ -23,6 +23,7 @@ import {
   applyMoneyDerivedValues
 } from "@/features/contracts-form/utils";
 import { toLocalDateIso } from "@/shared/regional";
+import { resolveArchivePaymentTerms } from "@/features/contracts-form/commercial-terms";
 import type { ContractFormState, IdType } from "@/features/contracts-form/types";
 import type { TravelPackage } from "@/lib/travel-packages-api";
 import { getContractDraft, reserveNextContractNumber, saveContractDraft, archiveContract } from "@/lib/contracts-api";
@@ -1049,6 +1050,14 @@ export function ContractsWizard({
       setStatus("Corrige las validaciones de fechas/itinerario antes de guardar.");
       return;
     }
+    const archivePaymentTerms = resolveArchivePaymentTerms(
+      state.paymentConditionType,
+      state.paymentDueDate,
+    );
+    if (!archivePaymentTerms.ok) {
+      setStatus(archivePaymentTerms.message);
+      return;
+    }
     console.log("====================================");
 console.log("🔍 DEBUG CAPACIDAD");
 console.log("activeDraftId:", activeDraftId);
@@ -1199,11 +1208,15 @@ console.log("====================================");
           };
         })
       );
-      const archiveState: ContractFormState = {
+      const resolvedArchiveState: ContractFormState = {
         ...state,
         minors: resolvedMinors,
       };
-      setState(archiveState);
+      setState(resolvedArchiveState);
+      const archiveState: ContractFormState = {
+        ...resolvedArchiveState,
+        paymentDueDate: archivePaymentTerms.paymentDueDate || "",
+      };
       const payloadJson = JSON.stringify(archiveState);
       console.log("====================================");
       console.log("📏 TAMAÑOS DE CAMPOS A ENVIAR:");
@@ -1232,6 +1245,7 @@ console.log("====================================");
         issuedAt: state.issuedAt,
         startDate: state.startDate,
         endDate: state.endDate,
+        paymentConditionType: archivePaymentTerms.paymentConditionType,
         payloadJson,
         contractHtml,
         documents: docs,

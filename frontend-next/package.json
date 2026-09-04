@@ -6,6 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "test:pending-payments": "node --experimental-strip-types tests/contract-reservation-review.test.mjs",
+    "test:contract-commercial-terms": "node --experimental-strip-types tests/contract-commercial-terms.test.mjs",
     "test:travel-fiscal-classification": "node --experimental-strip-types tests/travel-fiscal-classification.test.mjs",
     "test:fiscal-catalog-admin": "node --experimental-strip-types tests/fiscal-catalog-admin.test.mjs",
     "start": "next start",
