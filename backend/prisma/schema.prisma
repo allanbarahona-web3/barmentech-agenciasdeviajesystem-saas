@@ -237,58 +237,63 @@ model ContractNumber {
 }
 
 model Contract {
-  id                    String                   @id @default(cuid())
-  contractNumber        String                   @unique
-  destination           String
-  generatedByUserId     String
-  generatedByEmail      String
-  generatedByName       String
-  issuedAt              DateTime?
-  startDate             DateTime?
-  endDate               DateTime?
-  payload               Json
-  pdfObjectKey          String?
-  pdfFileName           String?
-  pdfMimeType           String?
-  pdfSize               Int?
-  createdAt             DateTime                 @default(now())
-  updatedAt             DateTime                 @updatedAt
-  clientId              String
-  status                String                   @default("PENDING_SIGNATURE")
-  signedPdfObjectKey    String?
-  signedPdfFileName     String?
-  signedPdfMimeType     String?
-  signedPdfSize         Int?
-  signedByName          String?
-  signedAt              DateTime?
-  signedClientIp        String?
-  signedUserAgent       String?
-  cancelledAt           DateTime?
-  htmlObjectKey         String?
-  signaturePngObjectKey String?
-  viewedAt              DateTime?
-  paymentReference      String                   @unique
-  contractType          String                   @default("CUSTOM")
-  travelPackageId       String?
-  participantCount      Int                      @default(1)
-  source                ContractSource           @default(SCHEDULED_TRIP)
-  tenantId              String
-  internalTripId        String?
-  billingCreditNotes    BillingCreditNote[]
-  billingInvoice        BillingInvoice?
-  billingPayments       BillingPayment[]
-  billingReceipts       BillingReceipt[]
-  client                Client                   @relation(fields: [clientId], references: [id])
-  internalTrip          InternalTrip?            @relation(fields: [internalTripId], references: [id])
-  tenant                Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  travelPackage         TravelPackage?           @relation(fields: [travelPackageId], references: [id])
-  documents             ContractDocument[]
-  signatureEvents       ContractSignatureEvent[]
-  usedTokens            ContractUsedToken[]
-  signingSessions       DocumentSigningSession[]
-  notes                 ContractNote[]
-  financePayments       Payment[]                @relation("ContractFinancePayments")
-  fiscalSnapshot        ContractFiscalSnapshot?
+  id                     String                   @id @default(cuid())
+  contractNumber         String                   @unique
+  destination            String
+  generatedByUserId      String
+  generatedByEmail       String
+  generatedByName        String
+  issuedAt               DateTime?
+  startDate              DateTime?
+  endDate                DateTime?
+  payload                Json
+  pdfObjectKey           String?
+  pdfFileName            String?
+  pdfMimeType            String?
+  pdfSize                Int?
+  createdAt              DateTime                 @default(now())
+  updatedAt              DateTime                 @updatedAt
+  clientId               String
+  status                 String                   @default("PENDING_SIGNATURE")
+  signedPdfObjectKey     String?
+  signedPdfFileName      String?
+  signedPdfMimeType      String?
+  signedPdfSize          Int?
+  signedByName           String?
+  signedAt               DateTime?
+  signedClientIp         String?
+  signedUserAgent        String?
+  cancelledAt            DateTime?
+  htmlObjectKey          String?
+  signaturePngObjectKey  String?
+  viewedAt               DateTime?
+  paymentReference       String                   @unique
+  contractType           String                   @default("CUSTOM")
+  travelPackageId        String?
+  participantCount       Int                      @default(1)
+  source                 ContractSource           @default(SCHEDULED_TRIP)
+  commercialTotal        Decimal?                 @db.Decimal(19, 5)
+  commercialCurrency     Currency?
+  paymentConditionType   PaymentConditionType?
+  paymentDueDate         DateTime?                @db.Date
+  commercialTaxTreatment PriceTaxTreatment?
+  tenantId               String
+  internalTripId         String?
+  billingCreditNotes     BillingCreditNote[]
+  billingInvoice         BillingInvoice?
+  billingPayments        BillingPayment[]
+  billingReceipts        BillingReceipt[]
+  client                 Client                   @relation(fields: [clientId], references: [id])
+  internalTrip           InternalTrip?            @relation(fields: [internalTripId], references: [id])
+  tenant                 Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  travelPackage          TravelPackage?           @relation(fields: [travelPackageId], references: [id])
+  documents              ContractDocument[]
+  signatureEvents        ContractSignatureEvent[]
+  usedTokens             ContractUsedToken[]
+  signingSessions        DocumentSigningSession[]
+  notes                  ContractNote[]
+  financePayments        Payment[]                @relation("ContractFinancePayments")
+  fiscalSnapshot         ContractFiscalSnapshot?
 
   @@unique([id, tenantId], map: "Contract_id_tenantId_key")
   @@index([clientId])
@@ -1359,6 +1364,11 @@ enum PaymentConditionType {
 enum PaymentTermUnit {
   DAYS
   MONTHS
+}
+
+enum PriceTaxTreatment {
+  TAX_INCLUDED
+  TAX_EXCLUDED
 }
 
 enum Currency {
