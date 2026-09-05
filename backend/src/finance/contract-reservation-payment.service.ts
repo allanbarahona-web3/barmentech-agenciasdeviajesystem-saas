@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import { Payment, PaymentPurpose, PaymentStatus, Prisma } from "@prisma/client";
+import { Payment, PaymentConditionType, PaymentPurpose, PaymentStatus, Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import {
   FINANCE_AUDIT_ACTIONS,
@@ -9,6 +9,11 @@ import {
   type FinanceActor,
 } from "./finance-audit";
 import { normalizeFinancialPaymentMethod } from "./finance-payment-method";
+import {
+  INITIAL_CONTRACT_PAYMENT_PURPOSES,
+  resolveInitialContractPayment,
+  type InitialContractPayment,
+} from "./contract-initial-payment";
 
 const ACTIVE_STATUSES = [
   PaymentStatus.PENDING_VERIFICATION,
@@ -25,6 +30,8 @@ export interface ContractReservationPaymentCommand {
     createdAt: Date;
     paymentReference: string;
     paymentMethod: string;
+    commercialTotal: Prisma.Decimal | null;
+    paymentConditionType: PaymentConditionType | null;
     payload: unknown;
     client: { fullName: string };
     documents: Array<{
@@ -44,12 +51,15 @@ export class ContractReservationPaymentService {
 
   async submit(command: ContractReservationPaymentCommand): Promise<Payment | null> {
     const paymentMethod = reservationPaymentMethod(command.contract.paymentMethod);
-    const reservationAmount = reservationAmountOf(command.contract.payload);
-    if (reservationAmount.lessThanOrEqualTo(0)) return null;
+    const initialPayment = resolveInitialContractPayment({
+      paymentConditionType: command.contract.paymentConditionType,
+      commercialTotal: command.contract.commercialTotal,
+      reservationAmount: reservationAmountOf(command.contract.payload),
+    });
 
     const currencyCode = reservationCurrencyOf(command.contract.id, command.contract.payload);
     const existing = await this.findActive(command.contract.tenantId, command.contract.id);
-    if (existing) return existing;
+    if (existing) return existingInitialPayment(existing, initialPayment);
 
     try {
       return await this.prisma.$transaction(async (tx) => {
@@ -57,12 +67,12 @@ export class ContractReservationPaymentService {
           where: {
             tenantId: command.contract.tenantId,
             contractId: command.contract.id,
-            purpose: PaymentPurpose.CONTRACT_RESERVATION,
+            purpose: { in: [...INITIAL_CONTRACT_PAYMENT_PURPOSES] },
             status: { in: [...ACTIVE_STATUSES] },
           },
           orderBy: { createdAt: "asc" },
         });
-        if (winner) return winner;
+        if (winner) return existingInitialPayment(winner, initialPayment);
 
         const payment = await tx.payment.create({
           data: {
@@ -73,14 +83,14 @@ export class ContractReservationPaymentService {
             contractId: command.contract.id,
             payerDisplayName: requiredName(command.contract.client.fullName),
             currencyCode,
-            receivedAmount: reservationAmount,
+            receivedAmount: initialPayment.amount,
             availableAmount: new Prisma.Decimal(0),
             // The archive timestamp is the canonical submission/report timestamp; no payment receipt date is inferred.
             receivedAt: command.contract.createdAt,
             paymentMethod,
             externalReference: nonEmpty(command.contract.paymentReference),
             description: null,
-            purpose: PaymentPurpose.CONTRACT_RESERVATION,
+            purpose: initialPayment.purpose,
             status: PaymentStatus.PENDING_VERIFICATION,
             cancelledAt: null,
           },
@@ -103,7 +113,7 @@ export class ContractReservationPaymentService {
             tenantId: command.contract.tenantId,
             entityType: FINANCE_AUDIT_ENTITY_TYPES.PAYMENT,
             entityId: payment.id,
-            action: FINANCE_AUDIT_ACTIONS.RESERVATION_SUBMITTED,
+            action: initialPaymentAuditAction(initialPayment.purpose),
             actor: command.actor,
             occurredAt: payment.createdAt,
             afterJson: {
@@ -121,7 +131,7 @@ export class ContractReservationPaymentService {
     } catch (error) {
       if (!isP2002(error)) throw error;
       const winner = await this.findActive(command.contract.tenantId, command.contract.id);
-      if (winner) return winner;
+      if (winner) return existingInitialPayment(winner, initialPayment);
       throw error;
     }
   }
@@ -131,7 +141,7 @@ export class ContractReservationPaymentService {
       where: {
         tenantId,
         contractId,
-        purpose: PaymentPurpose.CONTRACT_RESERVATION,
+        purpose: { in: [...INITIAL_CONTRACT_PAYMENT_PURPOSES] },
         status: { in: [...ACTIVE_STATUSES] },
       },
       orderBy: { createdAt: "asc" },
@@ -139,16 +149,24 @@ export class ContractReservationPaymentService {
   }
 }
 
+function existingInitialPayment(payment: Payment, initial: InitialContractPayment): Payment {
+  if (payment.purpose !== initial.purpose || !payment.receivedAmount.equals(initial.amount)) {
+    throw new Error("CONTRACT_INITIAL_PAYMENT_CONFLICT");
+  }
+  return payment;
+}
+
+function initialPaymentAuditAction(purpose: PaymentPurpose): string {
+  return purpose === PaymentPurpose.CONTRACT_PAYMENT
+    ? FINANCE_AUDIT_ACTIONS.CONTRACT_PAYMENT_SUBMITTED
+    : FINANCE_AUDIT_ACTIONS.RESERVATION_SUBMITTED;
+}
+
 function reservationAmountOf(payload: unknown): Prisma.Decimal {
   const value = payload && typeof payload === "object" && !Array.isArray(payload)
     ? (payload as Record<string, unknown>).reservationAmount
     : null;
-  try {
-    const amount = new Prisma.Decimal(value as Prisma.Decimal.Value);
-    return amount.isFinite() && amount.decimalPlaces() <= 5 ? amount : new Prisma.Decimal(0);
-  } catch {
-    return new Prisma.Decimal(0);
-  }
+  return value as Prisma.Decimal;
 }
 
 function reservationCurrencyOf(contractId: string, payload: unknown): "CRC" | "USD" {

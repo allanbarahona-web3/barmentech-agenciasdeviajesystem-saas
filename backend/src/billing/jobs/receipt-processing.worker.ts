@@ -60,6 +60,8 @@ export class ReceiptProcessingWorker implements OnModuleInit {
           clientId: true,
           createdAt: true,
           paymentReference: true,
+          commercialTotal: true,
+          paymentConditionType: true,
           payload: true,
           generatedByUserId: true,
           generatedByEmail: true,

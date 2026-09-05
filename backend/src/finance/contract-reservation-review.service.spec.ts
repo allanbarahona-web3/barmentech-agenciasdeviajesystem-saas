@@ -57,6 +57,52 @@ describe("ContractReservationReviewService", () => {
     expect(result.availableAmount.toFixed()).toBe("0");
   });
 
+  it("approves a full initial Contract payment through the same obligation and allocation transaction", async () => {
+    const initial = pendingPayment(PaymentPurpose.CONTRACT_PAYMENT, "1350");
+    const final = allocatedPayment(PaymentPurpose.CONTRACT_PAYMENT, "1350");
+    const c = context(initial, final);
+
+    const result = await c.service.approve("tenant-1", "payment-1", actor);
+
+    expect(c.contracts.approveInTransaction).toHaveBeenCalledWith(c.tx, expect.objectContaining({ contractId: "contract-1" }));
+    expect(c.commercialObligationAllocations.allocateInTransaction).toHaveBeenCalledWith(c.tx, expect.objectContaining({
+      amount: new Prisma.Decimal("1350"),
+      allocationDeduplicationKey: "contract-payment:payment-1:obligation-1",
+    }));
+    expect(c.tx.billingAuditLog.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ action: "CONTRACT_PAYMENT_APPROVED" }),
+    }));
+    expect(result).toMatchObject({ purpose: PaymentPurpose.CONTRACT_PAYMENT, status: PaymentStatus.FULLY_ALLOCATED });
+  });
+
+  it("keeps CREDIT approval allocation equal to its reservation amount", async () => {
+    const initial = pendingPayment(PaymentPurpose.CONTRACT_RESERVATION, "350");
+    const final = allocatedPayment(PaymentPurpose.CONTRACT_RESERVATION, "350");
+    const c = context(initial, final);
+
+    await c.service.approve("tenant-1", "payment-1", actor);
+
+    expect(c.commercialObligationAllocations.allocateInTransaction).toHaveBeenCalledWith(c.tx, expect.objectContaining({
+      amount: new Prisma.Decimal("350"),
+      allocationDeduplicationKey: "contract-reservation:payment-1:obligation-1",
+    }));
+  });
+
+  it("rejects a full initial Contract payment without Contract approval or allocation", async () => {
+    const rejected = { ...pendingPayment(PaymentPurpose.CONTRACT_PAYMENT, "1350"), status: PaymentStatus.REJECTED, rejectionReason: "No coincide", reviewedAt: new Date(), reviewedByUserId: "reviewer-1", reviewedByName: "Reviewer" };
+    const c = context(pendingPayment(PaymentPurpose.CONTRACT_PAYMENT, "1350"), rejected);
+
+    await expect(c.service.reject("tenant-1", "payment-1", "No coincide", actor)).resolves.toMatchObject({
+      purpose: PaymentPurpose.CONTRACT_PAYMENT,
+      status: PaymentStatus.REJECTED,
+    });
+    expect(c.contracts.approveInTransaction).not.toHaveBeenCalled();
+    expect(c.commercialObligationAllocations.allocateInTransaction).not.toHaveBeenCalled();
+    expect(c.tx.billingAuditLog.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ action: "CONTRACT_PAYMENT_REJECTED" }),
+    }));
+  });
+
   it("rolls back the approval callback when Contract obligation activation fails", async () => {
     const c = context();
     c.contracts.approveInTransaction.mockRejectedValueOnce(
@@ -103,7 +149,7 @@ describe("ContractReservationReviewService", () => {
     await expect(c.service.listPending("tenant-1", 200)).resolves.toEqual({ payments: [] });
     expect(c.prisma.payment.findMany).toHaveBeenCalledTimes(1);
     expect(c.prisma.payment.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: { tenantId: "tenant-1", purpose: PaymentPurpose.CONTRACT_RESERVATION, status: PaymentStatus.PENDING_VERIFICATION },
+      where: { tenantId: "tenant-1", purpose: { in: [PaymentPurpose.CONTRACT_RESERVATION, PaymentPurpose.CONTRACT_PAYMENT] }, status: PaymentStatus.PENDING_VERIFICATION },
       take: 200,
       select: expect.objectContaining({ evidence: expect.any(Object), contract: expect.any(Object) }),
     }));
@@ -129,26 +175,37 @@ describe("ContractReservationReviewService", () => {
 
 const actor = { userId: "reviewer-1", name: "Reviewer" };
 
-function pendingPayment() {
+function pendingPayment(
+  purpose: PaymentPurpose = PaymentPurpose.CONTRACT_RESERVATION,
+  amount = "125.5",
+) {
   return {
-    id: "payment-1", tenantId: "tenant-1", purpose: PaymentPurpose.CONTRACT_RESERVATION,
+    id: "payment-1", tenantId: "tenant-1", purpose,
     contractId: "contract-1", status: PaymentStatus.PENDING_VERIFICATION,
-    receivedAmount: new Prisma.Decimal("125.5"), availableAmount: new Prisma.Decimal(0),
+    receivedAmount: new Prisma.Decimal(amount), availableAmount: new Prisma.Decimal(0),
     receiptNumber: null, reviewedAt: null, reviewedByUserId: null, reviewedByName: null,
     rejectionReason: null,
   };
 }
 
-function approvedPayment(status: PaymentStatus = PaymentStatus.RECEIVED, availableAmount = "125.5") {
+function approvedPayment(
+  status: PaymentStatus = PaymentStatus.RECEIVED,
+  availableAmount = "125.5",
+  purpose: PaymentPurpose = PaymentPurpose.CONTRACT_RESERVATION,
+  amount = "125.5",
+) {
   return {
-    ...pendingPayment(), status, receiptNumber: "RCP-2026-000007",
+    ...pendingPayment(purpose, amount), status, receiptNumber: "RCP-2026-000007",
     availableAmount: new Prisma.Decimal(availableAmount), reviewedAt: new Date(),
     reviewedByUserId: "reviewer-1", reviewedByName: "Reviewer",
   };
 }
 
-function allocatedPayment() {
-  return approvedPayment(PaymentStatus.FULLY_ALLOCATED, "0");
+function allocatedPayment(
+  purpose: PaymentPurpose = PaymentPurpose.CONTRACT_RESERVATION,
+  amount = "125.5",
+) {
+  return approvedPayment(PaymentStatus.FULLY_ALLOCATED, "0", purpose, amount);
 }
 
 function context(initial: any = pendingPayment(), final: any = allocatedPayment()) {

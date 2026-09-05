@@ -16,6 +16,9 @@ import {
   financeMoney,
   type FinanceActor,
 } from "./finance-audit";
+import {
+  INITIAL_CONTRACT_PAYMENT_PURPOSES,
+} from "./contract-initial-payment";
 import { FINANCE_RECEIPT_SEQUENCE_KEY, financeReceiptNumber } from "./payment-registration.service";
 
 const APPROVED_PAYMENT_STATUSES = new Set<PaymentStatus>([
@@ -37,7 +40,7 @@ export class ContractReservationReviewService {
   async approve(tenantId: string, paymentId: string, actor: FinanceActor): Promise<Payment> {
     return this.prisma.$transaction(async (tx) => {
       const payment = await this.lockPayment(tx, tenantId, paymentId);
-      this.validateReservationIdentity(payment);
+      this.validateInitialPaymentIdentity(payment);
       if (APPROVED_PAYMENT_STATUSES.has(payment.status)) {
         if (approvedState(payment)) return payment;
         throw new ConflictException("CONTRACT_RESERVATION_REVIEW_STATE_CONFLICT");
@@ -101,7 +104,7 @@ export class ContractReservationReviewService {
           tenantId,
           entityType: FINANCE_AUDIT_ENTITY_TYPES.PAYMENT,
           entityId: allocated.id,
-          action: FINANCE_AUDIT_ACTIONS.RESERVATION_APPROVED,
+          action: initialPaymentAuditAction(payment.purpose, "APPROVED"),
           actor,
           occurredAt: reviewedAt,
           beforeJson: { status: payment.status, availableAmount: financeMoney(payment.availableAmount), receiptNumber: null },
@@ -119,7 +122,7 @@ export class ContractReservationReviewService {
     }
     return this.prisma.$transaction(async (tx) => {
       const payment = await this.lockPayment(tx, tenantId, paymentId);
-      this.validateReservationIdentity(payment);
+      this.validateInitialPaymentIdentity(payment);
       if (payment.status === PaymentStatus.REJECTED) {
         if (rejectedState(payment, rejectionReason)) return payment;
         throw new ConflictException("CONTRACT_RESERVATION_REVIEW_STATE_CONFLICT");
@@ -155,7 +158,7 @@ export class ContractReservationReviewService {
           tenantId,
           entityType: FINANCE_AUDIT_ENTITY_TYPES.PAYMENT,
           entityId: rejected.id,
-          action: FINANCE_AUDIT_ACTIONS.RESERVATION_REJECTED,
+          action: initialPaymentAuditAction(payment.purpose, "REJECTED"),
           actor,
           occurredAt: reviewedAt,
           beforeJson: { status: payment.status },
@@ -169,7 +172,7 @@ export class ContractReservationReviewService {
   async listPending(tenantId: string, limit = 100) {
     const take = requirePendingListLimit(limit);
     const payments = await this.prisma.payment.findMany({
-      where: { tenantId, purpose: PaymentPurpose.CONTRACT_RESERVATION, status: PaymentStatus.PENDING_VERIFICATION },
+      where: { tenantId, purpose: { in: [...INITIAL_CONTRACT_PAYMENT_PURPOSES] }, status: PaymentStatus.PENDING_VERIFICATION },
       orderBy: [{ receivedAt: "asc" }, { id: "asc" }],
       take,
       select: {
@@ -196,7 +199,7 @@ export class ContractReservationReviewService {
         id: evidenceId,
         paymentId,
         tenantId,
-        payment: { tenantId, purpose: PaymentPurpose.CONTRACT_RESERVATION },
+        payment: { tenantId, purpose: { in: [...INITIAL_CONTRACT_PAYMENT_PURPOSES] } },
       },
       select: { id: true, originalFileName: true, mimeType: true, size: true, objectKey: true },
     });
@@ -222,8 +225,8 @@ export class ContractReservationReviewService {
     return payment;
   }
 
-  private validateReservationIdentity(payment: Payment): void {
-    if (payment.purpose !== PaymentPurpose.CONTRACT_RESERVATION || !payment.contractId) {
+  private validateInitialPaymentIdentity(payment: Payment): void {
+    if (!INITIAL_CONTRACT_PAYMENT_PURPOSES.includes(payment.purpose as typeof INITIAL_CONTRACT_PAYMENT_PURPOSES[number]) || !payment.contractId) {
       throw new BadRequestException("CONTRACT_RESERVATION_PAYMENT_INVALID");
     }
   }
@@ -243,7 +246,7 @@ export class ContractReservationReviewService {
         paymentId: input.payment.id,
         commercialObligationId: input.commercialObligationId,
         amount: input.payment.receivedAmount,
-        allocationDeduplicationKey: `contract-reservation:${input.payment.id}:${input.commercialObligationId}`,
+        allocationDeduplicationKey: `${initialPaymentAllocationKey(input.payment.purpose)}:${input.payment.id}:${input.commercialObligationId}`,
         actor: input.actor,
       });
     } catch (error) {
@@ -256,6 +259,26 @@ export class ContractReservationReviewService {
       throw error;
     }
   }
+}
+
+function initialPaymentAuditAction(
+  purpose: PaymentPurpose,
+  decision: "APPROVED" | "REJECTED",
+): string {
+  if (purpose === PaymentPurpose.CONTRACT_PAYMENT) {
+    return decision === "APPROVED"
+      ? FINANCE_AUDIT_ACTIONS.CONTRACT_PAYMENT_APPROVED
+      : FINANCE_AUDIT_ACTIONS.CONTRACT_PAYMENT_REJECTED;
+  }
+  return decision === "APPROVED"
+    ? FINANCE_AUDIT_ACTIONS.RESERVATION_APPROVED
+    : FINANCE_AUDIT_ACTIONS.RESERVATION_REJECTED;
+}
+
+function initialPaymentAllocationKey(purpose: PaymentPurpose): string {
+  return purpose === PaymentPurpose.CONTRACT_PAYMENT
+    ? "contract-payment"
+    : "contract-reservation";
 }
 
 function validatePendingState(payment: Payment): void {

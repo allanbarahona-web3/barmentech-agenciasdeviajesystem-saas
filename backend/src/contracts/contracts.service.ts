@@ -54,6 +54,7 @@ import type { ArchiveProcessingJobPayload } from "./jobs/archive-processing-job.
 import { PACKAGE_COMPLETED_EVENT_VERSION } from "./jobs/package-completed-job.constants";
 import { PackageCompletedDispatcher } from "./jobs/package-completed.dispatcher";
 import { normalizeFinancialPaymentMethod } from "../finance/finance-payment-method";
+import { resolveInitialContractPayment } from "../finance/contract-initial-payment";
 
 const CONTRACT_STATUS_PENDING_PAYMENT_RESERVE = "PENDING_PAYMENT_RESERVE";
 const CONTRACT_STATUS_RESERVE_IN_REVIEW = "RESERVE_IN_REVIEW";
@@ -1544,6 +1545,17 @@ export class ContractsService {
     const paymentConditionType = requirePaymentConditionType(
       dto.paymentConditionType,
     );
+    try {
+      resolveInitialContractPayment({
+        paymentConditionType,
+        commercialTotal,
+        reservationAmount: payloadRecord.reservationAmount,
+      });
+    } catch (error) {
+      throw new BadRequestException(
+        error instanceof Error ? error.message : "CONTRACT_INITIAL_PAYMENT_INVALID",
+      );
+    }
     const paymentDueDate = requireCommercialPaymentDueDate(
       paymentConditionType,
       payloadRecord.paymentDueDate,

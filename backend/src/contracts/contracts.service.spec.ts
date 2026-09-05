@@ -477,7 +477,7 @@ describe("ContractsService archive customer identity resolution", () => {
           selectedCustomerId: holder.id,
           clientIdType: holder.idType,
           totalAmount: "1000.12345",
-          reservationAmount: "50.00",
+          reservationAmount: "0",
           reservationCurrencyCode: "USD",
           commercialTaxTreatment: "TAX_EXCLUDED",
           companions: [companion],
@@ -506,7 +506,7 @@ describe("ContractsService archive customer identity resolution", () => {
           commercialTaxTreatment: "TAX_INCLUDED",
           payload: expect.objectContaining({
             selectedCustomerId: holder.id,
-            reservationAmount: "50.00",
+            reservationAmount: "0",
             reservationCurrencyCode: "CRC",
             paymentMethod: "CARD",
             paymentConditionType: "CASH",
@@ -580,7 +580,7 @@ describe("ContractsService archive customer identity resolution", () => {
           clientIdType: holder.idType,
           travelPackageId: "package-1",
           totalAmount: "750.00",
-          reservationAmount: "75.00",
+          reservationAmount: "0",
           reservationCurrencyCode: "CRC",
         }),
       },
@@ -597,7 +597,7 @@ describe("ContractsService archive customer identity resolution", () => {
         travelPackageId: "package-1",
         commercialCurrency: "USD",
         payload: expect.objectContaining({
-          reservationAmount: "75.00",
+          reservationAmount: "0",
           reservationCurrencyCode: "USD",
         }),
       }),
@@ -622,7 +622,7 @@ describe("ContractsService archive customer identity resolution", () => {
           selectedCustomerId: holder.id,
           clientIdType: holder.idType,
           totalAmount: "250.00",
-          reservationAmount: "25.00",
+          reservationAmount: "0",
           reservationCurrencyCode: "USD",
         }),
       },
@@ -671,6 +671,7 @@ describe("ContractsService archive customer identity resolution", () => {
           selectedCustomerId: holder.id,
           clientIdType: holder.idType,
           totalAmount: "900.50",
+          reservationAmount: "100.00",
           paymentDueDate: "2026-12-10",
         }),
       },
@@ -704,6 +705,7 @@ describe("ContractsService archive customer identity resolution", () => {
           selectedCustomerId: holder.id,
           clientIdType: holder.idType,
           totalAmount: "900.50",
+          reservationAmount: "100.00",
         }),
       },
       [],
@@ -737,6 +739,62 @@ describe("ContractsService archive customer identity resolution", () => {
       expect(contractCreate).not.toHaveBeenCalled();
     },
   );
+
+  it.each([
+    ["missing", undefined, "CONTRACT_CREDIT_RESERVATION_REQUIRED"],
+    ["zero", "0", "CONTRACT_CREDIT_RESERVATION_REQUIRED"],
+    ["equal to total", "100", "CONTRACT_CREDIT_RESERVATION_MUST_BE_LESS_THAN_TOTAL"],
+    ["greater than total", "100.01", "CONTRACT_CREDIT_RESERVATION_MUST_BE_LESS_THAN_TOTAL"],
+  ])("rejects CREDIT with a %s reservation", async (_label, reservationAmount, errorCode) => {
+    const { service, contractCreate } = createArchiveService([holder]);
+    await expect(service.archiveContract(
+      { id: "agent-1", email: "agent@example.com", fullName: "Agent", tenantId: "tenant-1" },
+      {
+        contractNumber: "CT-CREDIT-RESERVATION",
+        clientFullName: holder.fullName,
+        clientIdNumber: holder.idNumber,
+        clientEmail: "holder@example.com",
+        destination: "Destination",
+        internalTripId: "internal-trip-1",
+        paymentConditionType: "CREDIT",
+        paymentMethod: "BANK_TRANSFER",
+        payloadJson: JSON.stringify({
+          selectedCustomerId: holder.id,
+          clientIdType: holder.idType,
+          totalAmount: "100",
+          reservationAmount,
+          paymentDueDate: "2026-12-10",
+        }),
+      },
+      [],
+    )).rejects.toThrow(errorCode);
+    expect(contractCreate).not.toHaveBeenCalled();
+  });
+
+  it("rejects CASH with a positive reservation instead of creating a partial payment", async () => {
+    const { service, contractCreate } = createArchiveService([holder]);
+    await expect(service.archiveContract(
+      { id: "agent-1", email: "agent@example.com", fullName: "Agent", tenantId: "tenant-1" },
+      {
+        contractNumber: "CT-CASH-PARTIAL",
+        clientFullName: holder.fullName,
+        clientIdNumber: holder.idNumber,
+        clientEmail: "holder@example.com",
+        destination: "Destination",
+        internalTripId: "internal-trip-1",
+        paymentConditionType: "CASH",
+        paymentMethod: "CARD",
+        payloadJson: JSON.stringify({
+          selectedCustomerId: holder.id,
+          clientIdType: holder.idType,
+          totalAmount: "100",
+          reservationAmount: "1",
+        }),
+      },
+      [],
+    )).rejects.toThrow("CONTRACT_CASH_RESERVATION_NOT_ALLOWED");
+    expect(contractCreate).not.toHaveBeenCalled();
+  });
 
   it("resolves existing minors without retaining an archive-time Customer creation path", async () => {
     const { service, client } = createService([holder, minor]);

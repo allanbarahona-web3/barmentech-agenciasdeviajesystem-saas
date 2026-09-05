@@ -46,6 +46,44 @@ describe("ContractReservationPaymentService", () => {
     },
   );
 
+  it("creates the full CASH Contract payment independently from payment method", async () => {
+    const c = context();
+    await c.service.submit(command({
+      paymentMethod: "CARD",
+      paymentConditionType: "CASH",
+      commercialTotal: new Prisma.Decimal("1350"),
+      payload: { reservationAmount: 0, reservationCurrencyCode: "CRC" },
+    }));
+
+    const data = c.tx.payment.create.mock.calls[0][0].data;
+    expect(data).toMatchObject({
+      purpose: PaymentPurpose.CONTRACT_PAYMENT,
+      paymentMethod: "CARD",
+      status: PaymentStatus.PENDING_VERIFICATION,
+      availableAmount: new Prisma.Decimal(0),
+      receiptNumber: null,
+    });
+    expect(data.receivedAmount.toFixed()).toBe("1350");
+    expect(c.tx.billingAuditLog.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ action: "CONTRACT_PAYMENT_SUBMITTED" }),
+    }));
+  });
+
+  it("preserves the CREDIT reservation amount as the initial payment instead of the commercial total", async () => {
+    const c = context();
+    await c.service.submit(command({
+      paymentMethod: "BANK_TRANSFER",
+      commercialTotal: new Prisma.Decimal("1350"),
+      payload: { reservationAmount: "350", reservationCurrencyCode: "CRC" },
+    }));
+
+    const data = c.tx.payment.create.mock.calls[0][0].data;
+    expect(data.purpose).toBe(PaymentPurpose.CONTRACT_RESERVATION);
+    expect(data.receivedAmount.toFixed()).toBe("350");
+    expect(data.status).toBe(PaymentStatus.PENDING_VERIFICATION);
+    expect(data.availableAmount.toFixed()).toBe("0");
+  });
+
   it("returns the active reservation on retry without duplicate payment, evidence, or audit", async () => {
     const existing = payment();
     const c = context(existing);
@@ -56,10 +94,36 @@ describe("ContractReservationPaymentService", () => {
     expect(c.tx.billingAuditLog.create).not.toHaveBeenCalled();
   });
 
-  it("preserves zero reservation behavior without creating finance money", async () => {
+  it.each([
+    [undefined, "CONTRACT_CREDIT_RESERVATION_REQUIRED"],
+    [0, "CONTRACT_CREDIT_RESERVATION_REQUIRED"],
+    ["125.50", "CONTRACT_CREDIT_RESERVATION_MUST_BE_LESS_THAN_TOTAL"],
+  ])("rejects invalid CREDIT reservation %p", async (reservationAmount, errorCode) => {
     const c = context();
-    await expect(c.service.submit(command({ payload: { reservationAmount: 0 } }))).resolves.toBeNull();
+    await expect(c.service.submit(command({
+      commercialTotal: new Prisma.Decimal("125.50"),
+      payload: { reservationAmount, reservationCurrencyCode: "CRC" },
+    }))).rejects.toThrow(errorCode);
     expect(c.prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("rejects a positive CASH reservation before creating a partial payment", async () => {
+    const c = context();
+    await expect(c.service.submit(command({
+      paymentConditionType: "CASH",
+      payload: { reservationAmount: "1", reservationCurrencyCode: "CRC" },
+    }))).rejects.toThrow("CONTRACT_CASH_RESERVATION_NOT_ALLOWED");
+    expect(c.prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("fails safely when an existing initial payment conflicts with current purpose or amount", async () => {
+    const c = context(payment());
+    await expect(c.service.submit(command({
+      paymentConditionType: "CASH",
+      commercialTotal: new Prisma.Decimal("125.50"),
+      payload: { reservationAmount: 0, reservationCurrencyCode: "CRC" },
+    }))).rejects.toThrow("CONTRACT_INITIAL_PAYMENT_CONFLICT");
+    expect(c.tx.payment.create).not.toHaveBeenCalled();
   });
 
   it("does not turn unrelated Contract documents into payment evidence", async () => {
@@ -81,6 +145,8 @@ function command(overrides: Record<string, unknown> = {}) {
     contract: {
       id: "contract-1", tenantId: "tenant-1", clientId: "customer-1", createdAt,
       paymentMethod: "BANK_TRANSFER",
+      commercialTotal: new Prisma.Decimal("500"),
+      paymentConditionType: "CREDIT",
       paymentReference: "PAY-123", payload: { reservationAmount: "125.50", reservationCurrencyCode: "CRC" },
       client: { fullName: "Ada Client" },
       documents: [{ kind: "RESERVATION", objectKey: "contracts/receipt.pdf", originalFileName: "comprobante.pdf", mimeType: "application/pdf", size: 100 }],
