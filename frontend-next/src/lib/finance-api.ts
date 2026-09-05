@@ -10,6 +10,53 @@ export type AccountReceivableStatus =
 
 export type FinanceCurrency = 'CRC' | 'USD';
 
+export type CommercialObligationStatus =
+  | 'OPEN'
+  | 'PARTIALLY_SETTLED'
+  | 'SETTLED'
+  | 'CANCELLED';
+
+export type ContractCommercialObligation = {
+  id: string;
+  currencyCode: FinanceCurrency;
+  originalAmount: string;
+  outstandingAmount: string;
+  status: CommercialObligationStatus;
+  dueDate: string | null;
+  settledAt: string | null;
+};
+
+export type ContractCommercialObligationResult = {
+  contractId: string;
+  commercialObligation: ContractCommercialObligation | null;
+  payable: boolean;
+};
+
+export type RegisterContractInstallmentInput = {
+  registrationDeduplicationKey: string;
+  amount: string;
+  receivedAt: string;
+  paymentMethod: FinancePaymentMethod;
+  externalReference?: string;
+  description?: string;
+};
+
+export type RegisterContractInstallmentResult = {
+  payment: {
+    id: string;
+    receiptNumber: string;
+    amount: string;
+    currencyCode: FinanceCurrency;
+    paymentMethod: FinancePaymentMethod;
+    status: PaymentStatus;
+  };
+  obligation: {
+    id: string;
+    outstandingAmount: string;
+    status: CommercialObligationStatus;
+  };
+};
+
 export type ContractReservationEvidence = {
   id: string;
   originalFileName: string;
@@ -349,6 +396,15 @@ const ERROR_MESSAGES: Record<string, string> = {
   CONTRACT_RESERVATION_PENDING_STATE_INVALID: 'El pago pendiente ya no tiene un estado válido para revisión.',
   CONTRACT_RESERVATION_EVIDENCE_NOT_FOUND: 'El comprobante ya no está disponible.',
   CONTRACT_RESERVATION_CAPACITY_UNAVAILABLE: 'Ya no hay capacidad suficiente para aprobar esta reserva.',
+  CONTRACT_INSTALLMENT_PAYMENT_METHOD_INVALID: 'Método de pago inválido.',
+  CONTRACT_INSTALLMENT_AMOUNT_INVALID: 'El monto del abono no es válido.',
+  CONTRACT_INSTALLMENT_AMOUNT_EXCEEDS_OUTSTANDING: 'El abono no puede superar el saldo pendiente.',
+  CONTRACT_INSTALLMENT_CONTRACT_STATE_CONFLICT: 'El contrato no permite registrar abonos en su estado actual.',
+  CONTRACT_INSTALLMENT_OBLIGATION_NOT_FOUND: 'No se encontró una obligación financiera para este contrato.',
+  CONTRACT_INSTALLMENT_OBLIGATION_STATE_CONFLICT: 'La obligación financiera ya no admite abonos.',
+  CONTRACT_INSTALLMENT_CUSTOMER_MISMATCH: 'La obligación financiera no coincide con el cliente del contrato.',
+  CONTRACT_INSTALLMENT_CURRENCY_MISMATCH: 'La moneda de la obligación no coincide con el contrato.',
+  CONTRACT_INSTALLMENT_CONFLICT: 'El abono no pudo registrarse por un conflicto financiero.',
 };
 
 function queryString(params: Record<string, unknown>): string {
@@ -436,6 +492,26 @@ export function listPayments(
 
 export function getPayment(id: string, signal?: AbortSignal): Promise<PaymentDetail> {
   return request<PaymentDetail>(`/finance/payments/${encodeURIComponent(id)}`, signal);
+}
+
+export function getContractCommercialObligation(
+  contractId: string,
+  signal?: AbortSignal,
+): Promise<ContractCommercialObligationResult> {
+  return request<ContractCommercialObligationResult>(
+    `/finance/contracts/${encodeURIComponent(contractId)}/commercial-obligation`,
+    signal,
+  );
+}
+
+export function registerContractInstallment(
+  contractId: string,
+  input: RegisterContractInstallmentInput,
+): Promise<RegisterContractInstallmentResult> {
+  return post<RegisterContractInstallmentResult>(
+    `/finance/contracts/${encodeURIComponent(contractId)}/installments`,
+    input,
+  );
 }
 
 export async function downloadPaymentReceipt(paymentId: string): Promise<{ blob: Blob; fileName: string }> {
