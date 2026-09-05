@@ -53,6 +53,7 @@ import {
 import type { ArchiveProcessingJobPayload } from "./jobs/archive-processing-job.types";
 import { PACKAGE_COMPLETED_EVENT_VERSION } from "./jobs/package-completed-job.constants";
 import { PackageCompletedDispatcher } from "./jobs/package-completed.dispatcher";
+import { normalizeFinancialPaymentMethod } from "../finance/finance-payment-method";
 
 const CONTRACT_STATUS_PENDING_PAYMENT_RESERVE = "PENDING_PAYMENT_RESERVE";
 const CONTRACT_STATUS_RESERVE_IN_REVIEW = "RESERVE_IN_REVIEW";
@@ -1535,6 +1536,10 @@ export class ContractsService {
       payload && typeof payload === "object" && !Array.isArray(payload)
         ? (payload as Record<string, unknown>)
         : {};
+    const paymentMethod = normalizeFinancialPaymentMethod(dto.paymentMethod);
+    if (!paymentMethod) {
+      throw new BadRequestException("CONTRACT_RESERVATION_PAYMENT_METHOD_INVALID");
+    }
     const commercialTotal = requireCommercialTotal(payloadRecord.totalAmount);
     const paymentConditionType = requirePaymentConditionType(
       dto.paymentConditionType,
@@ -1644,6 +1649,7 @@ export class ContractsService {
       ...payloadRecord,
       travelPackageId,
       reservationCurrencyCode: authoritativeTravelCurrency,
+      paymentMethod,
       paymentConditionType,
       paymentDueDate: paymentDueDate?.toISOString().slice(0, 10) ?? null,
       commercialTaxTreatment: PriceTaxTreatment.TAX_INCLUDED,

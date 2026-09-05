@@ -82,7 +82,10 @@ export class ReceiptProcessingWorker implements OnModuleInit {
       }
 
       await this.contractReservationPayments.submit({
-        contract,
+        contract: {
+          ...contract,
+          paymentMethod: reservationPaymentMethodOf(contract.payload),
+        },
         actor: { userId: contract.generatedByUserId, name: contract.generatedByName },
       });
       return;
@@ -90,4 +93,11 @@ export class ReceiptProcessingWorker implements OnModuleInit {
 
     throw new Error(`Unsupported billing job: ${job.name}.`);
   }
+}
+
+function reservationPaymentMethodOf(payload: unknown): string {
+  const value = payload && typeof payload === "object" && !Array.isArray(payload)
+    ? (payload as Record<string, unknown>).paymentMethod
+    : undefined;
+  return typeof value === "string" ? value : "";
 }

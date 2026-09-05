@@ -472,6 +472,7 @@ describe("ContractsService archive customer identity resolution", () => {
         clientEmail: "holder@example.com",
         destination: "Destination",
         paymentConditionType: "CASH",
+        paymentMethod: "CARD",
         payloadJson: JSON.stringify({
           selectedCustomerId: holder.id,
           clientIdType: holder.idType,
@@ -507,6 +508,7 @@ describe("ContractsService archive customer identity resolution", () => {
             selectedCustomerId: holder.id,
             reservationAmount: "50.00",
             reservationCurrencyCode: "CRC",
+            paymentMethod: "CARD",
             paymentConditionType: "CASH",
             paymentDueDate: null,
             commercialTaxTreatment: "TAX_INCLUDED",
@@ -533,6 +535,31 @@ describe("ContractsService archive customer identity resolution", () => {
     expect(commercialObligationCreateMany).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["missing", undefined],
+    ["unsupported", "CRYPTO"],
+  ])("rejects a %s reservation payment method before creating the Contract", async (_label, paymentMethod) => {
+    const { service, contractCreate } = createArchiveService([holder]);
+
+    await expect(service.archiveContract(
+      { id: "agent-1", email: "agent@example.com", fullName: "Agent", tenantId: "tenant-1" },
+      {
+        contractNumber: "CT-METHOD",
+        clientFullName: holder.fullName,
+        clientIdNumber: holder.idNumber,
+        clientEmail: "holder@example.com",
+        destination: "Destination",
+        internalTripId: "internal-trip-1",
+        paymentConditionType: "CASH",
+        paymentMethod,
+        payloadJson: JSON.stringify({ totalAmount: "100.00" }),
+      },
+      [],
+    )).rejects.toThrow("CONTRACT_RESERVATION_PAYMENT_METHOD_INVALID");
+
+    expect(contractCreate).not.toHaveBeenCalled();
+  });
+
   it("archives a server-owned TravelPackage currency snapshot using a tenant-scoped source", async () => {
     const { service, contractCreate, travelPackageFindFirst } =
       createArchiveService([holder]);
@@ -547,6 +574,7 @@ describe("ContractsService archive customer identity resolution", () => {
         destination: "Destination",
         contractHtml: "<html></html>",
         paymentConditionType: "CASH",
+        paymentMethod: "BANK_TRANSFER",
         payloadJson: JSON.stringify({
           selectedCustomerId: holder.id,
           clientIdType: holder.idType,
@@ -589,6 +617,7 @@ describe("ContractsService archive customer identity resolution", () => {
         destination: "Destination",
         contractHtml: "<html></html>",
         paymentConditionType: "CASH",
+        paymentMethod: "BANK_TRANSFER",
         payloadJson: JSON.stringify({
           selectedCustomerId: holder.id,
           clientIdType: holder.idType,
@@ -616,6 +645,7 @@ describe("ContractsService archive customer identity resolution", () => {
         clientEmail: "holder@example.com",
         destination: "Destination",
         paymentConditionType: "CASH",
+        paymentMethod: "BANK_TRANSFER",
         ...source,
       },
       [],
@@ -636,6 +666,7 @@ describe("ContractsService archive customer identity resolution", () => {
         destination: "Destination",
         internalTripId: "internal-trip-1",
         paymentConditionType: "CREDIT",
+        paymentMethod: "MOBILE_TRANSFER",
         payloadJson: JSON.stringify({
           selectedCustomerId: holder.id,
           clientIdType: holder.idType,
@@ -668,6 +699,7 @@ describe("ContractsService archive customer identity resolution", () => {
         destination: "Destination",
         internalTripId: "internal-trip-1",
         paymentConditionType: "CREDIT",
+        paymentMethod: "BANK_TRANSFER",
         payloadJson: JSON.stringify({
           selectedCustomerId: holder.id,
           clientIdType: holder.idType,
@@ -693,6 +725,7 @@ describe("ContractsService archive customer identity resolution", () => {
           destination: "Destination",
           internalTripId: "internal-trip-1",
           paymentConditionType: "CASH",
+          paymentMethod: "BANK_TRANSFER",
           payloadJson: JSON.stringify({
             selectedCustomerId: holder.id,
             clientIdType: holder.idType,

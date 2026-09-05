@@ -9,12 +9,15 @@ import {
   financeMoney,
   type FinanceActor,
 } from "./finance-audit";
+import {
+  normalizeFinancialPaymentMethod,
+  type FinancialPaymentMethod,
+} from "./finance-payment-method";
 
 const MAX_AMOUNT = new Prisma.Decimal("99999999999999.99999");
-const FINANCIAL_PAYMENT_METHODS = new Set([
-  "CASH", "BANK_TRANSFER", "CARD", "CHECK", "MOBILE_TRANSFER", "OTHER",
-]);
 export const FINANCE_RECEIPT_SEQUENCE_KEY = "FINANCE_RECEIPT";
+
+export { FINANCIAL_PAYMENT_METHOD_REGISTRY, type FinancialPaymentMethod } from "./finance-payment-method";
 
 export const PAYMENT_REGISTRATION_ERRORS = {
   INVALID: "PAYMENT_REGISTRATION_INVALID",
@@ -22,14 +25,6 @@ export const PAYMENT_REGISTRATION_ERRORS = {
   CONFLICT: "PAYMENT_REGISTRATION_CONFLICT",
   PERSISTENCE_FAILED: "PAYMENT_REGISTRATION_PERSISTENCE_FAILED",
 } as const;
-
-export type FinancialPaymentMethod =
-  | "CASH"
-  | "BANK_TRANSFER"
-  | "CARD"
-  | "CHECK"
-  | "MOBILE_TRANSFER"
-  | "OTHER";
 
 export interface PaymentRegistrationCommand {
   tenantId: string;
@@ -125,10 +120,6 @@ export class PaymentRegistrationService {
   }
 }
 
-export const FINANCIAL_PAYMENT_METHOD_REGISTRY: readonly FinancialPaymentMethod[] = [
-  "CASH", "BANK_TRANSFER", "CARD", "CHECK", "MOBILE_TRANSFER", "OTHER",
-];
-
 function normalize(command: PaymentRegistrationCommand): NormalizedRegistration {
   const tenantId = required(command.tenantId, 191);
   const actor = {
@@ -220,9 +211,9 @@ function currency(value: unknown): Currency {
 }
 
 function financialMethod(value: unknown): FinancialPaymentMethod {
-  const normalized = required(value, 50).toUpperCase();
-  if (!FINANCIAL_PAYMENT_METHODS.has(normalized)) invalid();
-  return normalized as FinancialPaymentMethod;
+  const paymentMethod = normalizeFinancialPaymentMethod(value);
+  if (!paymentMethod) invalid();
+  return paymentMethod;
 }
 
 function amount(value: unknown): Prisma.Decimal {

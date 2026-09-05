@@ -8,6 +8,7 @@ import {
   financeMoney,
   type FinanceActor,
 } from "./finance-audit";
+import { normalizeFinancialPaymentMethod } from "./finance-payment-method";
 
 const ACTIVE_STATUSES = [
   PaymentStatus.PENDING_VERIFICATION,
@@ -23,6 +24,7 @@ export interface ContractReservationPaymentCommand {
     clientId: string;
     createdAt: Date;
     paymentReference: string;
+    paymentMethod: string;
     payload: unknown;
     client: { fullName: string };
     documents: Array<{
@@ -41,6 +43,7 @@ export class ContractReservationPaymentService {
   constructor(private readonly prisma: PrismaService) {}
 
   async submit(command: ContractReservationPaymentCommand): Promise<Payment | null> {
+    const paymentMethod = reservationPaymentMethod(command.contract.paymentMethod);
     const reservationAmount = reservationAmountOf(command.contract.payload);
     if (reservationAmount.lessThanOrEqualTo(0)) return null;
 
@@ -74,8 +77,7 @@ export class ContractReservationPaymentService {
             availableAmount: new Prisma.Decimal(0),
             // The archive timestamp is the canonical submission/report timestamp; no payment receipt date is inferred.
             receivedAt: command.contract.createdAt,
-            // Archive inputs do not identify a payment rail. OTHER explicitly preserves that unknown state.
-            paymentMethod: "OTHER",
+            paymentMethod,
             externalReference: nonEmpty(command.contract.paymentReference),
             description: null,
             purpose: PaymentPurpose.CONTRACT_RESERVATION,
@@ -156,6 +158,14 @@ function reservationCurrencyOf(contractId: string, payload: unknown): "CRC" | "U
   const normalized = String(currency || "").trim().toUpperCase();
   if (normalized === "CRC" || normalized === "USD") return normalized;
   throw new Error(`CONTRACT_RESERVATION_CURRENCY_UNAVAILABLE contractId=${contractId}`);
+}
+
+function reservationPaymentMethod(value: unknown) {
+  const paymentMethod = normalizeFinancialPaymentMethod(value);
+  if (!paymentMethod) {
+    throw new Error("CONTRACT_RESERVATION_PAYMENT_METHOD_INVALID");
+  }
+  return paymentMethod;
 }
 
 function reservationEvidence(documents: ContractReservationPaymentCommand["contract"]["documents"]) {

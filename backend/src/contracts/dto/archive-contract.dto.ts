@@ -37,6 +37,11 @@ export class ArchiveContractDto {
   @IsEnum(PaymentConditionType)
   paymentConditionType!: PaymentConditionType;
 
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(50)
+  paymentMethod!: string;
+
   @IsOptional()
   @IsString()
   contractHtml?: string; // Opcional para viajes internos (no requieren PDF)

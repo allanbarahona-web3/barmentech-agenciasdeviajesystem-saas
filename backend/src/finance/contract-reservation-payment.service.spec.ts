@@ -4,33 +4,47 @@ import { ContractReservationPaymentService } from "./contract-reservation-paymen
 const createdAt = new Date("2026-09-02T10:00:00.000Z");
 
 describe("ContractReservationPaymentService", () => {
-  it("creates one pending contract reservation with existing evidence and a submission audit", async () => {
-    const c = context();
-    await c.service.submit(command());
+  it.each(["CASH", "BANK_TRANSFER", "CARD", "CHECK", "MOBILE_TRANSFER", "OTHER"])(
+    "persists the explicit Finance reservation payment method %s",
+    async (paymentMethod) => {
+      const c = context();
+      await c.service.submit(command({ paymentMethod }));
 
-    const data = c.tx.payment.create.mock.calls[0][0].data;
-    expect(data).toMatchObject({
-      tenantId: "tenant-1",
-      customerId: "customer-1",
-      contractId: "contract-1",
-      purpose: PaymentPurpose.CONTRACT_RESERVATION,
-      status: PaymentStatus.PENDING_VERIFICATION,
-      currencyCode: "CRC",
-      receiptNumber: null,
-      paymentMethod: "OTHER",
-      externalReference: "PAY-123",
-    });
-    expect(data.receivedAmount.toFixed()).toBe("125.5");
-    expect(data.availableAmount.toFixed()).toBe("0");
-    expect(c.businessNumbers.next).not.toHaveBeenCalled();
-    expect(c.tx.paymentEvidence.createMany).toHaveBeenCalledWith({
-      data: [expect.objectContaining({ paymentId: "payment-1", objectKey: "contracts/receipt.pdf" })],
-      skipDuplicates: true,
-    });
-    expect(c.tx.billingAuditLog.create).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ action: "RESERVATION_SUBMITTED", entityId: "payment-1" }),
-    }));
-  });
+      const data = c.tx.payment.create.mock.calls[0][0].data;
+      expect(data).toMatchObject({
+        tenantId: "tenant-1",
+        customerId: "customer-1",
+        contractId: "contract-1",
+        purpose: PaymentPurpose.CONTRACT_RESERVATION,
+        status: PaymentStatus.PENDING_VERIFICATION,
+        currencyCode: "CRC",
+        receiptNumber: null,
+        paymentMethod,
+        externalReference: "PAY-123",
+      });
+      expect(data.receivedAmount.toFixed()).toBe("125.5");
+      expect(data.availableAmount.toFixed()).toBe("0");
+      expect(c.businessNumbers.next).not.toHaveBeenCalled();
+      expect(c.tx.paymentEvidence.createMany).toHaveBeenCalledWith({
+        data: [expect.objectContaining({ paymentId: "payment-1", objectKey: "contracts/receipt.pdf" })],
+        skipDuplicates: true,
+      });
+      expect(c.tx.billingAuditLog.create).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ action: "RESERVATION_SUBMITTED", entityId: "payment-1" }),
+      }));
+    },
+  );
+
+  it.each([undefined, "", "CRYPTO", "01"])(
+    "rejects a missing or unsupported reservation payment method %p",
+    async (paymentMethod) => {
+      const c = context();
+      await expect(c.service.submit(command({ paymentMethod }))).rejects.toThrow(
+        "CONTRACT_RESERVATION_PAYMENT_METHOD_INVALID",
+      );
+      expect(c.prisma.$transaction).not.toHaveBeenCalled();
+    },
+  );
 
   it("returns the active reservation on retry without duplicate payment, evidence, or audit", async () => {
     const existing = payment();
@@ -66,6 +80,7 @@ function command(overrides: Record<string, unknown> = {}) {
   return {
     contract: {
       id: "contract-1", tenantId: "tenant-1", clientId: "customer-1", createdAt,
+      paymentMethod: "BANK_TRANSFER",
       paymentReference: "PAY-123", payload: { reservationAmount: "125.50", reservationCurrencyCode: "CRC" },
       client: { fullName: "Ada Client" },
       documents: [{ kind: "RESERVATION", objectKey: "contracts/receipt.pdf", originalFileName: "comprobante.pdf", mimeType: "application/pdf", size: 100 }],
