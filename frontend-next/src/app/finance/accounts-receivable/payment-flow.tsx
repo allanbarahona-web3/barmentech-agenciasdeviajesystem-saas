@@ -25,7 +25,7 @@ import {
   type RegisterPaymentInput,
 } from '@/lib/finance-api';
 import { formatBusinessDate } from '@/shared/regional';
-import { FINANCE_PAYMENT_METHOD_LABELS, FINANCE_PAYMENT_METHOD_OPTIONS } from '@/lib/finance-payment-methods';
+import { FINANCE_PAYMENT_METHOD_OPTIONS, formatFinancePaymentMethod } from '@/lib/finance-payment-methods';
 import styles from './accounts-receivable.module.css';
 
 const CANDIDATE_PAGE_SIZE = 100;
@@ -101,7 +101,7 @@ function PaymentSummary({ payment, onCancel }: { payment: PaymentDetail; onCance
         <div><dt>Monto recibido</dt><dd>{formatFinanceMoney(payment.receivedAmount, payment.currencyCode)}</dd></div>
         <div><dt>Monto aplicado</dt><dd>{formatFinanceMoney(payment.appliedAmount, payment.currencyCode)}</dd></div>
         <div><dt>Saldo disponible</dt><dd>{formatFinanceMoney(payment.availableAmount, payment.currencyCode)}</dd></div>
-        <div><dt>Método</dt><dd>{FINANCE_PAYMENT_METHOD_LABELS[payment.paymentMethod as RegisterPaymentInput['paymentMethod']] ?? payment.paymentMethod}</dd></div>
+        <div><dt>Método</dt><dd>{formatFinancePaymentMethod(payment.paymentMethod)}</dd></div>
         <div><dt>Referencia</dt><dd>{payment.externalReference ?? '—'}</dd></div>
         <div><dt>Notas</dt><dd>{payment.description ?? '—'}</dd></div>
         {payment.registeredBy && <div><dt>Registrado por</dt><dd>{payment.registeredBy.name} · {formatBusinessDate(payment.registeredBy.at)}</dd></div>}

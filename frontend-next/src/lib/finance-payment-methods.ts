@@ -19,3 +19,6 @@ export const FINANCE_PAYMENT_METHOD_LABELS: Record<FinancePaymentMethod, string>
   Object.fromEntries(
     FINANCE_PAYMENT_METHOD_OPTIONS.map((option) => [option.token, option.label]),
   ) as Record<FinancePaymentMethod, string>;
+
+export const formatFinancePaymentMethod = (paymentMethod: string): string =>
+  FINANCE_PAYMENT_METHOD_LABELS[paymentMethod as FinancePaymentMethod] ?? paymentMethod;
