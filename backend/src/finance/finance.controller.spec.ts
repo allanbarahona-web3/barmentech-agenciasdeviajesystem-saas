@@ -58,6 +58,15 @@ describe("FinanceController", () => {
     expect((c.contractInstallments.register.mock.calls[0][0].amount as Prisma.Decimal).toFixed()).toBe("400");
   });
 
+  it("reads a Contract CommercialObligation only in the authenticated tenant", async () => {
+    const c = context();
+    const result = { contractId: "contract-a", commercialObligation: { id: "obligation-a", outstandingAmount: "600", status: "PARTIALLY_SETTLED" }, payable: true };
+    c.reads.getContractCommercialObligation.mockResolvedValue(result);
+
+    await expect(c.controller.getContractCommercialObligation(request("tenant-auth"), "contract-a")).resolves.toBe(result);
+    expect(c.reads.getContractCommercialObligation).toHaveBeenCalledWith("tenant-auth", "contract-a");
+  });
+
   it("returns the updated payment after a partial allocation", async () => {
     const c = context();
     const updated = { id: "payment-a", status: "PARTIALLY_ALLOCATED", availableAmount: "7.00000", allocations: [] };
@@ -130,6 +139,7 @@ describe("FinanceController", () => {
   });
 
   it.each([
+    "getContractCommercialObligation",
     "registerContractInstallment",
     "listPendingContractReservations",
     "approveContractReservation",
@@ -286,7 +296,7 @@ function context() {
   const allocations = { allocate: jest.fn().mockResolvedValue(undefined) };
   const reversals = { reverse: jest.fn() };
   const cancellations = { cancel: jest.fn() };
-  const reads = { paymentSummary: jest.fn((value) => ({ id: value.id, receivedAmount: value.receivedAmount.toFixed(), availableAmount: value.availableAmount.toFixed() })), getPaymentDetail: jest.fn(), getPaymentIdForAllocation: jest.fn(), getAccountReceivableDetail: jest.fn(), getAllocationSuggestion: jest.fn(), listAccountReceivables: jest.fn(), listAccountReceivableGroups: jest.fn(), listAccountReceivableGroupItems: jest.fn(), listPayments: jest.fn(), listUnallocatedPaymentBalances: jest.fn(), getCustomerFinancialBalance: jest.fn() };
+  const reads = { paymentSummary: jest.fn((value) => ({ id: value.id, receivedAmount: value.receivedAmount.toFixed(), availableAmount: value.availableAmount.toFixed() })), getPaymentDetail: jest.fn(), getPaymentIdForAllocation: jest.fn(), getAccountReceivableDetail: jest.fn(), getContractCommercialObligation: jest.fn(), getAllocationSuggestion: jest.fn(), listAccountReceivables: jest.fn(), listAccountReceivableGroups: jest.fn(), listAccountReceivableGroupItems: jest.fn(), listPayments: jest.fn(), listUnallocatedPaymentBalances: jest.fn(), getCustomerFinancialBalance: jest.fn() };
   const statements = { get: jest.fn(), render: jest.fn(), send: jest.fn() };
   const paymentAndApply = { execute: jest.fn() };
   const receipts = { render: jest.fn(), send: jest.fn() };

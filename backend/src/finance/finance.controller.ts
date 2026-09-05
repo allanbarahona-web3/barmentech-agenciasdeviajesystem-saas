@@ -57,6 +57,12 @@ export class FinanceController {
     private readonly contractInstallments?: ContractInstallmentPaymentService,
   ) {}
 
+  @Get("contracts/:contractId/commercial-obligation")
+  @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS)
+  getContractCommercialObligation(@Req() request: FinanceRequest, @Param("contractId") contractId: string) {
+    return this.reads.getContractCommercialObligation(request.user.tenantId, contractId);
+  }
+
   @Post("contracts/:contractId/installments")
   @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS)
   async registerContractInstallment(

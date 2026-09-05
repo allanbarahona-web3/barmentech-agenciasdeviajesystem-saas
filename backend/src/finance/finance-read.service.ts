@@ -1,5 +1,5 @@
 import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
-import { AccountReceivableStatus, PaymentAllocationStatus, PaymentStatus, Prisma } from "@prisma/client";
+import { AccountReceivableStatus, CommercialObligationStatus, PaymentAllocationStatus, PaymentStatus, Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import {
   ListAccountReceivableGroupItemsDto,
@@ -20,6 +20,44 @@ const DEFAULT_FISCAL_TIMEZONE = "America/Costa_Rica";
 @Injectable()
 export class FinanceReadService {
   constructor(private readonly prisma: PrismaService) {}
+
+  async getContractCommercialObligation(tenantId: string, contractId: string) {
+    const contract = await this.prisma.contract.findFirst({
+      where: { id: contractId, tenantId },
+      select: { id: true },
+    });
+    if (!contract) throw new NotFoundException("CONTRACT_NOT_FOUND");
+
+    const obligation = await this.prisma.commercialObligation.findUnique({
+      where: {
+        tenantId_sourceType_sourceId: {
+          tenantId,
+          sourceType: "CONTRACT",
+          sourceId: contract.id,
+        },
+      },
+    });
+    if (!obligation) {
+      return { contractId: contract.id, commercialObligation: null, payable: false };
+    }
+    const payable =
+      (obligation.status === CommercialObligationStatus.OPEN ||
+        obligation.status === CommercialObligationStatus.PARTIALLY_SETTLED) &&
+      obligation.outstandingAmount.greaterThan(0);
+    return {
+      contractId: contract.id,
+      commercialObligation: {
+        id: obligation.id,
+        currencyCode: obligation.currencyCode,
+        originalAmount: money(obligation.originalAmount),
+        outstandingAmount: money(obligation.outstandingAmount),
+        status: obligation.status,
+        dueDate: obligation.dueDate,
+        settledAt: obligation.settledAt,
+      },
+      payable,
+    };
+  }
 
   async getAccountReceivableDetail(tenantId: string, id: string) {
     const [receivable, tenantCurrentCalendarDate] = await Promise.all([

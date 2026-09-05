@@ -1,9 +1,62 @@
 import { ConflictException, NotFoundException } from "@nestjs/common";
-import { Prisma } from "@prisma/client";
+import { CommercialObligationStatus, Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { FinanceReadService } from "./finance-read.service";
 
 describe("FinanceReadService", () => {
+  it.each([
+    ["partially settled", CommercialObligationStatus.PARTIALLY_SETTLED, "600", true],
+    ["open", CommercialObligationStatus.OPEN, "1000", true],
+    ["settled", CommercialObligationStatus.SETTLED, "0", false],
+    ["cancelled", CommercialObligationStatus.CANCELLED, "600", false],
+  ])("returns the authoritative Contract obligation for %s state", async (_, status, outstandingAmount, payable) => {
+    const contractFindFirst = jest.fn().mockResolvedValue({ id: "contract-1" });
+    const obligationFindUnique = jest.fn().mockResolvedValue(contractObligation({ status, outstandingAmount: d(outstandingAmount) }));
+    const service = new FinanceReadService({
+      contract: { findFirst: contractFindFirst },
+      commercialObligation: { findUnique: obligationFindUnique },
+    } as unknown as PrismaService);
+
+    await expect(service.getContractCommercialObligation("tenant-1", "contract-1")).resolves.toEqual({
+      contractId: "contract-1",
+      commercialObligation: {
+        id: "obligation-1", currencyCode: "USD", originalAmount: "1350", outstandingAmount,
+        status, dueDate: new Date("2026-12-31T00:00:00.000Z"), settledAt: status === CommercialObligationStatus.SETTLED ? new Date("2026-09-05T12:00:00.000Z") : null,
+      },
+      payable,
+    });
+    expect(contractFindFirst).toHaveBeenCalledWith({ where: { id: "contract-1", tenantId: "tenant-1" }, select: { id: true } });
+    expect(obligationFindUnique).toHaveBeenCalledWith({ where: {
+      tenantId_sourceType_sourceId: { tenantId: "tenant-1", sourceType: "CONTRACT", sourceId: "contract-1" },
+    } });
+  });
+
+  it("returns a non-payable null obligation when the tenant Contract has no Finance obligation", async () => {
+    const prisma = {
+      contract: { findFirst: jest.fn().mockResolvedValue({ id: "contract-1" }) },
+      commercialObligation: { findUnique: jest.fn().mockResolvedValue(null) },
+    };
+    const service = new FinanceReadService(prisma as unknown as PrismaService);
+
+    await expect(service.getContractCommercialObligation("tenant-1", "contract-1")).resolves.toEqual({
+      contractId: "contract-1", commercialObligation: null, payable: false,
+    });
+    expect(Object.keys(prisma.commercialObligation)).toEqual(["findUnique"]);
+  });
+
+  it("does not expose a Contract or obligation outside the authenticated tenant", async () => {
+    const contractFindFirst = jest.fn().mockResolvedValue(null);
+    const obligationFindUnique = jest.fn();
+    const service = new FinanceReadService({
+      contract: { findFirst: contractFindFirst },
+      commercialObligation: { findUnique: obligationFindUnique },
+    } as unknown as PrismaService);
+
+    await expect(service.getContractCommercialObligation("tenant-1", "contract-other")).rejects.toBeInstanceOf(NotFoundException);
+    expect(contractFindFirst).toHaveBeenCalledWith({ where: { id: "contract-other", tenantId: "tenant-1" }, select: { id: true } });
+    expect(obligationFindUnique).not.toHaveBeenCalled();
+  });
+
   it("reads payment detail only within its tenant and preserves exact decimal strings", async () => {
     const prisma = {
       payment: { findFirst: jest.fn().mockResolvedValue(payment()) },
@@ -602,6 +655,17 @@ function receivable(overrides: Record<string, unknown> = {}) {
 }
 
 function d(value: string) { return new Prisma.Decimal(value); }
+
+function contractObligation(overrides: Record<string, unknown> = {}) {
+  const status = overrides.status as CommercialObligationStatus | undefined;
+  return {
+    id: "obligation-1", tenantId: "tenant-1", customerId: "customer-1", sourceType: "CONTRACT", sourceId: "contract-1",
+    currencyCode: "USD", originalAmount: d("1350"), outstandingAmount: d("600"), dueDate: new Date("2026-12-31T00:00:00.000Z"),
+    status: status ?? CommercialObligationStatus.PARTIALLY_SETTLED,
+    settledAt: status === CommercialObligationStatus.SETTLED ? new Date("2026-09-05T12:00:00.000Z") : null,
+    ...overrides,
+  };
+}
 
 function groupRow(overrides: Record<string, unknown> = {}) {
   return {
