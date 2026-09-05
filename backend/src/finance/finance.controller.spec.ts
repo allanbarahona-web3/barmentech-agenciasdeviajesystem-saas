@@ -6,7 +6,7 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { ROLES_KEY } from "../auth/roles.decorator";
 import { RolesGuard } from "../auth/roles.guard";
 import { FinanceController } from "./finance.controller";
-import { CancelPaymentDto, ListContractReservationPaymentsDto, ListPaymentsDto, ListUnallocatedPaymentBalancesDto, RegisterPaymentDto } from "./dto/finance.dto";
+import { CancelPaymentDto, ListContractReservationPaymentsDto, ListPaymentsDto, ListUnallocatedPaymentBalancesDto, RegisterContractInstallmentDto, RegisterPaymentDto } from "./dto/finance.dto";
 
 describe("FinanceController", () => {
   it("registers an exact payment for only the authenticated tenant", async () => {
@@ -37,6 +37,25 @@ describe("FinanceController", () => {
     })).resolves.toMatchObject({ allocation: { accountReceivableId: "ar-a" } });
     expect(c.paymentAndApply.execute).toHaveBeenCalledWith(expect.objectContaining({ tenantId: "tenant-auth", accountReceivableId: "ar-a", actor: { userId: "user-a", name: "Finance User" } }));
     expect((c.paymentAndApply.execute.mock.calls[0][0].receivedAmount as Prisma.Decimal).toFixed()).toBe("10");
+  });
+
+  it("registers a Contract installment with only authenticated tenant and server-owned financial authority", async () => {
+    const c = context();
+    c.contractInstallments.register.mockResolvedValue({
+      payment: { id: "payment-a", receiptNumber: "RCP-2026-000010", amount: "400", currencyCode: "USD", paymentMethod: "CARD", status: "FULLY_ALLOCATED" },
+      obligation: { id: "obligation-a", outstandingAmount: "600", status: "PARTIALLY_SETTLED" },
+    });
+    const body = { registrationDeduplicationKey: "contract-installment-a", amount: "400", receivedAt: "2026-09-05T12:00:00.000Z", paymentMethod: "CARD", externalReference: "bank-400" };
+
+    await expect(c.controller.registerContractInstallment(request("tenant-auth"), "contract-a", body)).resolves.toMatchObject({
+      payment: { receiptNumber: "RCP-2026-000010" }, obligation: { outstandingAmount: "600" },
+    });
+
+    expect(c.contractInstallments.register).toHaveBeenCalledWith(expect.objectContaining({
+      tenantId: "tenant-auth", contractId: "contract-a", actor: { userId: "user-a", name: "Finance User" },
+      registrationDeduplicationKey: "contract-installment-a", paymentMethod: "CARD", externalReference: "bank-400",
+    }));
+    expect((c.contractInstallments.register.mock.calls[0][0].amount as Prisma.Decimal).toFixed()).toBe("400");
   });
 
   it("returns the updated payment after a partial allocation", async () => {
@@ -111,6 +130,7 @@ describe("FinanceController", () => {
   });
 
   it.each([
+    "registerContractInstallment",
     "listPendingContractReservations",
     "approveContractReservation",
     "rejectContractReservation",
@@ -160,6 +180,14 @@ describe("FinanceController", () => {
     await expect(pipe.transform(valid, { type: "body", metatype: RegisterPaymentDto })).resolves.toBeDefined();
     await expect(pipe.transform({ ...valid, receivedAmount: 123.12345 }, { type: "body", metatype: RegisterPaymentDto })).rejects.toBeDefined();
     await expect(pipe.transform({ ...valid, tenantId: "tenant-other" }, { type: "body", metatype: RegisterPaymentDto })).rejects.toBeDefined();
+  });
+
+  it("validates the Contract installment request without customer, currency, purpose, or tenant authority", async () => {
+    const pipe = new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: true });
+    const valid = { registrationDeduplicationKey: "contract-installment-a", amount: "400.00000", receivedAt: "2026-09-05T12:00:00.000Z", paymentMethod: "CARD" };
+    await expect(pipe.transform(valid, { type: "body", metatype: RegisterContractInstallmentDto })).resolves.toBeDefined();
+    await expect(pipe.transform({ ...valid, currencyCode: "USD" }, { type: "body", metatype: RegisterContractInstallmentDto })).rejects.toBeDefined();
+    await expect(pipe.transform({ ...valid, purpose: "CONTRACT_INSTALLMENT" }, { type: "body", metatype: RegisterContractInstallmentDto })).rejects.toBeDefined();
   });
 
   it("requires a non-empty cancellation reason without accepting caller actor fields", async () => {
@@ -263,7 +291,8 @@ function context() {
   const paymentAndApply = { execute: jest.fn() };
   const receipts = { render: jest.fn(), send: jest.fn() };
   const contractReservations = { listPending: jest.fn(), approve: jest.fn(), reject: jest.fn(), getEvidenceUrl: jest.fn() };
-  return { registrations, allocations, reversals, cancellations, reads, statements, paymentAndApply, receipts, contractReservations, controller: new FinanceController(registrations as never, allocations as never, reversals as never, cancellations as never, reads as never, undefined, statements as never, paymentAndApply as never, receipts as never, contractReservations as never) };
+  const contractInstallments = { register: jest.fn() };
+  return { registrations, allocations, reversals, cancellations, reads, statements, paymentAndApply, receipts, contractReservations, contractInstallments, controller: new FinanceController(registrations as never, allocations as never, reversals as never, cancellations as never, reads as never, undefined, statements as never, paymentAndApply as never, receipts as never, contractReservations as never, contractInstallments as never) };
 }
 
 function request(tenantId = "tenant-a") {

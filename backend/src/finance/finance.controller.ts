@@ -18,6 +18,7 @@ import {
   ListUnallocatedPaymentBalancesDto,
   RegisterPaymentDto,
   RegisterPaymentAndApplyDto,
+  RegisterContractInstallmentDto,
   ReversePaymentAllocationDto,
   CustomerFundsAllocationDto,
   CustomerFundsAllocationPreviewDto,
@@ -34,6 +35,7 @@ import { CustomerAccountStatementService } from "./customer-account-statement.se
 import { RegisterPaymentAndApplyService } from "./register-payment-and-apply.service";
 import { PaymentReceiptService } from "./payment-receipt.service";
 import { ContractReservationReviewService } from "./contract-reservation-review.service";
+import { ContractInstallmentPaymentService } from "./contract-installment-payment.service";
 
 type FinanceRequest = { user: { id: string; email?: string; fullName: string; tenantId: string; role: UserRole } };
 
@@ -52,7 +54,32 @@ export class FinanceController {
     private readonly paymentAndApply?: RegisterPaymentAndApplyService,
     private readonly receipts?: PaymentReceiptService,
     private readonly contractReservations?: ContractReservationReviewService,
+    private readonly contractInstallments?: ContractInstallmentPaymentService,
   ) {}
+
+  @Post("contracts/:contractId/installments")
+  @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS)
+  async registerContractInstallment(
+    @Req() request: FinanceRequest,
+    @Param("contractId") contractId: string,
+    @Body() body: RegisterContractInstallmentDto,
+  ) {
+    try {
+      return await this.contractInstallments!.register({
+        tenantId: request.user.tenantId,
+        contractId,
+        actor: { userId: request.user.id, name: request.user.fullName },
+        registrationDeduplicationKey: body.registrationDeduplicationKey,
+        amount: decimal(body.amount),
+        paymentMethod: body.paymentMethod,
+        receivedAt: new Date(body.receivedAt),
+        externalReference: body.externalReference,
+        description: body.description,
+      });
+    } catch (error) {
+      return translateFinanceError(error);
+    }
+  }
 
   @Get("contract-reservation-payments/pending")
   @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS)

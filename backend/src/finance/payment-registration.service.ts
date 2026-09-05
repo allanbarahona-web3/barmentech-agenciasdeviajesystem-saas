@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import { Currency, Payment, PaymentStatus, Prisma } from "@prisma/client";
+import { Currency, Payment, PaymentPurpose, PaymentStatus, Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { BusinessNumberingService } from "../business-numbering/business-numbering.service";
 import {
@@ -40,6 +40,9 @@ export interface PaymentRegistrationCommand {
   payerIdentificationNumber?: string | null;
   externalReference?: string | null;
   description?: string | null;
+  /** Server-owned provenance for callers that compose registration with Finance allocation. */
+  purpose?: PaymentPurpose;
+  contractId?: string | null;
 }
 
 export class PaymentRegistrationError extends Error {
@@ -62,6 +65,8 @@ interface NormalizedRegistration {
   payerIdentificationNumber: string | null;
   externalReference: string | null;
   description: string | null;
+  purpose: PaymentPurpose;
+  contractId: string | null;
 }
 
 @Injectable()
@@ -144,6 +149,8 @@ function normalize(command: PaymentRegistrationCommand): NormalizedRegistration 
     payerIdentificationType, payerIdentificationNumber,
     externalReference: optional(command.externalReference, 150),
     description: optional(command.description, 500),
+    purpose: paymentPurpose(command.purpose),
+    contractId: contractId(command.contractId, command.purpose),
   };
 }
 
@@ -163,6 +170,8 @@ function initialPaymentData(input: NormalizedRegistration, receiptNumber: string
     payerIdentificationNumber: input.payerIdentificationNumber,
     externalReference: input.externalReference,
     description: input.description,
+    purpose: input.purpose,
+    contractId: input.contractId,
     status: PaymentStatus.RECEIVED,
     cancelledAt: null,
   };
@@ -187,7 +196,27 @@ function isExactRegistrationWinner(winner: Payment, input: NormalizedRegistratio
     sameInstant(winner.receivedAt, input.receivedAt) &&
     winner.paymentMethod === input.paymentMethod &&
     winner.externalReference === input.externalReference &&
-    winner.description === input.description;
+    winner.description === input.description &&
+    (winner.purpose ?? PaymentPurpose.GENERAL) === input.purpose &&
+    (winner.contractId ?? null) === input.contractId;
+}
+
+function paymentPurpose(value: unknown): PaymentPurpose {
+  if (value === undefined) return PaymentPurpose.GENERAL;
+  if (!Object.values(PaymentPurpose).includes(value as PaymentPurpose)) invalid();
+  return value as PaymentPurpose;
+}
+
+function contractId(value: unknown, purposeValue: unknown): string | null {
+  const normalized = optional(value, 191);
+  const purpose = paymentPurpose(purposeValue);
+  if (
+    (purpose === PaymentPurpose.CONTRACT_RESERVATION ||
+      purpose === PaymentPurpose.CONTRACT_INSTALLMENT ||
+      purpose === PaymentPurpose.CONTRACT_PAYMENT) &&
+    normalized === null
+  ) invalid();
+  return normalized;
 }
 
 function required(value: unknown, maximum: number): string {

@@ -45,6 +45,15 @@ export class RegisterPaymentDto {
 
 export class RegisterPaymentAndApplyDto extends RegisterPaymentDto {}
 
+export class RegisterContractInstallmentDto {
+  @Transform(trim) @IsString() @MaxLength(200) @Matches(/\S/) registrationDeduplicationKey!: string;
+  @Transform(trim) @IsString() @MaxLength(100) @Matches(moneyText) amount!: string;
+  @IsDateString() receivedAt!: string;
+  @Transform(trim) @IsString() @MaxLength(50) @Matches(/\S/) paymentMethod!: string;
+  @IsOptional() @Transform(trim) @IsString() @MaxLength(150) @Matches(/\S/) externalReference?: string | null;
+  @IsOptional() @Transform(trim) @IsString() @MaxLength(500) @Matches(/\S/) description?: string | null;
+}
+
 export class PaymentAllocationItemDto {
   @Transform(trim) @IsString() @MaxLength(191) @Matches(/\S/) accountReceivableId!: string;
   @Transform(trim) @IsString() @MaxLength(100) @Matches(moneyText) amount!: string;
