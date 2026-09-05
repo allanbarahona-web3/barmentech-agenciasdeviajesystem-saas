@@ -1,5 +1,6 @@
 import { fetchApi } from '@/lib/api-client';
 import { contractReservationApprovePath, contractReservationEvidencePath, contractReservationPendingPath, contractReservationRejectPath } from '@/lib/contract-reservation-review';
+import type { FinancePaymentMethod } from '@/lib/finance-payment-methods';
 
 export type AccountReceivableStatus =
   | 'OPEN'
@@ -245,7 +246,7 @@ export type RegisterPaymentInput = {
   currencyCode: FinanceCurrency;
   receivedAmount: string;
   receivedAt: string;
-  paymentMethod: 'CASH' | 'BANK_TRANSFER' | 'CARD' | 'CHECK' | 'MOBILE_TRANSFER' | 'OTHER';
+  paymentMethod: FinancePaymentMethod;
   customerId?: string;
   payerIdentificationType?: string;
   payerIdentificationNumber?: string;

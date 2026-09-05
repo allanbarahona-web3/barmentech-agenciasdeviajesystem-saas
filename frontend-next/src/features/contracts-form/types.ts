@@ -1,4 +1,5 @@
 import type { ClientIdentificationType } from '@/features/customers/client-identification';
+import type { FinancePaymentMethod } from "@/lib/finance-payment-methods";
 
 export type ItineraryKind = "opening" | "custom" | "closing";
 
@@ -92,6 +93,7 @@ export type ContractFormState = {
   installmentCount: string;
   paymentFrequency: PaymentFrequency;
   paymentConditionType: PaymentConditionType | null;
+  paymentMethod: FinancePaymentMethod | null;
   monthlyInstallmentAmount: string;
   lastInstallmentAmount: string;
   paymentDueDate: string;

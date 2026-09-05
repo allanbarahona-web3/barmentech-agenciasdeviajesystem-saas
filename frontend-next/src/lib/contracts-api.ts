@@ -1,5 +1,6 @@
 import { authenticatedFetch, getStoredToken } from "@/lib/auth-api";
 import { resolveApiBase } from "@/lib/runtime-config";
+import type { FinancePaymentMethod } from "@/lib/finance-payment-methods";
 
 export type HistoryContractItem = {
   kind?: "CONTRACT" | "DRAFT";
@@ -119,6 +120,7 @@ type ArchiveContractInput = {
   startDate: string;
   endDate: string;
   paymentConditionType: "CASH" | "CREDIT";
+  paymentMethod: FinancePaymentMethod;
   payloadJson: string;
   contractHtml: string;
   documents: File[];
@@ -261,6 +263,7 @@ export const archiveContract = async (input: ArchiveContractInput): Promise<Arch
   formData.append("startDate", input.startDate);
   formData.append("endDate", input.endDate);
   formData.append("paymentConditionType", input.paymentConditionType);
+  formData.append("paymentMethod", input.paymentMethod);
   formData.append("payloadJson", input.payloadJson);
   formData.append("contractHtml", input.contractHtml);
   if (input.source) {

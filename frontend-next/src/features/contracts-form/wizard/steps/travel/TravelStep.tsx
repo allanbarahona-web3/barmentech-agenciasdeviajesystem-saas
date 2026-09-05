@@ -1,5 +1,9 @@
 import type { ContractFormState } from "@/features/contracts-form/types";
 import { applyMoneyDerivedValues, syncTourDates, addDaysIso } from "@/features/contracts-form/utils";
+import {
+  FINANCE_PAYMENT_METHOD_OPTIONS,
+  type FinancePaymentMethod,
+} from "@/lib/finance-payment-methods";
 
 export interface TravelStepProps {
   state: ContractFormState;
@@ -53,6 +57,9 @@ export function TravelStep({
   onMoneyChange,
   onMoneyBlur,
 }: TravelStepProps) {
+  const isCash = state.paymentConditionType === "CASH";
+  const isCredit = state.paymentConditionType === "CREDIT";
+
   // Parse selected luggage types from luggageClause
   const parseLuggageSelection = (): Set<string> => {
     const clause = state.luggageClause.trim();
@@ -227,11 +234,13 @@ export function TravelStep({
             />
           </label>
 
-          <label>
-            Fecha límite de pago total
-            <input value={state.paymentDueDate} type="date" readOnly />
-            <small>Todo debe quedar cancelado 22 días antes de iniciar el viaje.</small>
-          </label>
+          {isCredit ? (
+            <label>
+              Fecha límite de pago total
+              <input value={state.paymentDueDate} type="date" readOnly />
+              <small>Todo debe quedar cancelado 22 días antes de iniciar el viaje.</small>
+            </label>
+          ) : null}
 
           {rangeMessage ? <p className="form-error full-row">{rangeMessage}</p> : null}
         </div>
@@ -410,57 +419,85 @@ export function TravelStep({
         </label>
 
         <label>
-          Reserva USD
-          <input
-            type="number"
-            step="0.01"
-            value={state.reservationAmount}
-            placeholder="Ej. 300.00"
-            onChange={(event) => onMoneyChange("reservationAmount", event.target.value)}
-            onBlur={() => onMoneyBlur("reservationAmount")}
-          />
-        </label>
-
-        <label>
-          Saldo pendiente USD
-          <input value={state.balanceAmount} readOnly placeholder="Se calcula automáticamente" />
-        </label>
-
-        <label>
-          Frecuencia de pago
+          {isCredit ? "Método de pago de la reserva" : "Método de pago"}
           <select
-            value={state.paymentFrequency}
+            value={state.paymentMethod || ""}
             onChange={(event) =>
-              setState((prev) =>
-                applyMoneyDerivedValues({
-                  ...prev,
-                  paymentFrequency: event.target.value as "QUINCENAL" | "MENSUAL",
-                }),
-              )
+              setState((prev) => ({
+                ...prev,
+                paymentMethod: (event.target.value || null) as FinancePaymentMethod | null,
+              }))
             }
           >
-            <option value="MENSUAL">Mensual (cada 30 días)</option>
-            <option value="QUINCENAL">Quincenal (cada 15 días)</option>
+            <option value="">Seleccione un método</option>
+            {FINANCE_PAYMENT_METHOD_OPTIONS.map((option) => (
+              <option key={option.token} value={option.token}>{option.label}</option>
+            ))}
           </select>
         </label>
 
-        <label>
-          Cantidad de cuotas (automático)
-          <input value={state.installmentCount} readOnly placeholder="Se calcula automáticamente" />
-        </label>
+        {isCash ? (
+          <p className="full-row text-sm text-slate-600">
+            El pago inicial corresponde al monto total del contrato.
+          </p>
+        ) : null}
 
-        <div className="col-span-full payment-summary-grid">
-          <label className="payment-summary-field">
-            Monto por cuota USD (regular)
-            <input value={state.monthlyInstallmentAmount} readOnly placeholder="Saldo / plazo" />
-          </label>
+        {isCredit ? (
+          <>
+            <label>
+              Reserva USD
+              <input
+                type="number"
+                step="0.01"
+                value={state.reservationAmount}
+                placeholder="Ej. 300.00"
+                onChange={(event) => onMoneyChange("reservationAmount", event.target.value)}
+                onBlur={() => onMoneyBlur("reservationAmount")}
+              />
+            </label>
 
-          <label className="payment-summary-field">
-            Última cuota USD
-            <input value={state.lastInstallmentAmount} readOnly placeholder="Ajuste de fracción" />
-            <small>Si hay fracción, se ajusta en la última cuota.</small>
-          </label>
-        </div>
+            <label>
+              Saldo pendiente USD
+              <input value={state.balanceAmount} readOnly placeholder="Se calcula automáticamente" />
+            </label>
+
+            <label>
+              Frecuencia de pago
+              <select
+                value={state.paymentFrequency}
+                onChange={(event) =>
+                  setState((prev) =>
+                    applyMoneyDerivedValues({
+                      ...prev,
+                      paymentFrequency: event.target.value as "QUINCENAL" | "MENSUAL",
+                    }),
+                  )
+                }
+              >
+                <option value="MENSUAL">Mensual (cada 30 días)</option>
+                <option value="QUINCENAL">Quincenal (cada 15 días)</option>
+              </select>
+            </label>
+
+            <label>
+              Cantidad de cuotas (automático)
+              <input value={state.installmentCount} readOnly placeholder="Se calcula automáticamente" />
+            </label>
+
+            <div className="col-span-full payment-summary-grid">
+              <label className="payment-summary-field">
+                Monto por cuota USD (regular)
+                <input value={state.monthlyInstallmentAmount} readOnly placeholder="Saldo / plazo" />
+              </label>
+
+              <label className="payment-summary-field">
+                Última cuota USD
+                <input value={state.lastInstallmentAmount} readOnly placeholder="Ajuste de fracción" />
+                <small>Si hay fracción, se ajusta en la última cuota.</small>
+              </label>
+            </div>
+          </>
+        ) : null}
         </div>
       </div>
     </>

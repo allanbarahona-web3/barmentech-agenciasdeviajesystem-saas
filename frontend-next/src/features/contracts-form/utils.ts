@@ -128,6 +128,7 @@ export const createInitialFormState = (agent?: { fullName?: string; email?: stri
     installmentCount: "",
     paymentFrequency: "MENSUAL",
     paymentConditionType: null,
+    paymentMethod: null,
     monthlyInstallmentAmount: "",
     lastInstallmentAmount: "",
     paymentDueDate: today, // Inicializado como today, se actualizará cuando el usuario cambie startDate

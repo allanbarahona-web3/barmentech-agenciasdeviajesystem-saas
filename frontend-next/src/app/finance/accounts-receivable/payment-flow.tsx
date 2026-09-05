@@ -25,6 +25,7 @@ import {
   type RegisterPaymentInput,
 } from '@/lib/finance-api';
 import { formatBusinessDate } from '@/shared/regional';
+import { FINANCE_PAYMENT_METHOD_LABELS, FINANCE_PAYMENT_METHOD_OPTIONS } from '@/lib/finance-payment-methods';
 import styles from './accounts-receivable.module.css';
 
 const CANDIDATE_PAGE_SIZE = 100;
@@ -42,15 +43,6 @@ const AR_STATUS_LABELS: Record<AccountReceivableStatus, string> = {
   PARTIALLY_SETTLED: 'Abonada',
   SETTLED: 'Cancelada',
   CANCELLED: 'Anulada',
-};
-
-const PAYMENT_METHOD_LABELS: Record<RegisterPaymentInput['paymentMethod'], string> = {
-  CASH: 'Efectivo',
-  BANK_TRANSFER: 'Transferencia bancaria',
-  CARD: 'Tarjeta',
-  CHECK: 'Cheque',
-  MOBILE_TRANSFER: 'Transferencia móvil',
-  OTHER: 'Otro',
 };
 
 const ALLOCATION_STATUS_LABELS = { ACTIVE: 'Aplicado', REVERSED: 'Revertido' } as const;
@@ -109,7 +101,7 @@ function PaymentSummary({ payment, onCancel }: { payment: PaymentDetail; onCance
         <div><dt>Monto recibido</dt><dd>{formatFinanceMoney(payment.receivedAmount, payment.currencyCode)}</dd></div>
         <div><dt>Monto aplicado</dt><dd>{formatFinanceMoney(payment.appliedAmount, payment.currencyCode)}</dd></div>
         <div><dt>Saldo disponible</dt><dd>{formatFinanceMoney(payment.availableAmount, payment.currencyCode)}</dd></div>
-        <div><dt>Método</dt><dd>{PAYMENT_METHOD_LABELS[payment.paymentMethod as RegisterPaymentInput['paymentMethod']] ?? payment.paymentMethod}</dd></div>
+        <div><dt>Método</dt><dd>{FINANCE_PAYMENT_METHOD_LABELS[payment.paymentMethod as RegisterPaymentInput['paymentMethod']] ?? payment.paymentMethod}</dd></div>
         <div><dt>Referencia</dt><dd>{payment.externalReference ?? '—'}</dd></div>
         <div><dt>Notas</dt><dd>{payment.description ?? '—'}</dd></div>
         {payment.registeredBy && <div><dt>Registrado por</dt><dd>{payment.registeredBy.name} · {formatBusinessDate(payment.registeredBy.at)}</dd></div>}
@@ -389,7 +381,7 @@ export function PaymentFlow({ receivable, customer, initialPayment, canAllocate 
                 <label><span>Fecha del pago</span><input type="datetime-local" value={receivedAt} required onChange={(event) => setReceivedAt(event.target.value)} /></label>
                 <label><span>Moneda</span><input value={contextCurrency} readOnly /></label>
                 <label><span>Monto recibido</span><input inputMode="decimal" maxLength={100} placeholder="0.00" value={receivedAmount} required onChange={(event) => setReceivedAmount(event.target.value)} /></label>
-                <label><span>Método de pago</span><select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value as RegisterPaymentInput['paymentMethod'])}><option value="CASH">Efectivo</option><option value="BANK_TRANSFER">Transferencia bancaria</option><option value="CARD">Tarjeta</option><option value="CHECK">Cheque</option><option value="MOBILE_TRANSFER">Transferencia móvil</option><option value="OTHER">Otro</option></select></label>
+                <label><span>Método de pago</span><select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value as RegisterPaymentInput['paymentMethod'])}>{FINANCE_PAYMENT_METHOD_OPTIONS.map((option) => <option key={option.token} value={option.token}>{option.label}</option>)}</select></label>
                 <label><span>Referencia externa</span><input value={externalReference} maxLength={150} onChange={(event) => setExternalReference(event.target.value)} /></label>
               </div>
               <label className={styles.paymentNotes}><span>Notas</span><textarea value={description} maxLength={500} rows={3} onChange={(event) => setDescription(event.target.value)} /></label>

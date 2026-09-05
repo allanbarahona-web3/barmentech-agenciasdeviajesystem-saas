@@ -24,6 +24,7 @@ import {
 } from "@/features/contracts-form/utils";
 import { toLocalDateIso } from "@/shared/regional";
 import { resolveArchivePaymentTerms } from "@/features/contracts-form/commercial-terms";
+import { resolveArchiveInitialPayment } from "@/features/contracts-form/initial-contract-payment";
 import type { ContractFormState, IdType } from "@/features/contracts-form/types";
 import type { TravelPackage } from "@/lib/travel-packages-api";
 import { getContractDraft, reserveNextContractNumber, saveContractDraft, archiveContract } from "@/lib/contracts-api";
@@ -1058,6 +1059,16 @@ export function ContractsWizard({
       setStatus(archivePaymentTerms.message);
       return;
     }
+    const archiveInitialPayment = resolveArchiveInitialPayment({
+      paymentConditionType: archivePaymentTerms.paymentConditionType,
+      paymentMethod: state.paymentMethod,
+      totalAmount: state.totalAmount,
+      reservationAmount: state.reservationAmount,
+    });
+    if (!archiveInitialPayment.ok) {
+      setStatus(archiveInitialPayment.message);
+      return;
+    }
     console.log("====================================");
 console.log("🔍 DEBUG CAPACIDAD");
 console.log("activeDraftId:", activeDraftId);
@@ -1215,6 +1226,8 @@ console.log("====================================");
       setState(resolvedArchiveState);
       const archiveState: ContractFormState = {
         ...resolvedArchiveState,
+        paymentMethod: archiveInitialPayment.paymentMethod,
+        reservationAmount: archiveInitialPayment.reservationAmount,
         paymentDueDate: archivePaymentTerms.paymentDueDate || "",
       };
       const payloadJson = JSON.stringify(archiveState);
@@ -1246,6 +1259,7 @@ console.log("====================================");
         startDate: state.startDate,
         endDate: state.endDate,
         paymentConditionType: archivePaymentTerms.paymentConditionType,
+        paymentMethod: archiveInitialPayment.paymentMethod,
         payloadJson,
         contractHtml,
         documents: docs,
