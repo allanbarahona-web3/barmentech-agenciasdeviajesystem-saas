@@ -75,6 +75,110 @@ function travelContextLabel(contract: ContractObligationPortfolioItem): string |
   return values.length ? values.join(' · ') : null;
 }
 
+function ContractInstallmentForm({ contractId, outstandingAmount, onSuccess }: {
+  contractId: string;
+  outstandingAmount: string;
+  onSuccess: () => void | Promise<void>;
+}) {
+  const [amount, setAmount] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<FinancePaymentMethod | ''>('');
+  const [receivedAt, setReceivedAt] = useState(localDateTimeValue);
+  const [externalReference, setExternalReference] = useState('');
+  const [description, setDescription] = useState('');
+  const [registrationDeduplicationKey, setRegistrationDeduplicationKey] = useState(() => createContractInstallmentDeduplicationKey());
+  const [formError, setFormError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const submitInstallment = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!paymentMethod) return;
+    const validationError = installmentFormError({ amount, paymentMethod, receivedAt, outstandingAmount });
+    if (validationError) {
+      setFormError(validationError);
+      return;
+    }
+
+    setSubmitting(true);
+    setFormError(null);
+    try {
+      await registerContractInstallment(contractId, buildContractInstallmentRequest({
+        registrationDeduplicationKey,
+        amount,
+        receivedAt,
+        paymentMethod,
+        externalReference,
+        description,
+      }));
+      await onSuccess();
+    } catch (requestError) {
+      setFormError(
+        requestError instanceof FinanceApiError || requestError instanceof Error
+          ? requestError.message
+          : 'No se pudo registrar el abono.',
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return <form className={styles.paymentForm} onSubmit={submitInstallment}>
+    <div className={styles.paymentFormGrid}>
+      <label>Monto<input inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} required /></label>
+      <label>Método de pago<select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value as FinancePaymentMethod | '')} required><option value="">Seleccione una opción</option>{FINANCE_PAYMENT_METHOD_OPTIONS.map((method) => <option key={method.token} value={method.token}>{method.label}</option>)}</select></label>
+      <label>Fecha de recepción<input type="datetime-local" value={receivedAt} onChange={(event) => setReceivedAt(event.target.value)} required /></label>
+      <label>Referencia <span className={styles.optionalField}>(opcional)</span><input value={externalReference} onChange={(event) => setExternalReference(event.target.value)} /></label>
+    </div>
+    <label className={styles.paymentNotes}>Descripción / nota <span className={styles.optionalField}>(opcional)</span><textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={3} /></label>
+    {formError ? <div className={styles.inlineError} role="alert"><AlertCircle aria-hidden="true" /><span>{formError}</span></div> : null}
+    <div className={styles.paymentActions}><Button className={styles.primaryAction} type="submit" disabled={submitting}>{submitting ? 'Registrando…' : 'Confirmar abono'}</Button></div>
+  </form>;
+}
+
+function ContractInstallmentModal({ contract, canWrite, onClose, onCompleted }: {
+  contract: ContractObligationPortfolioItem;
+  canWrite: boolean;
+  onClose: () => void;
+  onCompleted: () => void | Promise<void>;
+}) {
+  const [result, setResult] = useState<Awaited<ReturnType<typeof getContractCommercialObligation>> | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void getContractCommercialObligation(contract.contractId, controller.signal)
+      .then((response) => { if (!controller.signal.aborted) setResult(response); })
+      .catch((requestError) => { if (!controller.signal.aborted) setError(requestError instanceof Error ? requestError.message : 'No se pudo cargar el saldo del contrato.'); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [contract.contractId]);
+
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [onClose]);
+
+  const obligation = result?.commercialObligation;
+  const canRegister = canWrite
+    && canRegisterContractInstallments(getStoredSession()?.user.role)
+    && result?.payable === true;
+
+  return <>
+    <button className={styles.paymentBackdrop} type="button" aria-label="Cerrar registro de abono" onClick={onClose} />
+    <section className={styles.contractInstallmentModal} role="dialog" aria-modal="true" aria-labelledby="contract-installment-modal-title">
+      <header className={styles.paymentModalHeader}><div><p>Contrato · Finanzas</p><h2 id="contract-installment-modal-title">Registrar abono</h2></div><Button className={styles.closeButton} size="icon" variant="ghost" type="button" aria-label="Cerrar" onClick={onClose}><X aria-hidden="true" /></Button></header>
+      <div className={styles.paymentModalBody}>
+        <section className={styles.contractInstallmentContext}><div><span>Contrato</span><strong>{contract.contractNumber}</strong></div><div><span>Viaje</span><strong>{contract.travelLabel ?? 'Viaje sin nombre registrado'}</strong></div><div><span>Moneda</span><strong>{contract.currencyCode}</strong></div><div><span>Saldo pendiente</span><strong className={styles.pendingAmount}>{formatFinanceMoney(obligation?.outstandingAmount ?? contract.outstandingAmount, contract.currencyCode)}</strong></div></section>
+        {loading ? <div className={styles.childLoading}>Cargando saldo disponible…</div> : null}
+        {error ? <div className={styles.inlineError} role="alert"><AlertCircle aria-hidden="true" /><span>{error}</span></div> : null}
+        {!loading && !error && obligation && canRegister ? <ContractInstallmentForm contractId={contract.contractId} outstandingAmount={obligation.outstandingAmount} onSuccess={onCompleted} /> : null}
+        {!loading && !error && (!obligation || !canRegister) ? <div className={styles.childLoading}>Este contrato ya no admite registrar abonos.</div> : null}
+      </div>
+    </section>
+  </>;
+}
+
 function ContractFinanceDrawer({ contract, canWrite, onClose, onChanged }: {
   contract: ContractObligationPortfolioItem;
   canWrite: boolean;
@@ -87,14 +191,6 @@ function ContractFinanceDrawer({ contract, canWrite, onClose, onChanged }: {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showInstallmentForm, setShowInstallmentForm] = useState(false);
-  const [amount, setAmount] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<FinancePaymentMethod | ''>('');
-  const [receivedAt, setReceivedAt] = useState(localDateTimeValue);
-  const [externalReference, setExternalReference] = useState('');
-  const [description, setDescription] = useState('');
-  const [registrationDeduplicationKey, setRegistrationDeduplicationKey] = useState<string | null>(null);
-  const [formError, setFormError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [receiptBusyId, setReceiptBusyId] = useState<string | null>(null);
 
@@ -140,56 +236,11 @@ function ContractFinanceDrawer({ contract, canWrite, onClose, onChanged }: {
     && canRegisterContractInstallments(getStoredSession()?.user.role)
     && obligationResult?.payable === true;
 
-  const openInstallmentForm = () => {
-    setAmount('');
-    setPaymentMethod('');
-    setReceivedAt(localDateTimeValue());
-    setExternalReference('');
-    setDescription('');
-    setFormError(null);
-    setRegistrationDeduplicationKey(createContractInstallmentDeduplicationKey());
-    setShowInstallmentForm(true);
-  };
-
-  const submitInstallment = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!commercialObligation || !registrationDeduplicationKey || !paymentMethod) return;
-    const validationError = installmentFormError({
-      amount,
-      paymentMethod,
-      receivedAt,
-      outstandingAmount: commercialObligation.outstandingAmount,
-    });
-    if (validationError) {
-      setFormError(validationError);
-      return;
-    }
-
-    setSubmitting(true);
-    setFormError(null);
-    try {
-      await registerContractInstallment(contract.contractId, buildContractInstallmentRequest({
-        registrationDeduplicationKey,
-        amount,
-        receivedAt,
-        paymentMethod,
-        externalReference,
-        description,
-      }));
-      setNotice('Abono registrado correctamente. La información financiera fue actualizada.');
-      setShowInstallmentForm(false);
-      setRegistrationDeduplicationKey(null);
-      await refresh();
-      onChanged();
-    } catch (requestError) {
-      setFormError(
-        requestError instanceof FinanceApiError || requestError instanceof Error
-          ? requestError.message
-          : 'No se pudo registrar el abono.',
-      );
-    } finally {
-      setSubmitting(false);
-    }
+  const handleInstallmentSuccess = async () => {
+    setNotice('Abono registrado correctamente. La información financiera fue actualizada.');
+    setShowInstallmentForm(false);
+    await refresh();
+    onChanged();
   };
 
   const downloadReceipt = async (paymentId: string) => {
@@ -229,7 +280,7 @@ function ContractFinanceDrawer({ contract, canWrite, onClose, onChanged }: {
             <h3>Estado financiero</h3>
             <dl className={styles.facts}>
               <div><dt>Estado</dt><dd><span className={styles.badgeGroup}><Badge className={statusClass(effectiveStatus)} variant="outline">{CONTRACT_OBLIGATION_STATUS_LABELS[effectiveStatus]}</Badge>{contract.isOverdue && <Badge className={styles.overdueBadge} variant="outline">Vencido</Badge>}</span></dd></div>
-              <div><dt>Total comprometido</dt><dd>{formatFinanceMoney(effectiveOriginal, contract.currencyCode)}</dd></div>
+              <div><dt>Total contratado</dt><dd>{formatFinanceMoney(effectiveOriginal, contract.currencyCode)}</dd></div>
               <div><dt>Pagado</dt><dd className={styles.availableAmount}>{formatFinanceMoney(contract.paidAmount, contract.currencyCode)}</dd></div>
               <div><dt>Saldo pendiente</dt><dd className={styles.pendingAmount}>{formatFinanceMoney(effectiveOutstanding, contract.currencyCode)}</dd></div>
               <div><dt>Moneda</dt><dd>{contract.currencyCode}</dd></div>
@@ -241,18 +292,8 @@ function ContractFinanceDrawer({ contract, canWrite, onClose, onChanged }: {
           {notice ? <div className={styles.paymentSuccess} role="status"><CircleDollarSign aria-hidden="true" /><div><strong>Abono registrado</strong><p>{notice}</p></div></div> : null}
 
           {canRegister ? <section className={styles.detailCard}>
-            <div className={styles.contractActionHeader}><div><h3>Registrar abono</h3><p>Registre un nuevo movimiento contra el saldo pendiente.</p></div><Button className={styles.primaryAction} size="sm" type="button" onClick={() => showInstallmentForm ? setShowInstallmentForm(false) : openInstallmentForm()}><CircleDollarSign aria-hidden="true" />{showInstallmentForm ? 'Cancelar' : 'Registrar abono'}</Button></div>
-            {showInstallmentForm && commercialObligation ? <form className={styles.paymentForm} onSubmit={submitInstallment}>
-              <div className={styles.paymentFormGrid}>
-                <label>Monto<input inputMode="decimal" value={amount} onChange={(event) => setAmount(event.target.value)} required /></label>
-                <label>Método de pago<select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value as FinancePaymentMethod | '')} required><option value="">Seleccione una opción</option>{FINANCE_PAYMENT_METHOD_OPTIONS.map((method) => <option key={method.token} value={method.token}>{method.label}</option>)}</select></label>
-                <label>Fecha de recepción<input type="datetime-local" value={receivedAt} onChange={(event) => setReceivedAt(event.target.value)} required /></label>
-                <label>Referencia <span className={styles.optionalField}>(opcional)</span><input value={externalReference} onChange={(event) => setExternalReference(event.target.value)} /></label>
-              </div>
-              <label className={styles.paymentNotes}>Descripción / nota <span className={styles.optionalField}>(opcional)</span><textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={3} /></label>
-              {formError ? <div className={styles.inlineError} role="alert"><AlertCircle aria-hidden="true" /><span>{formError}</span></div> : null}
-              <div className={styles.paymentActions}><Button className={styles.primaryAction} type="submit" disabled={submitting}>{submitting ? 'Registrando…' : 'Confirmar abono'}</Button></div>
-            </form> : null}
+            <div className={styles.contractActionHeader}><div><h3>Registrar abono</h3><p>Registre un nuevo movimiento contra el saldo pendiente.</p></div><Button className={styles.primaryAction} size="sm" type="button" onClick={() => setShowInstallmentForm((value) => !value)}><CircleDollarSign aria-hidden="true" />{showInstallmentForm ? 'Cancelar' : 'Registrar abono'}</Button></div>
+            {showInstallmentForm && commercialObligation ? <ContractInstallmentForm contractId={contract.contractId} outstandingAmount={commercialObligation.outstandingAmount} onSuccess={handleInstallmentSuccess} /> : null}
           </section> : null}
 
           <section className={styles.detailCard}>
@@ -271,18 +312,18 @@ function ContractFinanceDrawer({ contract, canWrite, onClose, onChanged }: {
   </>;
 }
 
-function GroupRows({ group, canWrite, reloadToken, onContractsChanged }: {
+function GroupRows({ group, canWrite, reloadToken, onOpenDetail, onRegisterInstallment }: {
   group: ContractObligationGroup;
   canWrite: boolean;
   reloadToken: number;
-  onContractsChanged: () => void;
+  onOpenDetail: (contract: ContractObligationPortfolioItem) => void;
+  onRegisterInstallment: (contract: ContractObligationPortfolioItem) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [page, setPage] = useState(1);
   const [result, setResult] = useState<ContractObligationGroupContractsPage | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedContractId, setSelectedContractId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!expanded) return;
@@ -301,7 +342,6 @@ function GroupRows({ group, canWrite, reloadToken, onContractsChanged }: {
     return () => controller.abort();
   }, [expanded, group.groupKey, page, reloadToken]);
 
-  const selectedContract = result?.items.find((item) => item.contractId === selectedContractId) ?? null;
   const compactContext = `${group.counts.open + group.counts.partiallySettled} con saldo · ${group.counts.settled} pagado(s)${group.counts.overdue ? ` · ${group.counts.overdue} vencido(s)` : ''}`;
 
   return <Fragment>
@@ -315,18 +355,17 @@ function GroupRows({ group, canWrite, reloadToken, onContractsChanged }: {
     </TableRow>
     {expanded ? <TableRow className={styles.childContainerRow}><TableCell colSpan={6}><div className={styles.childPanel}>
       <div className={styles.childHeading}><div><h3>Contratos</h3><p>Compromisos comerciales agrupados por cliente y moneda.</p></div><span>{loading ? 'Cargando…' : `${result?.total ?? 0} contrato(s)`}</span></div>
-      {error ? <div className={styles.inlineError} role="alert"><AlertCircle aria-hidden="true" /><span>{error}</span></div> : loading && !result ? <div className={styles.childLoading}>Cargando contratos…</div> : result?.items.length ? <div className={styles.childTableWrap}><Table className={styles.contractChildTable}><TableHeader><TableRow><TableHead>Contrato / viaje</TableHead><TableHead className={styles.numeric}>Total comprometido</TableHead><TableHead className={styles.numeric}>Pagado</TableHead><TableHead className={styles.numeric}>Saldo pendiente</TableHead><TableHead>Vencimiento</TableHead><TableHead>Estado</TableHead><TableHead>Acciones</TableHead></TableRow></TableHeader><TableBody>{result.items.map((contract) => <TableRow key={contract.contractId}>
+      {error ? <div className={styles.inlineError} role="alert"><AlertCircle aria-hidden="true" /><span>{error}</span></div> : loading && !result ? <div className={styles.childLoading}>Cargando contratos…</div> : result?.items.length ? <div className={styles.childTableWrap}><Table className={styles.contractChildTable}><TableHeader><TableRow><TableHead>Contrato / viaje</TableHead><TableHead className={styles.numeric}>Total contratado</TableHead><TableHead className={styles.numeric}>Pagado</TableHead><TableHead className={styles.numeric}>Saldo pendiente</TableHead><TableHead>Vencimiento</TableHead><TableHead>Estado</TableHead><TableHead>Acciones</TableHead></TableRow></TableHeader><TableBody>{result.items.map((contract) => <TableRow key={contract.contractId}>
         <TableCell><div className={styles.stack}><span className={styles.reference}>{contract.contractNumber}</span><span className={styles.secondary}>{contract.travelLabel ?? 'Viaje sin nombre registrado'}</span>{travelContextLabel(contract) ? <span className={styles.tableSubtext}>{travelContextLabel(contract)}</span> : null}</div></TableCell>
         <TableCell className={styles.numeric}>{formatFinanceMoney(contract.originalAmount, contract.currencyCode)}</TableCell>
         <TableCell className={`${styles.numeric} ${styles.availableAmount}`}>{formatFinanceMoney(contract.paidAmount, contract.currencyCode)}</TableCell>
         <TableCell className={`${styles.numeric} ${styles.pendingAmount}`}>{formatFinanceMoney(contract.outstandingAmount, contract.currencyCode)}</TableCell>
         <TableCell>{formatOptionalBusinessDate(contract.dueDate)}</TableCell>
         <TableCell><span className={styles.badgeGroup}><Badge className={statusClass(contract.status)} variant="outline">{CONTRACT_OBLIGATION_STATUS_LABELS[contract.status]}</Badge>{contract.isOverdue ? <Badge className={styles.overdueBadge} variant="outline">Vencido</Badge> : null}</span></TableCell>
-        <TableCell><div className={styles.rowActions}><Button className={styles.secondaryAction} size="sm" type="button" variant="outline" onClick={() => setSelectedContractId(contract.contractId)}><Eye aria-hidden="true" />Detalle financiero</Button>{canWrite && contract.status !== 'SETTLED' && contract.status !== 'CANCELLED' ? <Button className={styles.actionButton} size="sm" type="button" onClick={() => setSelectedContractId(contract.contractId)}><CircleDollarSign aria-hidden="true" />Registrar abono</Button> : null}</div></TableCell>
+        <TableCell><div className={styles.rowActions}><Button className={styles.secondaryAction} size="sm" type="button" variant="outline" onClick={() => onOpenDetail(contract)}><Eye aria-hidden="true" />Detalle financiero</Button>{canWrite && contract.status !== 'SETTLED' && contract.status !== 'CANCELLED' ? <Button className={styles.actionButton} size="sm" type="button" onClick={() => onRegisterInstallment(contract)}><CircleDollarSign aria-hidden="true" />Registrar abono</Button> : null}</div></TableCell>
       </TableRow>)}</TableBody></Table></div> : <div className={styles.childLoading}>El grupo no contiene contratos disponibles.</div>}
       {result && result.totalPages > 1 ? <nav className={styles.candidatePagination}><Button className={styles.secondaryAction} disabled={result.page <= 1} size="sm" type="button" variant="outline" onClick={() => setPage((value) => Math.max(1, value - 1))}>Anterior</Button><span>Página {result.page} de {result.totalPages}</span><Button className={styles.secondaryAction} disabled={result.page >= result.totalPages} size="sm" type="button" variant="outline" onClick={() => setPage((value) => Math.min(result.totalPages, value + 1))}>Siguiente</Button></nav> : null}
     </div></TableCell></TableRow> : null}
-    {selectedContract ? <ContractFinanceDrawer key={selectedContract.contractId} contract={selectedContract} canWrite={canWrite} onClose={() => setSelectedContractId(null)} onChanged={onContractsChanged} /> : null}
   </Fragment>;
 }
 
@@ -340,6 +379,9 @@ export function ContractObligationGroupsView({ canWrite, reloadToken, onContract
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<FinanceApiError | null>(null);
   const [retry, setRetry] = useState(0);
+  const [selectedDetailContract, setSelectedDetailContract] = useState<ContractObligationPortfolioItem | null>(null);
+  const [selectedInstallmentContract, setSelectedInstallmentContract] = useState<ContractObligationPortfolioItem | null>(null);
+  const [installmentNotice, setInstallmentNotice] = useState<string | null>(null);
 
   const load = useCallback(async (signal: AbortSignal) => {
     void reloadToken;
@@ -370,9 +412,20 @@ export function ContractObligationGroupsView({ canWrite, reloadToken, onContract
     return `${first}–${last} de ${result.total} grupos`;
   }, [result]);
 
-  return <section className={styles.tableCard}>
-    <div className={styles.tableHeading}><div><h2>Contratos por cliente y moneda</h2><p>Los compromisos y saldos provienen del modelo financiero de contratos.</p></div><span>{loading ? 'Cargando…' : summary}</span></div>
-    {error ? <div className={styles.state}><div><span className={styles.stateIcon}><AlertCircle aria-hidden="true" /></span><h3 className={styles.error}>No se pudieron cargar los contratos</h3><p>{error.message}</p><Button className={styles.secondaryAction} variant="outline" type="button" onClick={() => setRetry((value) => value + 1)}>Intentar nuevamente</Button></div></div> : !loading && (!result || result.items.length === 0) ? <div className={styles.state}><div><span className={styles.stateIcon}><AlertCircle aria-hidden="true" /></span><h3>No hay grupos de contratos</h3><p>Los contratos con obligación comercial aparecerán aquí.</p></div></div> : <Table className={styles.contractGroupTable}><TableHeader><TableRow><TableHead>Cliente</TableHead><TableHead>Moneda</TableHead><TableHead className={styles.numeric}>Total comprometido</TableHead><TableHead className={styles.numeric}>Pagado</TableHead><TableHead className={styles.numeric}>Saldo contratos</TableHead><TableHead>Acciones</TableHead></TableRow></TableHeader><TableBody>{loading ? Array.from({ length: 5 }, (_, row) => <TableRow key={row}>{Array.from({ length: 6 }, (_, cell) => <TableCell key={cell}><span className={styles.skeleton} /></TableCell>)}</TableRow>) : result?.items.map((group) => <GroupRows key={group.groupKey} group={group} canWrite={canWrite} reloadToken={reloadToken} onContractsChanged={onContractsChanged} />)}</TableBody></Table>}
-    {!loading && !error && result && result.totalPages > 1 ? <nav className={styles.pagination}><p>Página {result.page} de {result.totalPages} · {summary}</p><div className={styles.paginationActions}><Button className={styles.secondaryAction} disabled={result.page <= 1} variant="outline" onClick={() => setPage((value) => Math.max(1, value - 1))}>Anterior</Button><Button className={styles.secondaryAction} disabled={result.page >= result.totalPages} variant="outline" onClick={() => setPage((value) => Math.min(result.totalPages, value + 1))}>Siguiente</Button></div></nav> : null}
-  </section>;
+  const handleInstallmentCompleted = async () => {
+    setInstallmentNotice('Abono registrado correctamente. La información financiera fue actualizada.');
+    setSelectedInstallmentContract(null);
+    onContractsChanged();
+  };
+
+  return <>
+    {installmentNotice ? <div className={styles.operationNotice} role="status">{installmentNotice}</div> : null}
+    <section className={styles.tableCard}>
+      <div className={styles.tableHeading}><div><h2>Contratos por cliente y moneda</h2><p>Los compromisos y saldos provienen del modelo financiero de contratos.</p></div><span>{loading ? 'Cargando…' : summary}</span></div>
+      {error ? <div className={styles.state}><div><span className={styles.stateIcon}><AlertCircle aria-hidden="true" /></span><h3 className={styles.error}>No se pudieron cargar los contratos</h3><p>{error.message}</p><Button className={styles.secondaryAction} variant="outline" type="button" onClick={() => setRetry((value) => value + 1)}>Intentar nuevamente</Button></div></div> : !loading && (!result || result.items.length === 0) ? <div className={styles.state}><div><span className={styles.stateIcon}><AlertCircle aria-hidden="true" /></span><h3>No hay grupos de contratos</h3><p>Los contratos con obligación comercial aparecerán aquí.</p></div></div> : <Table className={styles.contractGroupTable}><TableHeader><TableRow><TableHead>Cliente</TableHead><TableHead>Moneda</TableHead><TableHead className={styles.numeric}>Total contratado</TableHead><TableHead className={styles.numeric}>Pagado</TableHead><TableHead className={styles.numeric}>Saldo contratos</TableHead><TableHead>Acciones</TableHead></TableRow></TableHeader><TableBody>{loading ? Array.from({ length: 5 }, (_, row) => <TableRow key={row}>{Array.from({ length: 6 }, (_, cell) => <TableCell key={cell}><span className={styles.skeleton} /></TableCell>)}</TableRow>) : result?.items.map((group) => <GroupRows key={group.groupKey} group={group} canWrite={canWrite} reloadToken={reloadToken} onOpenDetail={setSelectedDetailContract} onRegisterInstallment={setSelectedInstallmentContract} />)}</TableBody></Table>}
+      {!loading && !error && result && result.totalPages > 1 ? <nav className={styles.pagination}><p>Página {result.page} de {result.totalPages} · {summary}</p><div className={styles.paginationActions}><Button className={styles.secondaryAction} disabled={result.page <= 1} variant="outline" onClick={() => setPage((value) => Math.max(1, value - 1))}>Anterior</Button><Button className={styles.secondaryAction} disabled={result.page >= result.totalPages} variant="outline" onClick={() => setPage((value) => Math.min(result.totalPages, value + 1))}>Siguiente</Button></div></nav> : null}
+    </section>
+    {selectedDetailContract ? <ContractFinanceDrawer key={selectedDetailContract.contractId} contract={selectedDetailContract} canWrite={canWrite} onClose={() => setSelectedDetailContract(null)} onChanged={onContractsChanged} /> : null}
+    {selectedInstallmentContract ? <ContractInstallmentModal key={selectedInstallmentContract.contractId} contract={selectedInstallmentContract} canWrite={canWrite} onClose={() => setSelectedInstallmentContract(null)} onCompleted={handleInstallmentCompleted} /> : null}
+  </>;
 }

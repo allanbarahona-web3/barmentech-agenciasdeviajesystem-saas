@@ -157,6 +157,7 @@
 .futureAction p { margin: 0; color: #526175; font-size: 12px; }
 .paymentBackdrop { position: fixed; inset: 0; z-index: 90; border: 0; background: rgba(15, 35, 65, .46); backdrop-filter: blur(3px); }
 .paymentModal { position: fixed; top: 4vh; left: 50%; z-index: 91; display: flex; width: min(940px, calc(100vw - 32px)); max-height: 92dvh; transform: translateX(-50%); flex-direction: column; overflow: hidden; border: 1px solid #cdd8e5; border-radius: 14px; background: #f7f9fc; box-shadow: 0 24px 70px rgba(15, 35, 65, .28); }
+.contractInstallmentModal { position: fixed; top: 12vh; left: 50%; z-index: 91; display: flex; width: min(640px, calc(100vw - 32px)); max-height: 76dvh; transform: translateX(-50%); flex-direction: column; overflow: hidden; border: 1px solid #cdd8e5; border-radius: 14px; background: #f7f9fc; box-shadow: 0 24px 70px rgba(15, 35, 65, .28); }
 .paymentModalHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; border-bottom: 1px solid #dfe5ed; background: #fff; padding: 20px 22px; }
 .paymentModalHeader p { margin: 0; color: #315f9b; font-size: 11px; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
 .paymentModalHeader h2 { margin: 3px 0 0; color: #102344; font-size: 21px; }
@@ -165,9 +166,13 @@
 .customerFundsHeaderBalance strong { font-size: 15px; font-variant-numeric: tabular-nums; }
 .paymentModalBody { display: grid; gap: 16px; padding: 18px; overflow-y: auto; }
 .paymentContext { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+.contractInstallmentContext { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .paymentContext div { display: grid; gap: 4px; border: 1px solid #dfe5ed; border-radius: 10px; background: #fff; padding: 13px; }
+.contractInstallmentContext div { display: grid; gap: 4px; border: 1px solid #dfe5ed; border-radius: 10px; background: #fff; padding: 11px 13px; }
 .paymentContext span, .paymentSummaryHeader span, .candidateBalance span { color: #64748b; font-size: 11px; font-weight: 700; }
+.contractInstallmentContext span { color: #64748b; font-size: 10px; font-weight: 700; }
 .paymentContext strong, .paymentSummaryHeader strong, .candidateBalance strong { color: #172b4d; font-size: 13px; overflow-wrap: anywhere; }
+.contractInstallmentContext strong { color: #172b4d; font-size: 12px; overflow-wrap: anywhere; }
 .paymentError { display: flex; align-items: flex-start; gap: 10px; border: 1px solid #efb2ad; border-radius: 10px; background: #fff1ef; padding: 12px 14px; color: #9b271f; font-size: 12px; }
 .paymentError svg { width: 17px; height: 17px; flex: 0 0 auto; }
 .paymentForm, .allocationForm, .paymentResult { display: grid; gap: 16px; }
@@ -236,4 +241,4 @@
 @keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 @media (max-width: 1180px) { .filters { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 900px) { .paymentFilters { align-items: stretch; flex-wrap: wrap; } .availableToggle { width: 100%; } }
-@media (max-width: 760px) { .filters, .paymentFormGrid, .paymentContext, .paymentFacts, .contractPaymentFacts, .statementSummary, .statementEmail { grid-template-columns: 1fr; } .viewTabs { width: 100%; } .viewTab, .viewTabActive { flex: 1; } .paymentFilters { flex-direction: column; } .paymentFilters .field, .customerFilterChip { width: 100%; } .pagination { align-items: stretch; flex-direction: column; } .paginationActions > * { flex: 1; } .drawer { width: 100vw; } .paymentModal { top: 0; width: 100vw; max-height: 100dvh; border-radius: 0; } .candidate { grid-template-columns: 1fr; align-items: stretch; } .candidateBalance { text-align: left; } .paymentActions > * { flex: 1; } .contractActionHeader { align-items: stretch; flex-direction: column; } .contractActionHeader > button { width: 100%; } .contractPaymentHeader { flex-direction: column; } }
+@media (max-width: 760px) { .filters, .paymentFormGrid, .paymentContext, .contractInstallmentContext, .paymentFacts, .contractPaymentFacts, .statementSummary, .statementEmail { grid-template-columns: 1fr; } .viewTabs { width: 100%; } .viewTab, .viewTabActive { flex: 1; } .paymentFilters { flex-direction: column; } .paymentFilters .field, .customerFilterChip { width: 100%; } .pagination { align-items: stretch; flex-direction: column; } .paginationActions > * { flex: 1; } .drawer { width: 100vw; } .paymentModal, .contractInstallmentModal { top: 0; width: 100vw; max-height: 100dvh; border-radius: 0; } .candidate { grid-template-columns: 1fr; align-items: stretch; } .candidateBalance { text-align: left; } .paymentActions > * { flex: 1; } .contractActionHeader { align-items: stretch; flex-direction: column; } .contractActionHeader > button { width: 100%; } .contractPaymentHeader { flex-direction: column; } }

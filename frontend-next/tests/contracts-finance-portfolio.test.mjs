@@ -28,6 +28,10 @@ const cssSource = readFileSync(
   new URL('../src/app/finance/accounts-receivable/accounts-receivable.module.css', import.meta.url),
   'utf8',
 );
+const groupRowsSource = portfolioSource.slice(
+  portfolioSource.indexOf('function GroupRows'),
+  portfolioSource.indexOf('export function ContractObligationGroupsView'),
+);
 
 test('Accounts Receivable keeps Cartera and Pagos and adds the Contratos tab', () => {
   assert.match(pageSource, /Cartera por cliente/);
@@ -74,6 +78,23 @@ test('expanded Contract rows are lazy, paginated, and retain historical obligati
   assert.match(portfolioSource, /Página \{result\.page\} de \{result\.totalPages\}/);
 });
 
+test('Contracts overlays are owned outside table rows so tbody only receives rows', () => {
+  assert.doesNotMatch(groupRowsSource, /ContractFinanceDrawer|ContractInstallmentModal|<aside|drawerBackdrop|paymentBackdrop/);
+  assert.match(groupRowsSource, /onOpenDetail\(contract\)/);
+  assert.match(groupRowsSource, /onRegisterInstallment\(contract\)/);
+  assert.match(portfolioSource, /selectedDetailContract \? <ContractFinanceDrawer/);
+  assert.match(portfolioSource, /selectedInstallmentContract \? <ContractInstallmentModal/);
+});
+
+test('detail and row installment actions open separate overlay state', () => {
+  assert.match(groupRowsSource, /onOpenDetail\(contract\)[\s\S]*Detalle financiero/);
+  assert.match(groupRowsSource, /onRegisterInstallment\(contract\)[\s\S]*Registrar abono/);
+  assert.doesNotMatch(groupRowsSource, /setSelectedDetailContract|setSelectedInstallmentContract/);
+  assert.match(portfolioSource, /function ContractFinanceDrawer/);
+  assert.match(portfolioSource, /function ContractInstallmentModal/);
+  assert.match(portfolioSource, /showInstallmentForm && commercialObligation \? <ContractInstallmentForm/);
+});
+
 test('Contract obligation and payment labels are Spanish and payment methods use the shared registry', () => {
   assert.deepEqual(CONTRACT_OBLIGATION_STATUS_LABELS, {
     OPEN: 'Pendiente',
@@ -92,7 +113,7 @@ test('Contract obligation and payment labels are Spanish and payment methods use
   assert.match(portfolioSource, /formatFinancePaymentMethod\(payment\.paymentMethod\)/);
 });
 
-test('the financial drawer loads persistent history, exposes receipts only when available, and refreshes authoritative reads after an installment', () => {
+test('the financial drawer and compact modal reuse installment helpers and refresh authoritative reads', () => {
   assert.match(portfolioSource, /getContractCommercialObligation\(contract\.contractId/);
   assert.match(portfolioSource, /listContractPayments\(contract\.contractId, \{ page: paymentPage, pageSize: PAYMENT_PAGE_SIZE \}/);
   assert.match(portfolioSource, /payment\.receiptAvailable \? <Button/);
@@ -102,6 +123,13 @@ test('the financial drawer loads persistent history, exposes receipts only when 
   assert.match(portfolioSource, /buildContractInstallmentRequest/);
   assert.match(portfolioSource, /createContractInstallmentDeduplicationKey/);
   assert.match(portfolioSource, /installmentFormError/);
+  assert.match(portfolioSource, /<ContractInstallmentForm contractId=\{contract\.contractId\}/);
+  assert.match(portfolioSource, /setSelectedInstallmentContract\(null\);\s*onContractsChanged\(\);/);
+});
+
+test('Contracts terminology uses Total contratado and keeps Total comprometido out of the new UI', () => {
+  assert.match(portfolioSource, /Total contratado/);
+  assert.doesNotMatch(portfolioSource, /Total comprometido/);
 });
 
 test('only Finance write roles can register installments, while Contract controls avoid CxC fiscal actions', () => {
@@ -120,4 +148,7 @@ test('Contracts use the bounded Finance drawer and responsive portfolio styling,
   assert.match(cssSource, /\.contractChildTable \{ min-width: 1120px; \}/);
   assert.match(cssSource, /\.drawer \{ width: 100vw; \}/);
   assert.match(cssSource, /\.contractPaymentFacts, \.statementSummary/);
+  assert.match(cssSource, /\.contractInstallmentModal \{ position: fixed/);
+  assert.match(cssSource, /\.contractInstallmentContext/);
+  assert.match(cssSource, /\.paymentModal, \.contractInstallmentModal \{ top: 0; width: 100vw/);
 });
