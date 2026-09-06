@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { getStoredSession, getStoredToken } from "@/lib/auth-api";
+import { getStoredToken } from "@/lib/auth-api";
 import {
   type ContractFileDocument,
   type HistoryContractItem,
@@ -17,8 +17,6 @@ import { ConfirmModal } from "@/components/confirm-modal";
 import { PageLoader } from "@/components/loading-spinner";
 import AttachmentViewer from "@/components/attachment-viewer";
 import { DocumentStatusIndicator } from "@/components/document-status-indicator";
-import { ContractFinancePanel } from "@/features/contracts-finance/contract-finance-panel";
-import { canRegisterContractInstallments } from "@/features/contracts-finance/contract-installment";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -105,9 +103,7 @@ export default function HistoryPage() {
   const [draftToDelete, setDraftToDelete] = useState<{ id: string; contractNumber: string; clientFullName: string } | null>(null);
   const [pdfProcessingDialogOpen, setPdfProcessingDialogOpen] = useState(false);
   const [attachmentViewerData, setAttachmentViewerData] = useState<{ attachments: Array<{ id: string; originalFileName: string; url: string; mimeType: string }>; initialIndex: number } | null>(null);
-  const [financeContract, setFinanceContract] = useState<{ id: string; contractNumber: string } | null>(null);
   const { toasts, showSuccess, showError, showInfo, dismissToast } = useToast();
-  const canOpenContractFinance = canRegisterContractInstallments(getStoredSession()?.user.role);
 
   const closeViewer = () => {
     setViewerOpen(false);
@@ -585,15 +581,6 @@ export default function HistoryPage() {
                                 >
                                   {busyAction === `documents:${item.id}` ? "Abriendo..." : "Documentos"}
                                 </button>
-                                {canOpenContractFinance ? (
-                                  <button
-                                    type="button"
-                                    className="rounded-xl px-4 py-2.5 bg-white text-blue-900 border border-blue-200 font-semibold transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md active:translate-y-0"
-                                    onClick={() => setFinanceContract({ id: item.id, contractNumber: item.contractNumber })}
-                                  >
-                                    Finanzas
-                                  </button>
-                                ) : null}
                               </>
                             )}
                             {isSigned ? (
@@ -615,11 +602,6 @@ export default function HistoryPage() {
                               >
                                 {busyAction === `sign:${item.id}` ? "Enviando..." : "✉️ Enviar a Firmar"}
                               </button>
-                            ) : null}
-                            {isSigned || item.status === "PENDING_SIGNATURE" || item.status === "SIGNING_SENT" || item.status === "PENDING_PAYMENT_RESERVE" || item.status === "RESERVE_IN_REVIEW" ? (
-                              <Link href={`/billing/${encodeURIComponent(item.id)}`} className="rounded-xl px-4 py-2.5 bg-white text-blue-900 border border-blue-200 font-semibold transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 no-underline inline-flex items-center justify-center">
-                                Estado de cuenta
-                              </Link>
                             ) : null}
                           </div>
                         </td>
@@ -722,14 +704,6 @@ export default function HistoryPage() {
             </div>
           </div>
         </section>
-      ) : null}
-
-      {financeContract ? (
-        <ContractFinancePanel
-          contractId={financeContract.id}
-          contractNumber={financeContract.contractNumber}
-          onClose={() => setFinanceContract(null)}
-        />
       ) : null}
 
       <ConfirmModal
