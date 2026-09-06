@@ -19,11 +19,19 @@ import { StorageModule } from "../storage/storage.module";
 import { CommercialObligationModule } from "./commercial-obligation.module";
 import { CommercialObligationAllocationService } from "./commercial-obligation-allocation.service";
 import { ContractInstallmentPaymentService } from "./contract-installment-payment.service";
+import { FiscalBillingModule } from "../fiscal-billing/fiscal-billing.module";
+import { TravelFiscalClassificationModule } from "../additional-services/travel-fiscal-classification.module";
+import { FiscalCatalogModule } from "../fiscal-catalogs/fiscal-catalog.module";
+import { ContractPaymentFiscalPreparationService } from "./contract-payment-fiscal-preparation.service";
+import { ContractPaymentFiscalizationOutboxService } from "./contract-payment-fiscalization-outbox.service";
+import { ContractPaymentFiscalizationPublisher } from "./contract-payment-fiscalization.publisher";
+import { ContractPaymentFiscalizationWorkerService } from "./contract-payment-fiscalization-worker.service";
+import { ContractPaymentFiscalizationProcessor } from "./contract-payment-fiscalization.processor";
 
 @Module({
-  imports: [BusinessNumberingModule, DocumentsModule, EmailModule, StorageModule, CommercialObligationModule, ContractReservationApprovalModule],
+  imports: [BusinessNumberingModule, DocumentsModule, EmailModule, StorageModule, CommercialObligationModule, ContractReservationApprovalModule, FiscalBillingModule, TravelFiscalClassificationModule, FiscalCatalogModule],
   controllers: [FinanceController],
-  providers: [PaymentRegistrationService, PaymentAllocationService, PaymentAllocationReversalService, PaymentCancellationService, FinanceReadService, CustomerFundsAllocationService, CustomerAccountStatementService, RegisterPaymentAndApplyService, PaymentReceiptService, ContractReservationPaymentService, CommercialObligationAllocationService, ContractReservationReviewService, ContractInstallmentPaymentService],
-  exports: [PaymentRegistrationService, PaymentAllocationService, PaymentAllocationReversalService, PaymentCancellationService, ContractReservationPaymentService, ContractReservationReviewService, CommercialObligationModule],
+  providers: [PaymentRegistrationService, PaymentAllocationService, PaymentAllocationReversalService, PaymentCancellationService, FinanceReadService, CustomerFundsAllocationService, CustomerAccountStatementService, RegisterPaymentAndApplyService, PaymentReceiptService, ContractReservationPaymentService, CommercialObligationAllocationService, ContractPaymentFiscalizationOutboxService, ContractReservationReviewService, ContractInstallmentPaymentService, ContractPaymentFiscalPreparationService, ContractPaymentFiscalizationPublisher, ContractPaymentFiscalizationWorkerService, ContractPaymentFiscalizationProcessor],
+  exports: [PaymentRegistrationService, PaymentAllocationService, PaymentAllocationReversalService, PaymentCancellationService, ContractReservationPaymentService, ContractReservationReviewService, ContractPaymentFiscalPreparationService, CommercialObligationModule],
 })
 export class FinanceModule {}

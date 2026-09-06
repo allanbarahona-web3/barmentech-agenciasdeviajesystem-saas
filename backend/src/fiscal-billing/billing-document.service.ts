@@ -6,6 +6,7 @@ import {
 import { OfficialExchangeRateResolver } from "../official-exchange-rates/official-exchange-rate.resolver";
 import type {
   BillingDocumentDraftCommand,
+  CrV44CalculatedBillingDocumentDraftCommand,
   CrV44SalesOrderDraftCommand,
   BillingDocumentFiscalPreparation,
   BillingDocumentIssuancePreflight,
@@ -133,6 +134,37 @@ export class BillingDocumentService {
     } catch (error) {
       if (!this.isUniqueConstraintViolation(error)) throw error;
       if (!primarySource) throw fiscalBillingError("BILLING_DRAFT_CONFLICT");
+      const winner = await this.repository.findPrimaryDocument(
+        command.tenantId,
+        primarySource.sourceType,
+        primarySource.sourceId,
+      );
+      if (!winner) throw fiscalBillingError("BILLING_DRAFT_CONFLICT");
+      return this.resumeOrReject(command.tenantId, winner);
+    }
+  }
+
+  async createOrResumeCrV44CalculatedDraft(
+    command: CrV44CalculatedBillingDocumentDraftCommand,
+  ) {
+    requireCrV44CalculatedDraftCreationPath(command);
+    const primarySource =
+      command.source?.sourceRole === "PRIMARY" ? command.source : null;
+    if (!primarySource) {
+      throw fiscalBillingError("BILLING_DRAFT_CREATION_PATH_UNSUPPORTED");
+    }
+    const existing = await this.repository.findPrimaryDocument(
+      command.tenantId,
+      primarySource.sourceType,
+      primarySource.sourceId,
+    );
+    if (existing) return this.resumeOrReject(command.tenantId, existing);
+
+    try {
+      const result = await this.repository.createCrV44CalculatedDraft(command);
+      return this.resumeOrReject(command.tenantId, result);
+    } catch (error) {
+      if (!this.isUniqueConstraintViolation(error)) throw error;
       const winner = await this.repository.findPrimaryDocument(
         command.tenantId,
         primarySource.sourceType,
@@ -359,6 +391,23 @@ function requireGenericDraftCreationPath(
       runtime.source?.sourceType === "SALES_ORDER" ||
       (runtime.fiscalCalculationPolicyVersion !== undefined &&
         runtime.fiscalCalculationPolicyVersion !== null)
+    ) {
+      throw fiscalBillingError("BILLING_DRAFT_CREATION_PATH_UNSUPPORTED");
+    }
+  } catch (error) {
+    if (error instanceof HttpException) throw error;
+    throw fiscalBillingError("BILLING_DRAFT_CREATION_PATH_UNSUPPORTED");
+  }
+}
+
+function requireCrV44CalculatedDraftCreationPath(
+  command: CrV44CalculatedBillingDocumentDraftCommand,
+): void {
+  try {
+    if (
+      command.source?.sourceType === "SALES_ORDER" ||
+      command.source?.sourceRole !== "PRIMARY" ||
+      command.fiscalCalculationPolicyVersion !== CR_V44_DECIMAL_V1
     ) {
       throw fiscalBillingError("BILLING_DRAFT_CREATION_PATH_UNSUPPORTED");
     }

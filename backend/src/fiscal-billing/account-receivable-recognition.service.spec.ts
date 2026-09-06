@@ -75,6 +75,44 @@ describe("AccountReceivableRecognitionService", () => {
     expect(c.tx.billingOutboxEvent.updateMany).toHaveBeenCalledTimes(1);
   });
 
+  it("acknowledges an accepted CONTRACT_PAYMENT document without creating an AccountReceivable", async () => {
+    const c = context({ document: document({ sourceType: "CONTRACT_PAYMENT" }) });
+
+    await expect(c.service.recognizeClaimedEvent(claim())).resolves.toBeUndefined();
+
+    expect(c.tx.accountReceivable.createMany).not.toHaveBeenCalled();
+    expect(c.tx.accountReceivable.findUnique).not.toHaveBeenCalled();
+    expect(c.tx.billingOutboxEvent.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: "child-a", tenantId: "tenant-a", status: "PROCESSING", lockedBy: "owner-a" }),
+      data: expect.objectContaining({ status: "PROCESSED", lastError: null, lockedAt: null, lockedBy: null }),
+    }));
+    expect(Object.keys(c.tx).sort()).toEqual(["$queryRaw", "accountReceivable", "billingDocument", "billingOutboxEvent"]);
+    expect((c.tx as Record<string, unknown>).payment).toBeUndefined();
+    expect((c.tx as Record<string, unknown>).commercialObligation).toBeUndefined();
+    expect((c.tx as Record<string, unknown>).paymentAllocation).toBeUndefined();
+  });
+
+  it("keeps repeated CONTRACT_PAYMENT recognition deliveries idempotent no-ops", async () => {
+    const c = context({ document: document({ sourceType: "CONTRACT_PAYMENT" }) });
+
+    await c.service.recognizeClaimedEvent(claim());
+    await c.service.recognizeClaimedEvent(claim());
+
+    expect(c.tx.accountReceivable.createMany).not.toHaveBeenCalled();
+    expect(c.tx.accountReceivable.findUnique).not.toHaveBeenCalled();
+    expect(c.tx.billingOutboxEvent.updateMany).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(["SALES_ORDER", "ADDITIONAL_SERVICE_ORDER"]) (
+    "continues normal recognition for other source type %s",
+    async (sourceType) => {
+      const c = context({ document: document({ sourceType }) });
+      await c.service.recognizeClaimedEvent(claim());
+      expect(c.tx.accountReceivable.createMany).toHaveBeenCalledTimes(1);
+      expect(c.tx.accountReceivable.findUnique).toHaveBeenCalledTimes(1);
+    },
+  );
+
   it.each([
     ["amount", { outstandingAmount: d("1.00000") }],
     ["due date", { dueDate: new Date("2026-08-25T00:00:00.000Z") }],
@@ -215,6 +253,7 @@ function child(overrides: Record<string, unknown> = {}) {
 function document(overrides: Record<string, unknown> = {}) {
   return {
     id: "document-a", tenantId: "tenant-a", taxAuthorityStatus: "ACCEPTED", documentTypeCode: "01",
+    sourceType: "SALES_ORDER",
     fiscalNumber: "00100001010000000042", customerId: "customer-a", receiverName: "Receiver",
     receiverIdentificationType: "02", receiverIdentification: "3101999999", currencyCode: "CRC",
     total: d("113.12345"), fiscalIssueDate: ISSUE_DATE, paymentConditionCode: "01", creditTermDays: null,

@@ -30,6 +30,7 @@ describe("ContractInstallmentPaymentService", () => {
       allocationDeduplicationKey: "contract-installment:payment-1:obligation-1",
     }));
     expect(c.prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), { timeout: 15000 });
+    expect(c.fiscalizationOutbox.enqueueConfirmedPaymentInTransaction).toHaveBeenCalledWith(c.tx, paymentLike());
     expect(Object.keys(c.tx)).not.toContain("billingDocument");
     expect(Object.keys(c.tx)).not.toContain("accountReceivable");
     expect(Object.keys(c.tx)).not.toContain("paymentAllocation");
@@ -163,10 +164,15 @@ function context(options: {
   const prisma = { $transaction: jest.fn(async (work: (client: typeof tx) => unknown) => work(tx)) };
   const registrations = { registerInTransaction: jest.fn().mockResolvedValue({ payment, created: options.registrationCreated ?? true }) };
   const allocations = { allocateInTransaction: jest.fn().mockResolvedValue({ allocation: { id: "allocation-1" }, applied: options.allocationApplied ?? true }) };
+  const fiscalizationOutbox = { enqueueConfirmedPaymentInTransaction: jest.fn().mockResolvedValue(undefined) };
   return {
-    service: new ContractInstallmentPaymentService(prisma as never, registrations as never, allocations as never),
-    prisma, tx, registrations, allocations,
+    service: new ContractInstallmentPaymentService(prisma as never, registrations as never, allocations as never, fiscalizationOutbox as never),
+    prisma, tx, registrations, allocations, fiscalizationOutbox,
   };
+}
+
+function paymentLike() {
+  return expect.objectContaining({ id: "payment-1", purpose: PaymentPurpose.CONTRACT_INSTALLMENT, status: PaymentStatus.FULLY_ALLOCATED });
 }
 
 async function expectCode(promise: Promise<unknown>, code: string): Promise<void> {

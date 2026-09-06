@@ -18,6 +18,7 @@ import {
   PaymentRegistrationError,
   PaymentRegistrationService,
 } from "./payment-registration.service";
+import { ContractPaymentFiscalizationOutboxService } from "./contract-payment-fiscalization-outbox.service";
 
 const MAX_AMOUNT = new Prisma.Decimal("99999999999999.99999");
 const INSTALLMENT_CONTRACT_STATUSES = new Set([
@@ -66,6 +67,7 @@ export class ContractInstallmentPaymentService {
     private readonly prisma: PrismaService,
     private readonly registrations: PaymentRegistrationService,
     private readonly commercialObligationAllocations: CommercialObligationAllocationService,
+    private readonly fiscalizationOutbox: ContractPaymentFiscalizationOutboxService,
   ) {}
 
   async register(command: ContractInstallmentPaymentCommand) {
@@ -140,6 +142,7 @@ export class ContractInstallmentPaymentService {
           tx.commercialObligation.findFirst({ where: { id: obligation.id, tenantId: input.tenantId } }),
         ]);
         if (!payment || !updatedObligation) fail(CONTRACT_INSTALLMENT_ERRORS.CONFLICT);
+        await this.fiscalizationOutbox.enqueueConfirmedPaymentInTransaction(tx, payment);
         return {
           payment: {
             id: payment.id,

@@ -1,4 +1,5 @@
 import type { BillingMode, BillingDocumentSourceRole } from "@prisma/client";
+import { CR_V44_DECIMAL_V1 } from "./cr-v44-fiscal-calculation-policy";
 
 export interface BillingDocumentSourceIdentity {
   sourceType: string;
@@ -99,6 +100,17 @@ export interface BillingDocumentDraftCommand {
   paymentMethods: BillingDocumentPaymentMethodSnapshot[];
   lines: BillingDocumentDraftLineSnapshot[];
   createdByUserId: string;
+}
+
+/**
+ * Generic, already-calculated CR v4.4 draft input. Domain adapters own source
+ * loading and calculation input selection; BillingDocument persists the
+ * resulting canonical fiscal snapshot without knowing that source domain.
+ */
+export interface CrV44CalculatedBillingDocumentDraftCommand
+  extends BillingDocumentDraftCommand {
+  customerId: string | null;
+  fiscalCalculationPolicyVersion: typeof CR_V44_DECIMAL_V1;
 }
 
 export interface CrV44SalesOrderDraftCommand {

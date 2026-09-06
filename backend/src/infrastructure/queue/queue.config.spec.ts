@@ -6,6 +6,8 @@ import { AccountReceivableRecognitionProcessor } from "../../fiscal-billing/jobs
 import { FiscalArtifactRetrievalProcessor } from "../../fiscal-billing/jobs/fiscal-artifact-retrieval.processor";
 import { FiscalArtifactRetrievalPublisher } from "../../fiscal-billing/jobs/fiscal-artifact-retrieval.publisher";
 import { FiscalInvoiceAutoDeliveryProcessor } from "../../fiscal-billing/jobs/fiscal-invoice-auto-delivery.processor";
+import { FinanceModule } from "../../finance/finance.module";
+import { ContractPaymentFiscalizationProcessor } from "../../finance/contract-payment-fiscalization.processor";
 import {
   DEFAULT_QUEUE_NAMES,
   PLATFORM_QUEUE_KEYS,
@@ -25,6 +27,7 @@ describe("queue configuration", () => {
       ACCOUNT_RECEIVABLE_RECOGNITION: "account-receivable-recognition",
       FISCAL_ARTIFACT_RETRIEVAL: "fiscal-artifact-retrieval",
       FISCAL_INVOICE_AUTO_DELIVERY: "fiscal-invoice-auto-delivery",
+      CONTRACT_PAYMENT_FISCALIZATION: "contract-payment-fiscalization",
       PDF: "pdf",
       NOTIFICATION: "notification",
       PACKAGE_COMPLETED: "package-completed",
@@ -40,6 +43,7 @@ describe("queue configuration", () => {
       "account-receivable-recognition": "account-receivable-recognition",
       "fiscal-artifact-retrieval": "fiscal-artifact-retrieval",
       "fiscal-invoice-auto-delivery": "fiscal-invoice-auto-delivery",
+      "contract-payment-fiscalization": "contract-payment-fiscalization",
       pdf: "pdf",
       notification: "notification",
       "package-completed": "package-completed",
@@ -63,6 +67,7 @@ describe("queue configuration", () => {
     expect(getQueueConfig(configService()).queueNames[PLATFORM_QUEUE_KEYS.ACCOUNT_RECEIVABLE_RECOGNITION]).toBe("account-receivable-recognition");
     expect(getQueueConfig(configService()).queueNames[PLATFORM_QUEUE_KEYS.FISCAL_ARTIFACT_RETRIEVAL]).toBe("fiscal-artifact-retrieval");
     expect(getQueueConfig(configService()).queueNames[PLATFORM_QUEUE_KEYS.FISCAL_INVOICE_AUTO_DELIVERY]).toBe("fiscal-invoice-auto-delivery");
+    expect(getQueueConfig(configService()).queueNames[PLATFORM_QUEUE_KEYS.CONTRACT_PAYMENT_FISCALIZATION]).toBe("contract-payment-fiscalization");
   });
 
   it("uses stable optional environment-name keys for both reconciliation queues", () => {
@@ -121,6 +126,17 @@ describe("queue configuration", () => {
       PLATFORM_QUEUE_KEYS.FISCAL_ARTIFACT_RETRIEVAL,
       PLATFORM_QUEUE_KEYS.FISCAL_INVOICE_AUTO_DELIVERY,
     ]).size).toBe(6);
+  });
+
+  it("registers Contract-payment fiscalization on its own queue", () => {
+    const providers = Reflect.getMetadata(
+      MODULE_METADATA.PROVIDERS,
+      FinanceModule,
+    ) as Array<{ name?: string }>;
+    expect(providers).toContain(ContractPaymentFiscalizationProcessor);
+    expect(QUEUE_NAME_ENV_KEYS[PLATFORM_QUEUE_KEYS.CONTRACT_PAYMENT_FISCALIZATION]).toBe(
+      "BULLMQ_CONTRACT_PAYMENT_FISCALIZATION_QUEUE_NAME",
+    );
   });
 });
 

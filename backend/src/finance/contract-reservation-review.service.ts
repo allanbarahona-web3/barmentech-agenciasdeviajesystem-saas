@@ -20,6 +20,7 @@ import {
   INITIAL_CONTRACT_PAYMENT_PURPOSES,
 } from "./contract-initial-payment";
 import { FINANCE_RECEIPT_SEQUENCE_KEY, financeReceiptNumber } from "./payment-registration.service";
+import { ContractPaymentFiscalizationOutboxService } from "./contract-payment-fiscalization-outbox.service";
 
 const APPROVED_PAYMENT_STATUSES = new Set<PaymentStatus>([
   PaymentStatus.RECEIVED,
@@ -35,6 +36,7 @@ export class ContractReservationReviewService {
     private readonly contracts: ContractReservationApprovalService,
     private readonly commercialObligationAllocations: CommercialObligationAllocationService,
     private readonly storage: StorageService,
+    private readonly fiscalizationOutbox: ContractPaymentFiscalizationOutboxService,
   ) {}
 
   async approve(tenantId: string, paymentId: string, actor: FinanceActor): Promise<Payment> {
@@ -42,7 +44,10 @@ export class ContractReservationReviewService {
       const payment = await this.lockPayment(tx, tenantId, paymentId);
       this.validateInitialPaymentIdentity(payment);
       if (APPROVED_PAYMENT_STATUSES.has(payment.status)) {
-        if (approvedState(payment)) return payment;
+        if (approvedState(payment)) {
+          await this.fiscalizationOutbox.enqueueConfirmedPaymentInTransaction(tx, payment);
+          return payment;
+        }
         throw new ConflictException("CONTRACT_RESERVATION_REVIEW_STATE_CONFLICT");
       }
       if (payment.status !== PaymentStatus.PENDING_VERIFICATION) {
@@ -99,6 +104,7 @@ export class ContractReservationReviewService {
       }
       const allocated = await tx.payment.findFirst({ where: { id: payment.id, tenantId } });
       if (!allocated) throw new Error("CONTRACT_RESERVATION_ALLOCATION_PERSISTENCE_FAILED");
+      await this.fiscalizationOutbox.enqueueConfirmedPaymentInTransaction(tx, allocated);
       await tx.billingAuditLog.create({
         data: financeAuditRecord({
           tenantId,

@@ -12,6 +12,7 @@ import {
 } from "./jobs/fiscal-accepted-fanout.constants";
 
 const SOURCE_TYPE = "BILLING_DOCUMENT";
+const CONTRACT_PAYMENT_FISCAL_SOURCE_TYPE = "CONTRACT_PAYMENT";
 const DOCUMENT_TYPE_INVOICE = "01";
 const CASH_CONDITION = "01";
 const CREDIT_CONDITION = "02";
@@ -105,6 +106,15 @@ export class AccountReceivableRecognitionService {
         where: { id: payload.billingDocumentId, tenantId: claim.tenantId },
         select: billingDocumentRecognitionSelect,
       });
+      if (document?.sourceType === CONTRACT_PAYMENT_FISCAL_SOURCE_TYPE) {
+        if (document.taxAuthorityStatus !== "ACCEPTED") {
+          throw new RecognitionError(
+            ACCOUNT_RECEIVABLE_RECOGNITION_ERRORS.DOCUMENT_INVALID,
+          );
+        }
+        await completeRecognitionClaim(tx, child.id, claim);
+        return;
+      }
       const mapping = document && mapReceivable(document);
       if (!mapping) {
         throw new RecognitionError(ACCOUNT_RECEIVABLE_RECOGNITION_ERRORS.DOCUMENT_INVALID);
@@ -129,24 +139,7 @@ export class AccountReceivableRecognitionService {
         );
       }
 
-      const completed = await tx.billingOutboxEvent.updateMany({
-        where: {
-          id: child.id,
-          tenantId: claim.tenantId,
-          status: "PROCESSING",
-          lockedBy: claim.lockOwner,
-        },
-        data: {
-          status: "PROCESSED",
-          processedAt: new Date(),
-          lastError: null,
-          lockedAt: null,
-          lockedBy: null,
-        },
-      });
-      if (completed.count !== 1) {
-        throw new RecognitionError(ACCOUNT_RECEIVABLE_RECOGNITION_ERRORS.CLAIM_INVALID);
-      }
+      await completeRecognitionClaim(tx, child.id, claim);
     });
   }
 
@@ -223,6 +216,7 @@ const billingDocumentRecognitionSelect = {
   tenantId: true,
   documentTypeCode: true,
   taxAuthorityStatus: true,
+  sourceType: true,
   fiscalNumber: true,
   customerId: true,
   receiverName: true,
@@ -432,6 +426,31 @@ function ownedRecognitionClaimWhere(claim: ClaimedReceivableRecognitionEvent) {
     status: "PROCESSING" as const,
     lockedBy: claim.lockOwner,
   };
+}
+
+async function completeRecognitionClaim(
+  tx: Prisma.TransactionClient,
+  eventId: string,
+  claim: ClaimedReceivableRecognitionEvent,
+): Promise<void> {
+  const completed = await tx.billingOutboxEvent.updateMany({
+    where: {
+      id: eventId,
+      tenantId: claim.tenantId,
+      status: "PROCESSING",
+      lockedBy: claim.lockOwner,
+    },
+    data: {
+      status: "PROCESSED",
+      processedAt: new Date(),
+      lastError: null,
+      lockedAt: null,
+      lockedBy: null,
+    },
+  });
+  if (completed.count !== 1) {
+    throw new RecognitionError(ACCOUNT_RECEIVABLE_RECOGNITION_ERRORS.CLAIM_INVALID);
+  }
 }
 
 function safeRecognitionError(value: string): string {

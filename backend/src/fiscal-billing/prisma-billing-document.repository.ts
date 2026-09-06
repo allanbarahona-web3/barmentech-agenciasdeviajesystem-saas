@@ -4,6 +4,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import type { BillingDocumentRepository } from "./billing-document.repository";
 import type {
   BillingDocumentDraftCommand,
+  CrV44CalculatedBillingDocumentDraftCommand,
   CrV44SalesOrderDraftCommand,
   BillingDocumentFiscalPreparation,
   BillingDocumentFiscalAllocationResult,
@@ -27,6 +28,7 @@ import {
   type CrV44FiscalCalculationResult,
   type CrV44FiscalDocumentInput,
 } from "./cr-v44-fiscal-calculation-policy";
+import { mapCrV44CalculationToBillingDocumentSnapshot } from "./cr-v44-billing-document-snapshot";
 import {
   buildRequestIdentity,
   buildResponseHash,
@@ -341,6 +343,44 @@ export class PrismaBillingDocumentRepository
     });
   }
 
+  createCrV44CalculatedDraft(
+    command: CrV44CalculatedBillingDocumentDraftCommand,
+  ): Promise<PrimaryDocumentSummary> {
+    requireCrV44CalculatedDraftCreationPath(command);
+    const source = command.source;
+    if (!source || source.sourceRole !== "PRIMARY") {
+      throw fiscalBillingError("BILLING_DRAFT_CREATION_PATH_UNSUPPORTED");
+    }
+    validateCrV44CalculatedSnapshot({
+      fiscalCalculationPolicyVersion: command.fiscalCalculationPolicyVersion,
+      totals: command.totals,
+      lines: command.lines.map((line) => ({
+        ...line,
+        taxes: line.taxes.map((tax) => ({ ...tax, exemption: null })),
+      })),
+    });
+    return this.prisma.$transaction(async (tx) => {
+      const existing = await tx.billingDocument.findFirst({
+        where: {
+          tenantId: command.tenantId,
+          sourceType: source.sourceType,
+          sourceId: source.sourceId,
+          sourceRole: "PRIMARY",
+        },
+        select: primaryDocumentSelect,
+      });
+      if (existing) return existing;
+      return tx.billingDocument.create({
+        data: billingDocumentCreateData(
+          command,
+          command.fiscalCalculationPolicyVersion,
+          command.customerId,
+        ),
+        select: primaryDocumentSelect,
+      });
+    });
+  }
+
   async createCrV44SalesOrderDraft(
     request: CrV44SalesOrderDraftCommand,
   ): Promise<PrimaryDocumentSummary> {
@@ -439,9 +479,9 @@ export class PrismaBillingDocumentRepository
           throw fiscalBillingError("BILLING_DRAFT_FISCAL_CALCULATION_FAILED");
         }
 
-        let calculatedSnapshot: ReturnType<typeof mapCrV44Calculation>;
+        let calculatedSnapshot: ReturnType<typeof mapCrV44CalculationToBillingDocumentSnapshot>;
         try {
-          calculatedSnapshot = mapCrV44Calculation(calculation, metadata);
+          calculatedSnapshot = mapCrV44CalculationToBillingDocumentSnapshot(calculation, metadata);
         } catch {
           throw fiscalBillingError(
             "BILLING_DRAFT_HACIENDA_MONEY_CAPACITY_EXCEEDED",
@@ -1397,73 +1437,6 @@ function crV44InputFromSalesOrder(order: AuthoritativeSalesOrder): {
   };
 }
 
-function mapCrV44Calculation(
-  calculation: CrV44FiscalCalculationResult,
-  metadata: readonly CrV44LineMetadata[],
-): Pick<BillingDocumentDraftCommand, "totals" | "lines"> {
-  if (
-    calculation.policyVersion !== CR_V44_DECIMAL_V1 ||
-    calculation.lines.length !== metadata.length
-  ) {
-    throw new Error("invalid fiscal calculation result");
-  }
-  const money = (value: string) => assertHaciendaCrV44MoneyCapacity(value);
-  const totals = calculation.internalTotals;
-  return {
-    totals: {
-      grossSubtotal: money(totals.grossAmountTotal),
-      discountTotal: money(totals.discountAmountTotal),
-      taxableTotal: money(totals.taxableBaseTotal),
-      exemptTotal: money(totals.exemptBaseTotal),
-      exoneratedTotal: money(totals.exoneratedBaseTotal),
-      grossTaxTotal: money(totals.grossTaxAmountTotal),
-      exoneratedTaxTotal: money(totals.exoneratedTaxAmountTotal),
-      netTaxTotal: money(totals.netTaxAmountTotal),
-      total: money(totals.lineTotal),
-    },
-    lines: calculation.lines.map((line, index) => {
-      const source = metadata[index];
-      if (!source || source.lineNumber !== line.lineNumber) {
-        throw new Error("invalid fiscal calculation line identity");
-      }
-      const taxableBase = money(line.taxableBase);
-      const taxAmount = money(line.grossTaxAmount);
-      const netTaxAmount = money(line.netTaxAmount);
-      return {
-        lineNumber: line.lineNumber,
-        cabysCode: source.cabysCode,
-        itemCode: source.itemCode,
-        description: source.description,
-        quantity: line.quantity,
-        unitOfMeasureCode: source.unitOfMeasureCode,
-        unitPrice: money(line.unitPrice),
-        grossAmount: money(line.grossAmount),
-        discountAmount: money(line.discountAmount),
-        discountCode: null,
-        discountReason: null,
-        taxableBase,
-        taxAmount,
-        exoneratedTaxAmount: money(line.exoneratedTaxAmount),
-        netTaxAmount,
-        lineSubtotal: money(line.lineSubtotal),
-        lineTotal: money(line.lineTotal),
-        taxes: [
-          {
-            taxOrder: 1,
-            taxCode: source.taxCode,
-            rateCode: line.ivaTariffCode,
-            ratePercentage: line.ivaRatePercentage,
-            taxableBase,
-            taxAmount,
-            calculationFactor: null,
-            netTaxAmount,
-          },
-        ],
-      };
-    }),
-  };
-}
-
 function billingDocumentCreateData(
   command: BillingDocumentDraftCommand,
   fiscalCalculationPolicyVersion: string | null,
@@ -1604,6 +1577,18 @@ function requireGenericDraftCreationPath(
     }
   } catch (error) {
     if (error instanceof HttpException) throw error;
+    throw fiscalBillingError("BILLING_DRAFT_CREATION_PATH_UNSUPPORTED");
+  }
+}
+
+function requireCrV44CalculatedDraftCreationPath(
+  command: CrV44CalculatedBillingDocumentDraftCommand,
+): void {
+  if (
+    command.source?.sourceType === FISCAL_BILLING_SOURCE_TYPE ||
+    command.source?.sourceRole !== "PRIMARY" ||
+    command.fiscalCalculationPolicyVersion !== CR_V44_DECIMAL_V1
+  ) {
     throw fiscalBillingError("BILLING_DRAFT_CREATION_PATH_UNSUPPORTED");
   }
 }

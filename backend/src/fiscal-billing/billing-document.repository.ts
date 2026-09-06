@@ -1,5 +1,6 @@
 import type {
   BillingDocumentDraftCommand,
+  CrV44CalculatedBillingDocumentDraftCommand,
   CrV44SalesOrderDraftCommand,
   BillingDocumentFiscalPreparation,
   BillingDocumentFiscalAllocationResult,
@@ -20,6 +21,9 @@ export interface BillingDocumentRepository {
   ): Promise<PrimaryDocumentSummary | null>;
   createDraft(
     command: BillingDocumentDraftCommand,
+  ): Promise<PrimaryDocumentSummary>;
+  createCrV44CalculatedDraft(
+    command: CrV44CalculatedBillingDocumentDraftCommand,
   ): Promise<PrimaryDocumentSummary>;
   createCrV44SalesOrderDraft(
     command: CrV44SalesOrderDraftCommand,

@@ -18,6 +18,7 @@ describe("ContractReservationReviewService", () => {
       allocationDeduplicationKey: "contract-reservation:payment-1:obligation-1",
     }));
     expect(c.tx.billingAuditLog.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ action: "RESERVATION_APPROVED" }) }));
+    expect(c.fiscalizationOutbox.enqueueConfirmedPaymentInTransaction).toHaveBeenCalledWith(c.tx, expect.objectContaining({ id: "payment-1", purpose: PaymentPurpose.CONTRACT_RESERVATION, status: PaymentStatus.FULLY_ALLOCATED }));
     expect(result).toMatchObject({ status: PaymentStatus.FULLY_ALLOCATED, receiptNumber: "RCP-2026-000007" });
     expect(result.availableAmount.toFixed()).toBe("0");
     expect(c.prisma.$transaction).toHaveBeenCalledTimes(1);
@@ -41,6 +42,11 @@ describe("ContractReservationReviewService", () => {
     expect(c.commercialObligationAllocations.allocateInTransaction).not.toHaveBeenCalled();
     expect(c.tx.payment.updateMany).not.toHaveBeenCalled();
     expect(c.tx.billingAuditLog.create).not.toHaveBeenCalled();
+    if (status === PaymentStatus.FULLY_ALLOCATED) {
+      expect(c.fiscalizationOutbox.enqueueConfirmedPaymentInTransaction).toHaveBeenCalledWith(c.tx, approved);
+    } else {
+      expect(c.fiscalizationOutbox.enqueueConfirmedPaymentInTransaction).toHaveBeenCalledWith(c.tx, approved);
+    }
   });
 
   it("rejects atomically without receipt, funds, or Contract/Travel approval effects", async () => {
@@ -73,6 +79,7 @@ describe("ContractReservationReviewService", () => {
       data: expect.objectContaining({ action: "CONTRACT_PAYMENT_APPROVED" }),
     }));
     expect(result).toMatchObject({ purpose: PaymentPurpose.CONTRACT_PAYMENT, status: PaymentStatus.FULLY_ALLOCATED });
+    expect(c.fiscalizationOutbox.enqueueConfirmedPaymentInTransaction).toHaveBeenCalledWith(c.tx, final);
   });
 
   it("keeps CREDIT approval allocation equal to its reservation amount", async () => {
@@ -231,8 +238,9 @@ function context(initial: any = pendingPayment(), final: any = allocatedPayment(
   };
   const commercialObligationAllocations = { allocateInTransaction: jest.fn().mockResolvedValue({ allocation: { id: "allocation-1" }, applied: true }) };
   const storage = { generateSignedUrl: jest.fn().mockResolvedValue("signed-url") };
+  const fiscalizationOutbox = { enqueueConfirmedPaymentInTransaction: jest.fn().mockResolvedValue(undefined) };
   return {
-    service: Reflect.construct(ContractReservationReviewService, [prisma, businessNumbers, contracts, commercialObligationAllocations, storage]),
-    prisma, tx, businessNumbers, contracts, commercialObligationAllocations, storage,
+    service: Reflect.construct(ContractReservationReviewService, [prisma, businessNumbers, contracts, commercialObligationAllocations, storage, fiscalizationOutbox]),
+    prisma, tx, businessNumbers, contracts, commercialObligationAllocations, storage, fiscalizationOutbox,
   };
 }
