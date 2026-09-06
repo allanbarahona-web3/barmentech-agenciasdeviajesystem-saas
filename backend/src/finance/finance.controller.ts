@@ -13,6 +13,9 @@ import {
   CancelPaymentDto,
   ListAccountReceivableGroupItemsDto,
   ListAccountReceivableGroupsDto,
+  ListContractObligationGroupContractsDto,
+  ListContractObligationGroupsDto,
+  ListContractPaymentsDto,
   ListAccountReceivablesDto,
   ListPaymentsDto,
   ListUnallocatedPaymentBalancesDto,
@@ -61,6 +64,16 @@ export class FinanceController {
   @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS)
   getContractCommercialObligation(@Req() request: FinanceRequest, @Param("contractId") contractId: string) {
     return this.reads.getContractCommercialObligation(request.user.tenantId, contractId);
+  }
+
+  @Get("contracts/:contractId/payments")
+  @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.CONTADOR)
+  listContractPayments(
+    @Req() request: FinanceRequest,
+    @Param("contractId") contractId: string,
+    @Query() query: ListContractPaymentsDto,
+  ) {
+    return this.reads.listContractPayments(request.user.tenantId, contractId, query);
   }
 
   @Post("contracts/:contractId/installments")
@@ -283,6 +296,29 @@ export class FinanceController {
     @Query() query: ListAccountReceivableGroupsDto,
   ) {
     return this.reads.listAccountReceivableGroups(request.user.tenantId, query);
+  }
+
+  @Get("contract-obligation-groups")
+  @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.CONTADOR)
+  listContractObligationGroups(
+    @Req() request: FinanceRequest,
+    @Query() query: ListContractObligationGroupsDto,
+  ) {
+    return this.reads.listContractObligationGroups(request.user.tenantId, query);
+  }
+
+  @Get("contract-obligation-groups/:groupKey/contracts")
+  @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.CONTADOR)
+  listContractObligationGroupContracts(
+    @Req() request: FinanceRequest,
+    @Param("groupKey") groupKey: string,
+    @Query() query: ListContractObligationGroupContractsDto,
+  ) {
+    return this.reads.listContractObligationGroupContracts(
+      request.user.tenantId,
+      groupKey,
+      query,
+    );
   }
 
   @Get("account-receivable-groups/:groupKey/account-receivables")

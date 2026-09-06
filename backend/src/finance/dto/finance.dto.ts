@@ -114,6 +114,12 @@ export class ListAccountReceivableGroupsDto {
   pageSize?: number;
 }
 
+export class ListContractObligationGroupsDto extends ListAccountReceivableGroupsDto {}
+
+export class ListContractObligationGroupContractsDto extends ListAccountReceivableGroupsDto {}
+
+export class ListContractPaymentsDto extends ListAccountReceivableGroupsDto {}
+
 export class ListAccountReceivableGroupItemsDto extends ListAccountReceivableGroupsDto {}
 
 export class ListPaymentsDto {

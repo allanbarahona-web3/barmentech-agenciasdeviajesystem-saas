@@ -55,9 +55,10 @@
 .inlineError svg { width: 17px; height: 17px; flex: 0 0 auto; }
 .operationNotice { border: 1px solid #9fc0e4; background: #eef5fc; color: #174f88; }
 .groupTable { min-width: 1080px; }
+.contractGroupTable { min-width: 1180px; }
 .paymentTable { min-width: 1250px; }
-.groupTable th, .paymentTable th, .childTable th { height: auto; padding: 12px 14px; background: #21466f; color: #f8fbff; font-size: 11px; font-weight: 750; letter-spacing: .025em; text-transform: uppercase; }
-.groupTable td, .paymentTable td, .childTable td { padding: 13px 14px; color: #334155; font-size: 12px; }
+.groupTable th, .contractGroupTable th, .paymentTable th, .childTable th, .contractChildTable th { height: auto; padding: 12px 14px; background: #21466f; color: #f8fbff; font-size: 11px; font-weight: 750; letter-spacing: .025em; text-transform: uppercase; }
+.groupTable td, .contractGroupTable td, .paymentTable td, .childTable td, .contractChildTable td { padding: 13px 14px; color: #334155; font-size: 12px; }
 .expandedGroupRow { background: #f6f9fd; }
 .ledgerBlock { min-width: 285px; border: 1px solid #dfe5ed; border-radius: 10px; background: #fff; overflow: hidden; }
 .ledgerBlock h3 { margin: 0; border-bottom: 1px solid #dfe5ed; padding: 9px 11px; color: #172b4d; font-size: 11px; font-weight: 800; letter-spacing: .035em; text-transform: uppercase; }
@@ -87,7 +88,8 @@
 .childHeading > span { color: #64748b; font-size: 11px; }
 .childTableWrap { overflow-x: auto; border: 1px solid #d7e0eb; border-radius: 9px; background: #fff; }
 .childTable { min-width: 880px; }
-.childTable th { background: #315f7f; }
+.contractChildTable { min-width: 1120px; }
+.childTable th, .contractChildTable th { background: #315f7f; }
 .childLoading { border: 1px dashed #b8c8da; border-radius: 9px; background: #f8fafc; padding: 20px; color: #64748b; font-size: 12px; text-align: center; }
 .paymentFilters { display: flex; align-items: end; gap: 14px; margin: 0 0 20px; border: 1px solid #dfe5ed; border-radius: 12px; background: #fff; padding: 16px 18px; box-shadow: 0 3px 12px rgba(15, 23, 42, .04); }
 .paymentFilters .field { width: min(210px, 100%); }
@@ -129,6 +131,23 @@
 .facts div:last-child { border-bottom: 0; padding-bottom: 0; }
 .facts dt { color: #64748b; font-size: 12px; }
 .facts dd { margin: 0; color: #172b4d; font-size: 12px; font-weight: 700; text-align: right; overflow-wrap: anywhere; }
+.contractTravelLabel { margin: 0; color: #174f88; font-size: 14px; font-weight: 750; }
+.contractTravelContext { margin: 5px 0 0; color: #64748b; font-size: 11px; }
+.contractActionHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.contractActionHeader h3 { margin-bottom: 4px; }
+.contractActionHeader p { margin: 0; color: #64748b; font-size: 11px; }
+.optionalField { color: #64748b; font-weight: 500; }
+.contractPaymentHistory { display: grid; gap: 10px; }
+.contractPaymentRow { display: grid; gap: 10px; border: 1px solid #e1e7ef; border-radius: 9px; background: #fbfcfe; padding: 12px; }
+.contractPaymentHeader { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.contractPaymentHeader > div { display: grid; gap: 3px; min-width: 0; }
+.contractPaymentHeader strong { color: #172b4d; font-size: 12px; }
+.contractPaymentHeader span { color: #64748b; font-size: 10px; overflow-wrap: anywhere; }
+.contractPaymentFacts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px 14px; margin: 0; }
+.contractPaymentFacts div { display: grid; gap: 2px; min-width: 0; }
+.contractPaymentFacts dt { color: #64748b; font-size: 10px; font-weight: 700; }
+.contractPaymentFacts dd { margin: 0; color: #334155; font-size: 11px; font-weight: 650; overflow-wrap: anywhere; }
+.contractAllocation { margin: 0; border-left: 3px solid #9fc0e4; background: #eef5fc; padding: 8px 10px; color: #315f9b; font-size: 10px; line-height: 1.45; }
 .allocationList { display: grid; gap: 10px; }
 .allocation { border: 1px solid #e1e7ef; border-radius: 9px; padding: 12px; }
 .allocationHeader { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -217,4 +236,4 @@
 @keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 @media (max-width: 1180px) { .filters { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 900px) { .paymentFilters { align-items: stretch; flex-wrap: wrap; } .availableToggle { width: 100%; } }
-@media (max-width: 760px) { .filters, .paymentFormGrid, .paymentContext, .paymentFacts, .statementSummary, .statementEmail { grid-template-columns: 1fr; } .viewTabs { width: 100%; } .viewTab, .viewTabActive { flex: 1; } .paymentFilters { flex-direction: column; } .paymentFilters .field, .customerFilterChip { width: 100%; } .pagination { align-items: stretch; flex-direction: column; } .paginationActions > * { flex: 1; } .drawer { width: 100vw; } .paymentModal { top: 0; width: 100vw; max-height: 100dvh; border-radius: 0; } .candidate { grid-template-columns: 1fr; align-items: stretch; } .candidateBalance { text-align: left; } .paymentActions > * { flex: 1; } }
+@media (max-width: 760px) { .filters, .paymentFormGrid, .paymentContext, .paymentFacts, .contractPaymentFacts, .statementSummary, .statementEmail { grid-template-columns: 1fr; } .viewTabs { width: 100%; } .viewTab, .viewTabActive { flex: 1; } .paymentFilters { flex-direction: column; } .paymentFilters .field, .customerFilterChip { width: 100%; } .pagination { align-items: stretch; flex-direction: column; } .paginationActions > * { flex: 1; } .drawer { width: 100vw; } .paymentModal { top: 0; width: 100vw; max-height: 100dvh; border-radius: 0; } .candidate { grid-template-columns: 1fr; align-items: stretch; } .candidateBalance { text-align: left; } .paymentActions > * { flex: 1; } .contractActionHeader { align-items: stretch; flex-direction: column; } .contractActionHeader > button { width: 100%; } .contractPaymentHeader { flex-direction: column; } }

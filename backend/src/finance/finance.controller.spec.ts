@@ -6,7 +6,7 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { ROLES_KEY } from "../auth/roles.decorator";
 import { RolesGuard } from "../auth/roles.guard";
 import { FinanceController } from "./finance.controller";
-import { CancelPaymentDto, ListContractReservationPaymentsDto, ListPaymentsDto, ListUnallocatedPaymentBalancesDto, RegisterContractInstallmentDto, RegisterPaymentDto } from "./dto/finance.dto";
+import { CancelPaymentDto, ListContractObligationGroupContractsDto, ListContractObligationGroupsDto, ListContractPaymentsDto, ListContractReservationPaymentsDto, ListPaymentsDto, ListUnallocatedPaymentBalancesDto, RegisterContractInstallmentDto, RegisterPaymentDto } from "./dto/finance.dto";
 
 describe("FinanceController", () => {
   it("registers an exact payment for only the authenticated tenant", async () => {
@@ -238,6 +238,64 @@ describe("FinanceController", () => {
     expect(canActivate(UserRole.CONTADOR, "listPayments")).toBe(true);
   });
 
+  it("delegates Contract-obligation portfolio groups with the existing Finance read roles", async () => {
+    const c = context();
+    const page = { items: [], total: 0, page: 2, pageSize: 10, totalPages: 0 };
+    c.reads.listContractObligationGroups.mockResolvedValue(page);
+
+    await expect(c.controller.listContractObligationGroups(request("tenant-auth"), { page: 2, pageSize: 10 })).resolves.toBe(page);
+
+    expect(c.reads.listContractObligationGroups).toHaveBeenCalledWith("tenant-auth", { page: 2, pageSize: 10 });
+    expect(canActivate(UserRole.ADMIN, "listContractObligationGroups")).toBe(true);
+    expect(canActivate(UserRole.FACTURACION_COBROS, "listContractObligationGroups")).toBe(true);
+    expect(canActivate(UserRole.CONTADOR, "listContractObligationGroups")).toBe(true);
+    expect(() => canActivate(UserRole.AGENT, "listContractObligationGroups")).toThrow(ForbiddenException);
+  });
+
+  it("delegates Contract group children and Contract payments with existing Finance read roles", async () => {
+    const c = context();
+    c.reads.listContractObligationGroupContracts.mockResolvedValue({ items: [] });
+    c.reads.listContractPayments.mockResolvedValue({ items: [] });
+
+    await c.controller.listContractObligationGroupContracts(request("tenant-auth"), "opaque-contract-key", { pageSize: 5 });
+    await c.controller.listContractPayments(request("tenant-auth"), "contract-a", { page: 2 });
+
+    expect(c.reads.listContractObligationGroupContracts).toHaveBeenCalledWith("tenant-auth", "opaque-contract-key", { pageSize: 5 });
+    expect(c.reads.listContractPayments).toHaveBeenCalledWith("tenant-auth", "contract-a", { page: 2 });
+    for (const handler of ["listContractObligationGroupContracts", "listContractPayments"] as const) {
+      expect(canActivate(UserRole.ADMIN, handler)).toBe(true);
+      expect(canActivate(UserRole.FACTURACION_COBROS, handler)).toBe(true);
+      expect(canActivate(UserRole.CONTADOR, handler)).toBe(true);
+      expect(() => canActivate(UserRole.AGENT, handler)).toThrow(ForbiddenException);
+    }
+  });
+
+  it("validates Contract-obligation group pagination without accepting caller tenant fields", async () => {
+    const pipe = new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: true });
+    await expect(pipe.transform(
+      { page: "2", pageSize: "10" },
+      { type: "query", metatype: ListContractObligationGroupsDto },
+    )).resolves.toMatchObject({ page: 2, pageSize: 10 });
+    await expect(pipe.transform(
+      { tenantId: "tenant-other" },
+      { type: "query", metatype: ListContractObligationGroupsDto },
+    )).rejects.toBeDefined();
+  });
+
+  it("validates Contract child/payment pagination without accepting caller tenant fields", async () => {
+    const pipe = new ValidationPipe({ whitelist: true, transform: true, forbidNonWhitelisted: true });
+    for (const metatype of [ListContractObligationGroupContractsDto, ListContractPaymentsDto]) {
+      await expect(pipe.transform(
+        { page: "2", pageSize: "10" },
+        { type: "query", metatype },
+      )).resolves.toMatchObject({ page: 2, pageSize: 10 });
+      await expect(pipe.transform(
+        { tenantId: "tenant-other" },
+        { type: "query", metatype },
+      )).rejects.toBeDefined();
+    }
+  });
+
   it("delegates advisory suggestions and unallocated-balance reads using the authenticated tenant", async () => {
     const c = context();
     c.reads.getAllocationSuggestion.mockResolvedValue({ suggestedAmount: "5.00000" });
@@ -296,7 +354,7 @@ function context() {
   const allocations = { allocate: jest.fn().mockResolvedValue(undefined) };
   const reversals = { reverse: jest.fn() };
   const cancellations = { cancel: jest.fn() };
-  const reads = { paymentSummary: jest.fn((value) => ({ id: value.id, receivedAmount: value.receivedAmount.toFixed(), availableAmount: value.availableAmount.toFixed() })), getPaymentDetail: jest.fn(), getPaymentIdForAllocation: jest.fn(), getAccountReceivableDetail: jest.fn(), getContractCommercialObligation: jest.fn(), getAllocationSuggestion: jest.fn(), listAccountReceivables: jest.fn(), listAccountReceivableGroups: jest.fn(), listAccountReceivableGroupItems: jest.fn(), listPayments: jest.fn(), listUnallocatedPaymentBalances: jest.fn(), getCustomerFinancialBalance: jest.fn() };
+  const reads = { paymentSummary: jest.fn((value) => ({ id: value.id, receivedAmount: value.receivedAmount.toFixed(), availableAmount: value.availableAmount.toFixed() })), getPaymentDetail: jest.fn(), getPaymentIdForAllocation: jest.fn(), getAccountReceivableDetail: jest.fn(), getContractCommercialObligation: jest.fn(), listContractPayments: jest.fn(), getAllocationSuggestion: jest.fn(), listAccountReceivables: jest.fn(), listAccountReceivableGroups: jest.fn(), listContractObligationGroups: jest.fn(), listContractObligationGroupContracts: jest.fn(), listAccountReceivableGroupItems: jest.fn(), listPayments: jest.fn(), listUnallocatedPaymentBalances: jest.fn(), getCustomerFinancialBalance: jest.fn() };
   const statements = { get: jest.fn(), render: jest.fn(), send: jest.fn() };
   const paymentAndApply = { execute: jest.fn() };
   const receipts = { render: jest.fn(), send: jest.fn() };

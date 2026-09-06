@@ -464,6 +464,226 @@ describe("FinanceReadService", () => {
     jest.useRealTimers();
   });
 
+  it("groups tenant Contract obligations by customer and currency with historical exact amounts", async () => {
+    jest.useFakeTimers().setSystemTime(new Date("2026-09-01T02:30:00.000Z")); // Aug 31 in Costa Rica
+    const queryRaw = jest.fn()
+      .mockResolvedValueOnce([
+        contractObligationGroupRow({
+          customerId: "customer-a", currencyCode: "CRC",
+          totalOriginalAmount: d("1350.12345"), totalPaidAmount: d("750.12345"), totalOutstandingAmount: d("600.00000"),
+          totalCount: 4n, openCount: 1n, partiallySettledCount: 1n, settledCount: 1n, cancelledCount: 1n, overdueCount: 1n,
+        }),
+        contractObligationGroupRow({
+          customerId: "customer-a", currencyCode: "USD",
+          totalOriginalAmount: d("900.00000"), totalPaidAmount: d("900.00000"), totalOutstandingAmount: d("0"),
+          totalCount: 1n, openCount: 0n, partiallySettledCount: 0n, settledCount: 1n, cancelledCount: 0n, overdueCount: 0n,
+        }),
+        contractObligationGroupRow({
+          customerId: "customer-b", currencyCode: "CRC",
+          totalOriginalAmount: d("0"), totalPaidAmount: d("0"), totalOutstandingAmount: d("0"),
+          totalCount: 1n, openCount: 0n, partiallySettledCount: 0n, settledCount: 0n, cancelledCount: 1n, overdueCount: 0n,
+        }),
+      ])
+      .mockResolvedValueOnce([{ total: 4n }]);
+    const prisma = {
+      $queryRaw: queryRaw,
+      tenantBillingConfiguration: { findUnique: jest.fn().mockResolvedValue({ fiscalTimezone: "America/Costa_Rica" }) },
+    };
+    const service = new FinanceReadService(prisma as unknown as PrismaService);
+
+    const result = await service.listContractObligationGroups("tenant-auth", { page: 2, pageSize: 3 });
+
+    expect(result).toMatchObject({ total: 4, page: 2, pageSize: 3, totalPages: 2 });
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        customerId: "customer-a", currencyCode: "CRC",
+        debtor: { displayName: "Debtor", identificationType: "01", identificationNumber: "123" },
+        totalOriginalAmount: "1350.12345", totalPaidAmount: "750.12345", totalOutstandingAmount: "600",
+        counts: { total: 4, open: 1, partiallySettled: 1, settled: 1, cancelled: 1, overdue: 1 },
+      }),
+      expect.objectContaining({
+        customerId: "customer-a", currencyCode: "USD",
+        totalOriginalAmount: "900", totalPaidAmount: "900", totalOutstandingAmount: "0",
+        counts: { total: 1, open: 0, partiallySettled: 0, settled: 1, cancelled: 0, overdue: 0 },
+      }),
+      expect.objectContaining({
+        customerId: "customer-b", currencyCode: "CRC",
+        totalOriginalAmount: "0", totalPaidAmount: "0", totalOutstandingAmount: "0",
+        counts: { total: 1, open: 0, partiallySettled: 0, settled: 0, cancelled: 1, overdue: 0 },
+      }),
+    ]);
+    expect(result.items[0].groupKey).not.toBe(result.items[1].groupKey);
+    expect(result.items[0].groupKey).toBe(encodedContractObligationGroupKey("customer-a", "CRC"));
+
+    const pageSql = rawSql(queryRaw, 0);
+    const countSql = rawSql(queryRaw, 1);
+    expect(pageSql).toContain('FROM "commercial_obligations" AS obligation');
+    expect(pageSql).toContain('INNER JOIN "Contract" AS contract');
+    expect(pageSql).toContain('INNER JOIN "Client" AS customer');
+    expect(pageSql).toContain('obligation."tenantId" = ?');
+    expect(pageSql).toContain('obligation."sourceType" = \'CONTRACT\'');
+    expect(pageSql).toContain('GROUP BY');
+    expect(pageSql).toContain('obligation."customerId"');
+    expect(pageSql).toContain('obligation."currencyCode"');
+    expect(pageSql).toContain('obligation."status" <> \'CANCELLED\'');
+    expect(pageSql).toContain('obligation."originalAmount" - obligation."outstandingAmount"');
+    expect(pageSql).toContain('obligation."outstandingAmount" > 0');
+    expect(pageSql).toContain('obligation."dueDate" IS NOT NULL');
+    expect(pageSql).toContain("'OPEN', 'PARTIALLY_SETTLED'");
+    expect(pageSql).toContain('LIMIT');
+    expect(pageSql).toContain('OFFSET');
+    expect(countSql).toContain('FROM "commercial_obligations" AS obligation');
+    expect(countSql).toContain('obligation."sourceType" = \'CONTRACT\'');
+    expect(countSql).toContain('GROUP BY obligation."customerId", obligation."currencyCode"');
+    expect(queryRaw).toHaveBeenCalledTimes(2);
+    expect(queryRaw.mock.calls[0]).toEqual(expect.arrayContaining([new Date("2026-08-31T00:00:00.000Z"), "tenant-auth", 3, 3]));
+    expect(queryRaw.mock.calls[1]).toEqual(expect.arrayContaining(["tenant-auth"]));
+    expect(prisma.tenantBillingConfiguration.findUnique).toHaveBeenCalledTimes(1);
+    expect(prisma).not.toHaveProperty("commercialObligation");
+    expect(prisma).not.toHaveProperty("client");
+    expect(prisma).not.toHaveProperty("contract");
+    expect(prisma).not.toHaveProperty("payment");
+    jest.useRealTimers();
+  });
+
+  it("loads one Contract-obligation group page with tenant/customer/currency scope, travel labels, exact finance fields, and set-based payment counts", async () => {
+    jest.useFakeTimers().setSystemTime(new Date("2026-09-01T02:30:00.000Z")); // Aug 31 in Costa Rica
+    const queryRaw = jest.fn()
+      .mockResolvedValueOnce([
+        contractPortfolioRow({
+          contractId: "contract-package", contractNumber: "CT-PACKAGE", travelPackageName: "Europa 2027", internalTripName: "Ignored", travelType: "INTERNATIONAL",
+          originalAmount: d("1350.12345"), outstandingAmount: d("600.00000"), status: "PARTIALLY_SETTLED", dueDate: new Date("2026-08-30T00:00:00.000Z"), paymentCount: 3n,
+        }),
+        contractPortfolioRow({
+          contractId: "contract-internal", contractNumber: "CT-INTERNAL", travelPackageName: null, internalTripName: "Roma y España", travelType: null,
+          originalAmount: d("900"), outstandingAmount: d("0"), status: "SETTLED", settledAt: new Date("2026-08-20T12:00:00.000Z"), paymentCount: 1n,
+        }),
+        contractPortfolioRow({
+          contractId: "contract-custom", contractNumber: "CT-CUSTOM", travelPackageName: null, internalTripName: null, destination: "Guanacaste", status: "CANCELLED",
+          originalAmount: d("500"), outstandingAmount: d("500"), paymentCount: 0n,
+        }),
+      ])
+      .mockResolvedValueOnce([{ total: 4n }]);
+    const prisma = {
+      $queryRaw: queryRaw,
+      tenantBillingConfiguration: { findUnique: jest.fn().mockResolvedValue({ fiscalTimezone: "America/Costa_Rica" }) },
+    };
+    const service = new FinanceReadService(prisma as unknown as PrismaService);
+    const key = encodedContractObligationGroupKey("customer-a", "CRC");
+
+    const result = await service.listContractObligationGroupContracts("tenant-auth", key, { page: 2, pageSize: 3 });
+
+    expect(result).toMatchObject({ groupKey: key, total: 4, page: 2, pageSize: 3, totalPages: 2 });
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        contractId: "contract-package", contractNumber: "CT-PACKAGE", travelLabel: "Europa 2027",
+        travelContext: { source: "SCHEDULED_TRIP", destination: "Destination", travelPackageId: "package-a", internalTripId: null, travelType: "INTERNATIONAL" },
+        originalAmount: "1350.12345", paidAmount: "750.12345", outstandingAmount: "600", status: "PARTIALLY_SETTLED", isOverdue: true, paymentCount: 3,
+      }),
+      expect.objectContaining({
+        contractId: "contract-internal", contractNumber: "CT-INTERNAL", travelLabel: "Roma y España",
+        originalAmount: "900", paidAmount: "900", outstandingAmount: "0", status: "SETTLED", isOverdue: false, paymentCount: 1,
+      }),
+      expect.objectContaining({
+        contractId: "contract-custom", contractNumber: "CT-CUSTOM", travelLabel: "Guanacaste",
+        originalAmount: "500", paidAmount: "0", outstandingAmount: "500", status: "CANCELLED", isOverdue: false, paymentCount: 0,
+      }),
+    ]);
+
+    const pageSql = rawSql(queryRaw, 0);
+    const countSql = rawSql(queryRaw, 1);
+    expect(pageSql).toContain('obligation."tenantId" = ?');
+    expect(pageSql).toContain('obligation."sourceType" = \'CONTRACT\'');
+    expect(pageSql).toContain('obligation."customerId" = ?');
+    expect(pageSql).toContain('obligation."currencyCode" = ?');
+    expect(pageSql).toContain('LEFT JOIN "TravelPackage" AS travel_package');
+    expect(pageSql).toContain('LEFT JOIN "internal_trips" AS internal_trip');
+    expect(pageSql).toContain('payment_counts AS');
+    expect(pageSql).toContain("'CONTRACT_RESERVATION', 'CONTRACT_PAYMENT', 'CONTRACT_INSTALLMENT'");
+    expect(pageSql).toContain('ORDER BY "contractCreatedAt" DESC, "contractNumber" ASC, "contractId" ASC');
+    expect(pageSql).toContain('LIMIT');
+    expect(pageSql).toContain('OFFSET');
+    expect(countSql).toContain('obligation."customerId" = ?');
+    expect(countSql).toContain('obligation."currencyCode" = ?');
+    expect(queryRaw).toHaveBeenCalledTimes(2);
+    expect(prisma).not.toHaveProperty("commercialObligation");
+    expect(prisma).not.toHaveProperty("payment");
+    expect(prisma).not.toHaveProperty("contract");
+    jest.useRealTimers();
+  });
+
+  it.each([
+    ["malformed", "not-a-group-key"],
+    ["wrong kind", encodedGroupKey("CUSTOMER", "customer-a", "CRC")],
+  ])("rejects a %s Contract-obligation group key before reading", async (_, key) => {
+    const queryRaw = jest.fn();
+    const service = new FinanceReadService({
+      $queryRaw: queryRaw,
+      tenantBillingConfiguration: { findUnique: jest.fn() },
+    } as unknown as PrismaService);
+
+    await expect(service.listContractObligationGroupContracts("tenant-a", key, {})).rejects.toBeInstanceOf(NotFoundException);
+    expect(queryRaw).not.toHaveBeenCalled();
+  });
+
+  it("returns only Contract-linked payment history with CommercialObligation allocation and receipt eligibility", async () => {
+    const contractFindFirst = jest.fn().mockResolvedValue({ id: "contract-a" });
+    const findMany = jest.fn().mockResolvedValue([
+      contractPaymentRow({
+        id: "reservation", purpose: "CONTRACT_RESERVATION", status: "FULLY_ALLOCATED", receiptNumber: "RCP-001",
+        receivedAmount: d("350"),
+        commercialObligationAllocations: [commercialAllocation({ id: "coa-reservation", amount: d("350"), commercialObligation: { sourceType: "CONTRACT", sourceId: "contract-a" } })],
+      }),
+      contractPaymentRow({
+        id: "cash", purpose: "CONTRACT_PAYMENT", status: "RECEIVED", receiptNumber: "RCP-002", externalReference: "BANK-2",
+        commercialObligationAllocations: [],
+      }),
+      contractPaymentRow({
+        id: "installment", purpose: "CONTRACT_INSTALLMENT", status: "CANCELLED", receiptNumber: "RCP-003",
+        commercialObligationAllocations: [commercialAllocation({ id: "coa-installment", status: "REVERSED", reversal: { reversedAt: new Date("2026-09-02T12:00:00.000Z"), reason: "Correction" }, commercialObligation: { sourceType: "CONTRACT", sourceId: "contract-a" } })],
+      }),
+      contractPaymentRow({
+        id: "pending", purpose: "CONTRACT_INSTALLMENT", status: "PENDING_VERIFICATION", receiptNumber: null,
+        commercialObligationAllocations: [],
+      }),
+    ]);
+    const count = jest.fn().mockResolvedValue(24);
+    const service = new FinanceReadService({
+      contract: { findFirst: contractFindFirst },
+      payment: { findMany, count },
+    } as unknown as PrismaService);
+
+    await expect(service.listContractPayments("tenant-auth", "contract-a", { page: 2, pageSize: 10 })).resolves.toEqual({
+      items: [
+        expect.objectContaining({ id: "reservation", purpose: "CONTRACT_RESERVATION", receiptNumber: "RCP-001", receivedAmount: "350", paymentMethod: "BANK_TRANSFER", receiptAvailable: true, commercialAllocation: expect.objectContaining({ id: "coa-reservation", amount: "350", status: "ACTIVE", reversedAt: null, reversalReason: null }) }),
+        expect.objectContaining({ id: "cash", purpose: "CONTRACT_PAYMENT", externalReference: "BANK-2", commercialAllocation: null, receiptAvailable: true }),
+        expect.objectContaining({ id: "installment", purpose: "CONTRACT_INSTALLMENT", receiptAvailable: true, commercialAllocation: expect.objectContaining({ id: "coa-installment", status: "REVERSED", reversalReason: "Correction" }) }),
+        expect.objectContaining({ id: "pending", receiptAvailable: false }),
+      ],
+      total: 24, page: 2, pageSize: 10, totalPages: 3,
+    });
+    expect(contractFindFirst).toHaveBeenCalledWith({ where: { id: "contract-a", tenantId: "tenant-auth" }, select: { id: true } });
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { tenantId: "tenant-auth", contractId: "contract-a", purpose: { in: ["CONTRACT_RESERVATION", "CONTRACT_PAYMENT", "CONTRACT_INSTALLMENT"] } },
+      orderBy: [{ receivedAt: "desc" }, { id: "desc" }], skip: 10, take: 10,
+    }));
+    expect(count).toHaveBeenCalledTimes(1);
+    expect(findMany.mock.calls[0][0]).not.toHaveProperty("include");
+    expect(findMany.mock.calls[0][0].select).toHaveProperty("commercialObligationAllocations");
+  });
+
+  it("does not disclose Contract payments when the Contract is outside the authenticated tenant", async () => {
+    const findFirst = jest.fn().mockResolvedValue(null);
+    const findMany = jest.fn();
+    const count = jest.fn();
+    const service = new FinanceReadService({ contract: { findFirst }, payment: { findMany, count } } as unknown as PrismaService);
+
+    await expect(service.listContractPayments("tenant-a", "contract-foreign", {})).rejects.toBeInstanceOf(NotFoundException);
+    expect(findFirst).toHaveBeenCalledWith({ where: { id: "contract-foreign", tenantId: "tenant-a" }, select: { id: true } });
+    expect(findMany).not.toHaveBeenCalled();
+    expect(count).not.toHaveBeenCalled();
+  });
+
   it("loads one opaque group lazily with tenant scope, deterministic AR pagination, and no child relations", async () => {
     jest.useFakeTimers().setSystemTime(new Date("2026-08-31T17:00:00.000Z"));
     const findMany = jest.fn().mockResolvedValue([receivable()]);
@@ -679,8 +899,49 @@ function groupRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function contractObligationGroupRow(overrides: Record<string, unknown> = {}) {
+  return {
+    customerId: "customer-a", currencyCode: "CRC",
+    debtorDisplayName: "Debtor", debtorIdentificationType: "01", debtorIdentificationNumber: "123",
+    totalOriginalAmount: d("100"), totalPaidAmount: d("0"), totalOutstandingAmount: d("100"),
+    totalCount: 1n, openCount: 1n, partiallySettledCount: 0n, settledCount: 0n, cancelledCount: 0n, overdueCount: 0n,
+    ...overrides,
+  };
+}
+
+function contractPortfolioRow(overrides: Record<string, unknown> = {}) {
+  return {
+    contractId: "contract-a", contractNumber: "CT-A", contractSource: "SCHEDULED_TRIP", destination: "Destination",
+    startDate: new Date("2027-01-10T00:00:00.000Z"), endDate: new Date("2027-01-20T00:00:00.000Z"), contractCreatedAt: new Date("2026-09-01T12:00:00.000Z"),
+    travelPackageId: "package-a", internalTripId: null, travelPackageName: "Package", travelType: "INTERNATIONAL", internalTripName: null,
+    currencyCode: "CRC", originalAmount: d("1000"), outstandingAmount: d("600"), dueDate: new Date("2026-08-30T00:00:00.000Z"), status: "PARTIALLY_SETTLED", settledAt: null, paymentCount: 1n,
+    ...overrides,
+  };
+}
+
+function commercialAllocation(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "coa-a", amount: d("100"), status: "ACTIVE", allocatedAt: new Date("2026-09-01T12:00:00.000Z"), reversal: null,
+    commercialObligation: { sourceType: "CONTRACT", sourceId: "contract-a" },
+    ...overrides,
+  };
+}
+
+function contractPaymentRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "payment-a", contractId: "contract-a", receiptNumber: "RCP-000", purpose: "CONTRACT_INSTALLMENT", status: "FULLY_ALLOCATED",
+    receivedAmount: d("100"), availableAmount: d("0"), currencyCode: "CRC", paymentMethod: "BANK_TRANSFER", receivedAt: new Date("2026-09-01T12:00:00.000Z"), externalReference: null, description: "Payment",
+    commercialObligationAllocations: [],
+    ...overrides,
+  };
+}
+
 function encodedGroupKey(kind: "CUSTOMER" | "RECEIVABLE", identity: string, currencyCode: string) {
   return Buffer.from(JSON.stringify({ version: 1, kind, identity, currencyCode }), "utf8").toString("base64url");
+}
+
+function encodedContractObligationGroupKey(customerId: string, currencyCode: string) {
+  return Buffer.from(JSON.stringify({ version: 1, kind: "CONTRACT_OBLIGATION", customerId, currencyCode }), "utf8").toString("base64url");
 }
 
 function rawSql(mock: jest.Mock, call: number): string {

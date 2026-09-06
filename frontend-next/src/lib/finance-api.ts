@@ -32,6 +32,115 @@ export type ContractCommercialObligationResult = {
   payable: boolean;
 };
 
+export type ContractObligationGroup = {
+  groupKey: string;
+  customerId: string;
+  debtor: {
+    displayName: string;
+    identificationType: string | null;
+    identificationNumber: string | null;
+  };
+  currencyCode: FinanceCurrency;
+  totalOriginalAmount: string;
+  totalPaidAmount: string;
+  totalOutstandingAmount: string;
+  counts: {
+    total: number;
+    open: number;
+    partiallySettled: number;
+    settled: number;
+    cancelled: number;
+    overdue: number;
+  };
+};
+
+export type ContractObligationGroupsPage = {
+  items: ContractObligationGroup[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+};
+
+export type ContractObligationTravelContext = {
+  source: string;
+  destination: string | null;
+  travelPackageId: string | null;
+  internalTripId: string | null;
+  travelType: string | null;
+};
+
+export type ContractObligationPortfolioItem = {
+  contractId: string;
+  contractNumber: string;
+  travelLabel: string | null;
+  travelContext: ContractObligationTravelContext;
+  startDate: string | null;
+  endDate: string | null;
+  currencyCode: FinanceCurrency;
+  originalAmount: string;
+  paidAmount: string;
+  outstandingAmount: string;
+  dueDate: string | null;
+  status: CommercialObligationStatus;
+  isOverdue: boolean;
+  settledAt: string | null;
+  paymentCount: number;
+};
+
+export type ContractObligationGroupContractsPage = {
+  groupKey: string;
+  items: ContractObligationPortfolioItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+};
+
+export type ContractPaymentPurpose =
+  | 'CONTRACT_RESERVATION'
+  | 'CONTRACT_PAYMENT'
+  | 'CONTRACT_INSTALLMENT';
+
+export type ContractPaymentStatus =
+  | 'PENDING_VERIFICATION'
+  | 'RECEIVED'
+  | 'PARTIALLY_ALLOCATED'
+  | 'FULLY_ALLOCATED'
+  | 'REJECTED'
+  | 'CANCELLED';
+
+export type ContractPaymentHistoryItem = {
+  id: string;
+  receiptNumber: string | null;
+  purpose: ContractPaymentPurpose;
+  status: ContractPaymentStatus;
+  receivedAmount: string;
+  availableAmount: string;
+  currencyCode: FinanceCurrency;
+  paymentMethod: string;
+  receivedAt: string;
+  externalReference: string | null;
+  description: string | null;
+  commercialAllocation: {
+    id: string;
+    amount: string;
+    status: 'ACTIVE' | 'REVERSED';
+    allocatedAt: string;
+    reversedAt: string | null;
+    reversalReason: string | null;
+  } | null;
+  receiptAvailable: boolean;
+};
+
+export type ContractPaymentsPage = {
+  items: ContractPaymentHistoryItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+};
+
 export type RegisterContractInstallmentInput = {
   registrationDeduplicationKey: string;
   amount: string;
@@ -473,6 +582,27 @@ export function listAccountReceivableGroupItems(
   );
 }
 
+export function listContractObligationGroups(
+  params: PageParams,
+  signal?: AbortSignal,
+): Promise<ContractObligationGroupsPage> {
+  return request<ContractObligationGroupsPage>(
+    `/finance/contract-obligation-groups${queryString(params)}`,
+    signal,
+  );
+}
+
+export function listContractObligationGroupContracts(
+  groupKey: string,
+  params: PageParams,
+  signal?: AbortSignal,
+): Promise<ContractObligationGroupContractsPage> {
+  return request<ContractObligationGroupContractsPage>(
+    `/finance/contract-obligation-groups/${encodeURIComponent(groupKey)}/contracts${queryString(params)}`,
+    signal,
+  );
+}
+
 export function getAccountReceivable(
   id: string,
   signal?: AbortSignal,
@@ -500,6 +630,17 @@ export function getContractCommercialObligation(
 ): Promise<ContractCommercialObligationResult> {
   return request<ContractCommercialObligationResult>(
     `/finance/contracts/${encodeURIComponent(contractId)}/commercial-obligation`,
+    signal,
+  );
+}
+
+export function listContractPayments(
+  contractId: string,
+  params: PageParams,
+  signal?: AbortSignal,
+): Promise<ContractPaymentsPage> {
+  return request<ContractPaymentsPage>(
+    `/finance/contracts/${encodeURIComponent(contractId)}/payments${queryString(params)}`,
     signal,
   );
 }

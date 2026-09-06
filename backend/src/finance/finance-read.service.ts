@@ -1,9 +1,12 @@
 import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
-import { AccountReceivableStatus, CommercialObligationStatus, PaymentAllocationStatus, PaymentStatus, Prisma } from "@prisma/client";
+import { AccountReceivableStatus, CommercialObligationStatus, PaymentAllocationStatus, PaymentPurpose, PaymentStatus, Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import {
   ListAccountReceivableGroupItemsDto,
   ListAccountReceivableGroupsDto,
+  ListContractObligationGroupContractsDto,
+  ListContractObligationGroupsDto,
+  ListContractPaymentsDto,
   ListAccountReceivablesDto,
   ListPaymentsDto,
   ListUnallocatedPaymentBalancesDto,
@@ -347,6 +350,215 @@ export class FinanceReadService {
     };
   }
 
+  async listContractObligationGroups(
+    tenantId: string,
+    query: ListContractObligationGroupsDto,
+  ) {
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 20;
+    const offset = (page - 1) * pageSize;
+    const tenantCurrentCalendarDate = await this.getTenantCurrentCalendarDate(tenantId);
+    const tenantToday = dateOnly(tenantCurrentCalendarDate);
+    const [rows, totals] = await Promise.all([
+      this.prisma.$queryRaw<ContractObligationGroupRow[]>`
+        WITH grouped AS (
+          SELECT
+            obligation."customerId",
+            obligation."currencyCode",
+            customer."fullName" AS "debtorDisplayName",
+            customer."idType" AS "debtorIdentificationType",
+            customer."idNumber" AS "debtorIdentificationNumber",
+            SUM(CASE WHEN obligation."status" <> 'CANCELLED' THEN obligation."originalAmount" ELSE 0 END) AS "totalOriginalAmount",
+            SUM(CASE WHEN obligation."status" <> 'CANCELLED' THEN obligation."originalAmount" - obligation."outstandingAmount" ELSE 0 END) AS "totalPaidAmount",
+            SUM(CASE WHEN obligation."status" <> 'CANCELLED' THEN obligation."outstandingAmount" ELSE 0 END) AS "totalOutstandingAmount",
+            COUNT(*) AS "totalCount",
+            COUNT(*) FILTER (WHERE obligation."status" = 'OPEN') AS "openCount",
+            COUNT(*) FILTER (WHERE obligation."status" = 'PARTIALLY_SETTLED') AS "partiallySettledCount",
+            COUNT(*) FILTER (WHERE obligation."status" = 'SETTLED') AS "settledCount",
+            COUNT(*) FILTER (WHERE obligation."status" = 'CANCELLED') AS "cancelledCount",
+            COUNT(*) FILTER (
+              WHERE obligation."status" IN ('OPEN', 'PARTIALLY_SETTLED')
+                AND obligation."outstandingAmount" > 0
+                AND obligation."dueDate" IS NOT NULL
+                AND obligation."dueDate" < ${tenantToday}
+            ) AS "overdueCount"
+          FROM "commercial_obligations" AS obligation
+          INNER JOIN "Contract" AS contract
+            ON contract."id" = obligation."sourceId"
+            AND contract."tenantId" = obligation."tenantId"
+          INNER JOIN "Client" AS customer
+            ON customer."id" = obligation."customerId"
+            AND customer."tenantId" = obligation."tenantId"
+          WHERE obligation."tenantId" = ${tenantId}
+            AND obligation."sourceType" = 'CONTRACT'
+          GROUP BY
+            obligation."customerId",
+            obligation."currencyCode",
+            customer."fullName",
+            customer."idType",
+            customer."idNumber"
+        )
+        SELECT *
+        FROM grouped
+        ORDER BY LOWER("debtorDisplayName") ASC, "customerId" ASC, "currencyCode" ASC
+        LIMIT ${pageSize}
+        OFFSET ${offset}
+      `,
+      this.prisma.$queryRaw<Array<{ total: bigint }>>`
+        SELECT COUNT(*) AS "total"
+        FROM (
+          SELECT 1
+          FROM "commercial_obligations" AS obligation
+          INNER JOIN "Contract" AS contract
+            ON contract."id" = obligation."sourceId"
+            AND contract."tenantId" = obligation."tenantId"
+          INNER JOIN "Client" AS customer
+            ON customer."id" = obligation."customerId"
+            AND customer."tenantId" = obligation."tenantId"
+          WHERE obligation."tenantId" = ${tenantId}
+            AND obligation."sourceType" = 'CONTRACT'
+          GROUP BY obligation."customerId", obligation."currencyCode"
+        ) AS grouped
+      `,
+    ]);
+    const total = exactCount(totals[0]?.total ?? 0);
+    return {
+      items: rows.map(contractObligationGroup),
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+    };
+  }
+
+  async listContractObligationGroupContracts(
+    tenantId: string,
+    groupKey: string,
+    query: ListContractObligationGroupContractsDto,
+  ) {
+    const group = decodeContractObligationGroupKey(groupKey);
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 20;
+    const offset = (page - 1) * pageSize;
+    const tenantCurrentCalendarDate = await this.getTenantCurrentCalendarDate(tenantId);
+    const tenantToday = dateOnly(tenantCurrentCalendarDate);
+    const [rows, totals] = await Promise.all([
+      this.prisma.$queryRaw<ContractObligationPortfolioRow[]>`
+        WITH eligible AS (
+          SELECT
+            contract."id" AS "contractId",
+            contract."contractNumber",
+            contract."source" AS "contractSource",
+            contract."destination",
+            contract."startDate",
+            contract."endDate",
+            contract."createdAt" AS "contractCreatedAt",
+            contract."travelPackageId",
+            contract."internalTripId",
+            travel_package."name" AS "travelPackageName",
+            travel_package."travelType" AS "travelType",
+            internal_trip."name" AS "internalTripName",
+            obligation."currencyCode",
+            obligation."originalAmount",
+            obligation."outstandingAmount",
+            obligation."dueDate",
+            obligation."status",
+            obligation."settledAt"
+          FROM "commercial_obligations" AS obligation
+          INNER JOIN "Contract" AS contract
+            ON contract."id" = obligation."sourceId"
+            AND contract."tenantId" = obligation."tenantId"
+          LEFT JOIN "TravelPackage" AS travel_package
+            ON travel_package."id" = contract."travelPackageId"
+            AND travel_package."tenantId" = contract."tenantId"
+          LEFT JOIN "internal_trips" AS internal_trip
+            ON internal_trip."id" = contract."internalTripId"
+            AND internal_trip."tenantId" = contract."tenantId"
+          WHERE obligation."tenantId" = ${tenantId}
+            AND obligation."sourceType" = 'CONTRACT'
+            AND obligation."customerId" = ${group.customerId}
+            AND obligation."currencyCode" = ${group.currencyCode}
+        ),
+        paged AS (
+          SELECT *
+          FROM eligible
+          ORDER BY "contractCreatedAt" DESC, "contractNumber" ASC, "contractId" ASC
+          LIMIT ${pageSize}
+          OFFSET ${offset}
+        ),
+        payment_counts AS (
+          SELECT payment."contractId", COUNT(*) AS "paymentCount"
+          FROM "payments" AS payment
+          INNER JOIN paged ON paged."contractId" = payment."contractId"
+          WHERE payment."tenantId" = ${tenantId}
+            AND payment."purpose" IN ('CONTRACT_RESERVATION', 'CONTRACT_PAYMENT', 'CONTRACT_INSTALLMENT')
+          GROUP BY payment."contractId"
+        )
+        SELECT paged.*, COALESCE(payment_counts."paymentCount", 0) AS "paymentCount"
+        FROM paged
+        LEFT JOIN payment_counts ON payment_counts."contractId" = paged."contractId"
+        ORDER BY paged."contractCreatedAt" DESC, paged."contractNumber" ASC, paged."contractId" ASC
+      `,
+      this.prisma.$queryRaw<Array<{ total: bigint }>>`
+        SELECT COUNT(*) AS "total"
+        FROM "commercial_obligations" AS obligation
+        INNER JOIN "Contract" AS contract
+          ON contract."id" = obligation."sourceId"
+          AND contract."tenantId" = obligation."tenantId"
+        WHERE obligation."tenantId" = ${tenantId}
+          AND obligation."sourceType" = 'CONTRACT'
+          AND obligation."customerId" = ${group.customerId}
+          AND obligation."currencyCode" = ${group.currencyCode}
+      `,
+    ]);
+    const total = exactCount(totals[0]?.total ?? 0);
+    if (total === 0) throw new NotFoundException("CONTRACT_OBLIGATION_GROUP_NOT_FOUND");
+    return {
+      groupKey,
+      items: rows.map((row) => contractObligationPortfolioItem(row, tenantCurrentCalendarDate)),
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+    };
+  }
+
+  async listContractPayments(
+    tenantId: string,
+    contractId: string,
+    query: ListContractPaymentsDto,
+  ) {
+    const contract = await this.prisma.contract.findFirst({
+      where: { id: contractId, tenantId },
+      select: { id: true },
+    });
+    if (!contract) throw new NotFoundException("CONTRACT_NOT_FOUND");
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 20;
+    const where: Prisma.PaymentWhereInput = {
+      tenantId,
+      contractId: contract.id,
+      purpose: { in: contractPaymentPurposes },
+    };
+    const [payments, total] = await Promise.all([
+      this.prisma.payment.findMany({
+        where,
+        select: contractPaymentHistorySelect,
+        orderBy: [{ receivedAt: "desc" }, { id: "desc" }],
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      this.prisma.payment.count({ where }),
+    ]);
+    return {
+      items: payments.map(contractPaymentHistoryItem),
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+    };
+  }
+
   async listAccountReceivableGroupItems(
     tenantId: string,
     groupKey: string,
@@ -610,6 +822,38 @@ const paymentListSelect = {
   cancelledAt: true,
 } satisfies Prisma.PaymentSelect;
 
+const contractPaymentPurposes: PaymentPurpose[] = [
+  PaymentPurpose.CONTRACT_RESERVATION,
+  PaymentPurpose.CONTRACT_PAYMENT,
+  PaymentPurpose.CONTRACT_INSTALLMENT,
+];
+
+const contractPaymentHistorySelect = {
+  id: true,
+  contractId: true,
+  receiptNumber: true,
+  purpose: true,
+  status: true,
+  receivedAmount: true,
+  availableAmount: true,
+  currencyCode: true,
+  paymentMethod: true,
+  receivedAt: true,
+  externalReference: true,
+  description: true,
+  commercialObligationAllocations: {
+    orderBy: [{ allocatedAt: "asc" }, { id: "asc" }],
+    select: {
+      id: true,
+      amount: true,
+      status: true,
+      allocatedAt: true,
+      reversal: { select: { reversedAt: true, reason: true } },
+      commercialObligation: { select: { sourceType: true, sourceId: true } },
+    },
+  },
+} satisfies Prisma.PaymentSelect;
+
 type AccountReceivableGroupRow = {
   groupKind: "CUSTOMER" | "RECEIVABLE";
   groupIdentity: string;
@@ -632,6 +876,45 @@ type AccountReceivableGroupRow = {
   unallocatedPaymentCount: bigint | number | null;
   totalReceivedAmount: Prisma.Decimal | null;
   totalActiveAllocatedAmount: Prisma.Decimal | null;
+};
+
+type ContractObligationGroupRow = {
+  customerId: string;
+  currencyCode: string;
+  debtorDisplayName: string;
+  debtorIdentificationType: string | null;
+  debtorIdentificationNumber: string | null;
+  totalOriginalAmount: Prisma.Decimal;
+  totalPaidAmount: Prisma.Decimal;
+  totalOutstandingAmount: Prisma.Decimal;
+  totalCount: bigint | number;
+  openCount: bigint | number;
+  partiallySettledCount: bigint | number;
+  settledCount: bigint | number;
+  cancelledCount: bigint | number;
+  overdueCount: bigint | number;
+};
+
+type ContractObligationPortfolioRow = {
+  contractId: string;
+  contractNumber: string;
+  contractSource: string;
+  destination: string;
+  startDate: Date | null;
+  endDate: Date | null;
+  contractCreatedAt: Date;
+  travelPackageId: string | null;
+  internalTripId: string | null;
+  travelPackageName: string | null;
+  travelType: string | null;
+  internalTripName: string | null;
+  currencyCode: string;
+  originalAmount: Prisma.Decimal;
+  outstandingAmount: Prisma.Decimal;
+  dueDate: Date | null;
+  status: CommercialObligationStatus;
+  settledAt: Date | null;
+  paymentCount: bigint | number;
 };
 
 type UnallocatedPaymentBalanceRow = {
@@ -690,6 +973,103 @@ function accountReceivableGroup(row: AccountReceivableGroupRow) {
   };
 }
 
+type ContractObligationGroupKey = {
+  version: 1;
+  kind: "CONTRACT_OBLIGATION";
+  customerId: string;
+  currencyCode: string;
+};
+
+function contractObligationGroup(row: ContractObligationGroupRow) {
+  return {
+    groupKey: encodeContractObligationGroupKey({
+      version: 1,
+      kind: "CONTRACT_OBLIGATION",
+      customerId: row.customerId,
+      currencyCode: row.currencyCode,
+    }),
+    customerId: row.customerId,
+    debtor: {
+      displayName: row.debtorDisplayName,
+      identificationType: row.debtorIdentificationType,
+      identificationNumber: row.debtorIdentificationNumber,
+    },
+    currencyCode: row.currencyCode,
+    totalOriginalAmount: money(row.totalOriginalAmount),
+    totalPaidAmount: money(row.totalPaidAmount),
+    totalOutstandingAmount: money(row.totalOutstandingAmount),
+    counts: {
+      total: exactCount(row.totalCount),
+      open: exactCount(row.openCount),
+      partiallySettled: exactCount(row.partiallySettledCount),
+      settled: exactCount(row.settledCount),
+      cancelled: exactCount(row.cancelledCount),
+      overdue: exactCount(row.overdueCount),
+    },
+  };
+}
+
+function contractObligationPortfolioItem(
+  row: ContractObligationPortfolioRow,
+  tenantCurrentCalendarDate: string,
+) {
+  return {
+    contractId: row.contractId,
+    contractNumber: row.contractNumber,
+    travelLabel: row.travelPackageName ?? row.internalTripName ?? row.destination,
+    travelContext: {
+      source: row.contractSource,
+      destination: row.destination,
+      travelPackageId: row.travelPackageId,
+      internalTripId: row.internalTripId,
+      travelType: row.travelType,
+    },
+    startDate: row.startDate,
+    endDate: row.endDate,
+    currencyCode: row.currencyCode,
+    originalAmount: money(row.originalAmount),
+    paidAmount: money(row.originalAmount.minus(row.outstandingAmount)),
+    outstandingAmount: money(row.outstandingAmount),
+    dueDate: row.dueDate,
+    status: row.status,
+    isOverdue: isCommercialObligationOverdue(row, tenantCurrentCalendarDate),
+    settledAt: row.settledAt,
+    paymentCount: exactCount(row.paymentCount),
+  };
+}
+
+function contractPaymentHistoryItem(
+  payment: Prisma.PaymentGetPayload<{ select: typeof contractPaymentHistorySelect }>,
+) {
+  const commercialAllocation = payment.commercialObligationAllocations.find(
+    (allocation) =>
+      allocation.commercialObligation.sourceType === "CONTRACT" &&
+      allocation.commercialObligation.sourceId === payment.contractId,
+  );
+  return {
+    id: payment.id,
+    receiptNumber: payment.receiptNumber,
+    purpose: payment.purpose,
+    status: payment.status,
+    receivedAmount: money(payment.receivedAmount),
+    availableAmount: money(payment.availableAmount),
+    currencyCode: payment.currencyCode,
+    paymentMethod: payment.paymentMethod,
+    receivedAt: payment.receivedAt,
+    externalReference: payment.externalReference,
+    description: payment.description,
+    commercialAllocation: commercialAllocation ? {
+      id: commercialAllocation.id,
+      amount: money(commercialAllocation.amount),
+      status: commercialAllocation.status,
+      allocatedAt: commercialAllocation.allocatedAt,
+      reversedAt: commercialAllocation.reversal?.reversedAt ?? null,
+      reversalReason: commercialAllocation.reversal?.reason ?? null,
+    } : null,
+    receiptAvailable: hasAvailablePaymentReceipt(payment.status, payment.receiptNumber),
+  };
+}
+
 function unallocatedPaymentBalance(row: UnallocatedPaymentBalanceRow) {
   return {
     customerId: row.customerId,
@@ -706,6 +1086,29 @@ function unallocatedPaymentBalance(row: UnallocatedPaymentBalanceRow) {
 
 function encodeAccountReceivableGroupKey(key: AccountReceivableGroupKey): string {
   return Buffer.from(JSON.stringify(key), "utf8").toString("base64url");
+}
+
+function encodeContractObligationGroupKey(key: ContractObligationGroupKey): string {
+  return Buffer.from(JSON.stringify(key), "utf8").toString("base64url");
+}
+
+function decodeContractObligationGroupKey(value: string): ContractObligationGroupKey {
+  try {
+    if (!value || value.length > 1000) throw new Error("invalid");
+    const parsed = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as Partial<ContractObligationGroupKey>;
+    if (
+      parsed.version !== 1 ||
+      parsed.kind !== "CONTRACT_OBLIGATION" ||
+      typeof parsed.customerId !== "string" || !parsed.customerId || parsed.customerId.length > 191 ||
+      typeof parsed.currencyCode !== "string" || !/^[A-Z]{3}$/.test(parsed.currencyCode) ||
+      Object.keys(parsed).length !== 4
+    ) throw new Error("invalid");
+    const key = parsed as ContractObligationGroupKey;
+    if (encodeContractObligationGroupKey(key) !== value) throw new Error("invalid");
+    return key;
+  } catch {
+    throw new NotFoundException("CONTRACT_OBLIGATION_GROUP_NOT_FOUND");
+  }
 }
 
 function decodeAccountReceivableGroupKey(value: string): AccountReceivableGroupKey {
@@ -824,6 +1227,30 @@ function isOverdue(
     (status === AccountReceivableStatus.OPEN ||
       status === AccountReceivableStatus.PARTIALLY_SETTLED) &&
     dueDate.getTime() < dateOnly(tenantCurrentCalendarDate).getTime()
+  );
+}
+
+function isCommercialObligationOverdue(
+  obligation: Pick<ContractObligationPortfolioRow, "status" | "outstandingAmount" | "dueDate">,
+  tenantCurrentCalendarDate: string,
+): boolean {
+  return (
+    (obligation.status === CommercialObligationStatus.OPEN ||
+      obligation.status === CommercialObligationStatus.PARTIALLY_SETTLED) &&
+    obligation.outstandingAmount.greaterThan(0) &&
+    obligation.dueDate !== null &&
+    obligation.dueDate.getTime() < dateOnly(tenantCurrentCalendarDate).getTime()
+  );
+}
+
+function hasAvailablePaymentReceipt(status: PaymentStatus, receiptNumber: string | null): boolean {
+  return (
+    (status === PaymentStatus.RECEIVED ||
+      status === PaymentStatus.PARTIALLY_ALLOCATED ||
+      status === PaymentStatus.FULLY_ALLOCATED ||
+      status === PaymentStatus.CANCELLED) &&
+    typeof receiptNumber === "string" &&
+    receiptNumber.trim().length > 0
   );
 }
 
