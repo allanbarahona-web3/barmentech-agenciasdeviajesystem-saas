@@ -148,6 +148,11 @@
 .contractPaymentFacts dt { color: #64748b; font-size: 10px; font-weight: 700; }
 .contractPaymentFacts dd { margin: 0; color: #334155; font-size: 11px; font-weight: 650; overflow-wrap: anywhere; }
 .contractAllocation { margin: 0; border-left: 3px solid #9fc0e4; background: #eef5fc; padding: 8px 10px; color: #315f9b; font-size: 10px; line-height: 1.45; }
+.contractFiscalDocument { display: flex; align-items: center; justify-content: space-between; gap: 10px; border-top: 1px solid #e7edf4; padding-top: 10px; }
+.contractFiscalDocument > div { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 6px; }
+.contractFiscalDocument span { color: #64748b; font-size: 10px; font-weight: 700; }
+.contractFiscalDocument small { min-width: 0; color: #526175; font-size: 10px; overflow-wrap: anywhere; }
+.contractPaymentActions { display: flex; flex-wrap: wrap; gap: 8px; }
 .allocationList { display: grid; gap: 10px; }
 .allocation { border: 1px solid #e1e7ef; border-radius: 9px; padding: 12px; }
 .allocationHeader { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -241,4 +246,4 @@
 @keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 @media (max-width: 1180px) { .filters { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 900px) { .paymentFilters { align-items: stretch; flex-wrap: wrap; } .availableToggle { width: 100%; } }
-@media (max-width: 760px) { .filters, .paymentFormGrid, .paymentContext, .contractInstallmentContext, .paymentFacts, .contractPaymentFacts, .statementSummary, .statementEmail { grid-template-columns: 1fr; } .viewTabs { width: 100%; } .viewTab, .viewTabActive { flex: 1; } .paymentFilters { flex-direction: column; } .paymentFilters .field, .customerFilterChip { width: 100%; } .pagination { align-items: stretch; flex-direction: column; } .paginationActions > * { flex: 1; } .drawer { width: 100vw; } .paymentModal, .contractInstallmentModal { top: 0; width: 100vw; max-height: 100dvh; border-radius: 0; } .candidate { grid-template-columns: 1fr; align-items: stretch; } .candidateBalance { text-align: left; } .paymentActions > * { flex: 1; } .contractActionHeader { align-items: stretch; flex-direction: column; } .contractActionHeader > button { width: 100%; } .contractPaymentHeader { flex-direction: column; } }
+@media (max-width: 760px) { .filters, .paymentFormGrid, .paymentContext, .contractInstallmentContext, .paymentFacts, .contractPaymentFacts, .statementSummary, .statementEmail { grid-template-columns: 1fr; } .viewTabs { width: 100%; } .viewTab, .viewTabActive { flex: 1; } .paymentFilters { flex-direction: column; } .paymentFilters .field, .customerFilterChip { width: 100%; } .pagination { align-items: stretch; flex-direction: column; } .paginationActions > * { flex: 1; } .drawer { width: 100vw; } .paymentModal, .contractInstallmentModal { top: 0; width: 100vw; max-height: 100dvh; border-radius: 0; } .candidate { grid-template-columns: 1fr; align-items: stretch; } .candidateBalance { text-align: left; } .paymentActions > * { flex: 1; } .contractActionHeader { align-items: stretch; flex-direction: column; } .contractActionHeader > button { width: 100%; } .contractPaymentHeader, .contractFiscalDocument { align-items: stretch; flex-direction: column; } .contractFiscalDocument > .secondaryAction { width: 100%; } }

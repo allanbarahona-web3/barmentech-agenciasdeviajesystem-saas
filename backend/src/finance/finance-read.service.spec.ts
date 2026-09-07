@@ -648,15 +648,29 @@ describe("FinanceReadService", () => {
       }),
     ]);
     const count = jest.fn().mockResolvedValue(24);
+    const billingDocumentFindMany = jest.fn().mockResolvedValue([
+      {
+        id: "fiscal-reservation",
+        sourceId: "reservation",
+        internalNumber: "INT-0001",
+        fiscalNumber: "50601012600310112345600100001010000000001123456789",
+        documentTypeCode: "01",
+        lifecycleStatus: "SUBMITTED",
+        providerStatus: "PROCESSED",
+        taxAuthorityStatus: "ACCEPTED",
+        issuedAt: new Date("2026-09-01T12:00:00.000Z"),
+      },
+    ]);
     const service = new FinanceReadService({
       contract: { findFirst: contractFindFirst },
       payment: { findMany, count },
+      billingDocument: { findMany: billingDocumentFindMany },
     } as unknown as PrismaService);
 
     await expect(service.listContractPayments("tenant-auth", "contract-a", { page: 2, pageSize: 10 })).resolves.toEqual({
       items: [
-        expect.objectContaining({ id: "reservation", purpose: "CONTRACT_RESERVATION", receiptNumber: "RCP-001", receivedAmount: "350", paymentMethod: "BANK_TRANSFER", receiptAvailable: true, commercialAllocation: expect.objectContaining({ id: "coa-reservation", amount: "350", status: "ACTIVE", reversedAt: null, reversalReason: null }) }),
-        expect.objectContaining({ id: "cash", purpose: "CONTRACT_PAYMENT", externalReference: "BANK-2", commercialAllocation: null, receiptAvailable: true }),
+        expect.objectContaining({ id: "reservation", purpose: "CONTRACT_RESERVATION", receiptNumber: "RCP-001", receivedAmount: "350", paymentMethod: "BANK_TRANSFER", receiptAvailable: true, commercialAllocation: expect.objectContaining({ id: "coa-reservation", amount: "350", status: "ACTIVE", reversedAt: null, reversalReason: null }), fiscalDocument: expect.objectContaining({ id: "fiscal-reservation", fiscalNumber: "50601012600310112345600100001010000000001123456789", taxAuthorityStatus: "ACCEPTED" }) }),
+        expect.objectContaining({ id: "cash", purpose: "CONTRACT_PAYMENT", externalReference: "BANK-2", commercialAllocation: null, receiptAvailable: true, fiscalDocument: null }),
         expect.objectContaining({ id: "installment", purpose: "CONTRACT_INSTALLMENT", receiptAvailable: true, commercialAllocation: expect.objectContaining({ id: "coa-installment", status: "REVERSED", reversalReason: "Correction" }) }),
         expect.objectContaining({ id: "pending", receiptAvailable: false }),
       ],
@@ -670,6 +684,16 @@ describe("FinanceReadService", () => {
     expect(count).toHaveBeenCalledTimes(1);
     expect(findMany.mock.calls[0][0]).not.toHaveProperty("include");
     expect(findMany.mock.calls[0][0].select).toHaveProperty("commercialObligationAllocations");
+    expect(billingDocumentFindMany).toHaveBeenCalledWith({
+      where: {
+        tenantId: "tenant-auth",
+        sourceType: "CONTRACT_PAYMENT",
+        sourceId: { in: ["reservation", "cash", "installment", "pending"] },
+        sourceRole: "PRIMARY",
+      },
+      select: expect.objectContaining({ id: true, sourceId: true, fiscalNumber: true, taxAuthorityStatus: true }),
+    });
+    expect(billingDocumentFindMany).toHaveBeenCalledTimes(1);
   });
 
   it("does not disclose Contract payments when the Contract is outside the authenticated tenant", async () => {

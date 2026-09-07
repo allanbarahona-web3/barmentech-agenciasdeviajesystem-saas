@@ -131,6 +131,16 @@ export type ContractPaymentHistoryItem = {
     reversalReason: string | null;
   } | null;
   receiptAvailable: boolean;
+  fiscalDocument: {
+    id: string;
+    internalNumber: string;
+    fiscalNumber: string | null;
+    documentTypeCode: string;
+    lifecycleStatus: string;
+    providerStatus: string;
+    taxAuthorityStatus: string;
+    issuedAt: string | null;
+  } | null;
 };
 
 export type ContractPaymentsPage = {
@@ -437,7 +447,8 @@ export type CustomerAccountStatement = {
   currencyCode: FinanceCurrency;
   totals: { invoicedAmount: string; allocatedAmount: string; outstandingAmount: string; availableAmount: string };
   invoices: Array<{ id: string; number: string; documentType: string | null; recognizedAt: string; dueDate: string; originalAmount: string; allocatedAmount: string; outstandingAmount: string; status: AccountReceivableStatus; allocations: Array<{ receiptNumber: string; amount: string; allocatedAt: string; status: 'ACTIVE' | 'REVERSED'; statusLabel: string }> }>;
-  payments: Array<{ id: string; receiptNumber: string; receivedAt: string; receivedAmount: string; availableAmount: string; paymentMethod: string; paymentMethodLabel: string; status: PaymentStatus; allocations: Array<{ invoiceNumber: string; amount: string; allocatedAt: string; status: 'ACTIVE' | 'REVERSED'; statusLabel: string }> }>;
+  charges: Array<{ id: string; sourceType: 'ACCOUNT_RECEIVABLE' | 'CONTRACT_OBLIGATION'; sourceId: string; reference: string; description: string; recognizedAt: string; dueDate: string | null; originalAmount: string; allocatedAmount: string; outstandingAmount: string; status: AccountReceivableStatus | CommercialObligationStatus; allocations: Array<{ receiptNumber: string; amount: string; allocatedAt: string; status: 'ACTIVE' | 'REVERSED'; statusLabel: string; purpose?: string; purposeLabel?: string; reversedAt?: string | null; reversalReason?: string | null }> }>;
+  payments: Array<{ id: string; receiptNumber: string; receivedAt: string; receivedAmount: string; availableAmount: string; paymentMethod: string; paymentMethodLabel: string; purpose: string; purposeLabel: string; status: PaymentStatus; allocations: Array<{ sourceType: 'ACCOUNT_RECEIVABLE' | 'CONTRACT_OBLIGATION'; reference: string; amount: string; allocatedAt: string; status: 'ACTIVE' | 'REVERSED'; statusLabel: string; reversedAt: string | null; reversalReason: string | null }> }>;
 };
 
 export type ListAccountReceivablesParams = {

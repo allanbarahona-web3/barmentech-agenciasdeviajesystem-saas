@@ -53,6 +53,9 @@ test('typed Finance client supports paginated Contract group, child-row, and pay
   assert.match(apiSource, /totalOriginalAmount: string/);
   assert.match(apiSource, /paidAmount: string/);
   assert.match(apiSource, /receiptAvailable: boolean/);
+  assert.match(apiSource, /fiscalDocument: \{/);
+  assert.match(apiSource, /providerStatus: string/);
+  assert.match(apiSource, /taxAuthorityStatus: string/);
 });
 
 test('Contracts groups display backend customer, currency, and authoritative totals without frontend aggregation', () => {
@@ -127,18 +130,33 @@ test('the financial drawer and compact modal reuse installment helpers and refre
   assert.match(portfolioSource, /setSelectedInstallmentContract\(null\);\s*onContractsChanged\(\);/);
 });
 
+test('payment history exposes fiscal document visibility without changing payment or receipt actions', () => {
+  assert.match(portfolioSource, /fiscalDocumentPresentation\(payment\.fiscalDocument\)/);
+  assert.match(portfolioSource, /Factura electrónica pendiente/);
+  assert.match(portfolioSource, /Factura aceptada/);
+  assert.match(portfolioSource, /Factura rechazada/);
+  assert.match(portfolioSource, /Factura con error de emisión/);
+  assert.match(portfolioSource, /payment\.fiscalDocument \? <Button asChild/);
+  assert.match(portfolioSource, /Ver factura/);
+  assert.match(portfolioSource, /\/fiscal-billing\/invoices\/\$\{documentId\}/);
+  assert.match(portfolioSource, /\/fiscal-billing\/documents\/\$\{documentId\}/);
+  assert.match(portfolioSource, /payment\.receiptAvailable \? <Button/);
+  assert.match(portfolioSource, /Descargar recibo/);
+  assert.doesNotMatch(portfolioSource, /Emitir factura|Reintentar Hacienda|Cancelar factura|Crear NC|Reenviar XML|Reenviar PDF/);
+});
+
 test('Contracts terminology uses Total contratado and keeps Total comprometido out of the new UI', () => {
   assert.match(portfolioSource, /Total contratado/);
   assert.doesNotMatch(portfolioSource, /Total comprometido/);
 });
 
-test('only Finance write roles can register installments, while Contract controls avoid CxC fiscal actions', () => {
+test('only Finance write roles can register installments, while Contract controls avoid CxC actions', () => {
   assert.equal(canRegisterContractInstallments('ADMIN'), true);
   assert.equal(canRegisterContractInstallments('FACTURACION_COBROS'), true);
   assert.equal(canRegisterContractInstallments('CONTADOR'), false);
   assert.equal(canRegisterContractInstallments('AGENT'), false);
   assert.match(portfolioSource, /canWrite\s*&& canRegisterContractInstallments/);
-  assert.doesNotMatch(portfolioSource, /Ver factura|Nota fiscal|Aplicar saldo|BillingDocument|Hacienda/i);
+  assert.doesNotMatch(portfolioSource, /Nota fiscal|Aplicar saldo/);
 });
 
 test('Contracts use the bounded Finance drawer and responsive portfolio styling, not the legacy History modal', () => {

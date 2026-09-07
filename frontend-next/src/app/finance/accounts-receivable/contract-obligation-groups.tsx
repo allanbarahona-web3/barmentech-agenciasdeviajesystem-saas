@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { Fragment, useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { AlertCircle, ChevronDown, ChevronRight, CircleDollarSign, Download, Eye, X } from 'lucide-react';
 import { LoadingSpinner } from '@/components/loading-spinner';
@@ -73,6 +74,38 @@ function travelContextLabel(contract: ContractObligationPortfolioItem): string |
       : contract.startDate ? formatBusinessDate(contract.startDate) : null,
   ].filter((value): value is string => Boolean(value));
   return values.length ? values.join(' · ') : null;
+}
+
+type FiscalDocumentPresentation = {
+  kind: 'PENDING' | 'PROCESSING' | 'ACCEPTED' | 'REJECTED';
+  label: string;
+};
+
+function fiscalDocumentPresentation(fiscalDocument: ContractPaymentsPage['items'][number]['fiscalDocument']): FiscalDocumentPresentation {
+  if (!fiscalDocument) return { kind: 'PENDING', label: 'Factura electrónica pendiente' };
+  if (fiscalDocument.taxAuthorityStatus === 'ACCEPTED') return { kind: 'ACCEPTED', label: 'Factura aceptada' };
+  if (fiscalDocument.taxAuthorityStatus === 'REJECTED' || fiscalDocument.lifecycleStatus === 'CANCELLED') {
+    return { kind: 'REJECTED', label: fiscalDocument.taxAuthorityStatus === 'REJECTED' ? 'Factura rechazada' : 'Factura cancelada' };
+  }
+  if (fiscalDocument.providerStatus === 'FAILED') return { kind: 'REJECTED', label: 'Factura con error de emisión' };
+  if (fiscalDocument.lifecycleStatus === 'DRAFT') return { kind: 'PENDING', label: 'Preparando factura' };
+  if (fiscalDocument.lifecycleStatus === 'CONFIRMED') return { kind: 'PROCESSING', label: 'Emisión solicitada' };
+  if (fiscalDocument.lifecycleStatus === 'SUBMITTED') return { kind: 'PROCESSING', label: 'Factura enviada' };
+  return { kind: 'PROCESSING', label: 'Factura electrónica en proceso' };
+}
+
+function fiscalDocumentStatusClass(kind: FiscalDocumentPresentation['kind']): string {
+  if (kind === 'ACCEPTED') return styles.settledBadge;
+  if (kind === 'REJECTED') return styles.cancelledBadge;
+  if (kind === 'PROCESSING') return styles.partialBadge;
+  return styles.openBadge;
+}
+
+function fiscalDocumentHref(fiscalDocument: NonNullable<ContractPaymentsPage['items'][number]['fiscalDocument']>): string {
+  const documentId = encodeURIComponent(fiscalDocument.id);
+  return fiscalDocument.taxAuthorityStatus === 'ACCEPTED'
+    ? `/fiscal-billing/invoices/${documentId}`
+    : `/fiscal-billing/documents/${documentId}`;
 }
 
 function ContractInstallmentForm({ contractId, outstandingAmount, onSuccess }: {
@@ -298,12 +331,20 @@ function ContractFinanceDrawer({ contract, canWrite, onClose, onChanged }: {
 
           <section className={styles.detailCard}>
             <div className={styles.contractActionHeader}><div><h3>Historial de pagos</h3><p>Movimientos persistentes vinculados a este contrato.</p></div><span className={styles.secondary}>{paymentsResult ? `${paymentsResult.total} movimiento(s)` : 'Cargando…'}</span></div>
-            {paymentsResult?.items.length ? <div className={styles.contractPaymentHistory}>{paymentsResult.items.map((payment) => <article className={styles.contractPaymentRow} key={payment.id}>
-              <div className={styles.contractPaymentHeader}><div><strong>{formatContractPaymentPurpose(payment.purpose)}</strong><span>{formatBusinessDate(payment.receivedAt)} · {payment.receiptNumber ?? 'Recibo no disponible'}</span></div><Badge className={styles.paymentStatusBadge} variant="outline">{formatContractPaymentStatus(payment.status)}</Badge></div>
-              <dl className={styles.contractPaymentFacts}><div><dt>Método</dt><dd>{formatFinancePaymentMethod(payment.paymentMethod)}</dd></div><div><dt>Monto</dt><dd>{formatFinanceMoney(payment.receivedAmount, payment.currencyCode)}</dd></div>{payment.externalReference ? <div><dt>Referencia</dt><dd>{payment.externalReference}</dd></div> : null}{payment.description ? <div><dt>Nota</dt><dd>{payment.description}</dd></div> : null}</dl>
-              {payment.commercialAllocation ? <p className={styles.contractAllocation}>Aplicación comercial: {formatFinanceMoney(payment.commercialAllocation.amount, payment.currencyCode)} · {payment.commercialAllocation.status === 'ACTIVE' ? 'Activa' : 'Revertida'}{payment.commercialAllocation.reversedAt ? ` · Revertida ${formatBusinessDate(payment.commercialAllocation.reversedAt)}` : ''}{payment.commercialAllocation.reversalReason ? ` · ${payment.commercialAllocation.reversalReason}` : ''}</p> : null}
-              {payment.receiptAvailable ? <Button className={styles.secondaryAction} size="sm" type="button" variant="outline" disabled={receiptBusyId === payment.id} onClick={() => void downloadReceipt(payment.id)}><Download aria-hidden="true" />{receiptBusyId === payment.id ? 'Descargando…' : 'Descargar recibo'}</Button> : null}
-            </article>)}</div> : <p className={styles.paymentEmptyCompact}>No hay movimientos de pago registrados para este contrato.</p>}
+            {paymentsResult?.items.length ? <div className={styles.contractPaymentHistory}>{paymentsResult.items.map((payment) => {
+              const fiscalPresentation = fiscalDocumentPresentation(payment.fiscalDocument);
+              const fiscalNumber = payment.fiscalDocument?.fiscalNumber ?? payment.fiscalDocument?.internalNumber;
+              return <article className={styles.contractPaymentRow} key={payment.id}>
+                <div className={styles.contractPaymentHeader}><div><strong>{formatContractPaymentPurpose(payment.purpose)}</strong><span>{formatBusinessDate(payment.receivedAt)} · {payment.receiptNumber ?? 'Recibo no disponible'}</span></div><Badge className={styles.paymentStatusBadge} variant="outline">{formatContractPaymentStatus(payment.status)}</Badge></div>
+                <dl className={styles.contractPaymentFacts}><div><dt>Método</dt><dd>{formatFinancePaymentMethod(payment.paymentMethod)}</dd></div><div><dt>Monto</dt><dd>{formatFinanceMoney(payment.receivedAmount, payment.currencyCode)}</dd></div>{payment.externalReference ? <div><dt>Referencia</dt><dd>{payment.externalReference}</dd></div> : null}{payment.description ? <div><dt>Nota</dt><dd>{payment.description}</dd></div> : null}</dl>
+                {payment.commercialAllocation ? <p className={styles.contractAllocation}>Aplicación comercial: {formatFinanceMoney(payment.commercialAllocation.amount, payment.currencyCode)} · {payment.commercialAllocation.status === 'ACTIVE' ? 'Activa' : 'Revertida'}{payment.commercialAllocation.reversedAt ? ` · Revertida ${formatBusinessDate(payment.commercialAllocation.reversedAt)}` : ''}{payment.commercialAllocation.reversalReason ? ` · ${payment.commercialAllocation.reversalReason}` : ''}</p> : null}
+                <div className={styles.contractFiscalDocument}>
+                  <div><span>Factura electrónica</span><Badge className={fiscalDocumentStatusClass(fiscalPresentation.kind)} variant="outline">{fiscalPresentation.label}</Badge>{fiscalNumber ? <small>{fiscalNumber}</small> : null}</div>
+                  {payment.fiscalDocument ? <Button asChild className={styles.secondaryAction} size="sm" variant="outline"><Link href={fiscalDocumentHref(payment.fiscalDocument)}>Ver factura</Link></Button> : null}
+                </div>
+                <div className={styles.contractPaymentActions}>{payment.receiptAvailable ? <Button className={styles.secondaryAction} size="sm" type="button" variant="outline" disabled={receiptBusyId === payment.id} onClick={() => void downloadReceipt(payment.id)}><Download aria-hidden="true" />{receiptBusyId === payment.id ? 'Descargando…' : 'Descargar recibo'}</Button> : null}</div>
+              </article>;
+            })}</div> : <p className={styles.paymentEmptyCompact}>No hay movimientos de pago registrados para este contrato.</p>}
             {paymentsResult && paymentsResult.totalPages > 1 ? <nav className={styles.candidatePagination}><Button className={styles.secondaryAction} disabled={paymentsResult.page <= 1} size="sm" type="button" variant="outline" onClick={() => setPaymentPage((value) => Math.max(1, value - 1))}>Anterior</Button><span>Página {paymentsResult.page} de {paymentsResult.totalPages}</span><Button className={styles.secondaryAction} disabled={paymentsResult.page >= paymentsResult.totalPages} size="sm" type="button" variant="outline" onClick={() => setPaymentPage((value) => Math.min(paymentsResult.totalPages, value + 1))}>Siguiente</Button></nav> : null}
           </section>
         </> : null}

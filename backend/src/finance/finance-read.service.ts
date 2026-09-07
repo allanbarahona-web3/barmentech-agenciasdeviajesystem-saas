@@ -1,5 +1,5 @@
 import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
-import { AccountReceivableStatus, CommercialObligationStatus, PaymentAllocationStatus, PaymentPurpose, PaymentStatus, Prisma } from "@prisma/client";
+import { AccountReceivableStatus, BillingDocumentSourceRole, CommercialObligationStatus, PaymentAllocationStatus, PaymentPurpose, PaymentStatus, Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import {
   ListAccountReceivableGroupItemsDto,
@@ -550,8 +550,24 @@ export class FinanceReadService {
       }),
       this.prisma.payment.count({ where }),
     ]);
+    const fiscalDocuments = payments.length
+      ? await this.prisma.billingDocument.findMany({
+          where: {
+            tenantId,
+            sourceType: "CONTRACT_PAYMENT",
+            sourceId: { in: payments.map((payment) => payment.id) },
+            sourceRole: BillingDocumentSourceRole.PRIMARY,
+          },
+          select: contractPaymentFiscalDocumentSelect,
+        })
+      : [];
+    const fiscalDocumentsByPaymentId = new Map(
+      fiscalDocuments.map((document) => [document.sourceId, document]),
+    );
     return {
-      items: payments.map(contractPaymentHistoryItem),
+      items: payments.map((payment) =>
+        contractPaymentHistoryItem(payment, fiscalDocumentsByPaymentId.get(payment.id) ?? null),
+      ),
       total,
       page,
       pageSize,
@@ -854,6 +870,18 @@ const contractPaymentHistorySelect = {
   },
 } satisfies Prisma.PaymentSelect;
 
+const contractPaymentFiscalDocumentSelect = {
+  id: true,
+  sourceId: true,
+  internalNumber: true,
+  fiscalNumber: true,
+  documentTypeCode: true,
+  lifecycleStatus: true,
+  providerStatus: true,
+  taxAuthorityStatus: true,
+  issuedAt: true,
+} satisfies Prisma.BillingDocumentSelect;
+
 type AccountReceivableGroupRow = {
   groupKind: "CUSTOMER" | "RECEIVABLE";
   groupIdentity: string;
@@ -1040,6 +1068,7 @@ function contractObligationPortfolioItem(
 
 function contractPaymentHistoryItem(
   payment: Prisma.PaymentGetPayload<{ select: typeof contractPaymentHistorySelect }>,
+  fiscalDocument: Prisma.BillingDocumentGetPayload<{ select: typeof contractPaymentFiscalDocumentSelect }> | null,
 ) {
   const commercialAllocation = payment.commercialObligationAllocations.find(
     (allocation) =>
@@ -1067,6 +1096,16 @@ function contractPaymentHistoryItem(
       reversalReason: commercialAllocation.reversal?.reason ?? null,
     } : null,
     receiptAvailable: hasAvailablePaymentReceipt(payment.status, payment.receiptNumber),
+    fiscalDocument: fiscalDocument ? {
+      id: fiscalDocument.id,
+      internalNumber: fiscalDocument.internalNumber,
+      fiscalNumber: fiscalDocument.fiscalNumber,
+      documentTypeCode: fiscalDocument.documentTypeCode,
+      lifecycleStatus: fiscalDocument.lifecycleStatus,
+      providerStatus: fiscalDocument.providerStatus,
+      taxAuthorityStatus: fiscalDocument.taxAuthorityStatus,
+      issuedAt: fiscalDocument.issuedAt,
+    } : null,
   };
 }
 
