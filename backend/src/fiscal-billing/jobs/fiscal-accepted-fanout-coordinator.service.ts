@@ -44,6 +44,7 @@ const INVALID_PARENT_ERROR = "FISCAL_ACCEPTED_FANOUT_PARENT_INVALID";
 const CHILD_CONFLICT_ERROR = "FISCAL_ACCEPTED_FANOUT_CHILD_CONFLICT";
 const FANOUT_ERROR = "FISCAL_ACCEPTED_FANOUT_FAILED";
 const CLAIM_LOST_ERROR = "FISCAL_ACCEPTED_FANOUT_CLAIM_LOST";
+const CONTRACT_PAYMENT_FISCAL_SOURCE_TYPE = "CONTRACT_PAYMENT";
 
 class FanoutError extends Error {
   constructor(readonly code: string) {
@@ -164,34 +165,47 @@ export class FiscalAcceptedFanoutCoordinatorService
         const payload = parent && validParentPayload(parent);
         if (!parent || !payload) throw new FanoutError(INVALID_PARENT_ERROR);
 
-        const deduplicationKey = accountReceivableRecognitionDeduplicationKey(payload.billingDocumentId);
-        await tx.billingOutboxEvent.createMany({
-          data: [{
-            tenantId: parent.tenantId,
-            eventType: ACCOUNT_RECEIVABLE_RECOGNITION_REQUESTED_EVENT_TYPE,
-            eventVersion: ACCOUNT_RECEIVABLE_RECOGNITION_REQUESTED_EVENT_VERSION,
-            aggregateType: parent.aggregateType,
-            aggregateId: parent.aggregateId,
-            causationId: parent.id,
-            deduplicationKey,
-            payload: {
-              tenantId: payload.tenantId,
-              billingDocumentId: payload.billingDocumentId,
-              eventVersion: payload.eventVersion,
-            },
-          }],
-          skipDuplicates: true,
-        });
-        const child = await tx.billingOutboxEvent.findUnique({
+        const document = await tx.billingDocument.findUnique({
           where: {
-            tenantId_deduplicationKey: {
-              tenantId: parent.tenantId,
-              deduplicationKey,
+            id_tenantId: {
+              id: payload.billingDocumentId,
+              tenantId: payload.tenantId,
             },
           },
+          select: { sourceType: true },
         });
-        if (!child || !isExactReceivableChild(child, parent, payload, deduplicationKey)) {
-          throw new FanoutError(CHILD_CONFLICT_ERROR);
+        if (!document) throw new FanoutError(INVALID_PARENT_ERROR);
+
+        if (document.sourceType !== CONTRACT_PAYMENT_FISCAL_SOURCE_TYPE) {
+          const deduplicationKey = accountReceivableRecognitionDeduplicationKey(payload.billingDocumentId);
+          await tx.billingOutboxEvent.createMany({
+            data: [{
+              tenantId: parent.tenantId,
+              eventType: ACCOUNT_RECEIVABLE_RECOGNITION_REQUESTED_EVENT_TYPE,
+              eventVersion: ACCOUNT_RECEIVABLE_RECOGNITION_REQUESTED_EVENT_VERSION,
+              aggregateType: parent.aggregateType,
+              aggregateId: parent.aggregateId,
+              causationId: parent.id,
+              deduplicationKey,
+              payload: {
+                tenantId: payload.tenantId,
+                billingDocumentId: payload.billingDocumentId,
+                eventVersion: payload.eventVersion,
+              },
+            }],
+            skipDuplicates: true,
+          });
+          const child = await tx.billingOutboxEvent.findUnique({
+            where: {
+              tenantId_deduplicationKey: {
+                tenantId: parent.tenantId,
+                deduplicationKey,
+              },
+            },
+          });
+          if (!child || !isExactReceivableChild(child, parent, payload, deduplicationKey)) {
+            throw new FanoutError(CHILD_CONFLICT_ERROR);
+          }
         }
 
         const completed = await tx.billingOutboxEvent.updateMany({

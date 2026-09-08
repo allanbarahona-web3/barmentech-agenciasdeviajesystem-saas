@@ -353,12 +353,13 @@ function ContractFinanceDrawer({ contract, canWrite, onClose, onChanged }: {
   </>;
 }
 
-function GroupRows({ group, canWrite, reloadToken, onOpenDetail, onRegisterInstallment }: {
+function GroupRows({ group, canWrite, reloadToken, onOpenDetail, onRegisterInstallment, onStatement }: {
   group: ContractObligationGroup;
   canWrite: boolean;
   reloadToken: number;
   onOpenDetail: (contract: ContractObligationPortfolioItem) => void;
   onRegisterInstallment: (contract: ContractObligationPortfolioItem) => void;
+  onStatement: (group: ContractObligationGroup) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [page, setPage] = useState(1);
@@ -392,7 +393,7 @@ function GroupRows({ group, canWrite, reloadToken, onOpenDetail, onRegisterInsta
       <TableCell className={styles.numeric}>{formatFinanceMoney(group.totalOriginalAmount, group.currencyCode)}</TableCell>
       <TableCell className={`${styles.numeric} ${styles.availableAmount}`}>{formatFinanceMoney(group.totalPaidAmount, group.currencyCode)}</TableCell>
       <TableCell className={`${styles.numeric} ${styles.pendingAmount}`}><strong>{formatFinanceMoney(group.totalOutstandingAmount, group.currencyCode)}</strong><span className={styles.tableSubtext}>{compactContext}</span></TableCell>
-      <TableCell><div className={styles.rowActions}><Button className={styles.secondaryAction} size="sm" type="button" variant="outline" onClick={() => setExpanded((value) => !value)}><ChevronDown aria-hidden="true" />{expanded ? 'Ocultar' : 'Ver contratos'}</Button></div></TableCell>
+      <TableCell><div className={styles.rowActions}><Button className={styles.secondaryAction} size="sm" type="button" variant="outline" onClick={() => setExpanded((value) => !value)}><ChevronDown aria-hidden="true" />{expanded ? 'Ocultar' : 'Ver contratos'}</Button><Button className={styles.secondaryAction} size="sm" type="button" variant="outline" onClick={() => onStatement(group)}>Estado de cuenta</Button></div></TableCell>
     </TableRow>
     {expanded ? <TableRow className={styles.childContainerRow}><TableCell colSpan={6}><div className={styles.childPanel}>
       <div className={styles.childHeading}><div><h3>Contratos</h3><p>Compromisos comerciales agrupados por cliente y moneda.</p></div><span>{loading ? 'Cargando…' : `${result?.total ?? 0} contrato(s)`}</span></div>
@@ -410,10 +411,11 @@ function GroupRows({ group, canWrite, reloadToken, onOpenDetail, onRegisterInsta
   </Fragment>;
 }
 
-export function ContractObligationGroupsView({ canWrite, reloadToken, onContractsChanged }: {
+export function ContractObligationGroupsView({ canWrite, reloadToken, onContractsChanged, onStatement }: {
   canWrite: boolean;
   reloadToken: number;
   onContractsChanged: () => void;
+  onStatement: (group: ContractObligationGroup) => void;
 }) {
   const [page, setPage] = useState(1);
   const [result, setResult] = useState<ContractObligationGroupsPage | null>(null);
@@ -463,7 +465,7 @@ export function ContractObligationGroupsView({ canWrite, reloadToken, onContract
     {installmentNotice ? <div className={styles.operationNotice} role="status">{installmentNotice}</div> : null}
     <section className={styles.tableCard}>
       <div className={styles.tableHeading}><div><h2>Contratos por cliente y moneda</h2><p>Los compromisos y saldos provienen del modelo financiero de contratos.</p></div><span>{loading ? 'Cargando…' : summary}</span></div>
-      {error ? <div className={styles.state}><div><span className={styles.stateIcon}><AlertCircle aria-hidden="true" /></span><h3 className={styles.error}>No se pudieron cargar los contratos</h3><p>{error.message}</p><Button className={styles.secondaryAction} variant="outline" type="button" onClick={() => setRetry((value) => value + 1)}>Intentar nuevamente</Button></div></div> : !loading && (!result || result.items.length === 0) ? <div className={styles.state}><div><span className={styles.stateIcon}><AlertCircle aria-hidden="true" /></span><h3>No hay grupos de contratos</h3><p>Los contratos con obligación comercial aparecerán aquí.</p></div></div> : <Table className={styles.contractGroupTable}><TableHeader><TableRow><TableHead>Cliente</TableHead><TableHead>Moneda</TableHead><TableHead className={styles.numeric}>Total contratado</TableHead><TableHead className={styles.numeric}>Pagado</TableHead><TableHead className={styles.numeric}>Saldo contratos</TableHead><TableHead>Acciones</TableHead></TableRow></TableHeader><TableBody>{loading ? Array.from({ length: 5 }, (_, row) => <TableRow key={row}>{Array.from({ length: 6 }, (_, cell) => <TableCell key={cell}><span className={styles.skeleton} /></TableCell>)}</TableRow>) : result?.items.map((group) => <GroupRows key={group.groupKey} group={group} canWrite={canWrite} reloadToken={reloadToken} onOpenDetail={setSelectedDetailContract} onRegisterInstallment={setSelectedInstallmentContract} />)}</TableBody></Table>}
+      {error ? <div className={styles.state}><div><span className={styles.stateIcon}><AlertCircle aria-hidden="true" /></span><h3 className={styles.error}>No se pudieron cargar los contratos</h3><p>{error.message}</p><Button className={styles.secondaryAction} variant="outline" type="button" onClick={() => setRetry((value) => value + 1)}>Intentar nuevamente</Button></div></div> : !loading && (!result || result.items.length === 0) ? <div className={styles.state}><div><span className={styles.stateIcon}><AlertCircle aria-hidden="true" /></span><h3>No hay grupos de contratos</h3><p>Los contratos con obligación comercial aparecerán aquí.</p></div></div> : <Table className={styles.contractGroupTable}><TableHeader><TableRow><TableHead>Cliente</TableHead><TableHead>Moneda</TableHead><TableHead className={styles.numeric}>Total contratado</TableHead><TableHead className={styles.numeric}>Pagado</TableHead><TableHead className={styles.numeric}>Saldo contratos</TableHead><TableHead>Acciones</TableHead></TableRow></TableHeader><TableBody>{loading ? Array.from({ length: 5 }, (_, row) => <TableRow key={row}>{Array.from({ length: 6 }, (_, cell) => <TableCell key={cell}><span className={styles.skeleton} /></TableCell>)}</TableRow>) : result?.items.map((group) => <GroupRows key={group.groupKey} group={group} canWrite={canWrite} reloadToken={reloadToken} onOpenDetail={setSelectedDetailContract} onRegisterInstallment={setSelectedInstallmentContract} onStatement={onStatement} />)}</TableBody></Table>}
       {!loading && !error && result && result.totalPages > 1 ? <nav className={styles.pagination}><p>Página {result.page} de {result.totalPages} · {summary}</p><div className={styles.paginationActions}><Button className={styles.secondaryAction} disabled={result.page <= 1} variant="outline" onClick={() => setPage((value) => Math.max(1, value - 1))}>Anterior</Button><Button className={styles.secondaryAction} disabled={result.page >= result.totalPages} variant="outline" onClick={() => setPage((value) => Math.min(result.totalPages, value + 1))}>Siguiente</Button></div></nav> : null}
     </section>
     {selectedDetailContract ? <ContractFinanceDrawer key={selectedDetailContract.contractId} contract={selectedDetailContract} canWrite={canWrite} onClose={() => setSelectedDetailContract(null)} onChanged={onContractsChanged} /> : null}

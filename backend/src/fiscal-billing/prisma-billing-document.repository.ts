@@ -1,4 +1,4 @@
-import { HttpException, Injectable } from "@nestjs/common";
+import { HttpException, Injectable, Logger } from "@nestjs/common";
 import { BillingMode, Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import type { BillingDocumentRepository } from "./billing-document.repository";
@@ -251,6 +251,8 @@ type WorkspaceRow=Prisma.BillingDocumentGetPayload<{select:typeof workspaceSelec
 export class PrismaBillingDocumentRepository
   implements BillingDocumentRepository
 {
+  private readonly logger = new Logger(PrismaBillingDocumentRepository.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   findPrimaryDocument(
@@ -630,9 +632,19 @@ export class PrismaBillingDocumentRepository
     }
     const issuanceIdempotencyKey = issuanceKey(billingDocumentId);
     const outboxDeduplicationKey = outboxKey(billingDocumentId);
+    let allocationStage = "LOCK_DOCUMENT";
+    let sequenceId: string | null = null;
+    let candidateSequenceNumber: string | null = null;
 
     try {
       return await this.prisma.$transaction(async (tx) => {
+        this.logIssuanceAllocationStage({
+          tenantId,
+          billingDocumentId,
+          stage: allocationStage,
+          sequenceId,
+          candidateSequenceNumber,
+        });
         const locked = await tx.$queryRaw<Array<{ id: string }>>`
           SELECT "id"
           FROM "billing_documents"
@@ -682,6 +694,14 @@ export class PrismaBillingDocumentRepository
         );
         await this.requireFinalReadiness(tx, document);
 
+        allocationStage = "LOAD_SEQUENCE";
+        this.logIssuanceAllocationStage({
+          tenantId,
+          billingDocumentId,
+          stage: allocationStage,
+          sequenceId,
+          candidateSequenceNumber,
+        });
         const sequence = await tx.billingDocumentNumberSequence.findUnique({
           where: {
             tenantId_fiscalIssuerId_establishmentCode_terminalCode_documentTypeCode:
@@ -703,7 +723,16 @@ export class PrismaBillingDocumentRepository
         ) {
           throw fiscalBillingError("BILLING_DOCUMENT_SEQUENCE_EXHAUSTED");
         }
+        sequenceId = sequence.id;
 
+        allocationStage = "INCREMENT_SEQUENCE";
+        this.logIssuanceAllocationStage({
+          tenantId,
+          billingDocumentId,
+          stage: allocationStage,
+          sequenceId,
+          candidateSequenceNumber,
+        });
         const advanced = await tx.$queryRaw<
           Array<{ id: string; allocatedSequenceNumber: bigint }>
         >`
@@ -725,6 +754,15 @@ export class PrismaBillingDocumentRepository
         }
 
         const allocatedSequenceNumber = allocation.allocatedSequenceNumber;
+        candidateSequenceNumber = allocatedSequenceNumber.toString();
+        allocationStage = "CONSTRUCT_FISCAL_NUMBER";
+        this.logIssuanceAllocationStage({
+          tenantId,
+          billingDocumentId,
+          stage: allocationStage,
+          sequenceId,
+          candidateSequenceNumber,
+        });
         const providerBase = allocatedSequenceNumber.toString().padStart(10, "0");
         const fiscalNumber =
           document.issuerEstablishmentCode! +
@@ -735,6 +773,14 @@ export class PrismaBillingDocumentRepository
 
         let updated;
         try {
+          allocationStage = "UPDATE_DOCUMENT";
+          this.logIssuanceAllocationStage({
+            tenantId,
+            billingDocumentId,
+            stage: allocationStage,
+            sequenceId,
+            candidateSequenceNumber,
+          });
           updated = await tx.billingDocument.update({
             where: { id_tenantId: { id: billingDocumentId, tenantId } },
             data: {
@@ -765,6 +811,14 @@ export class PrismaBillingDocumentRepository
           });
         } catch (error) {
           if (isUniqueConstraintViolation(error)) {
+            this.logIssuanceAllocationError({
+              tenantId,
+              billingDocumentId,
+              stage: allocationStage,
+              sequenceId,
+              candidateSequenceNumber,
+              error,
+            });
             throw fiscalBillingError(
               "BILLING_DOCUMENT_CONCURRENT_ALLOCATION_CONFLICT",
             );
@@ -772,6 +826,14 @@ export class PrismaBillingDocumentRepository
           throw error;
         }
 
+        allocationStage = "CREATE_OUTBOX";
+        this.logIssuanceAllocationStage({
+          tenantId,
+          billingDocumentId,
+          stage: allocationStage,
+          sequenceId,
+          candidateSequenceNumber,
+        });
         const outboxInsert = await tx.billingOutboxEvent.createMany({
           data: {
             tenantId,
@@ -827,11 +889,66 @@ export class PrismaBillingDocumentRepository
           providerStatus: updated.providerStatus,
           newlyAllocated: true,
         };
-      });
+      }, { timeout: 15000 });
     } catch (error) {
       if (isSafeFiscalError(error)) throw error;
+      this.logIssuanceAllocationError({
+        tenantId,
+        billingDocumentId,
+        stage: allocationStage,
+        sequenceId,
+        candidateSequenceNumber,
+        error,
+      });
+      if (isInteractiveTransactionTimeout(error)) {
+        throw fiscalBillingError(
+          "BILLING_DOCUMENT_ALLOCATION_TRANSACTION_TIMEOUT",
+        );
+      }
       throw fiscalBillingError("BILLING_DOCUMENT_CONCURRENT_ALLOCATION_CONFLICT");
     }
+  }
+
+  private logIssuanceAllocationStage(input: {
+    tenantId: string;
+    billingDocumentId: string;
+    stage: string;
+    sequenceId: string | null;
+    candidateSequenceNumber: string | null;
+  }): void {
+    this.logger.debug(JSON.stringify({
+      event: "BILLING_ISSUANCE_ALLOC_STAGE",
+      pid: process.pid,
+      tenantId: input.tenantId,
+      billingDocumentId: input.billingDocumentId,
+      stage: input.stage,
+      sequenceId: input.sequenceId,
+      candidateSequenceNumber: input.candidateSequenceNumber,
+    }));
+  }
+
+  private logIssuanceAllocationError(input: {
+    tenantId: string;
+    billingDocumentId: string;
+    stage: string;
+    sequenceId: string | null;
+    candidateSequenceNumber: string | null;
+    error: unknown;
+  }): void {
+    const details = safePrismaErrorDetails(input.error);
+    this.logger.error(JSON.stringify({
+      event: "BILLING_ISSUANCE_ALLOC_ERROR",
+      pid: process.pid,
+      tenantId: input.tenantId,
+      billingDocumentId: input.billingDocumentId,
+      stage: input.stage,
+      sequenceId: input.sequenceId,
+      candidateSequenceNumber: input.candidateSequenceNumber,
+      errorClass: details.errorClass,
+      errorName: details.errorName,
+      prismaCode: details.prismaCode,
+      prismaMetaTarget: details.prismaMetaTarget,
+    }));
   }
 
   private async verifyFiscalPreparation(
@@ -1788,6 +1905,50 @@ function isUniqueConstraintViolation(error: unknown) {
     "code" in error &&
     (error as { code?: unknown }).code === "P2002"
   );
+}
+
+function isInteractiveTransactionTimeout(error: unknown) {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === "P2028"
+  );
+}
+
+function safePrismaErrorDetails(error: unknown): {
+  errorClass: string | null;
+  errorName: string | null;
+  prismaCode: string | null;
+  prismaMetaTarget: string | string[] | null;
+} {
+  if (typeof error !== "object" || error === null) {
+    return {
+      errorClass: null,
+      errorName: null,
+      prismaCode: null,
+      prismaMetaTarget: null,
+    };
+  }
+  const value = error as {
+    name?: unknown;
+    code?: unknown;
+    meta?: { target?: unknown };
+    constructor?: { name?: unknown };
+  };
+  const target = value.meta?.target;
+  return {
+    errorClass:
+      typeof value.constructor?.name === "string"
+        ? value.constructor.name
+        : null,
+    errorName: typeof value.name === "string" ? value.name : null,
+    prismaCode: typeof value.code === "string" ? value.code : null,
+    prismaMetaTarget:
+      typeof target === "string"
+        ? target
+        : Array.isArray(target) && target.every((item) => typeof item === "string")
+          ? target
+          : null,
+  };
 }
 
 function isSafeFiscalError(error: unknown) {

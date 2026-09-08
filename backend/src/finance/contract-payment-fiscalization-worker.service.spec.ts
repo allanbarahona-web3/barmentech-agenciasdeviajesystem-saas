@@ -1,4 +1,4 @@
-import { BadRequestException } from "@nestjs/common";
+import { BadRequestException, ConflictException, ServiceUnavailableException } from "@nestjs/common";
 import {
   ContractPaymentFiscalPreparationError,
   CONTRACT_PAYMENT_FISCAL_PREPARATION_ERRORS,
@@ -45,6 +45,8 @@ describe("ContractPaymentFiscalizationWorkerService", () => {
       CONTRACT_PAYMENT_FISCAL_PREPARATION_ERRORS.CLASSIFICATION_MISSING,
     );
     expect(isNonRetryableContractPaymentFiscalizationError(new BadRequestException({ code: "BILLING_DOCUMENT_NOT_ELIGIBLE_FOR_ISSUANCE" }))).toBe(true);
+    expect(isNonRetryableContractPaymentFiscalizationError(new ConflictException({ code: "BILLING_DOCUMENT_CONCURRENT_ALLOCATION_CONFLICT" }))).toBe(true);
+    expect(isNonRetryableContractPaymentFiscalizationError(new ServiceUnavailableException({ code: "BILLING_DOCUMENT_ALLOCATION_TRANSACTION_TIMEOUT" }))).toBe(false);
     expect(isNonRetryableContractPaymentFiscalizationError(new Error("database timeout"))).toBe(false);
   });
 

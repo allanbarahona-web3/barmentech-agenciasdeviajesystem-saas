@@ -91,8 +91,18 @@ describe("ContractPaymentFiscalPreparationService", () => {
       });
   });
 
-  it("requires the calculator total to exactly equal the received amount", async () => {
-    const context = createContext({ receivedAmount: "100" });
+  it("reconciles the one-tick 333 tax-included result without changing the Payment amount", async () => {
+    const context = createContext({ receivedAmount: "333", currencyCode: "USD" });
+    await context.service.prepareOrResume("tenant-a", "payment-a", "user-a");
+
+    const command = context.billing.createOrResumeCrV44CalculatedDraft.mock.calls[0][0];
+    expect((context.payment.receivedAmount as Prisma.Decimal).toFixed(5)).toBe("333.00000");
+    expect(command.totals.total).toBe("332.99999");
+    expect(command.lines[0].unitPrice).toBe("294.69026");
+  });
+
+  it("rejects a one-tick fiscal result when it changes currency settlement", async () => {
+    const context = createContext({ receivedAmount: "0.005", currencyCode: "USD" });
     await expect(context.service.prepareOrResume("tenant-a", "payment-a", "user-a"))
       .rejects.toMatchObject({
         code: CONTRACT_PAYMENT_FISCAL_PREPARATION_ERRORS.CALCULATION_MISMATCH,
@@ -117,6 +127,7 @@ function createContext(options: {
   purpose?: PaymentPurpose;
   status?: string;
   receivedAmount?: string;
+  currencyCode?: "CRC" | "USD";
   contract?: object | null;
   useInternalTrip?: boolean;
   clientIdType?: string;
@@ -171,7 +182,7 @@ function createContext(options: {
     id: "payment-a",
     tenantId: "tenant-a",
     receiptNumber: "RCP-1",
-    currencyCode: "CRC",
+    currencyCode: options.currencyCode ?? "CRC",
     receivedAmount: new Prisma.Decimal(options.receivedAmount ?? "113"),
     paymentMethod: "CASH",
     purpose: options.purpose ?? PaymentPurpose.CONTRACT_PAYMENT,
@@ -225,6 +236,7 @@ function createContext(options: {
     prisma,
     travel,
     billing,
+    payment,
     service: new ContractPaymentFiscalPreparationService(
       prisma as any,
       travel as any,

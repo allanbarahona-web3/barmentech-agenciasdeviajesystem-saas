@@ -242,6 +242,9 @@
 .statementTableWrap td { border-top: 1px solid #e8ecf1; padding: 10px 12px; color: #334155; font-size: 11px; vertical-align: top; }
 .statementTableWrap td:nth-last-child(-n+3), .statementTableWrap th:nth-last-child(-n+3) { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .statementTableWrap small { display: block; margin-top: 3px; color: #64748b; font-size: 9px; }
+.statementChargeAllocations { margin-top: 7px; }
+.statementChargeAllocations summary { cursor: pointer; color: #315f9b; font-size: 10px; font-weight: 700; }
+.statementChargeAllocations ul { display: grid; gap: 4px; margin: 7px 0 0; padding-left: 16px; color: #526175; font-size: 10px; }
 .statementEmail { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; border: 1px solid #dfe5ed; border-radius: 10px; background: #fff; padding: 14px; }
 @keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 @media (max-width: 1180px) { .filters { grid-template-columns: repeat(3, minmax(0, 1fr)); } }

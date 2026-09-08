@@ -4,7 +4,7 @@ import { buildRequestIdentity, buildResponseHash } from "../official-exchange-ra
 
 describe("PrismaBillingDocumentRepository fiscal allocation", () => {
   it("allocates with a locked tenant document, one atomic increment, and one safe outbox event", async () => {
-    const { repository, tx } = setupNewAllocation();
+    const { repository, tx, prisma } = setupNewAllocation();
 
     const result = await repository.requestElectronicIssuance(
       "tenant-a",
@@ -29,6 +29,10 @@ describe("PrismaBillingDocumentRepository fiscal allocation", () => {
       newlyAllocated: true,
     });
     expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
+    expect(prisma.$transaction).toHaveBeenCalledWith(
+      expect.any(Function),
+      { timeout: 15000 },
+    );
     expect(rawSql(tx.$queryRaw, 0)).toContain("FOR UPDATE");
     expect(rawSql(tx.$queryRaw, 0)).toContain('"tenantId"');
     expect(rawSql(tx.$queryRaw, 1)).toContain(
@@ -368,16 +372,82 @@ describe("PrismaBillingDocumentRepository fiscal allocation", () => {
     },
   );
 
-  it("propagates a document-write failure from the transaction after increment", async () => {
+  it("keeps P2002 document-allocation conflicts terminal after increment", async () => {
     const { repository, tx } = setupNewAllocation();
-    tx.billingDocument.update.mockRejectedValue(new Error("write failed"));
+    tx.billingDocument.update.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError("unique constraint", {
+        code: "P2002",
+        clientVersion: "5.22.0",
+      }),
+    );
+
+    const error = await capture(
+      repository.requestElectronicIssuance("tenant-a", "document-a", "user-a", crcPreparation()),
+    );
+    expect(error.getResponse()).toMatchObject({
+      code: "BILLING_DOCUMENT_CONCURRENT_ALLOCATION_CONFLICT",
+    });
+    expect(error.getStatus()).toBe(409);
+    expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
+    expect(tx.billingOutboxEvent.createMany).not.toHaveBeenCalled();
+  });
+
+  it("maps P2028 during sequence increment to a retryable allocation timeout", async () => {
+    const { repository, tx } = setupNewAllocation();
+    tx.$queryRaw.mockReset()
+      .mockResolvedValueOnce([{ id: "document-a" }])
+      .mockRejectedValueOnce(
+        new Prisma.PrismaClientKnownRequestError("Transaction already closed", {
+          code: "P2028",
+          clientVersion: "5.22.0",
+        }),
+      );
+
+    const error = await capture(
+      repository.requestElectronicIssuance("tenant-a", "document-a", "user-a", crcPreparation()),
+    );
+
+    expect(error.getResponse()).toMatchObject({
+      code: "BILLING_DOCUMENT_ALLOCATION_TRANSACTION_TIMEOUT",
+    });
+    expect(error.getStatus()).toBe(503);
+    expect(tx.billingDocument.update).not.toHaveBeenCalled();
+    expect(tx.billingOutboxEvent.createMany).not.toHaveBeenCalled();
+  });
+
+  it("resumes the same draft after a P2028 rollback and allocates it once", async () => {
+    const timedOut = setupNewAllocation();
+    timedOut.tx.$queryRaw.mockReset()
+      .mockResolvedValueOnce([{ id: "document-a" }])
+      .mockRejectedValueOnce(
+        new Prisma.PrismaClientKnownRequestError("Transaction already closed", {
+          code: "P2028",
+          clientVersion: "5.22.0",
+        }),
+      );
+    const recovered = setupNewAllocation();
+    const prisma = {
+      $transaction: jest
+        .fn()
+        .mockImplementationOnce((work) => work(timedOut.tx))
+        .mockImplementationOnce((work) => work(recovered.tx)),
+    };
+    const repository = new PrismaBillingDocumentRepository(prisma as never);
 
     await expectCode(
       repository.requestElectronicIssuance("tenant-a", "document-a", "user-a", crcPreparation()),
-      "BILLING_DOCUMENT_CONCURRENT_ALLOCATION_CONFLICT",
+      "BILLING_DOCUMENT_ALLOCATION_TRANSACTION_TIMEOUT",
     );
-    expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
-    expect(tx.billingOutboxEvent.createMany).not.toHaveBeenCalled();
+    const result = await repository.requestElectronicIssuance(
+      "tenant-a",
+      "document-a",
+      "user-a",
+      crcPreparation(),
+    );
+
+    expect(result.newlyAllocated).toBe(true);
+    expect(recovered.tx.billingDocument.update).toHaveBeenCalledTimes(1);
+    expect(recovered.tx.billingOutboxEvent.createMany).toHaveBeenCalledTimes(1);
   });
 
   it("classifies outbox uniqueness failure and aborts the containing transaction", async () => {
@@ -440,6 +510,7 @@ function setupNewAllocation(options: {
   const prisma = { $transaction: jest.fn((work) => work(tx)) };
   return {
     tx,
+    prisma,
     repository: new PrismaBillingDocumentRepository(prisma as never),
   };
 }
@@ -572,6 +643,15 @@ async function expectCode(promise: Promise<unknown>, code: string) {
   await expect(promise).rejects.toMatchObject({
     response: expect.objectContaining({ code }),
   });
+}
+
+async function capture(promise: Promise<unknown>): Promise<any> {
+  try {
+    await promise;
+  } catch (error) {
+    return error;
+  }
+  throw new Error("Expected promise to reject.");
 }
 
 function crcPreparation() {

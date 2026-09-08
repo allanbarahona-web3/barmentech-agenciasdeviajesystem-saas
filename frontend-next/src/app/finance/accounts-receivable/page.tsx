@@ -15,7 +15,7 @@ import { PaymentFlow } from './payment-flow';
 import { PaymentsView, type PaymentCustomerFilter } from './payments-view';
 import { ReceivableGroupsView } from './receivable-groups';
 import { CustomerFundsFlow } from './customer-funds-flow';
-import { CustomerAccountStatementModal } from './customer-account-statement';
+import { CustomerAccountStatementModal, type CustomerAccountStatementGroup } from './customer-account-statement';
 
 const READ_ROLES = new Set(['ADMIN', 'FACTURACION_COBROS', 'CONTADOR']);
 const WRITE_ROLES = new Set(['ADMIN', 'FACTURACION_COBROS']);
@@ -83,7 +83,7 @@ export default function AccountsReceivablePage() {
   const [operationError, setOperationError] = useState<string | null>(null);
   const [operationNotice, setOperationNotice] = useState<string | null>(null);
   const [paymentCustomer, setPaymentCustomer] = useState<PaymentCustomerFilter | null>(null);
-  const [statementGroup, setStatementGroup] = useState<AccountReceivableGroup | null>(null);
+  const [statementGroup, setStatementGroup] = useState<CustomerAccountStatementGroup | null>(null);
   const [customerFundsReceivable, setCustomerFundsReceivable] = useState<AccountReceivableDetail | null>(null);
   const [guardedReceivable, setGuardedReceivable] = useState<AccountReceivableDetail | null>(null);
 
@@ -129,11 +129,11 @@ export default function AccountsReceivablePage() {
   if (!authorized) return <main className="app-shell"><div className={styles.state}><LoadingSpinner message="Validando acceso…" /></div></main>;
   return <main className="app-shell"><div className={styles.page}>
     <header className={styles.header}><p className={styles.eyebrow}>Finanzas</p><h1 className={styles.title}>Cuentas por cobrar</h1><p className={styles.subtitle}>Consulte la cartera agrupada y recupere pagos pendientes de aplicar.</p></header>
-    <nav className={styles.viewTabs} aria-label="Espacios de Finanzas"><button className={view === 'receivables' ? styles.viewTabActive : styles.viewTab} type="button" onClick={() => setView('receivables')}>Cartera por cliente</button><button className={view === 'payments' ? styles.viewTabActive : styles.viewTab} type="button" onClick={() => setView('payments')}>Pagos</button><button className={view === 'contracts' ? styles.viewTabActive : styles.viewTab} type="button" onClick={() => setView('contracts')}>Contratos</button></nav>
+    <nav className={styles.viewTabs} aria-label="Espacios de Finanzas"><button className={view === 'receivables' ? styles.viewTabActive : styles.viewTab} type="button" onClick={() => setView('receivables')}>Cartera</button><button className={view === 'contracts' ? styles.viewTabActive : styles.viewTab} type="button" onClick={() => setView('contracts')}>Contratos</button><button className={view === 'payments' ? styles.viewTabActive : styles.viewTab} type="button" onClick={() => setView('payments')}>Pagos</button></nav>
     {operationError && <div className={styles.inlineError} role="alert"><AlertCircle aria-hidden="true" /><span>{operationError}</span></div>}
     {operationNotice && <div className={styles.operationNotice} role="status">{operationNotice}</div>}
     {openingRegistration && <div className={styles.operationNotice}>Abriendo la cuenta seleccionada…</div>}
-    {view === 'receivables' ? <ReceivableGroupsView canWrite={canWrite} reloadToken={reload} onOpenDetail={setSelectedId} onRegisterPayment={(id) => void openRegistration(id)} onRegisterCustomerPayment={setRegistrationCustomer} onApplyBalance={(id) => void openCustomerFunds(id)} onApplyGroupBalance={(group) => void openGroupCustomerFunds(group)} onViewPayments={(customer) => { setPaymentCustomer(customer); setView('payments'); }} onStatement={setStatementGroup} /> : view === 'payments' ? <PaymentsView reloadToken={reload} customerFilter={paymentCustomer} onClearCustomer={() => setPaymentCustomer(null)} canWrite={canWrite} onPaymentChanged={() => setReload((value) => value + 1)} /> : <ContractObligationGroupsView canWrite={canWrite} reloadToken={reload} onContractsChanged={() => setReload((value) => value + 1)} />}
+    {view === 'receivables' ? <ReceivableGroupsView canWrite={canWrite} reloadToken={reload} onOpenDetail={setSelectedId} onRegisterPayment={(id) => void openRegistration(id)} onRegisterCustomerPayment={setRegistrationCustomer} onApplyBalance={(id) => void openCustomerFunds(id)} onApplyGroupBalance={(group) => void openGroupCustomerFunds(group)} onViewPayments={(customer) => { setPaymentCustomer(customer); setView('payments'); }} onStatement={setStatementGroup} /> : view === 'payments' ? <PaymentsView reloadToken={reload} customerFilter={paymentCustomer} onClearCustomer={() => setPaymentCustomer(null)} canWrite={canWrite} onPaymentChanged={() => setReload((value) => value + 1)} /> : <ContractObligationGroupsView canWrite={canWrite} reloadToken={reload} onContractsChanged={() => setReload((value) => value + 1)} onStatement={(group) => setStatementGroup(group)} />}
   </div>
   {selectedId && <ReceivableDrawer key={selectedId} id={selectedId} canWrite={canWrite} onClose={() => setSelectedId(null)} onRegisterPayment={startRegistration} onApplyBalance={setCustomerFundsReceivable} />}
   {registrationReceivable && <PaymentFlow receivable={registrationReceivable} onClose={() => setRegistrationReceivable(null)} onAllocated={() => setReload((value) => value + 1)} onCompleted={setOperationNotice} />}

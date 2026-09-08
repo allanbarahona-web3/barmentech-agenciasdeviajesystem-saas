@@ -33,14 +33,32 @@ const groupRowsSource = portfolioSource.slice(
   portfolioSource.indexOf('export function ContractObligationGroupsView'),
 );
 
-test('Accounts Receivable keeps Cartera and Pagos and adds the Contratos tab', () => {
-  assert.match(pageSource, /Cartera por cliente/);
-  assert.match(pageSource, />Pagos</);
-  assert.match(pageSource, />Contratos</);
+test('Accounts Receivable orders tabs as Cartera, Contratos, then Pagos', () => {
+  const tabsSource = pageSource.slice(
+    pageSource.indexOf('<nav className={styles.viewTabs}'),
+    pageSource.indexOf('</nav>') + '</nav>'.length,
+  );
+  assert.match(tabsSource, />Cartera<\/button>[\s\S]*>Contratos<\/button>[\s\S]*>Pagos<\/button>/);
+  assert.doesNotMatch(tabsSource, /Cartera por cliente/);
   assert.match(pageSource, /useState<'receivables' \| 'payments' \| 'contracts'>\('receivables'\)/);
   assert.match(pageSource, /<ReceivableGroupsView/);
   assert.match(pageSource, /<PaymentsView/);
   assert.match(pageSource, /<ContractObligationGroupsView/);
+});
+
+test('Cartera retains its canonical statement action and invoicing subtitle', () => {
+  assert.match(pageSource, /onStatement=\{setStatementGroup\}/);
+  assert.match(
+    readFileSync(new URL('../src/app/finance/accounts-receivable/receivable-groups.tsx', import.meta.url), 'utf8'),
+    /Cuentas por cobrar generadas por facturación y servicios adicionales\./,
+  );
+});
+
+test('Contract customer-currency groups reuse the canonical customer statement modal', () => {
+  assert.match(groupRowsSource, /onStatement\(group\)[\s\S]*Estado de cuenta/);
+  assert.match(portfolioSource, /onStatement: \(group: ContractObligationGroup\) => void/);
+  assert.match(pageSource, /onStatement=\{\(group\) => setStatementGroup\(group\)\}/);
+  assert.match(pageSource, /<CustomerAccountStatementModal group=\{statementGroup\}/);
 });
 
 test('typed Finance client supports paginated Contract group, child-row, and payment-history reads', () => {

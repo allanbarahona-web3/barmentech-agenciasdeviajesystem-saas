@@ -505,14 +505,20 @@ ${clause(
 
 ${clause(
   "CUARTO: PRECIO, FORMA DE PAGO Y MEDIOS DE PAGO.",
-  `<ul>
+  (state.paymentConditionType === "CASH"
+    ? `<ul>
+    <li>Precio total del Tour: USD ${v(formatMoney(state.totalAmount))}</li>
+    <li>Forma de pago: contado.</li>
+  </ul>`
+    : `<ul>
     <li>Precio total del Tour: USD ${v(formatMoney(state.totalAmount))}</li>
     <li>Pago inicial (reserva): USD ${v(formatMoney(state.reservationAmount))}</li>
     <li>Saldo pendiente: USD ${v(formatMoney(state.balanceAmount))}</li>
     <li>Saldo dividido en ${v(state.installmentCount)} cuota(s) ${state.paymentFrequency === "QUINCENAL" ? "quincenal(es)" : "mensual(es)"} de USD ${v(formatMoney(state.monthlyInstallmentAmount))}</li>
     <li>Última cuota ajustada: USD ${v(formatMoney(state.lastInstallmentAmount))}</li>
     <li>Fecha límite de pago total: ${v(formatDate(state.paymentDueDate))}</li>
-  </ul>
+  </ul>`) +
+  `
   <p>Los medios de pago para realizar los pagos son los siguientes:</p>
   <ul>
     ${bankAccounts.length > 0 ? bankAccounts.map(account => {

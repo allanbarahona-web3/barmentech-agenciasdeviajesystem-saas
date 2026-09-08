@@ -12,8 +12,8 @@ import {
 import { FiscalAcceptedFanoutCoordinatorService } from "./fiscal-accepted-fanout-coordinator.service";
 
 describe("FiscalAcceptedFanoutCoordinatorService", () => {
-  it("creates one exact provider-neutral receivable child and completes its parent in the fan-out transaction", async () => {
-    const c = context([parent()]);
+  it.each(["SALES_ORDER", "ADDITIONAL_SERVICE_ORDER"])("creates one exact provider-neutral receivable child for accepted %s documents", async (sourceType) => {
+    const c = context([parent()], { sourceType });
 
     await c.service.fanOutAvailableEvents();
 
@@ -29,6 +29,37 @@ describe("FiscalAcceptedFanoutCoordinatorService", () => {
     for (const row of data) expect(Object.keys(row.payload).sort()).toEqual(["billingDocumentId", "eventVersion", "tenantId"]);
     expect(JSON.stringify(data)).not.toMatch(/provider|hacienda|factura|customer|amount|money/i);
     expect(JSON.stringify(data)).not.toContain("billing-document.invoice-auto-delivery-requested");
+  });
+
+  it("completes an accepted CONTRACT_PAYMENT parent without creating a receivable child", async () => {
+    const c = context([parent()], { sourceType: "CONTRACT_PAYMENT" });
+
+    await c.service.fanOutAvailableEvents();
+
+    expect(c.tx.billingDocument.findUnique).toHaveBeenCalledWith({
+      where: { id_tenantId: { id: "document-a", tenantId: "tenant-a" } },
+      select: { sourceType: true },
+    });
+    expect(c.tx.billingOutboxEvent.createMany).not.toHaveBeenCalled();
+    expect(c.tx.billingOutboxEvent.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: "PROCESSED", lockedAt: null, lockedBy: null }),
+    }));
+  });
+
+  it("keeps repeated accepted CONTRACT_PAYMENT processing idempotent without a receivable child", async () => {
+    const event = parent();
+    const c = context([event], { sourceType: "CONTRACT_PAYMENT" });
+    c.tx.$queryRaw.mockReset()
+      .mockResolvedValueOnce([event])
+      .mockResolvedValueOnce([{ id: event.id }])
+      .mockResolvedValueOnce([event])
+      .mockResolvedValueOnce([{ id: event.id }]);
+
+    await c.service.fanOutAvailableEvents();
+    await c.service.fanOutAvailableEvents();
+
+    expect(c.tx.billingOutboxEvent.createMany).not.toHaveBeenCalled();
+    expect(c.tx.billingOutboxEvent.updateMany).toHaveBeenCalledTimes(2);
   });
 
   it("does not complete the parent when child persistence fails", async () => {
@@ -143,12 +174,17 @@ describe("FiscalAcceptedFanoutCoordinatorService", () => {
   });
 });
 
-function context(events: ReturnType<typeof parent>[], options: { createCount?: number; child?: Record<string, unknown> | null } = {}) {
+function context(events: ReturnType<typeof parent>[], options: { createCount?: number; child?: Record<string, unknown> | null; sourceType?: string | null } = {}) {
   const queryRaw = jest.fn()
     .mockResolvedValueOnce(events)
     .mockImplementation(async () => [{ id: "parent-a" }]);
   const tx = {
     $queryRaw: queryRaw,
+    billingDocument: {
+      findUnique: jest.fn().mockResolvedValue({
+        sourceType: options.sourceType ?? "SALES_ORDER",
+      }),
+    },
     billingOutboxEvent: {
       findUnique: jest.fn(async ({ where }: { where: Record<string, unknown> }) => {
         if ("id" in where) return events.find((event) => event.id === where.id) ?? null;

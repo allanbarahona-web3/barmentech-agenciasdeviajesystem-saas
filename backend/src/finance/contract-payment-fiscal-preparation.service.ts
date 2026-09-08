@@ -7,13 +7,17 @@ import { clientFiscalReceiverPrefill } from "../fiscal-billing/client-fiscal-rec
 import { mapCrV44CalculationToBillingDocumentSnapshot } from "../fiscal-billing/cr-v44-billing-document-snapshot";
 import {
   CR_V44_DECIMAL_V1,
-  calculateCrV44FiscalDocument,
 } from "../fiscal-billing/cr-v44-fiscal-calculation-policy";
+import {
+  isFiscalTickReconciledTotal,
+  resolveTaxIncludedGrossCrV44Candidate,
+} from "../fiscal-billing/tax-included-gross-calculator-input";
 import {
   resolveCrDraftPaymentMethods,
   resolveCrDraftReceiverIdentity,
 } from "../fiscal-billing/fiscal-draft-selection";
 import { PrismaService } from "../prisma/prisma.service";
+import { normalizeCurrencySettlementAmount } from "./currency-settlement.policy";
 import { mapFinancePaymentMethodToCrFiscalCode } from "./finance-fiscal-payment-method";
 
 export const CONTRACT_PAYMENT_FISCAL_PREPARATION_ERRORS = {
@@ -391,30 +395,25 @@ function receiverFor(client: {
 
 function calculatePaymentSnapshot(payment: any, travel: any, contractNumber: string) {
   const profile = travel.catalog.fiscalProfile;
-  const divisor = new Prisma.Decimal(1).plus(profile.taxPercentage.dividedBy(100));
-  const unitPrice = payment.receivedAmount
-    .dividedBy(divisor)
-    .toDecimalPlaces(5, Prisma.Decimal.ROUND_HALF_UP)
-    .toFixed();
   try {
-    const calculation = calculateCrV44FiscalDocument({
-      lines: [{
-        lineNumber: 1,
-        category: travel.catalog.fiscalItemCategory,
-        quantity: "1",
-        unitPrice,
-        discounts: [],
-        taxes: [{
-          kind: "ORDINARY_IVA",
-          tariffCode: profile.taxRateCode,
-          ratePercentage: profile.taxPercentage.toFixed(),
-        }],
-      }],
+    const candidate = resolveTaxIncludedGrossCrV44Candidate({
+      grossAmount: payment.receivedAmount,
+      category: travel.catalog.fiscalItemCategory,
+      quantity: new Prisma.Decimal(1),
+      tax: {
+        tariffCode: profile.taxRateCode,
+        ratePercentage: profile.taxPercentage.toFixed(),
+      },
     });
-    if (!new Prisma.Decimal(calculation.internalTotals.lineTotal).equals(payment.receivedAmount)) {
+    if (!isFiscalTickReconciledTotal({
+      authoritativeGross: payment.receivedAmount,
+      calculatedTotal: candidate.calculatedTotal,
+      normalizeSettlementAmount: (amount) =>
+        normalizeCurrencySettlementAmount(amount, payment.currencyCode),
+    })) {
       fail(CONTRACT_PAYMENT_FISCAL_PREPARATION_ERRORS.CALCULATION_MISMATCH);
     }
-    return mapCrV44CalculationToBillingDocumentSnapshot(calculation, [{
+    return mapCrV44CalculationToBillingDocumentSnapshot(candidate.calculation, [{
       lineNumber: 1,
       cabysCode: profile.cabysCode,
       itemCode: travel.catalog.id,
