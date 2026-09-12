@@ -2,10 +2,19 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { LoadingModal } from '@/components/loading-modal';
-import { getCustomers, type CustomerListResponse, type CustomerInfo } from '@/lib/customers-api';
+import { ChevronLeft, ChevronRight, Search, UserPlus, Users } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { IconBadge } from '@/components/ui/icon-badge';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { DataTableShell } from '@/components/patterns/data-table-shell';
+import { PageHeader } from '@/components/patterns/page-header';
+import { getCustomers, type CustomerListResponse } from '@/lib/customers-api';
 import { CustomerCreateModal } from '@/features/customers/components';
 
 export default function CustomersPage() {
@@ -15,25 +24,13 @@ export default function CustomersPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize] = useState(20);
-
-  // LoadingModal states
-  const [loadingModalOpen, setLoadingModalOpen] = useState(false);
-  const [loadingModalState, setLoadingModalState] = useState<'loading' | 'success' | 'error'>('loading');
-  const [loadingModalMessage, setLoadingModalMessage] = useState('');
-
-  // Create customer modal
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
 
-  useEffect(() => {
-    loadCustomers();
-  }, [currentPage, searchTerm]);
-
-  async function loadCustomers() {
+  const loadCustomers = useCallback(async () => {
     try {
       setLoading(true);
-      setLoadingModalOpen(true);
-      setLoadingModalState('loading');
-      setLoadingModalMessage('Cargando clientes...');
+      setLoadError(null);
 
       const data = await getCustomers({
         page: currentPage,
@@ -42,18 +39,20 @@ export default function CustomersPage() {
       });
 
       setCustomers(data);
-      setLoadingModalOpen(false);
-    } catch (err: any) {
-      setLoadingModalState('error');
-      setLoadingModalMessage(err.message || 'Error al cargar clientes');
+    } catch (error: unknown) {
+      setLoadError(error instanceof Error ? error.message : 'Error al cargar clientes');
     } finally {
       setLoading(false);
     }
-  }
+  }, [currentPage, pageSize, searchTerm]);
+
+  useEffect(() => {
+    void loadCustomers();
+  }, [loadCustomers]);
 
   function handleSearchChange(value: string) {
     setSearchTerm(value);
-    setCurrentPage(1); // Reset to first page on search
+    setCurrentPage(1);
   }
 
   function handleCustomerClick(customerId: string) {
@@ -69,249 +68,130 @@ export default function CustomersPage() {
     });
   }
 
-  function handleCustomerCreated(customer: CustomerInfo) {
-    // Refresh the customer list
-    loadCustomers();
-    setShowCreateModal(false);
-  }
+  const tableState = loading ? (
+    <div className="mx-auto grid max-w-sm gap-3" aria-label="Cargando clientes">
+      <Skeleton className="h-4 w-3/4" />
+      <Skeleton className="h-4 w-full" />
+      <Skeleton className="h-4 w-5/6" />
+    </div>
+  ) : loadError ? (
+    <Alert variant="destructive" className="mx-auto max-w-lg text-left">
+      <AlertTitle>No se pudieron cargar los clientes</AlertTitle>
+      <AlertDescription>{loadError}</AlertDescription>
+    </Alert>
+  ) : customers?.customers.length === 0 ? (
+    <div className="mx-auto max-w-sm">
+      <IconBadge tone="info" className="mx-auto mb-3"><Users aria-hidden="true" /></IconBadge>
+      <p className="font-medium text-foreground">No se encontraron clientes</p>
+      <p className="mt-1 text-muted-foreground">
+        {searchTerm ? 'Intenta con otros términos de búsqueda.' : 'Los clientes registrados aparecerán aquí.'}
+      </p>
+    </div>
+  ) : null;
 
   return (
     <main className="app-shell">
-      {/* Header with gradient */}
-      <div
-        style={{
-          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-          padding: '30px',
-          borderRadius: '12px',
-          marginBottom: '30px',
-          boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
-        }}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <h1 style={{ fontSize: '28px', fontWeight: 'bold', color: 'white', marginBottom: '8px' }}>
-              👥 Gestión de Clientes
-            </h1>
-            <p style={{ color: 'rgba(255,255,255,0.9)', fontSize: '14px' }}>
-              Consulta y gestiona la información de tus clientes
-            </p>
-          </div>
-          <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-            {customers && (
-              <div
-                style={{
-                  background: 'rgba(255,255,255,0.2)',
-                  padding: '12px 20px',
-                  borderRadius: '8px',
-                  backdropFilter: 'blur(10px)',
-                }}
-              >
-                <div style={{ fontSize: '28px', fontWeight: 'bold', color: 'white' }}>
-                  {customers.total}
-                </div>
-                <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.9)' }}>
-                  Total Clientes
-                </div>
-              </div>
-            )}
-            <button
-              onClick={() => setShowCreateModal(true)}
-              style={{
-                padding: '12px 24px',
-                background: 'rgba(255,255,255,0.95)',
-                color: '#667eea',
-                border: 'none',
-                borderRadius: '8px',
-                cursor: 'pointer',
-                fontSize: '14px',
-                fontWeight: '600',
-                transition: 'all 0.2s',
-                boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'white';
-                e.currentTarget.style.transform = 'translateY(-2px)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'rgba(255,255,255,0.95)';
-                e.currentTarget.style.transform = 'translateY(0)';
-              }}
-            >
-              ➕ Nuevo Cliente
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Search */}
-      <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', padding: '20px 24px', marginBottom: '24px' }}>
-        <label style={{ display: 'block', marginBottom: '8px', fontSize: '14px', fontWeight: '500', color: '#374151' }}>
-          🔍 Buscar Cliente
-        </label>
-        <input
-          type="text"
-          placeholder="Buscar por nombre, cédula o email..."
-          value={searchTerm}
-          onChange={(e) => handleSearchChange(e.target.value)}
-          style={{
-            width: '100%',
-            padding: '12px 16px',
-            border: '2px solid #e5e7eb',
-            borderRadius: '8px',
-            fontSize: '14px',
-            transition: 'border-color 0.2s',
-          }}
-          onFocus={(e) => (e.currentTarget.style.borderColor = '#667eea')}
-          onBlur={(e) => (e.currentTarget.style.borderColor = '#e5e7eb')}
+      <div className="mx-auto max-w-7xl space-y-6">
+        <PageHeader
+          title={<span className="flex items-center gap-3"><IconBadge tone="primary"><Users aria-hidden="true" /></IconBadge>Gestión de Clientes</span>}
+          description="Consulta y gestiona la información de tus clientes."
+          meta={customers ? <Badge variant="info"><Users aria-hidden="true" /> {customers.total} clientes</Badge> : undefined}
+          actions={
+            <Button type="button" onClick={() => setShowCreateModal(true)}>
+              <UserPlus aria-hidden="true" />
+              Nuevo cliente
+            </Button>
+          }
         />
-      </div>
 
-      {/* Customer Table */}
-      <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', overflow: 'hidden' }}>
-        <div style={{ padding: '20px 24px', borderBottom: '2px solid #e5e7eb' }}>
-          <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#1f2937' }}>
-            📋 Lista de Clientes
-          </h3>
-        </div>
-
-        {!loading && customers && customers.customers.length === 0 ? (
-          <div style={{ padding: '60px 20px', textAlign: 'center' }}>
-            <div style={{ fontSize: '64px', marginBottom: '16px' }}>👥</div>
-            <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#4b5563', marginBottom: '8px' }}>
-              No se encontraron clientes
-            </h3>
-            <p style={{ color: '#9ca3af', fontSize: '14px' }}>
-              {searchTerm ? 'Intenta con otros términos de búsqueda' : 'Los clientes registrados aparecerán aquí'}
-            </p>
-          </div>
-        ) : (
-          <>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ background: 'linear-gradient(to right, #f9fafb, #f3f4f6)', borderBottom: '2px solid #e5e7eb' }}>
-                  <th style={{ padding: '14px 16px', textAlign: 'left', fontSize: '13px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                    Nombre Completo
-                  </th>
-                  <th style={{ padding: '14px 16px', textAlign: 'left', fontSize: '13px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                    Cédula/ID
-                  </th>
-                  <th style={{ padding: '14px 16px', textAlign: 'left', fontSize: '13px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                    Email
-                  </th>
-                  <th style={{ padding: '14px 16px', textAlign: 'left', fontSize: '13px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                    Teléfono
-                  </th>
-                  <th style={{ padding: '14px 16px', textAlign: 'left', fontSize: '13px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                    Registrado
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {customers?.customers.map((customer) => (
-                  <tr
-                    key={customer.id}
-                    onClick={() => handleCustomerClick(customer.id)}
-                    style={{
-                      borderBottom: '1px solid #f3f4f6',
-                      cursor: 'pointer',
-                      transition: 'background 0.2s',
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = '#f9fafb')}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = 'white')}
-                  >
-                    <td style={{ padding: '14px 16px', fontSize: '14px', fontWeight: '500', color: '#1f2937' }}>
-                      {customer.fullName}
-                    </td>
-                    <td style={{ padding: '14px 16px', fontSize: '14px', color: '#4b5563' }}>
-                      {customer.idNumber}
-                    </td>
-                    <td style={{ padding: '14px 16px', fontSize: '14px', color: '#4b5563' }}>
-                      {customer.email}
-                    </td>
-                    <td style={{ padding: '14px 16px', fontSize: '14px', color: '#6b7280' }}>
-                      {customer.phone || '-'}
-                    </td>
-                    <td style={{ padding: '14px 16px', fontSize: '13px', color: '#9ca3af' }}>
-                      {formatDate(customer.createdAt)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            {/* Pagination */}
-            {customers && customers.totalPages > 1 && (
-              <div
-                style={{
-                  padding: '20px 24px',
-                  borderTop: '2px solid #e5e7eb',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                }}
-              >
-                <div style={{ fontSize: '14px', color: '#6b7280' }}>
-                  Página {customers.page} de {customers.totalPages} • {customers.total} clientes en total
-                </div>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <button
-                    onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
-                    disabled={currentPage === 1}
-                    style={{
-                      padding: '8px 16px',
-                      background: currentPage === 1 ? '#f3f4f6' : '#667eea',
-                      color: currentPage === 1 ? '#9ca3af' : 'white',
-                      border: 'none',
-                      borderRadius: '6px',
-                      cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
-                      fontSize: '14px',
-                      fontWeight: '500',
-                      transition: 'all 0.2s',
-                    }}
-                  >
-                    ← Anterior
-                  </button>
-                  <button
-                    onClick={() => setCurrentPage((prev) => Math.min(customers.totalPages, prev + 1))}
-                    disabled={currentPage === customers.totalPages}
-                    style={{
-                      padding: '8px 16px',
-                      background: currentPage === customers.totalPages ? '#f3f4f6' : '#667eea',
-                      color: currentPage === customers.totalPages ? '#9ca3af' : 'white',
-                      border: 'none',
-                      borderRadius: '6px',
-                      cursor: currentPage === customers.totalPages ? 'not-allowed' : 'pointer',
-                      fontSize: '14px',
-                      fontWeight: '500',
-                      transition: 'all 0.2s',
-                    }}
-                  >
-                    Siguiente →
-                  </button>
+        <DataTableShell
+          toolbar={
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <h2 className="text-base font-semibold">Lista de clientes</h2>
+                <p className="mt-1 text-sm text-muted-foreground">Busca por nombre, identificación o correo electrónico.</p>
+              </div>
+              <div className="relative w-full sm:max-w-sm">
+                <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-foreground" aria-hidden="true" />
+                <label className="sr-only" htmlFor="customer-search">Buscar cliente</label>
+                <Input
+                  id="customer-search"
+                  type="search"
+                  placeholder="Buscar cliente"
+                  value={searchTerm}
+                  onChange={(event) => handleSearchChange(event.target.value)}
+                  className="pl-9"
+                />
+              </div>
+            </div>
+          }
+          footer={
+            customers && customers.totalPages > 1 ? (
+              <div className="flex flex-col gap-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-muted-foreground">Página {customers.page} de {customers.totalPages} · {customers.total} clientes en total</p>
+                <div className="flex items-center gap-2 self-end sm:self-auto">
+                  <Button type="button" variant="outline" size="sm" onClick={() => setCurrentPage((page) => Math.max(1, page - 1))} disabled={currentPage === 1}>
+                    <ChevronLeft aria-hidden="true" />
+                    Anterior
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" onClick={() => setCurrentPage((page) => Math.min(customers.totalPages, page + 1))} disabled={currentPage === customers.totalPages}>
+                    Siguiente
+                    <ChevronRight aria-hidden="true" />
+                  </Button>
                 </div>
               </div>
-            )}
-          </>
-        )}
+            ) : null
+          }
+          state={tableState}
+        >
+          {customers ? (
+            <Table className="min-w-[760px]">
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Nombre completo</TableHead>
+                  <TableHead>Cédula/ID</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Teléfono</TableHead>
+                  <TableHead>Registrado</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {customers.customers.map((customer) => (
+                  <TableRow
+                    key={customer.id}
+                    role="link"
+                    tabIndex={0}
+                    aria-label={`Ver perfil de ${customer.fullName}`}
+                    className="cursor-pointer focus-visible:bg-accent focus-visible:outline-none"
+                    onClick={() => handleCustomerClick(customer.id)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        handleCustomerClick(customer.id);
+                      }
+                    }}
+                  >
+                    <TableCell className="font-medium text-foreground">{customer.fullName}</TableCell>
+                    <TableCell>{customer.idNumber}</TableCell>
+                    <TableCell className="text-muted-foreground">{customer.email}</TableCell>
+                    <TableCell className="text-muted-foreground">{customer.phone || '-'}</TableCell>
+                    <TableCell className="text-muted-foreground">{formatDate(customer.createdAt)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          ) : null}
+        </DataTableShell>
       </div>
 
-      {/* LoadingModal */}
-      <LoadingModal
-        isOpen={loadingModalOpen}
-        state={loadingModalState}
-        loadingMessage={loadingModalMessage}
-        errorMessage={loadingModalMessage}
-        onClose={() => setLoadingModalOpen(false)}
-      />
-
-      {/* Create Customer Modal */}
       <CustomerCreateModal
         isOpen={showCreateModal}
+        presentation="foundation"
         onClose={() => setShowCreateModal(false)}
-        onCustomerCreated={handleCustomerCreated}
+        onCustomerCreated={() => {
+          void loadCustomers();
+          setShowCreateModal(false);
+        }}
       />
     </main>
   );

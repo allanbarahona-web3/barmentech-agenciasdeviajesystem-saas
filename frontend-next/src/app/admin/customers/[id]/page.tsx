@@ -8,12 +8,24 @@ import Link from 'next/link';
 import { LoadingModal } from '@/components/loading-modal';
 import { getCustomerProfile, updateCustomer, getCustomerDocumentDownloadUrl, uploadCustomerDocument, createCustomerNote, updateCustomerNote, deleteCustomerNote, type CustomerProfile, type UpdateCustomerDto, type CustomerDocumentCategory } from '@/lib/customers-api';
 import { getStoredSession } from '@/lib/auth-api';
-import { CustomerForm, CustomerEditModal, CustomerDocumentUploadModal } from '@/features/customers/components';
+import { CustomerEditModal, CustomerDocumentUploadModal } from '@/features/customers/components';
 import AttachmentViewer from '@/components/attachment-viewer';
 import { getContractFiles } from '@/lib/contracts-api';
 import { listCustomerOperationalNotes, createContractNoteForCustomer, updateContractNote, deleteContractNote, type ContractNote } from '@/lib/contract-notes-api';
 import { formatBusinessDate } from '@/shared/regional';
-import type { ClientIdentificationType } from '@/features/customers/client-identification';
+import { getClientIdentificationTypeLabel, type ClientIdentificationType } from '@/features/customers/client-identification';
+import { Badge } from '@/components/ui/badge';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { IconBadge } from '@/components/ui/icon-badge';
+import { Select } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
+import { FormField } from '@/components/patterns/form-field';
+import { PageHeader } from '@/components/patterns/page-header';
+import { SectionCard } from '@/components/patterns/section-card';
+import { ArrowLeft, CheckCircle2, ChevronDown, ClipboardList, CreditCard, Eye, FileText, FolderOpen, Info, Landmark, Pencil, Plus, ReceiptText, RefreshCw, StickyNote, Trash2, UserRound, WalletCards } from 'lucide-react';
 
 export default function CustomerProfilePage() {
   const router = useRouter();
@@ -63,6 +75,7 @@ export default function CustomerProfilePage() {
   const [loadingOperationalNotes, setLoadingOperationalNotes] = useState(false);
   const [showCreateOperationalNoteModal, setShowCreateOperationalNoteModal] = useState(false);
   const [editingOperationalNote, setEditingOperationalNote] = useState<ContractNote | null>(null);
+  const [operationalNoteToDelete, setOperationalNoteToDelete] = useState<ContractNote | null>(null);
   const [operationalNoteForm, setOperationalNoteForm] = useState({
     contractId: '',
     note: '',
@@ -252,141 +265,42 @@ export default function CustomerProfilePage() {
   ) {
     const isExpanded = expandedId === note.id;
     const noteDate = new Date(note.createdAt);
-    const localDate = noteDate.toLocaleDateString('es-ES', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    });
-    const localTime = noteDate.toLocaleTimeString('es-ES', {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+    const localDate = noteDate.toLocaleDateString('es-ES', { year: 'numeric', month: '2-digit', day: '2-digit' });
+    const localTime = noteDate.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
 
     return (
-      <div
-        key={note.id}
-        style={{
-          border: '2px solid #e5e7eb',
-          borderRadius: '10px',
-          overflow: 'hidden',
-          transition: 'all 0.2s',
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.borderColor = '#667eea';
-          e.currentTarget.style.boxShadow = '0 2px 8px rgba(102,126,234,0.1)';
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.borderColor = '#e5e7eb';
-          e.currentTarget.style.boxShadow = 'none';
-        }}
-      >
-        <div style={{ padding: '16px' }}>
-          <div 
-            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', cursor: 'pointer' }}
-            onClick={() => onToggle(isExpanded ? null : note.id)}
-          >
-            <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flex: 1 }}>
-              <span style={{ fontSize: '14px', fontWeight: '600', color: '#1f2937' }}>
-                {localDate}
-              </span>
-              <span style={{ fontSize: '14px', color: '#6b7280' }}>
-                {localTime}
-              </span>
-              <span
-                style={{
-                  padding: '4px 10px',
-                  background: '#eff6ff',
-                  color: '#1e40af',
-                  borderRadius: '6px',
-                  fontSize: '12px',
-                  fontWeight: '600',
-                }}
-              >
-                {note.createdByName}
-              </span>
-            </div>
-            <span style={{ fontSize: '18px', transition: 'transform 0.2s', transform: isExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>
-              ▼
+      <article key={note.id} className="rounded-lg border border-border bg-background transition-colors hover:bg-muted/30">
+        <button
+          type="button"
+          className="flex w-full items-center justify-between gap-3 p-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+          onClick={() => onToggle(isExpanded ? null : note.id)}
+          aria-expanded={isExpanded}
+        >
+          <span className="min-w-0">
+            <span className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-medium text-foreground">{localDate}</span>
+              <span className="text-xs text-muted-foreground">{localTime}</span>
+              <Badge variant="info">{note.createdByName}</Badge>
             </span>
-          </div>
-          
-          {!isExpanded && (
-            <div 
-              style={{ fontSize: '14px', color: '#4b5563', marginTop: '8px', cursor: 'pointer' }}
-              onClick={() => onToggle(isExpanded ? null : note.id)}
-            >
-              {getFirstLinePreview(note.note)}
-            </div>
-          )}
-          
-          {isExpanded && (
-            <>
-              <div style={{ 
-                fontSize: '14px', 
-                color: '#1f2937', 
-                marginTop: '12px',
-                padding: '12px',
-                background: '#f9fafb',
-                borderRadius: '8px',
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-word',
-              }}>
-                {note.note}
+            {!isExpanded ? <span className="mt-2 block truncate text-sm text-muted-foreground">{getFirstLinePreview(note.note)}</span> : null}
+          </span>
+          <ChevronDown aria-hidden="true" className={`size-4 shrink-0 text-muted-foreground transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+        </button>
+        {isExpanded ? (
+          <div className="border-t border-border px-4 py-3">
+            <p className="whitespace-pre-wrap break-words text-sm leading-6 text-foreground">{note.note}</p>
+            {showActions && isAdmin ? (
+              <div className="mt-3 flex justify-end gap-2">
+                <Button type="button" variant="outline" size="sm" onClick={() => { setEditingNoteId(note.id); setEditingNoteText(note.note); }}><Pencil aria-hidden="true" />Editar</Button>
+                <Button type="button" variant="destructive" size="sm" onClick={() => setNoteToDelete({ id: note.id, preview: getFirstLinePreview(note.note) })}><Trash2 aria-hidden="true" />Eliminar</Button>
               </div>
-              
-              {showActions && isAdmin && (
-                <div style={{ display: 'flex', gap: '8px', marginTop: '12px', justifyContent: 'flex-end' }}>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setEditingNoteId(note.id);
-                      setEditingNoteText(note.note);
-                    }}
-                    style={{
-                      padding: '6px 14px',
-                      background: '#3b82f6',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '6px',
-                      cursor: 'pointer',
-                      fontSize: '13px',
-                      fontWeight: '500',
-                      transition: 'all 0.2s',
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = '#2563eb')}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = '#3b82f6')}
-                  >
-                    ✏️ Edit
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setNoteToDelete({ id: note.id, preview: getFirstLinePreview(note.note) });
-                    }}
-                    style={{
-                      padding: '6px 14px',
-                      background: '#ef4444',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '6px',
-                      cursor: 'pointer',
-                      fontSize: '13px',
-                      fontWeight: '500',
-                      transition: 'all 0.2s',
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = '#dc2626')}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = '#ef4444')}
-                  >
-                    🗑️ Delete
-                  </button>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      </div>
+            ) : null}
+          </div>
+        ) : null}
+      </article>
     );
   }
+
 
   function handleEnterEditMode() {
     setEditModalOpen(true);
@@ -449,24 +363,6 @@ export default function CustomerProfilePage() {
     }).format(amount);
   }
 
-  function getStatusBadgeStyle(status: string) {
-    const statusUpper = status.toUpperCase();
-    switch (statusUpper) {
-      case 'DRAFT':
-        return { background: '#fef3c7', color: '#92400e' };
-      case 'READY_FOR_SIGNATURE':
-        return { background: '#dbeafe', color: '#1e40af' };
-      case 'SIGNED':
-        return { background: '#d1fae5', color: '#065f46' };
-      case 'ARCHIVED':
-        return { background: '#e5e7eb', color: '#4b5563' };
-      case 'CANCELLED':
-        return { background: '#fee2e2', color: '#991b1b' };
-      default:
-        return { background: '#f3f4f6', color: '#6b7280' };
-    }
-  }
-
   function getCategoryLabel(category: string): string {
     const labels: Record<string, string> = {
       ID_FRONT: 'Cédula (Frente)',
@@ -476,6 +372,17 @@ export default function CustomerProfilePage() {
       OTHER: 'Otro',
     };
     return labels[category] || category;
+  }
+
+  function isCurrentDocument(document: object): boolean {
+    return 'isCurrent' in document && (document as { isCurrent?: boolean }).isCurrent === true;
+  }
+
+  function getActivityBadgeVariant(status: string | null | undefined) {
+    const normalizedStatus = status?.trim().toUpperCase();
+    if (normalizedStatus === 'ACTIVE' || normalizedStatus === 'ACTIVA') return 'success' as const;
+    if (normalizedStatus === 'INACTIVE' || normalizedStatus === 'INACTIVA' || normalizedStatus === 'ARCHIVED') return 'destructive' as const;
+    return 'secondary' as const;
   }
 
   async function handleDownloadDocument(documentId: string) {
@@ -530,7 +437,7 @@ export default function CustomerProfilePage() {
       setLoadingModalState('loading');
       setLoadingModalMessage('Subiendo documento...');
 
-      await uploadCustomerDocument(customerId, uploadingDocCategory as any, file);
+      await uploadCustomerDocument(customerId, uploadingDocCategory as CustomerDocumentCategory, file);
       
       // Reload profile
       const updatedProfile = await getCustomerProfile(customerId);
@@ -750,6 +657,25 @@ export default function CustomerProfilePage() {
     }
   }
 
+  async function handleDeleteOperationalNote() {
+    if (!operationalNoteToDelete) return;
+
+    try {
+      setLoadingModalOpen(true);
+      setLoadingModalState('loading');
+      setLoadingModalMessage('Eliminando nota...');
+      await deleteContractNote(operationalNoteToDelete.contractId, operationalNoteToDelete.id);
+      await loadOperationalNotes();
+      setLoadingModalState('success');
+      setLoadingModalMessage('✅ Nota eliminada');
+      setOperationalNoteToDelete(null);
+      setTimeout(() => setLoadingModalOpen(false), 1500);
+    } catch (err) {
+      setLoadingModalState('error');
+      setLoadingModalMessage(err instanceof Error ? err.message : 'Error al eliminar');
+    }
+  }
+
   if (loading || !profile) {
     return (
       <>
@@ -786,621 +712,153 @@ export default function CustomerProfilePage() {
         onChange={handleFileSelect}
       />
 
-      {/* Header */}
-      <div
-        style={{
-          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-          padding: '30px',
-          borderRadius: '12px',
-          marginBottom: '30px',
-          boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
-        }}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-          {isMinor ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-              <div
-                aria-hidden="true"
-                style={{
-                  width: '56px',
-                  height: '56px',
-                  borderRadius: '50%',
-                  background: 'rgba(255,255,255,0.18)',
-                  border: '1px solid rgba(255,255,255,0.3)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '30px',
-                  flexShrink: 0,
-                }}
-              >
-                🧒
-              </div>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginBottom: '8px' }}>
-                  <span style={{ color: 'white', fontSize: '14px', fontWeight: '700' }}>
-                    Minor Passenger
-                  </span>
-                  <span
-                    style={{
-                      padding: '4px 10px',
-                      borderRadius: '999px',
-                      background: 'rgba(255,255,255,0.2)',
-                      border: '1px solid rgba(255,255,255,0.35)',
-                      color: 'white',
-                      fontSize: '12px',
-                      fontWeight: '600',
-                    }}
-                  >
-                    Under Adult Responsibility
-                  </span>
-                </div>
-                <h1 style={{ fontSize: '28px', fontWeight: 'bold', color: 'white', marginBottom: '8px' }}>
-                  {customer.fullName}
-                </h1>
-                <p style={{ color: 'rgba(255,255,255,0.9)', fontSize: '14px' }}>
-                  {customer.idNumber} • {customer.email}
-                </p>
-              </div>
-            </div>
-          ) : (
-            <div>
-              <h1 style={{ fontSize: '28px', fontWeight: 'bold', color: 'white', marginBottom: '8px' }}>
-                {customer.fullName}
-              </h1>
-              <p style={{ color: 'rgba(255,255,255,0.9)', fontSize: '14px' }}>
-                {customer.idNumber} • {customer.email}
-              </p>
-            </div>
-          )}
-          <button
-            onClick={() => router.back()}
-            style={{
-              padding: '10px 20px',
-              background: 'rgba(255,255,255,0.2)',
-              color: 'white',
-              border: '1px solid rgba(255,255,255,0.3)',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              fontSize: '14px',
-              fontWeight: '500',
-              backdropFilter: 'blur(10px)',
-              transition: 'all 0.2s',
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.3)')}
-            onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(255,255,255,0.2)')}
-          >
-            ← Volver
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        className="mb-6"
+        eyebrow={isMinor ? 'Pasajero menor' : 'Perfil de cliente'}
+        title={<span className="flex items-center gap-3"><IconBadge tone="primary"><UserRound aria-hidden="true" /></IconBadge>{customer.fullName}</span>}
+        description={[customer.idNumber, customer.email].filter(Boolean).join(' · ')}
+        meta={
+          <div className="flex flex-wrap items-center gap-2">
+            {isMinor ? <Badge variant="warning">Bajo responsabilidad de un adulto</Badge> : null}
+            {customer.customerStatus ? <Badge variant={getActivityBadgeVariant(customer.customerStatus)}>{customer.customerStatus}</Badge> : null}
+          </div>
+        }
+        actions={
+          <>
+            <Button type="button" variant="outline" onClick={() => router.back()}>
+              <ArrowLeft aria-hidden="true" />
+              Volver
+            </Button>
+            <Button type="button" onClick={handleEnterEditMode}>
+              <Pencil aria-hidden="true" />
+              Editar
+            </Button>
+          </>
+        }
+      />
 
       {isMinor && profile.responsibleAdult && (
-        <section
-          aria-labelledby="responsible-adult-heading"
-          style={{
-            background: 'white',
-            border: '2px solid #c4b5fd',
-            borderRadius: '12px',
-            boxShadow: '0 4px 6px rgba(0,0,0,0.08)',
-            padding: '24px',
-            marginBottom: '30px',
-          }}
+        <SectionCard
+          className="mb-6"
+          title={<span className="flex items-center gap-2"><IconBadge tone="primary" size="sm"><UserRound aria-hidden="true" /></IconBadge>Adulto responsable</span>}
+          actions={
+            <Button type="button" variant="outline" size="sm" onClick={() => router.push(`/admin/customers/${encodeURIComponent(profile.responsibleAdult!.clientId)}`)}>
+              Ver perfil
+            </Button>
+          }
         >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '20px' }}>
-            <div>
-              <h2 id="responsible-adult-heading" style={{ fontSize: '20px', fontWeight: '600', color: '#1f2937', marginBottom: '14px' }}>
-                👤 Responsible Adult
-              </h2>
-              <div style={{ fontSize: '18px', fontWeight: '700', color: '#111827', marginBottom: '6px' }}>
-                {profile.responsibleAdult.fullName}
-              </div>
-              <div style={{ fontSize: '14px', color: '#6b7280' }}>
-                Participation Role: {formatParticipationRole(profile.responsibleAdult.participationRole)}
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => router.push(`/admin/customers/${encodeURIComponent(profile.responsibleAdult!.clientId)}`)}
-              style={{
-                padding: '10px 18px',
-                background: '#667eea',
-                color: 'white',
-                border: 'none',
-                borderRadius: '8px',
-                cursor: 'pointer',
-                fontSize: '14px',
-                fontWeight: '600',
-                transition: 'all 0.2s',
-              }}
-              onMouseEnter={(event) => (event.currentTarget.style.background = '#5568d3')}
-              onMouseLeave={(event) => (event.currentTarget.style.background = '#667eea')}
-            >
-              View Profile
-            </button>
-          </div>
-        </section>
+          <p className="font-medium text-foreground">{profile.responsibleAdult.fullName}</p>
+          <p className="mt-1 text-sm text-muted-foreground">Rol de participación: {formatParticipationRole(profile.responsibleAdult.participationRole)}</p>
+        </SectionCard>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px', marginBottom: '30px' }}>
+      <div className="mb-6 grid gap-5 lg:grid-cols-3">
         {/* Section 1: Customer Information */}
-        <CustomerForm
-          title={isMinor ? 'Información del Pasajero' : undefined}
-          customer={customer}
-          isEditMode={false}
-          editForm={{
-            fullName: '',
-            idType: '',
-            email: '',
-            phone: '',
-            maritalStatus: '',
-            nationality: '',
-            occupation: '',
-            address: '',
-            emergencyContactName: '',
-            emergencyContactPhone: '',
-          }}
-          onEditFormChange={() => {}}
-          onEnterEditMode={handleEnterEditMode}
-          onCancelEdit={() => {}}
-          onSaveEdit={() => {}}
-        />
+        <SectionCard
+          className="lg:col-span-1"
+          title={<span className="flex items-center gap-2"><IconBadge tone="primary" size="sm"><UserRound aria-hidden="true" /></IconBadge>{isMinor ? 'Información del pasajero' : 'Información del cliente'}</span>}
+          actions={<Button type="button" variant="outline" size="sm" onClick={handleEnterEditMode}><Pencil aria-hidden="true" />Editar</Button>}
+        >
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
+            <div className="sm:col-span-2 lg:col-span-1"><p className="text-xs font-medium text-muted-foreground">Nombre completo</p><p className="mt-1 text-sm font-medium text-foreground">{customer.fullName}</p></div>
+            <div><p className="text-xs font-medium text-muted-foreground">Cédula/ID</p><p className="mt-1 text-sm text-foreground">{customer.idNumber}</p></div>
+            <div><p className="text-xs font-medium text-muted-foreground">Tipo de identificación</p><p className="mt-1 text-sm text-foreground">{getClientIdentificationTypeLabel(customer.idType)}</p></div>
+            <div className="sm:col-span-2 lg:col-span-1"><p className="text-xs font-medium text-muted-foreground">Email</p><p className="mt-1 break-words text-sm text-foreground">{customer.email || '-'}</p></div>
+            <div><p className="text-xs font-medium text-muted-foreground">Teléfono</p><p className="mt-1 text-sm text-foreground">{customer.phone || '-'}</p></div>
+            <div><p className="text-xs font-medium text-muted-foreground">Estado civil</p><p className="mt-1 text-sm text-foreground">{customer.maritalStatus || '-'}</p></div>
+            <div><p className="text-xs font-medium text-muted-foreground">Contacto de emergencia</p><p className="mt-1 text-sm text-foreground">{customer.emergencyContactName || '-'}</p></div>
+            <div><p className="text-xs font-medium text-muted-foreground">Teléfono de emergencia</p><p className="mt-1 text-sm text-foreground">{customer.emergencyContactPhone || '-'}</p></div>
+            <div><p className="text-xs font-medium text-muted-foreground">Cliente desde</p><p className="mt-1 text-sm text-foreground">{formatDate(customer.createdAt)}</p></div>
+          </div>
+        </SectionCard>
 
         {/* Section 2: Statistics */}
-        <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', padding: '24px' }}>
-          <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#1f2937', marginBottom: '20px' }}>
-            📊 Estadísticas
-          </h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div
-              onClick={() => scrollToSection(contractsRef)}
-              style={{
-                padding: '16px',
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                borderRadius: '10px',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                cursor: 'pointer',
-                transition: 'transform 0.2s, box-shadow 0.2s',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'translateY(-2px)';
-                e.currentTarget.style.boxShadow = '0 4px 12px rgba(102, 126, 234, 0.3)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.boxShadow = 'none';
-              }}
-            >
-              <div>
-                <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.9)', fontWeight: '500', marginBottom: '4px' }}>
-                  Total Contratos
-                </div>
-                <div style={{ fontSize: '32px', fontWeight: 'bold', color: 'white' }}>
-                  {statistics.totalContracts}
-                </div>
-              </div>
-              <div style={{ fontSize: '40px' }}>📝</div>
-            </div>
-            <div
-              onClick={() => scrollToSection(documentsRef)}
-              style={{
-                padding: '16px',
-                background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
-                borderRadius: '10px',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                cursor: 'pointer',
-                transition: 'transform 0.2s, box-shadow 0.2s',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'translateY(-2px)';
-                e.currentTarget.style.boxShadow = '0 4px 12px rgba(79, 172, 254, 0.3)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.boxShadow = 'none';
-              }}
-            >
-              <div>
-                <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.9)', fontWeight: '500', marginBottom: '4px' }}>
-                  Documentos
-                </div>
-                <div style={{ fontSize: '32px', fontWeight: 'bold', color: 'white' }}>
-                  {statistics.totalDocuments}
-                </div>
-              </div>
-              <div style={{ fontSize: '40px' }}>📎</div>
-            </div>
-            <div
-              onClick={() => scrollToSection(notesRef)}
-              style={{
-                padding: '16px',
-                background: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
-                borderRadius: '10px',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                cursor: 'pointer',
-                transition: 'transform 0.2s, box-shadow 0.2s',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'translateY(-2px)';
-                e.currentTarget.style.boxShadow = '0 4px 12px rgba(67, 233, 123, 0.3)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.boxShadow = 'none';
-              }}
-            >
-              <div>
-                <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.9)', fontWeight: '500', marginBottom: '4px' }}>
-                  Notas
-                </div>
-                <div style={{ fontSize: '32px', fontWeight: 'bold', color: 'white' }}>
-                  {statistics.totalNotes}
-                </div>
-              </div>
-              <div style={{ fontSize: '40px' }}>📝</div>
-            </div>
+        <SectionCard className="lg:col-span-1" title={<span className="flex items-center gap-2"><IconBadge tone="info" size="sm"><ClipboardList aria-hidden="true" /></IconBadge>Estadísticas</span>}>
+          <div className="grid gap-3">
+            {[
+              { label: 'Total contratos', value: statistics.totalContracts, icon: FileText, tone: 'primary' as const, onClick: () => scrollToSection(contractsRef) },
+              { label: 'Documentos', value: statistics.totalDocuments, icon: FolderOpen, tone: 'info' as const, onClick: () => scrollToSection(documentsRef) },
+              { label: 'Notas', value: statistics.totalNotes, icon: StickyNote, tone: 'primary' as const, onClick: () => scrollToSection(notesRef) },
+            ].map(({ label, value, icon: Icon, tone, onClick }) => (
+              <button key={label} type="button" onClick={onClick} className="flex items-center justify-between rounded-lg border border-border bg-muted/40 p-4 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                <span><span className="block text-xs font-medium text-muted-foreground">{label}</span><span className="mt-1 block text-2xl font-semibold tracking-tight text-foreground">{value}</span></span>
+                <IconBadge tone={tone}><Icon aria-hidden="true" /></IconBadge>
+              </button>
+            ))}
           </div>
-        </div>
+        </SectionCard>
 
         {/* Section 3: Financial Summary */}
         {!isMinor && (
-          <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', padding: '24px' }}>
-          <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#1f2937', marginBottom: '20px' }}>
-            💰 Resumen Financiero
-          </h2>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            {/* Total Contracted */}
-            <div
-              style={{
-                padding: '16px',
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                borderRadius: '10px',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-              }}
-            >
-              <div>
-                <div style={{ fontSize: '13px', color: 'rgba(255,255,255,0.9)', fontWeight: '600', marginBottom: '4px' }}>
-                  Total Contratado
+          <SectionCard className="lg:col-span-1" title={<span className="flex items-center gap-2"><IconBadge tone="primary" size="sm"><WalletCards aria-hidden="true" /></IconBadge>Resumen financiero</span>}>
+            <div className="grid gap-3">
+              {[
+                { label: 'Total contratado', value: formatCurrency(financialSummary.totalContractedAmount, financialSummary.currency), icon: FileText, tone: 'primary' as const },
+                { label: 'Total facturado', value: formatCurrency(financialSummary.totalInvoicedAmount, financialSummary.currency), icon: ReceiptText, tone: 'info' as const },
+                { label: 'Total pagado', value: formatCurrency(financialSummary.totalPaidAmount, financialSummary.currency), icon: CreditCard, tone: 'success' as const },
+                { label: 'Saldo pendiente', value: formatCurrency(financialSummary.outstandingBalance, financialSummary.currency), icon: financialSummary.outstandingBalance > 0 ? Landmark : CheckCircle2, tone: financialSummary.outstandingBalance > 0 ? 'warning' as const : 'success' as const },
+                { label: 'Crédito disponible', value: formatCurrency(financialSummary.availableCredit, financialSummary.currency), icon: Landmark, tone: 'warning' as const },
+              ].map(({ label, value, icon: Icon, tone }) => (
+                <div key={label} className="flex items-center justify-between rounded-lg border border-border bg-muted/40 p-4">
+                  <span><span className="block text-xs font-medium text-muted-foreground">{label}</span><span className="mt-1 block text-lg font-semibold tracking-tight text-foreground">{value}</span></span>
+                  <IconBadge tone={tone}><Icon aria-hidden="true" /></IconBadge>
                 </div>
-                <div style={{ fontSize: '28px', fontWeight: 'bold', color: 'white' }}>
-                  {formatCurrency(financialSummary.totalContractedAmount, financialSummary.currency)}
-                </div>
-              </div>
-              <div style={{ fontSize: '32px' }}>📝</div>
+              ))}
+              {financialSummary.lastPaymentDate && <div className="rounded-lg border border-border p-3"><p className="text-xs font-medium text-muted-foreground">Último pago</p><p className="mt-1 text-sm font-medium text-foreground">{formatCurrency(financialSummary.lastPaymentAmount || 0, financialSummary.currency)}</p><p className="mt-1 text-xs text-muted-foreground">{formatBusinessDate(financialSummary.lastPaymentDate)}</p></div>}
+              {financialSummary.lastContractDate && <div className="rounded-lg border border-border p-3"><p className="text-xs font-medium text-muted-foreground">Último contrato</p><p className="mt-1 text-sm font-medium text-foreground">{financialSummary.lastContractNumber}</p><p className="mt-1 text-xs text-muted-foreground">{formatBusinessDate(financialSummary.lastContractDate)}</p></div>}
             </div>
-
-            {/* Total Invoiced */}
-            <div
-              style={{
-                padding: '16px',
-                background: '#eff6ff',
-                border: '2px solid #93c5fd',
-                borderRadius: '10px',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-              }}
-            >
-              <div>
-                <div style={{ fontSize: '13px', color: '#1e40af', fontWeight: '600', marginBottom: '4px' }}>
-                  Total Facturado
-                </div>
-                <div style={{ fontSize: '28px', fontWeight: 'bold', color: '#1e3a8a' }}>
-                  {formatCurrency(financialSummary.totalInvoicedAmount, financialSummary.currency)}
-                </div>
-              </div>
-              <div style={{ fontSize: '32px' }}>🧾</div>
-            </div>
-
-            {/* Total Paid */}
-            <div
-              style={{
-                padding: '16px',
-                background: '#f0fdf4',
-                border: '2px solid #86efac',
-                borderRadius: '10px',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-              }}
-            >
-              <div>
-                <div style={{ fontSize: '13px', color: '#166534', fontWeight: '600', marginBottom: '4px' }}>
-                  Total Pagado
-                </div>
-                <div style={{ fontSize: '28px', fontWeight: 'bold', color: '#15803d' }}>
-                  {formatCurrency(financialSummary.totalPaidAmount, financialSummary.currency)}
-                </div>
-              </div>
-              <div style={{ fontSize: '32px' }}>💳</div>
-            </div>
-
-            {/* Outstanding Balance */}
-            <div
-              style={{
-                padding: '16px',
-                background: financialSummary.outstandingBalance > 0 ? '#fef3c7' : '#f0fdf4',
-                border: `2px solid ${financialSummary.outstandingBalance > 0 ? '#fcd34d' : '#86efac'}`,
-                borderRadius: '10px',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-              }}
-            >
-              <div>
-                <div style={{ fontSize: '13px', color: financialSummary.outstandingBalance > 0 ? '#92400e' : '#166534', fontWeight: '600', marginBottom: '4px' }}>
-                  Saldo Pendiente
-                </div>
-                <div style={{ fontSize: '28px', fontWeight: 'bold', color: financialSummary.outstandingBalance > 0 ? '#b45309' : '#15803d' }}>
-                  {formatCurrency(financialSummary.outstandingBalance, financialSummary.currency)}
-                </div>
-              </div>
-              <div style={{ fontSize: '32px' }}>{financialSummary.outstandingBalance > 0 ? '⚠️' : '✅'}</div>
-            </div>
-
-            {/* Available Credit */}
-            <div
-              style={{
-                padding: '16px',
-                background: '#fef3c7',
-                border: '2px solid #fcd34d',
-                borderRadius: '10px',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-              }}
-            >
-              <div>
-                <div style={{ fontSize: '13px', color: '#92400e', fontWeight: '600', marginBottom: '4px' }}>
-                  Crédito Disponible
-                </div>
-                <div style={{ fontSize: '28px', fontWeight: 'bold', color: '#b45309' }}>
-                  {formatCurrency(financialSummary.availableCredit, financialSummary.currency)}
-                </div>
-              </div>
-              <div style={{ fontSize: '32px' }}>🏦</div>
-            </div>
-
-            {/* Last Payment */}
-            {financialSummary.lastPaymentDate && (
-              <div
-                style={{
-                  padding: '14px',
-                  background: '#f9fafb',
-                  borderRadius: '8px',
-                  border: '1px solid #e5e7eb',
-                }}
-              >
-                <div style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600', marginBottom: '4px' }}>
-                  Último Pago
-                </div>
-                <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#1f2937' }}>
-                  {formatCurrency(financialSummary.lastPaymentAmount || 0, financialSummary.currency)}
-                </div>
-                <div style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>
-                  {formatBusinessDate(financialSummary.lastPaymentDate)}
-                </div>
-              </div>
-            )}
-
-            {/* Last Contract */}
-            {financialSummary.lastContractDate && (
-              <div
-                style={{
-                  padding: '14px',
-                  background: '#f9fafb',
-                  borderRadius: '8px',
-                  border: '1px solid #e5e7eb',
-                }}
-              >
-                <div style={{ fontSize: '12px', color: '#6b7280', fontWeight: '600', marginBottom: '4px' }}>
-                  Último Contrato
-                </div>
-                <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#1f2937' }}>
-                  {financialSummary.lastContractNumber}
-                </div>
-                <div style={{ fontSize: '12px', color: '#9ca3af', marginTop: '4px' }}>
-                  {formatBusinessDate(financialSummary.lastContractDate)}
-                </div>
-              </div>
-            )}
-          </div>
-          </div>
+          </SectionCard>
         )}
       </div>
 
       {/* Notas Operativas Section - Full Width */}
-      <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', padding: '24px', marginBottom: '30px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-          <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#1f2937', margin: 0 }}>
-            📋 Notas Operativas {operationalNotes.length > 0 && `(${operationalNotes.length})`}
-          </h2>
-          {contracts.filter(c => c.status !== 'DRAFT').length > 0 && (
-            <button
-              onClick={handleOpenCreateOperationalNote}
-              style={{
-                padding: '10px 20px',
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                color: 'white',
-                border: 'none',
-                borderRadius: '8px',
-                cursor: 'pointer',
-                fontSize: '14px',
-                fontWeight: '600',
-                transition: 'all 0.2s',
-                boxShadow: '0 2px 8px rgba(102, 126, 234, 0.3)',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'translateY(-2px)';
-                e.currentTarget.style.boxShadow = '0 4px 12px rgba(102, 126, 234, 0.4)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'translateY(0)';
-                e.currentTarget.style.boxShadow = '0 2px 8px rgba(102, 126, 234, 0.3)';
-              }}
-            >
-              ➕ Nueva Nota Operativa
-            </button>
-          )}
-        </div>
+      <SectionCard
+        className="mb-6"
+        title={<span className="flex items-center gap-2"><IconBadge tone="primary" size="sm"><ClipboardList aria-hidden="true" /></IconBadge>Notas operativas {operationalNotes.length > 0 && `(${operationalNotes.length})`}</span>}
+        actions={contracts.filter(c => c.status !== 'DRAFT').length > 0 ? <Button type="button" size="sm" onClick={handleOpenCreateOperationalNote}><Plus aria-hidden="true" />Nueva nota operativa</Button> : undefined}
+      >
         
         {loadingOperationalNotes ? (
-          <div style={{ padding: '24px', textAlign: 'center', color: '#6b7280' }}>
-            Cargando notas operativas...
-          </div>
+          <p className="py-6 text-center text-sm text-muted-foreground">Cargando notas operativas…</p>
         ) : operationalNotes.length === 0 ? (
-          <div style={{ padding: '24px', background: '#f9fafb', borderRadius: '10px', textAlign: 'center' }}>
-            <div style={{ fontSize: '48px', marginBottom: '16px' }}>📋</div>
-            <p style={{ fontSize: '16px', fontWeight: '600', color: '#374151', marginBottom: '12px' }}>
-              No existen notas operativas.
-            </p>
-            <p style={{ fontSize: '14px', color: '#6b7280', lineHeight: '1.6', marginBottom: '8px' }}>
-              Las notas operativas serán creadas desde el contrato y estarán disponibles aquí para su consulta.
-            </p>
-            <p style={{ fontSize: '14px', color: '#6b7280', lineHeight: '1.6' }}>
-              Estas notas permiten comunicar información importante a Facturación y Operaciones sin modificar el expediente permanente del cliente.
-            </p>
+          <div className="rounded-lg border border-dashed border-border bg-muted/40 px-5 py-10 text-center">
+            <IconBadge tone="primary" className="mx-auto"><ClipboardList aria-hidden="true" /></IconBadge>
+            <p className="mt-3 text-sm font-semibold text-foreground">No existen notas operativas.</p>
+            <p className="mx-auto mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">Las notas operativas creadas desde el contrato estarán disponibles aquí para consulta, sin modificar el expediente permanente del cliente.</p>
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div className="grid gap-3">
             {operationalNotes.map((note) => (
-              <div
-                key={note.id}
-                style={{
-                  padding: '20px',
-                  background: '#f9fafb',
-                  border: '2px solid #e5e7eb',
-                  borderRadius: '12px',
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '12px' }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
-                      <div
-                        style={{
-                          padding: '4px 12px',
-                          background: note.passengerType === 'HOLDER' ? '#dbeafe' : note.passengerType === 'COMPANION' ? '#d1fae5' : '#fed7aa',
-                          color: note.passengerType === 'HOLDER' ? '#1e40af' : note.passengerType === 'COMPANION' ? '#065f46' : '#9a3412',
-                          borderRadius: '6px',
-                          fontSize: '12px',
-                          fontWeight: '600',
-                        }}
-                      >
-                        {note.passengerName}
-                      </div>
-                      <span style={{ fontSize: '12px', color: '#9ca3af' }}>
-                        {note.passengerType === 'HOLDER' ? 'Titular' : note.passengerType === 'COMPANION' ? 'Acompañante' : 'Menor'}
-                      </span>
+              <article key={note.id} className="rounded-lg border border-border bg-muted/30 p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant={note.passengerType === 'HOLDER' ? 'info' : note.passengerType === 'COMPANION' ? 'success' : 'warning'}>{note.passengerName}</Badge>
+                      <span className="text-xs text-muted-foreground">{note.passengerType === 'HOLDER' ? 'Titular' : note.passengerType === 'COMPANION' ? 'Acompañante' : 'Menor'}</span>
                     </div>
-                    {note.contract && (
-                      <div style={{ fontSize: '13px', color: '#6b7280', marginBottom: '8px' }}>
-                        <strong>Contrato:</strong> {note.contract.contractNumber} - {note.contract.destination}
-                        {note.contract.startDate && ` (${formatBusinessDate(note.contract.startDate.toString())})`}
-                      </div>
-                    )}
+                    {note.contract ? <p className="mt-2 text-sm text-muted-foreground"><span className="font-medium text-foreground">Contrato:</span> {note.contract.contractNumber} - {note.contract.destination}{note.contract.startDate && ` (${formatBusinessDate(note.contract.startDate.toString())})`}</p> : null}
+                  </div>
+                  <Badge variant={note.status === 'ACTIVE' ? 'success' : 'destructive'}>{note.status === 'ACTIVE' ? 'Activa' : 'Archivada'}</Badge>
+                </div>
+                <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-foreground">{note.note}</p>
+                <div className="mt-3 flex flex-col gap-3 border-t border-border pt-3 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-xs text-muted-foreground">Creada por: {note.createdByName} · {formatDate(note.createdAt.toString())}</p>
+                  <div className="flex items-center gap-2">
+                    {note.status === 'ACTIVE' ? <Button type="button" variant="outline" size="sm" onClick={() => handleOpenEditOperationalNote(note)}><Pencil aria-hidden="true" />Editar</Button> : null}
+                    {isAdmin ? <Button
+                      type="button"
+                      variant="destructive"
+                      size="sm"
+                      title="Eliminar nota (solo Admin)"
+                      onClick={() => setOperationalNoteToDelete(note)}
+                    ><Trash2 aria-hidden="true" />Eliminar</Button> : null}
                   </div>
                 </div>
-                <div style={{ fontSize: '14px', color: '#374151', marginBottom: '12px', whiteSpace: 'pre-wrap', lineHeight: '1.6' }}>
-                  {note.note}
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '12px', borderTop: '1px solid #e5e7eb' }}>
-                  <div style={{ fontSize: '12px', color: '#9ca3af' }}>
-                    Creada por: {note.createdByName} • {formatDate(note.createdAt.toString())}
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <div
-                      style={{
-                        padding: '4px 8px',
-                        background: note.status === 'ACTIVE' ? '#d1fae5' : '#f3f4f6',
-                        color: note.status === 'ACTIVE' ? '#065f46' : '#6b7280',
-                        borderRadius: '4px',
-                        fontSize: '11px',
-                        fontWeight: '600',
-                      }}
-                    >
-                      {note.status === 'ACTIVE' ? 'ACTIVA' : 'ARCHIVADA'}
-                    </div>
-                    {note.status === 'ACTIVE' && (
-                      <button
-                        onClick={() => handleOpenEditOperationalNote(note)}
-                        style={{
-                          padding: '4px 8px',
-                          background: '#dbeafe',
-                          color: '#1e40af',
-                          border: 'none',
-                          borderRadius: '4px',
-                          fontSize: '11px',
-                          fontWeight: '600',
-                          cursor: 'pointer',
-                          transition: 'all 0.15s',
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.background = '#93c5fd';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.background = '#dbeafe';
-                        }}
-                        title="Editar nota"
-                      >
-                        ✏️ Editar
-                      </button>
-                    )}
-                    {isAdmin && (
-                      <button
-                        onClick={async () => {
-                          if (confirm('¿Está seguro de eliminar esta nota operativa?')) {
-                            try {
-                              setLoadingModalOpen(true);
-                              setLoadingModalState('loading');
-                              setLoadingModalMessage('Eliminando nota...');
-                              await deleteContractNote(note.contractId, note.id);
-                              await loadOperationalNotes();
-                              setLoadingModalState('success');
-                              setLoadingModalMessage('✅ Nota eliminada');
-                              setTimeout(() => setLoadingModalOpen(false), 1500);
-                            } catch (err) {
-                              setLoadingModalState('error');
-                              setLoadingModalMessage(err instanceof Error ? err.message : 'Error al eliminar');
-                            }
-                          }
-                        }}
-                        style={{
-                          padding: '4px 8px',
-                          background: '#fee2e2',
-                          color: '#991b1b',
-                          border: 'none',
-                          borderRadius: '4px',
-                          fontSize: '11px',
-                          fontWeight: '600',
-                          cursor: 'pointer',
-                          transition: 'all 0.15s',
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.background = '#fca5a5';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.background = '#fee2e2';
-                        }}
-                        title="Eliminar nota (solo Admin)"
-                      >
-                        🗑️ Eliminar
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
+              </article>
             ))}
           </div>
         )}
-      </div>
+      </SectionCard>
 
       {/* Section 4: Additional Profile Information */}
       {(customer.dateOfBirth || customer.nationality || customer.occupation || customer.address || 
@@ -1409,11 +867,8 @@ export default function CustomerProfilePage() {
         customer.leadSource || customer.lastContactDate || customer.nextFollowUpDate || 
         customer.preferredLanguage || customer.tags || customer.bloodType || customer.allergies || 
         customer.medicalConditions || customer.medications) && (
-        <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', padding: '24px', marginBottom: '30px' }}>
-          <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#1f2937', marginBottom: '20px' }}>
-            👤 Información Adicional del Perfil
-          </h2>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
+        <SectionCard className="mb-6" title={<span className="flex items-center gap-2"><IconBadge tone="primary" size="sm"><UserRound aria-hidden="true" /></IconBadge>Información adicional del perfil</span>}>
+          <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
             {/* Personal Information */}
             {(customer.dateOfBirth || customer.nationality || customer.occupation || customer.preferredLanguage || customer.bloodType) && (
               <div>
@@ -1595,56 +1050,31 @@ export default function CustomerProfilePage() {
               </div>
             )}
           </div>
-        </div>
+        </SectionCard>
       )}
 
       {/* Customer Documents Section */}
-      <div ref={documentsRef} style={{ background: 'white', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', overflow: 'hidden', marginBottom: '30px' }}>
-        <div style={{ padding: '20px 24px', borderBottom: '2px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#1f2937' }}>
-            📎 Documentos ({documents.length})
-          </h2>
-          <button
-            onClick={() => setShowUploadModal(true)}
-            style={{
-              padding: '10px 20px',
-              background: '#667eea',
-              color: 'white',
-              border: 'none',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              fontSize: '14px',
-              fontWeight: '500',
-              transition: 'all 0.2s',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = '#5568d3')}
-            onMouseLeave={(e) => (e.currentTarget.style.background = '#667eea')}
-          >
-            ➕ Agregar Documento
-          </button>
-        </div>
+      <div ref={documentsRef} className="mb-6">
+      <SectionCard
+        title={<span className="flex items-center gap-2"><IconBadge tone="info" size="sm"><FolderOpen aria-hidden="true" /></IconBadge>Documentos ({documents.length})</span>}
+        actions={<Button type="button" size="sm" onClick={() => setShowUploadModal(true)}><Plus aria-hidden="true" />Agregar documento</Button>}
+      >
 
         {documents.length === 0 ? (
-          <div style={{ padding: '60px 20px', textAlign: 'center' }}>
-            <div style={{ fontSize: '64px', marginBottom: '16px' }}>📄</div>
-            <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#4b5563', marginBottom: '8px' }}>
-              No hay documentos
-            </h3>
-            <p style={{ color: '#9ca3af', fontSize: '14px' }}>
-              Este cliente aún no tiene documentos adjuntos
-            </p>
+          <div className="grid min-h-48 place-items-center px-5 py-10 text-center">
+            <div>
+              <IconBadge tone="info" className="mx-auto"><FolderOpen aria-hidden="true" /></IconBadge>
+              <h3 className="mt-3 text-sm font-semibold text-foreground">No hay documentos</h3>
+              <p className="mt-1 text-sm text-muted-foreground">Este cliente aún no tiene documentos adjuntos.</p>
+            </div>
           </div>
         ) : (
-          <div style={{ padding: '20px' }}>
-            <div style={{ display: 'grid', gap: '16px' }}>
+          <div className="grid gap-3">
               {documents
                 .sort((a, b) => {
                   // Sort by isCurrent first (current = true first)
-                  const aIsCurrent = (a as any).isCurrent ?? false;
-                  const bIsCurrent = (b as any).isCurrent ?? false;
+                  const aIsCurrent = isCurrentDocument(a);
+                  const bIsCurrent = isCurrentDocument(b);
                   if (aIsCurrent !== bIsCurrent) {
                     return bIsCurrent ? 1 : -1;
                   }
@@ -1652,121 +1082,34 @@ export default function CustomerProfilePage() {
                   return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
                 })
                 .map((doc) => (
-                <div
-                  key={doc.id}
-                  style={{
-                    padding: '16px',
-                    border: '2px solid #e5e7eb',
-                    borderRadius: '10px',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    transition: 'all 0.2s',
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = '#667eea';
-                    e.currentTarget.style.boxShadow = '0 2px 8px rgba(102,126,234,0.1)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = '#e5e7eb';
-                    e.currentTarget.style.boxShadow = 'none';
-                  }}
-                >
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                      <span
-                        style={{
-                          padding: '4px 12px',
-                          background: '#eff6ff',
-                          color: '#1e40af',
-                          borderRadius: '6px',
-                          fontSize: '12px',
-                          fontWeight: '600',
-                        }}
-                      >
-                        {getCategoryLabel(doc.category)}
-                      </span>
-                      <span
-                        style={{
-                          padding: '4px 12px',
-                          background: (doc as any).isCurrent ? '#d1fae5' : '#f3f4f6',
-                          color: (doc as any).isCurrent ? '#065f46' : '#6b7280',
-                          borderRadius: '6px',
-                          fontSize: '12px',
-                          fontWeight: '600',
-                        }}
-                      >
-                        {(doc as any).isCurrent ? 'Current' : 'History'}
-                      </span>
-                      <span style={{ fontSize: '12px', color: '#9ca3af' }}>
-                        {formatDate(doc.createdAt)}
-                      </span>
+                <div key={doc.id} className="flex flex-col gap-4 rounded-lg border border-border p-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <div className="mb-2 flex flex-wrap items-center gap-2">
+                      <Badge variant="info">{getCategoryLabel(doc.category)}</Badge>
+                      <Badge variant={isCurrentDocument(doc) ? 'success' : 'destructive'}>{isCurrentDocument(doc) ? 'Actual' : 'Histórico'}</Badge>
+                      <span className="text-xs text-muted-foreground">{formatDate(doc.createdAt)}</span>
                     </div>
-                    <div style={{ fontSize: '14px', fontWeight: '500', color: '#1f2937', marginBottom: '4px' }}>
-                      {doc.originalFileName}
-                    </div>
-                    <div style={{ fontSize: '12px', color: '#6b7280' }}>
-                      {doc.mimeType} • {(doc.size / 1024).toFixed(2)} KB
-                    </div>
+                    <p className="truncate text-sm font-medium text-foreground">{doc.originalFileName}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{doc.mimeType} · {(doc.size / 1024).toFixed(2)} KB</p>
                   </div>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    <button
-                      onClick={() => handleDownloadDocument(doc.id)}
-                      style={{
-                        padding: '8px 16px',
-                        background: '#667eea',
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '6px',
-                        cursor: 'pointer',
-                        fontSize: '13px',
-                        fontWeight: '500',
-                        transition: 'all 0.2s',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                      }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = '#5568d3')}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = '#667eea')}
-                    >
-                      🗂️ Ver
-                    </button>
-                    {(doc as any).isCurrent && (
-                      <button
-                        onClick={() => handleUpdateDocumentClick(doc.category)}
-                        style={{
-                          padding: '8px 16px',
-                          background: '#10b981',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '6px',
-                          cursor: 'pointer',
-                          fontSize: '13px',
-                          fontWeight: '500',
-                          transition: 'all 0.2s',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '6px',
-                        }}
-                        onMouseEnter={(e) => (e.currentTarget.style.background = '#059669')}
-                        onMouseLeave={(e) => (e.currentTarget.style.background = '#10b981')}
-                      >
-                        ✏️ Actualizar
-                      </button>
+                  <div className="flex shrink-0 flex-wrap gap-2">
+                    <Button type="button" variant="outline" size="sm" onClick={() => handleDownloadDocument(doc.id)}><Eye aria-hidden="true" />Ver</Button>
+                    {isCurrentDocument(doc) && (
+                      <Button type="button" size="sm" onClick={() => handleUpdateDocumentClick(doc.category)}><RefreshCw aria-hidden="true" />Actualizar</Button>
                     )}
                   </div>
                 </div>
               ))}
-            </div>
           </div>
         )}
+      </SectionCard>
       </div>
 
       {/* Section 5: Contracts */}
-      <div ref={contractsRef} style={{ background: 'white', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', overflow: 'hidden', marginBottom: '30px' }}>
-        <div style={{ padding: '20px 24px', borderBottom: '2px solid #e5e7eb' }}>
-          <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#1f2937' }}>
-            📄 Contratos ({contracts.length})
+      <div ref={contractsRef} className="mb-6 overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-ui-xs">
+        <div className="border-b border-border px-5 py-4">
+          <h2 className="flex items-center gap-2 text-base font-semibold tracking-tight">
+            <FileText aria-hidden="true" className="size-4 text-muted-foreground" />Contratos ({contracts.length})
           </h2>
         </div>
 
@@ -2187,47 +1530,19 @@ export default function CustomerProfilePage() {
       </div>
 
       {/* Section 6: Customer Notes */}
-      <div ref={notesRef} style={{ background: 'white', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', overflow: 'hidden', marginBottom: '30px' }}>
-        <div style={{ padding: '20px 24px', borderBottom: '2px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#1f2937' }}>
-            📝 Customer Notes ({profile.notes.length})
-          </h2>
-          <button
-            onClick={() => setShowAddNoteModal(true)}
-            style={{
-              padding: '10px 20px',
-              background: '#667eea',
-              color: 'white',
-              border: 'none',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              fontSize: '14px',
-              fontWeight: '500',
-              transition: 'all 0.2s',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = '#5568d3')}
-            onMouseLeave={(e) => (e.currentTarget.style.background = '#667eea')}
-          >
-            ➕ Add Note
-          </button>
-        </div>
+      <div ref={notesRef} className="mb-6">
+      <SectionCard
+        title={<span className="flex items-center gap-2"><IconBadge tone="primary" size="sm"><StickyNote aria-hidden="true" /></IconBadge>Notas del cliente ({profile.notes.length})</span>}
+        actions={<Button type="button" size="sm" onClick={() => setShowAddNoteModal(true)}><Plus aria-hidden="true" />Agregar nota</Button>}
+      >
 
         {profile.notes.length === 0 ? (
-          <div style={{ padding: '60px 20px', textAlign: 'center' }}>
-            <div style={{ fontSize: '64px', marginBottom: '16px' }}>📝</div>
-            <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#4b5563', marginBottom: '8px' }}>
-              No customer notes available.
-            </h3>
-            <p style={{ color: '#9ca3af', fontSize: '14px' }}>
-              No notes have been added for this customer yet.
-            </p>
+          <div className="grid min-h-48 place-items-center px-5 py-10 text-center">
+            <div><IconBadge tone="primary" className="mx-auto"><StickyNote aria-hidden="true" /></IconBadge><h3 className="mt-3 text-sm font-semibold text-foreground">No hay notas del cliente.</h3><p className="mt-1 text-sm text-muted-foreground">Aún no se han agregado notas para este cliente.</p></div>
           </div>
         ) : (
-          <div style={{ padding: '20px' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div className="grid gap-3">
+            <div className="grid gap-3">
               {profile.notes
                 .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
                 .slice(0, 5)
@@ -2235,34 +1550,21 @@ export default function CustomerProfilePage() {
             </div>
             
             {profile.notes.length > 5 && (
-              <div style={{ marginTop: '16px', textAlign: 'center' }}>
-                <button
-                  onClick={() => setShowAllNotesModal(true)}
-                  style={{
-                    padding: '10px 20px',
-                    background: '#667eea',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '8px',
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                    fontWeight: '500',
-                    transition: 'all 0.2s',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = '#5568d3')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = '#667eea')}
-                >
-                  View All Notes ({profile.notes.length})
-                </button>
+              <div className="pt-1 text-center">
+                <Button type="button" variant="outline" size="sm" onClick={() => setShowAllNotesModal(true)}>
+                  Ver todas las notas ({profile.notes.length})
+                </Button>
               </div>
             )}
           </div>
         )}
+      </SectionCard>
       </div>
 
       <CustomerEditModal
         isOpen={editModalOpen}
         customer={customer}
+        presentation="foundation"
         onClose={() => setEditModalOpen(false)}
         onSave={handleSaveEdit}
       />
@@ -2273,393 +1575,69 @@ export default function CustomerProfilePage() {
         onUpload={handleUploadDocument}
       />
 
-      {/* Add Note Modal */}
-      {showAddNoteModal && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: 'rgba(0, 0, 0, 0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 9999,
-          }}
-          onClick={() => {
-            setShowAddNoteModal(false);
-            setNewNoteText('');
-          }}
-        >
-          <div
-            style={{
-              background: 'white',
-              borderRadius: '12px',
-              padding: '24px',
-              width: '90%',
-              maxWidth: '600px',
-              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#1f2937', marginBottom: '20px' }}>
-              Add Customer Note
-            </h2>
-            
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: '#374151', marginBottom: '8px' }}>
-                Note
-              </label>
-              <textarea
-                value={newNoteText}
-                onChange={(e) => setNewNoteText(e.target.value)}
-                placeholder="Enter your note here..."
-                rows={8}
-                style={{
-                  width: '100%',
-                  padding: '12px',
-                  border: '2px solid #e5e7eb',
-                  borderRadius: '8px',
-                  fontSize: '14px',
-                  fontFamily: 'inherit',
-                  resize: 'vertical',
-                  outline: 'none',
-                }}
-                onFocus={(e) => (e.currentTarget.style.borderColor = '#667eea')}
-                onBlur={(e) => (e.currentTarget.style.borderColor = '#e5e7eb')}
-              />
-            </div>
+      <Dialog open={showAddNoteModal} onOpenChange={(open) => { if (!open) { setShowAddNoteModal(false); setNewNoteText(''); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><StickyNote aria-hidden="true" className="size-5 text-primary" />Agregar nota del cliente</DialogTitle>
+            <DialogDescription>Registra una nota en el perfil de este cliente.</DialogDescription>
+          </DialogHeader>
+          <div className="mt-5">
+            <FormField htmlFor="customer-note-create" label="Nota">
+              <Textarea id="customer-note-create" value={newNoteText} onChange={(event) => setNewNoteText(event.target.value)} placeholder="Escribe la nota aquí..." rows={8} />
+            </FormField>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => { setShowAddNoteModal(false); setNewNoteText(''); }}>Cancelar</Button>
+            <Button type="button" onClick={handleCreateNote} disabled={!newNoteText.trim()}><StickyNote aria-hidden="true" />Guardar nota</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-              <button
-                onClick={() => {
-                  setShowAddNoteModal(false);
-                  setNewNoteText('');
-                }}
-                style={{
-                  padding: '10px 20px',
-                  background: '#f3f4f6',
-                  color: '#374151',
-                  border: 'none',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  transition: 'all 0.2s',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = '#e5e7eb')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = '#f3f4f6')}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleCreateNote}
-                disabled={!newNoteText.trim()}
-                style={{
-                  padding: '10px 20px',
-                  background: newNoteText.trim() ? '#667eea' : '#d1d5db',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '8px',
-                  cursor: newNoteText.trim() ? 'pointer' : 'not-allowed',
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  transition: 'all 0.2s',
-                }}
-                onMouseEnter={(e) => {
-                  if (newNoteText.trim()) {
-                    e.currentTarget.style.background = '#5568d3';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (newNoteText.trim()) {
-                    e.currentTarget.style.background = '#667eea';
-                  }
-                }}
-              >
-                Save
-              </button>
+      <Dialog open={Boolean(editingNoteId)} onOpenChange={(open) => { if (!open) { setEditingNoteId(null); setEditingNoteText(''); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Pencil aria-hidden="true" className="size-5 text-primary" />Editar nota del cliente</DialogTitle>
+            <DialogDescription>Actualiza el contenido de la nota seleccionada.</DialogDescription>
+          </DialogHeader>
+          <div className="mt-5">
+            <FormField htmlFor="customer-note-edit" label="Nota">
+              <Textarea id="customer-note-edit" value={editingNoteText} onChange={(event) => setEditingNoteText(event.target.value)} placeholder="Escribe la nota aquí..." rows={8} />
+            </FormField>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => { setEditingNoteId(null); setEditingNoteText(''); }}>Cancelar</Button>
+            <Button type="button" onClick={handleUpdateNote} disabled={!editingNoteText.trim()}><Pencil aria-hidden="true" />Guardar cambios</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog
+        open={Boolean(noteToDelete)}
+        onOpenChange={(open) => { if (!open) setNoteToDelete(null); }}
+        variant="destructive"
+        title="Eliminar nota del cliente"
+        description={noteToDelete ? <span>¿Seguro que deseas eliminar esta nota? Esta acción no se puede deshacer.<span className="mt-2 block rounded-md border border-destructive/25 bg-destructive/5 p-3 text-sm italic text-destructive">&ldquo;{noteToDelete.preview}&rdquo;</span></span> : undefined}
+        cancelLabel="Cancelar"
+        confirmLabel="Eliminar"
+        onConfirm={handleDeleteNote}
+      />
+
+      <Dialog open={showAllNotesModal} onOpenChange={(open) => { if (!open) { setShowAllNotesModal(false); setExpandedNoteIdInModal(null); } }}>
+        <DialogContent className="max-w-4xl overflow-hidden p-0">
+          <DialogHeader className="border-b border-border px-5 py-4">
+            <DialogTitle>Notas del cliente ({profile.notes.length})</DialogTitle>
+            <DialogDescription>Historial completo de notas registradas para este cliente.</DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[65dvh] overflow-y-auto p-5">
+            <div className="grid gap-3">
+              {profile.notes
+                .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                .map((note) => renderNote(note, expandedNoteIdInModal, setExpandedNoteIdInModal, true))}
             </div>
           </div>
-        </div>
-      )}
+        </DialogContent>
+      </Dialog>
 
-      {/* Edit Note Modal */}
-      {editingNoteId && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: 'rgba(0, 0, 0, 0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 9999,
-          }}
-          onClick={() => {
-            setEditingNoteId(null);
-            setEditingNoteText('');
-          }}
-        >
-          <div
-            style={{
-              background: 'white',
-              borderRadius: '12px',
-              padding: '24px',
-              width: '90%',
-              maxWidth: '600px',
-              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#1f2937', marginBottom: '20px' }}>
-              Edit Customer Note
-            </h2>
-            
-            <div style={{ marginBottom: '20px' }}>
-              <label style={{ display: 'block', fontSize: '14px', fontWeight: '500', color: '#374151', marginBottom: '8px' }}>
-                Note
-              </label>
-              <textarea
-                value={editingNoteText}
-                onChange={(e) => setEditingNoteText(e.target.value)}
-                placeholder="Enter your note here..."
-                rows={8}
-                style={{
-                  width: '100%',
-                  padding: '12px',
-                  border: '2px solid #e5e7eb',
-                  borderRadius: '8px',
-                  fontSize: '14px',
-                  fontFamily: 'inherit',
-                  resize: 'vertical',
-                  outline: 'none',
-                }}
-                onFocus={(e) => (e.currentTarget.style.borderColor = '#667eea')}
-                onBlur={(e) => (e.currentTarget.style.borderColor = '#e5e7eb')}
-              />
-            </div>
-
-            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-              <button
-                onClick={() => {
-                  setEditingNoteId(null);
-                  setEditingNoteText('');
-                }}
-                style={{
-                  padding: '10px 20px',
-                  background: '#f3f4f6',
-                  color: '#374151',
-                  border: 'none',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  transition: 'all 0.2s',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = '#e5e7eb')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = '#f3f4f6')}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleUpdateNote}
-                disabled={!editingNoteText.trim()}
-                style={{
-                  padding: '10px 20px',
-                  background: editingNoteText.trim() ? '#3b82f6' : '#d1d5db',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '8px',
-                  cursor: editingNoteText.trim() ? 'pointer' : 'not-allowed',
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  transition: 'all 0.2s',
-                }}
-                onMouseEnter={(e) => {
-                  if (editingNoteText.trim()) {
-                    e.currentTarget.style.background = '#2563eb';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (editingNoteText.trim()) {
-                    e.currentTarget.style.background = '#3b82f6';
-                  }
-                }}
-              >
-                Update
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Delete Note Confirmation Modal */}
-      {noteToDelete && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: 'rgba(0, 0, 0, 0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 9999,
-          }}
-          onClick={() => setNoteToDelete(null)}
-        >
-          <div
-            style={{
-              background: 'white',
-              borderRadius: '12px',
-              padding: '24px',
-              width: '90%',
-              maxWidth: '500px',
-              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#1f2937', marginBottom: '16px' }}>
-              Delete Customer Note
-            </h2>
-            
-            <p style={{ fontSize: '14px', color: '#4b5563', marginBottom: '12px' }}>
-              Are you sure you want to delete this note? This action cannot be undone.
-            </p>
-            
-            <div style={{ 
-              padding: '12px',
-              background: '#fef2f2',
-              border: '1px solid #fecaca',
-              borderRadius: '8px',
-              marginBottom: '20px',
-            }}>
-              <p style={{ fontSize: '13px', color: '#991b1b', margin: 0, fontStyle: 'italic' }}>
-                "{noteToDelete.preview}"
-              </p>
-            </div>
-
-            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-              <button
-                onClick={() => setNoteToDelete(null)}
-                style={{
-                  padding: '10px 20px',
-                  background: '#f3f4f6',
-                  color: '#374151',
-                  border: 'none',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  transition: 'all 0.2s',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = '#e5e7eb')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = '#f3f4f6')}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleDeleteNote}
-                style={{
-                  padding: '10px 20px',
-                  background: '#ef4444',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  transition: 'all 0.2s',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = '#dc2626')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = '#ef4444')}
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* View All Notes Modal */}
-      {showAllNotesModal && profile && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: 'rgba(0, 0, 0, 0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 9999,
-            padding: '20px',
-          }}
-          onClick={() => {
-            setShowAllNotesModal(false);
-            setExpandedNoteIdInModal(null);
-          }}
-        >
-          <div
-            style={{
-              background: 'white',
-              borderRadius: '12px',
-              width: '100%',
-              maxWidth: '900px',
-              maxHeight: '90vh',
-              display: 'flex',
-              flexDirection: 'column',
-              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ padding: '24px', borderBottom: '2px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#1f2937', margin: 0 }}>
-                All Customer Notes ({profile.notes.length})
-              </h2>
-              <button
-                onClick={() => {
-                  setShowAllNotesModal(false);
-                  setExpandedNoteIdInModal(null);
-                }}
-                style={{
-                  padding: '8px 16px',
-                  background: '#f3f4f6',
-                  color: '#374151',
-                  border: 'none',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  transition: 'all 0.2s',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = '#e5e7eb')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = '#f3f4f6')}
-              >
-                Close
-              </button>
-            </div>
-            
-            <div style={{ padding: '20px', overflowY: 'auto', flex: 1 }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {profile.notes
-                  .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-                  .map((note) => renderNote(note, expandedNoteIdInModal, setExpandedNoteIdInModal, true))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {attachmentViewerData && (
         <AttachmentViewer
@@ -2689,273 +1667,78 @@ export default function CustomerProfilePage() {
         </section>
       )}
 
-      {/* Create Operational Note Modal */}
-      {showCreateOperationalNoteModal && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: 'rgba(0, 0, 0, 0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 9999,
-            padding: '20px',
-          }}
-          onClick={() => setShowCreateOperationalNoteModal(false)}
-        >
-          <div
-            style={{
-              background: 'white',
-              borderRadius: '12px',
-              maxWidth: '600px',
-              width: '100%',
-              maxHeight: '90vh',
-              display: 'flex',
-              flexDirection: 'column',
-              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ padding: '24px', borderBottom: '2px solid #e5e7eb' }}>
-              <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#1f2937', margin: 0 }}>
-                📋 Nueva Nota Operativa
-              </h2>
-            </div>
-            
-            <div style={{ padding: '24px', overflowY: 'auto', flex: 1 }}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                {/* Contract Selection */}
-                <div>
-                  <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#374151', marginBottom: '8px' }}>
-                    Contrato *
-                  </label>
-                  <select
-                    value={operationalNoteForm.contractId}
-                    onChange={(e) => setOperationalNoteForm({ ...operationalNoteForm, contractId: e.target.value })}
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      border: '2px solid #e5e7eb',
-                      borderRadius: '8px',
-                      fontSize: '14px',
-                      color: '#1f2937',
-                    }}
-                  >
-                    <option value="">Seleccione un contrato</option>
-                    {contracts.filter(c => c.status !== 'DRAFT').map((contract) => (
-                      <option key={contract.id} value={contract.id}>
-                        {contract.contractNumber} - {contract.travelName} ({formatParticipationRole(contract.role)})
-                      </option>
-                    ))}
-                  </select>
-                </div>
+      <Dialog open={showCreateOperationalNoteModal} onOpenChange={(open) => { if (!open) setShowCreateOperationalNoteModal(false); }}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><ClipboardList aria-hidden="true" className="size-5 text-primary" />Nueva nota operativa</DialogTitle>
+            <DialogDescription>Registra información operativa vinculada a uno de los contratos del cliente.</DialogDescription>
+          </DialogHeader>
+          <div className="mt-5 grid gap-5">
+            <FormField htmlFor="operational-note-contract" label="Contrato" required>
+              <Select id="operational-note-contract" value={operationalNoteForm.contractId} onChange={(event) => setOperationalNoteForm({ ...operationalNoteForm, contractId: event.target.value })}>
+                <option value="">Seleccione un contrato</option>
+                {contracts.filter(c => c.status !== 'DRAFT').map((contract) => (
+                  <option key={contract.id} value={contract.id}>
+                    {contract.contractNumber} - {contract.travelName} ({formatParticipationRole(contract.role)})
+                  </option>
+                ))}
+              </Select>
+            </FormField>
 
-                {/* Participation Info (Read-only) */}
-                {operationalNoteForm.contractId && (
-                  <div style={{
-                    padding: '12px 16px',
-                    background: '#f0f9ff',
-                    border: '2px solid #bae6fd',
-                    borderRadius: '8px',
-                  }}>
-                    <div style={{ fontSize: '12px', fontWeight: '600', color: '#0369a1', marginBottom: '4px' }}>
-                      ℹ️ Participación detectada
-                    </div>
-                    <div style={{ fontSize: '14px', color: '#075985' }}>
-                      {(() => {
-                        const contract = contracts.find(c => c.id === operationalNoteForm.contractId);
-                        if (!contract) return null;
-                        return (
-                          <>
-                            <strong>Rol:</strong> {formatParticipationRole(contract.role)}
-                            <br />
-                            <strong>Pasajero:</strong> {profile.customer.fullName}
-                          </>
-                        );
-                      })()}
-                    </div>
-                    <div style={{ fontSize: '12px', color: '#0284c7', marginTop: '8px', fontStyle: 'italic' }}>
-                      La identidad del pasajero se determina automáticamente según su participación en el contrato.
-                    </div>
-                  </div>
-                )}
+            {operationalNoteForm.contractId ? (
+              <Alert variant="info">
+                <AlertTitle className="flex items-center gap-2"><Info aria-hidden="true" className="size-4" />Participación detectada</AlertTitle>
+                <AlertDescription>
+                  {(() => {
+                    const contract = contracts.find(c => c.id === operationalNoteForm.contractId);
+                    if (!contract) return null;
+                    return <><strong>Rol:</strong> {formatParticipationRole(contract.role)}<br /><strong>Pasajero:</strong> {profile.customer.fullName}</>;
+                  })()}
+                  <span className="mt-2 block text-xs">La identidad del pasajero se determina automáticamente según su participación en el contrato.</span>
+                </AlertDescription>
+              </Alert>
+            ) : null}
 
-                {/* Note Text */}
-                <div>
-                  <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#374151', marginBottom: '8px' }}>
-                    Nota *
-                  </label>
-                  <textarea
-                    value={operationalNoteForm.note}
-                    onChange={(e) => setOperationalNoteForm({ ...operationalNoteForm, note: e.target.value })}
-                    rows={8}
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      border: '2px solid #e5e7eb',
-                      borderRadius: '8px',
-                      fontSize: '14px',
-                      color: '#1f2937',
-                      resize: 'vertical',
-                      fontFamily: 'inherit',
-                    }}
-                    placeholder="Información operativa importante..."
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div style={{ padding: '20px 24px', borderTop: '2px solid #e5e7eb', display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-              <button
-                onClick={() => setShowCreateOperationalNoteModal(false)}
-                style={{
-                  padding: '10px 20px',
-                  background: '#f3f4f6',
-                  color: '#374151',
-                  border: 'none',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  transition: 'all 0.2s',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = '#e5e7eb')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = '#f3f4f6')}
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleCreateOperationalNote}
-                style={{
-                  padding: '10px 20px',
-                  background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  fontWeight: '600',
-                  transition: 'all 0.2s',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.transform = 'translateY(-2px)')}
-                onMouseLeave={(e) => (e.currentTarget.style.transform = 'translateY(0)')}
-              >
-                Crear Nota
-              </button>
-            </div>
+            <FormField htmlFor="operational-note-create" label="Nota" required>
+              <Textarea id="operational-note-create" value={operationalNoteForm.note} onChange={(event) => setOperationalNoteForm({ ...operationalNoteForm, note: event.target.value })} rows={8} placeholder="Información operativa importante..." />
+            </FormField>
           </div>
-        </div>
-      )}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setShowCreateOperationalNoteModal(false)}>Cancelar</Button>
+            <Button type="button" onClick={handleCreateOperationalNote}><ClipboardList aria-hidden="true" />Crear nota</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-      {/* Edit Operational Note Modal */}
-      {editingOperationalNote && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: 'rgba(0, 0, 0, 0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 9999,
-            padding: '20px',
-          }}
-          onClick={() => setEditingOperationalNote(null)}
-        >
-          <div
-            style={{
-              background: 'white',
-              borderRadius: '12px',
-              maxWidth: '600px',
-              width: '100%',
-              maxHeight: '90vh',
-              display: 'flex',
-              flexDirection: 'column',
-              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ padding: '24px', borderBottom: '2px solid #e5e7eb' }}>
-              <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#1f2937', margin: 0 }}>
-                ✏️ Editar Nota Operativa
-              </h2>
-              <p style={{ fontSize: '13px', color: '#6b7280', marginTop: '8px', marginBottom: 0 }}>
-                {editingOperationalNote.passengerName} - {editingOperationalNote.contract?.contractNumber}
-              </p>
-            </div>
-            
-            <div style={{ padding: '24px', overflowY: 'auto', flex: 1 }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#374151', marginBottom: '8px' }}>
-                  Nota *
-                </label>
-                <textarea
-                  value={operationalNoteForm.note}
-                  onChange={(e) => setOperationalNoteForm({ ...operationalNoteForm, note: e.target.value })}
-                  rows={8}
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    border: '2px solid #e5e7eb',
-                    borderRadius: '8px',
-                    fontSize: '14px',
-                    color: '#1f2937',
-                    resize: 'vertical',
-                    fontFamily: 'inherit',
-                  }}
-                  placeholder="Información operativa importante..."
-                />
-              </div>
-            </div>
-
-            <div style={{ padding: '20px 24px', borderTop: '2px solid #e5e7eb', display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-              <button
-                onClick={() => setEditingOperationalNote(null)}
-                style={{
-                  padding: '10px 20px',
-                  background: '#f3f4f6',
-                  color: '#374151',
-                  border: 'none',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  fontWeight: '500',
-                  transition: 'all 0.2s',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = '#e5e7eb')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = '#f3f4f6')}
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={handleUpdateOperationalNote}
-                style={{
-                  padding: '10px 20px',
-                  background: '#3b82f6',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  fontWeight: '600',
-                  transition: 'all 0.2s',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = '#2563eb')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = '#3b82f6')}
-              >
-                Guardar Cambios
-              </button>
-            </div>
+      <Dialog open={Boolean(editingOperationalNote)} onOpenChange={(open) => { if (!open) setEditingOperationalNote(null); }}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Pencil aria-hidden="true" className="size-5 text-primary" />Editar nota operativa</DialogTitle>
+            <DialogDescription>{editingOperationalNote ? `${editingOperationalNote.passengerName} - ${editingOperationalNote.contract?.contractNumber}` : 'Actualiza la nota operativa seleccionada.'}</DialogDescription>
+          </DialogHeader>
+          <div className="mt-5">
+            <FormField htmlFor="operational-note-edit" label="Nota" required>
+              <Textarea id="operational-note-edit" value={operationalNoteForm.note} onChange={(event) => setOperationalNoteForm({ ...operationalNoteForm, note: event.target.value })} rows={8} placeholder="Información operativa importante..." />
+            </FormField>
           </div>
-        </div>
-      )}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setEditingOperationalNote(null)}>Cancelar</Button>
+            <Button type="button" onClick={handleUpdateOperationalNote}><Pencil aria-hidden="true" />Guardar cambios</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog
+        open={Boolean(operationalNoteToDelete)}
+        onOpenChange={(open) => { if (!open) setOperationalNoteToDelete(null); }}
+        variant="destructive"
+        title="Eliminar nota operativa"
+        description="¿Seguro que deseas eliminar esta nota operativa? Esta acción no se puede deshacer."
+        cancelLabel="Cancelar"
+        confirmLabel="Eliminar"
+        onConfirm={handleDeleteOperationalNote}
+      />
+
 
       <LoadingModal
         isOpen={loadingModalOpen}

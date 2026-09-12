@@ -2,7 +2,7 @@ import * as React from "react"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
-type SectionCardProps = React.ComponentProps<typeof Card> & {
+type SectionCardProps = Omit<React.ComponentProps<typeof Card>, "title"> & {
   title?: React.ReactNode
   description?: React.ReactNode
   actions?: React.ReactNode

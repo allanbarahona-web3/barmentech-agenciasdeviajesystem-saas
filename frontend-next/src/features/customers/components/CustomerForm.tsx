@@ -6,6 +6,9 @@ import {
   getClientIdentificationTypeLabel,
   type ClientIdentificationType,
 } from '@/features/customers/client-identification';
+import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
+import { FormField } from '@/components/patterns/form-field';
 
 interface CustomerFormProps {
   title?: string;
@@ -40,6 +43,7 @@ interface CustomerFormProps {
   onEnterEditMode: () => void;
   onCancelEdit: () => void;
   onSaveEdit: () => void;
+  presentation?: 'legacy' | 'foundation';
 }
 
 function formatDate(dateString: string) {
@@ -60,7 +64,66 @@ export function CustomerForm({
   onEnterEditMode,
   onCancelEdit,
   onSaveEdit,
+  presentation = 'legacy',
 }: CustomerFormProps) {
+  if (presentation === 'foundation') {
+    return (
+      <div className="grid gap-4 sm:grid-cols-2">
+        <FormField className="sm:col-span-2" htmlFor="customer-edit-full-name" label="Nombre completo">
+          {isEditMode ? <Input id="customer-edit-full-name" value={editForm.fullName} onChange={(event) => onEditFormChange({ fullName: event.target.value })} /> : <p className="text-sm text-foreground">{customer.fullName}</p>}
+        </FormField>
+        <FormField label="Cédula/ID">
+          <p className="text-sm text-foreground">{customer.idNumber}</p>
+        </FormField>
+        <FormField htmlFor="customer-edit-id-type" label="Tipo de identificación">
+          {isEditMode ? (
+            <Select id="customer-edit-id-type" value={editForm.idType} onChange={(event) => onEditFormChange({ idType: event.target.value as ClientIdentificationType | '' })}>
+              <option value="">Seleccionar</option>
+              {CLIENT_IDENTIFICATION_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </Select>
+          ) : <p className="text-sm text-foreground">{getClientIdentificationTypeLabel(customer.idType)}</p>}
+        </FormField>
+        <FormField className="sm:col-span-2" htmlFor="customer-edit-email" label="Email">
+          {isEditMode ? <Input id="customer-edit-email" type="email" value={editForm.email} onChange={(event) => onEditFormChange({ email: event.target.value })} /> : <p className="text-sm text-foreground">{customer.email}</p>}
+        </FormField>
+        <FormField htmlFor="customer-edit-phone" label="Teléfono">
+          {isEditMode ? <Input id="customer-edit-phone" value={editForm.phone} onChange={(event) => onEditFormChange({ phone: event.target.value })} /> : <p className="text-sm text-foreground">{customer.phone || '-'}</p>}
+        </FormField>
+        <FormField htmlFor="customer-edit-marital-status" label="Estado civil">
+          {isEditMode ? (
+            <Select id="customer-edit-marital-status" value={editForm.maritalStatus} onChange={(event) => onEditFormChange({ maritalStatus: event.target.value })}>
+              <option value="">Seleccionar</option>
+              {MARITAL_STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </Select>
+          ) : <p className="text-sm text-foreground">{customer.maritalStatus || '-'}</p>}
+        </FormField>
+        <FormField htmlFor="customer-edit-emergency-name" label="Contacto de emergencia — nombre">
+          {isEditMode ? <Input id="customer-edit-emergency-name" value={editForm.emergencyContactName} onChange={(event) => onEditFormChange({ emergencyContactName: event.target.value })} /> : <p className="text-sm text-foreground">{customer.emergencyContactName || '-'}</p>}
+        </FormField>
+        <FormField htmlFor="customer-edit-emergency-phone" label="Contacto de emergencia — teléfono">
+          {isEditMode ? <Input id="customer-edit-emergency-phone" value={editForm.emergencyContactPhone} onChange={(event) => onEditFormChange({ emergencyContactPhone: event.target.value })} /> : <p className="text-sm text-foreground">{customer.emergencyContactPhone || '-'}</p>}
+        </FormField>
+        <FormField htmlFor="customer-edit-nationality" label="Nacionalidad">
+          {isEditMode ? (
+            <Select id="customer-edit-nationality" value={editForm.nationality} onChange={(event) => onEditFormChange({ nationality: event.target.value })}>
+              <option value="">Seleccionar</option>
+              {NATIONALITY_OPTIONS.map((country, index) => <option key={index} value={country}>{country}</option>)}
+            </Select>
+          ) : <p className="text-sm text-foreground">{customer.nationality || '-'}</p>}
+        </FormField>
+        <FormField htmlFor="customer-edit-occupation" label="Profesión">
+          {isEditMode ? <Input id="customer-edit-occupation" value={editForm.occupation} onChange={(event) => onEditFormChange({ occupation: event.target.value })} /> : <p className="text-sm text-foreground">{customer.occupation || '-'}</p>}
+        </FormField>
+        <FormField className="sm:col-span-2" htmlFor="customer-edit-address" label="Dirección">
+          {isEditMode ? <Input id="customer-edit-address" value={editForm.address} onChange={(event) => onEditFormChange({ address: event.target.value })} /> : <p className="text-sm text-foreground">{customer.address || '-'}</p>}
+        </FormField>
+        <FormField label="Cliente desde">
+          <p className="text-sm text-foreground">{formatDate(customer.createdAt)}</p>
+        </FormField>
+      </div>
+    );
+  }
+
   return (
     <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', padding: '24px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>

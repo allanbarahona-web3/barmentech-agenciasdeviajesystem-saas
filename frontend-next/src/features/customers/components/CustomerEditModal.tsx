@@ -2,6 +2,9 @@
 
 import { useState } from 'react';
 import { CustomerForm } from './CustomerForm';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { FormSheet } from '@/components/patterns/form-sheet';
 import {
   isClientIdentificationType,
   type ClientIdentificationType,
@@ -36,6 +39,7 @@ interface CustomerEditModalProps {
     emergencyContactName: string;
     emergencyContactPhone: string;
   }) => Promise<void>;
+  presentation?: 'legacy' | 'foundation';
 }
 
 type CustomerEditFormState = {
@@ -51,7 +55,7 @@ type CustomerEditFormState = {
   emergencyContactPhone: string;
 };
 
-export function CustomerEditModal({ isOpen, customer, onClose, onSave }: CustomerEditModalProps) {
+export function CustomerEditModal({ isOpen, customer, onClose, onSave, presentation = 'legacy' }: CustomerEditModalProps) {
   const [editForm, setEditForm] = useState<CustomerEditFormState>({
     fullName: customer.fullName,
     idType: isClientIdentificationType(customer.idType) ? customer.idType : '',
@@ -109,6 +113,44 @@ export function CustomerEditModal({ isOpen, customer, onClose, onSave }: Custome
   }
 
   if (!isOpen) return null;
+
+  if (presentation === 'foundation') {
+    return (
+      <FormSheet
+        open={isOpen}
+        onOpenChange={(open) => {
+          if (!open) handleClose();
+        }}
+        title="Editar cliente"
+        description="Actualiza la información de contacto y perfil del cliente."
+        actions={
+          <>
+            <Button type="button" variant="outline" onClick={handleClose} disabled={isSaving}>Cancelar</Button>
+            <Button type="button" onClick={() => void handleSave()} disabled={isSaving}>
+              {isSaving ? 'Guardando…' : 'Guardar cambios'}
+            </Button>
+          </>
+        }
+      >
+        {error ? (
+          <Alert variant="destructive" className="mb-4">
+            <AlertTitle>No se pudo actualizar el cliente</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        ) : null}
+        <CustomerForm
+          customer={customer}
+          isEditMode={true}
+          presentation="foundation"
+          editForm={editForm}
+          onEditFormChange={handleEditFormChange}
+          onEnterEditMode={() => {}}
+          onCancelEdit={handleClose}
+          onSaveEdit={handleSave}
+        />
+      </FormSheet>
+    );
+  }
 
   return (
     <div

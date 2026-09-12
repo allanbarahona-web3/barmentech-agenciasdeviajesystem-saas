@@ -2,7 +2,7 @@ import * as React from "react"
 
 import { cn } from "@/lib/utils"
 
-type PageHeaderProps = React.ComponentProps<"header"> & {
+type PageHeaderProps = Omit<React.ComponentProps<"header">, "title"> & {
   title: React.ReactNode
   description?: React.ReactNode
   eyebrow?: React.ReactNode
