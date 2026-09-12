@@ -1,9 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CircleCheck, CirclePause, LoaderCircle } from "lucide-react";
-import { ConfirmModal } from "@/components/confirm-modal";
+import { AlertTriangle, CircleCheck, CirclePause, LoaderCircle, ReceiptText } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
+import { FormField } from "@/components/patterns/form-field";
+import { FormSheet } from "@/components/patterns/form-sheet";
+import { IconBadge } from "@/components/ui/icon-badge";
 import {
   confirmFiscalCatalogCabys,
   createAdditionalServiceFiscalProfile,
@@ -148,45 +154,141 @@ export function AdditionalServiceFiscalProfileModal({ item, onClose, onSaved, on
     } finally { setSaving(false); }
   };
 
-  return <ConfirmModal isOpen={item !== null} title={profile ? "Editar perfil fiscal" : "Configurar perfil fiscal"} confirmText={saving ? "Guardando..." : "Guardar valores"} cancelText="Cancelar" isLoading={saving} onConfirm={() => void handleSave()} onCancel={onClose} message={item ? (
-    <form className="space-y-4 text-left" onSubmit={(event) => { event.preventDefault(); void handleSave(); }}>
-      <ReadOnlyField
-        id="fiscal-service"
-        label={hasAdditionalServiceUsage(item) ? "Servicio" : "Clasificación fiscal"}
-        value={item.name}
-      />
-      <div className="relative">
-        <label htmlFor="fiscal-cabys-search" className="mb-1 block text-sm font-medium text-slate-700">CABYS</label>
-        <input id="fiscal-cabys-search" value={cabysQuery} autoComplete="off" disabled={saving} placeholder="Busque por código o descripción (mínimo 3 caracteres)" onChange={(event) => { setCabysQuery(event.target.value); setSelectedCabys(null); setForm((current) => ({ ...current, cabysCode: "" })); setError(""); }} className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm text-slate-900 focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200" />
-        {cabysLoading ? <LoaderCircle className="absolute right-3 top-9 h-4 w-4 animate-spin text-slate-500" aria-label="Buscando CABYS" /> : null}
-        {cabysOptions.length ? <ul className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-md border border-slate-200 bg-white py-1 shadow-lg">{cabysOptions.map((option) => <li key={option.code}><button type="button" onClick={() => chooseCabys(option)} className="w-full px-3 py-2 text-left text-sm hover:bg-slate-50"><span className="block font-mono font-semibold">{option.code}</span><span className="block text-slate-600">{option.description}</span></button></li>)}</ul> : null}
-        {cabysQuery.trim().length > 0 && cabysQuery.trim().length < 3 ? <p className="mt-1 text-xs text-slate-500">Escriba al menos 3 caracteres para buscar.</p> : null}
-        {unavailable.cabys ? <UnavailableWarning text={`El CABYS guardado ${form.cabysCode} no está disponible. Seleccione uno activo.`} /> : null}
-      </div>
-      <CatalogSelect id="fiscal-unit" label="Unidad de medida" value={form.unitOfMeasureCode} items={units} disabled={saving || catalogsLoading} unavailable={unavailable.unit} onChange={(value) => { setForm((current) => ({ ...current, unitOfMeasureCode: value })); setError(""); }} />
-      <CatalogSelect id="fiscal-tax" label="Impuesto" value={form.taxCode} items={taxes} disabled={saving || catalogsLoading} unavailable={unavailable.tax} onChange={(value) => { setForm((current) => ({ ...current, taxCode: value, taxRateCode: "" })); setRates([]); setError(""); }} />
-      <div>
-        <label htmlFor="fiscal-rate" className="mb-1 block text-sm font-medium text-slate-700">Tarifa fiscal</label>
-        <select id="fiscal-rate" value={form.taxRateCode} disabled={saving || ratesLoading || !form.taxCode} onChange={(event) => { setForm((current) => ({ ...current, taxRateCode: event.target.value })); setError(""); }} className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm"><option value="">Seleccione una tarifa</option>{unavailable.rate ? <option value={form.taxRateCode}>{form.taxRateCode} — No disponible</option> : null}{rates.map((rate) => <option key={rate.code} value={rate.code}>{rate.code} — {rate.name} — {rate.percentage}%</option>)}</select>
-        {unavailable.rate ? <UnavailableWarning text={`La tarifa guardada ${form.taxRateCode} ya no está activa para el impuesto seleccionado.`} /> : null}
-      </div>
-      <ReadOnlyField id="fiscal-percentage" label="Porcentaje fiscal de la tarifa seleccionada" value={selectedRate ? `${selectedRate.percentage}%` : "Seleccione una tarifa activa"} />
-      {item.fiscalReadiness.issues.length ? <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700"><p className="font-medium">Detalles de la configuración:</p><ul className="mt-1 list-disc pl-5">{item.fiscalReadiness.issues.map((issue) => <li key={issue}>{readinessIssueLabels[issue] ?? issue}</li>)}</ul></div> : null}
-      {error ? <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p> : null}
-      {profile ? <div className="border-t border-slate-200 pt-4"><Button type="button" variant="outline" onClick={() => void handleStatusChange()} disabled={statusDisabled} className={`w-full gap-2 ${profile.isActive ? "border-green-600 bg-green-600 text-white hover:border-green-700 hover:bg-green-700 hover:text-white dark:border-green-600 dark:bg-green-600 dark:text-white dark:hover:border-green-700 dark:hover:bg-green-700 dark:hover:text-white" : "border-amber-400 bg-amber-100 text-amber-900 hover:border-amber-500 hover:bg-amber-200 hover:text-amber-950 dark:border-amber-400 dark:bg-amber-100 dark:text-amber-900 dark:hover:border-amber-500 dark:hover:bg-amber-200 dark:hover:text-amber-950"}`}>{profile.isActive ? <CirclePause className="h-4 w-4" /> : <CircleCheck className="h-4 w-4" />}{profile.isActive ? "Desactivar perfil fiscal" : "Activar perfil fiscal"}</Button>{isDirty ? <p className="mt-2 text-xs text-slate-500">Guarde los cambios antes de cambiar el estado.</p> : null}{!profile.isActive && !isDirty && !complete ? <p className="mt-2 text-xs text-amber-700">Complete selecciones fiscales activas antes de activar.</p> : null}</div> : <p className="text-xs text-slate-500">El perfil se creará inactivo. Después de guardarlo podrá activarlo.</p>}
-      <button type="submit" className="sr-only">Guardar</button>
-    </form>
-  ) : null} />;
+  return (
+    <FormSheet
+      open={item !== null}
+      onOpenChange={(open) => {
+        if (!open && !saving) onClose();
+      }}
+      title={profile ? "Editar perfil fiscal" : "Configurar perfil fiscal"}
+      description="Configure la clasificación fiscal aplicable al servicio seleccionado."
+      actions={
+        <>
+          <Button type="button" variant="outline" onClick={onClose} disabled={saving}>
+            Cancelar
+          </Button>
+          <Button type="submit" form="fiscal-profile-form" disabled={saving}>
+            {saving ? "Guardando..." : "Guardar valores"}
+          </Button>
+        </>
+      }
+    >
+      {item ? (
+        <form
+          id="fiscal-profile-form"
+          noValidate
+          className="grid gap-5"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void handleSave();
+          }}
+        >
+          <section className="flex items-start gap-3 rounded-lg border border-border bg-card p-4">
+            <IconBadge tone="info">
+              <ReceiptText aria-hidden="true" />
+            </IconBadge>
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-foreground">
+                {hasAdditionalServiceUsage(item) ? "Servicio" : "Clasificación fiscal"}
+              </p>
+              <p className="mt-1 truncate text-sm text-muted-foreground" title={item.name}>
+                {item.name}
+              </p>
+            </div>
+          </section>
+
+          <FormField label="CABYS" htmlFor="fiscal-cabys-search">
+            <div className="relative">
+              <Input
+                id="fiscal-cabys-search"
+                value={cabysQuery}
+                autoComplete="off"
+                disabled={saving}
+                placeholder="Busque por código o descripción (mínimo 3 caracteres)"
+                className="pr-10"
+                onChange={(event) => {
+                  setCabysQuery(event.target.value); setSelectedCabys(null); setForm((current) => ({ ...current, cabysCode: "" })); setError("");
+                }}
+              />
+              {cabysLoading ? <LoaderCircle className="absolute right-3 top-2.5 size-4 animate-spin text-muted-foreground" aria-label="Buscando CABYS" /> : null}
+              {cabysOptions.length ? (
+                <ul className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-border bg-popover py-1 text-popover-foreground shadow-ui-md">
+                  {cabysOptions.map((option) => (
+                    <li key={option.code}>
+                      <button type="button" onClick={() => chooseCabys(option)} className="w-full px-3 py-2 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:text-accent-foreground focus-visible:outline-none">
+                        <span className="block font-mono font-semibold">{option.code}</span>
+                        <span className="block text-muted-foreground">{option.description}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+            {selectedCabys ? <Badge variant="info">CABYS seleccionado: {selectedCabys.code}</Badge> : null}
+            {cabysQuery.trim().length > 0 && cabysQuery.trim().length < 3 ? <p className="text-xs text-muted-foreground">Escriba al menos 3 caracteres para buscar.</p> : null}
+            {unavailable.cabys ? <UnavailableWarning text={`El CABYS guardado ${form.cabysCode} no está disponible. Seleccione uno activo.`} /> : null}
+          </FormField>
+
+          <section className="grid gap-4 rounded-lg border border-border bg-card p-4">
+            <div>
+              <h3 className="text-sm font-semibold text-foreground">Clasificación fiscal</h3>
+              <p className="mt-1 text-sm text-muted-foreground">Seleccione valores vigentes de los catálogos fiscales.</p>
+            </div>
+            <CatalogSelect id="fiscal-unit" label="Unidad de medida" value={form.unitOfMeasureCode} items={units} disabled={saving || catalogsLoading} unavailable={unavailable.unit} onChange={(value) => { setForm((current) => ({ ...current, unitOfMeasureCode: value })); setError(""); }} />
+            <CatalogSelect id="fiscal-tax" label="Impuesto" value={form.taxCode} items={taxes} disabled={saving || catalogsLoading} unavailable={unavailable.tax} onChange={(value) => { setForm((current) => ({ ...current, taxCode: value, taxRateCode: "" })); setRates([]); setError(""); }} />
+            <FormField label="Tarifa fiscal" htmlFor="fiscal-rate">
+              <Select id="fiscal-rate" value={form.taxRateCode} disabled={saving || ratesLoading || !form.taxCode} onChange={(event) => { setForm((current) => ({ ...current, taxRateCode: event.target.value })); setError(""); }}>
+                <option value="">Seleccione una tarifa</option>
+                {unavailable.rate ? <option value={form.taxRateCode}>{form.taxRateCode} — No disponible</option> : null}
+                {rates.map((rate) => <option key={rate.code} value={rate.code}>{rate.code} — {rate.name} — {rate.percentage}%</option>)}
+              </Select>
+              {unavailable.rate ? <UnavailableWarning text={`La tarifa guardada ${form.taxRateCode} ya no está activa para el impuesto seleccionado.`} /> : null}
+            </FormField>
+            <ReadOnlyField id="fiscal-percentage" label="Porcentaje fiscal de la tarifa seleccionada" value={selectedRate ? `${selectedRate.percentage}%` : "Seleccione una tarifa activa"} />
+          </section>
+
+          {item.fiscalReadiness.issues.length ? (
+            <Alert variant="destructive">
+              <AlertTitle>Detalles de la configuración</AlertTitle>
+              <AlertDescription>
+                <ul className="mt-1 list-disc pl-5">
+                  {item.fiscalReadiness.issues.map((issue) => <li key={issue}>{readinessIssueLabels[issue] ?? issue}</li>)}
+                </ul>
+              </AlertDescription>
+            </Alert>
+          ) : null}
+          {error ? <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert> : null}
+
+          {profile ? (
+            <section className="grid gap-3 border-t border-border pt-5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-sm font-semibold text-foreground">Estado del perfil</h3>
+                <Badge variant={profile.isActive ? "success" : "warning"}>{profile.isActive ? "Activo" : "Inactivo"}</Badge>
+              </div>
+              <Button type="button" variant="outline" onClick={() => void handleStatusChange()} disabled={statusDisabled} className={profile.isActive ? "border-warning/40 text-warning hover:bg-warning/10 hover:text-warning" : "border-success/40 text-success hover:bg-success/10 hover:text-success"}>
+                {profile.isActive ? <CirclePause aria-hidden="true" /> : <CircleCheck aria-hidden="true" />}
+                {profile.isActive ? "Desactivar perfil fiscal" : "Activar perfil fiscal"}
+              </Button>
+              {isDirty ? <Alert variant="info"><AlertDescription>Guarde los cambios antes de cambiar el estado.</AlertDescription></Alert> : null}
+              {!profile.isActive && !isDirty && !complete ? <Alert variant="warning"><AlertDescription>Complete selecciones fiscales activas antes de activar.</AlertDescription></Alert> : null}
+            </section>
+          ) : (
+            <Alert variant="info"><AlertDescription>El perfil se creará inactivo. Después de guardarlo podrá activarlo.</AlertDescription></Alert>
+          )}
+        </form>
+      ) : null}
+    </FormSheet>
+  );
 }
 
 function CatalogSelect({ id, label, value, items, disabled, unavailable, onChange }: { id: string; label: string; value: string; items: FiscalCatalogCodeItem[]; disabled: boolean; unavailable: boolean; onChange: (value: string) => void }) {
-  return <div><label htmlFor={id} className="mb-1 block text-sm font-medium text-slate-700">{label}</label><select id={id} value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)} className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm"><option value="">Seleccione una opción</option>{unavailable ? <option value={value}>{value} — No disponible</option> : null}{items.map((entry) => <option key={entry.code} value={entry.code}>{entry.code} — {entry.name}</option>)}</select>{unavailable ? <UnavailableWarning text={`El valor guardado ${value} ya no está activo. Seleccione una opción vigente.`} /> : null}</div>;
+  return <FormField label={label} htmlFor={id}><Select id={id} value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)}><option value="">Seleccione una opción</option>{unavailable ? <option value={value}>{value} — No disponible</option> : null}{items.map((entry) => <option key={entry.code} value={entry.code}>{entry.code} — {entry.name}</option>)}</Select>{unavailable ? <UnavailableWarning text={`El valor guardado ${value} ya no está activo. Seleccione una opción vigente.`} /> : null}</FormField>;
 }
 
 function ReadOnlyField({ id, label, value }: { id: string; label: string; value: string }) {
-  return <div><label htmlFor={id} className="mb-1 block text-sm font-medium text-slate-700">{label}</label><input id={id} value={value} readOnly className="h-10 w-full rounded-md border border-slate-200 bg-slate-100 px-3 text-sm text-slate-600" /></div>;
+  return <FormField label={label} htmlFor={id}><Input id={id} value={value} readOnly className="bg-muted text-muted-foreground" /></FormField>;
 }
 
 function UnavailableWarning({ text }: { text: string }) {
-  return <p className="mt-1 flex gap-1 text-xs text-amber-700"><AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />{text}</p>;
+  return <Alert variant="warning" className="flex gap-2 px-3 py-2 text-xs"><AlertTriangle className="size-4 shrink-0" aria-hidden="true" /><AlertDescription className="mt-0">{text}</AlertDescription></Alert>;
 }

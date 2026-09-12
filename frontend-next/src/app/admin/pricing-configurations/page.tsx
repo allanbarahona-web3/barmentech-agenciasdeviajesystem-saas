@@ -4,21 +4,12 @@ export const dynamic = "force-dynamic";
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  ChevronLeft,
-  ChevronRight,
-  CircleCheck,
-  CirclePause,
-  Hourglass,
-  PencilLine,
-  Plus,
-  ReceiptText,
-  SlidersHorizontal,
-} from "lucide-react";
+import { BadgeDollarSign, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { PageLoader } from "@/components/loading-spinner";
-import { ConfirmModal } from "@/components/confirm-modal";
+import { PageHeader } from "@/components/patterns/page-header";
+import { IconBadge } from "@/components/ui/icon-badge";
 import {
   ToastNotification,
   useToast,
@@ -34,60 +25,15 @@ import {
   updateAdditionalServicePricingConfiguration,
   updateAdditionalServicePricingConfigurationStatus,
   type AdditionalServiceAdminCatalogItem,
-  type AdditionalServiceCatalogPricingConfiguration,
-  type AdditionalServiceMarginType,
   type CreateAdditionalServiceCatalogInput,
 } from "@/lib/additional-services-admin-api";
-import {
-  catalogUsageLabels,
-  hasAdditionalServiceUsage,
-} from "@/lib/additional-service-catalog-admin";
 import { AdditionalServiceCatalogModal } from "./additional-service-catalog-modal";
 import { AdditionalServiceFiscalProfileModal } from "./additional-service-fiscal-profile-modal";
-
-const fiscalReadinessPresentation = {
-  ABSENT: {
-    label: "Sin perfil fiscal",
-    className:
-      "border-amber-400 !bg-amber-100 !text-amber-900 hover:!bg-amber-100 dark:border-amber-400 dark:!bg-amber-100 dark:!text-amber-900",
-  },
-  INACTIVE: {
-    label: "Perfil fiscal inactivo",
-    className:
-      "border-orange-300 !bg-orange-50 !text-orange-800 hover:!bg-orange-50 dark:border-orange-300 dark:!bg-orange-50 dark:!text-orange-800",
-  },
-  READY: {
-    label: "Listo para facturar",
-    className:
-      "border-green-300 !bg-green-50 !text-green-800 hover:!bg-green-50 dark:border-green-300 dark:!bg-green-50 dark:!text-green-800",
-  },
-  INVALID: {
-    label: "Configuración fiscal inválida",
-    className:
-      "border-red-300 !bg-red-50 !text-red-800 hover:!bg-red-50 dark:border-red-300 dark:!bg-red-50 dark:!text-red-800",
-  },
-} as const;
-
-const marginTypeLabels: Record<
-  AdditionalServiceCatalogPricingConfiguration["marginType"],
-  string
-> = {
-  FIXED: "Fijo",
-  PERCENTAGE: "Porcentaje",
-};
-
-function formatMargin(
-  configuration: AdditionalServiceCatalogPricingConfiguration,
-): string {
-  const suffix = configuration.marginType === "PERCENTAGE" ? "%" : "";
-  return `${configuration.marginValue}${suffix}`;
-}
-
-interface PricingConfigurationFormState {
-  marginType: AdditionalServiceMarginType;
-  marginValue: string;
-  isActive: boolean;
-}
+import {
+  PricingConfigurationEditor,
+  type PricingConfigurationFormState,
+} from "@/features/pricing-configurations/pricing-configuration-editor";
+import { PricingConfigurationsTable } from "@/features/pricing-configurations/pricing-configurations-table";
 
 const emptyForm: PricingConfigurationFormState = {
   marginType: "FIXED",
@@ -306,144 +252,14 @@ export default function PricingConfigurationsPage() {
   return (
     <main className="app-shell">
       <ToastNotification toasts={toasts} onDismiss={dismissToast} />
-      <ConfirmModal
-        isOpen={selectedItem !== null}
-        title={
-          selectedItem?.pricingConfiguration
-            ? "Editar Configuración de Precios"
-            : "Configurar Precio"
-        }
-        message={
-          selectedItem ? (
-            <form
-              className="space-y-4 text-left"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void handleSave();
-              }}
-            >
-              <div>
-                <label
-                  htmlFor="pricing-service"
-                  className="mb-1 block text-sm font-medium text-slate-700"
-                >
-                  Servicio
-                </label>
-                <input
-                  id="pricing-service"
-                  type="text"
-                  value={selectedItem.name}
-                  readOnly
-                  className="h-10 w-full rounded-md border border-slate-200 bg-slate-100 px-3 text-sm text-slate-600"
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="pricing-margin-type"
-                  className="mb-1 block text-sm font-medium text-slate-700"
-                >
-                  Tipo de margen
-                </label>
-                <select
-                  id="pricing-margin-type"
-                  value={form.marginType}
-                  onChange={(event) => {
-                    setForm((current) => ({
-                      ...current,
-                      marginType: event.target
-                        .value as AdditionalServiceMarginType,
-                    }));
-                    setFormError("");
-                  }}
-                  disabled={saving || selectedItem.fiscalReadiness.status !== "READY"}
-                  autoFocus
-                  className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-900 focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
-                >
-                  <option value="FIXED">Fijo</option>
-                  <option value="PERCENTAGE">Porcentaje</option>
-                </select>
-              </div>
-
-              <div>
-                <label
-                  htmlFor="pricing-margin-value"
-                  className="mb-1 block text-sm font-medium text-slate-700"
-                >
-                  Valor del margen
-                </label>
-                <input
-                  id="pricing-margin-value"
-                  type="number"
-                  min="0"
-                  step="0.0001"
-                  required
-                  value={form.marginValue}
-                  onChange={(event) => {
-                    setForm((current) => ({
-                      ...current,
-                      marginValue: event.target.value,
-                    }));
-                    setFormError("");
-                  }}
-                  disabled={saving || selectedItem.fiscalReadiness.status !== "READY"}
-                  className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm text-slate-900 focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="pricing-tax-percentage" className="mb-1 block text-sm font-medium text-slate-700">IVA efectivo del perfil fiscal activo</label>
-                <input id="pricing-tax-percentage" value={selectedItem.fiscalProfile?.taxPercentage ? `${selectedItem.fiscalProfile.taxPercentage}%` : "No disponible"} readOnly className="h-10 w-full rounded-md border border-slate-200 bg-slate-100 px-3 text-sm text-slate-600" />
-                <p className="mt-1 text-xs text-slate-500">Este porcentaje lo determina el perfil fiscal y no se envía desde este formulario.</p>
-              </div>
-
-              {selectedItem.fiscalReadiness.status !== "READY" ? (
-                <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">Active y complete el perfil fiscal antes de configurar el precio. Si el precio está activo, aún puede desactivarlo.</p>
-              ) : null}
-
-              <label
-                htmlFor="pricing-is-active"
-                className="flex cursor-pointer items-center justify-between gap-4 rounded-md border border-slate-200 px-3 py-2"
-              >
-                <span>
-                  <span className="block text-sm font-medium text-slate-700">
-                    Activo
-                  </span>
-                  <span className="block text-xs text-slate-500">
-                    La configuración estará disponible para su uso.
-                  </span>
-                </span>
-                <input
-                  id="pricing-is-active"
-                  type="checkbox"
-                  checked={form.isActive}
-                  onChange={(event) => {
-                    if (event.target.checked && selectedItem.fiscalReadiness.status !== "READY") return;
-                    setForm((current) => ({ ...current, isActive: event.target.checked }));
-                  }}
-                  disabled={saving}
-                  className="h-5 w-5 accent-slate-900"
-                />
-              </label>
-
-              {formError ? (
-                <p
-                  role="alert"
-                  className="m-0 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700"
-                >
-                  {formError}
-                </p>
-              ) : null}
-
-              <button type="submit" className="sr-only">
-                Guardar
-              </button>
-            </form>
-          ) : null
-        }
-        confirmText={saving ? "Guardando..." : "Guardar"}
-        cancelText="Cancelar"
-        onConfirm={() => void handleSave()}
+      <PricingConfigurationEditor
+        item={selectedItem}
+        form={form}
+        formError={formError}
+        saving={saving}
+        onFormChange={setForm}
+        onClearFormError={() => setFormError("")}
+        onSave={() => void handleSave()}
         onCancel={closeConfigurationModal}
       />
       <AdditionalServiceFiscalProfileModal
@@ -459,293 +275,49 @@ export default function PricingConfigurationsPage() {
         onCreate={handleCatalogCreate}
       />
 
-      <div>
-        <header className="mb-[30px] flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <h1 className="mb-2 text-[1.8rem] font-semibold text-slate-900">
-              Margen Adicionales
-            </h1>
-            <p className="m-0 text-slate-500">
-              Configure primero el perfil fiscal; después defina el margen comercial. El IVA se deriva del perfil fiscal activo.
-            </p>
-          </div>
-          <div className="flex items-center gap-3">
-            {!loadError && catalog.length > 0 ? (
-              <Badge
-                variant="outline"
-                className="shrink-0 rounded-md border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-600 shadow-sm dark:border-slate-200 dark:bg-white dark:text-slate-600"
-              >
-                {catalog.length} elementos
-              </Badge>
-            ) : null}
-            {!loadError ? (
-              <Button
-                type="button"
-                onClick={() => setCatalogEditorOpen(true)}
-                className="gap-2 bg-blue-600 text-white hover:bg-blue-700"
-              >
-                <Plus className="h-4 w-4" aria-hidden="true" />
-                Agregar clasificación fiscal
-              </Button>
-            ) : null}
-          </div>
-        </header>
+      <PageHeader
+        className="mb-6"
+        title={
+          <span className="flex items-center gap-3">
+            <IconBadge tone="primary">
+              <BadgeDollarSign aria-hidden="true" />
+            </IconBadge>
+            Configuración de precios
+          </span>
+        }
+        description="Administra los márgenes y la configuración comercial/fiscal de los servicios adicionales."
+        meta={
+          !loadError && catalog.length > 0 ? (
+            <Badge variant="secondary">{catalog.length} elementos</Badge>
+          ) : undefined
+        }
+        actions={
+          !loadError ? (
+            <Button
+              type="button"
+              onClick={() => setCatalogEditorOpen(true)}
+            >
+              <Plus aria-hidden="true" />
+              Agregar clasificación fiscal
+            </Button>
+          ) : undefined
+        }
+      />
 
-        <section className="rounded-xl bg-white p-[30px] shadow-[0_1px_3px_rgba(0,0,0,0.1)]">
-          {loadError ? (
-            <div className="px-5 py-10 text-center text-slate-400">
-              <div className="mb-3 text-5xl">⚠️</div>
-              <h2 className="mb-2 text-lg font-semibold text-slate-700">
-                No se pudo cargar el catálogo
-              </h2>
-              <p className="mx-auto mb-5 max-w-xl text-sm text-slate-500">
-                {loadError}
-              </p>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => void loadCatalog()}
-                className="border-blue-500 bg-white text-blue-600 hover:bg-blue-50 hover:text-blue-700 dark:border-blue-500 dark:bg-white dark:text-blue-600 dark:hover:bg-blue-50 dark:hover:text-blue-700"
-              >
-                Reintentar
-              </Button>
-            </div>
-          ) : catalog.length === 0 ? (
-            <div className="px-5 py-10 text-center text-slate-400">
-              <div className="mb-3 text-5xl">📋</div>
-              <h2 className="mb-2 text-lg font-semibold text-slate-700">
-                No hay elementos configurados
-              </h2>
-              <p className="m-0 text-sm text-slate-500">
-                Cree el primer servicio adicional o clasificación fiscal de viaje.
-              </p>
-            </div>
-          ) : (
-            <>
-              <div className="history-table-wrap">
-                <table className="history-table min-w-[1180px] table-fixed">
-                  <thead>
-                    <tr>
-                      <th className="w-[22%]">Servicio</th>
-                      <th className="w-[11%] text-center">Margen</th>
-                      <th className="w-[10%] text-center">Impuesto</th>
-                      <th className="w-[12%] text-center">Estado precio</th>
-                      <th className="w-[20%] text-center">Fiscal</th>
-                      <th className="w-[25%] text-center">Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {visibleCatalog.map((item) => {
-                      const configuration = item.pricingConfiguration;
-                      const supportsPricing = hasAdditionalServiceUsage(item);
-                      const fiscalPresentation =
-                        fiscalReadinessPresentation[item.fiscalReadiness.status];
-
-                      return (
-                        <tr key={item.id}>
-                          <td className="history-col-name">
-                            <div>{item.name}</div>
-                            {!supportsPricing ? (
-                              <div className="mt-1.5 flex flex-wrap gap-1.5">
-                                {item.usages.map((usage) => (
-                                <Badge
-                                  key={usage}
-                                  variant="outline"
-                                  className="whitespace-normal border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-200 dark:bg-blue-50 dark:text-blue-700"
-                                >
-                                  {catalogUsageLabels[usage]}
-                                </Badge>
-                                ))}
-                              </div>
-                            ) : null}
-                          </td>
-                          <td className="text-center">
-                            {!supportsPricing ? (
-                              <span className="text-slate-500">No aplica</span>
-                            ) : configuration ? (
-                              <>
-                                <div className="font-bold">
-                                  {formatMargin(configuration)}
-                                </div>
-                                <div
-                                  className="mt-0.5 text-xs font-semibold"
-                                  style={{
-                                    color:
-                                      configuration.marginType ===
-                                      "PERCENTAGE"
-                                        ? "#7c3aed"
-                                        : "#2563eb",
-                                  }}
-                                >
-                                  {marginTypeLabels[configuration.marginType]}
-                                </div>
-                              </>
-                            ) : (
-                              <span className="text-slate-500">
-                                Sin definir
-                              </span>
-                            )}
-                          </td>
-                          <td className="text-center">
-                            {!supportsPricing
-                              ? "—"
-                              : configuration
-                              ? `${configuration.taxPercentage}%`
-                              : "—"}
-                          </td>
-                          <td className="text-center">
-                            {!supportsPricing ? (
-                              <Badge
-                                variant="outline"
-                                className="border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-200 dark:bg-slate-50 dark:text-slate-600"
-                              >
-                                No aplica
-                              </Badge>
-                            ) : <Badge
-                              style={
-                                !configuration
-                                  ? {
-                                      backgroundColor: "#fef3c7",
-                                      borderColor: "#fcd34d",
-                                      color: "#b45309",
-                                    }
-                                  : undefined
-                              }
-                              className={
-                                configuration?.isActive
-                                  ? "gap-2 border-green-200 bg-green-50 px-3 py-1 text-green-700 hover:bg-green-50 dark:border-green-200 dark:bg-green-50 dark:text-green-700"
-                                  : configuration
-                                    ? "gap-2 border-orange-200 bg-orange-50 px-3 py-1 text-orange-700 hover:bg-orange-50 dark:border-orange-200 dark:bg-orange-50 dark:text-orange-700"
-                                    : "gap-2 border-amber-300 !bg-amber-100 px-3 py-1 !text-amber-800 hover:!bg-amber-100 dark:border-amber-300 dark:!bg-amber-100 dark:!text-amber-800"
-                              }
-                            >
-                              {configuration ? (
-                                configuration.isActive ? (
-                                  <CircleCheck
-                                    className="h-4 w-4"
-                                    aria-hidden="true"
-                                  />
-                                ) : (
-                                  <CirclePause
-                                    className="h-4 w-4"
-                                    aria-hidden="true"
-                                  />
-                                )
-                              ) : (
-                                <Hourglass
-                                  className="h-4 w-4"
-                                  aria-hidden="true"
-                                />
-                              )}
-                              {configuration
-                                ? configuration.isActive
-                                  ? "Activo"
-                                  : "Inactivo"
-                                : "Pendiente"}
-                            </Badge>}
-                          </td>
-                          <td className="text-center">
-                            <Badge
-                              variant="outline"
-                              className={`whitespace-normal text-center ${fiscalPresentation.className}`}
-                              title={item.fiscalReadiness.issues.join(", ") || undefined}
-                            >
-                              {fiscalPresentation.label}
-                            </Badge>
-                          </td>
-                          <td>
-                            <div className="flex flex-wrap justify-center gap-2">
-                              {supportsPricing ? <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={() => openConfigurationModal(item)}
-                                disabled={item.fiscalReadiness.status !== "READY" && !configuration?.isActive}
-                                title={item.fiscalReadiness.status !== "READY" && !configuration?.isActive ? "Active y complete el perfil fiscal antes de configurar el precio." : undefined}
-                                className={
-                                  configuration
-                                    ? "min-w-[118px] gap-2 border-slate-300 bg-white text-slate-700 shadow-sm hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 dark:border-slate-300 dark:bg-white dark:text-slate-700 dark:hover:border-blue-300 dark:hover:bg-blue-50 dark:hover:text-blue-700"
-                                    : "min-w-[118px] gap-2 border-blue-500 bg-white text-blue-600 shadow-sm hover:bg-blue-50 hover:text-blue-700 dark:border-blue-500 dark:bg-white dark:text-blue-600 dark:hover:bg-blue-50 dark:hover:text-blue-700"
-                                }
-                              >
-                                {configuration ? (
-                                  <PencilLine
-                                    className="h-4 w-4 text-blue-600"
-                                    aria-hidden="true"
-                                  />
-                                ) : (
-                                  <SlidersHorizontal
-                                    className="h-4 w-4 text-blue-600"
-                                    aria-hidden="true"
-                                  />
-                                )}
-                                {configuration ? "Editar" : "Configurar"}
-                              </Button> : null}
-                              {supportsPricing && item.fiscalReadiness.status !== "READY" && !configuration?.isActive ? <span className="basis-full text-xs text-amber-700">Configure y active el perfil fiscal primero.</span> : null}
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={() => setSelectedFiscalItem(item)}
-                                className="min-w-[132px] gap-2 border-teal-500 bg-white text-teal-700 shadow-sm hover:bg-teal-50 hover:text-teal-800 dark:border-teal-500 dark:bg-white dark:text-teal-700 dark:hover:bg-teal-50"
-                              >
-                                <ReceiptText className="h-4 w-4" aria-hidden="true" />
-                                {item.fiscalProfile
-                                  ? "Editar fiscal"
-                                  : "Configurar fiscal"}
-                              </Button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              <footer className="mt-4 flex items-center justify-between gap-4 text-sm text-slate-500">
-                <span>
-                  Mostrando {firstResult + 1} a {lastResult} de {catalog.length}{" "}
-                  resultados
-                </span>
-                <div className="flex items-center gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    aria-label="Página anterior"
-                    disabled={activePage === 1}
-                    onClick={() =>
-                      setCurrentPage((page) => Math.max(1, page - 1))
-                    }
-                    className="h-8 w-8 border-slate-200"
-                  >
-                    <ChevronLeft className="h-4 w-4" aria-hidden="true" />
-                  </Button>
-                  <span className="inline-flex h-8 min-w-8 items-center justify-center rounded-md bg-blue-600 px-2 font-semibold text-white">
-                    {activePage}
-                  </span>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    aria-label="Página siguiente"
-                    disabled={activePage === totalPages}
-                    onClick={() =>
-                      setCurrentPage((page) =>
-                        Math.min(totalPages, page + 1),
-                      )
-                    }
-                    className="h-8 w-8 border-slate-200"
-                  >
-                    <ChevronRight className="h-4 w-4" aria-hidden="true" />
-                  </Button>
-                </div>
-              </footer>
-            </>
-          )}
-        </section>
-      </div>
+      <PricingConfigurationsTable
+        catalog={catalog}
+        visibleCatalog={visibleCatalog}
+        loadError={loadError}
+        activePage={activePage}
+        totalPages={totalPages}
+        firstResult={firstResult}
+        lastResult={lastResult}
+        onRetry={() => void loadCatalog()}
+        onConfigurePricing={openConfigurationModal}
+        onConfigureFiscal={setSelectedFiscalItem}
+        onPreviousPage={() => setCurrentPage((page) => Math.max(1, page - 1))}
+        onNextPage={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+      />
     </main>
   );
 }
