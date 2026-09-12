@@ -7,7 +7,18 @@ import { useRouter } from 'next/navigation';
 import AttachmentViewer from '@/components/attachment-viewer';
 import { LoadingModal } from '@/components/loading-modal';
 import { ConfirmModal } from '@/components/confirm-modal';
-import { formatBusinessDate, toLocalDateIso } from '@/shared/regional';
+import { toLocalDateIso } from '@/shared/regional';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { IconBadge } from '@/components/ui/icon-badge';
+import { PageHeader } from '@/components/patterns/page-header';
+import { EmployeeEditor } from '@/features/employees/employee-editor';
+import { EmployeeFilters } from '@/features/employees/employee-filters';
+import { EmployeeProfile } from '@/features/employees/employee-profile';
+import { EmployeeUserLink, type AvailableEmployeeUser } from '@/features/employees/employee-user-link';
+import { EmployeesTable } from '@/features/employees/employees-table';
+import { BriefcaseBusiness, CalendarDays, CircleUserRound, Plus, Users } from 'lucide-react';
 import {
   getEmployees,
   getEmployee,
@@ -19,8 +30,6 @@ import {
   getEmployeeStats,
   getAvailableEmployeeUsers,
   linkEmployeeUser,
-  calculateAge,
-  DOCUMENT_TYPE_LABELS,
   type Employee,
   type EmployeeDocument,
   type CreateEmployeeDto,
@@ -28,26 +37,7 @@ import {
   type EmployeeStats,
 } from '@/lib/employees-api';
 
-type AvailableUser = {
-  id: string;
-  fullName: string;
-  email: string;
-  role: string;
-  isActive: boolean;
-};
-
 type ModalMode = 'create' | 'edit' | 'view' | null;
-
-const DOCUMENT_TYPES = [
-  'CONTRATO',
-  'CEDULA_FRONTAL',
-  'CEDULA_TRASERA',
-  'PASAPORTE',
-  'LICENCIA',
-  'INCAPACIDAD',
-  'CERTIFICADO',
-  'OTRO',
-] as const;
 
 export default function EmployeesPage() {
   const router = useRouter();
@@ -60,7 +50,7 @@ export default function EmployeesPage() {
   const [success, setSuccess] = useState('');
   
   const [linkUserModalOpen, setLinkUserModalOpen] = useState(false);
-  const [availableUsers, setAvailableUsers] = useState<AvailableUser[]>([]);
+  const [availableUsers, setAvailableUsers] = useState<AvailableEmployeeUser[]>([]);
   const [selectedUserId, setSelectedUserId] = useState('');
   const [linkingUser, setLinkingUser] = useState(false);
 
@@ -379,1295 +369,108 @@ export default function EmployeesPage() {
 
   return (
     <main className="app-shell">
-      {/* Header con gradiente */}
-      <div
-        style={{
-          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-          padding: '30px',
-          borderRadius: '12px',
-          marginBottom: '30px',
-          boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
-        }}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <h1 style={{ fontSize: '28px', fontWeight: 'bold', color: 'white', marginBottom: '8px' }}>
-              🧑‍💼 Gestión de Empleados
-            </h1>
-            <p style={{ color: 'rgba(255,255,255,0.9)', fontSize: '14px' }}>
-              Administra tu equipo de trabajo y documentación laboral
-            </p>
-          </div>
-          <button
-            onClick={() => handleOpenModal('create')}
-            style={{
-              padding: '12px 24px',
-              background: 'white',
-              color: '#667eea',
-              border: 'none',
-              borderRadius: '8px',
-              cursor: 'pointer',
-              fontWeight: '600',
-              fontSize: '15px',
-              boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-              transition: 'transform 0.2s',
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.05)')}
-            onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
-          >
-            ➕ Nuevo Empleado
-          </button>
-        </div>
-      </div>
+      <PageHeader
+        title={<span className="flex items-center gap-3"><IconBadge tone="primary"><Users aria-hidden="true" /></IconBadge>Gestión de empleados</span>}
+        description="Administra tu equipo de trabajo y documentación laboral."
+        meta={<Badge variant="info"><Users aria-hidden="true" />{employees.length} empleados</Badge>}
+        actions={<Button type="button" onClick={() => handleOpenModal('create')}><Plus aria-hidden="true" />Nuevo empleado</Button>}
+      />
 
-      {/* Stats Cards */}
-      {stats && (
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(4, 1fr)',
-            gap: '20px',
-            marginBottom: '30px',
-          }}
-        >
-          <div
-            style={{
-              padding: '24px',
-              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-              borderRadius: '12px',
-              boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
-              color: 'white',
-            }}
-          >
-            <div style={{ fontSize: '14px', opacity: 0.9, marginBottom: '10px', fontWeight: '500' }}>👥 Total Empleados</div>
-            <div style={{ fontSize: '36px', fontWeight: 'bold' }}>{stats.total}</div>
-          </div>
-          <div
-            style={{
-              padding: '24px',
-              background: 'white',
-              borderRadius: '12px',
-              boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
-              borderLeft: '4px solid #10b981',
-            }}
-          >
-            <div style={{ fontSize: '14px', color: '#666', marginBottom: '10px', fontWeight: '500' }}>✅ Activos</div>
-            <div style={{ fontSize: '36px', fontWeight: 'bold', color: '#10b981' }}>{stats.activos}</div>
-          </div>
-          <div
-            style={{
-              padding: '24px',
-              background: 'white',
-              borderRadius: '12px',
-              boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
-              borderLeft: '4px solid #f59e0b',
-            }}
-          >
-            <div style={{ fontSize: '14px', color: '#666', marginBottom: '10px', fontWeight: '500' }}>⏸️ Suspendidos</div>
-            <div style={{ fontSize: '36px', fontWeight: 'bold', color: '#f59e0b' }}>{stats.suspendidos}</div>
-          </div>
-          <div
-            style={{
-              padding: '24px',
-              background: 'white',
-              borderRadius: '12px',
-              boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
-              borderLeft: '4px solid #ef4444',
-            }}
-          >
-            <div style={{ fontSize: '14px', color: '#666', marginBottom: '10px', fontWeight: '500' }}>❌ Inactivos</div>
-            <div style={{ fontSize: '36px', fontWeight: 'bold', color: '#ef4444' }}>{stats.inactivos}</div>
-          </div>
-        </div>
-      )}
+      {stats && <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <Card><CardContent className="flex items-center gap-4 p-5"><IconBadge tone="primary"><Users aria-hidden="true" /></IconBadge><div><p className="text-sm text-muted-foreground">Total empleados</p><p className="mt-1 text-2xl font-semibold tracking-tight text-foreground">{stats.total}</p></div></CardContent></Card>
+        <Card><CardContent className="flex items-center gap-4 p-5"><IconBadge tone="success"><CircleUserRound aria-hidden="true" /></IconBadge><div><p className="text-sm text-muted-foreground">Activos</p><p className="mt-1 text-2xl font-semibold tracking-tight text-foreground">{stats.activos}</p></div></CardContent></Card>
+        <Card><CardContent className="flex items-center gap-4 p-5"><IconBadge tone="warning"><CalendarDays aria-hidden="true" /></IconBadge><div><p className="text-sm text-muted-foreground">Suspendidos</p><p className="mt-1 text-2xl font-semibold tracking-tight text-foreground">{stats.suspendidos}</p></div></CardContent></Card>
+        <Card><CardContent className="flex items-center gap-4 p-5"><IconBadge tone="destructive"><BriefcaseBusiness aria-hidden="true" /></IconBadge><div><p className="text-sm text-muted-foreground">Inactivos</p><p className="mt-1 text-2xl font-semibold tracking-tight text-foreground">{stats.inactivos}</p></div></CardContent></Card>
+      </section>}
 
-      {/* Filtros */}
-      <div
-        style={{
-          background: 'white',
-          padding: '24px',
-          borderRadius: '12px',
-          marginBottom: '25px',
-          boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
-        }}
-      >
-        <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '15px', color: '#374151' }}>🔍 Filtros de Búsqueda</h3>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '15px' }}>
-          <div>
-            <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500' }}>Estado</label>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '8px',
-                border: '1px solid #d1d5db',
-                borderRadius: '6px',
-                fontSize: '14px',
-              }}
-            >
-              <option value="">Todos</option>
-              <option value="ACTIVO">Activo</option>
-              <option value="SUSPENDIDO">Suspendido</option>
-              <option value="INACTIVO">Inactivo</option>
-              <option value="TERMINADO">Terminado</option>
-            </select>
-          </div>
-
-          <div>
-            <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500' }}>Buscar</label>
-            <input
-              type="text"
-              placeholder="Nombre, cédula o email..."
-              value={searchFilter}
-              onChange={(e) => setSearchFilter(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '8px',
-                border: '1px solid #d1d5db',
-                borderRadius: '6px',
-                fontSize: '14px',
-              }}
-            />
-          </div>
-          <div>
-            <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500' }}>Posición</label>
-            <input
-              type="text"
-              placeholder="Ej: Agente Senior"
-              value={positionFilter}
-              onChange={(e) => setPositionFilter(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '8px',
-                border: '1px solid #d1d5db',
-                borderRadius: '6px',
-                fontSize: '14px',
-              }}
-            />
-          </div>
-          <div>
-            <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500' }}>Departamento</label>
-            <input
-              type="text"
-              placeholder="Ej: Ventas"
-              value={departmentFilter}
-              onChange={(e) => setDepartmentFilter(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '8px',
-                border: '1px solid #d1d5db',
-                borderRadius: '6px',
-                fontSize: '14px',
-              }}
-            />
-          </div>
-        </div>
-      </div>
+      <EmployeeFilters status={statusFilter} search={searchFilter} position={positionFilter} department={departmentFilter} onStatusChange={setStatusFilter} onSearchChange={setSearchFilter} onPositionChange={setPositionFilter} onDepartmentChange={setDepartmentFilter} />
 
       {/* Lista de empleados */}
-      <div style={{ background: 'white', borderRadius: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', overflow: 'hidden' }}>
-        <div style={{ padding: '20px 24px', borderBottom: '2px solid #e5e7eb' }}>
-          <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#1f2937' }}>📋 Lista de Empleados</h3>
-        </div>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead>
-            <tr style={{ background: 'linear-gradient(to right, #f9fafb, #f3f4f6)', borderBottom: '2px solid #e5e7eb' }}>
-              <th style={{ padding: '14px 16px', textAlign: 'left', fontSize: '13px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Nombre</th>
-              <th style={{ padding: '14px 16px', textAlign: 'left', fontSize: '13px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Cédula</th>
-              <th style={{ padding: '14px 16px', textAlign: 'left', fontSize: '13px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Posición</th>
-              <th style={{ padding: '14px 16px', textAlign: 'left', fontSize: '13px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Departamento</th>
-              <th style={{ padding: '14px 16px', textAlign: 'left', fontSize: '13px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Estado</th>
-              <th style={{ padding: '14px 16px', textAlign: 'center', fontSize: '13px', fontWeight: '600', color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Acciones</th>
-            </tr>
-          </thead>
-          <tbody>
-            {employees.length === 0 ? (
-              <tr>
-                <td colSpan={6} style={{ padding: '50px', textAlign: 'center' }}>
-                  <div style={{ fontSize: '48px', marginBottom: '15px' }}>👥</div>
-                  <p style={{ color: '#9ca3af', fontSize: '15px' }}>No hay empleados registrados</p>
-                </td>
-              </tr>
-            ) : (
-              employees.map((emp) => (
-                <tr 
-                  key={emp.id} 
-                  style={{ borderBottom: '1px solid #f3f4f6', transition: 'background 0.2s' }}
-                  onMouseEnter={(e) => (e.currentTarget.style.background = '#f9fafb')}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = 'white')}
-                >
-                  <td style={{ padding: '14px 16px', fontSize: '14px', fontWeight: '500', color: '#1f2937' }}>{emp.fullName}</td>
-                  <td style={{ padding: '14px 16px', fontSize: '14px', color: '#4b5563' }}>{emp.documentId}</td>
-                  <td style={{ padding: '14px 16px', fontSize: '14px', color: '#4b5563' }}>{emp.position}</td>
-                  <td style={{ padding: '14px 16px', fontSize: '14px', color: '#6b7280' }}>{emp.department || '-'}</td>
-                  <td style={{ padding: '14px 16px' }}>
-                    <span
-                      style={{
-                        padding: '4px 12px',
-                        borderRadius: '12px',
-                        fontSize: '12px',
-                        fontWeight: '600',
-                        background:
-                          emp.status === 'ACTIVO'
-                            ? '#d1fae5'
-                            : emp.status === 'SUSPENDIDO'
-                            ? '#fef3c7'
-                            : '#fee2e2',
-                        color:
-                          emp.status === 'ACTIVO'
-                            ? '#065f46'
-                            : emp.status === 'SUSPENDIDO'
-                            ? '#92400e'
-                            : '#991b1b',
-                      }}
-                    >
-                      {emp.status}
-                    </span>
-                  </td>
-                  <td style={{ padding: '14px 16px', textAlign: 'center' }}>
-                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
-                      <button
-                        onClick={() => handleOpenModal('view', emp.id)}
-                        style={{
-                          padding: '7px 14px',
-                          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '6px',
-                          cursor: 'pointer',
-                          fontSize: '13px',
-                          fontWeight: '500',
-                          transition: 'transform 0.2s, box-shadow 0.2s',
-                          boxShadow: '0 2px 4px rgba(102, 126, 234, 0.3)',
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.transform = 'translateY(-1px)';
-                          e.currentTarget.style.boxShadow = '0 4px 8px rgba(102, 126, 234, 0.4)';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.transform = 'translateY(0)';
-                          e.currentTarget.style.boxShadow = '0 2px 4px rgba(102, 126, 234, 0.3)';
-                        }}
-                      >
-                        👁️ Ver
-                      </button>
-                      <button
-                        onClick={() => handleOpenModal('edit', emp.id)}
-                        style={{
-                          padding: '7px 14px',
-                          background: '#10b981',
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: '6px',
-                          cursor: 'pointer',
-                          fontSize: '13px',
-                          fontWeight: '500',
-                          transition: 'transform 0.2s, box-shadow 0.2s',
-                          boxShadow: '0 2px 4px rgba(16, 185, 129, 0.3)',
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.transform = 'translateY(-1px)';
-                          e.currentTarget.style.boxShadow = '0 4px 8px rgba(16, 185, 129, 0.4)';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.transform = 'translateY(0)';
-                          e.currentTarget.style.boxShadow = '0 2px 4px rgba(16, 185, 129, 0.3)';
-                        }}
-                      >
-                        ✏️ Editar
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+      <EmployeesTable
+        employees={employees}
+        onView={(employeeId) => handleOpenModal('view', employeeId)}
+        onEdit={(employeeId) => handleOpenModal('edit', employeeId)}
+      />
 
       {/* Modal Create/Edit */}
       {(modalMode === 'create' || modalMode === 'edit') && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: 'rgba(0,0,0,0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000,
-          }}
-          onClick={handleCloseModal}
-        >
-          <div
-            style={{
-              background: 'white',
-              borderRadius: '12px',
-              padding: '20px',
-              maxWidth: '800px',
-              width: '90%',
-              maxHeight: '90vh',
-              overflow: 'hidden',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '8px', color: '#1f2937' }}>
-              {modalMode === 'create' ? '➕ Nuevo Empleado' : '✏️ Editar Empleado'}
-            </h2>
-            {modalMode === 'create' && (
-              <div
-                style={{
-                  padding: '8px 12px',
-                  background: '#dbeafe',
-                  borderLeft: '4px solid #3b82f6',
-                  borderRadius: '6px',
-                  marginBottom: '12px',
-                  fontSize: '12px',
-                  color: '#1e40af',
-                }}
-              >
-                ℹ️ Los documentos del empleado se pueden cargar después de crearlo, en la opción "Ver Detalles".
-              </div>
-            )}
-
-
-            {error && (
-              <div
-                style={{
-                  padding: '12px',
-                  background: '#fee2e2',
-                  color: '#991b1b',
-                  borderRadius: '6px',
-                  marginBottom: '15px',
-                  fontSize: '14px',
-                }}
-              >
-                {error}
-              </div>
-            )}
-
-            {success && (
-              <div
-                style={{
-                  padding: '12px',
-                  background: '#d1fae5',
-                  color: '#065f46',
-                  borderRadius: '6px',
-                  marginBottom: '15px',
-                  fontSize: '14px',
-                }}
-              >
-                {success}
-              </div>
-            )}
-
-            <form onSubmit={handleSubmit}>
-              <div style={{ display: 'grid', gap: '10px' }}>
-                <div>
-                  <label style={{ display: 'block', marginBottom: '4px', fontSize: '13px', fontWeight: '500' }}>
-                    Nombre Completo *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.fullName}
-                    onChange={(e) => setFormData({ ...formData, fullName: e.target.value })}
-                    style={{
-                      width: '100%',
-                      padding: '8px',
-                      border: '1px solid #d1d5db',
-                      borderRadius: '6px',
-                      fontSize: '13px',
-                    }}
-                  />
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500' }}>
-                      Cédula *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={formData.documentId}
-                      onChange={(e) => setFormData({ ...formData, documentId: e.target.value })}
-                      style={{
-                        width: '100%',
-                        padding: '10px',
-                        border: '1px solid #d1d5db',
-                        borderRadius: '6px',
-                        fontSize: '14px',
-                      }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500' }}>
-                      Fecha de Nacimiento
-                    </label>
-                    <input
-                      type="date"
-                      value={formData.dateOfBirth}
-                      onChange={(e) => setFormData({ ...formData, dateOfBirth: e.target.value })}
-                      style={{
-                        width: '100%',
-                        padding: '10px',
-                        border: '1px solid #d1d5db',
-                        borderRadius: '6px',
-                        fontSize: '14px',
-                      }}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500' }}>Email *</label>
-                  <input
-                    type="email"
-                    required
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    style={{
-                      width: '100%',
-                      padding: '10px',
-                      border: '1px solid #d1d5db',
-                      borderRadius: '6px',
-                      fontSize: '14px',
-                    }}
-                  />
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500' }}>Teléfono</label>
-                    <input
-                      type="text"
-                      value={formData.phone}
-                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                      style={{
-                        width: '100%',
-                        padding: '10px',
-                        border: '1px solid #d1d5db',
-                        borderRadius: '6px',
-                        fontSize: '14px',
-                      }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500' }}>
-                      Fecha de Ingreso *
-                    </label>
-                    <input
-                      type="date"
-                      required
-                      value={formData.hireDate}
-                      onChange={(e) => setFormData({ ...formData, hireDate: e.target.value })}
-                      style={{
-                        width: '100%',
-                        padding: '10px',
-                        border: '1px solid #d1d5db',
-                        borderRadius: '6px',
-                        fontSize: '14px',
-                      }}
-                    />
-                  </div>
-                </div>
-                
-                      <div>
-  <label
-    style={{
-      display: 'block',
-      marginBottom: '5px',
-      fontSize: '14px',
-      fontWeight: '500',
-    }}
-  >
-    Tipo de Empleado *
-  </label>
-
-  <select
-    value={formData.employmentType}
-    onChange={(e) =>
-      setFormData({
-        ...formData,
-        employmentType: e.target.value as any,
-      })
-    }
-    style={{
-      width: '100%',
-      padding: '10px',
-      border: '1px solid #d1d5db',
-      borderRadius: '6px',
-      fontSize: '14px',
-    }}
-  >
-    <option value="FULL_TIME">Tiempo Completo</option>
-    <option value="PART_TIME">Medio Tiempo</option>
-    <option value="TEMPORARY">Temporal</option>
-    <option value="CONTRACTOR">Servicios Profesionales</option>
-  </select>
-</div>
-
-                <div>
-                  <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500' }}>Dirección</label>
-                  <textarea
-                    value={formData.address}
-                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                    rows={2}
-                    style={{
-                      width: '100%',
-                      padding: '10px',
-                      border: '1px solid #d1d5db',
-                      borderRadius: '6px',
-                      fontSize: '14px',
-                      resize: 'vertical',
-                    }}
-                  />
-                </div>
-                    
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-                  <div>
-
-                    
-                    <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500' }}>
-                      Posición *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={formData.position}
-                      onChange={(e) => setFormData({ ...formData, position: e.target.value })}
-                      placeholder="Ej: Agente Senior"
-                      style={{
-                        width: '100%',
-                        padding: '10px',
-                        border: '1px solid #d1d5db',
-                        borderRadius: '6px',
-                        fontSize: '14px',
-                      }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500' }}>
-                      Departamento
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.department}
-                      onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-                      placeholder="Ej: Ventas"
-                      style={{
-                        width: '100%',
-                        padding: '10px',
-                        border: '1px solid #d1d5db',
-                        borderRadius: '6px',
-                        fontSize: '14px',
-                      }}
-                    />
-                  </div>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500' }}>
-                      💰 Salario Mensual (₡) *
-                    </label>
-                    <input
-                      type="number"
-                      required
-                      min="0"
-                      step="0.01"
-                      value={formData.monthlySalary || ''}
-                      onChange={(e) => setFormData({ ...formData, monthlySalary: Number(e.target.value) })}
-                      placeholder="Ej: 500000"
-                      style={{
-                        width: '100%',
-                        padding: '10px',
-                        border: '1px solid #d1d5db',
-                        borderRadius: '6px',
-                        fontSize: '14px',
-                      }}
-                    />
-                    <span style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px', display: 'block' }}>
-                      Salario en colones costarricenses
-                    </span>
-                  </div>
-
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500' }}>Estado</label>
-                    <select
-                      value={formData.status}
-                      onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
-                      style={{
-                        width: '100%',
-                        padding: '10px',
-                        border: '1px solid #d1d5db',
-                        borderRadius: '6px',
-                        fontSize: '14px',
-                      }}
-                    >
-                      <option value="ACTIVO">Activo</option>
-                      <option value="SUSPENDIDO">Suspendido</option>
-                      <option value="INACTIVO">Inactivo</option>
-                      <option value="TERMINADO">Terminado</option>
-                    </select>
-                  </div>
-                      {formData.status === 'TERMINADO' && (
- 
-                <div>
-                    <label style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500', }} > Fecha de Terminación </label>
-
-                    <input
-                     type="date"
-                      value={formData.terminationDate || ''}
-                       onChange={(e) =>
-                   setFormData({
-                   ...formData,
-                         terminationDate: e.target.value,
-                   })
-                   }
-                  
-                   style={{
-                    width: '100%',
-                    padding: '10px',
-                    border: '1px solid #d1d5db',
-                    borderRadius: '6px',
-                    fontSize: '14px',
-                  }}
-                   />
-               </div>
-                )}
-
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', gap: '10px', marginTop: '15px' }}>
-                <button
-                  type="button"
-                  onClick={handleCloseModal}
-                  style={{
-                    flex: 1,
-                    padding: '10px',
-                    background: '#e5e7eb',
-                    color: '#374151',
-                    border: 'none',
-                    borderRadius: '8px',
-                    cursor: 'pointer',
-                    fontWeight: '600',
-                    fontSize: '14px',
-                  }}
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  style={{
-                    flex: 1,
-                    padding: '10px',
-                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '8px',
-                    cursor: 'pointer',
-                    fontWeight: '600',
-                    fontSize: '13px',
-                  }}
-                >
-                  {modalMode === 'create' ? 'Crear Empleado' : 'Guardar Cambios'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <EmployeeEditor
+          mode={modalMode}
+          formData={formData}
+          error={error}
+          success={success}
+          onFormDataChange={setFormData}
+          onSubmit={handleSubmit}
+          onClose={handleCloseModal}
+        />
       )}
 
       {/* Modal View (con documentos) */}
       {modalMode === 'view' && selectedEmployee && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: 'rgba(0,0,0,0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000,
-            padding: '20px',
+        <EmployeeProfile
+          employee={selectedEmployee}
+          error={error}
+          success={success}
+          selectedDocType={selectedDocType}
+          documentNotes={documentNotes}
+          uploadingDoc={uploadingDoc}
+          documentsByType={docsByType}
+          onClose={handleCloseModal}
+          onCreateSystemUser={() => {
+            router.push(
+              `/admin/users?createFrom=employee&name=${encodeURIComponent(selectedEmployee.fullName)}&email=${encodeURIComponent(selectedEmployee.email)}&employeeId=${selectedEmployee.id}`
+            );
           }}
-          onClick={handleCloseModal}
-        >
-          <div
-            style={{
-              background: 'white',
-              borderRadius: '12px',
-              padding: '30px',
-              maxWidth: '900px',
-              width: '100%',
-              maxHeight: '90vh',
-              overflow: 'auto',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
-              <h2 style={{ fontSize: '20px', fontWeight: 'bold' }}>👤 Perfil del Empleado</h2>
-              <div style={{ display: 'flex', gap: '10px' }}>
-                {!selectedEmployee.userId && (
-                  <button
-                    onClick={() => {
-                      router.push(
-                        `/admin/users?createFrom=employee&name=${encodeURIComponent(selectedEmployee.fullName)}&email=${encodeURIComponent(selectedEmployee.email)}&employeeId=${selectedEmployee.id}`
-                      );
-                    }}
-                    style={{
-                      padding: '8px 16px',
-                      background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '6px',
-                      cursor: 'pointer',
-                      fontSize: '14px',
-                      fontWeight: '500',
-                      boxShadow: '0 2px 4px rgba(16, 185, 129, 0.3)',
-                    }}
-                  >
-                    👤 Crear Usuario del Sistema
-                  </button>
-)}
-
-{!selectedEmployee.userId && (
-  <button
-    onClick={async () => {
-      await loadAvailableUsers();
-      setSelectedUserId('');
-      setLinkUserModalOpen(true);
-    }}
-    style={{
-      padding: '8px 16px',
-      background: 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)',
-      color: 'white',
-      border: 'none',
-      borderRadius: '6px',
-      cursor: 'pointer',
-      fontSize: '14px',
-      fontWeight: '500',
-    }}
-  >
-    🔗 Vincular Usuario Existente
-  </button>
-)}
-
-<button
-  onClick={handleCloseModal}
-  style={{
-    padding: '8px 16px',
-    background: '#e5e7eb',
-    border: 'none',
-    borderRadius: '6px',
-    cursor: 'pointer',
-    fontSize: '14px',
-  }}
->
-                    Cerrar
-                </button>
-              </div>
-            </div>
-
-            {error && (
-              <div
-                style={{
-                  padding: '12px',
-                  background: '#fee2e2',
-                  color: '#991b1b',
-                  borderRadius: '6px',
-                  marginBottom: '15px',
-                  fontSize: '14px',
-                }}
-              >
-                {error}
-              </div>
-            )}
-
-            {success && (
-              <div
-                style={{
-                  padding: '12px',
-                  background: '#d1fae5',
-                  color: '#065f46',
-                  borderRadius: '6px',
-                  marginBottom: '15px',
-                  fontSize: '14px',
-                }}
-              >
-                {success}
-              </div>
-            )}
-            
-{selectedEmployee.user && (
-  <div
-    style={{
-      background: '#eff6ff',
-      border: '1px solid #bfdbfe',
-      padding: '20px',
-      borderRadius: '8px',
-      marginBottom: '20px',
-    }}
-  >
-    <h3
-      style={{
-        fontSize: '16px',
-        fontWeight: '600',
-        marginBottom: '15px',
-        color: '#1e40af',
-      }}
-    >
-      👤 Usuario del Sistema
-    </h3>
-
-    <div
-      style={{
-        display: 'grid',
-        gridTemplateColumns: '1fr 1fr',
-        gap: '15px',
-        fontSize: '14px',
-      }}
-    >
-      <div>
-        <strong>Email:</strong> {selectedEmployee.user.email}
-      </div>
-
-      <div>
-        <strong>Rol:</strong> {selectedEmployee.user.role}
-      </div>
-
-      <div>
-        <strong>Estado:</strong>{" "}
-        {selectedEmployee.user.isActive ? "✅ Activo" : "⛔ Suspendido"}
-      </div>
-
-      <div>
-        <strong>ID Usuario:</strong> {selectedEmployee.user.id}
-      </div>
-    </div>
-  </div>
-)}
-            {/* Información Personal */}
-            <div
-              style={{
-                background: '#f9fafb',
-                padding: '20px',
-                borderRadius: '8px',
-                marginBottom: '20px',
-              }}
-            >
-              <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '15px', color: '#374151' }}>
-                📋 Información Personal
-              </h3>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', fontSize: '14px' }}>
-                <div>
-                  <strong>Nombre:</strong> {selectedEmployee.fullName}
-                </div>
-                <div>
-                  <strong>Cédula:</strong> {selectedEmployee.documentId}
-                </div>
-                {selectedEmployee.dateOfBirth && (
-                  <div>
-                    <strong>Edad:</strong> {calculateAge(selectedEmployee.dateOfBirth)} años
-                  </div>
-                )}
-                <div>
-                  <strong>Email:</strong> {selectedEmployee.email}
-                </div>
-                {selectedEmployee.phone && (
-                  <div>
-                    <strong>Teléfono:</strong> {selectedEmployee.phone}
-                  </div>
-                )}
-                {selectedEmployee.address && (
-                  <div style={{ gridColumn: '1 / -1' }}>
-                    <strong>Dirección:</strong> {selectedEmployee.address}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Información Laboral */}
-            <div
-              style={{
-                background: '#f9fafb',
-                padding: '20px',
-                borderRadius: '8px',
-                marginBottom: '20px',
-              }}
-            >
-              <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '15px', color: '#374151' }}>
-                💼 Información Laboral
-              </h3>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', fontSize: '14px' }}>
-                <div>
-                  <strong>Posición:</strong> {selectedEmployee.position}
-                </div>
-
-                <div>
-  <strong>Tipo de Empleado:</strong>{' '}
-  {selectedEmployee.employmentType === 'FULL_TIME'
-    ? 'Tiempo Completo'
-    : selectedEmployee.employmentType === 'PART_TIME'
-    ? 'Medio Tiempo'
-    : selectedEmployee.employmentType === 'TEMPORARY'
-    ? 'Temporal'
-    : 'Servicios Profesionales'}
-</div>
-                {selectedEmployee.department && (
-                  <div>
-                    <strong>Departamento:</strong> {selectedEmployee.department}
-                  </div>
-                )}
-                <div>
-                  <strong>Fecha de Ingreso:</strong>{' '}
-                  {formatBusinessDate(String(selectedEmployee.hireDate))}
-                </div>
-                <div>
-                  <strong>Estado:</strong>{' '}
-                  <span
-                    style={{
-                      padding: '3px 10px',
-                      borderRadius: '10px',
-                      fontSize: '12px',
-                      fontWeight: '600',
-                      background:
-                        selectedEmployee.status === 'ACTIVO'
-                          ? '#d1fae5'
-                          : selectedEmployee.status === 'SUSPENDIDO'
-                          ? '#fef3c7'
-                          : '#fee2e2',
-                      color:
-                        selectedEmployee.status === 'ACTIVO'
-                          ? '#065f46'
-                          : selectedEmployee.status === 'SUSPENDIDO'
-                          ? '#92400e'
-                          : '#991b1b',
-                    }}
-                  >
-                    {selectedEmployee.status}
-                  </span>
-                </div>
-
-
-                {selectedEmployee.terminationDate && (
-                <div>
-                <strong>Fecha de Terminación:</strong>{' '}
-                  {formatBusinessDate(String(selectedEmployee.terminationDate))}
-              </div>
-          )}
-
-                <div>
-                  <strong>Salario Mensual:</strong> ₡{Number(selectedEmployee.monthlySalary).toLocaleString('es-CR')}
-                </div>
-                <div>
-                  <strong>Salario Diario:</strong> ₡{Number(selectedEmployee.dailySalary).toLocaleString('es-CR')}
-                </div>
-              </div>
-            </div>
-
-            {/* Documentos */}
-            <div style={{ marginTop: '25px' }}>
-              <h3 style={{ fontSize: '16px', fontWeight: '600', marginBottom: '15px', color: '#374151' }}>
-                📎 Documentos
-              </h3>
-
-              {/* Upload Form */}
-              <form
-                onSubmit={handleUploadDocument}
-                style={{
-                  background: '#f9fafb',
-                  padding: '20px',
-                  borderRadius: '8px',
-                  marginBottom: '20px',
-                }}
-              >
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr auto', gap: '10px', alignItems: 'end' }}>
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '5px', fontSize: '13px', fontWeight: '500' }}>
-                      Tipo de Documento
-                    </label>
-                    <select
-                      value={selectedDocType}
-                      onChange={(e) => setSelectedDocType(e.target.value)}
-                      required
-                      style={{
-                        width: '100%',
-                        padding: '8px',
-                        border: '1px solid #d1d5db',
-                        borderRadius: '6px',
-                        fontSize: '13px',
-                      }}
-                    >
-                      <option value="">Seleccionar...</option>
-                      {DOCUMENT_TYPES.map((type) => (
-                        <option key={type} value={type}>
-                          {DOCUMENT_TYPE_LABELS[type]}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '5px', fontSize: '13px', fontWeight: '500' }}>
-                      Archivo
-                    </label>
-                    <input
-                      id="docFile"
-                      type="file"
-                      accept=".pdf,.jpg,.jpeg,.png,.webp"
-                      required
-                      style={{
-                        width: '100%',
-                        padding: '8px',
-                        border: '1px solid #d1d5db',
-                        borderRadius: '6px',
-                        fontSize: '13px',
-                      }}
-                    />
-                  </div>
-                  <button
-                    type="submit"
-                    disabled={uploadingDoc}
-                    style={{
-                      padding: '10px 20px',
-                      background: uploadingDoc ? '#9ca3af' : '#10b981',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '6px',
-                      cursor: uploadingDoc ? 'not-allowed' : 'pointer',
-                      fontSize: '13px',
-                      fontWeight: '600',
-                    }}
-                  >
-                    {uploadingDoc ? 'Subiendo...' : 'Subir'}
-                  </button>
-                </div>
-                <div style={{ marginTop: '10px' }}>
-                  <input
-                    type="text"
-                    placeholder="Notas (opcional)"
-                    value={documentNotes}
-                    onChange={(e) => setDocumentNotes(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '8px',
-                      border: '1px solid #d1d5db',
-                      borderRadius: '6px',
-                      fontSize: '13px',
-                    }}
-                  />
-                </div>
-              </form>
-
-              {/* Documentos agrupados por tipo */}
-              <div style={{ display: 'grid', gap: '15px' }}>
-                {DOCUMENT_TYPES.map((type) => {
-                  const docs = docsByType[type] || [];
-                  if (docs.length === 0) return null;
-
-                  return (
-                    <div
-                      key={type}
-                      style={{
-                        background: 'white',
-                        border: '1px solid #e5e7eb',
-                        borderRadius: '8px',
-                        padding: '15px',
-                      }}
-                    >
-                      <div style={{ fontSize: '14px', fontWeight: '600', marginBottom: '10px', color: '#374151' }}>
-                        {DOCUMENT_TYPE_LABELS[type]}
-                      </div>
-                      <div style={{ display: 'grid', gap: '8px' }}>
-                        {docs.map((doc) => (
-                          <div
-                            key={doc.id}
-                            style={{
-                              display: 'flex',
-                              justifyContent: 'space-between',
-                              alignItems: 'center',
-                              padding: '10px',
-                              background: '#f9fafb',
-                              borderRadius: '6px',
-                              fontSize: '13px',
-                            }}
-                          >
-                            <div style={{ flex: 1 }}>
-                              <div style={{ fontWeight: '500', marginBottom: '2px' }}>{doc.fileName}</div>
-                              <div style={{ fontSize: '12px', color: '#6b7280' }}>
-                                Subido: {new Date(doc.uploadedAt).toLocaleDateString('es-CR')} por {doc.uploadedByName}
-                              </div>
-                              {doc.notes && (
-                                <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '4px' }}>
-                                  📝 {doc.notes}
-                                </div>
-                              )}
-                            </div>
-                            <div style={{ display: 'flex', gap: '8px' }}>
-                              <button
-                                onClick={() => handleViewDocument(doc, selectedEmployee.documents || [])}
-                                style={{
-                                  padding: '6px 12px',
-                                  background: '#667eea',
-                                  color: 'white',
-                                  border: 'none',
-                                  borderRadius: '5px',
-                                  cursor: 'pointer',
-                                  fontSize: '12px',
-                                }}
-                              >
-                                👁️ Ver
-                              </button>
-                              <button
-                                onClick={() => handleDeleteDocument(doc.id)}
-                                style={{
-                                  padding: '6px 12px',
-                                  background: '#ef4444',
-                                  color: 'white',
-                                  border: 'none',
-                                  borderRadius: '5px',
-                                  cursor: 'pointer',
-                                  fontSize: '12px',
-                                }}
-                              >
-                                🗑️
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
-
-                {Object.keys(docsByType).length === 0 && (
-                  <div
-                    style={{
-                      padding: '40px',
-                      textAlign: 'center',
-                      color: '#9ca3af',
-                      background: '#f9fafb',
-                      borderRadius: '8px',
-                    }}
-                  >
-                    No hay documentos cargados. Usa el formulario de arriba para subir documentos.
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
+          onOpenUserLink={async () => {
+            await loadAvailableUsers();
+            setSelectedUserId('');
+            setLinkUserModalOpen(true);
+          }}
+          onUploadDocument={handleUploadDocument}
+          onSelectedDocTypeChange={setSelectedDocType}
+          onDocumentNotesChange={setDocumentNotes}
+          onViewDocument={handleViewDocument}
+          onDeleteDocument={handleDeleteDocument}
+        />
       )}
 
-      {linkUserModalOpen && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: 'rgba(0,0,0,0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 2000,
-          }}
-        >
-          <div
-            style={{
-              background: 'white',
-              padding: '24px',
-              borderRadius: '12px',
-              width: '500px',
-              maxWidth: '90vw',
-            }}
-          >
-            <h3 style={{ marginBottom: '20px' }}>
-              🔗 Vincular Usuario Existente
-            </h3>
+      <EmployeeUserLink
+        isOpen={linkUserModalOpen}
+        availableUsers={availableUsers}
+        selectedUserId={selectedUserId}
+        linkingUser={linkingUser}
+        onSelectedUserIdChange={setSelectedUserId}
+        onCancel={() => {
+          setLinkUserModalOpen(false);
+        }}
+        onConfirm={async () => {
+          if (!selectedEmployee || !selectedUserId) {
+            return;
+          }
 
-            <select
-              value={selectedUserId}
-              onChange={(e) => setSelectedUserId(e.target.value)}
-              style={{
-                width: '100%',
-                padding: '10px',
-                marginBottom: '20px',
-              }}
-            >
-              <option value="">
-                Seleccione un usuario
-              </option>
+          try {
+            setLinkingUser(true);
 
-              {availableUsers.map((user) => (
-                <option key={user.id} value={user.id}>
-                  {user.fullName} - {user.email} ({user.role})
-                </option>
-              ))}
-            </select>
+            const updatedEmployee = await linkEmployeeUser(
+              selectedEmployee.id,
+              selectedUserId,
+            );
 
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'flex-end',
-                gap: '10px',
-              }}
-            >
-              <button
-                onClick={() => {
-                  setLinkUserModalOpen(false);
-                }}
-              >
-                Cancelar
-              </button>
+            setSelectedEmployee(updatedEmployee);
 
-              <button
-  disabled={!selectedUserId || linkingUser}
-  onClick={async () => {
-    if (!selectedEmployee || !selectedUserId) {
-      return;
-    }
+            setLinkUserModalOpen(false);
+            setSelectedUserId('');
 
-    try {
-      setLinkingUser(true);
+            setSuccess('Usuario vinculado correctamente.');
 
-      const updatedEmployee = await linkEmployeeUser(
-        selectedEmployee.id,
-        selectedUserId,
-      );
-
-      setSelectedEmployee(updatedEmployee);
-
-      setLinkUserModalOpen(false);
-      setSelectedUserId('');
-
-      setSuccess('Usuario vinculado correctamente.');
-
-      await loadData();
-    } catch (err: any) {
-      setError(err.message || 'Error al vincular usuario');
-    } finally {
-      setLinkingUser(false);
-    }
-  }}
->
-  {linkingUser ? 'Vinculando...' : 'Vincular'}
-</button>
-            </div>
-          </div>
-        </div>
-      )}
+            await loadData();
+          } catch (err: any) {
+            setError(err.message || 'Error al vincular usuario');
+          } finally {
+            setLinkingUser(false);
+          }
+        }}
+      />
 
       {/* Attachment Viewer */}
       {attachmentViewerData && (
