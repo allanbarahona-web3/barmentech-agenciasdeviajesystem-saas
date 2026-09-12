@@ -1,6 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
+import { FormField } from '@/components/patterns/form-field';
 import { correctAttendanceEntry, type AttendanceEntry } from '@/lib/attendance-api';
 import { LoadingModal } from './loading-modal';
 
@@ -16,7 +23,6 @@ interface CorrectionEditModalProps {
 
 const toDateTimeLocal = (dateString: string) => {
   const date = new Date(dateString);
-
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
@@ -25,7 +31,16 @@ const toDateTimeLocal = (dateString: string) => {
   const seconds = String(date.getSeconds()).padStart(2, '0');
 
   return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
-  
+};
+
+const getCorrectionErrorMessage = (error: unknown) => {
+  const message = error instanceof Error ? error.message : '';
+
+  if (/reason must be longer than or equal to 10 characters/i.test(message)) {
+    return 'La razón de la corrección debe tener al menos 10 caracteres.';
+  }
+
+  return message || 'Error al corregir marcaje';
 };
 
 export function CorrectionEditModal({ entryId, entry, isOpen, onClose, onSuccess }: CorrectionEditModalProps) {
@@ -39,27 +54,27 @@ export function CorrectionEditModal({ entryId, entry, isOpen, onClose, onSuccess
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [feedbackState, setFeedbackState] = useState<'loading' | 'success' | 'error'>('loading');
   const [feedbackMessage, setFeedbackMessage] = useState('');
+  const [formError, setFormError] = useState('');
 
   useEffect(() => {
     if (!isOpen || !entryId || !entry) return;
 
-    
     setFormData({
       type: entry.type,
       clockIn: entry.clockIn ? toDateTimeLocal(entry.clockIn) : '',
       clockOut: entry.clockOut ? toDateTimeLocal(entry.clockOut) : '',
       reason: '',
     });
+    setFormError('');
   }, [isOpen, entryId, entry]);
 
   const handleSave = async () => {
     if (!entryId || !formData.reason.trim()) {
-      setFeedbackState('error');
-      setFeedbackMessage('Debes proporcionar una razón para la corrección');
-      setFeedbackOpen(true);
+      setFormError('Debes proporcionar una razón para la corrección.');
       return;
     }
 
+    setFormError('');
     setSaving(true);
     setFeedbackOpen(true);
     setFeedbackState('loading');
@@ -82,8 +97,8 @@ export function CorrectionEditModal({ entryId, entry, isOpen, onClose, onSuccess
         setFeedbackOpen(false);
       }, 1500);
     } catch (error) {
-      setFeedbackState('error');
-      setFeedbackMessage(error instanceof Error ? error.message : 'Error al corregir marcaje');
+      setFeedbackOpen(false);
+      setFormError(getCorrectionErrorMessage(error));
     } finally {
       setSaving(false);
     }
@@ -93,99 +108,57 @@ export function CorrectionEditModal({ entryId, entry, isOpen, onClose, onSuccess
 
   return (
     <>
-      <div className="fixed inset-0 bg-black/50 z-40" onClick={onClose}></div>
-      <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
-        <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
-          <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center">
-            <h2 className="text-lg font-semibold text-gray-900">Corregir Marcaje</h2>
-            <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
-              ✕
-            </button>
-          </div>
+      <Dialog open={isOpen} onOpenChange={(open) => {
+        if (!open) onClose();
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Corregir marcaje</DialogTitle>
+            <DialogDescription>Actualiza la información del marcaje y registra el motivo de la corrección.</DialogDescription>
+          </DialogHeader>
 
           {entry ? (
-            <div className="p-6 space-y-4">
-              {/* Display current values */}
-              <div className="text-xs text-gray-500 bg-gray-50 p-2 rounded">
-                <div>Empleado: {entry.User?.fullName || entry.User?.id || '-'}</div>
-                <div>Fecha: {new Date(entry.clockIn).toLocaleDateString()}</div>
-              </div>
+            <div className="mt-5 grid gap-4">
+              <Alert variant="info">
+                <AlertDescription>
+                  Empleado: {entry.User?.fullName || entry.User?.id || '-'} · Fecha: {new Date(entry.clockIn).toLocaleDateString()}
+                </AlertDescription>
+              </Alert>
 
-              {/* Type */}
-              <label className="block">
-                <span className="text-sm font-medium text-gray-700 mb-1 block">Estado</span>
-                <select
-                  value={formData.type}
-                  onChange={(e) => setFormData({ ...formData, type: e.target.value })}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
-                >
-                  {ATTENDANCE_STATES.map((state) => (
-                    <option key={state} value={state}>
-                      {state}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              {formError && (
+                <Alert variant="destructive">
+                  <AlertDescription>{formError}</AlertDescription>
+                </Alert>
+              )}
 
-              {/* Clock In */}
-              <label className="block">
-                <span className="text-sm font-medium text-gray-700 mb-1 block">Inicio</span>
-                <input
-                  type="datetime-local"
-                  step="1"
-                  value={formData.clockIn}
-                  onChange={(e) => setFormData({ ...formData, clockIn: e.target.value })}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
-                />
-              </label>
+              <FormField htmlFor="attendance-correction-state" label="Estado">
+                <Select id="attendance-correction-state" value={formData.type} onChange={(event) => setFormData({ ...formData, type: event.target.value })}>
+                  {ATTENDANCE_STATES.map((state) => <option key={state} value={state}>{state}</option>)}
+                </Select>
+              </FormField>
 
-              {/* Clock Out */}
-              <label className="block">
-                <span className="text-sm font-medium text-gray-700 mb-1 block">Fin</span>
-                <input
-                  type="datetime-local"
-                  step="1"
-                  value={formData.clockOut}
-                  onChange={(e) => setFormData({ ...formData, clockOut: e.target.value })}
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
-                />
-              </label>
+              <FormField htmlFor="attendance-correction-start" label="Inicio">
+                <Input id="attendance-correction-start" type="datetime-local" step="1" value={formData.clockIn} onChange={(event) => setFormData({ ...formData, clockIn: event.target.value })} />
+              </FormField>
 
-              {/* Reason */}
-              <label className="block">
-                <span className="text-sm font-medium text-gray-700 mb-1 block">Razón de la corrección *</span>
-                <textarea
-                  value={formData.reason}
-                  onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
-                  placeholder="Explica por qué se necesita esta corrección"
-                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm"
-                  rows={3}
-                />
-              </label>
+              <FormField htmlFor="attendance-correction-end" label="Fin">
+                <Input id="attendance-correction-end" type="datetime-local" step="1" value={formData.clockOut} onChange={(event) => setFormData({ ...formData, clockOut: event.target.value })} />
+              </FormField>
 
-              {/* Buttons */}
-              <div className="flex gap-3 pt-4">
-                <button
-                  onClick={onClose}
-                  disabled={saving}
-                  className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-md text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={() => void handleSave()}
-                  disabled={saving || !formData.reason.trim()}
-                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
-                >
-                  Guardar Corrección
-                </button>
-              </div>
+              <FormField htmlFor="attendance-correction-reason" label="Razón de la corrección" required>
+                <Textarea id="attendance-correction-reason" rows={3} value={formData.reason} placeholder="Explica por qué se necesita esta corrección" onChange={(event) => setFormData({ ...formData, reason: event.target.value })} />
+              </FormField>
+
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={onClose} disabled={saving}>Cancelar</Button>
+                <Button type="button" onClick={() => void handleSave()} disabled={saving || !formData.reason.trim()}>Guardar corrección</Button>
+              </DialogFooter>
             </div>
           ) : (
-            <div className="p-6 text-center text-gray-600">No se pudo cargar el marcaje</div>
+            <div className="mt-5 text-center text-sm text-muted-foreground">No se pudo cargar el marcaje.</div>
           )}
-        </div>
-      </div>
+        </DialogContent>
+      </Dialog>
 
       <LoadingModal
         isOpen={feedbackOpen}
