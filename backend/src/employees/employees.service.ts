@@ -5,8 +5,12 @@ import { StorageService } from '../storage/storage.service';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { UploadDocumentDto } from './dto/upload-document.dto';
-import { EmployeeStatus } from '@prisma/client';
+import { EmployeeStatus, Prisma } from '@prisma/client';
 import { Decimal } from '@prisma/client/runtime/library';
+import {
+  ListPaginatedEmployeesDto,
+  PaginatedEmployeesResponseDto,
+} from './dto/list-paginated-employees.dto';
 
 @Injectable()
 export class EmployeesService {
@@ -188,11 +192,11 @@ export class EmployeesService {
     }
 
     if (filters?.position) {
-      where.position = filters.position;
+      where.position = { contains: filters.position, mode: 'insensitive' };
     }
 
     if (filters?.department) {
-      where.department = filters.department;
+      where.department = { contains: filters.department, mode: 'insensitive' };
     }
 
     if (filters?.search) {
@@ -220,6 +224,60 @@ export class EmployeesService {
       },
       orderBy: { fullName: 'asc' },
     });
+  }
+
+  async findPaginated(
+    tenantId: string,
+    query: ListPaginatedEmployeesDto,
+  ): Promise<PaginatedEmployeesResponseDto> {
+    const where: Prisma.EmployeeWhereInput = { tenantId };
+
+    if (query.status) {
+      where.status = query.status;
+    }
+
+    if (query.position) {
+      where.position = { contains: query.position, mode: 'insensitive' };
+    }
+
+    if (query.department) {
+      where.department = { contains: query.department, mode: 'insensitive' };
+    }
+
+    if (query.search) {
+      where.OR = [
+        { fullName: { contains: query.search, mode: 'insensitive' } },
+        { documentId: { contains: query.search, mode: 'insensitive' } },
+        { email: { contains: query.search, mode: 'insensitive' } },
+      ];
+    }
+
+    const skip = (query.page - 1) * query.pageSize;
+    const [items, total] = await Promise.all([
+      this.prisma.employee.findMany({
+        where,
+        select: {
+          id: true,
+          fullName: true,
+          documentId: true,
+          position: true,
+          department: true,
+          status: true,
+        },
+        orderBy: [{ fullName: 'asc' }, { id: 'asc' }],
+        skip,
+        take: query.pageSize,
+      }),
+      this.prisma.employee.count({ where }),
+    ]);
+
+    return {
+      items,
+      total,
+      page: query.page,
+      pageSize: query.pageSize,
+      totalPages: Math.ceil(total / query.pageSize),
+    };
   }
 
   async findOne(tenantId: string, id: string) {

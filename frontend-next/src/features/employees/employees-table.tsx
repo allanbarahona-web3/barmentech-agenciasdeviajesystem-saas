@@ -2,16 +2,37 @@ import { DataTableShell } from '@/components/patterns/data-table-shell';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { EmployeeStatusBadge } from '@/features/employees/employee-status-badge';
-import type { Employee } from '@/lib/employees-api';
+import type { EmployeeListItem } from '@/lib/employees-api';
 import { Eye, Pencil, Users } from 'lucide-react';
 
 type EmployeesTableProps = {
-  employees: Employee[];
+  employees: EmployeeListItem[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  hasActiveFilters: boolean;
+  onPreviousPage: () => void;
+  onNextPage: () => void;
   onView: (employeeId: string) => void;
   onEdit: (employeeId: string) => void;
 };
 
-function EmployeesTable({ employees, onView, onEdit }: EmployeesTableProps) {
+function EmployeesTable({
+  employees,
+  page,
+  pageSize,
+  total,
+  totalPages,
+  hasActiveFilters,
+  onPreviousPage,
+  onNextPage,
+  onView,
+  onEdit,
+}: EmployeesTableProps) {
+  const firstEmployee = total === 0 ? 0 : ((page - 1) * pageSize) + 1;
+  const lastEmployee = Math.min(page * pageSize, total);
+
   return (
     <DataTableShell
       toolbar={(
@@ -23,9 +44,21 @@ function EmployeesTable({ employees, onView, onEdit }: EmployeesTableProps) {
       state={employees.length === 0 ? (
         <div>
           <Users aria-hidden="true" className="mx-auto mb-3 size-8 text-muted-foreground" />
-          <p className="font-medium text-foreground">No hay empleados registrados.</p>
+          <p className="font-medium text-foreground">
+            {hasActiveFilters ? 'No se encontraron empleados con los filtros actuales.' : 'No hay empleados registrados.'}
+          </p>
         </div>
       ) : null}
+      footer={(
+        <div className="flex flex-col gap-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+          <span>Mostrando {firstEmployee}–{lastEmployee} de {total} empleados</span>
+          <div className="flex items-center gap-2">
+            <span className="whitespace-nowrap">Página {page} de {totalPages}</span>
+            <Button type="button" size="sm" variant="outline" onClick={onPreviousPage} disabled={page <= 1}>Anterior</Button>
+            <Button type="button" size="sm" variant="outline" onClick={onNextPage} disabled={page >= totalPages || total === 0}>Siguiente</Button>
+          </div>
+        </div>
+      )}
     >
       <Table className="min-w-[860px] table-fixed">
         <TableHeader>

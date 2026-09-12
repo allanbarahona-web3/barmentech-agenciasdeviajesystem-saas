@@ -91,6 +91,32 @@ export interface EmployeeStats {
   inactivos: number;
 }
 
+export interface EmployeeListItem {
+  id: string;
+  fullName: string;
+  documentId: string;
+  position: string;
+  department: string | null;
+  status: 'ACTIVO' | 'SUSPENDIDO' | 'INACTIVO' | 'TERMINADO';
+}
+
+export interface PaginatedEmployeesResponse {
+  items: EmployeeListItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+export interface GetPaginatedEmployeesParams {
+  page: number;
+  pageSize: number;
+  status?: string;
+  position?: string;
+  department?: string;
+  search?: string;
+}
+
 // API Functions
 export async function createEmployee(data: CreateEmployeeDto): Promise<Employee> {
   const apiBase = resolveApiBase();
@@ -117,7 +143,7 @@ export async function getEmployees(filters?: {
   position?: string;
   department?: string;
   search?: string;
-}): Promise<Employee[]> {
+}, options?: { signal?: AbortSignal }): Promise<Employee[]> {
   const apiBase = resolveApiBase();
   const token = getStoredToken();
   const params = new URLSearchParams();
@@ -130,6 +156,36 @@ export async function getEmployees(filters?: {
     headers: {
       Authorization: `Bearer ${token}`,
     },
+    signal: options?.signal,
+  });
+
+  if (!response.ok) {
+    throw new Error('Error al cargar empleados');
+  }
+
+  return response.json();
+}
+
+export async function getPaginatedEmployees(
+  filters: GetPaginatedEmployeesParams,
+  options?: { signal?: AbortSignal },
+): Promise<PaginatedEmployeesResponse> {
+  const apiBase = resolveApiBase();
+  const token = getStoredToken();
+  const params = new URLSearchParams({
+    page: String(filters.page),
+    pageSize: String(filters.pageSize),
+  });
+  if (filters.status) params.append('status', filters.status);
+  if (filters.position) params.append('position', filters.position);
+  if (filters.department) params.append('department', filters.department);
+  if (filters.search) params.append('search', filters.search);
+
+  const response = await authenticatedFetch(`${apiBase}/employees/paginated?${params.toString()}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    signal: options?.signal,
   });
 
   if (!response.ok) {
@@ -219,13 +275,17 @@ export async function deleteEmployeeDocument(documentId: string): Promise<void> 
   }
 }
 
-export async function getEmployeeDocumentUrl(documentId: string): Promise<{ url: string; fileName: string }> {
+export async function getEmployeeDocumentUrl(
+  documentId: string,
+  options?: { signal?: AbortSignal },
+): Promise<{ url: string; fileName: string }> {
   const apiBase = resolveApiBase();
   const token = getStoredToken();
   const response = await authenticatedFetch(`${apiBase}/employees/documents/${documentId}/url`, {
     headers: {
       Authorization: `Bearer ${token}`,
     },
+    signal: options?.signal,
   });
 
   if (!response.ok) {
@@ -329,4 +389,3 @@ export const DOCUMENT_TYPE_LABELS: Record<string, string> = {
   CERTIFICADO: '🎓 Certificación',
   OTRO: '📎 Otros Documentos',
 };
-

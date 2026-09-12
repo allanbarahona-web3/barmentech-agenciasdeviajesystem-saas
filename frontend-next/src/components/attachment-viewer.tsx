@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
-interface Attachment {
+export interface Attachment {
   id: string;
   originalFileName: string;
-  url: string;
+  url?: string;
   mimeType: string;
 }
 
@@ -13,35 +13,87 @@ interface AttachmentViewerProps {
   attachments: Attachment[];
   initialIndex?: number;
   onClose: () => void;
+  resolveAttachmentUrl?: (attachment: Attachment, signal: AbortSignal) => Promise<string>;
 }
 
-export default function AttachmentViewer({ attachments, initialIndex = 0, onClose }: AttachmentViewerProps) {
+export default function AttachmentViewer({
+  attachments,
+  initialIndex = 0,
+  onClose,
+  resolveAttachmentUrl,
+}: AttachmentViewerProps) {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [zoomLevel, setZoomLevel] = useState(1);
   const [isDragging, setIsDragging] = useState(false);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [resolvedUrls, setResolvedUrls] = useState<Record<string, string>>(() =>
+    Object.fromEntries(
+      attachments.flatMap((attachment) =>
+        attachment.url ? [[attachment.id, attachment.url]] : [],
+      ),
+    ),
+  );
+  const [loadingAttachmentId, setLoadingAttachmentId] = useState<string | null>(null);
+  const [attachmentLoadError, setAttachmentLoadError] = useState("");
 
   const current = attachments[currentIndex];
+  const currentUrl = current?.url || (current ? resolvedUrls[current.id] : undefined);
   const isImage = current?.mimeType?.startsWith("image/");
   const isPDF = current?.mimeType === "application/pdf";
+
+  const selectAttachment = useCallback((nextIndex: number) => {
+    setCurrentIndex(nextIndex);
+    setZoomLevel(1);
+    setPosition({ x: 0, y: 0 });
+  }, []);
+
+  useEffect(() => {
+    if (!current || currentUrl || !resolveAttachmentUrl) return;
+
+    const controller = new AbortController();
+
+    void Promise.resolve()
+      .then(() => {
+        if (!controller.signal.aborted) {
+          setLoadingAttachmentId(current.id);
+          setAttachmentLoadError("");
+        }
+        return resolveAttachmentUrl(current, controller.signal);
+      })
+      .then((url) => {
+        if (!controller.signal.aborted) {
+          setResolvedUrls((urls) => ({ ...urls, [current.id]: url }));
+        }
+      })
+      .catch((error: unknown) => {
+        if (!controller.signal.aborted) {
+          setAttachmentLoadError(
+            error instanceof Error ? error.message : "No se pudo cargar el documento.",
+          );
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setLoadingAttachmentId((attachmentId) =>
+            attachmentId === current.id ? null : attachmentId,
+          );
+        }
+      });
+
+    return () => controller.abort();
+  }, [current, currentUrl, resolveAttachmentUrl]);
 
   // Navegación con teclado
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
-      if (e.key === "ArrowLeft" && currentIndex > 0) setCurrentIndex(currentIndex - 1);
-      if (e.key === "ArrowRight" && currentIndex < attachments.length - 1) setCurrentIndex(currentIndex + 1);
+      if (e.key === "ArrowLeft" && currentIndex > 0) selectAttachment(currentIndex - 1);
+      if (e.key === "ArrowRight" && currentIndex < attachments.length - 1) selectAttachment(currentIndex + 1);
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [currentIndex, attachments.length, onClose]);
-
-  // Reset zoom al cambiar de archivo
-  useEffect(() => {
-    setZoomLevel(1);
-    setPosition({ x: 0, y: 0 });
-  }, [currentIndex]);
+  }, [currentIndex, attachments.length, onClose, selectAttachment]);
 
   const handleZoomIn = () => setZoomLevel((prev) => Math.min(prev + 0.25, 3));
   const handleZoomOut = () => setZoomLevel((prev) => Math.max(prev - 0.25, 0.5));
@@ -66,8 +118,9 @@ export default function AttachmentViewer({ attachments, initialIndex = 0, onClos
   const handleMouseUp = () => setIsDragging(false);
 
   const handleDownload = () => {
+    if (!currentUrl) return;
     const link = document.createElement("a");
-    link.href = current.url;
+    link.href = currentUrl;
     link.download = current.originalFileName;
     link.target = "_blank";
     link.click();
@@ -89,7 +142,7 @@ export default function AttachmentViewer({ attachments, initialIndex = 0, onClos
             )}
           </div>
           <div className="attachment-viewer-actions">
-            <button onClick={handleDownload} className="viewer-btn" title="Descargar">
+            <button onClick={handleDownload} className="viewer-btn" title="Descargar" disabled={!currentUrl}>
               ⬇️
             </button>
             <button onClick={onClose} className="viewer-btn viewer-btn-close" title="Cerrar (ESC)">
@@ -123,9 +176,17 @@ export default function AttachmentViewer({ attachments, initialIndex = 0, onClos
           onMouseLeave={handleMouseUp}
           style={{ cursor: zoomLevel > 1 ? (isDragging ? "grabbing" : "grab") : "default" }}
         >
-          {isImage ? (
+          {loadingAttachmentId === current.id ? (
+            <div className="viewer-unsupported">
+              <p>Cargando documento...</p>
+            </div>
+          ) : attachmentLoadError && !currentUrl ? (
+            <div className="viewer-unsupported">
+              <p>{attachmentLoadError}</p>
+            </div>
+          ) : isImage && currentUrl ? (
             <img
-              src={current.url}
+              src={currentUrl}
               alt={current.originalFileName}
               className="viewer-image"
               style={{
@@ -134,8 +195,8 @@ export default function AttachmentViewer({ attachments, initialIndex = 0, onClos
               }}
               draggable={false}
             />
-          ) : isPDF ? (
-            <iframe src={current.url} className="viewer-pdf" title={current.originalFileName} />
+          ) : isPDF && currentUrl ? (
+            <iframe src={currentUrl} className="viewer-pdf" title={current.originalFileName} />
           ) : (
             <div className="viewer-unsupported">
               <p>Vista previa no disponible para este tipo de archivo.</p>
@@ -150,12 +211,12 @@ export default function AttachmentViewer({ attachments, initialIndex = 0, onClos
         {attachments.length > 1 && (
           <>
             {currentIndex > 0 && (
-              <button className="attachment-viewer-nav attachment-viewer-nav-prev" onClick={() => setCurrentIndex(currentIndex - 1)} title="Anterior (←)">
+              <button className="attachment-viewer-nav attachment-viewer-nav-prev" onClick={() => selectAttachment(currentIndex - 1)} title="Anterior (←)">
                 ‹
               </button>
             )}
             {currentIndex < attachments.length - 1 && (
-              <button className="attachment-viewer-nav attachment-viewer-nav-next" onClick={() => setCurrentIndex(currentIndex + 1)} title="Siguiente (→)">
+              <button className="attachment-viewer-nav attachment-viewer-nav-next" onClick={() => selectAttachment(currentIndex + 1)} title="Siguiente (→)">
                 ›
               </button>
             )}

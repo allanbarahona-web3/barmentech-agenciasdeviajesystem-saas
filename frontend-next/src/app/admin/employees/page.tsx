@@ -2,9 +2,9 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import AttachmentViewer from '@/components/attachment-viewer';
+import AttachmentViewer, { type Attachment } from '@/components/attachment-viewer';
 import { LoadingModal } from '@/components/loading-modal';
 import { ConfirmModal } from '@/components/confirm-modal';
 import { toLocalDateIso } from '@/shared/regional';
@@ -20,7 +20,7 @@ import { EmployeeUserLink, type AvailableEmployeeUser } from '@/features/employe
 import { EmployeesTable } from '@/features/employees/employees-table';
 import { BriefcaseBusiness, CalendarDays, CircleUserRound, Plus, Users } from 'lucide-react';
 import {
-  getEmployees,
+  getPaginatedEmployees,
   getEmployee,
   createEmployee,
   updateEmployee,
@@ -32,6 +32,7 @@ import {
   linkEmployeeUser,
   type Employee,
   type EmployeeDocument,
+  type EmployeeListItem,
   type CreateEmployeeDto,
   type UpdateEmployeeDto,
   type EmployeeStats,
@@ -39,10 +40,20 @@ import {
 
 type ModalMode = 'create' | 'edit' | 'view' | null;
 
+const SEARCH_DEBOUNCE_MS = 300;
+const EMPLOYEES_PAGE_SIZE = 25;
+
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
 export default function EmployeesPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [employees, setEmployees] = useState<EmployeeListItem[]>([]);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [stats, setStats] = useState<EmployeeStats | null>(null);
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [modalMode, setModalMode] = useState<ModalMode>(null);
@@ -67,8 +78,13 @@ export default function EmployeesPage() {
   // Filtros
   const [statusFilter, setStatusFilter] = useState('');
   const [searchFilter, setSearchFilter] = useState('');
+  const [debouncedSearchFilter, setDebouncedSearchFilter] = useState('');
   const [positionFilter, setPositionFilter] = useState('');
+  const [debouncedPositionFilter, setDebouncedPositionFilter] = useState('');
   const [departmentFilter, setDepartmentFilter] = useState('');
+  const [debouncedDepartmentFilter, setDebouncedDepartmentFilter] = useState('');
+  const employeesRequestControllerRef = useRef<AbortController | null>(null);
+  const employeesRequestGenerationRef = useRef(0);
 
   // Form data
   const [formData, setFormData] = useState<CreateEmployeeDto>({
@@ -94,41 +110,123 @@ export default function EmployeesPage() {
 
   // Attachment viewer
   const [attachmentViewerData, setAttachmentViewerData] = useState<{
-    attachments: Array<{ id: string; originalFileName: string; url: string; mimeType: string }>;
+    attachments: Attachment[];
     initialIndex: number;
   } | null>(null);
+  const documentViewRequestControllerRef = useRef<AbortController | null>(null);
+  const documentViewRequestGenerationRef = useRef(0);
 
-  useEffect(() => {
-    loadData();
-  }, [statusFilter, searchFilter, positionFilter, departmentFilter]);
+  const loadEmployees = useCallback(async (filters: {
+    page: number;
+    pageSize: number;
+    status?: string;
+    search?: string;
+    position?: string;
+    department?: string;
+  }) => {
+    employeesRequestControllerRef.current?.abort();
+    const controller = new AbortController();
+    const requestGeneration = employeesRequestGenerationRef.current + 1;
+    employeesRequestControllerRef.current = controller;
+    employeesRequestGenerationRef.current = requestGeneration;
 
-  async function loadData() {
     try {
       setLoading(true);
-      const [employeesData, statsData] = await Promise.all([
-        getEmployees({
-          status: statusFilter || undefined,
-          search: searchFilter || undefined,
-          position: positionFilter || undefined,
-          department: departmentFilter || undefined,
-        }),
-        getEmployeeStats(),
-      ]);
-      setEmployees(employeesData);
-      setStats(statsData);
-    } catch (err: any) {
-      setError(err.message || 'Error al cargar datos');
+      const employeesData = await getPaginatedEmployees(filters, { signal: controller.signal });
+      if (requestGeneration === employeesRequestGenerationRef.current) {
+        const validTotalPages = Math.max(employeesData.totalPages, 1);
+
+        if (employeesData.total > 0 && filters.page > validTotalPages) {
+          setPage(validTotalPages);
+          return;
+        }
+
+        setEmployees(employeesData.items);
+        setTotal(employeesData.total);
+        setTotalPages(validTotalPages);
+        if (employeesData.total === 0 && filters.page !== 1) {
+          setPage(1);
+        }
+      }
+    } catch (err: unknown) {
+      if (!controller.signal.aborted && requestGeneration === employeesRequestGenerationRef.current) {
+        setError(getErrorMessage(err, 'Error al cargar datos'));
+      }
     } finally {
-      setLoading(false);
+      if (requestGeneration === employeesRequestGenerationRef.current) {
+        setLoading(false);
+      }
     }
-  }
+  }, []);
+
+  const loadStats = useCallback(async () => {
+    try {
+      setStats(await getEmployeeStats());
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, 'Error al cargar estadísticas'));
+    }
+  }, []);
+
+  const loadCurrentEmployees = useCallback(() => {
+    return loadEmployees({
+      page,
+      pageSize: EMPLOYEES_PAGE_SIZE,
+      status: statusFilter || undefined,
+      search: debouncedSearchFilter || undefined,
+      position: debouncedPositionFilter || undefined,
+      department: debouncedDepartmentFilter || undefined,
+    });
+  }, [debouncedDepartmentFilter, debouncedPositionFilter, debouncedSearchFilter, loadEmployees, page, statusFilter]);
+
+  const refreshEmployeesAndStats = useCallback(async () => {
+    await Promise.all([loadCurrentEmployees(), loadStats()]);
+  }, [loadCurrentEmployees, loadStats]);
+
+  useEffect(() => {
+    const filtersChanged = searchFilter !== debouncedSearchFilter
+      || positionFilter !== debouncedPositionFilter
+      || departmentFilter !== debouncedDepartmentFilter;
+
+    if (!filtersChanged) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setDebouncedSearchFilter(searchFilter);
+      setDebouncedPositionFilter(positionFilter);
+      setDebouncedDepartmentFilter(departmentFilter);
+      setPage(1);
+    }, SEARCH_DEBOUNCE_MS);
+
+    return () => window.clearTimeout(timeout);
+  }, [debouncedDepartmentFilter, debouncedPositionFilter, debouncedSearchFilter, departmentFilter, positionFilter, searchFilter]);
+
+  const handleStatusFilterChange = useCallback((status: string) => {
+    setStatusFilter(status);
+    setPage(1);
+  }, []);
+
+  useEffect(() => {
+    void loadCurrentEmployees();
+  }, [loadCurrentEmployees]);
+
+  useEffect(() => {
+    void loadStats();
+  }, [loadStats]);
+
+  useEffect(() => {
+    return () => {
+      employeesRequestControllerRef.current?.abort();
+      documentViewRequestControllerRef.current?.abort();
+    };
+  }, []);
 
   async function loadAvailableUsers() {
     try {
     const users = await getAvailableEmployeeUsers();
     setAvailableUsers(users);
-  } catch (err: any) {
-    setError(err.message || 'Error al cargar usuarios');
+  } catch (err: unknown) {
+    setError(getErrorMessage(err, 'Error al cargar usuarios'));
   }
 }
 
@@ -160,8 +258,8 @@ export default function EmployeesPage() {
           });
         }
 
-      } catch (err: any) {
-        setError(err.message);
+      } catch (err: unknown) {
+        setError(getErrorMessage(err, 'Error al cargar empleado'));
       }
     } else {
       setSelectedEmployee(null);
@@ -239,14 +337,14 @@ export default function EmployeesPage() {
         setLoadingModalMessage('✅ Empleado actualizado exitosamente');
       }
 
-      await loadData();
+      await refreshEmployeesAndStats();
       setTimeout(() => {
         setLoadingModalOpen(false);
         handleCloseModal();
       }, 1500);
-    } catch (err: any) {
+    } catch (err: unknown) {
       setLoadingModalState('error');
-      setLoadingModalMessage(err.message || 'Error al guardar empleado');
+      setLoadingModalMessage(getErrorMessage(err, 'Error al guardar empleado'));
     }
   }
 
@@ -280,9 +378,9 @@ export default function EmployeesPage() {
       const updated = await getEmployee(selectedEmployee.id);
       setSelectedEmployee(updated);
       setTimeout(() => setLoadingModalOpen(false), 1500);
-    } catch (err: any) {
+    } catch (err: unknown) {
       setLoadingModalState('error');
-      setLoadingModalMessage(err.message || 'Error al subir documento');
+      setLoadingModalMessage(getErrorMessage(err, 'Error al subir documento'));
     } finally {
       setUploadingDoc(false);
     }
@@ -315,32 +413,47 @@ export default function EmployeesPage() {
         setLoadingModalOpen(false);
         setDocumentToDelete(null);
       }, 1500);
-    } catch (err: any) {
+    } catch (err: unknown) {
       setLoadingModalState('error');
-      setLoadingModalMessage(err.message || 'Error al eliminar documento');
+      setLoadingModalMessage(getErrorMessage(err, 'Error al eliminar documento'));
       setDocumentToDelete(null);
     }
   }
 
+  const resolveEmployeeDocumentUrl = useCallback(async (
+    attachment: Attachment,
+    signal: AbortSignal,
+  ) => {
+    const data = await getEmployeeDocumentUrl(attachment.id, { signal });
+    return data.url;
+  }, []);
+
   async function handleViewDocument(doc: EmployeeDocument, allDocs: EmployeeDocument[]) {
+    documentViewRequestControllerRef.current?.abort();
+    const controller = new AbortController();
+    const requestGeneration = documentViewRequestGenerationRef.current + 1;
+    documentViewRequestControllerRef.current = controller;
+    documentViewRequestGenerationRef.current = requestGeneration;
+
     try {
-      const urlData = await getEmployeeDocumentUrl(doc.id);
-      const attachments = await Promise.all(
-        allDocs.map(async (d) => {
-          const data = await getEmployeeDocumentUrl(d.id);
-          return {
-            id: d.id,
-            originalFileName: d.fileName,
-            url: data.url,
-            mimeType: d.mimeType,
-          };
-        })
-      );
+      const urlData = await getEmployeeDocumentUrl(doc.id, { signal: controller.signal });
+      if (controller.signal.aborted || requestGeneration !== documentViewRequestGenerationRef.current) {
+        return;
+      }
+
+      const attachments = allDocs.map((document) => ({
+        id: document.id,
+        originalFileName: document.fileName,
+        url: document.id === doc.id ? urlData.url : undefined,
+        mimeType: document.mimeType,
+      }));
 
       const initialIndex = allDocs.findIndex((d) => d.id === doc.id);
       setAttachmentViewerData({ attachments, initialIndex });
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      if (!controller.signal.aborted && requestGeneration === documentViewRequestGenerationRef.current) {
+        setError(getErrorMessage(err, 'Error al cargar documento'));
+      }
     }
   }
 
@@ -372,7 +485,7 @@ export default function EmployeesPage() {
       <PageHeader
         title={<span className="flex items-center gap-3"><IconBadge tone="primary"><Users aria-hidden="true" /></IconBadge>Gestión de empleados</span>}
         description="Administra tu equipo de trabajo y documentación laboral."
-        meta={<Badge variant="info"><Users aria-hidden="true" />{employees.length} empleados</Badge>}
+        meta={<Badge variant="info"><Users aria-hidden="true" />{total} empleados</Badge>}
         actions={<Button type="button" onClick={() => handleOpenModal('create')}><Plus aria-hidden="true" />Nuevo empleado</Button>}
       />
 
@@ -383,11 +496,18 @@ export default function EmployeesPage() {
         <Card><CardContent className="flex items-center gap-4 p-5"><IconBadge tone="destructive"><BriefcaseBusiness aria-hidden="true" /></IconBadge><div><p className="text-sm text-muted-foreground">Inactivos</p><p className="mt-1 text-2xl font-semibold tracking-tight text-foreground">{stats.inactivos}</p></div></CardContent></Card>
       </section>}
 
-      <EmployeeFilters status={statusFilter} search={searchFilter} position={positionFilter} department={departmentFilter} onStatusChange={setStatusFilter} onSearchChange={setSearchFilter} onPositionChange={setPositionFilter} onDepartmentChange={setDepartmentFilter} />
+      <EmployeeFilters status={statusFilter} search={searchFilter} position={positionFilter} department={departmentFilter} onStatusChange={handleStatusFilterChange} onSearchChange={setSearchFilter} onPositionChange={setPositionFilter} onDepartmentChange={setDepartmentFilter} />
 
       {/* Lista de empleados */}
       <EmployeesTable
         employees={employees}
+        page={page}
+        pageSize={EMPLOYEES_PAGE_SIZE}
+        total={total}
+        totalPages={totalPages}
+        hasActiveFilters={Boolean(statusFilter || debouncedSearchFilter || debouncedPositionFilter || debouncedDepartmentFilter)}
+        onPreviousPage={() => setPage((currentPage) => Math.max(1, currentPage - 1))}
+        onNextPage={() => setPage((currentPage) => Math.min(totalPages, currentPage + 1))}
         onView={(employeeId) => handleOpenModal('view', employeeId)}
         onEdit={(employeeId) => handleOpenModal('edit', employeeId)}
       />
@@ -463,9 +583,9 @@ export default function EmployeesPage() {
 
             setSuccess('Usuario vinculado correctamente.');
 
-            await loadData();
-          } catch (err: any) {
-            setError(err.message || 'Error al vincular usuario');
+            await loadCurrentEmployees();
+          } catch (err: unknown) {
+            setError(getErrorMessage(err, 'Error al vincular usuario'));
           } finally {
             setLinkingUser(false);
           }
@@ -475,8 +595,10 @@ export default function EmployeesPage() {
       {/* Attachment Viewer */}
       {attachmentViewerData && (
         <AttachmentViewer
+          key={attachmentViewerData.attachments[attachmentViewerData.initialIndex]?.id}
           attachments={attachmentViewerData.attachments}
           initialIndex={attachmentViewerData.initialIndex}
+          resolveAttachmentUrl={resolveEmployeeDocumentUrl}
           onClose={() => setAttachmentViewerData(null)}
         />
       )}

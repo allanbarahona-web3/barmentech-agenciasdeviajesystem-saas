@@ -998,6 +998,7 @@ model Employee {
   @@unique([tenantId, documentId])
   @@index([tenantId])
   @@index([tenantId, status])
+  @@index([tenantId, fullName, id])
   @@index([status])
   @@index([position])
   @@index([department])

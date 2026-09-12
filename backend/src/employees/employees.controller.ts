@@ -22,6 +22,10 @@ import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { UploadDocumentDto } from './dto/upload-document.dto';
 import { LinkUserDto } from './dto/link-user.dto';
+import {
+  ListPaginatedEmployeesDto,
+  PaginatedEmployeesResponseDto,
+} from './dto/list-paginated-employees.dto';
 
 @Controller('employees')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -61,6 +65,15 @@ export class EmployeesController {
       department,
       search,
     });
+  }
+
+  @Get('paginated')
+  @Roles('ADMIN', 'CONTADOR')
+  findPaginated(
+    @Req() req: { user: { tenantId: string } },
+    @Query() query: ListPaginatedEmployeesDto,
+  ): Promise<PaginatedEmployeesResponseDto> {
+    return this.employeesService.findPaginated(req.user.tenantId, query);
   }
 
   @Get('stats')
