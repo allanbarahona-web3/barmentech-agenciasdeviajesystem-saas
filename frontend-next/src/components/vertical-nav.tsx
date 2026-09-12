@@ -270,16 +270,9 @@ export function VerticalNav() {
                     href: "/admin/pending-payments",
                     label: "Pagos Pendientes",
                     icon: "⏳",
-                    badge: pendingCounts.pendingReceipts || 0,
                     adminOnly: true,
                   }]
                 : []),
-              {
-                href: "/admin/pending-receipts",
-                label: "Recibos por Enviar",
-                icon: "🧾",
-                adminOnly: true,
-              },
               ...(isAdmin
                 ? [
                     {

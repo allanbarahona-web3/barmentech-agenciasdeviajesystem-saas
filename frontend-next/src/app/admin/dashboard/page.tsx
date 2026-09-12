@@ -225,9 +225,9 @@ export default function AdminDashboardPage() {
 
                 <article className="billing-kpi" style={{ background: "#fef3c7", border: "1px solid #f59e0b" }}>
                   <span>Tareas Pendientes</span>
-                  <strong style={{ color: "#d97706" }}>{metrics.summary.pendingTasks.total}</strong>
+                  <strong style={{ color: "#d97706" }}>{metrics.summary.pendingTasks.payments + metrics.summary.pendingTasks.creditNotes}</strong>
                   <small style={{ fontSize: "12px", color: "#6b7280" }}>
-                    {metrics.summary.pendingTasks.payments} pagos, {metrics.summary.pendingTasks.receipts} recibos, {metrics.summary.pendingTasks.creditNotes} NC
+                    {metrics.summary.pendingTasks.payments} pagos, {metrics.summary.pendingTasks.creditNotes} NC
                   </small>
                 </article>
               </div>
@@ -249,7 +249,7 @@ export default function AdminDashboardPage() {
             ) : null}
 
             {/* Tareas Pendientes */}
-            {metrics.summary.pendingTasks.total > 0 ? (
+            {metrics.summary.pendingTasks.payments + metrics.summary.pendingTasks.creditNotes > 0 ? (
               <section style={{ marginBottom: "24px" }}>
                 <h2 style={{ fontSize: "18px", marginBottom: "12px", color: "#374151" }}>📝 Tareas Pendientes</h2>
                 <div style={{ display: "grid", gap: "12px" }}>
@@ -261,18 +261,6 @@ export default function AdminDashboardPage() {
                       </div>
                       <button type="button" className="rounded-xl px-4 py-2.5 bg-white text-blue-900 border border-blue-200 font-semibold transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-none" onClick={() => router.push("/admin/pending-payments")}>
                         Revisar
-                      </button>
-                    </article>
-                  ) : null}
-
-                  {metrics.summary.pendingTasks.receipts > 0 ? (
-                    <article style={{ padding: "12px", background: "#eff6ff", border: "1px solid #60a5fa", borderRadius: "6px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <div>
-                        <strong style={{ color: "#2563eb" }}>{metrics.summary.pendingTasks.receipts} Recibos por enviar</strong>
-                        <p style={{ margin: "4px 0 0", fontSize: "13px", color: "#6b7280" }}>Listos para aprobar y enviar al cliente</p>
-                      </div>
-                      <button type="button" className="rounded-xl px-4 py-2.5 bg-white text-blue-900 border border-blue-200 font-semibold transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-none" onClick={() => router.push("/admin/pending-receipts")}>
-                        Ver recibos
                       </button>
                     </article>
                   ) : null}
