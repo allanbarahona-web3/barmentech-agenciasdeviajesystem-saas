@@ -17,6 +17,15 @@ import {
 import { ConfirmModal } from "@/components/confirm-modal";
 import { LoadingModal } from "@/components/loading-modal";
 import { PageLoader } from "@/components/loading-spinner";
+import { PageHeader } from "@/components/patterns/page-header";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { IconBadge } from "@/components/ui/icon-badge";
+import { BankAccountEditor } from "@/features/bank-accounts/bank-account-editor";
+import { BankAccountsTable } from "@/features/bank-accounts/bank-accounts-table";
+import { Landmark, Plus } from "lucide-react";
 
 export default function BankAccountsPage() {
   const router = useRouter();
@@ -37,6 +46,12 @@ export default function BankAccountsPage() {
   const [accountHolderName, setAccountHolderName] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [notes, setNotes] = useState("");
+  const [editorError, setEditorError] = useState<{ title: string; message: string } | null>(null);
+  const [accountConfirmation, setAccountConfirmation] = useState<{
+    account: CompanyBankAccount;
+    action: "activate" | "deactivate" | "delete";
+  } | null>(null);
+  const [accountActionError, setAccountActionError] = useState<string | null>(null);
   const [tenantNameFallback, setTenantNameFallback] = useState("la empresa");
   const [tenantLegalNameFallback, setTenantLegalNameFallback] = useState("la razon social de la empresa");
   const [showLoadingModal, setShowLoadingModal] = useState(false);
@@ -114,18 +129,11 @@ export default function BankAccountsPage() {
       normalized.includes("ya existe otra cuenta");
 
     if (isDuplicate) {
-      showConfirm({
-        title: "⚠️ Cuenta Duplicada",
-        message,
-        confirmText: "Entendido",
-        cancelText: "Cerrar",
-        variant: "warning",
-        onConfirm: () => closeConfirm(),
-      });
+      setEditorError({ title: "Cuenta duplicada", message });
       return;
     }
 
-    showWarningModal("Error guardando cuenta", message);
+    setEditorError({ title: "Error guardando cuenta", message });
   };
 
   useEffect(() => {
@@ -186,11 +194,13 @@ export default function BankAccountsPage() {
     setAccountHolderName(tenantLegalNameFallback);
     setCompanyName(tenantNameFallback);
     setNotes("");
+    setEditorError(null);
     setEditingAccount(null);
     setShowForm(false);
   };
 
   const handleEdit = (account: CompanyBankAccount) => {
+    setEditorError(null);
     setEditingAccount(account);
     setBankName(account.bankName);
     setAccountNumber(account.accountNumber);
@@ -205,14 +215,15 @@ export default function BankAccountsPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setEditorError(null);
 
     if (!bankName.trim()) {
-      showWarningModal("Campo requerido", "El nombre del banco es requerido");
+      setEditorError({ title: "Campo requerido", message: "El nombre del banco es requerido" });
       return;
     }
 
     if (!accountNumber.trim()) {
-      showWarningModal("Campo requerido", "El número de cuenta es requerido");
+      setEditorError({ title: "Campo requerido", message: "El número de cuenta es requerido" });
       return;
     }
 
@@ -220,24 +231,18 @@ export default function BankAccountsPage() {
     const ibanValue = accountNumber.trim().toUpperCase();
     if (ibanValue.startsWith("CR")) {
       if (ibanValue.length !== 22) {
-        showConfirm({
-          title: "⚠️ Error en formato IBAN",
+        setEditorError({
+          title: "Error en formato IBAN",
           message: `El IBAN debe tener exactamente 22 caracteres (CR + 20 dígitos).\n\nActualmente tiene ${ibanValue.length} caracteres.\n\nPor favor, verifica el número ingresado.`,
-          confirmText: "Entendido",
-          variant: "warning",
-          onConfirm: () => closeConfirm(),
         });
         return;
       }
       // Verificar que después de "CR" solo haya dígitos
       const digits = ibanValue.substring(2);
       if (!/^\d{20}$/.test(digits)) {
-        showConfirm({
-          title: "⚠️ Error en formato IBAN",
+        setEditorError({
+          title: "Error en formato IBAN",
           message: "El IBAN debe tener el formato: CR seguido de 20 dígitos numéricos.\n\nEjemplo: CR05001614040007456807\n\nPor favor, verifica que no contenga letras después de CR.",
-          confirmText: "Entendido",
-          variant: "warning",
-          onConfirm: () => closeConfirm(),
         });
         return;
       }
@@ -275,6 +280,11 @@ export default function BankAccountsPage() {
   };
 
   const handleToggleActive = async (account: CompanyBankAccount) => {
+    setAccountActionError(null);
+    setAccountConfirmation({ account, action: account.isActive ? "deactivate" : "activate" });
+  };
+
+  const performToggleActive = async (account: CompanyBankAccount) => {
     try {
       showLoadingState(account.isActive ? "Desactivando cuenta bancaria..." : "Activando cuenta bancaria...");
       await toggleBankAccountActive(account.id);
@@ -283,21 +293,13 @@ export default function BankAccountsPage() {
     } catch (err: unknown) {
       closeLoadingModal();
       const message = extractErrorMessage(err, "Error cambiando estado");
-      showWarningModal("Error cambiando estado", message);
+      setAccountActionError(message);
     }
   };
 
   const handleDelete = async (account: CompanyBankAccount) => {
-    showConfirm({
-      title: "Eliminar Cuenta Bancaria",
-      message: `¿Está seguro de eliminar la cuenta ${account.accountNumber}?\n\nEsta acción no se puede deshacer.`,
-      confirmText: "Eliminar",
-      variant: "danger",
-      onConfirm: async () => {
-        closeConfirm();
-        await performDelete(account);
-      },
-    });
+    setAccountActionError(null);
+    setAccountConfirmation({ account, action: "delete" });
   };
 
   const performDelete = async (account: CompanyBankAccount) => {
@@ -309,8 +311,22 @@ export default function BankAccountsPage() {
     } catch (err: unknown) {
       closeLoadingModal();
       const message = extractErrorMessage(err, "Error eliminando cuenta");
-      showWarningModal("Error eliminando cuenta", message);
+      setAccountActionError(message);
     }
+  };
+
+  const confirmAccountAction = () => {
+    if (!accountConfirmation) return;
+
+    const { account, action } = accountConfirmation;
+    setAccountConfirmation(null);
+
+    if (action === "delete") {
+      void performDelete(account);
+      return;
+    }
+
+    void performToggleActive(account);
   };
 
   if (loading) {
@@ -337,272 +353,103 @@ export default function BankAccountsPage() {
         errorMessage={loadingModalMessage}
         onClose={closeLoadingModal}
       />
+      <ConfirmDialog
+        open={Boolean(accountConfirmation)}
+        onOpenChange={(open) => { if (!open) setAccountConfirmation(null); }}
+        title={
+          accountConfirmation?.action === "delete"
+            ? "Eliminar cuenta bancaria"
+            : accountConfirmation?.action === "deactivate"
+              ? "Desactivar cuenta bancaria"
+              : "Activar cuenta bancaria"
+        }
+        description={accountConfirmation ? (
+          <span>
+            {accountConfirmation.action === "delete"
+              ? "¿Seguro que deseas eliminar esta cuenta? Esta acción no se puede deshacer."
+              : accountConfirmation.action === "deactivate"
+                ? "¿Deseas desactivar esta cuenta bancaria? Dejará de estar disponible para recibir pagos."
+                : "¿Deseas activar esta cuenta bancaria para recibir pagos?"}
+            <span
+              className={
+                accountConfirmation.action === "delete"
+                  ? "mt-3 block rounded-md border border-destructive/25 bg-destructive/5 p-3 text-destructive"
+                  : accountConfirmation.action === "deactivate"
+                    ? "mt-3 block rounded-md border border-warning/25 bg-warning/5 p-3 text-warning"
+                    : "mt-3 block rounded-md border border-success/25 bg-success/5 p-3 text-success"
+              }
+            >
+              <span className="block font-medium">{accountConfirmation.account.bankName}</span>
+              <span className="mt-1 block text-sm">Cuenta / IBAN: {accountConfirmation.account.accountNumber}</span>
+            </span>
+          </span>
+        ) : undefined}
+        cancelLabel="Cancelar"
+        confirmLabel={
+          accountConfirmation?.action === "delete"
+            ? "Eliminar"
+            : accountConfirmation?.action === "deactivate"
+              ? "Desactivar"
+              : "Activar"
+        }
+        variant={accountConfirmation?.action === "delete" ? "destructive" : "default"}
+        onConfirm={confirmAccountAction}
+      />
       <main className="app-shell">
-        <div style={{ marginBottom: 30, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div>
-            <h1 style={{ marginBottom: 8, fontSize: "1.8rem", fontWeight: 600 }}>🏦 Cuentas Bancarias</h1>
-            <p style={{ color: "#6b7280", margin: 0 }}>Gestiona las cuentas bancarias de la empresa para recibir pagos</p>
-          </div>
-          {!showForm && (
-            <button className="rounded-xl px-4 py-3 bg-linear-to-b from-blue-500 to-blue-700 text-white font-bold shadow-lg shadow-blue-500/25 transition-all duration-150 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-blue-500/30 active:translate-y-0 active:saturate-75 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-lg" onClick={() => setShowForm(true)} style={{ padding: "10px 20px" }}>
-              ➕ Nueva Cuenta
-            </button>
-          )}
-        </div>
+        <PageHeader
+          className="mb-6"
+          title={<span className="flex items-center gap-3"><IconBadge tone="primary"><Landmark aria-hidden="true" /></IconBadge>Cuentas bancarias</span>}
+          description="Gestiona las cuentas bancarias de la empresa para recibir pagos."
+          meta={<Badge variant="secondary">{accounts.length} cuenta{accounts.length === 1 ? '' : 's'}</Badge>}
+          actions={!showForm ? (
+            <Button type="button" onClick={() => setShowForm(true)}>
+              <Plus aria-hidden="true" />
+              Nueva cuenta
+            </Button>
+          ) : undefined}
+        />
 
-        {/* Formulario */}
+        {accountActionError ? (
+          <Alert variant="destructive" className="mb-6">
+            <AlertTitle>Error en la cuenta bancaria</AlertTitle>
+            <AlertDescription>{accountActionError}</AlertDescription>
+          </Alert>
+        ) : null}
+
         {showForm && (
-          <section style={{ background: "white", borderRadius: 12, padding: 30, marginBottom: 30, boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
-            <h2 style={{ margin: "0 0 20px 0", fontSize: "1.3rem", fontWeight: 600 }}>
-              {editingAccount ? "✏️ Editar Cuenta" : "➕ Nueva Cuenta Bancaria"}
-            </h2>
-
-            <form onSubmit={handleSubmit}>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: 20, marginBottom: 20 }}>
-                <div className="form-group">
-                  <label style={{ fontWeight: 500, marginBottom: 8, display: "block" }}>🏦 Banco</label>
-                  <input
-                    type="text"
-                    value={bankName}
-                    onChange={(e) => setBankName(e.target.value)}
-                    placeholder="BAC, BCR, Promerica, etc."
-                    required
-                    style={{ width: "100%", padding: "10px 12px", fontSize: "1rem" }}
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label style={{ fontWeight: 500, marginBottom: 8, display: "block" }}>🔢 Número de Cuenta / IBAN</label>
-                  <input
-                    type="text"
-                    value={accountNumber}
-                    onChange={(e) => setAccountNumber(e.target.value)}
-                    placeholder="CR05001614040007456807"
-                    required
-                    style={{ width: "100%", padding: "10px 12px", fontSize: "1rem" }}
-                  />
-                  <small style={{ display: "block", marginTop: "4px", color: "#6b7280", fontSize: "0.85rem" }}>
-                    💡 IBAN: CR + 20 dígitos (22 caracteres total)
-                  </small>
-                </div>
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 20, marginBottom: 20 }}>
-                <div className="form-group">
-                  <label style={{ fontWeight: 500, marginBottom: 8, display: "block" }}>📂 Tipo de Cuenta</label>
-                  <select
-                    value={accountType}
-                    onChange={(e) => setAccountType(e.target.value as any)}
-                    style={{ width: "100%", padding: "10px 12px", fontSize: "1rem" }}
-                  >
-                    <option value="CUENTA_CORRIENTE">Cuenta Corriente</option>
-                    <option value="CUENTA_AHORRO">Cuenta Ahorro</option>
-                  </select>
-                </div>
-
-                <div className="form-group">
-                  <label style={{ fontWeight: 500, marginBottom: 8, display: "block" }}>💱 Moneda</label>
-                  <select
-                    value={currency}
-                    onChange={(e) => setCurrency(e.target.value as any)}
-                    style={{ width: "100%", padding: "10px 12px", fontSize: "1rem" }}
-                  >
-                    <option value="CRC">₡ Colones (CRC)</option>
-                    <option value="USD">$ Dólares (USD)</option>
-                  </select>
-                </div>
-
-                <div className="form-group">
-                  <label style={{ fontWeight: 500, marginBottom: 8, display: "block" }}>📱 SINPE Móvil (opcional)</label>
-                  <input
-                    type="text"
-                    value={sinpeNumber}
-                    onChange={(e) => setSinpeNumber(e.target.value)}
-                    placeholder="8888-8888"
-                    style={{ width: "100%", padding: "10px 12px", fontSize: "1rem" }}
-                  />
-                </div>
-              </div>
-
-              <div className="form-group" style={{ marginBottom: 20 }}>
-                <label style={{ fontWeight: 500, marginBottom: 8, display: "block" }}>👤 Titular de la Cuenta</label>
-                <input
-                  type="text"
-                  value={accountHolderName}
-                  onChange={(e) => setAccountHolderName(e.target.value)}
-                  required
-                  style={{ width: "100%", padding: "10px 12px", fontSize: "1rem" }}
-                />
-              </div>
-
-              <div className="form-group" style={{ marginBottom: 20 }}>
-                <label style={{ fontWeight: 500, marginBottom: 8, display: "block" }}>🏢 Nombre Comercial de la Empresa</label>
-                <input
-                  type="text"
-                  value={companyName}
-                  onChange={(e) => setCompanyName(e.target.value)}
-                  placeholder="Nombre comercial de tu empresa"
-                  style={{ width: "100%", padding: "10px 12px", fontSize: "1rem" }}
-                />
-              </div>
-
-              <div className="form-group" style={{ marginBottom: 24 }}>
-                <label style={{ fontWeight: 500, marginBottom: 8, display: "block" }}>📝 Notas (opcional)</label>
-                <textarea
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Información adicional sobre esta cuenta"
-                  rows={2}
-                  style={{ width: "100%", padding: "10px 12px", fontSize: "1rem", resize: "vertical" }}
-                />
-              </div>
-
-              <div style={{ display: "flex", gap: 12 }}>
-                <button type="submit" className="rounded-xl px-4 py-3 bg-linear-to-b from-blue-500 to-blue-700 text-white font-bold shadow-lg shadow-blue-500/25 transition-all duration-150 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-blue-500/30 active:translate-y-0 active:saturate-75 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-lg" disabled={saving}>
-                  {saving ? "⏳ Guardando..." : editingAccount ? "💾 Actualizar" : "💾 Crear Cuenta"}
-                </button>
-                <button type="button" onClick={resetForm} className="rounded-xl px-4 py-3 bg-linear-to-b from-blue-500 to-blue-700 text-white font-bold shadow-lg shadow-blue-500/25 transition-all duration-150 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-blue-500/30 active:translate-y-0 active:saturate-75 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-lg" style={{ background: "#6b7280" }}>
-                  Cancelar
-                </button>
-              </div>
-            </form>
-          </section>
+          <BankAccountEditor
+            isEditing={Boolean(editingAccount)}
+            saving={saving}
+            bankName={bankName}
+            accountNumber={accountNumber}
+            accountType={accountType}
+            currency={currency}
+            sinpeNumber={sinpeNumber}
+            accountHolderName={accountHolderName}
+            companyName={companyName}
+            notes={notes}
+            error={editorError}
+            onBankNameChange={setBankName}
+            onAccountNumberChange={setAccountNumber}
+            onAccountTypeChange={setAccountType}
+            onCurrencyChange={setCurrency}
+            onSinpeNumberChange={setSinpeNumber}
+            onAccountHolderNameChange={setAccountHolderName}
+            onCompanyNameChange={setCompanyName}
+            onNotesChange={setNotes}
+            onSubmit={handleSubmit}
+            onCancel={resetForm}
+          />
         )}
 
-        {/* Lista de Cuentas */}
-        <section style={{ background: "white", borderRadius: 12, padding: 30, boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
-          <h2 style={{ margin: "0 0 20px 0", fontSize: "1.3rem", fontWeight: 600 }}>📋 Cuentas Registradas</h2>
-
-          {loading && (
-            <div style={{ textAlign: "center", padding: 20 }}>⏳ Cargando...</div>
-          )}
-
-          {!loading && accounts.length === 0 && (
-            <div style={{ textAlign: "center", padding: "40px 20px", color: "#9ca3af" }}>
-              <div style={{ fontSize: "3rem", marginBottom: 12 }}>🏦</div>
-              <p style={{ margin: 0 }}>No hay cuentas bancarias registradas</p>
-            </div>
-          )}
-
-          {!loading && accounts.length > 0 && (
-            <div className="history-table-wrap">
-              <table style={{ width: "100%", minWidth: "900px" }} className="history-table">
-                <thead>
-                  <tr>
-                    <th style={{ width: "10%", minWidth: "100px" }}>Empresa</th>
-                    <th style={{ width: "10%", minWidth: "100px" }}>Banco</th>
-                    <th style={{ width: "18%", minWidth: "180px" }}>Cuenta</th>
-                    <th style={{ width: "8%", minWidth: "80px" }}>Tipo</th>
-                    <th style={{ width: "8%", minWidth: "80px" }}>Moneda</th>
-                    <th style={{ width: "10%", minWidth: "100px" }}>SINPE</th>
-                    <th style={{ width: "20%", minWidth: "180px" }}>Titular</th>
-                    <th style={{ width: "8%", minWidth: "80px" }}>Estado</th>
-                    <th style={{ width: "8%", minWidth: "180px", textAlign: "center" }}>Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {accounts.map((account) => (
-                    <tr key={account.id} style={{ opacity: account.isActive ? 1 : 0.5 }}>
-                      <td style={{ fontWeight: 700, color: "#6366f1", fontSize: "0.95rem" }}>
-                        {account.companyName || tenantNameFallback}
-                      </td>
-                      <td style={{ fontWeight: "bold", fontSize: "0.95rem" }}>{account.bankName}</td>
-                      <td style={{ fontFamily: "monospace", fontSize: "0.9rem", color: "#374151" }}>
-                        {account.accountNumber}
-                      </td>
-                      <td style={{ fontSize: "0.85rem" }}>
-                        {account.accountType === "CUENTA_CORRIENTE" ? "Corriente" : "Ahorro"}
-                      </td>
-                      <td>
-                        <span style={{ 
-                          padding: "4px 8px", 
-                          borderRadius: 4, 
-                          background: account.currency === "USD" ? "#dbeafe" : "#dcfce7",
-                          color: account.currency === "USD" ? "#1e40af" : "#166534",
-                          fontWeight: "bold",
-                          fontSize: "0.85rem",
-                          display: "inline-block"
-                        }}>
-                          {account.currency === "USD" ? "$ USD" : "₡ CRC"}
-                        </span>
-                      </td>
-                      <td style={{ fontSize: "0.85rem", color: "#6b7280" }}>
-                        {account.sinpeNumber || "-"}
-                      </td>
-                      <td style={{ fontSize: "0.8rem", color: "#6b7280", lineHeight: "1.3" }}>
-                        {account.accountHolderName}
-                      </td>
-                      <td>
-                        <span style={{
-                          padding: "4px 8px",
-                          borderRadius: 4,
-                          background: account.isActive ? "#dcfce7" : "#fee2e2",
-                          color: account.isActive ? "#166534" : "#991b1b",
-                          fontSize: "0.8rem",
-                          fontWeight: "bold",
-                          whiteSpace: "nowrap"
-                        }}>
-                          {account.isActive ? "✓ Activa" : "✗ Inactiva"}
-                        </span>
-                      </td>
-                      <td>
-                        <div style={{ display: "flex", gap: 6, justifyContent: "center", flexWrap: "nowrap" }}>
-                          <button
-                            onClick={() => handleEdit(account)}
-                            title="Editar cuenta"
-                            style={{ 
-                              padding: "6px 10px", 
-                              fontSize: "0.8rem", 
-                              background: "#3b82f6",
-                              color: "white",
-                              border: "none",
-                              borderRadius: 4,
-                              cursor: "pointer",
-                              whiteSpace: "nowrap"
-                            }}
-                          >
-                            ✏️ Editar
-                          </button>
-                          <button
-                            onClick={() => handleToggleActive(account)}
-                            title={account.isActive ? "Desactivar cuenta" : "Activar cuenta"}
-                            style={{ 
-                              padding: "6px 10px", 
-                              fontSize: "0.8rem", 
-                              background: account.isActive ? "#f59e0b" : "#10b981",
-                              color: "white",
-                              border: "none",
-                              borderRadius: 4,
-                              cursor: "pointer",
-                              whiteSpace: "nowrap"
-                            }}
-                          >
-                            {account.isActive ? "⏸️" : "▶️"}
-                          </button>
-                          <button
-                            onClick={() => handleDelete(account)}
-                            title="Eliminar cuenta"
-                            style={{ 
-                              padding: "6px 10px", 
-                              fontSize: "0.8rem", 
-                              background: "#ef4444",
-                              color: "white",
-                              border: "none",
-                              borderRadius: 4,
-                              cursor: "pointer"
-                            }}
-                          >
-                            🗑️
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
+        <BankAccountsTable
+          accounts={accounts}
+          loading={loading}
+          tenantNameFallback={tenantNameFallback}
+          onEdit={handleEdit}
+          onToggleActive={handleToggleActive}
+          onDelete={handleDelete}
+        />
       </main>
     </>
   );
