@@ -2,11 +2,21 @@
 
 export const dynamic = "force-dynamic";
 
-import AttachmentViewer from "@/components/attachment-viewer";
-import { ConfirmModal } from "@/components/confirm-modal";
+import AttachmentViewer, { type Attachment } from "@/components/attachment-viewer";
 import { LoadingModal } from "@/components/loading-modal";
+import { DataTableShell } from "@/components/patterns/data-table-shell";
+import { FormField } from "@/components/patterns/form-field";
+import { PageHeader } from "@/components/patterns/page-header";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { IconBadge } from "@/components/ui/icon-badge";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
 import { getStoredSession, getStoredToken } from "@/lib/auth-api";
-import { canReviewContractReservations, createContractReservationActionGate, normalizeRejectionReason, pendingReservationViewState, toViewerAttachments } from "@/lib/contract-reservation-review";
+import { canReviewContractReservations, createContractReservationActionGate, normalizeRejectionReason, pendingReservationViewState } from "@/lib/contract-reservation-review";
 import {
   approveContractReservationPayment,
   formatFinanceMoney,
@@ -15,18 +25,16 @@ import {
   rejectContractReservationPayment,
   type ContractReservationPayment,
 } from "@/lib/finance-api";
-import { formatBusinessDate } from "@/shared/regional";
+import { formatBusinessDate, formatBusinessDateTime } from "@/shared/regional";
+import { Check, CircleAlert, CircleDollarSign, Paperclip, Plane, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-const formatDateTime = (value: string): string => {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? "-"
-    : date.toLocaleString("es-CR", { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+type ViewerSession = {
+  paymentId: string;
+  attachments: Attachment[];
+  initialIndex: number;
 };
-
-type ViewerAttachment = { id: string; originalFileName: string; url: string; mimeType: string };
 
 export default function PendingPaymentsPage() {
   const router = useRouter();
@@ -39,8 +47,8 @@ export default function PendingPaymentsPage() {
   const [approvePayment, setApprovePayment] = useState<ContractReservationPayment | null>(null);
   const [rejectModalPaymentId, setRejectModalPaymentId] = useState("");
   const [rejectReason, setRejectReason] = useState("");
-  const [viewerAttachments, setViewerAttachments] = useState<ViewerAttachment[] | null>(null);
-  const [viewerInitialIndex, setViewerInitialIndex] = useState(0);
+  const [rejectError, setRejectError] = useState("");
+  const [viewerSession, setViewerSession] = useState<ViewerSession | null>(null);
   const [loadingModalOpen, setLoadingModalOpen] = useState(false);
   const [loadingModalState, setLoadingModalState] = useState<"loading" | "success" | "error">("loading");
   const [loadingModalMessage, setLoadingModalMessage] = useState("");
@@ -106,7 +114,7 @@ export default function PendingPaymentsPage() {
     try {
       reason = normalizeRejectionReason(rejectReason);
     } catch (error) {
-      setStatusText(error instanceof Error ? error.message : "Debes proporcionar un motivo de rechazo.");
+      setRejectError(error instanceof Error ? error.message : "Debes proporcionar un motivo de rechazo.");
       return;
     }
     if (!rejectModalPaymentId || !beginAction(`reject:${rejectModalPaymentId}`, "Rechazando pago de reserva...")) return;
@@ -117,10 +125,11 @@ export default function PendingPaymentsPage() {
       setLoadingModalMessage("Pago de reserva rechazado exitosamente.");
       setRejectModalPaymentId("");
       setRejectReason("");
+      setRejectError("");
       await load();
     } catch (error) {
-      setLoadingModalState("error");
-      setLoadingModalMessage(error instanceof Error ? error.message : "No se pudo rechazar el pago de reserva.");
+      setLoadingModalOpen(false);
+      setRejectError(error instanceof Error ? error.message : "No se pudo rechazar el pago de reserva.");
     } finally {
       finishAction();
     }
@@ -130,9 +139,20 @@ export default function PendingPaymentsPage() {
     const key = `evidence:${payment.id}`;
     if (!beginAction(key, "Cargando comprobantes...")) return;
     try {
-      const evidence = await Promise.all(payment.evidence.map((item) => getContractReservationEvidence(payment.id, item.id)));
-      setViewerAttachments(toViewerAttachments(evidence));
-      setViewerInitialIndex(initialIndex);
+      const selectedEvidence = payment.evidence[initialIndex];
+      if (!selectedEvidence) throw new Error("No se encontró el comprobante seleccionado.");
+
+      const selectedAccess = await getContractReservationEvidence(payment.id, selectedEvidence.id);
+      setViewerSession({
+        paymentId: payment.id,
+        attachments: payment.evidence.map((item) => ({
+          id: item.id,
+          originalFileName: item.originalFileName,
+          mimeType: item.mimeType,
+          ...(item.id === selectedEvidence.id ? { url: selectedAccess.url } : {}),
+        })),
+        initialIndex,
+      });
       setLoadingModalOpen(false);
     } catch (error) {
       setLoadingModalState("error");
@@ -142,99 +162,146 @@ export default function PendingPaymentsPage() {
     }
   };
 
+  const resolveEvidenceUrl = useCallback(async (attachment: Attachment, signal: AbortSignal) => {
+    if (!viewerSession) throw new Error("No hay comprobante seleccionado.");
+    const evidence = await getContractReservationEvidence(viewerSession.paymentId, attachment.id, signal);
+    return evidence.url;
+  }, [viewerSession]);
+
+  const closeRejectDialog = () => {
+    if (actionBusy) return;
+    setRejectModalPaymentId("");
+    setRejectReason("");
+    setRejectError("");
+  };
+
   if (accessAllowed !== true) {
-    return <main className="app-shell"><section className="card contracts-card"><h1>💰 Pagos Pendientes de Verificación</h1><p className="m-0 text-[#4b6790] text-sm">Validando acceso...</p></section></main>;
+    return (
+      <main className="app-shell">
+        <section className="rounded-xl border border-border bg-card p-5 shadow-ui-xs">
+          <PageHeader title="Pagos pendientes" description="Validando acceso..." />
+        </section>
+      </main>
+    );
   }
 
   const viewState = pendingReservationViewState({ loading, error: statusText, count: payments.length });
 
   return (
-    <main className="app-shell">
-      <section className="card contracts-card">
-        <h1>💰 Pagos Pendientes de Verificación</h1>
-        <p className="m-0 text-[#4b6790] text-sm">Revisa los pagos de reserva reportados y su evidencia antes de aprobarlos o rechazarlos.</p>
+    <main className="app-shell space-y-6">
+      <PageHeader
+        title={
+          <span className="flex items-center gap-3">
+            <IconBadge tone="warning"><CircleDollarSign aria-hidden="true" /></IconBadge>
+            Pagos pendientes
+          </span>
+        }
+        description="Revisa y valida los pagos de reservación pendientes de verificación."
+        meta={
+          !loading ? <Badge variant="warning">{payments.length} pendiente{payments.length === 1 ? "" : "s"}</Badge> : null
+        }
+      />
 
-        {statusText ? <p className="status-line">{statusText}</p> : null}
-        {viewState === "loading" ? (
-          <p className="m-0 text-[#4b6790] text-sm">Cargando pagos de reserva pendientes...</p>
-        ) : viewState === "empty" ? (
-          <div className="empty-state" style={{ padding: "40px 20px", textAlign: "center" }}>
-            <div className="empty-state-icon" style={{ fontSize: "48px", marginBottom: "12px" }}>✅</div>
-            <h3 style={{ margin: "0 0 8px", fontSize: "1.1rem" }}>¡Todo al día!</h3>
-            <p className="m-0 text-[#4b6790] text-sm">No hay pagos de reserva pendientes de revisión.</p>
-          </div>
-        ) : viewState === "ready" ? (
-          <div className="history-table-wrap" style={{ marginTop: "16px" }}>
-            <table className="history-table">
-              <thead><tr><th>Fecha reporte</th><th>Cliente</th><th>Contrato y viaje</th><th>Monto</th><th>Información del pago</th><th>Comprobantes</th><th>Estado</th><th>Acciones</th></tr></thead>
-              <tbody>
+      <DataTableShell
+        toolbar={<div><h2 className="text-base font-semibold tracking-tight">Pagos por verificar</h2><p className="mt-1 text-sm text-muted-foreground">Valida la información reportada, los comprobantes y la referencia antes de tomar una decisión.</p></div>}
+        state={viewState === "loading" ? <span>Cargando pagos de reserva pendientes...</span> : viewState === "error" ? <Alert variant="destructive" className="text-left"><AlertTitle>No se pudieron cargar los pagos</AlertTitle><AlertDescription>{statusText}</AlertDescription></Alert> : viewState === "empty" ? <div className="mx-auto max-w-sm"><IconBadge tone="success" className="mb-3 size-10 [&_svg]:size-5"><Check aria-hidden="true" /></IconBadge><h3 className="text-base font-semibold text-foreground">¡Todo al día!</h3><p className="mt-1">No hay pagos de reserva pendientes de revisión.</p></div> : undefined}
+      >
+        <Table className="min-w-[1180px] table-fixed">
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-[10%]">Fecha reportada</TableHead>
+              <TableHead className="w-[17%]">Cliente</TableHead>
+              <TableHead className="w-[20%]">Contrato / viaje</TableHead>
+              <TableHead className="w-[11%]">Monto</TableHead>
+              <TableHead className="w-[17%]">Referencia / descripción</TableHead>
+              <TableHead className="w-[10%]">Evidencias</TableHead>
+              <TableHead className="w-[7%]">Estado</TableHead>
+              <TableHead className="w-[8%]">Acciones</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
                 {payments.map((payment) => {
                   const contract = payment.contract;
                   const trip = contract.travelPackage ?? contract.internalTrip;
                   return (
-                    <tr key={payment.id}>
-                      <td>{formatDateTime(payment.receivedAt)}</td>
-                      <td>
-                        <div className="history-col-name">{contract.client.fullName}</div>
-                        <div className="history-col-muted">{contract.client.idNumber}</div>
-                        <div className="history-col-muted">{contract.client.email}</div>
-                        {contract.client.phone ? <div className="history-col-muted">{contract.client.phone}</div> : null}
-                      </td>
-                      <td>
-                        <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+                    <TableRow key={payment.id}>
+                      <TableCell className="text-muted-foreground">{formatBusinessDateTime(payment.receivedAt)}</TableCell>
+                      <TableCell>
+                        <div className="font-medium text-foreground">{contract.client.fullName}</div>
+                        <div className="mt-1 text-xs text-muted-foreground">{contract.client.idNumber}</div>
+                        <div className="truncate text-xs text-muted-foreground">{contract.client.email}</div>
+                        {contract.client.phone ? <div className="text-xs text-muted-foreground">{contract.client.phone}</div> : null}
+                      </TableCell>
+                      <TableCell>
+                        <div className="grid gap-1">
                           <strong>{contract.contractNumber}</strong>
-                          <span className="history-col-muted">{contract.destination}</span>
-                          {trip ? <><span style={{ color: "#4b6790", fontSize: "0.85rem" }}>✈️ {trip.name}</span><span className="history-col-muted">📅 {formatBusinessDate(trip.departureDate)} → {formatBusinessDate(trip.returnDate)}</span></> : null}
-                          <span className="history-col-muted">Contrato: {contract.status}</span>
+                          <span className="text-xs text-muted-foreground">{contract.destination}</span>
+                          {trip ? <><span className="flex items-center gap-1 text-xs text-muted-foreground"><Plane aria-hidden="true" className="size-3" /> {trip.name}</span><span className="text-xs text-muted-foreground">{formatBusinessDate(trip.departureDate)} → {formatBusinessDate(trip.returnDate)}</span></> : null}
+                          <span className="text-xs text-muted-foreground">Contrato: {contract.status}</span>
                         </div>
-                      </td>
-                      <td><strong>{formatFinanceMoney(payment.receivedAmount, payment.currencyCode)}</strong></td>
-                      <td>
-                        <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                      </TableCell>
+                      <TableCell className="font-semibold whitespace-nowrap">{formatFinanceMoney(payment.receivedAmount, payment.currencyCode)}</TableCell>
+                      <TableCell>
+                        <div className="grid gap-1 text-sm">
                           <span>Referencia: {payment.externalReference || "No indicada"}</span>
-                          <span className="history-col-muted">Método: {payment.paymentMethod}</span>
-                          {payment.description ? <span className="history-col-muted">{payment.description}</span> : null}
+                          <span className="text-xs text-muted-foreground">Método: {payment.paymentMethod}</span>
+                          {payment.description ? <span className="text-xs text-muted-foreground">{payment.description}</span> : null}
                         </div>
-                      </td>
-                      <td>
+                      </TableCell>
+                      <TableCell>
                         {payment.evidence.length ? payment.evidence.map((item, index) => (
-                          <button key={item.id} type="button" disabled={actionBusy === `evidence:${payment.id}`} onClick={() => void openEvidence(payment, index)} style={{ display: "flex", border: 0, padding: "2px 0", background: "transparent", color: "#0066cc", cursor: "pointer", textAlign: "left", textDecoration: "underline" }}>
-                            📎 {item.originalFileName}
-                          </button>
-                        )) : <span style={{ color: "#6b7280", fontSize: "0.85rem" }}>Sin comprobantes identificables</span>}
-                      </td>
-                      <td><span className="contract-status status-review">PENDIENTE DE VERIFICACIÓN</span></td>
-                      <td>
-                        <div className="history-actions">
-                          <button type="button" className="rounded-xl px-4 py-3 bg-linear-to-b from-blue-500 to-blue-700 text-white font-bold shadow-lg shadow-blue-500/25 transition-all duration-150 hover:-translate-y-0.5 hover:shadow-xl active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed" onClick={() => setApprovePayment(payment)} disabled={Boolean(actionBusy)}>✓ Aprobar</button>
-                          <button type="button" className="rounded-xl px-4 py-2.5 bg-white text-blue-900 border border-blue-200 font-semibold transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed" onClick={() => { setRejectModalPaymentId(payment.id); setRejectReason(""); setStatusText(""); }} disabled={Boolean(actionBusy)}>✗ Rechazar</button>
+                          <Button key={item.id} type="button" variant="link" size="sm" className="max-w-full justify-start px-0 text-left" disabled={actionBusy === `evidence:${payment.id}`} onClick={() => void openEvidence(payment, index)}>
+                            <Paperclip aria-hidden="true" /> <span className="truncate">{item.originalFileName}</span>
+                          </Button>
+                        )) : <span className="text-xs text-muted-foreground">Sin comprobantes identificables</span>}
+                      </TableCell>
+                      <TableCell><Badge variant="warning" className="whitespace-nowrap">Pendiente</Badge></TableCell>
+                      <TableCell>
+                        <div className="flex flex-col gap-2">
+                          <Button type="button" size="sm" onClick={() => setApprovePayment(payment)} disabled={Boolean(actionBusy)}><Check aria-hidden="true" /> Aprobar</Button>
+                          <Button type="button" variant="outline" size="sm" onClick={() => { setRejectModalPaymentId(payment.id); setRejectReason(""); setRejectError(""); }} disabled={Boolean(actionBusy)}><X aria-hidden="true" /> Rechazar</Button>
                         </div>
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   );
                 })}
-              </tbody>
-            </table>
+          </TableBody>
+        </Table>
+      </DataTableShell>
+
+      <ConfirmDialog
+        open={Boolean(approvePayment)}
+        onOpenChange={(open) => { if (!open && !actionBusy) setApprovePayment(null); }}
+        title="Aprobar pago"
+        description={<>Confirma que revisaste la información bancaria y los comprobantes de <strong>{approvePayment?.contract.contractNumber}</strong>{approvePayment ? ` para ${approvePayment.contract.client.fullName}` : ""}.</>}
+        cancelLabel="Cancelar"
+        confirmLabel="Aprobar pago"
+        pendingLabel="Aprobando..."
+        isPending={actionBusy.startsWith("approve:")}
+        onConfirm={() => void onApprove()}
+      />
+
+      <Dialog open={Boolean(rejectModalPaymentId)} onOpenChange={(open) => { if (!open) closeRejectDialog(); }}>
+        <DialogContent showCloseButton={!actionBusy}>
+          <DialogHeader>
+            <DialogTitle>Rechazar pago</DialogTitle>
+            <DialogDescription>Indica el motivo para que el pago pueda ser revisado nuevamente.</DialogDescription>
+          </DialogHeader>
+          <div className="mt-4 grid gap-3">
+            {rejectError ? <Alert variant="destructive"><CircleAlert aria-hidden="true" className="absolute top-3 left-4 size-4" /><AlertTitle className="ml-6">No se pudo rechazar el pago</AlertTitle><AlertDescription className="ml-6">{rejectError}</AlertDescription></Alert> : null}
+            <FormField label="Razón del rechazo" htmlFor="pending-payment-rejection-reason" required>
+              <Textarea id="pending-payment-rejection-reason" rows={5} maxLength={500} value={rejectReason} onChange={(event) => { setRejectReason(event.target.value); setRejectError(""); }} placeholder="Describe por qué el pago no coincide con la verificación bancaria" disabled={Boolean(actionBusy)} />
+            </FormField>
+            <p className="text-right text-xs text-muted-foreground">{rejectReason.length}/500</p>
           </div>
-        ) : null}
-      </section>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={closeRejectDialog} disabled={Boolean(actionBusy)}>Cancelar</Button>
+            <Button type="button" variant="destructive" onClick={() => void onReject()} disabled={Boolean(actionBusy) || !rejectReason.trim()}>{actionBusy.startsWith("reject:") ? "Procesando..." : "Rechazar pago"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-      <ConfirmModal isOpen={Boolean(approvePayment)} title="Aprobar pago de reserva" message={<>Confirma que revisaste la información bancaria y los comprobantes de <strong>{approvePayment?.contract.contractNumber}</strong>.</>} confirmText="Aprobar pago" isLoading={actionBusy.startsWith("approve:")} onCancel={() => setApprovePayment(null)} onConfirm={() => void onApprove()} />
-
-      {rejectModalPaymentId ? (
-        <section className="viewer-modal" onClick={(event) => { if (event.target === event.currentTarget && !actionBusy) setRejectModalPaymentId(""); }}>
-          <div className="viewer-panel reject-modal-panel" onClick={(event) => event.stopPropagation()}>
-            <div className="viewer-head"><h2>Rechazar Pago</h2><button type="button" className="rounded-xl px-4 py-2.5 bg-white text-blue-900 border border-blue-200 font-semibold" onClick={() => setRejectModalPaymentId("")} disabled={Boolean(actionBusy)}>Cerrar</button></div>
-            <div className="viewer-body">
-              <label className="reject-modal-label">Motivo del rechazo<textarea rows={5} maxLength={500} value={rejectReason} onChange={(event) => setRejectReason(event.target.value)} placeholder="Describe por qué el pago no coincide con la verificación bancaria" /></label>
-              <div className="history-col-muted" style={{ textAlign: "right" }}>{rejectReason.length}/500</div>
-              <div className="actions" style={{ marginTop: "12px" }}><button type="button" className="rounded-xl px-4 py-3 bg-linear-to-b from-blue-500 to-blue-700 text-white font-bold shadow-lg shadow-blue-500/25 disabled:opacity-50 disabled:cursor-not-allowed" onClick={() => void onReject()} disabled={Boolean(actionBusy) || !rejectReason.trim()}>{actionBusy.startsWith("reject:") ? "Procesando..." : "Confirmar rechazo"}</button></div>
-            </div>
-          </div>
-        </section>
-      ) : null}
-
-      {viewerAttachments ? <AttachmentViewer attachments={viewerAttachments} initialIndex={viewerInitialIndex} onClose={() => setViewerAttachments(null)} /> : null}
+      {viewerSession ? <AttachmentViewer attachments={viewerSession.attachments} initialIndex={viewerSession.initialIndex} resolveAttachmentUrl={resolveEvidenceUrl} onClose={() => setViewerSession(null)} /> : null}
       <LoadingModal isOpen={loadingModalOpen} state={loadingModalState} loadingMessage={loadingModalMessage} successMessage={loadingModalMessage} errorMessage={loadingModalMessage} onClose={() => setLoadingModalOpen(false)} autoCloseDelay={1800} />
     </main>
   );
