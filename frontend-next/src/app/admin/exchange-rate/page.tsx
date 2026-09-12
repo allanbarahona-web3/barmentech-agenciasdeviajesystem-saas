@@ -18,6 +18,15 @@ import {
 import { ConfirmModal } from "@/components/confirm-modal";
 import { LoadingModal } from "@/components/loading-modal";
 import { PageLoader } from "@/components/loading-spinner";
+import { PageHeader } from "@/components/patterns/page-header";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { IconBadge } from "@/components/ui/icon-badge";
+import { ExchangeRateConfigForm } from "@/features/exchange-rate/exchange-rate-config-form";
+import { ExchangeRateHistory } from "@/features/exchange-rate/exchange-rate-history";
+import { BadgeDollarSign, Banknote, CalendarDays, Settings2, UserRound } from "lucide-react";
 
 export default function AdminExchangeRatePage() {
   const router = useRouter();
@@ -52,6 +61,8 @@ export default function AdminExchangeRatePage() {
   const [buyRate, setBuyRate] = useState("");
   const [sellRate, setSellRate] = useState("");
   const [notes, setNotes] = useState("");
+  const [isConfigurationSheetOpen, setIsConfigurationSheetOpen] = useState(false);
+  const [configurationError, setConfigurationError] = useState("");
 
   // Filter states
   const [filterStartDate, setFilterStartDate] = useState("");
@@ -200,24 +211,25 @@ export default function AdminExchangeRatePage() {
 
     const buy = parseFloat(buyRate);
     const sell = parseFloat(sellRate);
+    setConfigurationError("");
 
     if (!date) {
-      showWarningModal("Campo requerido", "Debe seleccionar una fecha");
+      setConfigurationError("Debe seleccionar una fecha");
       return;
     }
 
     if (isNaN(buy) || buy <= 0) {
-      showWarningModal("Dato inválido", "El tipo de cambio de compra debe ser mayor a 0");
+      setConfigurationError("El tipo de cambio de compra debe ser mayor a 0");
       return;
     }
 
     if (isNaN(sell) || sell <= 0) {
-      showWarningModal("Dato inválido", "El tipo de cambio de venta debe ser mayor a 0");
+      setConfigurationError("El tipo de cambio de venta debe ser mayor a 0");
       return;
     }
 
     if (sell < buy) {
-      showWarningModal("Dato inválido", "El tipo de cambio de venta debe ser mayor o igual al de compra");
+      setConfigurationError("El tipo de cambio de venta debe ser mayor o igual al de compra");
       return;
     }
 
@@ -241,12 +253,25 @@ export default function AdminExchangeRatePage() {
       setBuyRate("");
       setSellRate("");
       setNotes("");
+      setConfigurationError("");
+      setIsConfigurationSheetOpen(false);
     } catch (err: unknown) {
       closeLoadingModal();
-      showWarningModal("Error guardando tipo de cambio", extractErrorMessage(err, "Error guardando tipo de cambio"));
+      setConfigurationError(extractErrorMessage(err, "Error guardando tipo de cambio"));
     } finally {
       setSaving(false);
     }
+  };
+
+  const openConfigurationSheet = () => {
+    setConfigurationError("");
+    setIsConfigurationSheetOpen(true);
+  };
+
+  const handleConfigurationSheetOpenChange = (open: boolean) => {
+    if (!open && saving) return;
+    setIsConfigurationSheetOpen(open);
+    if (!open) setConfigurationError("");
   };
 
   const handleFilter = async () => {
@@ -379,278 +404,92 @@ export default function AdminExchangeRatePage() {
         onClose={closeLoadingModal}
       />
       <main className="app-shell">
-      <div style={{ marginBottom: 30 }}>
-        <h1 style={{ marginBottom: 8, fontSize: "1.8rem", fontWeight: 600 }}>💱 Tipo de Cambio USD/CRC</h1>
-        <p style={{ color: "#6b7280", margin: 0 }}>Configura el tipo de cambio diario para conversiones de moneda</p>
-      </div>
+        <PageHeader
+          className="mb-6"
+          title={<span className="flex items-center gap-3"><IconBadge tone="primary"><BadgeDollarSign aria-hidden="true" /></IconBadge>Tipo de cambio</span>}
+          description="Administra el tipo de cambio USD/CRC utilizado por el sistema."
+          actions={canEdit ? (
+            <Button type="button" onClick={openConfigurationSheet}>
+              <Settings2 aria-hidden="true" />
+              Configurar tipo de cambio
+            </Button>
+          ) : undefined}
+        />
 
-      {/* TC Actual - Card destacada */}
-      <section style={{
-        background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-        borderRadius: 12,
-        padding: 30,
-        marginBottom: 30,
-        color: "white",
-        boxShadow: "0 4px 20px rgba(102, 126, 234, 0.3)"
-      }}>
-        <h2 style={{ margin: "0 0 20px 0", fontSize: "1.3rem", fontWeight: 600 }}>📊 Tipo de Cambio Vigente</h2>
-        {currentRate ? (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 20 }}>
-            <div style={{ background: "rgba(255,255,255,0.15)", borderRadius: 8, padding: 16, backdropFilter: "blur(10px)" }}>
-              <div style={{ fontSize: "0.85rem", opacity: 0.9, marginBottom: 6 }}>📅 Fecha</div>
-              <div style={{ fontSize: "1.3rem", fontWeight: "bold" }}>{formatBusinessDate(currentRate.date)}</div>
+        <Card className="mb-6">
+          <CardHeader>
+            <div className="flex items-start gap-3">
+              <IconBadge tone="info"><Banknote aria-hidden="true" /></IconBadge>
+              <div>
+                <CardTitle>Tipo de cambio vigente</CardTitle>
+                <CardDescription>Valores actuales para conversiones USD/CRC.</CardDescription>
+              </div>
             </div>
-            <div style={{ background: "rgba(255,255,255,0.15)", borderRadius: 8, padding: 16, backdropFilter: "blur(10px)" }}>
-              <div style={{ fontSize: "0.85rem", opacity: 0.9, marginBottom: 6 }}>💰 TC Compra</div>
-              <div style={{ fontSize: "1.3rem", fontWeight: "bold" }}>₡{currentRate.buyRate.toFixed(4)}</div>
-            </div>
-            <div style={{ background: "rgba(255,255,255,0.15)", borderRadius: 8, padding: 16, backdropFilter: "blur(10px)" }}>
-              <div style={{ fontSize: "0.85rem", opacity: 0.9, marginBottom: 6 }}>💵 TC Venta</div>
-              <div style={{ fontSize: "1.3rem", fontWeight: "bold" }}>₡{currentRate.sellRate.toFixed(4)}</div>
-            </div>
-            <div style={{ background: "rgba(255,255,255,0.15)", borderRadius: 8, padding: 16, backdropFilter: "blur(10px)" }}>
-              <div style={{ fontSize: "0.85rem", opacity: 0.9, marginBottom: 6 }}>👤 Configurado por</div>
-              <div style={{ fontSize: "1.1rem", fontWeight: "600" }}>{currentRate.setByName}</div>
-            </div>
-          </div>
-        ) : (
-          <div style={{ background: "rgba(239, 68, 68, 0.2)", borderRadius: 8, padding: 16, border: "1px solid rgba(239, 68, 68, 0.4)" }}>
-            ⚠️ No hay tipo de cambio configurado para hoy
-          </div>
-        )}
-      </section>
+            {currentRate ? <Badge variant="info">USD / CRC</Badge> : null}
+          </CardHeader>
+          <CardContent>
+            {currentRate ? (
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-lg border border-border bg-muted/40 p-4">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground"><IconBadge tone="info" size="sm"><CalendarDays aria-hidden="true" /></IconBadge>Fecha</div>
+                  <p className="mt-3 text-lg font-semibold tracking-tight text-foreground">{formatBusinessDate(currentRate.date)}</p>
+                </div>
+                <div className="rounded-lg border border-border bg-muted/40 p-4">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground"><IconBadge tone="success" size="sm"><BadgeDollarSign aria-hidden="true" /></IconBadge>TC Compra</div>
+                  <p className="mt-3 text-2xl font-semibold tracking-tight text-foreground">₡{currentRate.buyRate.toFixed(4)}</p>
+                </div>
+                <div className="rounded-lg border border-border bg-muted/40 p-4">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground"><IconBadge tone="primary" size="sm"><BadgeDollarSign aria-hidden="true" /></IconBadge>TC Venta</div>
+                  <p className="mt-3 text-2xl font-semibold tracking-tight text-foreground">₡{currentRate.sellRate.toFixed(4)}</p>
+                </div>
+                <div className="rounded-lg border border-border bg-muted/40 p-4">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground"><IconBadge tone="neutral" size="sm"><UserRound aria-hidden="true" /></IconBadge>Configurado por</div>
+                  <p className="mt-3 text-lg font-semibold tracking-tight text-foreground">{currentRate.setByName}</p>
+                </div>
+              </div>
+            ) : (
+              <Alert variant="warning">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <AlertDescription>No se ha configurado el tipo de cambio para hoy.</AlertDescription>
+                  {canEdit ? <Button type="button" variant="outline" size="sm" onClick={openConfigurationSheet}>Configurar ahora</Button> : null}
+                </div>
+              </Alert>
+            )}
+          </CardContent>
+        </Card>
 
-      {/* Formulario - Card blanca (solo ADMIN) */}
       {canEdit && (
-        <section style={{ background: "white", borderRadius: 12, padding: 30, marginBottom: 30, boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
-          <h2 style={{ margin: "0 0 6px 0", fontSize: "1.3rem", fontWeight: 600 }}>✏️ Configurar Tipo de Cambio</h2>
-          <p style={{ color: "#6b7280", marginBottom: 24, fontSize: "0.9rem" }}>Establece o actualiza el tipo de cambio para una fecha específica</p>
-
-          <form onSubmit={handleSubmit}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 20, marginBottom: 20 }}>
-            <div className="form-group">
-              <label htmlFor="date" style={{ fontWeight: 500, marginBottom: 8, display: "block" }}>📅 Fecha</label>
-              <input
-                id="date"
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                required
-                style={{ width: "100%", padding: "10px 12px", fontSize: "1rem" }}
-              />
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="buyRate" style={{ fontWeight: 500, marginBottom: 8, display: "block" }}>💰 TC Compra (₡)</label>
-              <input
-                id="buyRate"
-                type="number"
-                step="0.0001"
-                min="0"
-                value={buyRate}
-                onChange={(e) => setBuyRate(e.target.value)}
-                placeholder="520.5000"
-                required
-                style={{ width: "100%", padding: "10px 12px", fontSize: "1rem" }}
-              />
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="sellRate" style={{ fontWeight: 500, marginBottom: 8, display: "block" }}>💵 TC Venta (₡)</label>
-              <input
-                id="sellRate"
-                type="number"
-                step="0.0001"
-                min="0"
-                value={sellRate}
-                onChange={(e) => setSellRate(e.target.value)}
-                placeholder="530.2500"
-                required
-                style={{ width: "100%", padding: "10px 12px", fontSize: "1rem" }}
-              />
-            </div>
-          </div>
-
-          <div className="form-group" style={{ marginBottom: 24 }}>
-            <label htmlFor="notes" style={{ fontWeight: 500, marginBottom: 8, display: "block" }}>📝 Notas (opcional)</label>
-            <textarea
-              id="notes"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Ejemplo: Fuente: BCCR, actualizado manualmente"
-              rows={3}
-              style={{ width: "100%", padding: "10px 12px", fontSize: "1rem", resize: "vertical" }}
-            />
-          </div>
-
-          <button 
-            type="submit" 
-            className="rounded-xl px-4 py-3 bg-linear-to-b from-blue-500 to-blue-700 text-white font-bold shadow-lg shadow-blue-500/25 transition-all duration-150 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-blue-500/30 active:translate-y-0 active:saturate-75 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-lg" 
-            disabled={saving}
-            style={{ 
-              padding: "12px 32px", 
-              fontSize: "1rem",
-              background: saving ? "#9ca3af" : undefined,
-              cursor: saving ? "not-allowed" : "pointer"
-            }}
-          >
-            {saving ? "⏳ Guardando..." : "💾 Guardar Tipo de Cambio"}
-          </button>
-        </form>
-      </section>
+        <ExchangeRateConfigForm
+          open={isConfigurationSheetOpen}
+          date={date}
+          buyRate={buyRate}
+          sellRate={sellRate}
+          notes={notes}
+          saving={saving}
+          error={configurationError}
+          onOpenChange={handleConfigurationSheetOpenChange}
+          onDateChange={setDate}
+          onBuyRateChange={setBuyRate}
+          onSellRateChange={setSellRate}
+          onNotesChange={setNotes}
+          onSubmit={handleSubmit}
+        />
       )}
 
-      {/* Historial - Card blanca */}
-      <section style={{ background: "white", borderRadius: 12, padding: 30, boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
-        <h2 style={{ margin: "0 0 6px 0", fontSize: "1.3rem", fontWeight: 600 }}>📜 Historial de Tipos de Cambio</h2>
-        <p style={{ color: "#6b7280", marginBottom: 24, fontSize: "0.9rem" }}>Filtra por rango de fechas (default: último mes)</p>
-
-        {/* Filters */}
-        <div style={{ 
-          display: "grid", 
-          gridTemplateColumns: "1fr 1fr auto auto auto", 
-          gap: 15, 
-          marginBottom: 25,
-          alignItems: "end"
-        }}>
-          <div className="form-group">
-            <label htmlFor="filterStartDate" style={{ fontWeight: 500, marginBottom: 8, display: "block", fontSize: "0.9rem" }}>
-              📅 Fecha Inicial
-            </label>
-            <input
-              id="filterStartDate"
-              type="date"
-              value={filterStartDate}
-              onChange={(e) => setFilterStartDate(e.target.value)}
-              style={{ width: "100%", padding: "10px 12px", fontSize: "1rem" }}
-            />
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="filterEndDate" style={{ fontWeight: 500, marginBottom: 8, display: "block", fontSize: "0.9rem" }}>
-              📅 Fecha Final
-            </label>
-            <input
-              id="filterEndDate"
-              type="date"
-              value={filterEndDate}
-              onChange={(e) => setFilterEndDate(e.target.value)}
-              style={{ width: "100%", padding: "10px 12px", fontSize: "1rem" }}
-            />
-          </div>
-
-          <button
-            onClick={handleFilter}
-            disabled={filtering || !filterStartDate || !filterEndDate}
-            style={{
-              padding: "10px 24px",
-              fontSize: "0.95rem",
-              fontWeight: 600,
-              background: filtering ? "#9ca3af" : "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-              color: "white",
-              border: "none",
-              borderRadius: 8,
-              cursor: filtering || !filterStartDate || !filterEndDate ? "not-allowed" : "pointer",
-              transition: "all 0.2s",
-              opacity: filtering || !filterStartDate || !filterEndDate ? 0.6 : 1,
-            }}
-          >
-            {filtering ? "⏳ Filtrando..." : "🔍 Filtrar"}
-          </button>
-
-          <button
-            onClick={handleExportPdf}
-            disabled={exporting || history.length === 0}
-            style={{
-              padding: "10px 24px",
-              fontSize: "0.95rem",
-              fontWeight: 600,
-              background: exporting ? "#9ca3af" : "#10b981",
-              color: "white",
-              border: "none",
-              borderRadius: 8,
-              cursor: exporting || history.length === 0 ? "not-allowed" : "pointer",
-              transition: "all 0.2s",
-              opacity: exporting || history.length === 0 ? 0.6 : 1,
-            }}
-          >
-            {exporting ? "⏳ Exportando..." : "📄 Exportar PDF"}
-          </button>
-
-          <button
-            onClick={() => setShowEmailModal(true)}
-            disabled={history.length === 0}
-            style={{
-              padding: "10px 24px",
-              fontSize: "0.95rem",
-              fontWeight: 600,
-              background: history.length === 0 ? "#9ca3af" : "#3b82f6",
-              color: "white",
-              border: "none",
-              borderRadius: 8,
-              cursor: history.length === 0 ? "not-allowed" : "pointer",
-              transition: "all 0.2s",
-              opacity: history.length === 0 ? 0.6 : 1,
-            }}
-          >
-            📧 Enviar por Correo
-          </button>
-        </div>
-
-        {/* Results count */}
-        {history.length > 0 && (
-          <div style={{ 
-            marginBottom: 20, 
-            padding: "12px 16px", 
-            background: "#f3f4f6", 
-            borderRadius: 8,
-            fontSize: "0.9rem",
-            color: "#4b5563"
-          }}>
-            <strong>{history.length}</strong> registro{history.length !== 1 ? 's' : ''} encontrado{history.length !== 1 ? 's' : ''} en el período seleccionado
-          </div>
-        )}
-
-        {history.length === 0 ? (
-          <div style={{ textAlign: "center", padding: "40px 20px", color: "#9ca3af" }}>
-            <div style={{ fontSize: "3rem", marginBottom: 12 }}>📊</div>
-            <p style={{ margin: 0 }}>No hay registros en el rango seleccionado</p>
-          </div>
-        ) : (
-          <div className="table-container">
-            <table className="exchange-rate-table" style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead style={{ background: "#f3f4f6", borderBottom: "2px solid #e5e7eb" }}>
-                <tr>
-                  <th style={{ padding: "12px 16px", textAlign: "left", fontWeight: 600 }}>Fecha</th>
-                  <th style={{ padding: "12px 16px", textAlign: "left", fontWeight: 600 }}>TC Compra</th>
-                  <th style={{ padding: "12px 16px", textAlign: "left", fontWeight: 600 }}>TC Venta</th>
-                  <th style={{ padding: "12px 16px", textAlign: "left", fontWeight: 600 }}>Configurado por</th>
-                  <th style={{ padding: "12px 16px", textAlign: "left", fontWeight: 600 }}>Hora de Configuración</th>
-                  <th style={{ padding: "12px 16px", textAlign: "left", fontWeight: 600 }}>Notas</th>
-                </tr>
-              </thead>
-              <tbody>
-                {history.map((rate) => (
-                  <tr key={rate.id} style={{ borderBottom: "1px solid #e5e7eb" }}>
-                    <td style={{ padding: "12px 16px" }}>{formatBusinessDate(rate.date)}</td>
-                    <td style={{ padding: "12px 16px", color: "#10b981", fontWeight: "bold" }}>
-                      ₡{rate.buyRate.toFixed(4)}
-                    </td>
-                    <td style={{ padding: "12px 16px", color: "#3b82f6", fontWeight: "bold" }}>
-                      ₡{rate.sellRate.toFixed(4)}
-                    </td>
-                    <td style={{ padding: "12px 16px" }}>{rate.setByName}</td>
-                    <td style={{ padding: "12px 16px", fontSize: "0.9rem", color: "#6b7280" }}>
-                      {formatTimestamp(rate.createdAt)}
-                    </td>
-                    <td style={{ padding: "12px 16px", fontSize: "0.9rem", color: "#6b7280" }}>{rate.notes || "-"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
+      <ExchangeRateHistory
+        filterStartDate={filterStartDate}
+        filterEndDate={filterEndDate}
+        history={history}
+        filtering={filtering}
+        exporting={exporting}
+        onFilterStartDateChange={setFilterStartDate}
+        onFilterEndDateChange={setFilterEndDate}
+        onFilter={handleFilter}
+        onExportPdf={handleExportPdf}
+        onOpenEmail={() => setShowEmailModal(true)}
+        formatTimestamp={formatTimestamp}
+        formatBusinessDate={formatBusinessDate}
+      />
 
       {/* Email Modal */}
       {showEmailModal && (
