@@ -7,10 +7,13 @@ import { Prisma, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   AdminSummaryQueryDto,
+  AttendanceEmployeeOptionDto,
   CheckInDto,
   ConfigAttendanceDto,
   CorrectionEntryDto,
   FilterEntriesDto,
+  ListPaginatedAdminEntriesDto,
+  PaginatedAdminAttendanceEntriesResponseDto,
   PeriodFilterDto,
 } from './dto';
 import { AttendanceState } from './constants/attendance-state.constant';
@@ -403,6 +406,117 @@ export class AttendanceService {
     correctionCount: countMap.get(entry.id) || 0,
   }));
   
+  }
+
+  async getAdminEmployeeOptions(
+    user: AuthUser,
+    tenantId?: string,
+  ): Promise<AttendanceEmployeeOptionDto[]> {
+    const tenantScope = this.resolveAdminTenantScope(user, tenantId);
+    const employees = await this.prisma.employee.findMany({
+      where: {
+        ...tenantScope,
+        userId: { not: null },
+      },
+      select: {
+        userId: true,
+        fullName: true,
+      },
+      orderBy: [{ fullName: 'asc' }, { id: 'asc' }],
+    });
+
+    return employees.map((employee) => ({
+      userId: employee.userId!,
+      fullName: employee.fullName,
+    }));
+  }
+
+  async getPaginatedAdminEntries(
+    user: AuthUser,
+    query: ListPaginatedAdminEntriesDto,
+  ): Promise<PaginatedAdminAttendanceEntriesResponseDto> {
+    const tenantScope = this.resolveAdminTenantScope(user, query.tenantId);
+    const dateFilter = query.date
+      ? {
+          date: DateUtils.getCostaRicaStartOfDay(query.date),
+        }
+      : (query.startDate || query.endDate)
+      ? {
+          date: {
+            ...(query.startDate
+              ? { gte: DateUtils.getCostaRicaStartOfDay(query.startDate) }
+              : {}),
+            ...(query.endDate
+              ? { lte: DateUtils.getCostaRicaEndOfDay(query.endDate) }
+              : {}),
+          },
+        }
+      : {};
+
+    const where: Prisma.AttendanceEntryWhereInput = {
+      ...tenantScope,
+      userId: query.userId,
+      type: query.type as AttendanceState | undefined,
+      isOT: query.isOT,
+      exceeded: query.exceeded,
+      ...dateFilter,
+    };
+    const skip = (query.page - 1) * query.pageSize;
+
+    const [entries, total] = await Promise.all([
+      this.prisma.attendanceEntry.findMany({
+        where,
+        select: {
+          id: true,
+          type: true,
+          clockIn: true,
+          clockOut: true,
+          duration: true,
+          isOT: true,
+          User: {
+            select: {
+              id: true,
+              fullName: true,
+            },
+          },
+        },
+        orderBy: [{ clockIn: 'desc' }, { id: 'desc' }],
+        skip,
+        take: query.pageSize,
+      }),
+      this.prisma.attendanceEntry.count({ where }),
+    ]);
+
+    const correctionCounts = entries.length > 0
+      ? await this.prisma.attendanceCorrection.groupBy({
+          by: ['entryId'],
+          where: {
+            entryId: { in: entries.map((entry) => entry.id) },
+            ...(user.role !== 'SUPER_ADMIN'
+              ? { tenantId: user.tenantId! }
+              : {}),
+          },
+          _count: { _all: true },
+        })
+      : [];
+    const countMap = new Map(correctionCounts.map((item) => [item.entryId, item._count._all]));
+
+    return {
+      items: entries.map((entry) => ({
+        id: entry.id,
+        type: entry.type,
+        clockIn: entry.clockIn,
+        clockOut: entry.clockOut,
+        duration: entry.duration,
+        isOT: entry.isOT,
+        correctionCount: countMap.get(entry.id) || 0,
+        user: entry.User,
+      })),
+      total,
+      page: query.page,
+      pageSize: query.pageSize,
+      totalPages: Math.ceil(total / query.pageSize),
+    };
   }
 
   async getAdminSummaries(user: AuthUser, query: AdminSummaryQueryDto) {

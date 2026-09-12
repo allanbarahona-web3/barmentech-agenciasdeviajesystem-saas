@@ -11,10 +11,12 @@ import {
 } from './constants/attendance-roles.constant';
 import {
   AdminSummaryQueryDto,
+  AttendanceEmployeeOptionsQueryDto,
   CheckInDto,
   ConfigAttendanceDto,
   CorrectionEntryDto,
   FilterEntriesDto,
+  ListPaginatedAdminEntriesDto,
   PeriodFilterDto,
 } from './dto';
 
@@ -76,6 +78,24 @@ async myEntries(
   @Roles(...ATTENDANCE_ADMIN_ROLES)
   async adminEntries(@Req() req: RequestWithUser, @Query() query: FilterEntriesDto) {
     return this.attendanceService.getAdminEntries(req.user, query);
+  }
+
+  @Get('admin/entries/paginated')
+  @Roles(...ATTENDANCE_ADMIN_ROLES)
+  async paginatedAdminEntries(
+    @Req() req: RequestWithUser,
+    @Query() query: ListPaginatedAdminEntriesDto,
+  ) {
+    return this.attendanceService.getPaginatedAdminEntries(req.user, query);
+  }
+
+  @Get('admin/employee-options')
+  @Roles(...ATTENDANCE_ADMIN_ROLES)
+  async adminEmployeeOptions(
+    @Req() req: RequestWithUser,
+    @Query() query: AttendanceEmployeeOptionsQueryDto,
+  ) {
+    return this.attendanceService.getAdminEmployeeOptions(req.user, query.tenantId);
   }
 
   @Get('admin/config')

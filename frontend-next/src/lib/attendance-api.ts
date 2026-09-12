@@ -38,6 +38,46 @@ export type AttendanceEntry = {
   };
 };
 
+export type AttendanceAdminListItem = {
+  id: string;
+  type: AttendanceState;
+  clockIn: string;
+  clockOut: string | null;
+  duration: number | null;
+  isOT: boolean;
+  correctionCount: number;
+  user: {
+    id: string;
+    fullName: string;
+  };
+};
+
+export type AttendanceAdminEntriesPaginatedQuery = {
+  page: number;
+  pageSize: number;
+  tenantId?: string;
+  userId?: string;
+  date?: string;
+  startDate?: string;
+  endDate?: string;
+  type?: AttendanceState;
+  isOT?: boolean;
+  exceeded?: boolean;
+};
+
+export type PaginatedAttendanceAdminEntries = {
+  items: AttendanceAdminListItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+};
+
+export type AttendanceEmployeeOption = {
+  userId: string;
+  fullName: string;
+};
+
 export type AttendanceSummary = {
   id: string;
   date: string;
@@ -215,6 +255,65 @@ export const getAttendanceAdminEntries = async (query: Record<string, string> = 
   }
 
   return response.json() as Promise<AttendanceEntry[]>;
+};
+
+export const getAttendanceAdminEntriesPaginated = async (
+  query: AttendanceAdminEntriesPaginatedQuery,
+  options?: { signal?: AbortSignal },
+): Promise<PaginatedAttendanceAdminEntries> => {
+  ensureSession();
+  const apiBase = resolveApiBase();
+  const params = new URLSearchParams({
+    page: String(query.page),
+    pageSize: String(query.pageSize),
+  });
+  if (query.tenantId) params.append('tenantId', query.tenantId);
+  if (query.userId) params.append('userId', query.userId);
+  if (query.date) params.append('date', query.date);
+  if (query.startDate) params.append('startDate', query.startDate);
+  if (query.endDate) params.append('endDate', query.endDate);
+  if (query.type) params.append('type', query.type);
+  if (query.isOT !== undefined) params.append('isOT', String(query.isOT));
+  if (query.exceeded !== undefined) params.append('exceeded', String(query.exceeded));
+
+  const response = await authenticatedFetch(`${apiBase}/attendance/admin/entries/paginated?${params.toString()}`, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${getStoredToken()}`,
+    },
+    signal: options?.signal,
+  });
+
+  if (!response.ok) {
+    throw new Error(await parseError(response, 'No se pudieron cargar los marcajes.'));
+  }
+
+  return response.json();
+};
+
+export const getAttendanceEmployeeOptions = async (
+  query?: { tenantId?: string },
+): Promise<AttendanceEmployeeOption[]> => {
+  ensureSession();
+  const apiBase = resolveApiBase();
+  const params = new URLSearchParams();
+  if (query?.tenantId) params.append('tenantId', query.tenantId);
+  const queryString = params.toString();
+  const response = await authenticatedFetch(
+    `${apiBase}/attendance/admin/employee-options${queryString ? `?${queryString}` : ''}`,
+    {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${getStoredToken()}`,
+      },
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error(await parseError(response, 'No se pudieron cargar las opciones de empleados.'));
+  }
+
+  return response.json();
 };
 
 export const getAttendanceAdminSummaries = async (startDate: string, endDate: string) => {

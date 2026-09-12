@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { History } from 'lucide-react';
 import { getEntryCorrections } from '@/lib/attendance-api';
+import { formatBusinessDateTime } from '@/shared/regional';
 
 interface Correction {
   id: string;
@@ -54,7 +55,6 @@ const formatDuration = (seconds: number | null): string => {
   return hours > 0 ? `${hours}h ${minutes}m ${secs}s` : `${minutes}m ${secs}s`;
 };
 
-const formatDateTime = (dateString: string): string => new Date(dateString).toLocaleString();
 const formatState = (state: string): string => ATTENDANCE_STATE_LABELS[state] || state;
 
 function ChangeValue({ before, after }: { before: string; after: string }) {
@@ -112,7 +112,7 @@ function AdminAttendanceCorrectionsDialog({ entryId, isOpen, onClose }: AdminAtt
               <CardHeader>
                 <div>
                   <CardTitle className="text-sm">Corregido por {correction.User.fullName}</CardTitle>
-                  <p className="mt-1 text-xs text-muted-foreground">Fecha de corrección: {formatDateTime(correction.createdAt)}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Fecha de corrección: {formatBusinessDateTime(correction.createdAt)}</p>
                 </div>
                 <Badge variant="outline">Historial</Badge>
               </CardHeader>
@@ -125,8 +125,8 @@ function AdminAttendanceCorrectionsDialog({ entryId, isOpen, onClose }: AdminAtt
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div><p className="text-xs font-medium text-muted-foreground">Estado</p><ChangeValue before={formatState(correction.beforeType)} after={formatState(correction.afterType)} /></div>
                   <div><p className="text-xs font-medium text-muted-foreground">Duración</p><ChangeValue before={formatDuration(correction.beforeDuration)} after={formatDuration(correction.afterDuration)} /></div>
-                  <div className="sm:col-span-2"><p className="text-xs font-medium text-muted-foreground">Inicio</p><ChangeValue before={formatDateTime(correction.beforeClockIn)} after={formatDateTime(correction.afterClockIn)} /></div>
-                  <div className="sm:col-span-2"><p className="text-xs font-medium text-muted-foreground">Fin</p><ChangeValue before={correction.beforeClockOut ? formatDateTime(correction.beforeClockOut) : '-'} after={correction.afterClockOut ? formatDateTime(correction.afterClockOut) : '-'} /></div>
+                  <div className="sm:col-span-2"><p className="text-xs font-medium text-muted-foreground">Inicio</p><ChangeValue before={formatBusinessDateTime(correction.beforeClockIn)} after={formatBusinessDateTime(correction.afterClockIn)} /></div>
+                  <div className="sm:col-span-2"><p className="text-xs font-medium text-muted-foreground">Fin</p><ChangeValue before={correction.beforeClockOut ? formatBusinessDateTime(correction.beforeClockOut) : '-'} after={correction.afterClockOut ? formatBusinessDateTime(correction.afterClockOut) : '-'} /></div>
                 </div>
               </CardContent>
             </Card>

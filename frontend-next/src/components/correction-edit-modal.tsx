@@ -8,14 +8,15 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { FormField } from '@/components/patterns/form-field';
-import { correctAttendanceEntry, type AttendanceEntry } from '@/lib/attendance-api';
+import { correctAttendanceEntry, type AttendanceAdminListItem } from '@/lib/attendance-api';
+import { formatBusinessTimestampDate } from '@/shared/regional';
 import { LoadingModal } from './loading-modal';
 
 const ATTENDANCE_STATES = ['WORKING', 'MEETING', 'BREAK1', 'LUNCH', 'BREAK2', 'BREAK3', 'OT', 'OFF'];
 
 interface CorrectionEditModalProps {
   entryId: string | null;
-  entry: AttendanceEntry | null;
+  entry: AttendanceAdminListItem | null;
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
@@ -121,7 +122,7 @@ export function CorrectionEditModal({ entryId, entry, isOpen, onClose, onSuccess
             <div className="mt-5 grid gap-4">
               <Alert variant="info">
                 <AlertDescription>
-                  Empleado: {entry.User?.fullName || entry.User?.id || '-'} · Fecha: {new Date(entry.clockIn).toLocaleDateString()}
+                  Empleado: {entry.user.fullName || entry.user.id || '-'} · Fecha: {formatBusinessTimestampDate(entry.clockIn)}
                 </AlertDescription>
               </Alert>
 

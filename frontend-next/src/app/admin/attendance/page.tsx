@@ -2,17 +2,20 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getStoredSession } from '@/lib/auth-api';
+import { formatBusinessDateTime } from '@/shared/regional';
 import {
   getAttendanceAdminConfig,
-  getAttendanceAdminEntries,
+  getAttendanceAdminEntriesPaginated,
+  getAttendanceEmployeeOptions,
   updateAttendanceAdminConfig,
+  type AttendanceAdminListItem,
   type AttendanceConfig,
+  type AttendanceEmployeeOption,
   type AttendanceState,
 } from '@/lib/attendance-api';
-import { getEmployees, type Employee } from '@/lib/employees-api';
 import { AdminAttendanceCorrectionsDialog } from '@/components/admin-attendance-corrections-dialog';
 import { CorrectionEditModal } from '@/components/correction-edit-modal';
 import { LoadingModal } from '@/components/loading-modal';
@@ -32,6 +35,13 @@ import { Clock3, History, RotateCcw, Search, Settings2 } from 'lucide-react';
 const isoDate = (date: Date) => date.toISOString().slice(0, 10);
 const getDefaultStartDate = () => isoDate(new Date(new Date().setDate(new Date().getDate() - 7)));
 const getDefaultEndDate = () => isoDate(new Date());
+const ATTENDANCE_PAGE_SIZE = 50;
+
+type AttendanceFilters = {
+  startDate: string;
+  endDate: string;
+  userId: string;
+};
 
 const ATTENDANCE_STATE_PRESENTATION: Record<AttendanceState, { label: string; variant: 'success' | 'warning' | 'info' | 'secondary' }> = {
   WORKING: { label: 'Trabajando', variant: 'success' },
@@ -67,33 +77,87 @@ export default function AdminAttendancePage() {
   const [loadingModalState, setLoadingModalState] = useState<'loading' | 'success' | 'error'>('loading');
   const [loadingModalMessage, setLoadingModalMessage] = useState('');
   const [config, setConfig] = useState<AttendanceConfig | null>(null);
-  const [entries, setEntries] = useState<Awaited<ReturnType<typeof getAttendanceAdminEntries>>>([]);
+  const [entries, setEntries] = useState<AttendanceAdminListItem[]>([]);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [startDate, setStartDate] = useState(() => getDefaultStartDate());
   const [endDate, setEndDate] = useState(() => getDefaultEndDate());
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
-  const [selectedEntry, setSelectedEntry] = useState<Awaited<ReturnType<typeof getAttendanceAdminEntries>>[number] | null>(null);
+  const [selectedEntry, setSelectedEntry] = useState<AttendanceAdminListItem | null>(null);
   const [isCorrectionModalOpen, setIsCorrectionModalOpen] = useState(false);
   const [historyEntryId, setHistoryEntryId] = useState<string | null>(null);
   const [isCorrectionsModalOpen, setIsCorrectionsModalOpen] = useState(false);
-  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [employeeOptions, setEmployeeOptions] = useState<AttendanceEmployeeOption[]>([]);
   const [filterEmployeeId, setFilterEmployeeId] = useState('');
-  const [filterOffset, setFilterOffset] = useState(0);
+  const [appliedFilters, setAppliedFilters] = useState<AttendanceFilters>(() => ({
+    startDate: getDefaultStartDate(),
+    endDate: getDefaultEndDate(),
+    userId: '',
+  }));
   const [isConfigSheetOpen, setIsConfigSheetOpen] = useState(false);
+  const entriesRequestControllerRef = useRef<AbortController | null>(null);
+  const entriesRequestGenerationRef = useRef(0);
+  const initialAppliedFiltersRef = useRef(appliedFilters);
 
-  const load = async () => {
+  const loadEntries = useCallback(async (requestedPage: number, filters: AttendanceFilters) => {
+    entriesRequestControllerRef.current?.abort();
+    const controller = new AbortController();
+    const requestGeneration = entriesRequestGenerationRef.current + 1;
+    entriesRequestControllerRef.current = controller;
+    entriesRequestGenerationRef.current = requestGeneration;
+
+    try {
+      let pageToLoad = requestedPage;
+
+      while (true) {
+        const entriesData = await getAttendanceAdminEntriesPaginated({
+          page: pageToLoad,
+          pageSize: ATTENDANCE_PAGE_SIZE,
+          startDate: filters.startDate || undefined,
+          endDate: filters.endDate || undefined,
+          userId: filters.userId || undefined,
+        }, { signal: controller.signal });
+
+        if (requestGeneration !== entriesRequestGenerationRef.current) {
+          return;
+        }
+
+        const validTotalPages = Math.max(entriesData.totalPages, 1);
+        if (entriesData.total > 0 && pageToLoad > validTotalPages) {
+          pageToLoad = validTotalPages;
+          continue;
+        }
+
+        setEntries(entriesData.items);
+        setTotal(entriesData.total);
+        setTotalPages(validTotalPages);
+        setPage(entriesData.total === 0 ? 1 : pageToLoad);
+        return;
+      }
+    } catch (err) {
+      if (!controller.signal.aborted && requestGeneration === entriesRequestGenerationRef.current) {
+        setLoadingModalOpen(true);
+        setLoadingModalState('error');
+        setLoadingModalMessage(err instanceof Error ? err.message : 'No se pudieron cargar los marcajes.');
+      }
+    }
+  }, []);
+
+  const load = useCallback(async (filters: AttendanceFilters) => {
     setLoading(true);
     setLoadingModalOpen(true);
     setLoadingModalState('loading');
     setLoadingModalMessage('Recargando asistencia...');
     try {
-      const [configData, employeesData] = await Promise.all([
+      const [configData, optionsData] = await Promise.all([
         getAttendanceAdminConfig(),
-        getEmployees(),
+        getAttendanceEmployeeOptions(),
       ]);
       setConfig(configData);
-      setEmployees(employeesData);
-      setFilterOffset(0);
-      await loadEntries(0);
+      setEmployeeOptions(optionsData);
+      setPage(1);
+      await loadEntries(1, filters);
       setLoadingModalState('success');
       setLoadingModalMessage('Asistencia actualizada.');
     } catch (err) {
@@ -102,39 +166,7 @@ export default function AdminAttendancePage() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const loadEntries = async (
-    offset: number = 0,
-    overrides?: {
-      startDate?: string;
-      endDate?: string;
-      userId?: string;
-    },
-  ) => {
-    try {
-      const params: Record<string, string> = {
-        limit: '50',
-        offset: String(offset),
-      };
-
-      const effectiveStartDate = overrides?.startDate ?? startDate;
-      const effectiveEndDate = overrides?.endDate ?? endDate;
-      const effectiveUserId = overrides?.userId ?? filterEmployeeId;
-
-      if (effectiveStartDate) params.startDate = effectiveStartDate;
-      if (effectiveEndDate) params.endDate = effectiveEndDate;
-      if (effectiveUserId) params.userId = effectiveUserId;
-
-      const entriesData = await getAttendanceAdminEntries(params);
-      setEntries(entriesData);
-      setFilterOffset(offset);
-    } catch (err) {
-      setLoadingModalOpen(true);
-      setLoadingModalState('error');
-      setLoadingModalMessage(err instanceof Error ? err.message : 'No se pudieron cargar los marcajes.');
-    }
-  };
+  }, [loadEntries]);
 
   useEffect(() => {
     const session = getStoredSession();
@@ -149,8 +181,12 @@ export default function AdminAttendancePage() {
       return;
     }
 
-    void load();
-  }, [router]);
+    void load(initialAppliedFiltersRef.current);
+  }, [load, router]);
+
+  useEffect(() => {
+    return () => entriesRequestControllerRef.current?.abort();
+  }, []);
 
   const saveConfig = async () => {
     if (!config) return;
@@ -181,7 +217,7 @@ export default function AdminAttendancePage() {
     }
   };
 
-  const openCorrection = (entry: Awaited<ReturnType<typeof getAttendanceAdminEntries>>[number]) => {
+  const openCorrection = (entry: AttendanceAdminListItem) => {
     setSelectedEntryId(entry.id);
     setSelectedEntry(entry);
     setIsCorrectionModalOpen(true);
@@ -192,7 +228,14 @@ export default function AdminAttendancePage() {
     setLoadingModalState('loading');
     setLoadingModalMessage('Buscando marcajes...');
     try {
-      await loadEntries(0);
+      const nextFilters = {
+        startDate,
+        endDate,
+        userId: filterEmployeeId,
+      };
+      setAppliedFilters(nextFilters);
+      setPage(1);
+      await loadEntries(1, nextFilters);
       setLoadingModalState('success');
       setLoadingModalMessage('Marcajes cargados correctamente.');
     } catch {
@@ -211,14 +254,16 @@ export default function AdminAttendancePage() {
     setFilterEmployeeId('');
     setStartDate(defaultStartDate);
     setEndDate(defaultEndDate);
-    setFilterOffset(0);
+    setPage(1);
 
     try {
-      await loadEntries(0, {
+      const nextFilters = {
         startDate: defaultStartDate,
         endDate: defaultEndDate,
         userId: '',
-      });
+      };
+      setAppliedFilters(nextFilters);
+      await loadEntries(1, nextFilters);
       setLoadingModalState('success');
       setLoadingModalMessage('Filtros restablecidos.');
     } catch {
@@ -242,8 +287,8 @@ export default function AdminAttendancePage() {
           <FormField className="xl:col-span-3" htmlFor="attendance-filter-employee" label="Empleado">
             <Select id="attendance-filter-employee" value={filterEmployeeId} onChange={(event) => setFilterEmployeeId(event.target.value)}>
               <option value="">Todos</option>
-              {employees.filter((employee) => Boolean(employee.userId)).map((employee) => (
-                <option key={employee.userId || employee.id} value={employee.userId || ''}>{employee.fullName}</option>
+              {employeeOptions.map((employee) => (
+                <option key={employee.userId} value={employee.userId}>{employee.fullName}</option>
               ))}
             </Select>
           </FormField>
@@ -264,9 +309,13 @@ export default function AdminAttendancePage() {
         toolbar={<div><h2 className="text-base font-semibold">Marcajes recientes</h2><p className="mt-1 text-sm text-muted-foreground">Selecciona un registro para corregirlo o consultar su historial.</p></div>}
         state={loading ? <p>Cargando marcajes...</p> : entries.length === 0 ? <p>No hay marcajes para los filtros seleccionados.</p> : null}
         footer={(
-          <div className="flex justify-center gap-2">
-            {filterOffset > 0 && <Button type="button" variant="outline" size="sm" onClick={() => void loadEntries(Math.max(0, filterOffset - 50))}>Anterior</Button>}
-            <Button type="button" variant="outline" size="sm" onClick={() => void loadEntries(filterOffset + 50)}>Siguiente</Button>
+          <div className="flex flex-col gap-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+            <span>Mostrando {total === 0 ? 0 : ((page - 1) * ATTENDANCE_PAGE_SIZE) + 1}–{Math.min(page * ATTENDANCE_PAGE_SIZE, total)} de {total} registros</span>
+            <div className="flex items-center gap-2">
+              <span className="whitespace-nowrap">Página {page} de {totalPages}</span>
+              <Button type="button" variant="outline" size="sm" onClick={() => void loadEntries(page - 1, appliedFilters)} disabled={page <= 1}>Anterior</Button>
+              <Button type="button" variant="outline" size="sm" onClick={() => void loadEntries(page + 1, appliedFilters)} disabled={page >= totalPages || total === 0}>Siguiente</Button>
+            </div>
           </div>
         )}
       >
@@ -286,16 +335,16 @@ export default function AdminAttendancePage() {
             {entries.map((entry) => (
               <TableRow key={entry.id} className="cursor-pointer" onClick={() => openCorrection(entry)}>
                 <TableCell className="truncate">
-                  <Button type="button" variant="ghost" className="h-auto max-w-full justify-start p-0 text-left font-medium text-foreground hover:bg-transparent hover:text-primary" title={entry.User?.fullName || '-'} onClick={(event) => {
+                  <Button type="button" variant="ghost" className="h-auto max-w-full justify-start p-0 text-left font-medium text-foreground hover:bg-transparent hover:text-primary" title={entry.user.fullName || '-'} onClick={(event) => {
                     event.stopPropagation();
                     openCorrection(entry);
                   }}>
-                    <span className="truncate">{entry.User?.fullName || '-'}</span>
+                    <span className="truncate">{entry.user.fullName || '-'}</span>
                   </Button>
                 </TableCell>
                 <TableCell className="whitespace-nowrap"><AttendanceStateBadge state={entry.type} /></TableCell>
-                <TableCell className="whitespace-nowrap text-muted-foreground">{new Date(entry.clockIn).toLocaleString()}</TableCell>
-                <TableCell className="whitespace-nowrap text-muted-foreground">{entry.clockOut ? new Date(entry.clockOut).toLocaleString() : '-'}</TableCell>
+                <TableCell className="whitespace-nowrap text-muted-foreground">{formatBusinessDateTime(entry.clockIn)}</TableCell>
+                <TableCell className="whitespace-nowrap text-muted-foreground">{entry.clockOut ? formatBusinessDateTime(entry.clockOut) : '-'}</TableCell>
                 <TableCell className="whitespace-nowrap">{formatDuration(entry.duration)}</TableCell>
                 <TableCell className="whitespace-nowrap"><Badge variant={entry.isOT ? 'warning' : 'secondary'}>{entry.isOT ? 'Sí' : 'No'}</Badge></TableCell>
                 <TableCell className="text-right">
@@ -322,7 +371,7 @@ export default function AdminAttendancePage() {
         description="Ajusta los tiempos utilizados por las reglas de asistencia."
         actions={(
           <>
-            <Button type="button" variant="outline" disabled={loading} onClick={() => void load()}><RotateCcw aria-hidden="true" />Recargar</Button>
+            <Button type="button" variant="outline" disabled={loading} onClick={() => void load(appliedFilters)}><RotateCcw aria-hidden="true" />Recargar</Button>
             <Button type="button" disabled={saving || loading || !config} onClick={() => void saveConfig()}><Settings2 aria-hidden="true" />Guardar configuración</Button>
           </>
         )}
@@ -358,7 +407,7 @@ export default function AdminAttendancePage() {
           setSelectedEntryId(null);
           setSelectedEntry(null);
         }}
-        onSuccess={() => void load()}
+        onSuccess={() => void loadEntries(page, appliedFilters)}
       />
 
       <AdminAttendanceCorrectionsDialog
