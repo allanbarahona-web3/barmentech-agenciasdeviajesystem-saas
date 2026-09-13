@@ -220,21 +220,16 @@ export function VerticalNav() {
               },
               {
                 href: "/additional-services/orders",
-                label: "Órdenes",
+                label: "Órdenes en proceso",
                 icon: "📋",
+              },
+              {
+                href: "/sales-orders",
+                label: "Órdenes de venta",
+                icon: "🧾",
               },
             ],
           } as NavGroup,
-        ]
-      : []),
-
-    ...(isAdmin || role === "AGENT" || role === "OPERACIONES"
-      ? [
-          {
-            href: "/sales-orders",
-            label: "Órdenes de Venta",
-            icon: "🧾",
-          },
         ]
       : []),
     
