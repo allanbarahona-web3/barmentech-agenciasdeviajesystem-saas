@@ -1377,6 +1377,11 @@ enum Currency {
   CRC
 }
 
+enum TenantExchangeRateSource {
+  MANUAL
+  BCCR
+}
+
 enum OfficialExchangeRateType {
   REFERENCE_BUY
   REFERENCE_SELL
@@ -2233,18 +2238,19 @@ model BillingDocumentPaymentMethod {
 }
 
 model TenantBillingConfiguration {
-  id                          String   @id @default(cuid())
-  tenantId                    String   @unique
-  billingEnabled              Boolean  @default(false)
-  externalRegistrationEnabled Boolean  @default(false)
-  electronicIssuanceEnabled   Boolean  @default(false)
-  countryCode                 String   @default("CR") @db.VarChar(2)
-  defaultCurrencyCode         String   @default("CRC") @db.VarChar(3)
-  fiscalTimezone              String   @default("America/Costa_Rica") @db.VarChar(100)
-  fiscalSchemaVersion         String   @default("4.4") @db.VarChar(20)
-  createdAt                   DateTime @default(now())
-  updatedAt                   DateTime @updatedAt
-  tenant                      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  id                          String                   @id @default(cuid())
+  tenantId                    String                   @unique
+  billingEnabled              Boolean                  @default(false)
+  externalRegistrationEnabled Boolean                  @default(false)
+  electronicIssuanceEnabled   Boolean                  @default(false)
+  countryCode                 String                   @default("CR") @db.VarChar(2)
+  defaultCurrencyCode         String                   @default("CRC") @db.VarChar(3)
+  exchangeRateSource          TenantExchangeRateSource @default(MANUAL)
+  fiscalTimezone              String                   @default("America/Costa_Rica") @db.VarChar(100)
+  fiscalSchemaVersion         String                   @default("4.4") @db.VarChar(20)
+  createdAt                   DateTime                 @default(now())
+  updatedAt                   DateTime                 @updatedAt
+  tenant                      Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("tenant_billing_configurations")
 }
