@@ -4,10 +4,12 @@ export const dynamic = 'force-dynamic';
 
 import { useEffect, useState, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import Link from 'next/link';
 import { LoadingModal } from '@/components/loading-modal';
-import { getCustomerProfile, updateCustomer, getCustomerDocumentDownloadUrl, uploadCustomerDocument, createCustomerNote, updateCustomerNote, deleteCustomerNote, type CustomerProfile, type UpdateCustomerDto, type CustomerDocumentCategory } from '@/lib/customers-api';
+import { getCustomerProfile, updateCustomer, getCustomerDocumentDownloadUrl, uploadCustomerDocument, createCustomerNote, updateCustomerNote, deleteCustomerNote, type CustomerContractItem, type CustomerProfile, type UpdateCustomerDto, type CustomerDocumentCategory } from '@/lib/customers-api';
 import { getStoredSession } from '@/lib/auth-api';
+import { formatFinanceMoney, getCustomerFinancialSummary, type CustomerFinancialSummary } from '@/lib/finance-api';
+import { ContractFinanceDrawer } from '@/features/contracts-finance/contract-finance-drawer';
+import { CustomerAccountStatementModal } from '@/app/finance/accounts-receivable/customer-account-statement';
 import { CustomerEditModal, CustomerDocumentUploadModal } from '@/features/customers/components';
 import AttachmentViewer from '@/components/attachment-viewer';
 import { getContractFiles } from '@/lib/contracts-api';
@@ -25,7 +27,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { FormField } from '@/components/patterns/form-field';
 import { PageHeader } from '@/components/patterns/page-header';
 import { SectionCard } from '@/components/patterns/section-card';
-import { ArrowLeft, CheckCircle2, ChevronDown, ClipboardList, CreditCard, Eye, FileText, FolderOpen, Info, Landmark, Pencil, Plus, ReceiptText, RefreshCw, StickyNote, Trash2, UserRound, WalletCards } from 'lucide-react';
+import { ArrowLeft, ChevronDown, ClipboardList, Eye, FileText, FolderOpen, Info, Pencil, Plus, RefreshCw, StickyNote, Trash2, UserRound, WalletCards } from 'lucide-react';
 
 export default function CustomerProfilePage() {
   const router = useRouter();
@@ -34,6 +36,12 @@ export default function CustomerProfilePage() {
 
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<CustomerProfile | null>(null);
+  const [financialSummary, setFinancialSummary] = useState<CustomerFinancialSummary | null>(null);
+  const [financialSummaryLoading, setFinancialSummaryLoading] = useState(true);
+  const [financialSummaryError, setFinancialSummaryError] = useState<string | null>(null);
+  const [selectedFinancialCurrency, setSelectedFinancialCurrency] = useState<string>('');
+  const [statementCurrency, setStatementCurrency] = useState<CustomerFinancialSummary['currencies'][number]['currencyCode'] | null>(null);
+  const [selectedFinancialContract, setSelectedFinancialContract] = useState<CustomerContractItem | null>(null);
   const [loadingModalOpen, setLoadingModalOpen] = useState(false);
   const [loadingModalState, setLoadingModalState] = useState<'loading' | 'success' | 'error'>('loading');
   const [loadingModalMessage, setLoadingModalMessage] = useState('');
@@ -42,6 +50,7 @@ export default function CustomerProfilePage() {
   // User session for role check
   const session = getStoredSession();
   const isAdmin = session?.user?.role?.toUpperCase() === 'ADMIN';
+  const canSendStatement = ['ADMIN', 'FACTURACION_COBROS'].includes(String(session?.user?.role ?? '').toUpperCase());
 
   // Edit modal state
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -92,6 +101,28 @@ export default function CustomerProfilePage() {
 
   useEffect(() => {
     loadProfile();
+  }, [customerId]);
+
+  useEffect(() => {
+    if (!customerId) return;
+    const controller = new AbortController();
+    setFinancialSummary(null);
+    setFinancialSummaryLoading(true);
+    setFinancialSummaryError(null);
+    setSelectedFinancialCurrency('');
+    void getCustomerFinancialSummary(customerId, controller.signal)
+      .then((summary) => {
+        if (controller.signal.aborted) return;
+        setFinancialSummary(summary);
+        setSelectedFinancialCurrency(summary.currencies[0]?.currencyCode ?? '');
+      })
+      .catch((requestError) => {
+        if (!controller.signal.aborted) setFinancialSummaryError(requestError instanceof Error ? requestError.message : 'No se pudo cargar el resumen financiero.');
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setFinancialSummaryLoading(false);
+      });
+    return () => controller.abort();
   }, [customerId]);
 
   useEffect(() => {
@@ -349,18 +380,6 @@ export default function CustomerProfilePage() {
       setLoadingModalState('error');
       setLoadingModalMessage(errorMessage);
     }
-  }
-
-  function formatCurrency(amount: number, currency?: string): string {
-    // Use the currency from financialSummary, default to USD
-    const currencyCode = currency || financialSummary?.currency || 'USD';
-    
-    return new Intl.NumberFormat('es-CR', {
-      style: 'currency',
-      currency: currencyCode,
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount);
   }
 
   function getCategoryLabel(category: string): string {
@@ -698,8 +717,9 @@ export default function CustomerProfilePage() {
     );
   }
 
-  const { customer, contracts, financialSummary, statistics, documents } = profile;
+  const { customer, contracts, statistics, documents } = profile;
   const isMinor = profile.participationRole === 'MINOR';
+  const selectedCurrencySummary = financialSummary?.currencies.find((currency) => currency.currencyCode === selectedFinancialCurrency) ?? financialSummary?.currencies[0] ?? null;
 
   return (
     <main className="app-shell">
@@ -791,22 +811,20 @@ export default function CustomerProfilePage() {
         {/* Section 3: Financial Summary */}
         {!isMinor && (
           <SectionCard className="lg:col-span-1" title={<span className="flex items-center gap-2"><IconBadge tone="primary" size="sm"><WalletCards aria-hidden="true" /></IconBadge>Resumen financiero</span>}>
-            <div className="grid gap-3">
+            {financialSummaryLoading ? <p className="py-6 text-center text-sm text-muted-foreground">Cargando resumen financiero…</p> : null}
+            {financialSummaryError ? <Alert variant="destructive"><AlertTitle>No se pudo cargar el resumen financiero</AlertTitle><AlertDescription>{financialSummaryError}</AlertDescription></Alert> : null}
+            {!financialSummaryLoading && !financialSummaryError && financialSummary?.currencies.length === 0 ? <div className="rounded-lg border border-dashed border-border bg-muted/40 px-5 py-8 text-center"><p className="text-sm font-medium text-foreground">No hay actividad financiera para este cliente.</p></div> : null}
+            {!financialSummaryLoading && !financialSummaryError && financialSummary && selectedCurrencySummary ? <div className="grid gap-3">
+              {financialSummary.currencies.length > 1 ? <div className="flex items-center gap-2"><label className="text-xs font-medium text-muted-foreground" htmlFor="customer-financial-currency">Moneda</label><Select id="customer-financial-currency" size="sm" value={selectedCurrencySummary.currencyCode} onChange={(event) => setSelectedFinancialCurrency(event.target.value)}><option value={selectedCurrencySummary.currencyCode}>{selectedCurrencySummary.currencyCode}</option>{financialSummary.currencies.filter((currency) => currency.currencyCode !== selectedCurrencySummary.currencyCode).map((currency) => <option key={currency.currencyCode} value={currency.currencyCode}>{currency.currencyCode}</option>)}</Select></div> : <p className="text-xs font-medium text-muted-foreground">Moneda: <span className="text-foreground">{selectedCurrencySummary.currencyCode}</span></p>}
               {[
-                { label: 'Total contratado', value: formatCurrency(financialSummary.totalContractedAmount, financialSummary.currency), icon: FileText, tone: 'primary' as const },
-                { label: 'Total facturado', value: formatCurrency(financialSummary.totalInvoicedAmount, financialSummary.currency), icon: ReceiptText, tone: 'info' as const },
-                { label: 'Total pagado', value: formatCurrency(financialSummary.totalPaidAmount, financialSummary.currency), icon: CreditCard, tone: 'success' as const },
-                { label: 'Saldo pendiente', value: formatCurrency(financialSummary.outstandingBalance, financialSummary.currency), icon: financialSummary.outstandingBalance > 0 ? Landmark : CheckCircle2, tone: financialSummary.outstandingBalance > 0 ? 'warning' as const : 'success' as const },
-                { label: 'Crédito disponible', value: formatCurrency(financialSummary.availableCredit, financialSummary.currency), icon: Landmark, tone: 'warning' as const },
-              ].map(({ label, value, icon: Icon, tone }) => (
-                <div key={label} className="flex items-center justify-between rounded-lg border border-border bg-muted/40 p-4">
-                  <span><span className="block text-xs font-medium text-muted-foreground">{label}</span><span className="mt-1 block text-lg font-semibold tracking-tight text-foreground">{value}</span></span>
-                  <IconBadge tone={tone}><Icon aria-hidden="true" /></IconBadge>
-                </div>
-              ))}
-              {financialSummary.lastPaymentDate && <div className="rounded-lg border border-border p-3"><p className="text-xs font-medium text-muted-foreground">Último pago</p><p className="mt-1 text-sm font-medium text-foreground">{formatCurrency(financialSummary.lastPaymentAmount || 0, financialSummary.currency)}</p><p className="mt-1 text-xs text-muted-foreground">{formatBusinessDate(financialSummary.lastPaymentDate)}</p></div>}
-              {financialSummary.lastContractDate && <div className="rounded-lg border border-border p-3"><p className="text-xs font-medium text-muted-foreground">Último contrato</p><p className="mt-1 text-sm font-medium text-foreground">{financialSummary.lastContractNumber}</p><p className="mt-1 text-xs text-muted-foreground">{formatBusinessDate(financialSummary.lastContractDate)}</p></div>}
-            </div>
+                { label: 'Total contratado', value: selectedCurrencySummary.totalContracted, icon: FileText, tone: 'primary' as const },
+                { label: 'Total facturado', value: selectedCurrencySummary.totalInvoiced, icon: FileText, tone: 'info' as const },
+                { label: 'Total pagado', value: selectedCurrencySummary.totalPaid, icon: WalletCards, tone: 'success' as const },
+                { label: 'Saldo pendiente', value: selectedCurrencySummary.outstanding, icon: WalletCards, tone: 'warning' as const },
+                { label: 'Saldo disponible', value: selectedCurrencySummary.available, icon: WalletCards, tone: 'success' as const },
+              ].map(({ label, value, icon: Icon, tone }) => <div key={label} className="flex items-center justify-between rounded-lg border border-border bg-muted/40 p-4"><span><span className="block text-xs font-medium text-muted-foreground">{label}</span><span className="mt-1 block text-lg font-semibold tracking-tight text-foreground">{formatFinanceMoney(value, selectedCurrencySummary.currencyCode)}</span></span><IconBadge tone={tone}><Icon aria-hidden="true" /></IconBadge></div>)}
+              <Button type="button" variant="outline" onClick={() => setStatementCurrency(selectedCurrencySummary.currencyCode)}>Estado de cuenta</Button>
+            </div> : null}
           </SectionCard>
         )}
       </div>
@@ -1501,8 +1519,8 @@ export default function CustomerProfilePage() {
                     </td>
                     {!isMinor && (
                       <td style={{ padding: '14px 16px', textAlign: 'center' }}>
-                        <Link
-                          href={`/billing/${encodeURIComponent(contract.id)}`}
+                        <button
+                          type="button"
                           style={{
                             display: 'inline-block',
                             padding: '6px 12px',
@@ -1514,11 +1532,12 @@ export default function CustomerProfilePage() {
                             textDecoration: 'none',
                             transition: 'all 0.2s',
                           }}
+                          onClick={() => setSelectedFinancialContract(contract)}
                           onMouseEnter={(e) => (e.currentTarget.style.background = '#059669')}
                           onMouseLeave={(e) => (e.currentTarget.style.background = '#10b981')}
                         >
-                          Open Account
-                        </Link>
+                          Detalle financiero
+                        </button>
                       </td>
                     )}
                   </tr>
@@ -1739,6 +1758,47 @@ export default function CustomerProfilePage() {
         onConfirm={handleDeleteOperationalNote}
       />
 
+      {statementCurrency ? <CustomerAccountStatementModal
+        group={{
+          customerId,
+          currencyCode: statementCurrency,
+          debtor: {
+            displayName: customer.fullName,
+            identificationType: customer.idType,
+            identificationNumber: customer.idNumber,
+          },
+        }}
+        canSend={canSendStatement}
+        onClose={() => setStatementCurrency(null)}
+      /> : null}
+
+      {selectedFinancialContract ? <ContractFinanceDrawer
+        contract={{
+          contractId: selectedFinancialContract.id,
+          contractNumber: selectedFinancialContract.contractNumber,
+          travelLabel: selectedFinancialContract.travelName,
+          travelContext: {
+            source: selectedFinancialContract.source,
+            destination: selectedFinancialContract.destination,
+            travelPackageId: null,
+            internalTripId: null,
+            travelType: null,
+          },
+          startDate: selectedFinancialContract.startDate,
+          endDate: selectedFinancialContract.endDate,
+        }}
+        canWrite={canSendStatement}
+        onClose={() => setSelectedFinancialContract(null)}
+        onReturnToCustomer={() => setSelectedFinancialContract(null)}
+        onChanged={() => {
+          void getCustomerFinancialSummary(customerId)
+            .then((summary) => {
+              setFinancialSummary(summary);
+              setSelectedFinancialCurrency((currency) => summary.currencies.some((item) => item.currencyCode === currency) ? currency : summary.currencies[0]?.currencyCode ?? '');
+            })
+            .catch((requestError) => setFinancialSummaryError(requestError instanceof Error ? requestError.message : 'No se pudo actualizar el resumen financiero.'));
+        }}
+      /> : null}
 
       <LoadingModal
         isOpen={loadingModalOpen}

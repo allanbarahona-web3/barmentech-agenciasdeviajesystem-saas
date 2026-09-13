@@ -16,6 +16,10 @@ const portfolioSource = readFileSync(
   new URL('../src/app/finance/accounts-receivable/contract-obligation-groups.tsx', import.meta.url),
   'utf8',
 );
+const drawerSource = readFileSync(
+  new URL('../src/features/contracts-finance/contract-finance-drawer.tsx', import.meta.url),
+  'utf8',
+);
 const pageSource = readFileSync(
   new URL('../src/app/finance/accounts-receivable/page.tsx', import.meta.url),
   'utf8',
@@ -111,9 +115,10 @@ test('detail and row installment actions open separate overlay state', () => {
   assert.match(groupRowsSource, /onOpenDetail\(contract\)[\s\S]*Detalle financiero/);
   assert.match(groupRowsSource, /onRegisterInstallment\(contract\)[\s\S]*Registrar abono/);
   assert.doesNotMatch(groupRowsSource, /setSelectedDetailContract|setSelectedInstallmentContract/);
-  assert.match(portfolioSource, /function ContractFinanceDrawer/);
+  assert.match(portfolioSource, /import \{ ContractFinanceDrawer, ContractInstallmentForm \}/);
+  assert.match(drawerSource, /export function ContractFinanceDrawer/);
   assert.match(portfolioSource, /function ContractInstallmentModal/);
-  assert.match(portfolioSource, /showInstallmentForm && commercialObligation \? <ContractInstallmentForm/);
+  assert.match(drawerSource, /showInstallmentForm && commercialObligation \? <ContractInstallmentForm/);
 });
 
 test('Contract obligation and payment labels are Spanish and payment methods use the shared registry', () => {
@@ -131,41 +136,41 @@ test('Contract obligation and payment labels are Spanish and payment methods use
   assert.equal(formatContractPaymentPurpose('CONTRACT_INSTALLMENT'), 'Abono');
   assert.equal(CONTRACT_PAYMENT_STATUS_LABELS.RECEIVED, 'Recibido');
   assert.equal(formatFinancePaymentMethod('MOBILE_TRANSFER'), 'SINPE Móvil');
-  assert.match(portfolioSource, /formatFinancePaymentMethod\(payment\.paymentMethod\)/);
+  assert.match(drawerSource, /formatFinancePaymentMethod\(payment\.paymentMethod\)/);
 });
 
 test('the financial drawer and compact modal reuse installment helpers and refresh authoritative reads', () => {
-  assert.match(portfolioSource, /getContractCommercialObligation\(contract\.contractId/);
-  assert.match(portfolioSource, /listContractPayments\(contract\.contractId, \{ page: paymentPage, pageSize: PAYMENT_PAGE_SIZE \}/);
-  assert.match(portfolioSource, /payment\.receiptAvailable \? <Button/);
-  assert.match(portfolioSource, /downloadReceipt\(payment\.id\)/);
-  assert.match(portfolioSource, /downloadPaymentReceipt\(paymentId\)/);
-  assert.match(portfolioSource, /await refresh\(\);\s*onChanged\(\);/);
-  assert.match(portfolioSource, /buildContractInstallmentRequest/);
-  assert.match(portfolioSource, /createContractInstallmentDeduplicationKey/);
-  assert.match(portfolioSource, /installmentFormError/);
-  assert.match(portfolioSource, /<ContractInstallmentForm contractId=\{contract\.contractId\}/);
+  assert.match(drawerSource, /getContractCommercialObligation\(contract\.contractId/);
+  assert.match(drawerSource, /listContractPayments\(contract\.contractId, \{ page: paymentPage, pageSize: PAYMENT_PAGE_SIZE \}/);
+  assert.match(drawerSource, /payment\.receiptAvailable \? <Button/);
+  assert.match(drawerSource, /downloadReceipt\(payment\.id\)/);
+  assert.match(drawerSource, /downloadPaymentReceipt\(paymentId\)/);
+  assert.match(drawerSource, /await refresh\(\);\s*onChanged\(\);/);
+  assert.match(drawerSource, /buildContractInstallmentRequest/);
+  assert.match(drawerSource, /createContractInstallmentDeduplicationKey/);
+  assert.match(drawerSource, /installmentFormError/);
+  assert.match(drawerSource, /<ContractInstallmentForm contractId=\{contract\.contractId\}/);
   assert.match(portfolioSource, /setSelectedInstallmentContract\(null\);\s*onContractsChanged\(\);/);
 });
 
 test('payment history exposes fiscal document visibility without changing payment or receipt actions', () => {
-  assert.match(portfolioSource, /fiscalDocumentPresentation\(payment\.fiscalDocument\)/);
-  assert.match(portfolioSource, /Factura electrónica pendiente/);
-  assert.match(portfolioSource, /Factura aceptada/);
-  assert.match(portfolioSource, /Factura rechazada/);
-  assert.match(portfolioSource, /Factura con error de emisión/);
-  assert.match(portfolioSource, /payment\.fiscalDocument \? <Button asChild/);
-  assert.match(portfolioSource, /Ver factura/);
-  assert.match(portfolioSource, /\/fiscal-billing\/invoices\/\$\{documentId\}/);
-  assert.match(portfolioSource, /\/fiscal-billing\/documents\/\$\{documentId\}/);
-  assert.match(portfolioSource, /payment\.receiptAvailable \? <Button/);
-  assert.match(portfolioSource, /Descargar recibo/);
-  assert.doesNotMatch(portfolioSource, /Emitir factura|Reintentar Hacienda|Cancelar factura|Crear NC|Reenviar XML|Reenviar PDF/);
+  assert.match(drawerSource, /fiscalDocumentPresentation\(payment\.fiscalDocument\)/);
+  assert.match(drawerSource, /Factura electrónica pendiente/);
+  assert.match(drawerSource, /Factura aceptada/);
+  assert.match(drawerSource, /Factura rechazada/);
+  assert.match(drawerSource, /Factura con error de emisión/);
+  assert.match(drawerSource, /payment\.fiscalDocument \? <Button asChild/);
+  assert.match(drawerSource, /Ver factura/);
+  assert.match(drawerSource, /\/fiscal-billing\/invoices\/\$\{documentId\}/);
+  assert.match(drawerSource, /\/fiscal-billing\/documents\/\$\{documentId\}/);
+  assert.match(drawerSource, /payment\.receiptAvailable \? <Button/);
+  assert.match(drawerSource, /Descargar recibo/);
+  assert.doesNotMatch(drawerSource, /Emitir factura|Reintentar Hacienda|Cancelar factura|Crear NC|Reenviar XML|Reenviar PDF/);
 });
 
 test('Contracts terminology uses Total contratado and keeps Total comprometido out of the new UI', () => {
-  assert.match(portfolioSource, /Total contratado/);
-  assert.doesNotMatch(portfolioSource, /Total comprometido/);
+  assert.match(drawerSource, /Total contratado/);
+  assert.doesNotMatch(drawerSource, /Total comprometido/);
 });
 
 test('only Finance write roles can register installments, while Contract controls avoid CxC actions', () => {
@@ -173,13 +178,13 @@ test('only Finance write roles can register installments, while Contract control
   assert.equal(canRegisterContractInstallments('FACTURACION_COBROS'), true);
   assert.equal(canRegisterContractInstallments('CONTADOR'), false);
   assert.equal(canRegisterContractInstallments('AGENT'), false);
-  assert.match(portfolioSource, /canWrite\s*&& canRegisterContractInstallments/);
-  assert.doesNotMatch(portfolioSource, /Nota fiscal|Aplicar saldo/);
+  assert.match(drawerSource, /canWrite\s*&& canRegisterContractInstallments/);
+  assert.doesNotMatch(drawerSource, /Nota fiscal|Aplicar saldo/);
 });
 
 test('Contracts use the bounded Finance drawer and responsive portfolio styling, not the legacy History modal', () => {
-  assert.match(portfolioSource, /className=\{styles\.drawer\}/);
-  assert.doesNotMatch(portfolioSource, /viewer-modal|viewer-panel/);
+  assert.match(drawerSource, /className=\{styles\.drawer\}/);
+  assert.doesNotMatch(drawerSource, /viewer-modal|viewer-panel/);
   assert.match(cssSource, /\.contractGroupTable \{ min-width: 1180px; \}/);
   assert.match(cssSource, /\.contractChildTable \{ min-width: 1120px; \}/);
   assert.match(cssSource, /\.drawer \{ width: 100vw; \}/);
@@ -187,4 +192,9 @@ test('Contracts use the bounded Finance drawer and responsive portfolio styling,
   assert.match(cssSource, /\.contractInstallmentModal \{ position: fixed/);
   assert.match(cssSource, /\.contractInstallmentContext/);
   assert.match(cssSource, /\.paymentModal, \.contractInstallmentModal \{ top: 0; width: 100vw/);
+});
+
+test('Finance keeps the shared drawer in its existing context without a customer return control', () => {
+  assert.match(drawerSource, /onReturnToCustomer \? <Button[\s\S]*Volver al cliente/);
+  assert.doesNotMatch(portfolioSource, /onReturnToCustomer=/);
 });

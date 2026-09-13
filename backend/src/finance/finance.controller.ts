@@ -341,6 +341,12 @@ export class FinanceController {
     return this.reads.getCustomerFinancialBalance(request.user.tenantId, customerId);
   }
 
+  @Get("customers/:customerId/financial-summary")
+  @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.CONTADOR, UserRole.AGENT)
+  getCustomerFinancialSummary(@Req() request: FinanceRequest, @Param("customerId") customerId: string) {
+    return this.reads.getCustomerFinancialSummary(request.user.tenantId, customerId);
+  }
+
   @Get("payments")
   @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.CONTADOR)
   listPayments(@Req() request: FinanceRequest, @Query() query: ListPaymentsDto) {

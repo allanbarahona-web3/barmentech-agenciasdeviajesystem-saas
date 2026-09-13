@@ -451,6 +451,18 @@ export type CustomerAccountStatement = {
   payments: Array<{ id: string; receiptNumber: string; receivedAt: string; receivedAmount: string; availableAmount: string; paymentMethod: string; paymentMethodLabel: string; purpose: string; purposeLabel: string; status: PaymentStatus; allocations: Array<{ sourceType: 'ACCOUNT_RECEIVABLE' | 'CONTRACT_OBLIGATION'; reference: string; amount: string; allocatedAt: string; status: 'ACTIVE' | 'REVERSED'; statusLabel: string; reversedAt: string | null; reversalReason: string | null }> }>;
 };
 
+export type CustomerFinancialSummary = {
+  customerId: string;
+  currencies: Array<{
+    currencyCode: FinanceCurrency;
+    totalContracted: string;
+    totalInvoiced: string;
+    totalPaid: string;
+    outstanding: string;
+    available: string;
+  }>;
+};
+
 export type ListAccountReceivablesParams = {
   page?: number;
   pageSize?: number;
@@ -734,6 +746,10 @@ export function allocateCustomerFunds(input: CustomerFundsAllocationInput): Prom
 
 export function getCustomerAccountStatement(customerId: string, currencyCode: FinanceCurrency, signal?: AbortSignal): Promise<CustomerAccountStatement> {
   return request<CustomerAccountStatement>(`/finance/customers/${encodeURIComponent(customerId)}/account-statement${queryString({ currencyCode })}`, signal);
+}
+
+export function getCustomerFinancialSummary(customerId: string, signal?: AbortSignal): Promise<CustomerFinancialSummary> {
+  return request<CustomerFinancialSummary>(`/finance/customers/${encodeURIComponent(customerId)}/financial-summary`, signal);
 }
 
 export async function downloadCustomerAccountStatement(customerId: string, currencyCode: FinanceCurrency): Promise<{ blob: Blob; fileName: string }> {

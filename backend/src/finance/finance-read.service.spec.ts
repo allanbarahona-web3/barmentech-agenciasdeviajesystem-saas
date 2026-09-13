@@ -358,6 +358,107 @@ describe("FinanceReadService", () => {
     jest.useRealTimers();
   });
 
+  it("returns the customer financial summary by currency from Finance read models only", async () => {
+    const queryRaw = jest.fn().mockResolvedValue([
+      customerFinancialSummaryRow({
+        currencyCode: "CRC",
+        totalContracted: d("100.00000"),
+        totalInvoiced: d("20.00000"),
+        totalPaid: d("45.00000"),
+        outstanding: d("75.00000"),
+        available: d("3.25000"),
+      }),
+      customerFinancialSummaryRow({
+        currencyCode: "USD",
+        totalContracted: d("200.00000"),
+        totalInvoiced: d("25.00000"),
+        totalPaid: d("200.00000"),
+        outstanding: d("25.00000"),
+        available: d("0"),
+      }),
+    ]);
+    const prisma = { $queryRaw: queryRaw };
+    const service = new FinanceReadService(prisma as unknown as PrismaService);
+
+    await expect(service.getCustomerFinancialSummary("tenant-a", "customer-a")).resolves.toEqual({
+      customerId: "customer-a",
+      currencies: [
+        { currencyCode: "CRC", totalContracted: "100", totalInvoiced: "20", totalPaid: "45", outstanding: "75", available: "3.25" },
+        { currencyCode: "USD", totalContracted: "200", totalInvoiced: "25", totalPaid: "200", outstanding: "25", available: "0" },
+      ],
+    });
+
+    const sql = rawSql(queryRaw, 0);
+    expect(sql).toContain('FROM "commercial_obligations"');
+    expect(sql).toContain('FROM "account_receivables"');
+    expect(sql).toContain('FROM "payments"');
+    expect(sql).toContain('"sourceType" = \'CONTRACT\'');
+    expect(sql).toContain('"status" <> \'CANCELLED\'');
+    expect((sql.match(/"status" <> 'CANCELLED'/g) ?? [])).toHaveLength(2);
+    expect(sql).toContain('SUM("originalAmount" - "outstandingAmount")');
+    expect(sql).not.toContain('SUM("receivedAmount")');
+    expect(sql).toContain("'RECEIVED', 'PARTIALLY_ALLOCATED'");
+    expect(sql).not.toContain('FULLY_ALLOCATED');
+    expect(sql).toContain('"availableAmount" > 0');
+    expect(sql).toContain('UNION');
+    expect(sql).toContain('ORDER BY currency_keys."currencyCode" ASC');
+    expect(sql).not.toContain('BillingDocument');
+    expect(sql).not.toContain('BillingInvoice');
+    expect(queryRaw.mock.calls[0]).toEqual(expect.arrayContaining(["tenant-a", "customer-a"]));
+    expect(prisma).not.toHaveProperty("billingDocument");
+    expect(prisma).not.toHaveProperty("billingInvoice");
+    expect(prisma).not.toHaveProperty("payment");
+  });
+
+  it("returns no inactive currencies and preserves zero decimal strings for available-only money", async () => {
+    const queryRaw = jest.fn()
+      .mockResolvedValueOnce([
+        customerFinancialSummaryRow({
+          currencyCode: "CRC",
+          totalContracted: d("0"),
+          totalInvoiced: d("0"),
+          totalPaid: d("0"),
+          outstanding: d("0"),
+          available: d("7.50000"),
+        }),
+      ])
+      .mockResolvedValueOnce([]);
+    const service = new FinanceReadService({ $queryRaw: queryRaw } as unknown as PrismaService);
+
+    await expect(service.getCustomerFinancialSummary("tenant-a", "customer-a")).resolves.toEqual({
+      customerId: "customer-a",
+      currencies: [
+        { currencyCode: "CRC", totalContracted: "0", totalInvoiced: "0", totalPaid: "0", outstanding: "0", available: "7.5" },
+      ],
+    });
+    await expect(service.getCustomerFinancialSummary("tenant-b", "customer-b")).resolves.toEqual({
+      customerId: "customer-b",
+      currencies: [],
+    });
+    expect(queryRaw.mock.calls[1]).toEqual(expect.arrayContaining(["tenant-b", "customer-b"]));
+  });
+
+  it("does not inflate invoiced totals from CONTRACT_PAYMENT fiscal documents", async () => {
+    const queryRaw = jest.fn().mockResolvedValue([
+      customerFinancialSummaryRow({
+        currencyCode: "USD",
+        totalContracted: d("100"),
+        totalInvoiced: d("0"),
+        totalPaid: d("100"),
+        outstanding: d("0"),
+        available: d("0"),
+      }),
+    ]);
+    const billingDocument = { findMany: jest.fn() };
+    const service = new FinanceReadService({ $queryRaw: queryRaw, billingDocument } as unknown as PrismaService);
+
+    await expect(service.getCustomerFinancialSummary("tenant-a", "customer-a")).resolves.toMatchObject({
+      currencies: [expect.objectContaining({ currencyCode: "USD", totalInvoiced: "0" })],
+    });
+    expect(billingDocument.findMany).not.toHaveBeenCalled();
+    expect(rawSql(queryRaw, 0)).toContain('FROM "account_receivables"');
+  });
+
   it("does not mark an AR due today in the tenant timezone overdue after UTC rolls over", async () => {
     jest.useFakeTimers().setSystemTime(new Date("2026-09-01T02:30:00.000Z")); // Aug 31 in Costa Rica
     const groupBy = jest.fn().mockResolvedValue([]);
@@ -929,6 +1030,18 @@ function contractObligationGroupRow(overrides: Record<string, unknown> = {}) {
     debtorDisplayName: "Debtor", debtorIdentificationType: "01", debtorIdentificationNumber: "123",
     totalOriginalAmount: d("100"), totalPaidAmount: d("0"), totalOutstandingAmount: d("100"),
     totalCount: 1n, openCount: 1n, partiallySettledCount: 0n, settledCount: 0n, cancelledCount: 0n, overdueCount: 0n,
+    ...overrides,
+  };
+}
+
+function customerFinancialSummaryRow(overrides: Record<string, unknown> = {}) {
+  return {
+    currencyCode: "CRC",
+    totalContracted: d("0"),
+    totalInvoiced: d("0"),
+    totalPaid: d("0"),
+    outstanding: d("0"),
+    available: d("0"),
     ...overrides,
   };
 }

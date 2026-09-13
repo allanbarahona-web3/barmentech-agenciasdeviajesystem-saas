@@ -737,6 +737,83 @@ export class FinanceReadService {
     };
   }
 
+  async getCustomerFinancialSummary(tenantId: string, customerId: string) {
+    const rows = await this.prisma.$queryRaw<CustomerFinancialSummaryRow[]>`
+      WITH commercial_obligations AS (
+        SELECT
+          "currencyCode",
+          SUM("originalAmount") AS "totalContracted",
+          SUM("originalAmount" - "outstandingAmount") AS "commercialPaid",
+          SUM("outstandingAmount") AS "commercialOutstanding"
+        FROM "commercial_obligations"
+        WHERE "tenantId" = ${tenantId}
+          AND "customerId" = ${customerId}
+          AND "sourceType" = 'CONTRACT'
+          AND "status" <> 'CANCELLED'
+        GROUP BY "currencyCode"
+      ),
+      account_receivables AS (
+        SELECT
+          "currencyCode",
+          SUM("originalAmount") AS "totalInvoiced",
+          SUM("originalAmount" - "outstandingAmount") AS "receivablePaid",
+          SUM("outstandingAmount") AS "receivableOutstanding"
+        FROM "account_receivables"
+        WHERE "tenantId" = ${tenantId}
+          AND "customerId" = ${customerId}
+          AND "status" <> 'CANCELLED'
+        GROUP BY "currencyCode"
+      ),
+      available_payments AS (
+        SELECT
+          "currencyCode",
+          SUM("availableAmount") AS "available"
+        FROM "payments"
+        WHERE "tenantId" = ${tenantId}
+          AND "customerId" = ${customerId}
+          AND "status" IN ('RECEIVED', 'PARTIALLY_ALLOCATED')
+          AND "availableAmount" > 0
+        GROUP BY "currencyCode"
+      ),
+      currency_keys AS (
+        SELECT "currencyCode" FROM commercial_obligations
+        UNION
+        SELECT "currencyCode" FROM account_receivables
+        UNION
+        SELECT "currencyCode" FROM available_payments
+      )
+      SELECT
+        currency_keys."currencyCode",
+        COALESCE(commercial_obligations."totalContracted", 0) AS "totalContracted",
+        COALESCE(account_receivables."totalInvoiced", 0) AS "totalInvoiced",
+        COALESCE(commercial_obligations."commercialPaid", 0)
+          + COALESCE(account_receivables."receivablePaid", 0) AS "totalPaid",
+        COALESCE(commercial_obligations."commercialOutstanding", 0)
+          + COALESCE(account_receivables."receivableOutstanding", 0) AS "outstanding",
+        COALESCE(available_payments."available", 0) AS "available"
+      FROM currency_keys
+      LEFT JOIN commercial_obligations
+        ON commercial_obligations."currencyCode" = currency_keys."currencyCode"
+      LEFT JOIN account_receivables
+        ON account_receivables."currencyCode" = currency_keys."currencyCode"
+      LEFT JOIN available_payments
+        ON available_payments."currencyCode" = currency_keys."currencyCode"
+      ORDER BY currency_keys."currencyCode" ASC
+    `;
+
+    return {
+      customerId,
+      currencies: rows.map((row) => ({
+        currencyCode: row.currencyCode,
+        totalContracted: money(row.totalContracted),
+        totalInvoiced: money(row.totalInvoiced),
+        totalPaid: money(row.totalPaid),
+        outstanding: money(row.outstanding),
+        available: money(row.available),
+      })),
+    };
+  }
+
   paymentSummary(payment: {
     id: string; receiptNumber: string; status: string; currencyCode: string; receivedAmount: Prisma.Decimal;
     availableAmount: Prisma.Decimal; receivedAt: Date; cancelledAt: Date | null;
@@ -953,6 +1030,15 @@ type UnallocatedPaymentBalanceRow = {
   payerIdentificationNumber: string | null;
   unallocatedPaymentAmount: Prisma.Decimal;
   unallocatedPaymentCount: bigint | number;
+};
+
+type CustomerFinancialSummaryRow = {
+  currencyCode: string;
+  totalContracted: Prisma.Decimal;
+  totalInvoiced: Prisma.Decimal;
+  totalPaid: Prisma.Decimal;
+  outstanding: Prisma.Decimal;
+  available: Prisma.Decimal;
 };
 
 type AccountReceivableGroupKey = {

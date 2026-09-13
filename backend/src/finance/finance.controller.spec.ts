@@ -220,6 +220,30 @@ describe("FinanceController", () => {
     expect(c.reads.getCustomerFinancialBalance).toHaveBeenCalledWith("tenant-auth", "customer-a");
   });
 
+  it("delegates the customer financial summary using only the authenticated tenant", async () => {
+    const c = context();
+    const summary = { customerId: "customer-a", currencies: [{ currencyCode: "USD", totalContracted: "100", totalInvoiced: "0", totalPaid: "20", outstanding: "80", available: "0" }] };
+    c.reads.getCustomerFinancialSummary.mockResolvedValue(summary);
+
+    await expect(c.controller.getCustomerFinancialSummary(request("tenant-auth"), "customer-a")).resolves.toBe(summary);
+    expect(c.reads.getCustomerFinancialSummary).toHaveBeenCalledWith("tenant-auth", "customer-a");
+  });
+
+  it("allows AGENT only for the customer financial summary read", () => {
+    expect(Reflect.getMetadata(ROLES_KEY, FinanceController.prototype.getCustomerFinancialSummary)).toEqual([
+      UserRole.ADMIN,
+      UserRole.FACTURACION_COBROS,
+      UserRole.CONTADOR,
+      UserRole.AGENT,
+    ]);
+    expect(canActivate(UserRole.AGENT, "getCustomerFinancialSummary")).toBe(true);
+    expect(canActivate(UserRole.ADMIN, "getCustomerFinancialSummary")).toBe(true);
+    expect(canActivate(UserRole.FACTURACION_COBROS, "getCustomerFinancialSummary")).toBe(true);
+    expect(canActivate(UserRole.CONTADOR, "getCustomerFinancialSummary")).toBe(true);
+    expect(() => canActivate(UserRole.VENTAS, "getCustomerFinancialSummary")).toThrow(ForbiddenException);
+    expect(() => canActivate(UserRole.AGENT, "listPayments")).toThrow(ForbiddenException);
+  });
+
   it("delegates grouped AR, lazy children, and payment discovery reads using the authenticated tenant", async () => {
     const c = context();
     c.reads.listAccountReceivableGroups.mockResolvedValue({ groups: [] });
@@ -354,7 +378,7 @@ function context() {
   const allocations = { allocate: jest.fn().mockResolvedValue(undefined) };
   const reversals = { reverse: jest.fn() };
   const cancellations = { cancel: jest.fn() };
-  const reads = { paymentSummary: jest.fn((value) => ({ id: value.id, receivedAmount: value.receivedAmount.toFixed(), availableAmount: value.availableAmount.toFixed() })), getPaymentDetail: jest.fn(), getPaymentIdForAllocation: jest.fn(), getAccountReceivableDetail: jest.fn(), getContractCommercialObligation: jest.fn(), listContractPayments: jest.fn(), getAllocationSuggestion: jest.fn(), listAccountReceivables: jest.fn(), listAccountReceivableGroups: jest.fn(), listContractObligationGroups: jest.fn(), listContractObligationGroupContracts: jest.fn(), listAccountReceivableGroupItems: jest.fn(), listPayments: jest.fn(), listUnallocatedPaymentBalances: jest.fn(), getCustomerFinancialBalance: jest.fn() };
+  const reads = { paymentSummary: jest.fn((value) => ({ id: value.id, receivedAmount: value.receivedAmount.toFixed(), availableAmount: value.availableAmount.toFixed() })), getPaymentDetail: jest.fn(), getPaymentIdForAllocation: jest.fn(), getAccountReceivableDetail: jest.fn(), getContractCommercialObligation: jest.fn(), listContractPayments: jest.fn(), getAllocationSuggestion: jest.fn(), listAccountReceivables: jest.fn(), listAccountReceivableGroups: jest.fn(), listContractObligationGroups: jest.fn(), listContractObligationGroupContracts: jest.fn(), listAccountReceivableGroupItems: jest.fn(), listPayments: jest.fn(), listUnallocatedPaymentBalances: jest.fn(), getCustomerFinancialBalance: jest.fn(), getCustomerFinancialSummary: jest.fn() };
   const statements = { get: jest.fn(), render: jest.fn(), send: jest.fn() };
   const paymentAndApply = { execute: jest.fn() };
   const receipts = { render: jest.fn(), send: jest.fn() };
