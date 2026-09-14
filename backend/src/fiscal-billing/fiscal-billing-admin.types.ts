@@ -6,6 +6,7 @@ export interface TenantBillingConfigurationRecord {
   electronicIssuanceEnabled: boolean;
   countryCode: string;
   defaultCurrencyCode: string;
+  exchangeRateSource: "MANUAL" | "BCCR";
   fiscalTimezone: string;
   fiscalSchemaVersion: string;
   createdAt: Date;
@@ -20,6 +21,7 @@ export type TenantBillingConfigurationUpdate = Partial<
     | "electronicIssuanceEnabled"
     | "countryCode"
     | "defaultCurrencyCode"
+    | "exchangeRateSource"
     | "fiscalTimezone"
     | "fiscalSchemaVersion"
   >

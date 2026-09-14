@@ -18,6 +18,10 @@ const financeContractsSource = readFileSync(
   new URL('../src/app/finance/accounts-receivable/contract-obligation-groups.tsx', import.meta.url),
   'utf8',
 );
+const financialSection = profileSource.slice(
+  profileSource.indexOf('Resumen financiero'),
+  profileSource.indexOf('/* Notas Operativas Section'),
+);
 
 test('Customer Profile reads the Finance customer summary and does not render legacy profile totals', () => {
   assert.match(profileSource, /getCustomerFinancialSummary\(customerId, controller\.signal\)/);
@@ -27,16 +31,33 @@ test('Customer Profile reads the Finance customer summary and does not render le
   assert.doesNotMatch(profileSource, /totalContractedAmount|totalInvoicedAmount|totalPaidAmount|outstandingBalance|availableCredit/);
 });
 
-test('Customer Profile keeps currencies separate and formats Finance decimal strings directly', () => {
-  assert.match(profileSource, /financialSummary\.currencies\.length > 1/);
-  assert.match(profileSource, /id="customer-financial-currency"/);
-  assert.match(profileSource, /setSelectedFinancialCurrency\(event\.target\.value\)/);
+test('Customer Profile presents the backend consolidated base-currency value without frontend FX arithmetic', () => {
+  assert.match(financeApiSource, /baseCurrencyCode: FinanceCurrency/);
+  assert.match(financeApiSource, /consolidated: \{/);
+  assert.match(profileSource, /financialSummary\.consolidated\?\.\[key\]/);
+  assert.match(profileSource, /formatFinanceMoneyDisplay\(primaryValue, primaryCurrency\)/);
+  assert.doesNotMatch(financialSection, /parseFloat|Number\(|\.reduce\(/);
+});
+
+test('Customer Profile keeps every original currency visible beneath a multi-currency consolidated value', () => {
+  assert.match(profileSource, /hasMultipleFinancialCurrencies/);
+  assert.match(profileSource, /financialSummary\.currencies\.map\(\(currency\) => formatFinanceMoneyDisplay\(currency\[key\], currency\.currencyCode\)\)/);
+  assert.doesNotMatch(profileSource, /id="customer-financial-currency"/);
+  assert.doesNotMatch(profileSource, /setSelectedFinancialCurrency/);
   assert.match(profileSource, /totalContracted/);
   assert.match(profileSource, /totalInvoiced/);
   assert.match(profileSource, /totalPaid/);
   assert.match(profileSource, /outstanding/);
   assert.match(profileSource, /available/);
-  assert.match(profileSource, /formatFinanceMoney\(value, selectedCurrencySummary\.currencyCode\)/);
+  assert.match(profileSource, /!hasMultipleFinancialCurrencies \? singleCurrency\?\.\[key\] : null/);
+});
+
+test('Customer Profile degrades gracefully when daily FX is missing and labels available source context', () => {
+  assert.match(profileSource, /Tipo de cambio del día no disponible/);
+  assert.match(profileSource, /financialSummary\.consolidated === null/);
+  assert.match(profileSource, /Consolidado con TC \{financialSummary\.exchangeRateContext\.source\}/);
+  assert.match(profileSource, /formatBusinessDate\(financialSummary\.exchangeRateContext\.effectiveDate\)/);
+  assert.match(financeApiSource, /source: 'MANUAL' \| 'BCCR'/);
 });
 
 test('Customer Profile gives the Finance summary an isolated loading, empty, and error state', () => {
@@ -46,10 +67,13 @@ test('Customer Profile gives the Finance summary an isolated loading, empty, and
   assert.match(profileSource, /setFinancialSummaryError/);
 });
 
-test('Estado de cuenta opens the canonical customer-and-currency statement modal', () => {
+test('Estado de cuenta opens directly for one currency and asks for currency when there are several', () => {
   assert.match(profileSource, /import \{ CustomerAccountStatementModal \}/);
   assert.match(profileSource, /Estado de cuenta/);
-  assert.match(profileSource, /setStatementCurrency\(selectedCurrencySummary\.currencyCode\)/);
+  assert.match(profileSource, /financialSummary\.currencies\.length === 1\) setStatementCurrency\(financialSummary\.currencies\[0\]\.currencyCode\)/);
+  assert.match(profileSource, /setStatementCurrencyPickerOpen\(true\)/);
+  assert.match(profileSource, /Seleccione la moneda para consultar el estado de cuenta/);
+  assert.match(profileSource, /setStatementCurrency\(currency\.currencyCode\)/);
   assert.match(profileSource, /<CustomerAccountStatementModal/);
   assert.match(profileSource, /customerId,/);
   assert.match(profileSource, /currencyCode: statementCurrency/);

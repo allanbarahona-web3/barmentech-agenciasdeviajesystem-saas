@@ -26,6 +26,7 @@ const EMPTY_FORM: FormState = {
   electronicIssuanceEnabled: false,
   countryCode: 'CR',
   defaultCurrencyCode: 'CRC',
+  exchangeRateSource: 'MANUAL',
   fiscalTimezone: 'America/Costa_Rica',
   fiscalSchemaVersion: '4.4',
 };
@@ -37,6 +38,7 @@ function toForm(configuration: TenantBillingConfiguration): FormState {
     electronicIssuanceEnabled: configuration.electronicIssuanceEnabled,
     countryCode: configuration.countryCode,
     defaultCurrencyCode: configuration.defaultCurrencyCode,
+    exchangeRateSource: configuration.exchangeRateSource,
     fiscalTimezone: configuration.fiscalTimezone,
     fiscalSchemaVersion: configuration.fiscalSchemaVersion,
   };
@@ -162,6 +164,7 @@ export default function FiscalBillingAdminPage() {
         electronicIssuanceEnabled: form.electronicIssuanceEnabled,
         countryCode: form.countryCode,
         defaultCurrencyCode: currency,
+        exchangeRateSource: form.exchangeRateSource,
         fiscalTimezone: timezone,
         fiscalSchemaVersion: form.fiscalSchemaVersion,
       });

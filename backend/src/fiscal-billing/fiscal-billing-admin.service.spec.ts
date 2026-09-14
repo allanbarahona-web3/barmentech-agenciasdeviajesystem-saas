@@ -21,6 +21,7 @@ describe("FiscalBillingAdminService", () => {
         electronicIssuanceEnabled: false,
         countryCode: "CR",
         defaultCurrencyCode: "CRC",
+        exchangeRateSource: "MANUAL",
         fiscalTimezone: "America/Costa_Rica",
         fiscalSchemaVersion: "4.4",
         createdAt: null,
@@ -46,6 +47,7 @@ describe("FiscalBillingAdminService", () => {
         electronicIssuanceEnabled: true,
         countryCode: "CR",
         defaultCurrencyCode: "CRC",
+        exchangeRateSource: "MANUAL",
         fiscalTimezone: "America/Costa_Rica",
         fiscalSchemaVersion: "4.4",
         createdAt: "2026-08-17T10:00:00.000Z",
@@ -84,6 +86,20 @@ describe("FiscalBillingAdminService", () => {
     expect(created.configuration.id).toBe("config-tenant-a");
     expect(updated.configuration.id).toBe("config-tenant-a");
     expect(repository.records).toHaveLength(1);
+  });
+
+  it("persists and returns the tenant exchange-rate source through the existing configuration flow", async () => {
+    const repository = new InMemoryRepository();
+    const service = new FiscalBillingAdminService(repository);
+
+    const response = await service.updateConfiguration("tenant-a", {
+      exchangeRateSource: "BCCR",
+    });
+
+    expect(response.configuration.exchangeRateSource).toBe("BCCR");
+    await expect(service.getConfiguration("tenant-a")).resolves.toMatchObject({
+      configuration: { exchangeRateSource: "BCCR" },
+    });
   });
 
   it("rejects electronic issuance for a non-CR country with a stable error", async () => {
@@ -134,6 +150,7 @@ function record(
     electronicIssuanceEnabled: true,
     countryCode: "CR",
     defaultCurrencyCode: "CRC",
+    exchangeRateSource: "MANUAL",
     fiscalTimezone: "America/Costa_Rica",
     fiscalSchemaVersion: "4.4",
     createdAt: new Date("2026-08-17T10:00:00.000Z"),

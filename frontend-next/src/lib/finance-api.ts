@@ -453,6 +453,14 @@ export type CustomerAccountStatement = {
 
 export type CustomerFinancialSummary = {
   customerId: string;
+  baseCurrencyCode: FinanceCurrency;
+  consolidated: {
+    totalContracted: string;
+    totalInvoiced: string;
+    totalPaid: string;
+    outstanding: string;
+    available: string;
+  } | null;
   currencies: Array<{
     currencyCode: FinanceCurrency;
     totalContracted: string;
@@ -461,6 +469,11 @@ export type CustomerFinancialSummary = {
     outstanding: string;
     available: string;
   }>;
+  exchangeRateContext: {
+    source: 'MANUAL' | 'BCCR';
+    effectiveDate: string;
+    status: 'AVAILABLE' | 'MISSING' | 'NOT_REQUIRED';
+  } | null;
 };
 
 export type ListAccountReceivablesParams = {
@@ -787,3 +800,5 @@ export function formatFinanceMoney(value: string, currency: string): string {
   const fraction = match[3] ? `.${match[3]}` : '';
   return `${currency} ${match[1]}${whole}${fraction}`;
 }
+
+/** Presentation-only, Decimal-string rounding for Customer Profile amounts. */

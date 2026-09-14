@@ -4,7 +4,7 @@ import { clearStoredToken, getStoredSession, getStoredToken, logout } from "@/li
 import { getAttendanceStatus } from "@/lib/attendance-api";
 import { usesAttendance } from "@/lib/attendance-permissions";
 import { getPendingApprovalsCount, type PendingCounts } from "@/lib/billing-api";
-import { getCurrentExchangeRate, type ExchangeRate } from "@/lib/exchange-rate-api";
+import { CURRENT_EXCHANGE_RATE_CHANGED_EVENT, getCurrentExchangeRate, type CurrentExchangeRate } from "@/lib/exchange-rate-api";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -43,7 +43,7 @@ export function VerticalNav() {
   const [showSupportModal, setShowSupportModal] = useState(false);
   const [pendingCounts, setPendingCounts] = useState<PendingCounts>({ pendingReceipts: 0, pendingCreditNotes: 0, contractsPendingSignature: 0 });
   const [mounted, setMounted] = useState(false);
-  const [exchangeRate, setExchangeRate] = useState<ExchangeRate | null>(null);
+  const [exchangeRate, setExchangeRate] = useState<CurrentExchangeRate | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [session, setSession] = useState<ReturnType<typeof getStoredSession>>(null);
   const [finanzasOpen, setFinanzasOpen] = useState(false);
@@ -97,8 +97,8 @@ export function VerticalNav() {
 
     const loadExchangeRate = async () => {
       try {
-        const rate = await getCurrentExchangeRate();
-        setExchangeRate(rate);
+        const response = await getCurrentExchangeRate();
+        setExchangeRate(response.rate);
       } catch {
         // Silently fail
       }
@@ -106,7 +106,11 @@ export function VerticalNav() {
 
     void loadExchangeRate();
     const interval = window.setInterval(() => void loadExchangeRate(), 30000); // Refresh every 30s
-    return () => window.clearInterval(interval);
+    window.addEventListener(CURRENT_EXCHANGE_RATE_CHANGED_EVENT, loadExchangeRate);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener(CURRENT_EXCHANGE_RATE_CHANGED_EVENT, loadExchangeRate);
+    };
   }, [token, session]);
 
   // Prevent hydration mismatch - only show on client

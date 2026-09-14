@@ -8,7 +8,12 @@
  * namespaced as --ui-* and exposed to Tailwind below. This lets new UI adopt a
  * consistent system without changing legacy screens during the migration.
  */
-@theme inline {
+/*
+ * Keep the foundation namespace in the emitted Tailwind theme. `static` is
+ * intentional: these semantic aliases back shared primitives and must remain
+ * registered even when a route's candidate scan does not encounter every one.
+ */
+@theme static {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);

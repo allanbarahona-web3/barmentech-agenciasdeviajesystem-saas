@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getCurrentExchangeRate, type ExchangeRate } from "@/lib/exchange-rate-api";
+import { CURRENT_EXCHANGE_RATE_CHANGED_EVENT, getCurrentExchangeRate, type CurrentExchangeRate } from "@/lib/exchange-rate-api";
 
 type CurrencyCalculatorProps = {
   isOpen: boolean;
@@ -10,7 +10,7 @@ type CurrencyCalculatorProps = {
 
 export function CurrencyCalculator({ isOpen, onClose }: CurrencyCalculatorProps) {
   const [loading, setLoading] = useState(false);
-  const [exchangeRate, setExchangeRate] = useState<ExchangeRate | null>(null);
+  const [exchangeRate, setExchangeRate] = useState<CurrentExchangeRate | null>(null);
   const [usdAmount, setUsdAmount] = useState("");
   const [crcAmount, setCrcAmount] = useState("");
 
@@ -20,11 +20,19 @@ export function CurrencyCalculator({ isOpen, onClose }: CurrencyCalculatorProps)
     }
   }, [isOpen]);
 
+  useEffect(() => {
+    const refresh = () => {
+      if (isOpen) void loadExchangeRate();
+    };
+    window.addEventListener(CURRENT_EXCHANGE_RATE_CHANGED_EVENT, refresh);
+    return () => window.removeEventListener(CURRENT_EXCHANGE_RATE_CHANGED_EVENT, refresh);
+  }, [isOpen]);
+
   const loadExchangeRate = async () => {
     try {
       setLoading(true);
-      const rate = await getCurrentExchangeRate();
-      setExchangeRate(rate);
+      const response = await getCurrentExchangeRate();
+      setExchangeRate(response.rate);
     } catch (err) {
       console.error("Error loading exchange rate:", err);
     } finally {
@@ -177,14 +185,15 @@ export function CurrencyCalculator({ isOpen, onClose }: CurrencyCalculatorProps)
                     </div>
                   </div>
                 </div>
+                <p style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: 8, marginBottom: 0 }}>
+                  Fuente: {exchangeRate.source} · Fecha efectiva: {exchangeRate.effectiveDate}
+                </p>
                 {exchangeRate.notes && (
                   <p style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: 8, marginBottom: 0 }}>
                     📝 {exchangeRate.notes}
                   </p>
                 )}
-                <p style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: 4, marginBottom: 0 }}>
-                  👤 {exchangeRate.setByName}
-                </p>
+                {exchangeRate.setByName ? <p style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: 4, marginBottom: 0 }}>👤 {exchangeRate.setByName}</p> : null}
               </div>
 
               <div style={{ marginBottom: 16 }}>

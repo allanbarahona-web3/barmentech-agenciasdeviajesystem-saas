@@ -7,6 +7,7 @@ export type TenantBillingConfiguration = {
   electronicIssuanceEnabled: boolean;
   countryCode: string;
   defaultCurrencyCode: string;
+  exchangeRateSource: 'MANUAL' | 'BCCR';
   fiscalTimezone: string;
   fiscalSchemaVersion: string;
   createdAt: string | null;
@@ -25,6 +26,7 @@ export type UpdateTenantBillingConfiguration = Pick<
   | 'electronicIssuanceEnabled'
   | 'countryCode'
   | 'defaultCurrencyCode'
+  | 'exchangeRateSource'
   | 'fiscalTimezone'
   | 'fiscalSchemaVersion'
 >;
@@ -161,7 +163,7 @@ export async function getTenantBillingConfiguration(signal?: AbortSignal) {
 }
 
 export async function updateTenantBillingConfiguration(
-  input: UpdateTenantBillingConfiguration,
+  input: Partial<UpdateTenantBillingConfiguration>,
 ) {
   const response = await fetchApi('/admin/fiscal-billing/configuration', {
     method: 'PATCH',

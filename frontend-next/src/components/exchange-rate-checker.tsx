@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getCurrentExchangeRate } from "@/lib/exchange-rate-api";
+import { CURRENT_EXCHANGE_RATE_CHANGED_EVENT, getCurrentExchangeRate } from "@/lib/exchange-rate-api";
 import { getStoredSession } from "@/lib/auth-api";
 import { ExchangeRateAlertModal } from "@/components/exchange-rate-alert-modal";
 
@@ -18,6 +18,12 @@ export function ExchangeRateChecker() {
     checkExchangeRate();
   }, []);
 
+  useEffect(() => {
+    const refresh = () => void checkExchangeRate();
+    window.addEventListener(CURRENT_EXCHANGE_RATE_CHANGED_EVENT, refresh);
+    return () => window.removeEventListener(CURRENT_EXCHANGE_RATE_CHANGED_EVENT, refresh);
+  }, []);
+
   const checkExchangeRate = async () => {
     try {
       // Verificar si el usuario es ADMIN
@@ -31,9 +37,7 @@ export function ExchangeRateChecker() {
       const currentRate = await getCurrentExchangeRate();
 
       // Si NO existe TC para hoy, mostrar modal
-      if (!currentRate) {
-        setShowModal(true);
-      }
+      setShowModal(!currentRate.rate);
     } catch (error) {
       console.error("Error al verificar tipo de cambio:", error);
     } finally {

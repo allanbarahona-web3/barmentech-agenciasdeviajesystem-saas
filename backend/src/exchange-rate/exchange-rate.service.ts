@@ -1,5 +1,6 @@
 import { DateUtils } from "../common/utils/date.utils";
 import { Injectable, NotFoundException } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { TenantService } from "../tenant/tenant.service";
 import { EmailService } from "../email/email.service";
@@ -20,6 +21,27 @@ export class ExchangeRateService {
    * Get the exchange rate for a specific date (or today if not provided)
    */
   async getExchangeRate(tenantId: string, date?: string) {
+    const rate = await this.findExactDailyRate(tenantId, date);
+    if (!rate) return null;
+
+    return {
+      id: rate.id,
+      date: rate.date,
+      buyRate: Number(rate.buyRate),
+      sellRate: Number(rate.sellRate),
+      source: rate.source,
+      setByName: rate.setByName,
+      notes: rate.notes,
+      createdAt: rate.createdAt,
+      updatedAt: rate.updatedAt,
+    };
+  }
+
+  /**
+   * Internal exact-date read for consumers that require Decimal arithmetic.
+   * This intentionally does not expose a fallback to an earlier rate.
+   */
+  async findExactDailyRate(tenantId: string, date?: string): Promise<ExactDailyExchangeRate | null> {
     // Super admins don't have a tenant, return null
     if (!tenantId) {
       return null;
@@ -46,21 +68,17 @@ export class ExchangeRateService {
     });
 
 
-    if (!rate) {
-      return null;
-    }
-
-    return {
+    return rate ? {
       id: rate.id,
       date: rate.date,
-      buyRate: Number(rate.buyRate),
-      sellRate: Number(rate.sellRate),
+      buyRate: rate.buyRate,
+      sellRate: rate.sellRate,
       source: rate.source,
       setByName: rate.setByName,
       notes: rate.notes,
       createdAt: rate.createdAt,
       updatedAt: rate.updatedAt,
-    };
+    } : null;
   }
 
   /**
@@ -129,6 +147,98 @@ export class ExchangeRateService {
       createdAt: rate.createdAt,
       updatedAt: rate.updatedAt,
     }));
+  }
+
+  /**
+   * Read persisted BCCR observations only. Official observations are global
+   * reference data, unlike tenant-scoped manual ExchangeRate rows.
+   */
+  async getOfficialExchangeRateHistoryRange(startDate: string, endDate: string) {
+    const rates = await this.prisma.officialExchangeRateObservation.findMany({
+      where: {
+        countryCode: "CR",
+        foreignCurrencyCode: "USD",
+        localCurrencyCode: "CRC",
+        sourceAuthority: "BCCR",
+        effectiveDate: {
+          gte: officialDate(startDate),
+          lte: officialDate(endDate),
+        },
+      },
+      orderBy: [{ effectiveDate: "desc" }, { rateType: "asc" }],
+      select: {
+        id: true,
+        effectiveDate: true,
+        rateType: true,
+        value: true,
+        sourceAuthority: true,
+        sourceIndicatorCode: true,
+        retrievedAt: true,
+        sourcePublishedAt: true,
+      },
+    });
+    return rates.map((rate) => ({
+      id: rate.id,
+      effectiveDate: dateOnly(rate.effectiveDate),
+      rateType: rate.rateType,
+      value: rate.value.toFixed(),
+      sourceAuthority: rate.sourceAuthority,
+      sourceIndicatorCode: rate.sourceIndicatorCode,
+      retrievedAt: rate.retrievedAt,
+      sourcePublishedAt: rate.sourcePublishedAt,
+    }));
+  }
+
+  /**
+   * Shared presentation/export projection. Manual rows retain tenant scope;
+   * BCCR observations are global reference data and are grouped by date only
+   * after retrieval, never in persistence.
+   */
+  async getHistoryReportRange(
+    tenantId: string,
+    startDate: string,
+    endDate: string,
+  ): Promise<ExchangeRateHistoryReportRow[]> {
+    const [manualRates, officialRates] = await Promise.all([
+      this.getExchangeRateHistoryRange(tenantId, startDate, endDate),
+      this.getOfficialExchangeRateHistoryRange(startDate, endDate),
+    ]);
+    const officialByDate = new Map<string, ExchangeRateHistoryReportRow>();
+
+    for (const observation of officialRates) {
+      const existing = officialByDate.get(observation.effectiveDate) ?? {
+        date: observation.effectiveDate,
+        source: "BCCR" as const,
+        buyRate: null,
+        sellRate: null,
+        registeredAt: observation.retrievedAt,
+      };
+      if (observation.rateType === "REFERENCE_BUY") {
+        existing.buyRate = Number(observation.value);
+      } else if (observation.rateType === "REFERENCE_SELL") {
+        existing.sellRate = Number(observation.value);
+      }
+      if (observation.retrievedAt.getTime() > existing.registeredAt.getTime()) {
+        existing.registeredAt = observation.retrievedAt;
+      }
+      officialByDate.set(observation.effectiveDate, existing);
+    }
+
+    return [
+      ...manualRates.map((rate: {
+        date: Date;
+        buyRate: number;
+        sellRate: number;
+        createdAt: Date;
+      }) => ({
+        date: dateOnly(rate.date),
+        source: "MANUAL" as const,
+        buyRate: rate.buyRate,
+        sellRate: rate.sellRate,
+        registeredAt: rate.createdAt,
+      })),
+      ...officialByDate.values(),
+    ].sort((left, right) => right.date.localeCompare(left.date) || left.source.localeCompare(right.source));
   }
 
   /**
@@ -204,8 +314,9 @@ export class ExchangeRateService {
     startDate: string,
     endDate: string,
     options?: { timeZone?: string; utcOffsetMinutes?: number },
+    reportRows?: ExchangeRateHistoryReportRow[],
   ): Promise<Buffer> {
-    const rates = await this.getExchangeRateHistoryRange(tenantId, startDate, endDate);
+    const rates = reportRows ?? await this.getHistoryReportRange(tenantId, startDate, endDate);
     const tenantConfig = await this.tenantService.getTenantConfig(tenantId);
     const tenantName = String(tenantConfig?.name || "Agencia de Viajes").trim() || "Agencia de Viajes";
 
@@ -343,10 +454,11 @@ export class ExchangeRateService {
     y -= 25;
 
     // Table headers
-    page.drawText("Fecha", { x: 60, y, size: 10, font: bold, color: colors.ink });
-    page.drawText("TC Compra", { x: 180, y, size: 10, font: bold, color: colors.ink });
-    page.drawText("TC Venta", { x: 280, y, size: 10, font: bold, color: colors.ink });
-    page.drawText("Configurado por", { x: 380, y, size: 10, font: bold, color: colors.ink });
+    page.drawText("Fecha", { x: 55, y, size: 9, font: bold, color: colors.ink });
+    page.drawText("Fuente", { x: 135, y, size: 9, font: bold, color: colors.ink });
+    page.drawText("TC Compra", { x: 210, y, size: 9, font: bold, color: colors.ink });
+    page.drawText("TC Venta", { x: 305, y, size: 9, font: bold, color: colors.ink });
+    page.drawText("Fecha registro", { x: 400, y, size: 9, font: bold, color: colors.ink });
 
     y -= 5;
     page.drawLine({
@@ -366,10 +478,11 @@ export class ExchangeRateService {
         y = 780;
         
         // Repeat headers on new page
-        newPage.drawText("Fecha", { x: 60, y, size: 10, font: bold, color: colors.ink });
-        newPage.drawText("TC Compra", { x: 180, y, size: 10, font: bold, color: colors.ink });
-        newPage.drawText("TC Venta", { x: 280, y, size: 10, font: bold, color: colors.ink });
-        newPage.drawText("Configurado por", { x: 380, y, size: 10, font: bold, color: colors.ink });
+        newPage.drawText("Fecha", { x: 55, y, size: 9, font: bold, color: colors.ink });
+        newPage.drawText("Fuente", { x: 135, y, size: 9, font: bold, color: colors.ink });
+        newPage.drawText("TC Compra", { x: 210, y, size: 9, font: bold, color: colors.ink });
+        newPage.drawText("TC Venta", { x: 305, y, size: 9, font: bold, color: colors.ink });
+        newPage.drawText("Fecha registro", { x: 400, y, size: 9, font: bold, color: colors.ink });
         
         y -= 5;
         newPage.drawLine({
@@ -384,32 +497,39 @@ export class ExchangeRateService {
       const currentPage = pdf.getPages()[pdf.getPageCount() - 1];
 
       currentPage.drawText(formatDateDisplay(rate.date), {
-        x: 60,
+        x: 55,
         y,
         size: 9,
         font,
         color: colors.ink,
       });
 
-      currentPage.drawText(`CRC ${rate.buyRate.toFixed(4)}`, {
-        x: 180,
+      currentPage.drawText(rate.source, {
+        x: 135,
+        y,
+        size: 9,
+        font,
+        color: colors.ink,
+      });
+
+      currentPage.drawText(formatRate(rate.buyRate), {
+        x: 210,
         y,
         size: 9,
         font,
         color: colors.green,
       });
 
-      currentPage.drawText(`CRC ${rate.sellRate.toFixed(4)}`, {
-        x: 280,
+      currentPage.drawText(formatRate(rate.sellRate), {
+        x: 305,
         y,
         size: 9,
         font,
         color: colors.blue,
       });
 
-      const setByName = String(rate.setByName || "-").substring(0, 20);
-      currentPage.drawText(setByName, {
-        x: 380,
+      currentPage.drawText(formatGeneratedDateTime(rate.registeredAt), {
+        x: 400,
         y,
         size: 9,
         font,
@@ -449,8 +569,8 @@ export class ExchangeRateService {
 
     // 1. Generar PDF
     console.log("[ExchangeRate Service] Generando PDF para rango:", { startDate, endDate });
-    const pdfBuffer = await this.generateHistoryPdf(tenantId, startDate, endDate, options);
-    const rates = await this.getExchangeRateHistoryRange(tenantId, startDate, endDate);
+    const rates = await this.getHistoryReportRange(tenantId, startDate, endDate);
+    const pdfBuffer = await this.generateHistoryPdf(tenantId, startDate, endDate, options, rates);
     console.log("[ExchangeRate Service] PDF generado. Tamaño:", pdfBuffer.length, "bytes. Registros:", rates.length);
 
     // 2. Enviar usando EmailService centralizado
@@ -607,4 +727,40 @@ export class ExchangeRateService {
     console.log("[ExchangeRate Service] Email sent successfully to:", recipientEmail);
   }
   */
+}
+
+export type ExactDailyExchangeRate = {
+  id: string;
+  date: Date;
+  buyRate: Prisma.Decimal;
+  sellRate: Prisma.Decimal;
+  source: string;
+  setByName: string;
+  notes: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type ExchangeRateHistoryReportRow = {
+  date: string;
+  source: "MANUAL" | "BCCR";
+  buyRate: number | null;
+  sellRate: number | null;
+  registeredAt: Date;
+};
+
+function officialDate(value: string): Date {
+  return new Date(`${value}T00:00:00.000Z`);
+}
+
+function dateOnly(value: Date): string {
+  return [
+    value.getUTCFullYear().toString().padStart(4, "0"),
+    (value.getUTCMonth() + 1).toString().padStart(2, "0"),
+    value.getUTCDate().toString().padStart(2, "0"),
+  ].join("-");
+}
+
+function formatRate(value: number | null): string {
+  return value === null ? "-" : `CRC ${value.toFixed(4)}`;
 }

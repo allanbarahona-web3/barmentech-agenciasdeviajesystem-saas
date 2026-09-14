@@ -15,19 +15,22 @@ import { RolesGuard } from "../auth/roles.guard";
 import { Roles } from "../auth/roles.decorator";
 import { ExchangeRateService } from "./exchange-rate.service";
 import { SetExchangeRateDto } from "./dto/set-exchange-rate.dto";
+import { CurrentExchangeRateResolver } from "./current-exchange-rate.resolver";
 
 @Controller("exchange-rate")
 @UseGuards(JwtAuthGuard)
 export class ExchangeRateController {
-  constructor(private readonly exchangeRateService: ExchangeRateService) {}
+  constructor(
+    private readonly exchangeRateService: ExchangeRateService,
+    private readonly currentExchangeRateResolver: CurrentExchangeRateResolver,
+  ) {}
 
   /**
    * Get current exchange rate (available to all authenticated users)
    */
   @Get("current")
   async getCurrentRate(@Request() req: { user: { tenantId: string } }) {
-    const rate = await this.exchangeRateService.getCurrentExchangeRate(req.user.tenantId);
-    return { rate };
+    return this.currentExchangeRateResolver.resolveCurrentExchangeRate(req.user.tenantId);
   }
 
   /**
@@ -74,6 +77,36 @@ export class ExchangeRateController {
       return { error: "startDate and endDate are required", rates: [] };
     }
     const rates = await this.exchangeRateService.getExchangeRateHistoryRange(req.user.tenantId, startDate, endDate);
+    return { rates };
+  }
+
+  /**
+   * Persisted official BCCR observations. This is read-only and never calls
+   * the BCCR provider from the history view.
+   */
+  @Get("official-history-range")
+  async getOfficialHistoryRange(
+    @Query("startDate") startDate: string,
+    @Query("endDate") endDate: string,
+  ) {
+    if (!startDate || !endDate) {
+      return { error: "startDate and endDate are required", rates: [] };
+    }
+    const rates = await this.exchangeRateService.getOfficialExchangeRateHistoryRange(startDate, endDate);
+    return { rates };
+  }
+
+  /** Source-aware, presentation-ready manual and persisted BCCR history. */
+  @Get("history-report-range")
+  async getHistoryReportRange(
+    @Query("startDate") startDate: string,
+    @Query("endDate") endDate: string,
+    @Request() req: { user: { tenantId: string } },
+  ) {
+    if (!startDate || !endDate) {
+      return { error: "startDate and endDate are required", rates: [] };
+    }
+    const rates = await this.exchangeRateService.getHistoryReportRange(req.user.tenantId, startDate, endDate);
     return { rates };
   }
 

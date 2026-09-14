@@ -8,13 +8,15 @@ import { formatBusinessDate } from "@/shared/regional";
 import { getStoredSession, getHomeRouteForRole } from "@/lib/auth-api";
 import {
   getCurrentExchangeRate,
-  getExchangeRateHistory,
-  getExchangeRateHistoryRange,
+  getExchangeRateHistoryReportRange,
   downloadExchangeRateHistoryPdf,
   emailExchangeRateHistory,
+  notifyCurrentExchangeRateChanged,
   setExchangeRate,
-  type ExchangeRate,
+  type CurrentExchangeRate,
+  type ExchangeRateHistoryReportRow,
 } from "@/lib/exchange-rate-api";
+import { getTenantBillingConfiguration, updateTenantBillingConfiguration } from "@/lib/fiscal-billing-admin-api";
 import { ConfirmModal } from "@/components/confirm-modal";
 import { LoadingModal } from "@/components/loading-modal";
 import { PageLoader } from "@/components/loading-spinner";
@@ -36,8 +38,11 @@ export default function AdminExchangeRatePage() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [currentRate, setCurrentRate] = useState<ExchangeRate | null>(null);
-  const [history, setHistory] = useState<ExchangeRate[]>([]);
+  const [currentRate, setCurrentRate] = useState<CurrentExchangeRate | null>(null);
+  const [currentRateStatus, setCurrentRateStatus] = useState<"AVAILABLE" | "INCOMPLETE" | "MISSING">("MISSING");
+  const [history, setHistory] = useState<ExchangeRateHistoryReportRow[]>([]);
+  const [exchangeRateSource, setExchangeRateSource] = useState<"MANUAL" | "BCCR">("MANUAL");
+  const [sourceSaving, setSourceSaving] = useState(false);
 
   const [showLoadingModal, setShowLoadingModal] = useState(false);
   const [loadingModalState, setLoadingModalState] = useState<"loading" | "success" | "error">("loading");
@@ -185,24 +190,45 @@ export default function AdminExchangeRatePage() {
       const start = startDate || filterStartDate;
       const end = endDate || filterEndDate;
 
-      const [current, hist] = await Promise.all([
+      const configuration = canEdit ? await getTenantBillingConfiguration() : null;
+      const [current, historyRows] = await Promise.all([
         getCurrentExchangeRate(),
-        start && end ? getExchangeRateHistoryRange(start, end) : getExchangeRateHistory(30),
+        start && end ? getExchangeRateHistoryReportRange(start, end) : Promise.resolve([]),
       ]);
 
-      setCurrentRate(current);
-      setHistory(hist);
+      setExchangeRateSource(configuration?.configuration.exchangeRateSource ?? current.rate?.source ?? "MANUAL");
+      setCurrentRate(current.rate);
+      setCurrentRateStatus(current.status);
+      setHistory(historyRows);
 
       // Pre-populate form with today's rate if it exists
-      if (current) {
-        setBuyRate(current.buyRate.toString());
-        setSellRate(current.sellRate.toString());
-        setNotes(current.notes || "");
+      if (current.rate?.source === "MANUAL") {
+        setBuyRate(current.rate.buyRate.toString());
+        setSellRate(current.rate.sellRate.toString());
+        setNotes(current.rate.notes || "");
       }
     } catch (err: unknown) {
       showWarningModal("Error cargando datos", extractErrorMessage(err, "Error cargando datos"));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleExchangeRateSourceChange = async (source: "MANUAL" | "BCCR") => {
+    if (!canEdit || source === exchangeRateSource || sourceSaving) return;
+    const previousSource = exchangeRateSource;
+    setExchangeRateSource(source);
+    setSourceSaving(true);
+    try {
+      await updateTenantBillingConfiguration({ exchangeRateSource: source });
+      await loadData();
+      notifyCurrentExchangeRateChanged();
+      showLoadingSuccess(`Fuente de tipo de cambio actualizada a ${source === "MANUAL" ? "Manual" : "BCCR"}.`);
+    } catch (error: unknown) {
+      setExchangeRateSource(previousSource);
+      showWarningModal("No se pudo actualizar la fuente", extractErrorMessage(error, "No se pudo actualizar la fuente de tipo de cambio."));
+    } finally {
+      setSourceSaving(false);
     }
   };
 
@@ -408,13 +434,36 @@ export default function AdminExchangeRatePage() {
           className="mb-6"
           title={<span className="flex items-center gap-3"><IconBadge tone="primary"><BadgeDollarSign aria-hidden="true" /></IconBadge>Tipo de cambio</span>}
           description="Administra el tipo de cambio USD/CRC utilizado por el sistema."
-          actions={canEdit ? (
+          actions={canEdit && exchangeRateSource === "MANUAL" ? (
             <Button type="button" onClick={openConfigurationSheet}>
               <Settings2 aria-hidden="true" />
               Configurar tipo de cambio
             </Button>
           ) : undefined}
         />
+
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>Fuente del tipo de cambio</CardTitle>
+            <CardDescription>Define la fuente diaria que Finance utiliza para consolidaciones.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <label className="grid max-w-md gap-2 text-sm font-medium text-foreground" htmlFor="exchange-rate-source">
+              Fuente del tipo de cambio
+              <select
+                id="exchange-rate-source"
+                value={exchangeRateSource}
+                disabled={!canEdit || sourceSaving}
+                onChange={(event) => void handleExchangeRateSourceChange(event.target.value as "MANUAL" | "BCCR")}
+                className="rounded-md border border-input bg-background px-3 py-2 text-foreground"
+              >
+                <option value="MANUAL">Manual</option>
+                <option value="BCCR">BCCR</option>
+              </select>
+              <span className="text-xs font-normal text-muted-foreground">{exchangeRateSource === "MANUAL" ? "La agencia registra el tipo de cambio diario." : "Finance usa la fuente oficial BCCR; no se habilita edición manual."}</span>
+            </label>
+          </CardContent>
+        </Card>
 
         <Card className="mb-6">
           <CardHeader>
@@ -425,14 +474,14 @@ export default function AdminExchangeRatePage() {
                 <CardDescription>Valores actuales para conversiones USD/CRC.</CardDescription>
               </div>
             </div>
-            {currentRate ? <Badge variant="info">USD / CRC</Badge> : null}
+            {currentRate ? <Badge variant="info">{currentRate.source}</Badge> : null}
           </CardHeader>
           <CardContent>
             {currentRate ? (
               <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                 <div className="rounded-lg border border-border bg-muted/40 p-4">
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground"><IconBadge tone="info" size="sm"><CalendarDays aria-hidden="true" /></IconBadge>Fecha</div>
-                  <p className="mt-3 text-lg font-semibold tracking-tight text-foreground">{formatBusinessDate(currentRate.date)}</p>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground"><IconBadge tone="info" size="sm"><CalendarDays aria-hidden="true" /></IconBadge>Fecha efectiva</div>
+                  <p className="mt-3 text-lg font-semibold tracking-tight text-foreground">{formatBusinessDate(currentRate.effectiveDate)}</p>
                 </div>
                 <div className="rounded-lg border border-border bg-muted/40 p-4">
                   <div className="flex items-center gap-2 text-sm text-muted-foreground"><IconBadge tone="success" size="sm"><BadgeDollarSign aria-hidden="true" /></IconBadge>TC Compra</div>
@@ -443,14 +492,14 @@ export default function AdminExchangeRatePage() {
                   <p className="mt-3 text-2xl font-semibold tracking-tight text-foreground">₡{currentRate.sellRate.toFixed(4)}</p>
                 </div>
                 <div className="rounded-lg border border-border bg-muted/40 p-4">
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground"><IconBadge tone="neutral" size="sm"><UserRound aria-hidden="true" /></IconBadge>Configurado por</div>
-                  <p className="mt-3 text-lg font-semibold tracking-tight text-foreground">{currentRate.setByName}</p>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground"><IconBadge tone="neutral" size="sm"><UserRound aria-hidden="true" /></IconBadge>Fuente</div>
+                  <p className="mt-3 text-lg font-semibold tracking-tight text-foreground">{currentRate.source}</p>
                 </div>
               </div>
             ) : (
               <Alert variant="warning">
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <AlertDescription>No se ha configurado el tipo de cambio para hoy.</AlertDescription>
+                  <AlertDescription>{currentRateStatus === "INCOMPLETE" ? "La fuente activa no tiene TC Compra y TC Venta disponibles." : "No se ha configurado el tipo de cambio para hoy."}</AlertDescription>
                   {canEdit ? <Button type="button" variant="outline" size="sm" onClick={openConfigurationSheet}>Configurar ahora</Button> : null}
                 </div>
               </Alert>
@@ -458,7 +507,7 @@ export default function AdminExchangeRatePage() {
           </CardContent>
         </Card>
 
-      {canEdit && (
+      {canEdit && exchangeRateSource === "MANUAL" && (
         <ExchangeRateConfigForm
           open={isConfigurationSheetOpen}
           date={date}

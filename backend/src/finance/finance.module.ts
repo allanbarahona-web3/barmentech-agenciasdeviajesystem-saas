@@ -27,9 +27,10 @@ import { ContractPaymentFiscalizationOutboxService } from "./contract-payment-fi
 import { ContractPaymentFiscalizationPublisher } from "./contract-payment-fiscalization.publisher";
 import { ContractPaymentFiscalizationWorkerService } from "./contract-payment-fiscalization-worker.service";
 import { ContractPaymentFiscalizationProcessor } from "./contract-payment-fiscalization.processor";
+import { ExchangeRateModule } from "../exchange-rate/exchange-rate.module";
 
 @Module({
-  imports: [BusinessNumberingModule, DocumentsModule, EmailModule, StorageModule, CommercialObligationModule, ContractReservationApprovalModule, FiscalBillingModule, TravelFiscalClassificationModule, FiscalCatalogModule],
+  imports: [BusinessNumberingModule, DocumentsModule, EmailModule, StorageModule, CommercialObligationModule, ContractReservationApprovalModule, FiscalBillingModule, TravelFiscalClassificationModule, FiscalCatalogModule, ExchangeRateModule],
   controllers: [FinanceController],
   providers: [PaymentRegistrationService, PaymentAllocationService, PaymentAllocationReversalService, PaymentCancellationService, FinanceReadService, CustomerFundsAllocationService, CustomerAccountStatementService, RegisterPaymentAndApplyService, PaymentReceiptService, ContractReservationPaymentService, CommercialObligationAllocationService, ContractPaymentFiscalizationOutboxService, ContractReservationReviewService, ContractInstallmentPaymentService, ContractPaymentFiscalPreparationService, ContractPaymentFiscalizationPublisher, ContractPaymentFiscalizationWorkerService, ContractPaymentFiscalizationProcessor],
   exports: [PaymentRegistrationService, PaymentAllocationService, PaymentAllocationReversalService, PaymentCancellationService, ContractReservationPaymentService, ContractReservationReviewService, ContractPaymentFiscalPreparationService, CommercialObligationModule],

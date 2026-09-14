@@ -80,6 +80,7 @@ describe("FiscalBillingAdminController", () => {
           electronicIssuanceEnabled: false,
           countryCode: "CR",
           defaultCurrencyCode: "CRC",
+          exchangeRateSource: "BCCR",
           fiscalTimezone: " America/Costa_Rica ",
           fiscalSchemaVersion: " 4.4 ",
         },
@@ -88,6 +89,7 @@ describe("FiscalBillingAdminController", () => {
     ).resolves.toMatchObject({
       fiscalTimezone: "America/Costa_Rica",
       fiscalSchemaVersion: "4.4",
+      exchangeRateSource: "BCCR",
     });
   });
 });

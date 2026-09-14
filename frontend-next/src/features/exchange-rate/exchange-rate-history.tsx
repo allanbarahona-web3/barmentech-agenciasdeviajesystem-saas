@@ -9,12 +9,12 @@ import { Button } from '@/components/ui/button';
 import { IconBadge } from '@/components/ui/icon-badge';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import type { ExchangeRate } from '@/lib/exchange-rate-api';
+import type { ExchangeRateHistoryReportRow } from '@/lib/exchange-rate-api';
 
 interface ExchangeRateHistoryProps {
   filterStartDate: string;
   filterEndDate: string;
-  history: ExchangeRate[];
+  history: ExchangeRateHistoryReportRow[];
   filtering: boolean;
   exporting: boolean;
   onFilterStartDateChange: (value: string) => void;
@@ -92,34 +92,31 @@ export function ExchangeRateHistory({
           </div>
         ) : undefined}
       >
-        <Table className="table-fixed min-w-[960px]">
+        <Table className="table-fixed min-w-[800px]">
           <colgroup>
-            <col className="w-[14%]" />
-            <col className="w-[14%]" />
-            <col className="w-[14%]" />
             <col className="w-[20%]" />
+            <col className="w-[16%]" />
             <col className="w-[18%]" />
-            <col className="w-[20%]" />
+            <col className="w-[18%]" />
+            <col className="w-[28%]" />
           </colgroup>
           <TableHeader>
             <TableRow>
               <TableHead>Fecha</TableHead>
+              <TableHead>Fuente</TableHead>
               <TableHead>TC Compra</TableHead>
               <TableHead>TC Venta</TableHead>
-              <TableHead>Configurado por</TableHead>
-              <TableHead>Hora de Configuración</TableHead>
-              <TableHead>Notas</TableHead>
+              <TableHead>Fecha de registro</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {history.map((rate) => (
-              <TableRow key={rate.id}>
+              <TableRow key={`${rate.source}-${rate.date}`}>
                 <TableCell className="font-medium text-foreground">{formatBusinessDate(rate.date)}</TableCell>
-                <TableCell className="font-medium tabular-nums text-success">₡{rate.buyRate.toFixed(4)}</TableCell>
-                <TableCell className="font-medium tabular-nums text-primary">₡{rate.sellRate.toFixed(4)}</TableCell>
-                <TableCell className="truncate" title={rate.setByName}>{rate.setByName}</TableCell>
-                <TableCell className="text-muted-foreground">{formatTimestamp(rate.createdAt)}</TableCell>
-                <TableCell className="truncate text-muted-foreground" title={rate.notes || '-'}>{rate.notes || '-'}</TableCell>
+                <TableCell><Badge variant={rate.source === 'MANUAL' ? 'secondary' : 'info'}>{rate.source}</Badge></TableCell>
+                <TableCell className="font-medium tabular-nums text-success">{rate.buyRate === null ? '-' : `₡${rate.buyRate.toFixed(4)}`}</TableCell>
+                <TableCell className="font-medium tabular-nums text-primary">{rate.sellRate === null ? '-' : `₡${rate.sellRate.toFixed(4)}`}</TableCell>
+                <TableCell className="text-muted-foreground">{formatTimestamp(rate.registeredAt)}</TableCell>
               </TableRow>
             ))}
           </TableBody>

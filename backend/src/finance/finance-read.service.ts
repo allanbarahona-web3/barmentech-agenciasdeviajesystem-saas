@@ -1,6 +1,7 @@
 import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { AccountReceivableStatus, BillingDocumentSourceRole, CommercialObligationStatus, PaymentAllocationStatus, PaymentPurpose, PaymentStatus, Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
+import { DailyExchangeRateResolver, convertDailyExchangeRateAmount } from "../exchange-rate/daily-exchange-rate.resolver";
 import {
   ListAccountReceivableGroupItemsDto,
   ListAccountReceivableGroupsDto,
@@ -22,7 +23,10 @@ const DEFAULT_FISCAL_TIMEZONE = "America/Costa_Rica";
 
 @Injectable()
 export class FinanceReadService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly dailyExchangeRates?: DailyExchangeRateResolver,
+  ) {}
 
   async getContractCommercialObligation(tenantId: string, contractId: string) {
     const contract = await this.prisma.contract.findFirst({
@@ -801,16 +805,27 @@ export class FinanceReadService {
       ORDER BY currency_keys."currencyCode" ASC
     `;
 
-    return {
-      customerId,
-      currencies: rows.map((row) => ({
+    const currencies = rows.map((row) => ({
         currencyCode: row.currencyCode,
         totalContracted: money(row.totalContracted),
         totalInvoiced: money(row.totalInvoiced),
         totalPaid: money(row.totalPaid),
         outstanding: money(row.outstanding),
         available: money(row.available),
-      })),
+      }));
+    const exchangeRate = await this.dailyExchangeRates!.resolveDailyExchangeRate({
+      tenantId,
+      currencyCodes: rows.map((row) => row.currencyCode),
+    });
+
+    return {
+      customerId,
+      baseCurrencyCode: exchangeRate.baseCurrencyCode,
+      consolidated: consolidatedSummary(rows, exchangeRate),
+      currencies,
+      exchangeRateContext: exchangeRate.status === "NOT_REQUIRED"
+        ? null
+        : { source: exchangeRate.source, effectiveDate: exchangeRate.effectiveDate, status: exchangeRate.status },
     };
   }
 
@@ -1040,6 +1055,41 @@ type CustomerFinancialSummaryRow = {
   outstanding: Prisma.Decimal;
   available: Prisma.Decimal;
 };
+
+function consolidatedSummary(
+  rows: readonly CustomerFinancialSummaryRow[],
+  exchangeRate: Parameters<typeof convertDailyExchangeRateAmount>[2],
+) {
+  const totals = {
+    totalContracted: new Prisma.Decimal(0),
+    totalInvoiced: new Prisma.Decimal(0),
+    totalPaid: new Prisma.Decimal(0),
+    outstanding: new Prisma.Decimal(0),
+    available: new Prisma.Decimal(0),
+  };
+  for (const row of rows) {
+    const converted = {
+      totalContracted: convertDailyExchangeRateAmount(row.totalContracted, row.currencyCode, exchangeRate),
+      totalInvoiced: convertDailyExchangeRateAmount(row.totalInvoiced, row.currencyCode, exchangeRate),
+      totalPaid: convertDailyExchangeRateAmount(row.totalPaid, row.currencyCode, exchangeRate),
+      outstanding: convertDailyExchangeRateAmount(row.outstanding, row.currencyCode, exchangeRate),
+      available: convertDailyExchangeRateAmount(row.available, row.currencyCode, exchangeRate),
+    };
+    if (Object.values(converted).some((value) => value === null)) return null;
+    totals.totalContracted = totals.totalContracted.plus(converted.totalContracted!);
+    totals.totalInvoiced = totals.totalInvoiced.plus(converted.totalInvoiced!);
+    totals.totalPaid = totals.totalPaid.plus(converted.totalPaid!);
+    totals.outstanding = totals.outstanding.plus(converted.outstanding!);
+    totals.available = totals.available.plus(converted.available!);
+  }
+  return {
+    totalContracted: consolidatedMoney(totals.totalContracted),
+    totalInvoiced: consolidatedMoney(totals.totalInvoiced),
+    totalPaid: consolidatedMoney(totals.totalPaid),
+    outstanding: consolidatedMoney(totals.outstanding),
+    available: consolidatedMoney(totals.available),
+  };
+}
 
 type AccountReceivableGroupKey = {
   version: 1;
@@ -1527,4 +1577,8 @@ function auditReason(row: FinanceAuditRow): string | null {
 
 function money(value: Prisma.Decimal): string {
   return value.toFixed();
+}
+
+function consolidatedMoney(value: Prisma.Decimal): string {
+  return value.toDecimalPlaces(5, Prisma.Decimal.ROUND_HALF_UP).toFixed(5);
 }

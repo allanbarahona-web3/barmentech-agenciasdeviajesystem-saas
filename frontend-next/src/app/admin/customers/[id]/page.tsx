@@ -7,7 +7,8 @@ import { useRouter, useParams } from 'next/navigation';
 import { LoadingModal } from '@/components/loading-modal';
 import { getCustomerProfile, updateCustomer, getCustomerDocumentDownloadUrl, uploadCustomerDocument, createCustomerNote, updateCustomerNote, deleteCustomerNote, type CustomerContractItem, type CustomerProfile, type UpdateCustomerDto, type CustomerDocumentCategory } from '@/lib/customers-api';
 import { getStoredSession } from '@/lib/auth-api';
-import { formatFinanceMoney, getCustomerFinancialSummary, type CustomerFinancialSummary } from '@/lib/finance-api';
+import { getCustomerFinancialSummary, type CustomerFinancialSummary } from '@/lib/finance-api';
+import { formatFinanceMoneyDisplay } from '@/lib/finance-money-display';
 import { ContractFinanceDrawer } from '@/features/contracts-finance/contract-finance-drawer';
 import { CustomerAccountStatementModal } from '@/app/finance/accounts-receivable/customer-account-statement';
 import { CustomerEditModal, CustomerDocumentUploadModal } from '@/features/customers/components';
@@ -39,8 +40,8 @@ export default function CustomerProfilePage() {
   const [financialSummary, setFinancialSummary] = useState<CustomerFinancialSummary | null>(null);
   const [financialSummaryLoading, setFinancialSummaryLoading] = useState(true);
   const [financialSummaryError, setFinancialSummaryError] = useState<string | null>(null);
-  const [selectedFinancialCurrency, setSelectedFinancialCurrency] = useState<string>('');
   const [statementCurrency, setStatementCurrency] = useState<CustomerFinancialSummary['currencies'][number]['currencyCode'] | null>(null);
+  const [statementCurrencyPickerOpen, setStatementCurrencyPickerOpen] = useState(false);
   const [selectedFinancialContract, setSelectedFinancialContract] = useState<CustomerContractItem | null>(null);
   const [loadingModalOpen, setLoadingModalOpen] = useState(false);
   const [loadingModalState, setLoadingModalState] = useState<'loading' | 'success' | 'error'>('loading');
@@ -109,12 +110,10 @@ export default function CustomerProfilePage() {
     setFinancialSummary(null);
     setFinancialSummaryLoading(true);
     setFinancialSummaryError(null);
-    setSelectedFinancialCurrency('');
     void getCustomerFinancialSummary(customerId, controller.signal)
       .then((summary) => {
         if (controller.signal.aborted) return;
         setFinancialSummary(summary);
-        setSelectedFinancialCurrency(summary.currencies[0]?.currencyCode ?? '');
       })
       .catch((requestError) => {
         if (!controller.signal.aborted) setFinancialSummaryError(requestError instanceof Error ? requestError.message : 'No se pudo cargar el resumen financiero.');
@@ -719,7 +718,14 @@ export default function CustomerProfilePage() {
 
   const { customer, contracts, statistics, documents } = profile;
   const isMinor = profile.participationRole === 'MINOR';
-  const selectedCurrencySummary = financialSummary?.currencies.find((currency) => currency.currencyCode === selectedFinancialCurrency) ?? financialSummary?.currencies[0] ?? null;
+  const hasMultipleFinancialCurrencies = (financialSummary?.currencies.length ?? 0) > 1;
+  const financialMetrics = [
+    { label: 'Total contratado', key: 'totalContracted' as const, icon: FileText, tone: 'primary' as const },
+    { label: 'Total facturado', key: 'totalInvoiced' as const, icon: FileText, tone: 'info' as const },
+    { label: 'Total pagado', key: 'totalPaid' as const, icon: WalletCards, tone: 'success' as const },
+    { label: 'Saldo pendiente', key: 'outstanding' as const, icon: WalletCards, tone: 'warning' as const },
+    { label: 'Saldo disponible', key: 'available' as const, icon: WalletCards, tone: 'success' as const },
+  ];
 
   return (
     <main className="app-shell">
@@ -814,16 +820,19 @@ export default function CustomerProfilePage() {
             {financialSummaryLoading ? <p className="py-6 text-center text-sm text-muted-foreground">Cargando resumen financiero…</p> : null}
             {financialSummaryError ? <Alert variant="destructive"><AlertTitle>No se pudo cargar el resumen financiero</AlertTitle><AlertDescription>{financialSummaryError}</AlertDescription></Alert> : null}
             {!financialSummaryLoading && !financialSummaryError && financialSummary?.currencies.length === 0 ? <div className="rounded-lg border border-dashed border-border bg-muted/40 px-5 py-8 text-center"><p className="text-sm font-medium text-foreground">No hay actividad financiera para este cliente.</p></div> : null}
-            {!financialSummaryLoading && !financialSummaryError && financialSummary && selectedCurrencySummary ? <div className="grid gap-3">
-              {financialSummary.currencies.length > 1 ? <div className="flex items-center gap-2"><label className="text-xs font-medium text-muted-foreground" htmlFor="customer-financial-currency">Moneda</label><Select id="customer-financial-currency" size="sm" value={selectedCurrencySummary.currencyCode} onChange={(event) => setSelectedFinancialCurrency(event.target.value)}><option value={selectedCurrencySummary.currencyCode}>{selectedCurrencySummary.currencyCode}</option>{financialSummary.currencies.filter((currency) => currency.currencyCode !== selectedCurrencySummary.currencyCode).map((currency) => <option key={currency.currencyCode} value={currency.currencyCode}>{currency.currencyCode}</option>)}</Select></div> : <p className="text-xs font-medium text-muted-foreground">Moneda: <span className="text-foreground">{selectedCurrencySummary.currencyCode}</span></p>}
-              {[
-                { label: 'Total contratado', value: selectedCurrencySummary.totalContracted, icon: FileText, tone: 'primary' as const },
-                { label: 'Total facturado', value: selectedCurrencySummary.totalInvoiced, icon: FileText, tone: 'info' as const },
-                { label: 'Total pagado', value: selectedCurrencySummary.totalPaid, icon: WalletCards, tone: 'success' as const },
-                { label: 'Saldo pendiente', value: selectedCurrencySummary.outstanding, icon: WalletCards, tone: 'warning' as const },
-                { label: 'Saldo disponible', value: selectedCurrencySummary.available, icon: WalletCards, tone: 'success' as const },
-              ].map(({ label, value, icon: Icon, tone }) => <div key={label} className="flex items-center justify-between rounded-lg border border-border bg-muted/40 p-4"><span><span className="block text-xs font-medium text-muted-foreground">{label}</span><span className="mt-1 block text-lg font-semibold tracking-tight text-foreground">{formatFinanceMoney(value, selectedCurrencySummary.currencyCode)}</span></span><IconBadge tone={tone}><Icon aria-hidden="true" /></IconBadge></div>)}
-              <Button type="button" variant="outline" onClick={() => setStatementCurrency(selectedCurrencySummary.currencyCode)}>Estado de cuenta</Button>
+            {!financialSummaryLoading && !financialSummaryError && financialSummary && financialSummary.currencies.length > 0 ? <div className="grid gap-3">
+              {financialSummary.exchangeRateContext?.status === 'AVAILABLE' ? <p className="text-xs text-muted-foreground">Consolidado con TC {financialSummary.exchangeRateContext.source} del {formatBusinessDate(financialSummary.exchangeRateContext.effectiveDate)}</p> : null}
+              {financialSummary.consolidated === null && financialSummary.exchangeRateContext?.status === 'MISSING' ? <p className="text-xs text-muted-foreground">Tipo de cambio del día no disponible</p> : null}
+              {financialMetrics.map(({ label, key, icon: Icon, tone }) => {
+                const singleCurrency = financialSummary.currencies[0];
+                const primaryValue = financialSummary.consolidated?.[key] ?? (!hasMultipleFinancialCurrencies ? singleCurrency?.[key] : null);
+                const primaryCurrency = financialSummary.consolidated ? financialSummary.baseCurrencyCode : singleCurrency?.currencyCode;
+                return <div key={label} className="flex items-center justify-between rounded-lg border border-border bg-muted/40 p-4"><span><span className="block text-xs font-medium text-muted-foreground">{label}</span>{primaryValue && primaryCurrency ? <span className="mt-1 block text-lg font-semibold tracking-tight text-foreground">{formatFinanceMoneyDisplay(primaryValue, primaryCurrency)}</span> : <span className="mt-1 block text-lg font-semibold tracking-tight text-muted-foreground">—</span>}{hasMultipleFinancialCurrencies ? <span className="mt-1 block text-xs text-muted-foreground">{financialSummary.currencies.map((currency) => formatFinanceMoneyDisplay(currency[key], currency.currencyCode)).join(' · ')}</span> : null}</span><IconBadge tone={tone}><Icon aria-hidden="true" /></IconBadge></div>;
+              })}
+              <Button type="button" variant="outline" onClick={() => {
+                if (financialSummary.currencies.length === 1) setStatementCurrency(financialSummary.currencies[0].currencyCode);
+                else setStatementCurrencyPickerOpen(true);
+              }}>Estado de cuenta</Button>
             </div> : null}
           </SectionCard>
         )}
@@ -1758,6 +1767,31 @@ export default function CustomerProfilePage() {
         onConfirm={handleDeleteOperationalNote}
       />
 
+      <Dialog open={statementCurrencyPickerOpen} onOpenChange={setStatementCurrencyPickerOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Estado de cuenta</DialogTitle>
+            <DialogDescription>Seleccione la moneda para consultar el estado de cuenta.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-2">
+            {financialSummary?.currencies.map((currency) => (
+              <Button
+                key={currency.currencyCode}
+                type="button"
+                variant="outline"
+                className="justify-between"
+                onClick={() => {
+                  setStatementCurrency(currency.currencyCode);
+                  setStatementCurrencyPickerOpen(false);
+                }}
+              >
+                {currency.currencyCode}
+              </Button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {statementCurrency ? <CustomerAccountStatementModal
         group={{
           customerId,
@@ -1794,7 +1828,6 @@ export default function CustomerProfilePage() {
           void getCustomerFinancialSummary(customerId)
             .then((summary) => {
               setFinancialSummary(summary);
-              setSelectedFinancialCurrency((currency) => summary.currencies.some((item) => item.currencyCode === currency) ? currency : summary.currencies[0]?.currencyCode ?? '');
             })
             .catch((requestError) => setFinancialSummaryError(requestError instanceof Error ? requestError.message : 'No se pudo actualizar el resumen financiero.'));
         }}

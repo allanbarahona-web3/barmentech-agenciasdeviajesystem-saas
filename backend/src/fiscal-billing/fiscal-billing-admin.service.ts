@@ -15,6 +15,7 @@ const SAFE_DEFAULTS = {
   electronicIssuanceEnabled: false,
   countryCode: "CR",
   defaultCurrencyCode: "CRC",
+  exchangeRateSource: "MANUAL",
   fiscalTimezone: "America/Costa_Rica",
   fiscalSchemaVersion: "4.4",
 } as const;
@@ -77,6 +78,7 @@ export class FiscalBillingAdminService {
           configuration.electronicIssuanceEnabled,
         countryCode: configuration.countryCode,
         defaultCurrencyCode: configuration.defaultCurrencyCode,
+        exchangeRateSource: configuration.exchangeRateSource,
         fiscalTimezone: configuration.fiscalTimezone,
         fiscalSchemaVersion: configuration.fiscalSchemaVersion,
         createdAt: configuration.createdAt.toISOString(),

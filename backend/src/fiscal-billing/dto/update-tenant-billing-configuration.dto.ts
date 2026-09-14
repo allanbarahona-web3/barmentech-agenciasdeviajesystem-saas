@@ -1,6 +1,7 @@
 import { Transform } from "class-transformer";
 import {
   IsBoolean,
+  IsIn,
   IsOptional,
   IsString,
   Matches,
@@ -37,6 +38,10 @@ export class UpdateTenantBillingConfigurationDto {
       "defaultCurrencyCode debe contener exactamente tres letras ASCII mayúsculas.",
   })
   defaultCurrencyCode?: string;
+
+  @IsOptional()
+  @IsIn(["MANUAL", "BCCR"])
+  exchangeRateSource?: "MANUAL" | "BCCR";
 
   @IsOptional()
   @Transform(trimString)

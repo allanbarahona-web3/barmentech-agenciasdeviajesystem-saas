@@ -378,14 +378,20 @@ describe("FinanceReadService", () => {
       }),
     ]);
     const prisma = { $queryRaw: queryRaw };
-    const service = new FinanceReadService(prisma as unknown as PrismaService);
+    const dailyRates = { resolveDailyExchangeRate: jest.fn().mockResolvedValue(dailyRate({ rate: d("500") })) };
+    const service = new FinanceReadService(prisma as unknown as PrismaService, dailyRates as never);
 
     await expect(service.getCustomerFinancialSummary("tenant-a", "customer-a")).resolves.toEqual({
       customerId: "customer-a",
+      baseCurrencyCode: "CRC",
+      consolidated: {
+        totalContracted: "100100.00000", totalInvoiced: "12520.00000", totalPaid: "100045.00000", outstanding: "12575.00000", available: "3.25000",
+      },
       currencies: [
         { currencyCode: "CRC", totalContracted: "100", totalInvoiced: "20", totalPaid: "45", outstanding: "75", available: "3.25" },
         { currencyCode: "USD", totalContracted: "200", totalInvoiced: "25", totalPaid: "200", outstanding: "25", available: "0" },
       ],
+      exchangeRateContext: { source: "MANUAL", effectiveDate: "2026-09-12", status: "AVAILABLE" },
     });
 
     const sql = rawSql(queryRaw, 0);
@@ -405,6 +411,8 @@ describe("FinanceReadService", () => {
     expect(sql).not.toContain('BillingDocument');
     expect(sql).not.toContain('BillingInvoice');
     expect(queryRaw.mock.calls[0]).toEqual(expect.arrayContaining(["tenant-a", "customer-a"]));
+    expect(dailyRates.resolveDailyExchangeRate).toHaveBeenCalledTimes(1);
+    expect(dailyRates.resolveDailyExchangeRate).toHaveBeenCalledWith({ tenantId: "tenant-a", currencyCodes: ["CRC", "USD"] });
     expect(prisma).not.toHaveProperty("billingDocument");
     expect(prisma).not.toHaveProperty("billingInvoice");
     expect(prisma).not.toHaveProperty("payment");
@@ -423,17 +431,26 @@ describe("FinanceReadService", () => {
         }),
       ])
       .mockResolvedValueOnce([]);
-    const service = new FinanceReadService({ $queryRaw: queryRaw } as unknown as PrismaService);
+    const dailyRates = { resolveDailyExchangeRate: jest.fn()
+      .mockResolvedValueOnce(dailyRate({ status: "NOT_REQUIRED", rate: undefined }))
+      .mockResolvedValueOnce(dailyRate({ status: "NOT_REQUIRED", rate: undefined })) };
+    const service = new FinanceReadService({ $queryRaw: queryRaw } as unknown as PrismaService, dailyRates as never);
 
     await expect(service.getCustomerFinancialSummary("tenant-a", "customer-a")).resolves.toEqual({
       customerId: "customer-a",
+      baseCurrencyCode: "CRC",
+      consolidated: { totalContracted: "0.00000", totalInvoiced: "0.00000", totalPaid: "0.00000", outstanding: "0.00000", available: "7.50000" },
       currencies: [
         { currencyCode: "CRC", totalContracted: "0", totalInvoiced: "0", totalPaid: "0", outstanding: "0", available: "7.5" },
       ],
+      exchangeRateContext: null,
     });
     await expect(service.getCustomerFinancialSummary("tenant-b", "customer-b")).resolves.toEqual({
       customerId: "customer-b",
+      baseCurrencyCode: "CRC",
+      consolidated: { totalContracted: "0.00000", totalInvoiced: "0.00000", totalPaid: "0.00000", outstanding: "0.00000", available: "0.00000" },
       currencies: [],
+      exchangeRateContext: null,
     });
     expect(queryRaw.mock.calls[1]).toEqual(expect.arrayContaining(["tenant-b", "customer-b"]));
   });
@@ -450,13 +467,64 @@ describe("FinanceReadService", () => {
       }),
     ]);
     const billingDocument = { findMany: jest.fn() };
-    const service = new FinanceReadService({ $queryRaw: queryRaw, billingDocument } as unknown as PrismaService);
+    const dailyRates = { resolveDailyExchangeRate: jest.fn().mockResolvedValue(dailyRate({ baseCurrencyCode: "USD", status: "NOT_REQUIRED", rate: undefined })) };
+    const service = new FinanceReadService({ $queryRaw: queryRaw, billingDocument } as unknown as PrismaService, dailyRates as never);
 
     await expect(service.getCustomerFinancialSummary("tenant-a", "customer-a")).resolves.toMatchObject({
       currencies: [expect.objectContaining({ currencyCode: "USD", totalInvoiced: "0" })],
     });
     expect(billingDocument.findMany).not.toHaveBeenCalled();
     expect(rawSql(queryRaw, 0)).toContain('FROM "account_receivables"');
+  });
+
+  it("keeps original currencies when today's manual rate is missing", async () => {
+    const queryRaw = jest.fn().mockResolvedValue([
+      customerFinancialSummaryRow({
+        currencyCode: "USD",
+        totalContracted: d("10"),
+        totalInvoiced: d("2"),
+        totalPaid: d("3"),
+        outstanding: d("9"),
+        available: d("1"),
+      }),
+    ]);
+    const dailyRates = {
+      resolveDailyExchangeRate: jest.fn().mockResolvedValue(dailyRate({ status: "MISSING", rate: undefined })),
+    };
+    const service = new FinanceReadService({ $queryRaw: queryRaw } as unknown as PrismaService, dailyRates as never);
+
+    await expect(service.getCustomerFinancialSummary("tenant-a", "customer-a")).resolves.toEqual({
+      customerId: "customer-a",
+      baseCurrencyCode: "CRC",
+      consolidated: null,
+      currencies: [{ currencyCode: "USD", totalContracted: "10", totalInvoiced: "2", totalPaid: "3", outstanding: "9", available: "1" }],
+      exchangeRateContext: { source: "MANUAL", effectiveDate: "2026-09-12", status: "MISSING" },
+    });
+  });
+
+  it("consolidates CRC into a USD base through Decimal division", async () => {
+    const queryRaw = jest.fn().mockResolvedValue([
+      customerFinancialSummaryRow({
+        currencyCode: "CRC",
+        totalContracted: d("101"),
+        totalInvoiced: d("50"),
+        totalPaid: d("25"),
+        outstanding: d("126"),
+        available: d("1"),
+      }),
+    ]);
+    const dailyRates = {
+      resolveDailyExchangeRate: jest.fn().mockResolvedValue(dailyRate({ baseCurrencyCode: "USD", rate: d("500") })),
+    };
+    const service = new FinanceReadService({ $queryRaw: queryRaw } as unknown as PrismaService, dailyRates as never);
+
+    await expect(service.getCustomerFinancialSummary("tenant-a", "customer-a")).resolves.toMatchObject({
+      baseCurrencyCode: "USD",
+      consolidated: {
+        totalContracted: "0.20200", totalInvoiced: "0.10000", totalPaid: "0.05000", outstanding: "0.25200", available: "0.00200",
+      },
+      currencies: [{ currencyCode: "CRC", totalContracted: "101", totalInvoiced: "50", totalPaid: "25", outstanding: "126", available: "1" }],
+    });
   });
 
   it("does not mark an AR due today in the tenant timezone overdue after UTC rolls over", async () => {
@@ -1000,6 +1068,17 @@ function receivable(overrides: Record<string, unknown> = {}) {
 }
 
 function d(value: string) { return new Prisma.Decimal(value); }
+
+function dailyRate(overrides: Record<string, unknown> = {}) {
+  return {
+    baseCurrencyCode: "CRC",
+    source: "MANUAL",
+    effectiveDate: "2026-09-12",
+    status: "AVAILABLE",
+    rate: d("500"),
+    ...overrides,
+  };
+}
 
 function contractObligation(overrides: Record<string, unknown> = {}) {
   const status = overrides.status as CommercialObligationStatus | undefined;
