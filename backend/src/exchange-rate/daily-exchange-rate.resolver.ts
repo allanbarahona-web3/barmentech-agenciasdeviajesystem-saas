@@ -4,6 +4,7 @@ import { DateUtils } from "../common/utils/date.utils";
 import { OfficialExchangeRateResolver } from "../official-exchange-rates/official-exchange-rate.resolver";
 import { PrismaService } from "../prisma/prisma.service";
 import { ExchangeRateService } from "./exchange-rate.service";
+import { normalizeCurrencySettlementAmount } from "../finance/currency-settlement.policy";
 
 export type DailyExchangeRateSource = "MANUAL" | "BCCR";
 export type DailyExchangeRateStatus = "AVAILABLE" | "MISSING" | "NOT_REQUIRED";
@@ -14,6 +15,19 @@ export type DailyExchangeRateResolution = {
   effectiveDate: string;
   status: DailyExchangeRateStatus;
   rate?: Prisma.Decimal;
+};
+
+/**
+ * The non-persistent settlement result shared by invoice-payment approval and
+ * its read-only preview. Persistence of this value remains the approval
+ * workflow's responsibility.
+ */
+export type DailySettlementResolution = {
+  currencyCode: string;
+  amount: Prisma.Decimal;
+  exchangeRate: Prisma.Decimal | null;
+  exchangeRateSource: DailyExchangeRateSource | null;
+  exchangeRateEffectiveDate: string | null;
 };
 
 @Injectable()
@@ -106,6 +120,68 @@ export function convertDailyExchangeRateAmount(
     return amount.dividedBy(resolution.rate);
   }
   return null;
+}
+
+/** Converts between the supported settlement currencies using one resolved daily rate. */
+export function convertDailySettlementAmount(
+  amount: Prisma.Decimal,
+  fromCurrencyCode: string,
+  toCurrencyCode: string,
+  resolution: DailyExchangeRateResolution,
+): Prisma.Decimal | null {
+  const from = fromCurrencyCode.toUpperCase();
+  const to = toCurrencyCode.toUpperCase();
+  if (from === to) return amount;
+  if (resolution.status !== "AVAILABLE" || !resolution.rate || !positive(resolution.rate)) return null;
+  if (from === "CRC" && to === "USD") return amount.dividedBy(resolution.rate);
+  if (from === "USD" && to === "CRC") return amount.times(resolution.rate);
+  return null;
+}
+
+/**
+ * Resolves and converts the current daily settlement amount without creating
+ * a Payment or a settlement snapshot. This is deliberately the same path used
+ * immediately before invoice-payment approval persists its immutable snapshot.
+ */
+export async function resolveDailySettlement(input: {
+  resolver: DailyExchangeRateResolver;
+  tenantId: string;
+  receivedCurrencyCode: string;
+  settlementCurrencyCode: string;
+  receivedAmount: Prisma.Decimal;
+}): Promise<DailySettlementResolution | null> {
+  const receivedCurrencyCode = input.receivedCurrencyCode.toUpperCase();
+  const settlementCurrencyCode = input.settlementCurrencyCode.toUpperCase();
+  if (receivedCurrencyCode === settlementCurrencyCode) {
+    return {
+      currencyCode: settlementCurrencyCode,
+      amount: normalizeCurrencySettlementAmount(input.receivedAmount, settlementCurrencyCode),
+      exchangeRate: null,
+      exchangeRateSource: null,
+      exchangeRateEffectiveDate: null,
+    };
+  }
+
+  const rate = await input.resolver.resolveDailyExchangeRate({
+    tenantId: input.tenantId,
+    currencyCodes: [receivedCurrencyCode, settlementCurrencyCode],
+  });
+  if (rate.status !== "AVAILABLE" || !rate.rate) return null;
+  const amount = convertDailySettlementAmount(
+    input.receivedAmount,
+    receivedCurrencyCode,
+    settlementCurrencyCode,
+    rate,
+  );
+  if (!amount || !amount.isFinite() || amount.lessThanOrEqualTo(0)) return null;
+
+  return {
+    currencyCode: settlementCurrencyCode,
+    amount: normalizeCurrencySettlementAmount(amount, settlementCurrencyCode),
+    exchangeRate: rate.rate,
+    exchangeRateSource: rate.source,
+    exchangeRateEffectiveDate: rate.effectiveDate,
+  };
 }
 
 function costaRicaToday(): string {

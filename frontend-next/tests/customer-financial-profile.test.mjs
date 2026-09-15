@@ -18,6 +18,10 @@ const financeContractsSource = readFileSync(
   new URL('../src/app/finance/accounts-receivable/contract-obligation-groups.tsx', import.meta.url),
   'utf8',
 );
+const financeReceivablesSource = readFileSync(
+  new URL('../src/app/finance/accounts-receivable/page.tsx', import.meta.url),
+  'utf8',
+);
 const financialSection = profileSource.slice(
   profileSource.indexOf('Resumen financiero'),
   profileSource.indexOf('/* Notas Operativas Section'),
@@ -94,4 +98,52 @@ test('the shared drawer returns to the mounted Customer Profile only in Profile 
   assert.match(profileSource, /onReturnToCustomer=\{\(\) => setSelectedFinancialContract\(null\)\}/);
   assert.match(drawerSource, /Volver al cliente/);
   assert.doesNotMatch(financeContractsSource, /onReturnToCustomer=/);
+});
+
+test('Customer Profile lists only the customer-scoped accepted electronic-invoice read', () => {
+  assert.match(profileSource, /listCustomerElectronicInvoices\(customerId, \{ page: electronicInvoicesPage, pageSize: 25 \}, controller\.signal\)/);
+  assert.match(financeApiSource, /export function listCustomerElectronicInvoices/);
+  assert.match(financeApiSource, /\/finance\/customers\/\$\{encodeURIComponent\(customerId\)\}\/electronic-invoices/);
+  assert.match(profileSource, /Facturas electrónicas/);
+  assert.match(financeApiSource, /taxAuthorityStatus: 'ACCEPTED'/);
+});
+
+test('Customer Profile keeps invoice financial status in the Finance read model', () => {
+  assert.match(financeApiSource, /CustomerElectronicInvoiceFinancialStatus/);
+  assert.match(profileSource, /invoice\.financialStatus/);
+  assert.match(profileSource, /Pendiente/);
+  assert.match(profileSource, /Abonada/);
+  assert.match(profileSource, /Pagada/);
+  assert.match(profileSource, /financialOutstanding/);
+  assert.doesNotMatch(profileSource, /invoice\.total\s*[-+*/]/);
+});
+
+test('Total facturas targets the separate electronic-invoice section', () => {
+  assert.match(profileSource, /label: 'Total facturas'/);
+  assert.match(profileSource, /value: electronicInvoices\?\.total \?\? 0/);
+  assert.match(profileSource, /scrollToSection\(electronicInvoicesRef\)/);
+  assert.match(profileSource, /ref=\{electronicInvoicesRef\}/);
+});
+
+test('invoice actions reuse the accepted-invoice route and canonical Finance detail', () => {
+  assert.match(profileSource, /\/fiscal-billing\/invoices\/\$\{encodeURIComponent\(invoice\.billingDocumentId\)\}/);
+  assert.match(profileSource, /\/finance\/accounts-receivable\?receivableId=/);
+  assert.match(profileSource, /setSelectedFinancialContract\(contract\)/);
+  assert.match(financeReceivablesSource, /new URLSearchParams\(window\.location\.search\)\.get\('receivableId'\)/);
+  assert.match(financeReceivablesSource, /<ReceivableDrawer/);
+  assert.doesNotMatch(profileSource, /\/billing\//);
+});
+
+test('accepted invoice viewing remains customer-scoped for AGENT while Finance detail stays canonical', () => {
+  assert.match(profileSource, /\['ADMIN', 'FACTURACION_COBROS', 'AGENT'\]/);
+  assert.match(profileSource, /\?customerId=\$\{encodeURIComponent\(customer\.id\)\}/);
+  assert.match(profileSource, /financialDetail\?\.type === 'ACCOUNT_RECEIVABLE'/);
+  assert.match(profileSource, /\['PENDING', 'PARTIALLY_PAID'\]\.includes\(invoice\.financialStatus\)/);
+});
+
+test('the canonical AR drawer keeps fiscal debt detail business-readable', () => {
+  assert.match(financeReceivablesSource, /function fiscalDocumentTypeLabel/);
+  assert.match(financeReceivablesSource, /Factura electrónica/);
+  assert.doesNotMatch(financeReceivablesSource, /<dt>BillingDocument<\/dt>/);
+  assert.doesNotMatch(financeReceivablesSource, /<dt>Tipo de origen<\/dt>/);
 });

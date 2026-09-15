@@ -107,6 +107,53 @@ export class ListAccountReceivablesDto {
   dueDateTo?: string;
 }
 
+export class ListCustomerElectronicInvoicesDto {
+  @IsOptional() @Transform(({ value }) => Number.parseInt(String(value), 10)) @IsInt() @Min(1)
+  page?: number;
+  @IsOptional() @Transform(({ value }) => Number.parseInt(String(value), 10)) @IsInt() @Min(1) @Max(25)
+  pageSize?: number;
+}
+
+export class CustomerInvoicePaymentTargetsQueryDto {
+  @Transform(trim) @IsEnum(Currency)
+  currencyCode!: Currency;
+}
+
+export class CustomerPaymentSettlementPreviewQueryDto {
+  @Transform(trim) @IsEnum(Currency)
+  receivedCurrencyCode!: Currency;
+  @Transform(trim) @IsEnum(Currency)
+  settlementCurrencyCode!: Currency;
+  @Transform(trim) @IsString() @MaxLength(100) @Matches(moneyText)
+  receivedAmount!: string;
+}
+
+export class ReportedInvoicePaymentTargetDto {
+  @Transform(trim) @IsString() @MaxLength(191) @Matches(/\S/)
+  accountReceivableId!: string;
+  @Transform(trim) @IsString() @MaxLength(100) @Matches(moneyText)
+  intendedAmount!: string;
+}
+
+export class ReportedInvoicePaymentDto {
+  @Transform(trim) @IsEnum(Currency)
+  currencyCode!: Currency;
+  @Transform(trim) @IsString() @MaxLength(100) @Matches(moneyText)
+  amount!: string;
+  @IsOptional() @Transform(trim) @IsString() @MaxLength(50) @Matches(/\S/)
+  paymentMethod?: string;
+  @IsOptional() @IsDateString()
+  paymentDate?: string;
+  @IsOptional() @Transform(trim) @IsString() @MaxLength(150) @Matches(/\S/)
+  reference?: string;
+  @IsOptional() @Transform(trim) @IsString() @MaxLength(500) @Matches(/\S/)
+  payerName?: string;
+  @IsOptional() @Transform(trim) @IsString() @MaxLength(500) @Matches(/\S/)
+  notes?: string;
+  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(25) @ValidateNested({ each: true }) @Type(() => ReportedInvoicePaymentTargetDto)
+  targets!: ReportedInvoicePaymentTargetDto[];
+}
+
 export class ListAccountReceivableGroupsDto {
   @IsOptional() @Transform(({ value }) => Number.parseInt(String(value), 10)) @IsInt() @Min(1)
   page?: number;
@@ -161,6 +208,11 @@ export class SendPaymentReceiptDto {
 export class RejectContractReservationPaymentDto {
   @IsString() @Matches(/\S/) @MaxLength(500)
   reason!: string;
+}
+
+export class PaymentEvidenceDestinationOverrideDto {
+  @IsOptional() @Transform(trim) @IsString() @MaxLength(500) @Matches(/\S/)
+  reason?: string;
 }
 
 export class ListContractReservationPaymentsDto {

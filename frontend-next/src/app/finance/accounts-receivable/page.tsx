@@ -28,6 +28,12 @@ function statusClass(status: AccountReceivableStatus) {
   return styles.cancelledBadge;
 }
 
+function fiscalDocumentTypeLabel(documentType: string | null): string {
+  if (documentType === '01') return 'Factura electrónica';
+  if (documentType === '04') return 'Tiquete electrónico';
+  return documentType ? 'Documento electrónico' : 'No disponible';
+}
+
 function ReceivableDrawer({ id, canWrite, onClose, onRegisterPayment, onApplyBalance }: { id: string; canWrite: boolean; onClose: () => void; onRegisterPayment: (detail: AccountReceivableDetail) => void; onApplyBalance: (detail: AccountReceivableDetail) => void }) {
   const [detail, setDetail] = useState<AccountReceivableDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -57,7 +63,7 @@ function ReceivableDrawer({ id, canWrite, onClose, onRegisterPayment, onApplyBal
       <header className={styles.drawerHeader}><div><p>Cuenta por cobrar</p><h2 id="receivable-detail-title">Detalle de la deuda</h2></div><Button className={styles.closeButton} size="icon" variant="ghost" type="button" aria-label="Cerrar" onClick={onClose}><X aria-hidden="true" /></Button></header>
       <div className={styles.drawerBody}>{loading ? <div className={styles.state}><LoadingSpinner message="Cargando cuenta por cobrar…" /></div> : error || !detail ? <div className={styles.state}><div><AlertCircle aria-hidden="true" /><h3>No se pudo cargar el detalle</h3><p>{error ?? 'La cuenta por cobrar no está disponible.'}</p></div></div> : <>
         <section className={styles.detailCard}><h3>Estado financiero</h3><dl className={styles.facts}><div><dt>Estado</dt><dd><span className={styles.badgeGroup}><Badge className={statusClass(detail.status)} variant="outline">{STATUS_LABELS[detail.status]}</Badge>{detail.isOverdue === true && <Badge className={styles.overdueBadge} variant="outline">Vencida</Badge>}</span></dd></div><div><dt>Monto original</dt><dd>{formatFinanceMoney(detail.originalAmount, detail.currencyCode)}</dd></div><div><dt>Saldo pendiente</dt><dd className={styles.pendingAmount}>{formatFinanceMoney(detail.outstandingAmount, detail.currencyCode)}</dd></div><div><dt>Fecha de vencimiento</dt><dd>{formatBusinessDate(detail.dueDate)}</dd></div><div><dt>Fecha de reconocimiento</dt><dd>{formatBusinessDate(detail.recognizedAt)}</dd></div><div><dt>Fecha de liquidación</dt><dd>{detail.settledAt ? formatBusinessDate(detail.settledAt) : '—'}</dd></div></dl></section>
-        <section className={styles.detailCard}><h3>Factura y origen</h3><dl className={styles.facts}><div><dt>Referencia fiscal</dt><dd>{detail.sourceNumber ?? 'No disponible'}</dd></div><div><dt>BillingDocument</dt><dd>{detail.sourceId}</dd></div><div><dt>Tipo de documento</dt><dd>{detail.sourceDocumentType ?? 'No disponible'}</dd></div><div><dt>Tipo de origen</dt><dd>{detail.sourceType}</dd></div></dl></section>
+        <section className={styles.detailCard}><h3>Factura</h3><dl className={styles.facts}><div><dt>Referencia fiscal</dt><dd>{detail.sourceNumber ?? 'No disponible'}</dd></div><div><dt>Tipo de documento</dt><dd>{fiscalDocumentTypeLabel(detail.sourceDocumentType)}</dd></div></dl></section>
         <section className={styles.detailCard}><h3>Deudor</h3><dl className={styles.facts}><div><dt>Nombre</dt><dd>{detail.debtorDisplayName}</dd></div><div><dt>Identificación</dt><dd>{detail.debtorIdentificationNumber ?? 'No disponible'}</dd></div></dl></section>
         <section className={styles.detailCard}><h3>Aplicaciones registradas</h3>{detail.allocations.length === 0 ? <p className={styles.secondary}>No hay aplicaciones de pago registradas.</p> : <div className={styles.allocationList}>{detail.allocations.map((allocation) => <article className={styles.allocation} key={allocation.id}><div className={styles.allocationHeader}><strong>{formatFinanceMoney(allocation.amount, detail.currencyCode)}</strong><Badge className={allocation.status === 'ACTIVE' ? styles.activeBadge : styles.reversedBadge} variant="outline">{allocation.status === 'ACTIVE' ? 'Activa' : 'Revertida'}</Badge></div><p>{allocation.paymentReceiptNumber ?? 'Recibo no disponible'} · Aplicado: {formatBusinessDate(allocation.allocatedAt)}{allocation.appliedBy ? ` · ${allocation.appliedBy.name}` : ''}</p>{allocation.reversal && <p>Reversión: {allocation.reversal.reason} · {formatBusinessDate(allocation.reversal.reversedAt)}{allocation.reversal.reversedBy ? ` · ${allocation.reversal.reversedBy.name}` : ''}</p>}</article>)}</div>}</section>
         {canWrite && <section className={styles.futureAction}>{detail.status === 'SETTLED' || detail.status === 'CANCELLED' || !detail.customerId || !detail.hasUnallocatedPayments ? <><p>Registre un nuevo pago / abono para esta cuenta. El saldo disponible se habilita cuando el cliente tiene fondos recibidos sin aplicar.</p><p>Saldo pendiente: <strong className={styles.pendingAmount}>{formatFinanceMoney(detail.outstandingAmount, detail.currencyCode)}</strong></p><Button className={styles.primaryAction} type="button" onClick={() => onRegisterPayment(detail)}><CircleDollarSign aria-hidden="true" />Registrar pago / abono</Button></> : <><p>El cliente tiene saldo disponible. Aplique el saldo a esta o varias cuentas sin elegir recibos.</p><div className={styles.paymentActions}><Button className={styles.secondaryAction} variant="outline" type="button" onClick={() => onRegisterPayment(detail)}><CircleDollarSign aria-hidden="true" />Registrar nuevo abono</Button><Button className={styles.primaryAction} type="button" onClick={() => onApplyBalance(detail)}>Aplicar saldo disponible</Button></div></>}</section>}
@@ -72,6 +78,7 @@ function ActionModal({ title, children, onClose }: { title: string; children: Re
 
 export default function AccountsReceivablePage() {
   const router = useRouter();
+  const [requestedReceivableId, setRequestedReceivableId] = useState<string | null>(null);
   const [authorized, setAuthorized] = useState(false);
   const [canWrite, setCanWrite] = useState(false);
   const [view, setView] = useState<'receivables' | 'payments' | 'contracts'>('receivables');
@@ -94,6 +101,16 @@ export default function AccountsReceivablePage() {
     if (!READ_ROLES.has(role)) { router.replace(getHomeRouteForRole(role)); return; }
     setCanWrite(WRITE_ROLES.has(role)); setAuthorized(true);
   }, [router]);
+
+  useEffect(() => {
+    setRequestedReceivableId(new URLSearchParams(window.location.search).get('receivableId'));
+  }, []);
+
+  useEffect(() => {
+    if (!authorized || !requestedReceivableId) return;
+    setView('receivables');
+    setSelectedId(requestedReceivableId);
+  }, [authorized, requestedReceivableId]);
 
   const startRegistration = useCallback((detail: AccountReceivableDetail) => {
     if (detail.status === 'SETTLED' || detail.status === 'CANCELLED') { setGuardedReceivable(detail); return; }
@@ -135,7 +152,7 @@ export default function AccountsReceivablePage() {
     {openingRegistration && <div className={styles.operationNotice}>Abriendo la cuenta seleccionada…</div>}
     {view === 'receivables' ? <ReceivableGroupsView canWrite={canWrite} reloadToken={reload} onOpenDetail={setSelectedId} onRegisterPayment={(id) => void openRegistration(id)} onRegisterCustomerPayment={setRegistrationCustomer} onApplyBalance={(id) => void openCustomerFunds(id)} onApplyGroupBalance={(group) => void openGroupCustomerFunds(group)} onViewPayments={(customer) => { setPaymentCustomer(customer); setView('payments'); }} onStatement={setStatementGroup} /> : view === 'payments' ? <PaymentsView reloadToken={reload} customerFilter={paymentCustomer} onClearCustomer={() => setPaymentCustomer(null)} canWrite={canWrite} onPaymentChanged={() => setReload((value) => value + 1)} /> : <ContractObligationGroupsView canWrite={canWrite} reloadToken={reload} onContractsChanged={() => setReload((value) => value + 1)} onStatement={(group) => setStatementGroup(group)} />}
   </div>
-  {selectedId && <ReceivableDrawer key={selectedId} id={selectedId} canWrite={canWrite} onClose={() => setSelectedId(null)} onRegisterPayment={startRegistration} onApplyBalance={setCustomerFundsReceivable} />}
+  {selectedId && <ReceivableDrawer key={selectedId} id={selectedId} canWrite={canWrite} onClose={() => { setSelectedId(null); if (requestedReceivableId) router.replace('/finance/accounts-receivable'); }} onRegisterPayment={startRegistration} onApplyBalance={setCustomerFundsReceivable} />}
   {registrationReceivable && <PaymentFlow receivable={registrationReceivable} onClose={() => setRegistrationReceivable(null)} onAllocated={() => setReload((value) => value + 1)} onCompleted={setOperationNotice} />}
   {registrationCustomer?.customerId && <PaymentFlow customer={{ id: registrationCustomer.customerId, name: registrationCustomer.debtor.displayName, currency: registrationCustomer.currencyCode, identificationType: registrationCustomer.debtor.identificationType, identificationNumber: registrationCustomer.debtor.identificationNumber }} onClose={() => setRegistrationCustomer(null)} onAllocated={() => setReload((value) => value + 1)} onCompleted={setOperationNotice} />}
   {customerFundsReceivable && <CustomerFundsFlow receivable={customerFundsReceivable} onClose={() => setCustomerFundsReceivable(null)} onCommitted={() => setReload((value) => value + 1)} />}

@@ -7,15 +7,17 @@ import { useRouter, useParams } from 'next/navigation';
 import { LoadingModal } from '@/components/loading-modal';
 import { getCustomerProfile, updateCustomer, getCustomerDocumentDownloadUrl, uploadCustomerDocument, createCustomerNote, updateCustomerNote, deleteCustomerNote, type CustomerContractItem, type CustomerProfile, type UpdateCustomerDto, type CustomerDocumentCategory } from '@/lib/customers-api';
 import { getStoredSession } from '@/lib/auth-api';
-import { getCustomerFinancialSummary, type CustomerFinancialSummary } from '@/lib/finance-api';
+import { getCustomerFinancialSummary, listCustomerElectronicInvoices, type CustomerElectronicInvoice, type CustomerElectronicInvoicesPage, type CustomerFinancialSummary } from '@/lib/finance-api';
 import { formatFinanceMoneyDisplay } from '@/lib/finance-money-display';
 import { ContractFinanceDrawer } from '@/features/contracts-finance/contract-finance-drawer';
 import { CustomerAccountStatementModal } from '@/app/finance/accounts-receivable/customer-account-statement';
 import { CustomerEditModal, CustomerDocumentUploadModal } from '@/features/customers/components';
+import { CustomerInvoicePaymentIntakeSheet } from '@/features/finance/customer-invoice-payment-intake-sheet';
 import AttachmentViewer from '@/components/attachment-viewer';
 import { getContractFiles } from '@/lib/contracts-api';
 import { listCustomerOperationalNotes, createContractNoteForCustomer, updateContractNote, deleteContractNote, type ContractNote } from '@/lib/contract-notes-api';
 import { formatBusinessDate } from '@/shared/regional';
+import { useTenantDateTimeFormatter } from '@/shared/regional/tenant-regional-provider';
 import { getClientIdentificationTypeLabel, type ClientIdentificationType } from '@/features/customers/client-identification';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -25,21 +27,30 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { IconBadge } from '@/components/ui/icon-badge';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { FormField } from '@/components/patterns/form-field';
 import { PageHeader } from '@/components/patterns/page-header';
 import { SectionCard } from '@/components/patterns/section-card';
-import { ArrowLeft, ChevronDown, ClipboardList, Eye, FileText, FolderOpen, Info, Pencil, Plus, RefreshCw, StickyNote, Trash2, UserRound, WalletCards } from 'lucide-react';
+import { ArrowLeft, ChevronDown, ClipboardList, Eye, FileText, FolderOpen, Info, Pencil, Plus, ReceiptText, RefreshCw, StickyNote, Trash2, UserRound, WalletCards } from 'lucide-react';
 
 export default function CustomerProfilePage() {
   const router = useRouter();
   const params = useParams();
   const customerId = params?.id as string;
+  const formatTenantDateTime = useTenantDateTimeFormatter();
 
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<CustomerProfile | null>(null);
   const [financialSummary, setFinancialSummary] = useState<CustomerFinancialSummary | null>(null);
   const [financialSummaryLoading, setFinancialSummaryLoading] = useState(true);
   const [financialSummaryError, setFinancialSummaryError] = useState<string | null>(null);
+  const [electronicInvoices, setElectronicInvoices] = useState<CustomerElectronicInvoicesPage | null>(null);
+  const [electronicInvoicesLoading, setElectronicInvoicesLoading] = useState(true);
+  const [electronicInvoicesError, setElectronicInvoicesError] = useState<string | null>(null);
+  const [electronicInvoicesPage, setElectronicInvoicesPage] = useState(1);
+  const [invoicePaymentIntakeOpen, setInvoicePaymentIntakeOpen] = useState(false);
+  const [invoicePaymentPreselection, setInvoicePaymentPreselection] = useState<CustomerElectronicInvoice | null>(null);
+  const [invoicePaymentNotice, setInvoicePaymentNotice] = useState<string | null>(null);
   const [statementCurrency, setStatementCurrency] = useState<CustomerFinancialSummary['currencies'][number]['currencyCode'] | null>(null);
   const [statementCurrencyPickerOpen, setStatementCurrencyPickerOpen] = useState(false);
   const [selectedFinancialContract, setSelectedFinancialContract] = useState<CustomerContractItem | null>(null);
@@ -67,6 +78,7 @@ export default function CustomerProfilePage() {
   
   // Section refs for navigation
   const contractsRef = useRef<HTMLDivElement>(null);
+  const electronicInvoicesRef = useRef<HTMLDivElement>(null);
   const documentsRef = useRef<HTMLDivElement>(null);
   const notesRef = useRef<HTMLDivElement>(null);
   
@@ -103,6 +115,24 @@ export default function CustomerProfilePage() {
   useEffect(() => {
     loadProfile();
   }, [customerId]);
+
+  useEffect(() => {
+    if (!customerId) return;
+    const controller = new AbortController();
+    setElectronicInvoicesLoading(true);
+    setElectronicInvoicesError(null);
+    void listCustomerElectronicInvoices(customerId, { page: electronicInvoicesPage, pageSize: 25 }, controller.signal)
+      .then((result) => {
+        if (!controller.signal.aborted) setElectronicInvoices(result);
+      })
+      .catch((requestError) => {
+        if (!controller.signal.aborted) setElectronicInvoicesError(requestError instanceof Error ? requestError.message : 'No se pudieron cargar las facturas electrónicas.');
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setElectronicInvoicesLoading(false);
+      });
+    return () => controller.abort();
+  }, [customerId, electronicInvoicesPage]);
 
   useEffect(() => {
     if (!customerId) return;
@@ -222,17 +252,6 @@ export default function CustomerProfilePage() {
     });
   }
 
-  function formatDateTime(dateString: string) {
-    const date = new Date(dateString);
-    return date.toLocaleString('es-ES', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  }
-
   function formatParticipationRole(role: 'HOLDER' | 'COMPANION' | 'MINOR') {
     if (role === 'HOLDER') return 'Titular';
     if (role === 'MINOR') return 'Menor';
@@ -280,6 +299,7 @@ export default function CustomerProfilePage() {
 
   const scrollToSection = (ref: React.RefObject<HTMLDivElement | null>) => {
     ref.current?.scrollIntoView({ behavior: 'smooth' });
+    ref.current?.focus({ preventScroll: true });
   };
 
   function getFirstLinePreview(text: string): string {
@@ -294,9 +314,7 @@ export default function CustomerProfilePage() {
     showActions = false
   ) {
     const isExpanded = expandedId === note.id;
-    const noteDate = new Date(note.createdAt);
-    const localDate = noteDate.toLocaleDateString('es-ES', { year: 'numeric', month: '2-digit', day: '2-digit' });
-    const localTime = noteDate.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+    const [localDate, localTime = ''] = formatTenantDateTime(note.createdAt).split(' ');
 
     return (
       <article key={note.id} className="rounded-lg border border-border bg-background transition-colors hover:bg-muted/30">
@@ -718,6 +736,37 @@ export default function CustomerProfilePage() {
 
   const { customer, contracts, statistics, documents } = profile;
   const isMinor = profile.participationRole === 'MINOR';
+  const sessionRole = String(session?.user?.role ?? '').toUpperCase();
+  const canViewAcceptedInvoice = ['ADMIN', 'FACTURACION_COBROS', 'AGENT'].includes(sessionRole);
+  const canViewInvoiceFinancialDetail = ['ADMIN', 'FACTURACION_COBROS', 'CONTADOR'].includes(sessionRole);
+  const canRegisterInvoicePayment = ['ADMIN', 'FACTURACION_COBROS', 'AGENT'].includes(sessionRole);
+  const invoicePaymentCurrencies = Array.from(new Set((electronicInvoices?.invoices ?? []).map((invoice) => invoice.currencyCode)));
+  const openInvoicePaymentIntake = (invoice: CustomerElectronicInvoice | null = null) => {
+    setInvoicePaymentNotice(null);
+    setInvoicePaymentPreselection(invoice);
+    setInvoicePaymentIntakeOpen(true);
+  };
+  const closeInvoicePaymentIntake = (nextOpen: boolean) => {
+    setInvoicePaymentIntakeOpen(nextOpen);
+    if (!nextOpen) setInvoicePaymentPreselection(null);
+  };
+  const invoiceSourceLabel = (sourceType: string | null): string | null => {
+    if (sourceType === 'CONTRACT_PAYMENT' || sourceType === 'CONTRACT') return 'Contrato';
+    if (sourceType === 'SALES_ORDER') return 'Servicios adicionales';
+    return null;
+  };
+  const invoiceDocumentTypeLabel = (documentType: string) => {
+    if (documentType === '01') return 'Factura electrónica';
+    if (documentType === '04') return 'Tiquete electrónico';
+    return 'Documento electrónico';
+  };
+  const invoiceFinancialStatus = (status: NonNullable<CustomerElectronicInvoicesPage>['invoices'][number]['financialStatus']) => {
+    if (status === 'PAID') return { label: 'Pagada', variant: 'success' as const };
+    if (status === 'PARTIALLY_PAID') return { label: 'Abonada', variant: 'warning' as const };
+    if (status === 'PENDING') return { label: 'Pendiente', variant: 'destructive' as const };
+    if (status === 'CANCELLED') return { label: 'Anulada', variant: 'outline' as const };
+    return { label: 'Sin CxC', variant: 'outline' as const };
+  };
   const hasMultipleFinancialCurrencies = (financialSummary?.currencies.length ?? 0) > 1;
   const financialMetrics = [
     { label: 'Total contratado', key: 'totalContracted' as const, icon: FileText, tone: 'primary' as const },
@@ -803,6 +852,7 @@ export default function CustomerProfilePage() {
           <div className="grid gap-3">
             {[
               { label: 'Total contratos', value: statistics.totalContracts, icon: FileText, tone: 'primary' as const, onClick: () => scrollToSection(contractsRef) },
+              { label: 'Total facturas', value: electronicInvoices?.total ?? 0, icon: ReceiptText, tone: 'success' as const, onClick: () => scrollToSection(electronicInvoicesRef) },
               { label: 'Documentos', value: statistics.totalDocuments, icon: FolderOpen, tone: 'info' as const, onClick: () => scrollToSection(documentsRef) },
               { label: 'Notas', value: statistics.totalNotes, icon: StickyNote, tone: 'primary' as const, onClick: () => scrollToSection(notesRef) },
             ].map(({ label, value, icon: Icon, tone, onClick }) => (
@@ -1524,7 +1574,7 @@ export default function CustomerProfilePage() {
                       )}
                     </td>
                     <td style={{ padding: '14px 16px', fontSize: '13px', color: '#9ca3af' }}>
-                      {formatDateTime(contract.createdAt)}
+                      {formatTenantDateTime(contract.createdAt)}
                     </td>
                     {!isMinor && (
                       <td style={{ padding: '14px 16px', textAlign: 'center' }}>
@@ -1555,6 +1605,57 @@ export default function CustomerProfilePage() {
             </table>
           </div>
         )}
+      </div>
+
+      <div ref={electronicInvoicesRef} tabIndex={-1} className="mb-6 scroll-mt-6 focus:outline-none">
+        <SectionCard
+          title={<span className="flex items-center gap-2"><IconBadge tone="success" size="sm"><ReceiptText aria-hidden="true" /></IconBadge>Facturas electrónicas{electronicInvoices ? ` (${electronicInvoices.total})` : ''}</span>}
+          actions={canRegisterInvoicePayment ? <Button type="button" size="sm" onClick={() => openInvoicePaymentIntake()} disabled={invoicePaymentCurrencies.length === 0}><WalletCards aria-hidden="true" />Registrar pago</Button> : null}
+        >
+          {invoicePaymentNotice ? <Alert variant="success" className="mb-4"><AlertTitle>Pago enviado para verificación.</AlertTitle><AlertDescription>{invoicePaymentNotice}</AlertDescription></Alert> : null}
+          {electronicInvoicesLoading ? <p className="py-6 text-center text-sm text-muted-foreground">Cargando facturas electrónicas…</p> : null}
+          {electronicInvoicesError ? <Alert variant="destructive"><AlertTitle>No se pudieron cargar las facturas electrónicas</AlertTitle><AlertDescription>{electronicInvoicesError}</AlertDescription></Alert> : null}
+          {!electronicInvoicesLoading && !electronicInvoicesError && electronicInvoices?.invoices.length === 0 ? <div className="rounded-lg border border-dashed border-border bg-muted/40 px-5 py-10 text-center"><IconBadge tone="success" className="mx-auto"><ReceiptText aria-hidden="true" /></IconBadge><p className="mt-3 text-sm font-semibold text-foreground">No hay facturas electrónicas aceptadas.</p><p className="mt-1 text-sm text-muted-foreground">Las facturas aceptadas por Hacienda para este cliente aparecerán aquí.</p></div> : null}
+          {!electronicInvoicesLoading && !electronicInvoicesError && electronicInvoices && electronicInvoices.invoices.length > 0 ? <div className="space-y-4">
+            <div className="overflow-x-auto rounded-lg border border-border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Factura</TableHead>
+                    <TableHead>Fecha</TableHead>
+                    <TableHead>Origen</TableHead>
+                    <TableHead>Total</TableHead>
+                    <TableHead>Estado financiero</TableHead>
+                    <TableHead>Acciones</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {electronicInvoices.invoices.map((invoice) => {
+                    const status = invoiceFinancialStatus(invoice.financialStatus);
+                    const financialDetail = invoice.financialDetail;
+                    const contract = financialDetail?.type === 'CONTRACT'
+                      ? contracts.find((item) => item.id === financialDetail.contractId) ?? null
+                      : null;
+                    return <TableRow key={invoice.billingDocumentId}>
+                      <TableCell><div className="min-w-48"><p className="font-medium text-foreground">{invoice.fiscalNumber ?? invoice.internalNumber}</p><p className="mt-1 text-xs text-muted-foreground">{invoiceDocumentTypeLabel(invoice.documentType)}{invoice.fiscalNumber ? ` · ${invoice.internalNumber}` : ''}</p></div></TableCell>
+                      <TableCell className="whitespace-nowrap text-sm text-muted-foreground">{invoice.issuedAt ? formatTenantDateTime(invoice.issuedAt) : 'No disponible'}</TableCell>
+                      <TableCell><div>{invoiceSourceLabel(invoice.sourceType) ? <p className="text-sm text-foreground">{invoiceSourceLabel(invoice.sourceType)}</p> : null}{invoice.sourceNumber ? <p className="mt-1 text-xs text-muted-foreground">{invoice.sourceNumber}</p> : null}{!invoiceSourceLabel(invoice.sourceType) && !invoice.sourceNumber ? <span className="text-sm text-muted-foreground">—</span> : null}</div></TableCell>
+                      <TableCell className="whitespace-nowrap font-medium text-foreground">{formatFinanceMoneyDisplay(invoice.total, invoice.currencyCode)}</TableCell>
+                      <TableCell><div className="space-y-1"><Badge variant={status.variant}>{status.label}</Badge>{invoice.financialOutstanding !== null ? <p className="text-xs text-muted-foreground">Saldo: {formatFinanceMoneyDisplay(invoice.financialOutstanding, invoice.currencyCode)}</p> : null}</div></TableCell>
+                      <TableCell><div className="flex flex-wrap gap-2">
+                        {canViewAcceptedInvoice ? <Button type="button" variant="outline" size="sm" onClick={() => router.push(`/fiscal-billing/invoices/${encodeURIComponent(invoice.billingDocumentId)}${sessionRole === 'AGENT' ? `?customerId=${encodeURIComponent(customer.id)}` : ''}`)}><Eye aria-hidden="true" />Ver factura</Button> : null}
+                        {canViewInvoiceFinancialDetail && financialDetail?.type === 'ACCOUNT_RECEIVABLE' ? <Button type="button" variant="outline" size="sm" onClick={() => router.push(`/finance/accounts-receivable?receivableId=${encodeURIComponent(financialDetail.accountReceivableId)}`)}><WalletCards aria-hidden="true" />Detalle financiero</Button> : null}
+                        {canViewInvoiceFinancialDetail && financialDetail?.type === 'CONTRACT' && contract ? <Button type="button" variant="outline" size="sm" onClick={() => setSelectedFinancialContract(contract)}><WalletCards aria-hidden="true" />Detalle financiero</Button> : null}
+                        {canRegisterInvoicePayment && financialDetail?.type === 'ACCOUNT_RECEIVABLE' && ['PENDING', 'PARTIALLY_PAID'].includes(invoice.financialStatus) ? <Button type="button" variant="outline" size="sm" onClick={() => openInvoicePaymentIntake(invoice)}><WalletCards aria-hidden="true" />Registrar pago</Button> : null}
+                      </div></TableCell>
+                    </TableRow>;
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+            {electronicInvoices.totalPages > 1 ? <nav className="flex items-center justify-end gap-3" aria-label="Paginación de facturas electrónicas"><span className="text-xs text-muted-foreground">Página {electronicInvoices.page} de {electronicInvoices.totalPages}</span><Button type="button" variant="outline" size="sm" disabled={electronicInvoices.page <= 1} onClick={() => setElectronicInvoicesPage((current) => Math.max(1, current - 1))}>Anterior</Button><Button type="button" variant="outline" size="sm" disabled={electronicInvoices.page >= electronicInvoices.totalPages} onClick={() => setElectronicInvoicesPage((current) => Math.min(electronicInvoices.totalPages, current + 1))}>Siguiente</Button></nav> : null}
+          </div> : null}
+        </SectionCard>
       </div>
 
       {/* Section 6: Customer Notes */}
@@ -1601,6 +1702,17 @@ export default function CustomerProfilePage() {
         isOpen={showUploadModal}
         onClose={() => setShowUploadModal(false)}
         onUpload={handleUploadDocument}
+      />
+
+      <CustomerInvoicePaymentIntakeSheet
+        customerId={customerId}
+        open={invoicePaymentIntakeOpen}
+        preselectedInvoice={invoicePaymentPreselection}
+        currencies={invoicePaymentCurrencies}
+        onOpenChange={closeInvoicePaymentIntake}
+        onSubmitted={({ destinationOverrideAccepted }) => {
+          setInvoicePaymentNotice(`${destinationOverrideAccepted ? 'Excepción aceptada y registrada. ' : ''}El saldo se actualizará cuando Administración o Facturación valide el pago.`);
+        }}
       />
 
       <Dialog open={showAddNoteModal} onOpenChange={(open) => { if (!open) { setShowAddNoteModal(false); setNewNoteText(''); } }}>

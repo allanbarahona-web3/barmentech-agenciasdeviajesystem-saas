@@ -23,6 +23,29 @@ describe("PaymentAllocationService", () => {
     expect(data.outstandingAmount.toFixed()).toBe("17"); expect(data.status).toBe(AccountReceivableStatus.PARTIALLY_SETTLED); expect(data.settledAt).toBeNull();
   });
 
+  it("uses the settlement pool for a cross-currency payment while retaining the physical money pool", async () => {
+    const c = context({
+      payment: payment("100000", {
+        receivedAmount: d("100000"),
+        currencyCode: "CRC",
+        settlementCurrencyCode: "USD",
+        settlementAmount: d("222.25186"),
+        settlementAvailableAmount: d("222.25186"),
+        settlementExchangeRate: d("449.94"),
+      }),
+      receivables: [receivable("ar-a", "200", { currencyCode: "USD" })],
+    });
+
+    await c.service.allocate(command([{ accountReceivableId: "ar-a", amount: d("200"), allocationDeduplicationKey: "a" }]));
+
+    expect(c.tx.payment.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
+      availableAmount: d("10012"), settlementAvailableAmount: d("22.25186"), status: PaymentStatus.PARTIALLY_ALLOCATED,
+    }) }));
+    expect(c.tx.accountReceivable.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
+      outstandingAmount: d("0"), status: AccountReceivableStatus.SETTLED,
+    }) }));
+  });
+
   it("splits one payment across sorted receivables with one shared settledAt clock", async () => {
     const c = context({ payment: payment("10.00000"), receivables: [receivable("ar-b", "4.00000"), receivable("ar-a", "6.00000")] });
     await c.service.allocate(command([

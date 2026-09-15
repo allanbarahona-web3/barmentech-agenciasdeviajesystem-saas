@@ -181,6 +181,11 @@ export class AuthService {
           select: {
             name: true,
             contractPrefix: true,
+            billingConfiguration: {
+              select: {
+                fiscalTimezone: true,
+              },
+            },
           },
         },
       },
@@ -190,7 +195,17 @@ export class AuthService {
       throw new UnauthorizedException("Sesion invalida");
     }
 
-    return user;
+    const { billingConfiguration, ...tenant } = user.tenant ?? {};
+    return {
+      ...user,
+      tenant: user.tenant
+        ? {
+            ...tenant,
+            fiscalTimezone:
+              billingConfiguration?.fiscalTimezone ?? "America/Costa_Rica",
+          }
+        : null,
+    };
   }
 
   async checkTokenSessionState(token: string) {

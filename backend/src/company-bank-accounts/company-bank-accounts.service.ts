@@ -179,6 +179,20 @@ export class CompanyBankAccountsService {
     return found || null;
   }
 
+  async listDestinationValidationAccounts(tenantId: string) {
+    return this.prisma.companyBankAccount.findMany({
+      where: { tenantId },
+      select: {
+        id: true,
+        bankName: true,
+        accountNumber: true,
+        sinpeNumber: true,
+        currency: true,
+        isActive: true,
+      },
+    });
+  }
+
   async update(id: string, dto: UpdateBankAccountDto, tenantId: string) {
     // Verificar que existe
     await this.findOne(id, tenantId);

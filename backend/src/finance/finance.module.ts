@@ -28,11 +28,17 @@ import { ContractPaymentFiscalizationPublisher } from "./contract-payment-fiscal
 import { ContractPaymentFiscalizationWorkerService } from "./contract-payment-fiscalization-worker.service";
 import { ContractPaymentFiscalizationProcessor } from "./contract-payment-fiscalization.processor";
 import { ExchangeRateModule } from "../exchange-rate/exchange-rate.module";
+import { ReportedInvoicePaymentIntakeService } from "./reported-invoice-payment-intake.service";
+import { PaymentVerificationModule } from "../payment-verification/payment-verification.module";
+import { PendingInvoicePaymentEvidenceService } from "./pending-invoice-payment-evidence.service";
+import { CompanyBankAccountsModule } from "../company-bank-accounts/company-bank-accounts.module";
+import { PaymentDestinationValidator } from "./payment-destination-validator.service";
+import { CustomerAcceptedInvoiceReadService } from "./customer-accepted-invoice-read.service";
 
 @Module({
-  imports: [BusinessNumberingModule, DocumentsModule, EmailModule, StorageModule, CommercialObligationModule, ContractReservationApprovalModule, FiscalBillingModule, TravelFiscalClassificationModule, FiscalCatalogModule, ExchangeRateModule],
+  imports: [BusinessNumberingModule, DocumentsModule, EmailModule, StorageModule, CommercialObligationModule, ContractReservationApprovalModule, FiscalBillingModule, TravelFiscalClassificationModule, FiscalCatalogModule, ExchangeRateModule, PaymentVerificationModule, CompanyBankAccountsModule],
   controllers: [FinanceController],
-  providers: [PaymentRegistrationService, PaymentAllocationService, PaymentAllocationReversalService, PaymentCancellationService, FinanceReadService, CustomerFundsAllocationService, CustomerAccountStatementService, RegisterPaymentAndApplyService, PaymentReceiptService, ContractReservationPaymentService, CommercialObligationAllocationService, ContractPaymentFiscalizationOutboxService, ContractReservationReviewService, ContractInstallmentPaymentService, ContractPaymentFiscalPreparationService, ContractPaymentFiscalizationPublisher, ContractPaymentFiscalizationWorkerService, ContractPaymentFiscalizationProcessor],
+  providers: [PaymentRegistrationService, PaymentAllocationService, PaymentAllocationReversalService, PaymentCancellationService, FinanceReadService, CustomerFundsAllocationService, CustomerAccountStatementService, RegisterPaymentAndApplyService, PaymentReceiptService, ContractReservationPaymentService, CommercialObligationAllocationService, ContractPaymentFiscalizationOutboxService, ContractReservationReviewService, ContractInstallmentPaymentService, ContractPaymentFiscalPreparationService, ContractPaymentFiscalizationPublisher, ContractPaymentFiscalizationWorkerService, ContractPaymentFiscalizationProcessor, ReportedInvoicePaymentIntakeService, PendingInvoicePaymentEvidenceService, PaymentDestinationValidator, CustomerAcceptedInvoiceReadService],
   exports: [PaymentRegistrationService, PaymentAllocationService, PaymentAllocationReversalService, PaymentCancellationService, ContractReservationPaymentService, ContractReservationReviewService, ContractPaymentFiscalPreparationService, CommercialObligationModule],
 })
 export class FinanceModule {}

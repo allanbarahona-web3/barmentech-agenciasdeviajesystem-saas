@@ -65,6 +65,29 @@ export type AuthSession = {
   loginAt: string;
 };
 
+export type AuthenticatedSessionProfile = {
+  id: string;
+  email: string;
+  fullName: string;
+  role: string;
+  mustChangePassword: boolean;
+  isActive: boolean;
+  tenantId: string | null;
+  tenant: {
+    name: string;
+    contractPrefix: string;
+    fiscalTimezone: string;
+  } | null;
+};
+
+export const AUTH_SESSION_CHANGED_EVENT = "auth-session-changed";
+
+function notifyAuthSessionChanged(): void {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(AUTH_SESSION_CHANGED_EVENT));
+  }
+}
+
 export type TenantConfig = {
   name: string;
   subdomain: string;
@@ -192,6 +215,7 @@ export const loginWithEmailPassword = async (
     loginAt: new Date().toISOString(),
   };
   window.localStorage.setItem(AUTH_SESSION_KEY, JSON.stringify(session));
+  notifyAuthSessionChanged();
   return {
     access_token: token,
     user,
@@ -211,6 +235,7 @@ export const clearStoredToken = (): void => {
   }
   window.localStorage.removeItem(AUTH_TOKEN_KEY);
   window.localStorage.removeItem(AUTH_SESSION_KEY);
+  notifyAuthSessionChanged();
 };
 
 export const getStoredSession = (): AuthSession | null => {
@@ -324,6 +349,27 @@ export const authenticatedFetch = async (url: string, options: RequestInit): Pro
   }
   
   return response;
+};
+
+/** Authenticated bootstrap data shared by tenant-scoped browser foundations. */
+export const getAuthenticatedSessionProfile = async (
+  signal?: AbortSignal,
+): Promise<AuthenticatedSessionProfile> => {
+  const apiBase = resolveApiBase();
+  if (!apiBase) {
+    throw new Error("No hay API configurada.");
+  }
+
+  const response = await authenticatedFetch(`${apiBase}/auth/me`, {
+    method: "GET",
+    headers: authHeaders(),
+    signal,
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok || !payload || typeof payload !== "object") {
+    throw new Error(parseErrorMessage(payload, "No se pudo cargar la configuración regional."));
+  }
+  return payload as AuthenticatedSessionProfile;
 };
 
 export const adminListUsers = async (): Promise<AdminUserListItem[]> => {
@@ -1086,6 +1132,4 @@ export const deleteTenantSignature = async (): Promise<{ success: boolean; messa
 
   return response.json();
 };
-
-
 

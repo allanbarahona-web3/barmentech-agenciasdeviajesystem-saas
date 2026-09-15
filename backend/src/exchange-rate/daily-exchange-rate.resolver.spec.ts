@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { OfficialExchangeRateResolver } from "../official-exchange-rates/official-exchange-rate.resolver";
 import { PrismaService } from "../prisma/prisma.service";
-import { DailyExchangeRateResolver, convertDailyExchangeRateAmount } from "./daily-exchange-rate.resolver";
+import { DailyExchangeRateResolver, convertDailyExchangeRateAmount, convertDailySettlementAmount, resolveDailySettlement } from "./daily-exchange-rate.resolver";
 import { ExchangeRateService } from "./exchange-rate.service";
 
 describe("DailyExchangeRateResolver", () => {
@@ -78,6 +78,32 @@ describe("DailyExchangeRateResolver", () => {
 
     expect(convertDailyExchangeRateAmount(decimal("2"), "USD", crcRate)?.toFixed()).toBe("1000.5");
     expect(convertDailyExchangeRateAmount(decimal("1000.5"), "CRC", usdRate)?.toFixed()).toBe("2");
+  });
+
+  it("converts settlement money in both USD/CRC directions without Number arithmetic", () => {
+    const resolved = resolution({ rate: decimal("449.94") });
+
+    expect(convertDailySettlementAmount(decimal("100000"), "CRC", "USD", resolved)?.toDecimalPlaces(5, Prisma.Decimal.ROUND_HALF_UP).toFixed(5)).toBe("222.25186");
+    expect(convertDailySettlementAmount(decimal("200"), "USD", "CRC", resolved)?.toFixed()).toBe("89988");
+  });
+
+  it("resolves the five-decimal settlement result shared by preview and approval", async () => {
+    const resolver = { resolveDailyExchangeRate: jest.fn().mockResolvedValue(resolution({ rate: decimal("449.94") })) };
+
+    await expect(resolveDailySettlement({
+      resolver: resolver as unknown as DailyExchangeRateResolver,
+      tenantId: "tenant-a",
+      receivedCurrencyCode: "CRC",
+      settlementCurrencyCode: "USD",
+      receivedAmount: decimal("89988"),
+    })).resolves.toMatchObject({
+      currencyCode: "USD",
+      amount: decimal("200.00000"),
+      exchangeRate: decimal("449.94"),
+      exchangeRateSource: "MANUAL",
+      exchangeRateEffectiveDate: "2026-09-12",
+    });
+    expect(resolver.resolveDailyExchangeRate).toHaveBeenCalledTimes(1);
   });
 
   it("keeps the existing manual public API Number-normalized while exposing an internal Decimal read", async () => {

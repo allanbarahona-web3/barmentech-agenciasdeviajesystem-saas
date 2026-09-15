@@ -1,13 +1,16 @@
 import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
-import { AccountReceivableStatus, BillingDocumentSourceRole, CommercialObligationStatus, PaymentAllocationStatus, PaymentPurpose, PaymentStatus, Prisma } from "@prisma/client";
+import { AccountReceivableStatus, BillingDocumentSourceRole, BillingTaxAuthorityStatus, CommercialObligationStatus, PaymentAllocationStatus, PaymentPurpose, PaymentStatus, Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
-import { DailyExchangeRateResolver, convertDailyExchangeRateAmount } from "../exchange-rate/daily-exchange-rate.resolver";
+import { DailyExchangeRateResolver, convertDailyExchangeRateAmount, resolveDailySettlement } from "../exchange-rate/daily-exchange-rate.resolver";
 import {
   ListAccountReceivableGroupItemsDto,
   ListAccountReceivableGroupsDto,
   ListContractObligationGroupContractsDto,
   ListContractObligationGroupsDto,
   ListContractPaymentsDto,
+  CustomerInvoicePaymentTargetsQueryDto,
+  CustomerPaymentSettlementPreviewQueryDto,
+  ListCustomerElectronicInvoicesDto,
   ListAccountReceivablesDto,
   ListPaymentsDto,
   ListUnallocatedPaymentBalancesDto,
@@ -125,7 +128,7 @@ export class FinanceReadService {
       payment.allocations.map((allocation) => allocation.id),
       payment.allocations.flatMap((allocation) => allocation.reversal ? [allocation.reversal.id] : []),
     );
-    return paymentDetail(payment, auditRows);
+    return paymentDetail(payment as FinancePaymentDetailRow, auditRows);
   }
 
   async getAllocationSuggestion(
@@ -142,9 +145,12 @@ export class FinanceReadService {
           currencyCode: true,
           receivedAmount: true,
           availableAmount: true,
+          settlementCurrencyCode: true,
+          settlementAmount: true,
+          settlementAvailableAmount: true,
           status: true,
         },
-      }),
+      } as never),
       this.prisma.accountReceivable.findFirst({
         where: { id: accountReceivableId, tenantId },
         select: {
@@ -160,9 +166,12 @@ export class FinanceReadService {
     if (!payment || !receivable) {
       throw new NotFoundException("PAYMENT_OR_ACCOUNT_RECEIVABLE_NOT_FOUND");
     }
+    const allocationCurrencyCode = payment.settlementCurrencyCode ?? payment.currencyCode;
+    const allocationAvailableAmount = payment.settlementAvailableAmount ?? payment.availableAmount;
+    const allocationTotalAmount = payment.settlementAmount ?? payment.receivedAmount;
     if (
       (payment.status !== PaymentStatus.RECEIVED && payment.status !== PaymentStatus.PARTIALLY_ALLOCATED) ||
-      !isAllocatableMoney(payment.receivedAmount, payment.availableAmount)
+      !isAllocatableMoney(allocationTotalAmount, allocationAvailableAmount)
     ) {
       throw new ConflictException("PAYMENT_NOT_ALLOCATABLE");
     }
@@ -172,21 +181,21 @@ export class FinanceReadService {
     ) {
       throw new ConflictException("ACCOUNT_RECEIVABLE_NOT_ALLOCATABLE");
     }
-    if (payment.currencyCode !== receivable.currencyCode) {
+    if (allocationCurrencyCode !== receivable.currencyCode) {
       throw new ConflictException("PAYMENT_ALLOCATION_CURRENCY_MISMATCH");
     }
     if (!hasCompatibleAllocationCustomer(payment.customerId, receivable.customerId)) {
       throw new ConflictException("PAYMENT_ALLOCATION_CUSTOMER_MISMATCH");
     }
-    const suggestedAmount = payment.availableAmount.lessThan(receivable.outstandingAmount)
-      ? payment.availableAmount
+    const suggestedAmount = allocationAvailableAmount.lessThan(receivable.outstandingAmount)
+      ? allocationAvailableAmount
       : receivable.outstandingAmount;
-    const remainingAfterSuggestion = payment.availableAmount.minus(suggestedAmount);
+    const remainingAfterSuggestion = allocationAvailableAmount.minus(suggestedAmount);
     return {
       paymentId: payment.id,
       accountReceivableId: receivable.id,
-      currencyCode: payment.currencyCode,
-      paymentAvailableAmount: money(payment.availableAmount),
+      currencyCode: allocationCurrencyCode,
+      paymentAvailableAmount: money(allocationAvailableAmount),
       accountReceivableOutstandingAmount: money(receivable.outstandingAmount),
       suggestedAmount: money(suggestedAmount),
       remainingAfterSuggestion: money(remainingAfterSuggestion),
@@ -300,17 +309,20 @@ export class FinanceReadService {
         active_payment_allocations AS (
           SELECT
             payment."customerId",
-            payment."currencyCode",
+            receivable."currencyCode",
             SUM(allocation."amount") AS "totalActiveAllocatedAmount"
           FROM "payments" AS payment
           INNER JOIN "payment_allocations" AS allocation
             ON allocation."tenantId" = payment."tenantId"
             AND allocation."paymentId" = payment."id"
+          INNER JOIN "account_receivables" AS receivable
+            ON receivable."tenantId" = allocation."tenantId"
+            AND receivable."id" = allocation."accountReceivableId"
           WHERE payment."tenantId" = ${tenantId}
             AND payment."customerId" IS NOT NULL
             AND payment."status" <> 'CANCELLED'
             AND allocation."status" = 'ACTIVE'
-          GROUP BY payment."customerId", payment."currencyCode"
+          GROUP BY payment."customerId", receivable."currencyCode"
         )
         SELECT
           paged.*,
@@ -829,6 +841,198 @@ export class FinanceReadService {
     };
   }
 
+  async listCustomerElectronicInvoices(
+    tenantId: string,
+    customerId: string,
+    query: ListCustomerElectronicInvoicesDto,
+  ) {
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 25;
+    const where = {
+      tenantId,
+      customerId,
+      taxAuthorityStatus: BillingTaxAuthorityStatus.ACCEPTED,
+    } satisfies Prisma.BillingDocumentWhereInput;
+    const [documents, total] = await Promise.all([
+      this.prisma.billingDocument.findMany({
+        where,
+        select: {
+          id: true,
+          fiscalNumber: true,
+          documentTypeCode: true,
+          issuedAt: true,
+          sourceType: true,
+          sourceId: true,
+          sourceNumber: true,
+          internalNumber: true,
+          currencyCode: true,
+          total: true,
+          taxAuthorityStatus: true,
+        },
+        orderBy: [{ issuedAt: { sort: "desc", nulls: "last" } }, { id: "desc" }],
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      this.prisma.billingDocument.count({ where }),
+    ]);
+
+    const documentIds = documents.map((document) => document.id);
+    const contractPaymentIds = documents
+      .filter((document) => document.sourceType === "CONTRACT_PAYMENT" && document.sourceId !== null)
+      .map((document) => document.sourceId!);
+    const [receivables, contractPayments] = await Promise.all([
+      documentIds.length === 0
+        ? Promise.resolve([])
+        : this.prisma.accountReceivable.findMany({
+            where: {
+              tenantId,
+              customerId,
+              sourceType: "BILLING_DOCUMENT",
+              sourceId: { in: documentIds },
+            },
+            select: {
+              id: true,
+              sourceId: true,
+              originalAmount: true,
+              outstandingAmount: true,
+              status: true,
+            },
+          }),
+      contractPaymentIds.length === 0
+        ? Promise.resolve([])
+        : this.prisma.payment.findMany({
+            where: {
+              tenantId,
+              customerId,
+              id: { in: contractPaymentIds },
+              contractId: { not: null },
+            },
+            select: { id: true, contractId: true },
+          }),
+    ]);
+    const receivableByDocumentId = new Map(receivables.map((receivable) => [receivable.sourceId, receivable]));
+    const contractIdByPaymentId = new Map(contractPayments.map((payment) => [payment.id, payment.contractId!]));
+
+    return {
+      invoices: documents.map((document) => customerElectronicInvoice(
+        document,
+        receivableByDocumentId.get(document.id),
+        document.sourceId ? contractIdByPaymentId.get(document.sourceId) ?? null : null,
+      )),
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+    };
+  }
+
+  async listCustomerInvoicePaymentTargets(
+    tenantId: string,
+    customerId: string,
+    query: CustomerInvoicePaymentTargetsQueryDto,
+  ) {
+    const receivables = await this.prisma.accountReceivable.findMany({
+      where: {
+        tenantId,
+        customerId,
+        currencyCode: query.currencyCode,
+        sourceType: "BILLING_DOCUMENT",
+        status: { not: AccountReceivableStatus.CANCELLED },
+        outstandingAmount: { gt: new Prisma.Decimal(0) },
+      },
+      select: {
+        id: true,
+        sourceId: true,
+        sourceNumber: true,
+        currencyCode: true,
+        originalAmount: true,
+        outstandingAmount: true,
+        status: true,
+        recognizedAt: true,
+      },
+      orderBy: [{ recognizedAt: "asc" }, { id: "asc" }],
+    });
+    const billingDocumentIds = receivables.map((receivable) => receivable.sourceId);
+    const documents = billingDocumentIds.length === 0
+      ? []
+      : await this.prisma.billingDocument.findMany({
+          where: {
+            tenantId,
+            id: { in: billingDocumentIds },
+            taxAuthorityStatus: BillingTaxAuthorityStatus.ACCEPTED,
+          },
+          select: { id: true, fiscalNumber: true, issuedAt: true, internalNumber: true },
+        });
+    const documentById = new Map(documents.map((document) => [document.id, document]));
+    return {
+      targets: receivables.flatMap((receivable) => {
+        const document = documentById.get(receivable.sourceId);
+        if (!document) return [];
+        return [{
+          accountReceivableId: receivable.id,
+          billingDocumentId: document.id,
+          fiscalNumber: document.fiscalNumber,
+          reference: document.fiscalNumber ?? receivable.sourceNumber ?? document.internalNumber,
+          issuedAt: document.issuedAt,
+          currencyCode: receivable.currencyCode,
+          originalAmount: money(receivable.originalAmount),
+          appliedAmount: money(receivable.originalAmount.minus(receivable.outstandingAmount)),
+          outstandingAmount: money(receivable.outstandingAmount),
+          financialStatus: receivable.outstandingAmount.lessThan(receivable.originalAmount) ? "PARTIALLY_PAID" : "PENDING",
+        }];
+      }),
+    };
+  }
+
+  async previewCustomerPaymentSettlement(
+    tenantId: string,
+    customerId: string,
+    query: CustomerPaymentSettlementPreviewQueryDto,
+  ) {
+    const customer = await this.prisma.client.findFirst({
+      where: { tenantId, id: customerId },
+      select: { id: true },
+    });
+    if (!customer) throw new NotFoundException("CUSTOMER_NOT_FOUND");
+
+    const receivedAmount = new Prisma.Decimal(query.receivedAmount);
+    if (!receivedAmount.isFinite() || receivedAmount.lessThanOrEqualTo(0)) {
+      throw new ConflictException("INVOICE_PENDING_PAYMENT_EXCHANGE_RATE_UNAVAILABLE");
+    }
+    if (!this.dailyExchangeRates) {
+      throw new ConflictException("INVOICE_PENDING_PAYMENT_EXCHANGE_RATE_UNAVAILABLE");
+    }
+    const settlement = await resolveDailySettlement({
+      resolver: this.dailyExchangeRates,
+      tenantId,
+      receivedCurrencyCode: query.receivedCurrencyCode,
+      settlementCurrencyCode: query.settlementCurrencyCode,
+      receivedAmount,
+    });
+    if (!settlement) {
+      return {
+        status: "MISSING" as const,
+        receivedCurrencyCode: query.receivedCurrencyCode,
+        receivedAmount: money(receivedAmount),
+        settlementCurrencyCode: query.settlementCurrencyCode,
+        settlementAmount: null,
+        exchangeRate: null,
+        exchangeRateSource: null,
+        exchangeRateEffectiveDate: null,
+      };
+    }
+    return {
+      status: "AVAILABLE" as const,
+      receivedCurrencyCode: query.receivedCurrencyCode,
+      receivedAmount: money(receivedAmount),
+      settlementCurrencyCode: settlement.currencyCode,
+      settlementAmount: money(settlement.amount),
+      exchangeRate: settlement.exchangeRate ? settlement.exchangeRate.toFixed() : null,
+      exchangeRateSource: settlement.exchangeRateSource,
+      exchangeRateEffectiveDate: settlement.exchangeRateEffectiveDate,
+    };
+  }
+
   paymentSummary(payment: {
     id: string; receiptNumber: string; status: string; currencyCode: string; receivedAmount: Prisma.Decimal;
     availableAmount: Prisma.Decimal; receivedAt: Date; cancelledAt: Date | null;
@@ -1055,6 +1259,73 @@ type CustomerFinancialSummaryRow = {
   outstanding: Prisma.Decimal;
   available: Prisma.Decimal;
 };
+
+type CustomerElectronicInvoiceDocument = {
+  id: string;
+  fiscalNumber: string | null;
+  documentTypeCode: string;
+  issuedAt: Date | null;
+  sourceType: string | null;
+  sourceId: string | null;
+  sourceNumber: string | null;
+  internalNumber: string;
+  currencyCode: string;
+  total: Prisma.Decimal;
+  taxAuthorityStatus: BillingTaxAuthorityStatus;
+};
+
+type CustomerElectronicInvoiceReceivable = {
+  id: string;
+  sourceId: string;
+  originalAmount: Prisma.Decimal;
+  outstandingAmount: Prisma.Decimal;
+  status: AccountReceivableStatus;
+};
+
+function customerElectronicInvoice(
+  document: CustomerElectronicInvoiceDocument,
+  receivable: CustomerElectronicInvoiceReceivable | undefined,
+  contractId: string | null,
+) {
+  const contractPayment = document.sourceType === "CONTRACT_PAYMENT";
+  const financial = contractPayment
+    ? {
+        financialStatus: "PAID",
+        financialOutstanding: "0",
+        financialDetail: contractId ? { type: "CONTRACT" as const, contractId } : null,
+      }
+    : receivable
+      ? receivableFinancialStatus(receivable)
+      : { financialStatus: "NOT_APPLICABLE", financialOutstanding: null, financialDetail: null };
+  return {
+    billingDocumentId: document.id,
+    fiscalNumber: document.fiscalNumber,
+    documentType: document.documentTypeCode,
+    issuedAt: document.issuedAt,
+    sourceType: document.sourceType,
+    sourceId: document.sourceId,
+    sourceNumber: document.sourceNumber,
+    internalNumber: document.internalNumber,
+    currencyCode: document.currencyCode,
+    total: money(document.total),
+    taxAuthorityStatus: document.taxAuthorityStatus,
+    ...financial,
+  };
+}
+
+function receivableFinancialStatus(receivable: CustomerElectronicInvoiceReceivable) {
+  const financialDetail = { type: "ACCOUNT_RECEIVABLE" as const, accountReceivableId: receivable.id };
+  if (receivable.status === AccountReceivableStatus.CANCELLED) {
+    return { financialStatus: "CANCELLED", financialOutstanding: money(receivable.outstandingAmount), financialDetail };
+  }
+  if (receivable.outstandingAmount.isZero()) {
+    return { financialStatus: "PAID", financialOutstanding: "0", financialDetail };
+  }
+  if (receivable.outstandingAmount.lessThan(receivable.originalAmount)) {
+    return { financialStatus: "PARTIALLY_PAID", financialOutstanding: money(receivable.outstandingAmount), financialDetail };
+  }
+  return { financialStatus: "PENDING", financialOutstanding: money(receivable.outstandingAmount), financialDetail };
+}
 
 function consolidatedSummary(
   rows: readonly CustomerFinancialSummaryRow[],
@@ -1448,14 +1719,26 @@ const financeAuditSelect = {
 
 type FinanceAuditRow = Prisma.BillingAuditLogGetPayload<{ select: typeof financeAuditSelect }>;
 
-function paymentDetail(payment: Prisma.PaymentGetPayload<{
+type FinancePaymentDetailRow = Prisma.PaymentGetPayload<{
   include: { allocations: { include: { accountReceivable: true; reversal: true } } };
-}>, auditRows: FinanceAuditRow[]) {
+}> & {
+  settlementCurrencyCode?: string | null;
+  settlementAmount?: Prisma.Decimal | null;
+  settlementAvailableAmount?: Prisma.Decimal | null;
+  settlementExchangeRate?: Prisma.Decimal | null;
+  settlementExchangeRateSource?: "MANUAL" | "BCCR" | null;
+  settlementExchangeRateEffectiveDate?: Date | null;
+};
+
+function paymentDetail(payment: FinancePaymentDetailRow, auditRows: FinanceAuditRow[]) {
   const registered = auditRow(auditRows, FINANCE_AUDIT_ENTITY_TYPES.PAYMENT, payment.id, FINANCE_AUDIT_ACTIONS.REGISTERED);
   const cancelled = auditRow(auditRows, FINANCE_AUDIT_ENTITY_TYPES.PAYMENT, payment.id, FINANCE_AUDIT_ACTIONS.CANCELLED);
-  const appliedAmount = payment.allocations
+  const settlementAppliedAmount = payment.allocations
     .filter((allocation) => allocation.status === PaymentAllocationStatus.ACTIVE)
     .reduce((total, allocation) => total.plus(allocation.amount), new Prisma.Decimal(0));
+  const appliedAmount = payment.settlementCurrencyCode && payment.settlementCurrencyCode !== payment.currencyCode
+    ? payment.receivedAmount.minus(payment.availableAmount)
+    : settlementAppliedAmount;
   return {
     id: payment.id,
     receiptNumber: payment.receiptNumber,
@@ -1467,6 +1750,15 @@ function paymentDetail(payment: Prisma.PaymentGetPayload<{
     receivedAmount: money(payment.receivedAmount),
     appliedAmount: money(appliedAmount),
     availableAmount: money(payment.availableAmount),
+    settlement: payment.settlementCurrencyCode && payment.settlementAmount && payment.settlementAvailableAmount ? {
+      currencyCode: payment.settlementCurrencyCode,
+      amount: money(payment.settlementAmount),
+      availableAmount: money(payment.settlementAvailableAmount),
+      appliedAmount: money(settlementAppliedAmount),
+      exchangeRate: payment.settlementExchangeRate ? money(payment.settlementExchangeRate) : null,
+      exchangeRateSource: payment.settlementExchangeRateSource ?? null,
+      exchangeRateEffectiveDate: payment.settlementExchangeRateEffectiveDate ?? null,
+    } : null,
     canCancel: canCancelPayment(payment, payment.allocations),
     receivedAt: payment.receivedAt,
     paymentMethod: payment.paymentMethod,

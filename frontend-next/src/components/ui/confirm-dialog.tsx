@@ -9,6 +9,8 @@ type ConfirmDialogProps = Omit<React.ComponentProps<typeof AlertDialogPrimitive.
   trigger?: React.ReactElement
   title: React.ReactNode
   description?: React.ReactNode
+  /** Block content rendered outside the paragraph-based dialog description. */
+  content?: React.ReactNode
   cancelLabel?: React.ReactNode
   confirmLabel?: React.ReactNode
   pendingLabel?: React.ReactNode
@@ -22,6 +24,7 @@ function ConfirmDialog({
   trigger,
   title,
   description,
+  content,
   cancelLabel = "Cancelar",
   confirmLabel = "Confirmar",
   pendingLabel = "Procesando…",
@@ -39,6 +42,7 @@ function ConfirmDialog({
         <AlertDialogPrimitive.Content className="fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-xl border border-border bg-popover p-5 text-popover-foreground shadow-ui-md outline-none">
           <AlertDialogPrimitive.Title className="text-lg font-semibold tracking-tight">{title}</AlertDialogPrimitive.Title>
           {description ? <AlertDialogPrimitive.Description className="mt-2 text-sm leading-6 text-muted-foreground">{description}</AlertDialogPrimitive.Description> : null}
+          {content ? <div className="mt-3">{content}</div> : null}
           <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <AlertDialogPrimitive.Cancel asChild>
               <Button type="button" variant="outline" disabled={isPending}>{cancelLabel}</Button>

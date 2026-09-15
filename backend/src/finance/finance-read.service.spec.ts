@@ -4,6 +4,80 @@ import { PrismaService } from "../prisma/prisma.service";
 import { FinanceReadService } from "./finance-read.service";
 
 describe("FinanceReadService", () => {
+  it("previews CRC received money in USD settlement currency with the approval settlement primitive", async () => {
+    const findFirst = jest.fn().mockResolvedValue({ id: "customer-a" });
+    const dailyRates = { resolveDailyExchangeRate: jest.fn().mockResolvedValue({
+      baseCurrencyCode: "CRC", source: "MANUAL", effectiveDate: "2026-09-14", status: "AVAILABLE", rate: d("449.94"),
+    }) };
+    const service = new FinanceReadService({ client: { findFirst } } as unknown as PrismaService, dailyRates as never);
+
+    await expect(service.previewCustomerPaymentSettlement("tenant-a", "customer-a", {
+      receivedCurrencyCode: "CRC" as never,
+      settlementCurrencyCode: "USD" as never,
+      receivedAmount: "89988.00000",
+    })).resolves.toEqual({
+      status: "AVAILABLE",
+      receivedCurrencyCode: "CRC",
+      receivedAmount: "89988",
+      settlementCurrencyCode: "USD",
+      settlementAmount: "200",
+      exchangeRate: "449.94",
+      exchangeRateSource: "MANUAL",
+      exchangeRateEffectiveDate: "2026-09-14",
+    });
+    expect(findFirst).toHaveBeenCalledWith({ where: { tenantId: "tenant-a", id: "customer-a" }, select: { id: true } });
+    expect(dailyRates.resolveDailyExchangeRate).toHaveBeenCalledTimes(1);
+  });
+
+  it("previews USD received money in CRC settlement currency and bypasses FX for equal currencies", async () => {
+    const dailyRates = { resolveDailyExchangeRate: jest.fn().mockResolvedValue({
+      baseCurrencyCode: "CRC", source: "BCCR", effectiveDate: "2026-09-12", status: "AVAILABLE", rate: d("449.94"),
+    }) };
+    const service = new FinanceReadService({ client: { findFirst: jest.fn().mockResolvedValue({ id: "customer-a" }) } } as unknown as PrismaService, dailyRates as never);
+
+    await expect(service.previewCustomerPaymentSettlement("tenant-a", "customer-a", {
+      receivedCurrencyCode: "USD" as never, settlementCurrencyCode: "CRC" as never, receivedAmount: "200.00000",
+    })).resolves.toMatchObject({ status: "AVAILABLE", settlementAmount: "89988", exchangeRateSource: "BCCR" });
+    await expect(service.previewCustomerPaymentSettlement("tenant-a", "customer-a", {
+      receivedCurrencyCode: "USD" as never, settlementCurrencyCode: "USD" as never, receivedAmount: "200.00000",
+    })).resolves.toEqual({
+      status: "AVAILABLE", receivedCurrencyCode: "USD", receivedAmount: "200", settlementCurrencyCode: "USD", settlementAmount: "200",
+      exchangeRate: null, exchangeRateSource: null, exchangeRateEffectiveDate: null,
+    });
+    expect(dailyRates.resolveDailyExchangeRate).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns the normalized settlement amount that the approval flow can allocate", async () => {
+    const dailyRates = { resolveDailyExchangeRate: jest.fn().mockResolvedValue({
+      baseCurrencyCode: "CRC", source: "MANUAL", effectiveDate: "2026-09-14", status: "AVAILABLE", rate: d("449.94"),
+    }) };
+    const service = new FinanceReadService({ client: { findFirst: jest.fn().mockResolvedValue({ id: "customer-a" }) } } as unknown as PrismaService, dailyRates as never);
+
+    await expect(service.previewCustomerPaymentSettlement("tenant-a", "customer-a", {
+      receivedCurrencyCode: "CRC" as never, settlementCurrencyCode: "USD" as never, receivedAmount: "23000",
+    })).resolves.toMatchObject({ status: "AVAILABLE", settlementAmount: "51.12" });
+  });
+
+  it("returns MISSING without creating financial records when the daily rate is unavailable", async () => {
+    const dailyRates = { resolveDailyExchangeRate: jest.fn().mockResolvedValue({
+      baseCurrencyCode: "CRC", source: "MANUAL", effectiveDate: "2026-09-14", status: "MISSING",
+    }) };
+    const prisma = { client: { findFirst: jest.fn().mockResolvedValue({ id: "customer-a" }) }, payment: { create: jest.fn() } };
+    const service = new FinanceReadService(prisma as unknown as PrismaService, dailyRates as never);
+
+    await expect(service.previewCustomerPaymentSettlement("tenant-a", "customer-a", {
+      receivedCurrencyCode: "CRC" as never, settlementCurrencyCode: "USD" as never, receivedAmount: "100",
+    })).resolves.toMatchObject({ status: "MISSING", settlementAmount: null, exchangeRate: null });
+    expect(prisma.payment.create).not.toHaveBeenCalled();
+  });
+
+  it("does not disclose a customer outside the authenticated tenant to settlement preview", async () => {
+    const service = new FinanceReadService({ client: { findFirst: jest.fn().mockResolvedValue(null) } } as unknown as PrismaService, {} as never);
+    await expect(service.previewCustomerPaymentSettlement("tenant-a", "customer-other", {
+      receivedCurrencyCode: "CRC" as never, settlementCurrencyCode: "USD" as never, receivedAmount: "100",
+    })).rejects.toBeInstanceOf(NotFoundException);
+  });
+
   it.each([
     ["partially settled", CommercialObligationStatus.PARTIALLY_SETTLED, "600", true],
     ["open", CommercialObligationStatus.OPEN, "1000", true],
@@ -477,6 +551,107 @@ describe("FinanceReadService", () => {
     expect(rawSql(queryRaw, 0)).toContain('FROM "account_receivables"');
   });
 
+  it("lists only tenant/customer accepted electronic invoices with set-based Finance status projections", async () => {
+    const findMany = jest.fn().mockResolvedValue([
+      {
+        id: "document-contract-payment", fiscalNumber: "506-contract", documentTypeCode: "01", issuedAt: new Date("2026-09-12T12:00:00.000Z"),
+        sourceType: "CONTRACT_PAYMENT", sourceId: "payment-contract", sourceNumber: "RCP-1", internalNumber: "FE-1", currencyCode: "USD", total: d("100.00000"), taxAuthorityStatus: "ACCEPTED",
+      },
+      {
+        id: "document-partial", fiscalNumber: "506-partial", documentTypeCode: "01", issuedAt: new Date("2026-09-11T12:00:00.000Z"),
+        sourceType: "SALES_ORDER", sourceId: "order-1", sourceNumber: "SO-1", internalNumber: "FE-2", currencyCode: "CRC", total: d("200.00000"), taxAuthorityStatus: "ACCEPTED",
+      },
+      {
+        id: "document-settled", fiscalNumber: "506-settled", documentTypeCode: "01", issuedAt: new Date("2026-09-10T12:00:00.000Z"),
+        sourceType: "SALES_ORDER", sourceId: "order-2", sourceNumber: "SO-2", internalNumber: "FE-3", currencyCode: "CRC", total: d("300.00000"), taxAuthorityStatus: "ACCEPTED",
+      },
+      {
+        id: "document-open", fiscalNumber: "506-open", documentTypeCode: "01", issuedAt: new Date("2026-09-09T12:00:00.000Z"),
+        sourceType: "SALES_ORDER", sourceId: "order-3", sourceNumber: "SO-3", internalNumber: "FE-4", currencyCode: "USD", total: d("400.00000"), taxAuthorityStatus: "ACCEPTED",
+      },
+    ]);
+    const count = jest.fn().mockResolvedValue(4);
+    const receivableFindMany = jest.fn().mockResolvedValue([
+      { id: "ar-partial", sourceId: "document-partial", originalAmount: d("200.00000"), outstandingAmount: d("50.00000"), status: "PARTIALLY_SETTLED" },
+      { id: "ar-settled", sourceId: "document-settled", originalAmount: d("300.00000"), outstandingAmount: d("0"), status: "SETTLED" },
+      { id: "ar-open", sourceId: "document-open", originalAmount: d("400.00000"), outstandingAmount: d("400.00000"), status: "OPEN" },
+    ]);
+    const paymentFindMany = jest.fn().mockResolvedValue([{ id: "payment-contract", contractId: "contract-1" }]);
+    const service = new FinanceReadService({
+      billingDocument: { findMany, count }, accountReceivable: { findMany: receivableFindMany }, payment: { findMany: paymentFindMany },
+    } as unknown as PrismaService);
+
+    await expect(service.listCustomerElectronicInvoices("tenant-auth", "customer-a", { page: 1, pageSize: 25 })).resolves.toMatchObject({
+      total: 4,
+      page: 1,
+      pageSize: 25,
+      invoices: [
+        expect.objectContaining({ billingDocumentId: "document-contract-payment", taxAuthorityStatus: "ACCEPTED", financialStatus: "PAID", financialOutstanding: "0", financialDetail: { type: "CONTRACT", contractId: "contract-1" } }),
+        expect.objectContaining({ billingDocumentId: "document-partial", financialStatus: "PARTIALLY_PAID", financialOutstanding: "50", financialDetail: { type: "ACCOUNT_RECEIVABLE", accountReceivableId: "ar-partial" } }),
+        expect.objectContaining({ billingDocumentId: "document-settled", financialStatus: "PAID", financialOutstanding: "0" }),
+        expect.objectContaining({ billingDocumentId: "document-open", financialStatus: "PENDING", financialOutstanding: "400" }),
+      ],
+    });
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { tenantId: "tenant-auth", customerId: "customer-a", taxAuthorityStatus: "ACCEPTED" },
+      orderBy: [{ issuedAt: { sort: "desc", nulls: "last" } }, { id: "desc" }],
+      skip: 0,
+      take: 25,
+    }));
+    expect(count).toHaveBeenCalledWith({ where: { tenantId: "tenant-auth", customerId: "customer-a", taxAuthorityStatus: "ACCEPTED" } });
+    expect(receivableFindMany).toHaveBeenCalledTimes(1);
+    expect(paymentFindMany).toHaveBeenCalledTimes(1);
+    expect(receivableFindMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ tenantId: "tenant-auth", customerId: "customer-a", sourceType: "BILLING_DOCUMENT", sourceId: { in: ["document-contract-payment", "document-partial", "document-settled", "document-open"] } }) }));
+    expect(paymentFindMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ tenantId: "tenant-auth", customerId: "customer-a", id: { in: ["payment-contract"] } }) }));
+  });
+
+  it("does not run Finance lookups for an empty accepted-document page", async () => {
+    const findMany = jest.fn().mockResolvedValue([]);
+    const count = jest.fn().mockResolvedValue(0);
+    const receivableFindMany = jest.fn();
+    const paymentFindMany = jest.fn();
+    const service = new FinanceReadService({
+      billingDocument: { findMany, count }, accountReceivable: { findMany: receivableFindMany }, payment: { findMany: paymentFindMany },
+    } as unknown as PrismaService);
+
+    await expect(service.listCustomerElectronicInvoices("tenant-a", "customer-a", {})).resolves.toEqual({ invoices: [], total: 0, page: 1, pageSize: 25, totalPages: 0 });
+    expect(receivableFindMany).not.toHaveBeenCalled();
+    expect(paymentFindMany).not.toHaveBeenCalled();
+  });
+
+  it("returns only accepted invoice-backed, open customer payment targets in one batch per model", async () => {
+    const receivableFindMany = jest.fn().mockResolvedValue([
+      { id: "ar-open", sourceId: "document-open", sourceNumber: "506-open", currencyCode: "USD", originalAmount: d("100"), outstandingAmount: d("100"), status: "OPEN", recognizedAt: new Date("2026-09-10T00:00:00.000Z") },
+      { id: "ar-partial", sourceId: "document-partial", sourceNumber: "506-partial", currencyCode: "USD", originalAmount: d("200"), outstandingAmount: d("50"), status: "PARTIALLY_SETTLED", recognizedAt: new Date("2026-09-11T00:00:00.000Z") },
+    ]);
+    const billingDocumentFindMany = jest.fn().mockResolvedValue([
+      { id: "document-open", fiscalNumber: "506-open", issuedAt: new Date("2026-09-10T09:00:00.000Z"), internalNumber: "FE-1" },
+      { id: "document-partial", fiscalNumber: "506-partial", issuedAt: new Date("2026-09-11T09:00:00.000Z"), internalNumber: "FE-2" },
+    ]);
+    const service = new FinanceReadService({
+      accountReceivable: { findMany: receivableFindMany },
+      billingDocument: { findMany: billingDocumentFindMany },
+    } as unknown as PrismaService);
+
+    await expect(service.listCustomerInvoicePaymentTargets("tenant-a", "customer-a", { currencyCode: "USD" as never })).resolves.toEqual({
+      targets: [
+        { accountReceivableId: "ar-open", billingDocumentId: "document-open", fiscalNumber: "506-open", reference: "506-open", issuedAt: new Date("2026-09-10T09:00:00.000Z"), currencyCode: "USD", originalAmount: "100", appliedAmount: "0", outstandingAmount: "100", financialStatus: "PENDING" },
+        { accountReceivableId: "ar-partial", billingDocumentId: "document-partial", fiscalNumber: "506-partial", reference: "506-partial", issuedAt: new Date("2026-09-11T09:00:00.000Z"), currencyCode: "USD", originalAmount: "200", appliedAmount: "150", outstandingAmount: "50", financialStatus: "PARTIALLY_PAID" },
+      ],
+    });
+    expect(receivableFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        tenantId: "tenant-a", customerId: "customer-a", currencyCode: "USD", sourceType: "BILLING_DOCUMENT",
+        status: { not: "CANCELLED" }, outstandingAmount: { gt: expect.any(Prisma.Decimal) },
+      }),
+    }));
+    expect(billingDocumentFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { tenantId: "tenant-a", id: { in: ["document-open", "document-partial"] }, taxAuthorityStatus: "ACCEPTED" },
+    }));
+    expect(receivableFindMany).toHaveBeenCalledTimes(1);
+    expect(billingDocumentFindMany).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps original currencies when today's manual rate is missing", async () => {
     const queryRaw = jest.fn().mockResolvedValue([
       customerFinancialSummaryRow({
@@ -623,7 +798,7 @@ describe("FinanceReadService", () => {
     expect(pageSql).toContain('payment."status" <> \'CANCELLED\'');
     expect(pageSql).toContain('allocation."status" = \'ACTIVE\'');
     expect(pageSql).toContain('payment."customerId" IS NOT NULL');
-    expect(pageSql).toContain('payment."currencyCode"');
+    expect(pageSql).toContain('receivable."currencyCode"');
     expect(pageSql).toContain('paged."customerId" = received_payments."customerId"');
     expect(pageSql).toContain('paged."currencyCode" = active_payment_allocations."currencyCode"');
     expect(queryRaw.mock.calls[0]).toEqual(expect.arrayContaining([new Date("2026-08-31T00:00:00.000Z"), "tenant-a", 5, 5]));

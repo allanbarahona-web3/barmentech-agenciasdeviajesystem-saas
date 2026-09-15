@@ -10,6 +10,8 @@ const REVIEW_ROOT = "/finance/contract-reservation-payments";
 
 export const contractReservationPendingPath = () => `${REVIEW_ROOT}/pending`;
 export const contractReservationApprovePath = (paymentId: string) => `${REVIEW_ROOT}/${encodeURIComponent(paymentId)}/approve`;
+export const invoicePendingPaymentDetailPath = (paymentId: string) => `${REVIEW_ROOT}/${encodeURIComponent(paymentId)}`;
+export const invoicePendingPaymentPrecheckPath = (paymentId: string) => `${REVIEW_ROOT}/${encodeURIComponent(paymentId)}/approve-precheck`;
 export const contractReservationRejectPath = (paymentId: string) => `${REVIEW_ROOT}/${encodeURIComponent(paymentId)}/reject`;
 export const contractReservationEvidencePath = (paymentId: string, evidenceId: string) => `${REVIEW_ROOT}/${encodeURIComponent(paymentId)}/evidence/${encodeURIComponent(evidenceId)}`;
 

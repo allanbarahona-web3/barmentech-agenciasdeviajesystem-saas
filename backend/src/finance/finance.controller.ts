@@ -1,5 +1,6 @@
-import { Body, Controller, Get, Param, Post, Query, Req, Res, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, Param, Post, Query, Req, Res, UploadedFile, UseGuards, UseInterceptors } from "@nestjs/common";
 import type { Response } from "express";
+import { FileInterceptor } from "@nestjs/platform-express";
 import { Prisma, UserRole } from "@prisma/client";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { Roles } from "../auth/roles.decorator";
@@ -12,6 +13,10 @@ import {
   AllocatePaymentDto,
   CancelPaymentDto,
   ListAccountReceivableGroupItemsDto,
+  ListCustomerElectronicInvoicesDto,
+  CustomerInvoicePaymentTargetsQueryDto,
+  CustomerPaymentSettlementPreviewQueryDto,
+  ReportedInvoicePaymentDto,
   ListAccountReceivableGroupsDto,
   ListContractObligationGroupContractsDto,
   ListContractObligationGroupsDto,
@@ -29,6 +34,7 @@ import {
   SendCustomerAccountStatementDto,
   SendPaymentReceiptDto,
   RejectContractReservationPaymentDto,
+  PaymentEvidenceDestinationOverrideDto,
   ListContractReservationPaymentsDto,
 } from "./dto/finance.dto";
 import { translateFinanceError } from "./finance.errors";
@@ -39,6 +45,9 @@ import { RegisterPaymentAndApplyService } from "./register-payment-and-apply.ser
 import { PaymentReceiptService } from "./payment-receipt.service";
 import { ContractReservationReviewService } from "./contract-reservation-review.service";
 import { ContractInstallmentPaymentService } from "./contract-installment-payment.service";
+import { ReportedInvoicePaymentIntakeService } from "./reported-invoice-payment-intake.service";
+import { PendingInvoicePaymentEvidenceService, type PaymentEvidenceExtractionInput } from "./pending-invoice-payment-evidence.service";
+import { CustomerAcceptedInvoiceReadService } from "./customer-accepted-invoice-read.service";
 
 type FinanceRequest = { user: { id: string; email?: string; fullName: string; tenantId: string; role: UserRole } };
 
@@ -58,6 +67,9 @@ export class FinanceController {
     private readonly receipts?: PaymentReceiptService,
     private readonly contractReservations?: ContractReservationReviewService,
     private readonly contractInstallments?: ContractInstallmentPaymentService,
+    private readonly reportedInvoicePayments?: ReportedInvoicePaymentIntakeService,
+    private readonly pendingInvoicePaymentEvidence?: PendingInvoicePaymentEvidenceService,
+    private readonly customerAcceptedInvoices?: CustomerAcceptedInvoiceReadService,
   ) {}
 
   @Get("contracts/:contractId/commercial-obligation")
@@ -106,6 +118,18 @@ export class FinanceController {
     return this.contractReservations!.listPending(request.user.tenantId, query.limit ?? 100);
   }
 
+  @Get("contract-reservation-payments/:paymentId")
+  @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS)
+  getInvoicePendingPaymentReviewDetail(@Req() request: FinanceRequest, @Param("paymentId") paymentId: string) {
+    return this.contractReservations!.getInvoicePendingDetail(request.user.tenantId, paymentId);
+  }
+
+  @Post("contract-reservation-payments/:paymentId/approve-precheck")
+  @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS)
+  precheckInvoicePendingPaymentApproval(@Req() request: FinanceRequest, @Param("paymentId") paymentId: string) {
+    return this.contractReservations!.precheckInvoicePendingPayment(request.user.tenantId, paymentId);
+  }
+
   @Post("contract-reservation-payments/:paymentId/approve")
   @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS)
   async approveContractReservation(@Req() request: FinanceRequest, @Param("paymentId") paymentId: string) {
@@ -130,6 +154,49 @@ export class FinanceController {
   @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.CONTADOR)
   getCustomerAccountStatement(@Req() request: FinanceRequest, @Param("customerId") customerId: string, @Query() query: CustomerAccountStatementQueryDto) {
     return this.statements!.get(request.user.tenantId, customerId, query.currencyCode.toUpperCase());
+  }
+
+  @Get("customers/:customerId/electronic-invoices/:billingDocumentId")
+  @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.AGENT)
+  getCustomerAcceptedInvoice(
+    @Req() request: FinanceRequest,
+    @Param("customerId") customerId: string,
+    @Param("billingDocumentId") billingDocumentId: string,
+  ) {
+    return this.customerAcceptedInvoices!.get(request.user.tenantId, customerId, billingDocumentId);
+  }
+
+  @Get("customers/:customerId/electronic-invoices/:billingDocumentId/artifacts")
+  @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.AGENT)
+  listCustomerAcceptedInvoiceArtifacts(
+    @Req() request: FinanceRequest,
+    @Param("customerId") customerId: string,
+    @Param("billingDocumentId") billingDocumentId: string,
+  ) {
+    return this.customerAcceptedInvoices!.listArtifacts(request.user.tenantId, customerId, billingDocumentId);
+  }
+
+  @Get("customers/:customerId/electronic-invoices/:billingDocumentId/artifacts/:artifactType/versions/:version/download")
+  @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.AGENT)
+  async downloadCustomerAcceptedInvoiceArtifact(
+    @Req() request: FinanceRequest,
+    @Param("customerId") customerId: string,
+    @Param("billingDocumentId") billingDocumentId: string,
+    @Param("artifactType") artifactType: string,
+    @Param("version") version: string,
+    @Res() response: Response,
+  ): Promise<void> {
+    const artifact = await this.customerAcceptedInvoices!.downloadArtifact(
+      request.user.tenantId, customerId, billingDocumentId, artifactType, version,
+    );
+    response.set({
+      "Content-Type": artifact.mimeType,
+      "Content-Length": artifact.bytes.length.toString(),
+      "Content-Disposition": `attachment; filename="${artifact.filename}"`,
+      "Cache-Control": "private, no-store",
+      "X-Content-Type-Options": "nosniff",
+    });
+    response.send(artifact.bytes);
   }
 
   @Get("customers/:customerId/account-statement/pdf")
@@ -347,6 +414,119 @@ export class FinanceController {
     return this.reads.getCustomerFinancialSummary(request.user.tenantId, customerId);
   }
 
+  @Get("customers/:customerId/electronic-invoices")
+  @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.CONTADOR, UserRole.AGENT)
+  listCustomerElectronicInvoices(
+    @Req() request: FinanceRequest,
+    @Param("customerId") customerId: string,
+    @Query() query: ListCustomerElectronicInvoicesDto,
+  ) {
+    return this.reads.listCustomerElectronicInvoices(request.user.tenantId, customerId, query);
+  }
+
+  @Get("customers/:customerId/payment-targets/invoices")
+  @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.AGENT)
+  listCustomerInvoicePaymentTargets(
+    @Req() request: FinanceRequest,
+    @Param("customerId") customerId: string,
+    @Query() query: CustomerInvoicePaymentTargetsQueryDto,
+  ) {
+    return this.reads.listCustomerInvoicePaymentTargets(request.user.tenantId, customerId, query);
+  }
+
+  @Get("customers/:customerId/payment-settlement-preview")
+  @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.AGENT)
+  previewCustomerPaymentSettlement(
+    @Req() request: FinanceRequest,
+    @Param("customerId") customerId: string,
+    @Query() query: CustomerPaymentSettlementPreviewQueryDto,
+  ) {
+    return this.reads.previewCustomerPaymentSettlement(request.user.tenantId, customerId, query);
+  }
+
+  @Post("customers/:customerId/reported-payments/invoices")
+  @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.AGENT)
+  async submitReportedInvoicePayment(
+    @Req() request: FinanceRequest,
+    @Param("customerId") customerId: string,
+    @Body() body: ReportedInvoicePaymentDto,
+  ) {
+    try {
+      return await this.reportedInvoicePayments!.submit({
+        tenantId: request.user.tenantId,
+        customerId,
+        actor: { userId: request.user.id, name: request.user.fullName },
+        currencyCode: body.currencyCode,
+        amount: decimal(body.amount),
+        paymentMethod: body.paymentMethod,
+        paymentDate: body.paymentDate ? new Date(body.paymentDate) : undefined,
+        reference: body.reference,
+        payerName: body.payerName,
+        notes: body.notes,
+        targets: body.targets.map((target) => ({
+          accountReceivableId: target.accountReceivableId,
+          intendedAmount: decimal(target.intendedAmount),
+        })),
+      });
+    } catch (error) {
+      return translateFinanceError(error);
+    }
+  }
+
+  @Post("customers/:customerId/reported-payments/invoices/evidence/extract")
+  @UseInterceptors(FileInterceptor("file"))
+  @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.AGENT)
+  extractReportedInvoicePaymentEvidence(
+    @Req() request: FinanceRequest,
+    @Param("customerId") customerId: string,
+    @UploadedFile() file: { buffer: Buffer; mimetype: string; originalname: string; size: number },
+  ) {
+    return this.pendingInvoicePaymentEvidence!.extract({ tenantId: request.user.tenantId, customerId, file });
+  }
+
+  @Post("customers/:customerId/reported-payments/:paymentId/evidence")
+  @UseInterceptors(FileInterceptor("file"))
+  @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.AGENT)
+  attachReportedInvoicePaymentEvidence(
+    @Req() request: FinanceRequest,
+    @Param("customerId") customerId: string,
+    @Param("paymentId") paymentId: string,
+    @Body() body: { extractionMetadata?: unknown },
+    @UploadedFile() file: { buffer: Buffer; mimetype: string; originalname: string; size: number },
+  ) {
+    return this.pendingInvoicePaymentEvidence!.attach({ tenantId: request.user.tenantId, customerId, paymentId, file, extraction: extractionMetadata(body.extractionMetadata) });
+  }
+
+  @Post("customers/:customerId/reported-payments/:paymentId/evidence/:evidenceId/destination-override")
+  @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.AGENT)
+  acceptReportedInvoicePaymentDestinationOverride(
+    @Req() request: FinanceRequest,
+    @Param("customerId") customerId: string,
+    @Param("paymentId") paymentId: string,
+    @Param("evidenceId") evidenceId: string,
+    @Body() body: PaymentEvidenceDestinationOverrideDto,
+  ) {
+    return this.pendingInvoicePaymentEvidence!.acceptDestinationOverride({
+      tenantId: request.user.tenantId,
+      customerId,
+      paymentId,
+      evidenceId,
+      actor: { userId: request.user.id, name: request.user.fullName },
+      reason: body.reason,
+    });
+  }
+
+  @Get("customers/:customerId/reported-payments/:paymentId/evidence/:evidenceId")
+  @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.AGENT)
+  getReportedInvoicePaymentEvidence(
+    @Req() request: FinanceRequest,
+    @Param("customerId") customerId: string,
+    @Param("paymentId") paymentId: string,
+    @Param("evidenceId") evidenceId: string,
+  ) {
+    return this.pendingInvoicePaymentEvidence!.getAccess({ tenantId: request.user.tenantId, customerId, paymentId, evidenceId });
+  }
+
   @Get("payments")
   @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.CONTADOR)
   listPayments(@Req() request: FinanceRequest, @Query() query: ListPaymentsDto) {
@@ -386,4 +566,19 @@ export class FinanceController {
 
 function decimal(value: string): Prisma.Decimal {
   return new Prisma.Decimal(value);
+}
+
+function extractionMetadata(value: unknown): PaymentEvidenceExtractionInput | undefined {
+  if (value === undefined || value === null || value === "") return undefined;
+  if (typeof value === "object" && !Array.isArray(value)) return value as PaymentEvidenceExtractionInput;
+  if (typeof value !== "string") throw new BadRequestException("FINANCE_PAYMENT_EVIDENCE_METADATA_INVALID");
+  try {
+    const parsed = JSON.parse(value);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new BadRequestException("FINANCE_PAYMENT_EVIDENCE_METADATA_INVALID");
+    }
+    return parsed as PaymentEvidenceExtractionInput;
+  } catch {
+    throw new BadRequestException("FINANCE_PAYMENT_EVIDENCE_METADATA_INVALID");
+  }
 }

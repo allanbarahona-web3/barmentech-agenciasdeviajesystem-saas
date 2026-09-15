@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { VerticalNav } from "@/components/vertical-nav";
 import { TenantBrowserMetadata } from "@/components/tenant-browser-metadata";
+import { TenantRegionalProvider } from "@/shared/regional/tenant-regional-provider";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -35,9 +36,11 @@ export default function RootLayout({
         style={{ background: '#f5f5f7' }}
       >
         
-        <TenantBrowserMetadata />
-        <VerticalNav />
-        {children}
+        <TenantRegionalProvider>
+          <TenantBrowserMetadata />
+          <VerticalNav />
+          {children}
+        </TenantRegionalProvider>
       </body>
     </html>
   );

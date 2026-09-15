@@ -150,11 +150,11 @@ describe("ContractReservationReviewService", () => {
     await expect(approved.service.reject("tenant-1", "payment-1", "No", actor)).rejects.toThrow("CONTRACT_RESERVATION_REVIEW_ALREADY_DECIDED");
   });
 
-  it("uses a single tenant-scoped projection for pending review context", async () => {
+  it("uses tenant-scoped set-based projections for contract and invoice pending review context", async () => {
     const c = context();
     c.prisma.payment.findMany.mockResolvedValue([]);
     await expect(c.service.listPending("tenant-1", 200)).resolves.toEqual({ payments: [] });
-    expect(c.prisma.payment.findMany).toHaveBeenCalledTimes(1);
+    expect(c.prisma.payment.findMany).toHaveBeenCalledTimes(2);
     expect(c.prisma.payment.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: { tenantId: "tenant-1", purpose: { in: [PaymentPurpose.CONTRACT_RESERVATION, PaymentPurpose.CONTRACT_PAYMENT] }, status: PaymentStatus.PENDING_VERIFICATION },
       take: 200,

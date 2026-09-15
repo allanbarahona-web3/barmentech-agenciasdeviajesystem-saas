@@ -174,6 +174,6 @@ import { FiscalInvoiceAutoDeliveryProcessor } from "./jobs/fiscal-invoice-auto-d
       useExisting: PrismaFiscalNumberSequenceAdminRepository,
     },
   ],
-  exports: [BillingDocumentService, ELECTRONIC_DOCUMENT_SUBMISSION_PROVIDER, ELECTRONIC_DOCUMENT_STATUS_PROVIDER,ELECTRONIC_DOCUMENT_REFRESH_PROVIDER, FISCAL_ARTIFACT_RETRIEVAL_PORT, BillingDocumentSubmissionPreparationService, BillingDocumentSubmissionAttemptService, BillingDocumentSubmissionExecutorService, BillingDocumentSubmissionOutcomeService, BillingDocumentStatusLookupService, BillingDocumentStatusPersistenceService, BillingDocumentRecoveryPreparationService, BillingDocumentRecoveryExecutorService],
+  exports: [BillingDocumentService, FiscalArtifactReadService, ELECTRONIC_DOCUMENT_SUBMISSION_PROVIDER, ELECTRONIC_DOCUMENT_STATUS_PROVIDER,ELECTRONIC_DOCUMENT_REFRESH_PROVIDER, FISCAL_ARTIFACT_RETRIEVAL_PORT, BillingDocumentSubmissionPreparationService, BillingDocumentSubmissionAttemptService, BillingDocumentSubmissionExecutorService, BillingDocumentSubmissionOutcomeService, BillingDocumentStatusLookupService, BillingDocumentStatusPersistenceService, BillingDocumentRecoveryPreparationService, BillingDocumentRecoveryExecutorService],
 })
 export class FiscalBillingModule {}

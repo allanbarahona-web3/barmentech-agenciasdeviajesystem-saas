@@ -2463,36 +2463,43 @@ enum PaymentPurpose {
 }
 
 model Payment {
-  id                              String                           @id @default(cuid())
-  tenantId                        String
-  registrationDeduplicationKey    String                           @db.VarChar(200)
-  receiptNumber                   String?                          @db.VarChar(50)
-  customerId                      String?
-  payerDisplayName                String
-  payerIdentificationType         String?                          @db.VarChar(4)
-  payerIdentificationNumber       String?                          @db.VarChar(30)
-  currencyCode                    String                           @db.VarChar(3)
-  receivedAmount                  Decimal                          @db.Decimal(19, 5)
-  availableAmount                 Decimal                          @db.Decimal(19, 5)
-  receivedAt                      DateTime
-  paymentMethod                   String                           @db.VarChar(50)
-  externalReference               String?                          @db.VarChar(150)
-  description                     String?                          @db.VarChar(500)
-  purpose                         PaymentPurpose                   @default(GENERAL)
-  contractId                      String?
-  status                          PaymentStatus                    @default(RECEIVED)
-  reviewedAt                      DateTime?
-  reviewedByUserId                String?
-  reviewedByName                  String?
-  rejectionReason                 String?                          @db.VarChar(500)
-  cancelledAt                     DateTime?
-  createdAt                       DateTime                         @default(now())
-  updatedAt                       DateTime                         @updatedAt
-  tenant                          Tenant                           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  contract                        Contract?                        @relation("ContractFinancePayments", fields: [contractId, tenantId], references: [id, tenantId], onDelete: Restrict)
-  allocations                     PaymentAllocation[]
-  commercialObligationAllocations CommercialObligationAllocation[]
-  evidence                        PaymentEvidence[]
+  id                                  String                           @id @default(cuid())
+  tenantId                            String
+  registrationDeduplicationKey        String                           @db.VarChar(200)
+  receiptNumber                       String?                          @db.VarChar(50)
+  customerId                          String?
+  payerDisplayName                    String
+  payerIdentificationType             String?                          @db.VarChar(4)
+  payerIdentificationNumber           String?                          @db.VarChar(30)
+  currencyCode                        String                           @db.VarChar(3)
+  receivedAmount                      Decimal                          @db.Decimal(19, 5)
+  availableAmount                     Decimal                          @db.Decimal(19, 5)
+  settlementCurrencyCode              String?                          @db.VarChar(3)
+  settlementAmount                    Decimal?                         @db.Decimal(19, 5)
+  settlementAvailableAmount           Decimal?                         @db.Decimal(19, 5)
+  settlementExchangeRate              Decimal?                         @db.Decimal(30, 12)
+  settlementExchangeRateSource        TenantExchangeRateSource?
+  settlementExchangeRateEffectiveDate DateTime?                        @db.Date
+  receivedAt                          DateTime
+  paymentMethod                       String                           @db.VarChar(50)
+  externalReference                   String?                          @db.VarChar(150)
+  description                         String?                          @db.VarChar(500)
+  purpose                             PaymentPurpose                   @default(GENERAL)
+  contractId                          String?
+  status                              PaymentStatus                    @default(RECEIVED)
+  reviewedAt                          DateTime?
+  reviewedByUserId                    String?
+  reviewedByName                      String?
+  rejectionReason                     String?                          @db.VarChar(500)
+  allocationProposal                  Json?
+  cancelledAt                         DateTime?
+  createdAt                           DateTime                         @default(now())
+  updatedAt                           DateTime                         @updatedAt
+  tenant                              Tenant                           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contract                            Contract?                        @relation("ContractFinancePayments", fields: [contractId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  allocations                         PaymentAllocation[]
+  commercialObligationAllocations     CommercialObligationAllocation[]
+  evidence                            PaymentEvidence[]
 
   @@unique([tenantId, registrationDeduplicationKey])
   @@unique([tenantId, receiptNumber])
@@ -2507,16 +2514,17 @@ model Payment {
 }
 
 model PaymentEvidence {
-  id               String   @id @default(cuid())
-  tenantId         String
-  paymentId        String
-  objectKey        String   @unique
-  originalFileName String
-  mimeType         String
-  size             Int
-  createdAt        DateTime @default(now())
-  tenant           Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  payment          Payment  @relation(fields: [paymentId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  id                 String   @id @default(cuid())
+  tenantId           String
+  paymentId          String
+  objectKey          String   @unique
+  originalFileName   String
+  mimeType           String
+  size               Int
+  extractionMetadata Json?
+  createdAt          DateTime @default(now())
+  tenant             Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  payment            Payment  @relation(fields: [paymentId, tenantId], references: [id, tenantId], onDelete: Cascade)
 
   @@index([tenantId, paymentId])
   @@index([tenantId, createdAt])

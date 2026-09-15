@@ -24,7 +24,7 @@ import {
   type PaymentStatus,
   type RegisterPaymentInput,
 } from '@/lib/finance-api';
-import { formatBusinessDate } from '@/shared/regional';
+import { useTenantDateTimeFormatter } from '@/shared/regional/tenant-regional-provider';
 import { FINANCE_PAYMENT_METHOD_OPTIONS, formatFinancePaymentMethod } from '@/lib/finance-payment-methods';
 import styles from './accounts-receivable.module.css';
 
@@ -87,6 +87,7 @@ function detailAsCandidate(detail: AccountReceivableDetail): AccountReceivableLi
 }
 
 function PaymentSummary({ payment, onCancel }: { payment: PaymentDetail; onCancel?: () => void }) {
+  const formatTenantDateTime = useTenantDateTimeFormatter();
   return (
     <section className={styles.paymentSummary}>
       <div className={styles.paymentSummaryHeader}>
@@ -96,7 +97,7 @@ function PaymentSummary({ payment, onCancel }: { payment: PaymentDetail; onCance
       <dl className={styles.paymentFacts}>
         <div><dt>Cliente</dt><dd>{payment.payerDisplayName}</dd></div>
         <div><dt>Identificación</dt><dd>{payment.payerIdentificationNumber ?? '—'}</dd></div>
-        <div><dt>Fecha</dt><dd>{formatBusinessDate(payment.receivedAt)}</dd></div>
+        <div><dt>Fecha</dt><dd>{formatTenantDateTime(payment.receivedAt)}</dd></div>
         <div><dt>Moneda</dt><dd>{payment.currencyCode}</dd></div>
         <div><dt>Monto recibido</dt><dd>{formatFinanceMoney(payment.receivedAmount, payment.currencyCode)}</dd></div>
         <div><dt>Monto aplicado</dt><dd>{formatFinanceMoney(payment.appliedAmount, payment.currencyCode)}</dd></div>
@@ -104,8 +105,8 @@ function PaymentSummary({ payment, onCancel }: { payment: PaymentDetail; onCance
         <div><dt>Método</dt><dd>{formatFinancePaymentMethod(payment.paymentMethod)}</dd></div>
         <div><dt>Referencia</dt><dd>{payment.externalReference ?? '—'}</dd></div>
         <div><dt>Notas</dt><dd>{payment.description ?? '—'}</dd></div>
-        {payment.registeredBy && <div><dt>Registrado por</dt><dd>{payment.registeredBy.name} · {formatBusinessDate(payment.registeredBy.at)}</dd></div>}
-        {payment.cancelledBy && <div><dt>Cancelado por</dt><dd>{payment.cancelledBy.name} · {payment.cancelledAt ? formatBusinessDate(payment.cancelledAt) : formatBusinessDate(payment.cancelledBy.at)}{payment.cancelledBy.reason ? ` · ${payment.cancelledBy.reason}` : ''}</dd></div>}
+        {payment.registeredBy && <div><dt>Registrado por</dt><dd>{payment.registeredBy.name} · {formatTenantDateTime(payment.registeredBy.at)}</dd></div>}
+        {payment.cancelledBy && <div><dt>Cancelado por</dt><dd>{payment.cancelledBy.name} · {payment.cancelledAt ? formatTenantDateTime(payment.cancelledAt) : formatTenantDateTime(payment.cancelledBy.at)}{payment.cancelledBy.reason ? ` · ${payment.cancelledBy.reason}` : ''}</dd></div>}
       </dl>
       {onCancel && payment.canCancel && <div className={styles.paymentActions}><Button className={styles.secondaryAction} variant="outline" type="button" onClick={onCancel}>Cancelar recibo</Button></div>}
     </section>
@@ -113,6 +114,7 @@ function PaymentSummary({ payment, onCancel }: { payment: PaymentDetail; onCance
 }
 
 function PaymentAllocations({ payment, onReverse }: { payment: PaymentDetail; onReverse?: (allocation: PaymentDetail['allocations'][number]) => void }) {
+  const formatTenantDateTime = useTenantDateTimeFormatter();
   if (payment.allocations.length === 0) return <p className={styles.paymentEmptyCompact}>Sin aplicaciones registradas.</p>;
   return (
     <div className={styles.paymentAllocationList}>{payment.allocations.map((allocation) => (
@@ -125,10 +127,10 @@ function PaymentAllocations({ payment, onReverse }: { payment: PaymentDetail; on
           <div><dt>Monto aplicado</dt><dd>{formatFinanceMoney(allocation.amount, payment.currencyCode)}</dd></div>
           <div><dt>Saldo actual CxC</dt><dd>{formatFinanceMoney(allocation.accountReceivable.outstandingAmount, allocation.accountReceivable.currencyCode)}</dd></div>
           <div><dt>Estado actual CxC</dt><dd>{AR_STATUS_LABELS[allocation.accountReceivable.status]}</dd></div>
-          <div><dt>Fecha de aplicación</dt><dd>{formatBusinessDate(allocation.allocatedAt)}</dd></div>
+          <div><dt>Fecha de aplicación</dt><dd>{formatTenantDateTime(allocation.allocatedAt)}</dd></div>
           {allocation.appliedBy && <div><dt>Aplicado por</dt><dd>{allocation.appliedBy.name}</dd></div>}
         </dl>
-        {allocation.reversal && <div className={styles.reversalHistory}><strong>Revertido</strong><p>{allocation.reversal.reason} · {formatBusinessDate(allocation.reversal.reversedAt)}{allocation.reversal.reversedBy ? ` · ${allocation.reversal.reversedBy.name}` : ''}</p></div>}
+        {allocation.reversal && <div className={styles.reversalHistory}><strong>Revertido</strong><p>{allocation.reversal.reason} · {formatTenantDateTime(allocation.reversal.reversedAt)}{allocation.reversal.reversedBy ? ` · ${allocation.reversal.reversedBy.name}` : ''}</p></div>}
         {onReverse && allocation.status === 'ACTIVE' && <div className={styles.paymentActions}><Button className={styles.secondaryAction} variant="outline" type="button" onClick={() => onReverse(allocation)}>Revertir aplicación</Button></div>}
       </article>
     ))}</div>

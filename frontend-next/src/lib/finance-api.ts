@@ -1,5 +1,5 @@
 import { fetchApi } from '@/lib/api-client';
-import { contractReservationApprovePath, contractReservationEvidencePath, contractReservationPendingPath, contractReservationRejectPath } from '@/lib/contract-reservation-review';
+import { contractReservationApprovePath, contractReservationEvidencePath, contractReservationPendingPath, contractReservationRejectPath, invoicePendingPaymentDetailPath, invoicePendingPaymentPrecheckPath } from '@/lib/contract-reservation-review';
 import type { FinancePaymentMethod } from '@/lib/finance-payment-methods';
 
 export type AccountReceivableStatus =
@@ -184,6 +184,7 @@ export type ContractReservationEvidence = {
 };
 
 export type ContractReservationPayment = {
+  reviewKind?: 'CONTRACT';
   id: string;
   customerId: string | null;
   contractId: string;
@@ -211,6 +212,53 @@ export type ContractReservationPayment = {
 };
 
 export type ContractReservationEvidenceAccess = ContractReservationEvidence & { url: string };
+
+export type InvoicePendingPaymentTarget = {
+  accountReceivableId: string;
+  intendedAmount: string;
+  billingDocumentId: string | null;
+  fiscalNumber: string | null;
+  reference: string | null;
+  issuedAt: string | null;
+  currentOriginalAmount: string | null;
+  currentOutstandingAmount: string | null;
+  currentCurrencyCode: string | null;
+  currentStatus: AccountReceivableStatus | null;
+};
+
+export type InvoicePendingPaymentReview = {
+  id: string;
+  reviewKind: 'INVOICES';
+  customerId: string | null;
+  customer: { id: string | null; fullName: string; idNumber: string | null; email: string | null; phone: string | null };
+  currencyCode: string;
+  receivedAmount: string;
+  availableAmount: string;
+  receivedAt: string;
+  paymentMethod: string;
+  externalReference: string | null;
+  description: string | null;
+  status: 'PENDING_VERIFICATION';
+  receiptNumber: null;
+  reviewer: { reviewedAt: string | null; reviewedByUserId: string | null; reviewedByName: string | null; rejectionReason: string | null };
+  allocationProposal: { kind: 'INVOICES'; targets: Array<{ targetType: 'ACCOUNT_RECEIVABLE'; targetId: string; intendedAmount: string }> } | null;
+  targets: InvoicePendingPaymentTarget[];
+  /** Optional until the review read exposes PaymentEvidence metadata. */
+  evidence?: ContractReservationEvidence[];
+};
+
+export type PendingPaymentReviewItem = ContractReservationPayment | InvoicePendingPaymentReview;
+
+export type InvoicePendingPaymentPrecheck = {
+  ok: true;
+  paymentId: string;
+  status: 'PENDING_VERIFICATION';
+  customerId: string | null;
+  currencyCode: string;
+  amount: string;
+  allocationProposal: NonNullable<InvoicePendingPaymentReview['allocationProposal']>;
+  targets: InvoicePendingPaymentTarget[];
+};
 
 export type AccountReceivableSource = {
   type: string;
@@ -476,6 +524,127 @@ export type CustomerFinancialSummary = {
   } | null;
 };
 
+export type CustomerElectronicInvoiceFinancialStatus = 'PENDING' | 'PARTIALLY_PAID' | 'PAID' | 'CANCELLED' | 'NOT_APPLICABLE';
+
+export type CustomerElectronicInvoice = {
+  billingDocumentId: string;
+  fiscalNumber: string | null;
+  documentType: string;
+  issuedAt: string | null;
+  sourceType: string | null;
+  sourceId: string | null;
+  sourceNumber: string | null;
+  internalNumber: string;
+  currencyCode: FinanceCurrency;
+  total: string;
+  taxAuthorityStatus: 'ACCEPTED';
+  financialStatus: CustomerElectronicInvoiceFinancialStatus;
+  financialOutstanding: string | null;
+  financialDetail: { type: 'ACCOUNT_RECEIVABLE'; accountReceivableId: string } | { type: 'CONTRACT'; contractId: string } | null;
+};
+
+export type CustomerElectronicInvoicesPage = {
+  invoices: CustomerElectronicInvoice[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+};
+
+export type CustomerInvoicePaymentTarget = {
+  accountReceivableId: string;
+  billingDocumentId: string;
+  fiscalNumber: string | null;
+  reference: string;
+  issuedAt: string | null;
+  currencyCode: FinanceCurrency;
+  originalAmount: string;
+  appliedAmount: string;
+  outstandingAmount: string;
+  financialStatus: 'PENDING' | 'PARTIALLY_PAID';
+};
+
+export type ReportedInvoicePaymentInput = {
+  currencyCode: FinanceCurrency;
+  amount: string;
+  paymentMethod?: FinancePaymentMethod;
+  paymentDate?: string;
+  reference?: string;
+  payerName?: string;
+  notes?: string;
+  targets: Array<{ accountReceivableId: string; intendedAmount: string }>;
+};
+
+export type ReportedInvoicePaymentResult = {
+  paymentId: string;
+  status: 'PENDING_VERIFICATION';
+  receiptNumber: null;
+  currencyCode: FinanceCurrency;
+  amount: string;
+  availableAmount: string;
+  allocationProposal: { kind: 'INVOICES'; targets: Array<{ targetType: 'ACCOUNT_RECEIVABLE'; targetId: string; intendedAmount: string }> };
+};
+
+export type PendingPaymentEvidence = {
+  id: string;
+  paymentId: string;
+  originalFileName: string;
+  mimeType: string;
+  size: number;
+  createdAt: string;
+  extractionMetadata?: {
+    destinationValidation?: PaymentDestinationValidation;
+  };
+};
+
+export type PaymentDestinationValidation = {
+  status: 'MATCHED' | 'UNMATCHED' | 'UNKNOWN' | 'AMBIGUOUS';
+  reason: 'NOT_REGISTERED' | 'INACTIVE' | 'AMBIGUOUS' | 'NO_IDENTIFIER' | null;
+  matchedAccount: {
+    id: string;
+    bankName: string;
+    maskedAccountNumber: string | null;
+    maskedSinpeNumber: string | null;
+    currencyCode?: string | null;
+  } | null;
+  bankNameMatches: boolean | null;
+  evaluatedAt?: string;
+  overrideAccepted?: boolean;
+  overrideAcceptedByUserId?: string | null;
+  overrideAcceptedByName?: string | null;
+  overrideAcceptedAt?: string | null;
+  overrideReason?: string | null;
+};
+
+export type CustomerPaymentSettlementPreview = {
+  status: 'AVAILABLE' | 'MISSING';
+  receivedCurrencyCode: FinanceCurrency;
+  receivedAmount: string;
+  settlementCurrencyCode: FinanceCurrency;
+  settlementAmount: string | null;
+  exchangeRate: string | null;
+  exchangeRateSource: 'MANUAL' | 'BCCR' | null;
+  exchangeRateEffectiveDate: string | null;
+};
+
+export type FinancePaymentEvidenceExtraction = {
+  extractedData: {
+    amount?: number;
+    currency?: string;
+    date?: string;
+    reference?: string;
+    originBank?: string;
+    destinationBank?: string;
+    destinationAccount?: string;
+    payerName?: string;
+    paymentCode?: string;
+    notes?: string;
+    confidence?: number;
+  };
+  destinationValidation: PaymentDestinationValidation;
+  warnings: string[];
+};
+
 export type ListAccountReceivablesParams = {
   page?: number;
   pageSize?: number;
@@ -580,6 +749,20 @@ async function request<T>(path: string, signal?: AbortSignal): Promise<T> {
 
 async function post<T>(path: string, body: unknown): Promise<T> {
   const response = await fetchApi(path, { method: 'POST', body: JSON.stringify(body) });
+  if (response.ok) return response.json() as Promise<T>;
+  const payload: unknown = await response.json().catch(() => null);
+  const backendMessage = errorMessage(payload, 'FINANCE_OPERATION_FAILED');
+  const code = typeof (payload as { code?: unknown } | null)?.code === 'string'
+    ? String((payload as { code: string }).code)
+    : backendMessage;
+  throw new FinanceApiError(code, ERROR_MESSAGES[code] ?? backendMessage);
+}
+
+async function upload<T>(path: string, file: File, fields?: Record<string, string>): Promise<T> {
+  const formData = new FormData();
+  formData.append('file', file);
+  for (const [key, value] of Object.entries(fields ?? {})) formData.append(key, value);
+  const response = await fetchApi(path, { method: 'POST', body: formData });
   if (response.ok) return response.json() as Promise<T>;
   const payload: unknown = await response.json().catch(() => null);
   const backendMessage = errorMessage(payload, 'FINANCE_OPERATION_FAILED');
@@ -765,6 +948,58 @@ export function getCustomerFinancialSummary(customerId: string, signal?: AbortSi
   return request<CustomerFinancialSummary>(`/finance/customers/${encodeURIComponent(customerId)}/financial-summary`, signal);
 }
 
+export function listCustomerElectronicInvoices(customerId: string, params: PageParams = {}, signal?: AbortSignal): Promise<CustomerElectronicInvoicesPage> {
+  return request<CustomerElectronicInvoicesPage>(`/finance/customers/${encodeURIComponent(customerId)}/electronic-invoices${queryString(params)}`, signal);
+}
+
+export function listCustomerInvoicePaymentTargets(customerId: string, currencyCode: FinanceCurrency, signal?: AbortSignal): Promise<{ targets: CustomerInvoicePaymentTarget[] }> {
+  return request<{ targets: CustomerInvoicePaymentTarget[] }>(`/finance/customers/${encodeURIComponent(customerId)}/payment-targets/invoices${queryString({ currencyCode })}`, signal);
+}
+
+export function getCustomerPaymentSettlementPreview(
+  customerId: string,
+  input: { receivedCurrencyCode: FinanceCurrency; settlementCurrencyCode: FinanceCurrency; receivedAmount: string },
+  signal?: AbortSignal,
+): Promise<CustomerPaymentSettlementPreview> {
+  return request<CustomerPaymentSettlementPreview>(
+    `/finance/customers/${encodeURIComponent(customerId)}/payment-settlement-preview${queryString(input)}`,
+    signal,
+  );
+}
+
+export function submitReportedInvoicePayment(customerId: string, input: ReportedInvoicePaymentInput): Promise<ReportedInvoicePaymentResult> {
+  return post<ReportedInvoicePaymentResult>(`/finance/customers/${encodeURIComponent(customerId)}/reported-payments/invoices`, input);
+}
+
+export function extractReportedInvoicePaymentEvidence(customerId: string, file: File): Promise<FinancePaymentEvidenceExtraction> {
+  return upload<FinancePaymentEvidenceExtraction>(`/finance/customers/${encodeURIComponent(customerId)}/reported-payments/invoices/evidence/extract`, file);
+}
+
+export function attachReportedInvoicePaymentEvidence(
+  customerId: string,
+  paymentId: string,
+  file: File,
+  extractionMetadata?: Pick<FinancePaymentEvidenceExtraction['extractedData'], 'destinationAccount' | 'destinationBank' | 'reference' | 'paymentCode' | 'confidence'>,
+): Promise<PendingPaymentEvidence> {
+  return upload<PendingPaymentEvidence>(
+    `/finance/customers/${encodeURIComponent(customerId)}/reported-payments/${encodeURIComponent(paymentId)}/evidence`,
+    file,
+    extractionMetadata ? { extractionMetadata: JSON.stringify(extractionMetadata) } : undefined,
+  );
+}
+
+export function acceptReportedInvoicePaymentDestinationOverride(
+  customerId: string,
+  paymentId: string,
+  evidenceId: string,
+  input: { reason?: string } = {},
+): Promise<PaymentDestinationValidation> {
+  return post<PaymentDestinationValidation>(
+    `/finance/customers/${encodeURIComponent(customerId)}/reported-payments/${encodeURIComponent(paymentId)}/evidence/${encodeURIComponent(evidenceId)}/destination-override`,
+    input,
+  );
+}
+
 export async function downloadCustomerAccountStatement(customerId: string, currencyCode: FinanceCurrency): Promise<{ blob: Blob; fileName: string }> {
   const response = await fetchApi(`/finance/customers/${encodeURIComponent(customerId)}/account-statement/pdf${queryString({ currencyCode })}`, { method: 'GET' });
   if (!response.ok) throw new FinanceApiError('CUSTOMER_ACCOUNT_STATEMENT_PDF_FAILED', 'No se pudo generar el PDF del estado de cuenta.');
@@ -777,11 +1012,19 @@ export function sendCustomerAccountStatement(customerId: string, input: { curren
   return post(`/finance/customers/${encodeURIComponent(customerId)}/account-statement/email`, input);
 }
 
-export function listPendingContractReservationPayments(limit = 100, signal?: AbortSignal): Promise<{ payments: ContractReservationPayment[] }> {
-  return request<{ payments: ContractReservationPayment[] }>(`${contractReservationPendingPath()}${queryString({ limit })}`, signal);
+export function listPendingContractReservationPayments(limit = 100, signal?: AbortSignal): Promise<{ payments: PendingPaymentReviewItem[] }> {
+  return request<{ payments: PendingPaymentReviewItem[] }>(`${contractReservationPendingPath()}${queryString({ limit })}`, signal);
 }
 
-export function approveContractReservationPayment(paymentId: string): Promise<{ ok: true; paymentId: string; status: 'RECEIVED'; receiptNumber: string }> {
+export function getInvoicePendingPaymentReviewDetail(paymentId: string, signal?: AbortSignal): Promise<InvoicePendingPaymentReview> {
+  return request<InvoicePendingPaymentReview>(invoicePendingPaymentDetailPath(paymentId), signal);
+}
+
+export function precheckInvoicePendingPaymentApproval(paymentId: string): Promise<InvoicePendingPaymentPrecheck> {
+  return post<InvoicePendingPaymentPrecheck>(invoicePendingPaymentPrecheckPath(paymentId), {});
+}
+
+export function approveContractReservationPayment(paymentId: string): Promise<{ ok: true; paymentId: string; status: 'RECEIVED' | 'PARTIALLY_ALLOCATED' | 'FULLY_ALLOCATED'; receiptNumber: string | null }> {
   return post(contractReservationApprovePath(paymentId), {});
 }
 
@@ -791,6 +1034,10 @@ export function rejectContractReservationPayment(paymentId: string, reason: stri
 
 export function getContractReservationEvidence(paymentId: string, evidenceId: string, signal?: AbortSignal): Promise<ContractReservationEvidenceAccess> {
   return request<ContractReservationEvidenceAccess>(contractReservationEvidencePath(paymentId, evidenceId), signal);
+}
+
+export function getReportedInvoicePaymentEvidence(customerId: string, paymentId: string, evidenceId: string, signal?: AbortSignal): Promise<ContractReservationEvidenceAccess> {
+  return request<ContractReservationEvidenceAccess>(`/finance/customers/${encodeURIComponent(customerId)}/reported-payments/${encodeURIComponent(paymentId)}/evidence/${encodeURIComponent(evidenceId)}`, signal);
 }
 
 export function formatFinanceMoney(value: string, currency: string): string {

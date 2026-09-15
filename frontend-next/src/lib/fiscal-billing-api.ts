@@ -465,6 +465,16 @@ export function getAcceptedBillingInvoice(billingDocumentId: string, signal?: Ab
   );
 }
 
+export function getCustomerAcceptedBillingInvoice(customerId: string, billingDocumentId: string, signal?: AbortSignal) {
+  if (!validRouteId(customerId) || !validRouteId(billingDocumentId)) {
+    return Promise.reject(new FiscalBillingApiError('BILLING_DOCUMENT_NOT_FOUND', ERROR_MESSAGES.BILLING_DOCUMENT_NOT_FOUND));
+  }
+  return request<AcceptedBillingInvoice>(
+    `/finance/customers/${encodeURIComponent(customerId)}/electronic-invoices/${encodeURIComponent(billingDocumentId)}`,
+    signal,
+  );
+}
+
 export function generateAcceptedInvoicePdf(billingDocumentId: string) {
   if (!validRouteId(billingDocumentId)) {
     return Promise.reject(new FiscalBillingApiError(
@@ -514,6 +524,16 @@ export function listFiscalArtifacts(billingDocumentId: string, signal?: AbortSig
   );
 }
 
+export function listCustomerAcceptedInvoiceArtifacts(customerId: string, billingDocumentId: string, signal?: AbortSignal) {
+  if (!validRouteId(customerId) || !validRouteId(billingDocumentId)) {
+    return Promise.reject(new FiscalBillingApiError('BILLING_DOCUMENT_NOT_FOUND', ERROR_MESSAGES.BILLING_DOCUMENT_NOT_FOUND));
+  }
+  return request<FiscalArtifactListItem[]>(
+    `/finance/customers/${encodeURIComponent(customerId)}/electronic-invoices/${encodeURIComponent(billingDocumentId)}/artifacts`,
+    signal,
+  );
+}
+
 export async function downloadFiscalArtifact(
   billingDocumentId: string,
   artifactType: FiscalArtifactType,
@@ -531,6 +551,29 @@ export async function downloadFiscalArtifact(
   }
   const response = await fetchApi(
     `/fiscal-billing/documents/${encodeURIComponent(billingDocumentId)}/artifacts/${encodeURIComponent(artifactType)}/versions/${version}/download`,
+    { method: 'GET' },
+  );
+  if (!response.ok) throw await artifactError(response);
+  const mimeType = response.headers.get('content-type')?.split(';', 1)[0]?.trim() || 'application/octet-stream';
+  const disposition = response.headers.get('content-disposition') ?? '';
+  const matchedFilename = /filename="?([^";]+)"?/i.exec(disposition)?.[1]?.trim();
+  const filename = matchedFilename && !/[\\/\u0000-\u001f\u007f]/.test(matchedFilename)
+    ? matchedFilename
+    : fallbackArtifactFilename(artifactType, version);
+  return { blob: await response.blob(), filename, mimeType };
+}
+
+export async function downloadCustomerAcceptedInvoiceArtifact(
+  customerId: string,
+  billingDocumentId: string,
+  artifactType: FiscalArtifactType,
+  version: number,
+): Promise<FiscalArtifactDownload> {
+  if (!validRouteId(customerId) || !validRouteId(billingDocumentId) || !Number.isSafeInteger(version) || version < 1) {
+    throw new FiscalBillingApiError('FISCAL_ARTIFACT_INVALID_REQUEST', ERROR_MESSAGES.FISCAL_ARTIFACT_INVALID_REQUEST);
+  }
+  const response = await fetchApi(
+    `/finance/customers/${encodeURIComponent(customerId)}/electronic-invoices/${encodeURIComponent(billingDocumentId)}/artifacts/${encodeURIComponent(artifactType)}/versions/${version}/download`,
     { method: 'GET' },
   );
   if (!response.ok) throw await artifactError(response);

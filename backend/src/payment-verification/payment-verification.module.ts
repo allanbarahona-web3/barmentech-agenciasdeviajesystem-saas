@@ -10,6 +10,6 @@ import { ExchangeRateModule } from '../exchange-rate/exchange-rate.module';
   imports: [PrismaModule, CompanyBankAccountsModule, ExchangeRateModule],
   controllers: [PaymentVerificationController],
   providers: [PaymentVerificationService, OpenAiVisionService],
-  exports: [PaymentVerificationService],
+  exports: [PaymentVerificationService, OpenAiVisionService],
 })
 export class PaymentVerificationModule {}

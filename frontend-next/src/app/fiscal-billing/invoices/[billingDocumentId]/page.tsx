@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Download, LoaderCircle, Mail, Plus, X } from 'lucide-react';
 import { LoadingSpinner } from '@/components/loading-spinner';
@@ -12,8 +12,11 @@ import { getHomeRouteForRole, getStoredSession } from '@/lib/auth-api';
 import {
   FiscalBillingApiError,
   downloadFiscalArtifact,
+  downloadCustomerAcceptedInvoiceArtifact,
   generateAcceptedInvoicePdf,
   getAcceptedBillingInvoice,
+  getCustomerAcceptedBillingInvoice,
+  listCustomerAcceptedInvoiceArtifacts,
   listFiscalArtifacts,
   requestAcceptedInvoiceEmailResend,
   type AcceptedBillingInvoice,
@@ -22,6 +25,7 @@ import {
   type FiscalArtifactType,
 } from '@/lib/fiscal-billing-api';
 import { formatFiscalDecimal, formatFiscalMoney } from '@/lib/fiscal-money';
+import { formatBusinessDate } from '@/shared/regional';
 import styles from '../../fiscal-billing.module.css';
 
 const DOCUMENT_TYPES: Record<string, string> = {
@@ -40,14 +44,7 @@ const SIMPLE_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function formatDate(value: string | null): string {
   if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return 'No disponible';
-  const parsed = new Date(`${value}T00:00:00.000Z`);
-  if (!Number.isFinite(parsed.getTime())) return 'No disponible';
-  return new Intl.DateTimeFormat('es-CR', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    timeZone: 'UTC',
-  }).format(parsed);
+  return formatBusinessDate(value);
 }
 
 function paymentCondition(invoice: AcceptedBillingInvoice): string {
@@ -101,6 +98,8 @@ function saveArtifact(download: FiscalArtifactDownload): void {
 export default function AcceptedInvoicePage() {
   const { billingDocumentId } = useParams<{ billingDocumentId: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const customerId = searchParams.get('customerId')?.trim() ?? '';
   const [authorized, setAuthorized] = useState(false);
   const [invoice, setInvoice] = useState<AcceptedBillingInvoice | null>(null);
   const [loading, setLoading] = useState(true);
@@ -109,7 +108,7 @@ export default function AcceptedInvoicePage() {
   const [artifactsLoading, setArtifactsLoading] = useState(true);
   const [documentError, setDocumentError] = useState<FiscalBillingApiError | null>(null);
   const [documentAction, setDocumentAction] = useState<
-    'GENERATING_PDF' | 'DOWNLOADING_PDF' | 'SIGNED_XML' | 'RESPONSE_XML' | null
+    'GENERATING_PDF' | 'DOWNLOADING_PDF' | 'INTERNAL_PDF' | 'SIGNED_XML' | 'RESPONSE_XML' | null
   >(null);
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
   const [emailTo, setEmailTo] = useState('');
@@ -127,19 +126,23 @@ export default function AcceptedInvoicePage() {
       return;
     }
     const role = String(session.user.role ?? '').toUpperCase();
-    if (role !== 'ADMIN' && role !== 'FACTURACION_COBROS') {
+    if (role !== 'ADMIN' && role !== 'FACTURACION_COBROS' && !(role === 'AGENT' && customerId)) {
       router.replace(getHomeRouteForRole(role));
       return;
     }
     queueMicrotask(() => setAuthorized(true));
-  }, [router]);
+  }, [customerId, router]);
+
+  const customerScopedReadOnly = String(getStoredSession()?.user?.role ?? '').toUpperCase() === 'AGENT' && Boolean(customerId);
 
   useEffect(() => {
     if (!authorized) return;
     const controller = new AbortController();
     setLoading(true);
     setError(null);
-    void getAcceptedBillingInvoice(billingDocumentId, controller.signal)
+    void (customerScopedReadOnly
+      ? getCustomerAcceptedBillingInvoice(customerId, billingDocumentId, controller.signal)
+      : getAcceptedBillingInvoice(billingDocumentId, controller.signal))
       .then(setInvoice)
       .catch((requestError: unknown) => {
         if (controller.signal.aborted) return;
@@ -154,7 +157,7 @@ export default function AcceptedInvoicePage() {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [authorized, billingDocumentId]);
+  }, [authorized, billingDocumentId, customerId, customerScopedReadOnly]);
 
   useEffect(() => {
     if (!emailDialogOpen) return;
@@ -169,7 +172,9 @@ export default function AcceptedInvoicePage() {
     if (!authorized) return;
     const controller = new AbortController();
     setArtifactsLoading(true);
-    void listFiscalArtifacts(billingDocumentId, controller.signal)
+    void (customerScopedReadOnly
+      ? listCustomerAcceptedInvoiceArtifacts(customerId, billingDocumentId, controller.signal)
+      : listFiscalArtifacts(billingDocumentId, controller.signal))
       .then((available) => {
         setArtifacts(available);
         setDocumentError(null);
@@ -187,21 +192,19 @@ export default function AcceptedInvoicePage() {
         if (!controller.signal.aborted) setArtifactsLoading(false);
       });
     return () => controller.abort();
-  }, [authorized, billingDocumentId]);
+  }, [authorized, billingDocumentId, customerId, customerScopedReadOnly]);
 
   async function downloadAvailableArtifact(
     artifact: FiscalArtifactListItem,
-    action: 'SIGNED_XML' | 'RESPONSE_XML',
+    action: 'INTERNAL_PDF' | 'SIGNED_XML' | 'RESPONSE_XML',
   ) {
     if (documentAction) return;
     setDocumentAction(action);
     setDocumentError(null);
     try {
-      saveArtifact(await downloadFiscalArtifact(
-        billingDocumentId,
-        artifact.artifactType,
-        artifact.version,
-      ));
+      saveArtifact(await (customerScopedReadOnly
+        ? downloadCustomerAcceptedInvoiceArtifact(customerId, billingDocumentId, artifact.artifactType, artifact.version)
+        : downloadFiscalArtifact(billingDocumentId, artifact.artifactType, artifact.version)));
     } catch (requestError) {
       setDocumentError(requestError instanceof FiscalBillingApiError
         ? requestError
@@ -334,12 +337,13 @@ export default function AcceptedInvoicePage() {
   const money = (value: string) => formatFiscalMoney(value, invoice.currencyCode);
   const signedXml = latestAvailableArtifact(artifacts, 'SIGNED_FISCAL_XML');
   const responseXml = latestAvailableArtifact(artifacts, 'TAX_AUTHORITY_RESPONSE_XML');
+  const internalPdf = latestAvailableArtifact(artifacts, 'INTERNAL_PDF');
 
   return (
     <main className="app-shell">
       <div className={styles.page}>
-        <Link className={`${styles.backLink} ${styles.navigationButton}`} href="/fiscal-billing/sales-orders">
-          <ArrowLeft aria-hidden="true" />Volver a Órdenes por facturar
+        <Link className={`${styles.backLink} ${styles.navigationButton}`} href={customerScopedReadOnly ? `/admin/customers/${encodeURIComponent(customerId)}` : '/fiscal-billing/sales-orders'}>
+          <ArrowLeft aria-hidden="true" />{customerScopedReadOnly ? 'Volver al cliente' : 'Volver a Órdenes por facturar'}
         </Link>
 
         <header className={styles.header}>
@@ -430,7 +434,7 @@ export default function AcceptedInvoicePage() {
           <h2>Documentos</h2>
           <p className={styles.muted}>Descargue los documentos disponibles de esta factura aceptada.</p>
           <div className={styles.workspaceActions}>
-            <Button
+            {!customerScopedReadOnly ? <Button
               type="button"
               className={styles.primaryAction}
               disabled={emailSubmitting}
@@ -438,8 +442,8 @@ export default function AcceptedInvoicePage() {
             >
               <Mail aria-hidden="true" />
               Reenviar por correo
-            </Button>
-            <Button
+            </Button> : null}
+            {!customerScopedReadOnly ? <Button
               type="button"
               className={styles.primaryAction}
               disabled={documentAction !== null}
@@ -453,7 +457,16 @@ export default function AcceptedInvoicePage() {
                 : documentAction === 'DOWNLOADING_PDF'
                   ? 'Descargando PDF…'
                   : 'Descargar PDF'}
-            </Button>
+            </Button> : null}
+            {customerScopedReadOnly && internalPdf ? <Button
+              type="button"
+              className={styles.primaryAction}
+              disabled={documentAction !== null}
+              onClick={() => void downloadAvailableArtifact(internalPdf, 'INTERNAL_PDF')}
+            >
+              {documentAction === 'INTERNAL_PDF' ? <LoaderCircle className={styles.spin} aria-hidden="true" /> : <Download aria-hidden="true" />}
+              {documentAction === 'INTERNAL_PDF' ? 'Descargando…' : 'Descargar PDF'}
+            </Button> : null}
             {signedXml && (
               <Button
                 type="button"
@@ -497,11 +510,11 @@ export default function AcceptedInvoicePage() {
           )}
         </section>
 
-        <div className={styles.workspaceActions}>
+        {!customerScopedReadOnly ? <div className={styles.workspaceActions}>
           <Button asChild variant="outline" className={styles.secondaryAction}>
             <Link href={`/fiscal-billing/documents/${encodeURIComponent(invoice.billingDocumentId)}`}>Detalles técnicos</Link>
           </Button>
-        </div>
+        </div> : null}
       </div>
       {emailDialogOpen && (
         <div
