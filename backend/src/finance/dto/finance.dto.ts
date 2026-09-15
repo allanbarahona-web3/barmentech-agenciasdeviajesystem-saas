@@ -119,6 +119,11 @@ export class CustomerInvoicePaymentTargetsQueryDto {
   currencyCode!: Currency;
 }
 
+export class CustomerContractPaymentTargetsQueryDto {
+  @Transform(trim) @IsEnum(Currency)
+  currencyCode!: Currency;
+}
+
 export class CustomerPaymentSettlementPreviewQueryDto {
   @Transform(trim) @IsEnum(Currency)
   receivedCurrencyCode!: Currency;
@@ -152,6 +157,29 @@ export class ReportedInvoicePaymentDto {
   notes?: string;
   @IsArray() @ArrayMinSize(1) @ArrayMaxSize(25) @ValidateNested({ each: true }) @Type(() => ReportedInvoicePaymentTargetDto)
   targets!: ReportedInvoicePaymentTargetDto[];
+}
+
+export class ReportedContractPaymentDto {
+  @Transform(trim) @IsEnum(Currency)
+  currencyCode!: Currency;
+  @Transform(trim) @IsString() @MaxLength(100) @Matches(moneyText)
+  amount!: string;
+  @IsOptional() @Transform(trim) @IsString() @MaxLength(50) @Matches(/\S/)
+  paymentMethod?: string;
+  @IsOptional() @IsDateString()
+  paymentDate?: string;
+  @IsOptional() @Transform(trim) @IsString() @MaxLength(150) @Matches(/\S/)
+  reference?: string;
+  @IsOptional() @Transform(trim) @IsString() @MaxLength(500) @Matches(/\S/)
+  payerName?: string;
+  @IsOptional() @Transform(trim) @IsString() @MaxLength(500) @Matches(/\S/)
+  notes?: string;
+  @Transform(trim) @IsString() @MaxLength(191) @Matches(/\S/)
+  contractId!: string;
+  @Transform(trim) @IsString() @MaxLength(191) @Matches(/\S/)
+  commercialObligationId!: string;
+  @Transform(trim) @IsString() @MaxLength(100) @Matches(moneyText)
+  intendedAmount!: string;
 }
 
 export class ListAccountReceivableGroupsDto {

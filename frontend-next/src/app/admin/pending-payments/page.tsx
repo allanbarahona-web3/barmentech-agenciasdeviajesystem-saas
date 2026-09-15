@@ -23,10 +23,11 @@ import {
   formatFinanceMoney,
   getContractReservationEvidence,
   getCustomerPaymentSettlementPreview,
-  getInvoicePendingPaymentReviewDetail,
+  getPendingPaymentReviewDetail,
   getReportedInvoicePaymentEvidence,
   listPendingContractReservationPayments,
-  precheckInvoicePendingPaymentApproval,
+  precheckPendingPaymentApproval,
+  type ContractPendingPaymentReview,
   rejectContractReservationPayment,
   type ContractReservationPayment,
   type InvoicePendingPaymentReview,
@@ -41,13 +42,21 @@ import { useCallback, useEffect, useRef, useState } from "react";
 type ViewerSession = {
   paymentId: string;
   customerId: string | null;
-  reviewKind: "CONTRACT" | "INVOICES";
+  reviewKind: "CONTRACT" | "INVOICES" | "CONTRACTS";
   attachments: Attachment[];
   initialIndex: number;
 };
 
 function isInvoicePayment(payment: PendingPaymentReviewItem): payment is InvoicePendingPaymentReview {
   return payment.reviewKind === "INVOICES";
+}
+
+function isReportedContractPayment(payment: PendingPaymentReviewItem): payment is ContractPendingPaymentReview {
+  return payment.reviewKind === "CONTRACTS";
+}
+
+function isReportedPayment(payment: PendingPaymentReviewItem): payment is InvoicePendingPaymentReview | ContractPendingPaymentReview {
+  return isInvoicePayment(payment) || isReportedContractPayment(payment);
 }
 
 const MONEY_DECIMAL_PLACES = 5;
@@ -117,6 +126,74 @@ function InvoiceReviewDetails({
   </div>;
 }
 
+function SettlementReviewDetails({
+  preview,
+}: {
+  preview: Awaited<ReturnType<typeof getCustomerPaymentSettlementPreview>> | null;
+}) {
+  if (!preview || preview.status !== "AVAILABLE" || !preview.settlementAmount) {
+    return <div className="rounded-md border border-border bg-muted/30 p-3 text-xs text-muted-foreground">El equivalente de aplicación se valida nuevamente en Finance al aprobar.</div>;
+  }
+  return <div className="grid gap-1 rounded-md border border-border bg-muted/30 p-3 text-xs">
+    <strong>Liquidación / aplicación</strong>
+    <span>Equivalente: <strong>{formatFinanceMoney(preview.settlementAmount, preview.settlementCurrencyCode)}</strong></span>
+    <span>Tipo de cambio: <strong>{preview.exchangeRate ?? "No disponible"}</strong></span>
+    <span>Fuente: <strong>{preview.exchangeRateSource ?? "No disponible"}</strong></span>
+    <span>Fecha efectiva: <strong>{preview.exchangeRateEffectiveDate ? new Date(`${preview.exchangeRateEffectiveDate}T00:00:00`).toLocaleDateString("es-CR") : "No disponible"}</strong></span>
+  </div>;
+}
+
+function DestinationValidationSummary({
+  evidence,
+}: {
+  evidence: ContractPendingPaymentReview["evidence"];
+}) {
+  const validation = evidence?.find((item) => item.extractionMetadata?.destinationValidation)?.extractionMetadata?.destinationValidation;
+  if (!validation) return null;
+  const label = validation.status === "MATCHED"
+    ? "Cuenta destino verificada"
+    : validation.status === "UNKNOWN"
+      ? "Destino no identificado"
+      : validation.status === "AMBIGUOUS"
+        ? "Destino ambiguo"
+        : "Cuenta destino no verificada";
+  return <div className="flex flex-wrap items-center gap-2 text-xs"><Badge variant={validation.status === "MATCHED" ? "success" : "destructive"}>{label}</Badge>{validation.overrideAccepted ? <span className="text-muted-foreground">Excepción aceptada y registrada.</span> : null}</div>;
+}
+
+function ContractReviewDetails({
+  payment,
+  settlementPreview,
+  onOpenEvidence,
+}: {
+  payment: ContractPendingPaymentReview;
+  settlementPreview: Awaited<ReturnType<typeof getCustomerPaymentSettlementPreview>> | null;
+  onOpenEvidence: (index: number) => void;
+}) {
+  const contract = payment.contract;
+  const evidence = payment.evidence ?? [];
+  if (!contract) return <Alert variant="destructive"><AlertTitle>Contrato no disponible</AlertTitle><AlertDescription>El contrato debe validarse nuevamente antes de aprobar este pago.</AlertDescription></Alert>;
+  return <div className="grid gap-3 text-sm">
+    <div className="grid gap-1 rounded-md border border-border bg-muted/30 p-3 text-xs">
+      <strong>Pago recibido</strong>
+      <span>Monto físico: <strong>{formatFinanceMoney(payment.receivedAmount, payment.currencyCode)}</strong></span>
+      <span>Método: <strong>{formatFinancePaymentMethod(payment.paymentMethod)}</strong></span>
+      <span>Pagador: <strong>{payment.payerDisplayName}</strong></span>
+      <span>Referencia: <strong>{payment.externalReference || "No indicada"}</strong></span>
+    </div>
+    <div className="grid gap-1 rounded-md border border-border bg-muted/30 p-3 text-xs">
+      <strong>Aplicación contractual</strong>
+      <span>Contrato: <strong>{contract.contractNumber}</strong></span>
+      <span>Viaje: <strong>{contract.travelName}</strong></span>
+      <span>Monto original: <strong>{formatFinanceMoney(contract.originalAmount, contract.obligationCurrencyCode)}</strong></span>
+      <span>Saldo actual: <strong>{formatFinanceMoney(contract.outstandingAmount, contract.obligationCurrencyCode)}</strong></span>
+      <span>Monto solicitado: <strong>{formatFinanceMoney(contract.intendedAmount, contract.obligationCurrencyCode)}</strong></span>
+    </div>
+    <SettlementReviewDetails preview={settlementPreview} />
+    <DestinationValidationSummary evidence={evidence} />
+    <div className="grid gap-1 text-xs"><strong>Comprobantes</strong>{evidence.length ? evidence.map((item, index) => <Button key={item.id} type="button" variant="link" size="sm" className="w-fit px-0" onClick={() => onOpenEvidence(index)}><Paperclip aria-hidden="true" />{item.originalFileName}</Button>) : <span className="text-muted-foreground">Sin comprobantes identificables</span>}</div>
+  </div>;
+}
+
 export default function PendingPaymentsPage() {
   const router = useRouter();
   const formatTenantDateTime = useTenantDateTimeFormatter();
@@ -175,11 +252,14 @@ export default function PendingPaymentsPage() {
     setActionBusy("");
   };
 
-  const openInvoiceApproval = async (payment: InvoicePendingPaymentReview) => {
-    if (!beginAction(`detail:${payment.id}`, "Cargando revisión del pago de facturas...")) return;
+  const openReportedApproval = async (payment: InvoicePendingPaymentReview | ContractPendingPaymentReview) => {
+    const contractPayment = isReportedContractPayment(payment);
+    if (!beginAction(`detail:${payment.id}`, contractPayment ? "Cargando revisión del pago contractual..." : "Cargando revisión del pago de facturas...")) return;
     try {
-      const detail = await getInvoicePendingPaymentReviewDetail(payment.id);
-      const settlementCurrencyCode = invoiceApplicationCurrency(detail);
+      const detail = await getPendingPaymentReviewDetail(payment.id);
+      const settlementCurrencyCode = isReportedContractPayment(detail)
+        ? detail.contract?.obligationCurrencyCode ?? null
+        : invoiceApplicationCurrency(detail);
       let settlementPreview: Awaited<ReturnType<typeof getCustomerPaymentSettlementPreview>> | null = null;
       if (detail.customerId && settlementCurrencyCode) {
         try {
@@ -197,24 +277,24 @@ export default function PendingPaymentsPage() {
       setLoadingModalOpen(false);
     } catch (error) {
       setLoadingModalState("error");
-      setLoadingModalMessage(error instanceof Error ? error.message : "No se pudo cargar la revisión del pago de facturas.");
+      setLoadingModalMessage(error instanceof Error ? error.message : contractPayment ? "No se pudo cargar la revisión del pago contractual." : "No se pudo cargar la revisión del pago de facturas.");
     } finally {
       finishAction();
     }
   };
 
   const onApprove = async () => {
-    if (!approvePayment || !beginAction(`approve:${approvePayment.id}`, isInvoicePayment(approvePayment) ? "Validando y aprobando pago de facturas..." : "Aprobando pago de reserva...")) return;
+    if (!approvePayment || !beginAction(`approve:${approvePayment.id}`, isInvoicePayment(approvePayment) ? "Validando y aprobando pago de facturas..." : isReportedContractPayment(approvePayment) ? "Validando y aprobando pago contractual..." : "Aprobando pago de reserva...")) return;
     const payment = approvePayment;
     const paymentId = approvePayment.id;
     try {
-      if (isInvoicePayment(payment)) {
-        await precheckInvoicePendingPaymentApproval(paymentId);
+      if (isReportedPayment(payment)) {
+        await precheckPendingPaymentApproval(paymentId);
       }
       setApprovePayment(null);
       await approveContractReservationPayment(paymentId);
       setLoadingModalState("success");
-      setLoadingModalMessage(isInvoicePayment(payment) ? "Pago de facturas aprobado exitosamente." : "Pago de reserva aprobado exitosamente.");
+      setLoadingModalMessage(isInvoicePayment(payment) ? "Pago de facturas aprobado." : isReportedContractPayment(payment) ? "Pago contractual aprobado." : "Pago de reserva aprobado.");
       await load();
     } catch (error) {
       setLoadingModalState("error");
@@ -233,13 +313,13 @@ export default function PendingPaymentsPage() {
       return;
     }
     const payment = payments.find((item) => item.id === rejectModalPaymentId);
-    const paymentLabel = payment && isInvoicePayment(payment) ? "pago de facturas" : "pago de reserva";
+    const paymentLabel = payment && isInvoicePayment(payment) ? "pago de facturas" : payment && isReportedContractPayment(payment) ? "pago contractual" : "pago de reserva";
     if (!rejectModalPaymentId || !beginAction(`reject:${rejectModalPaymentId}`, `Rechazando ${paymentLabel}...`)) return;
     const paymentId = rejectModalPaymentId;
     try {
       await rejectContractReservationPayment(paymentId, reason);
       setLoadingModalState("success");
-      setLoadingModalMessage(`${paymentLabel === "pago de facturas" ? "Pago de facturas" : "Pago de reserva"} rechazado exitosamente.`);
+      setLoadingModalMessage(`${paymentLabel === "pago de facturas" ? "Pago de facturas" : paymentLabel === "pago contractual" ? "Pago contractual" : "Pago de reserva"} rechazado.`);
       setRejectModalPaymentId("");
       setRejectReason("");
       setRejectError("");
@@ -281,11 +361,11 @@ export default function PendingPaymentsPage() {
     }
   };
 
-  const openInvoiceEvidence = async (payment: InvoicePendingPaymentReview, initialIndex: number) => {
+  const openReportedEvidence = async (payment: InvoicePendingPaymentReview | ContractPendingPaymentReview, initialIndex: number) => {
     const key = `evidence:${payment.id}`;
     if (!beginAction(key, "Cargando comprobantes...")) return;
     try {
-      const detail = await getInvoicePendingPaymentReviewDetail(payment.id);
+      const detail = await getPendingPaymentReviewDetail(payment.id);
       const evidence = detail.evidence ?? [];
       const selectedEvidence = evidence[initialIndex];
       if (!selectedEvidence || !detail.customerId) throw new Error("Sin comprobantes identificables.");
@@ -293,7 +373,7 @@ export default function PendingPaymentsPage() {
       setViewerSession({
         paymentId: detail.id,
         customerId: detail.customerId,
-        reviewKind: "INVOICES",
+        reviewKind: detail.reviewKind,
         attachments: evidence.map((item) => ({
           id: item.id,
           originalFileName: item.originalFileName,
@@ -313,7 +393,7 @@ export default function PendingPaymentsPage() {
 
   const resolveEvidenceUrl = useCallback(async (attachment: Attachment, signal: AbortSignal) => {
     if (!viewerSession) throw new Error("No hay comprobante seleccionado.");
-    if (viewerSession.reviewKind === "INVOICES") {
+    if (viewerSession.reviewKind === "INVOICES" || viewerSession.reviewKind === "CONTRACTS") {
       if (!viewerSession.customerId) throw new Error("No se pudo identificar el cliente del comprobante.");
       const evidence = await getReportedInvoicePaymentEvidence(viewerSession.customerId, viewerSession.paymentId, attachment.id, signal);
       return evidence.url;
@@ -420,19 +500,32 @@ export default function PendingPaymentsPage() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <Button type="button" variant="link" size="sm" className="max-w-full justify-start px-0 text-left" disabled={actionBusy === `evidence:${payment.id}`} onClick={() => void openInvoiceEvidence(payment, 0)}>
+                          <Button type="button" variant="link" size="sm" className="max-w-full justify-start px-0 text-left" disabled={actionBusy === `evidence:${payment.id}`} onClick={() => void openReportedEvidence(payment, 0)}>
                             <Paperclip aria-hidden="true" /> <span className="truncate">Ver comprobantes</span>
                           </Button>
                         </TableCell>
                         <TableCell><Badge variant="warning" className="whitespace-nowrap">Pendiente</Badge></TableCell>
                         <TableCell>
                           <div className="flex flex-col gap-2">
-                            <Button type="button" size="sm" onClick={() => void openInvoiceApproval(payment)} disabled={Boolean(actionBusy)}><Check aria-hidden="true" /> Aprobar</Button>
+                            <Button type="button" size="sm" onClick={() => void openReportedApproval(payment)} disabled={Boolean(actionBusy)}><Check aria-hidden="true" /> Aprobar</Button>
                             <Button type="button" variant="outline" size="sm" onClick={() => { setRejectModalPaymentId(payment.id); setRejectReason(""); setRejectError(""); }} disabled={Boolean(actionBusy)}><X aria-hidden="true" /> Rechazar</Button>
                           </div>
                         </TableCell>
                       </TableRow>
                     );
+                  }
+                  if (isReportedContractPayment(payment)) {
+                    const contract = payment.contract;
+                    return <TableRow key={payment.id}>
+                      <TableCell className="text-muted-foreground">{formatTenantDateTime(payment.createdAt)}</TableCell>
+                      <TableCell><div className="font-medium text-foreground">{payment.payerDisplayName}</div><div className="mt-1 text-xs text-muted-foreground">Cliente / pagador</div></TableCell>
+                      <TableCell><div className="grid gap-2"><Badge variant="secondary" className="w-fit">Pago contractual</Badge>{contract ? <div className="grid gap-1 text-xs text-muted-foreground"><strong className="text-foreground">{contract.contractNumber}</strong><span className="flex items-center gap-1"><Plane aria-hidden="true" className="size-3" /> {contract.travelName}</span><span>Aplicación: <strong className="text-foreground">{formatFinanceMoney(contract.intendedAmount, contract.obligationCurrencyCode)}</strong></span><span>Saldo actual: {formatFinanceMoney(contract.outstandingAmount, contract.obligationCurrencyCode)}</span></div> : <span className="text-xs text-destructive">Contrato pendiente de validación</span>}</div></TableCell>
+                      <TableCell className="font-semibold whitespace-nowrap">{formatFinanceMoney(payment.receivedAmount, payment.currencyCode)}</TableCell>
+                      <TableCell><div className="grid gap-1 text-sm"><span>Referencia: {payment.externalReference || "No indicada"}</span><span className="text-xs text-muted-foreground">Método: {formatFinancePaymentMethod(payment.paymentMethod)}</span>{payment.description ? <span className="text-xs text-muted-foreground">{payment.description}</span> : null}</div></TableCell>
+                      <TableCell><Button type="button" variant="link" size="sm" className="max-w-full justify-start px-0 text-left" disabled={actionBusy === `evidence:${payment.id}`} onClick={() => void openReportedEvidence(payment, 0)}><Paperclip aria-hidden="true" /><span className="truncate">Ver comprobantes</span></Button></TableCell>
+                      <TableCell><Badge variant="warning" className="whitespace-nowrap">Pendiente</Badge></TableCell>
+                      <TableCell><div className="flex flex-col gap-2"><Button type="button" size="sm" onClick={() => void openReportedApproval(payment)} disabled={Boolean(actionBusy)}><Check aria-hidden="true" /> Aprobar</Button><Button type="button" variant="outline" size="sm" onClick={() => { setRejectModalPaymentId(payment.id); setRejectReason(""); setRejectError(""); }} disabled={Boolean(actionBusy)}><X aria-hidden="true" /> Rechazar</Button></div></TableCell>
+                    </TableRow>;
                   }
                   const contract = payment.contract;
                   const trip = contract.travelPackage ?? contract.internalTrip;
@@ -489,11 +582,15 @@ export default function PendingPaymentsPage() {
         description={approvePayment
           ? isInvoicePayment(approvePayment)
             ? "Confirma que revisaste la información bancaria, la propuesta de aplicación y los comprobantes."
-            : <>Confirma que revisaste la información bancaria y los comprobantes de <strong>{approvePayment.contract.contractNumber}</strong>{` para ${approvePayment.contract.client.fullName}`}.</>
+            : isReportedContractPayment(approvePayment)
+              ? `Confirma que revisaste la información bancaria, la aplicación contractual y los comprobantes${approvePayment.contract ? ` del contrato ${approvePayment.contract.contractNumber}` : ""}.`
+              : `Confirma que revisaste la información bancaria y los comprobantes del contrato ${approvePayment.contract.contractNumber} para ${approvePayment.contract.client.fullName}.`
           : null}
         content={approvePayment && isInvoicePayment(approvePayment)
-          ? <InvoiceReviewDetails payment={approvePayment} settlementPreview={invoiceSettlementPreview} onOpenEvidence={(index) => void openInvoiceEvidence(approvePayment, index)} />
-          : null}
+          ? <InvoiceReviewDetails payment={approvePayment} settlementPreview={invoiceSettlementPreview} onOpenEvidence={(index) => void openReportedEvidence(approvePayment, index)} />
+          : approvePayment && isReportedContractPayment(approvePayment)
+            ? <ContractReviewDetails payment={approvePayment} settlementPreview={invoiceSettlementPreview} onOpenEvidence={(index) => void openReportedEvidence(approvePayment, index)} />
+            : null}
         cancelLabel="Cancelar"
         confirmLabel="Aprobar pago"
         pendingLabel="Aprobando..."

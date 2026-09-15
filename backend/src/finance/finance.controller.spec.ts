@@ -6,7 +6,7 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { ROLES_KEY } from "../auth/roles.decorator";
 import { RolesGuard } from "../auth/roles.guard";
 import { FinanceController } from "./finance.controller";
-import { CancelPaymentDto, CustomerInvoicePaymentTargetsQueryDto, CustomerPaymentSettlementPreviewQueryDto, ListContractObligationGroupContractsDto, ListContractObligationGroupsDto, ListContractPaymentsDto, ListContractReservationPaymentsDto, ListCustomerElectronicInvoicesDto, ListPaymentsDto, ListUnallocatedPaymentBalancesDto, RegisterContractInstallmentDto, RegisterPaymentDto, ReportedInvoicePaymentDto } from "./dto/finance.dto";
+import { CancelPaymentDto, CustomerContractPaymentTargetsQueryDto, CustomerInvoicePaymentTargetsQueryDto, CustomerPaymentSettlementPreviewQueryDto, ListContractObligationGroupContractsDto, ListContractObligationGroupsDto, ListContractPaymentsDto, ListContractReservationPaymentsDto, ListCustomerElectronicInvoicesDto, ListPaymentsDto, ListUnallocatedPaymentBalancesDto, RegisterContractInstallmentDto, RegisterPaymentDto, ReportedContractPaymentDto, ReportedInvoicePaymentDto } from "./dto/finance.dto";
 
 describe("FinanceController", () => {
   it("registers an exact payment for only the authenticated tenant", async () => {
@@ -65,6 +65,20 @@ describe("FinanceController", () => {
 
     await expect(c.controller.getContractCommercialObligation(request("tenant-auth"), "contract-a")).resolves.toBe(result);
     expect(c.reads.getContractCommercialObligation).toHaveBeenCalledWith("tenant-auth", "contract-a");
+  });
+
+  it("allows AGENT only through the customer-scoped readonly Contract financial detail", async () => {
+    const c = context();
+    const result = { contract: { contractId: "contract-a", contractNumber: "CTR-100", travelName: "Costa Rica" }, commercialObligation: null, payable: false, payments: { items: [], total: 0 } };
+    c.reads.getCustomerContractFinancialDetail.mockResolvedValue(result);
+
+    await expect(c.controller.getCustomerContractFinancialDetail(request("tenant-auth", UserRole.AGENT), "customer-a", "contract-a", { page: 1 })).resolves.toBe(result);
+    expect(c.reads.getCustomerContractFinancialDetail).toHaveBeenCalledWith("tenant-auth", "customer-a", "contract-a", { page: 1 });
+    for (const role of [UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.AGENT, UserRole.CONTADOR]) {
+      expect(canActivate(role, "getCustomerContractFinancialDetail")).toBe(true);
+    }
+    expect(() => canActivate(UserRole.AGENT, "getContractCommercialObligation")).toThrow(ForbiddenException);
+    expect(() => canActivate(UserRole.AGENT, "listContractPayments")).toThrow(ForbiddenException);
   });
 
   it("returns the updated payment after a partial allocation", async () => {
@@ -173,14 +187,14 @@ describe("FinanceController", () => {
 
   it("delegates invoice review detail and approval precheck only for the authenticated tenant", async () => {
     const c = context();
-    c.contractReservations.getInvoicePendingDetail.mockResolvedValue({ id: "payment-pending", reviewKind: "INVOICES" });
-    c.contractReservations.precheckInvoicePendingPayment.mockResolvedValue({ ok: true, paymentId: "payment-pending" });
+    c.contractReservations.getPendingPaymentDetail.mockResolvedValue({ id: "payment-pending", reviewKind: "INVOICES" });
+    c.contractReservations.precheckPendingPayment.mockResolvedValue({ ok: true, paymentId: "payment-pending" });
 
     await expect(c.controller.getInvoicePendingPaymentReviewDetail(request("tenant-auth"), "payment-pending")).resolves.toMatchObject({ reviewKind: "INVOICES" });
     await expect(c.controller.precheckInvoicePendingPaymentApproval(request("tenant-auth"), "payment-pending")).resolves.toEqual({ ok: true, paymentId: "payment-pending" });
 
-    expect(c.contractReservations.getInvoicePendingDetail).toHaveBeenCalledWith("tenant-auth", "payment-pending");
-    expect(c.contractReservations.precheckInvoicePendingPayment).toHaveBeenCalledWith("tenant-auth", "payment-pending");
+    expect(c.contractReservations.getPendingPaymentDetail).toHaveBeenCalledWith("tenant-auth", "payment-pending");
+    expect(c.contractReservations.precheckPendingPayment).toHaveBeenCalledWith("tenant-auth", "payment-pending");
   });
 
   it("renders and sends a payment receipt only within the authenticated tenant", async () => {
@@ -268,6 +282,32 @@ describe("FinanceController", () => {
     expect((c.reportedInvoicePayments.submit.mock.calls[0][0].amount as Prisma.Decimal).toFixed()).toBe("100");
     expect((c.reportedInvoicePayments.submit.mock.calls[0][0].targets[0].intendedAmount as Prisma.Decimal).toFixed()).toBe("100");
     for (const handler of ["listCustomerInvoicePaymentTargets", "submitReportedInvoicePayment"] as const) {
+      expect(Reflect.getMetadata(ROLES_KEY, FinanceController.prototype[handler])).toEqual([UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.AGENT]);
+      expect(canActivate(UserRole.AGENT, handler)).toBe(true);
+      expect(() => canActivate(UserRole.CONTADOR, handler)).toThrow(ForbiddenException);
+    }
+  });
+
+  it("allows AGENT customer-scoped Contract targets and exactly-one pending Contract payment intake", async () => {
+    const c = context();
+    c.reads.listCustomerContractPaymentTargets.mockResolvedValue({ targets: [] });
+    c.reportedInvoicePayments.submitContract.mockResolvedValue({ paymentId: "payment-contract-pending", status: "PENDING_VERIFICATION", receiptNumber: null });
+
+    await expect(c.controller.listCustomerContractPaymentTargets(request("tenant-auth"), "customer-a", { currencyCode: "USD" as never })).resolves.toEqual({ targets: [] });
+    await expect(c.controller.submitReportedContractPayment(request("tenant-auth"), "customer-a", {
+      currencyCode: "CRC", amount: "135000.00", paymentMethod: "BANK_TRANSFER", paymentDate: "2026-09-14T10:00:00.000Z",
+      reference: "BANK-300", payerName: "Customer A", notes: "Reported", contractId: "contract-a",
+      commercialObligationId: "obligation-a", intendedAmount: "300.00",
+    })).resolves.toMatchObject({ paymentId: "payment-contract-pending", receiptNumber: null });
+
+    expect(c.reads.listCustomerContractPaymentTargets).toHaveBeenCalledWith("tenant-auth", "customer-a", "USD");
+    expect(c.reportedInvoicePayments.submitContract).toHaveBeenCalledWith(expect.objectContaining({
+      tenantId: "tenant-auth", customerId: "customer-a", contractId: "contract-a", commercialObligationId: "obligation-a",
+      actor: { userId: "user-a", name: "Finance User" },
+    }));
+    expect((c.reportedInvoicePayments.submitContract.mock.calls[0][0].amount as Prisma.Decimal).toFixed()).toBe("135000");
+    expect((c.reportedInvoicePayments.submitContract.mock.calls[0][0].intendedAmount as Prisma.Decimal).toFixed()).toBe("300");
+    for (const handler of ["listCustomerContractPaymentTargets", "submitReportedContractPayment"] as const) {
       expect(Reflect.getMetadata(ROLES_KEY, FinanceController.prototype[handler])).toEqual([UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.AGENT]);
       expect(canActivate(UserRole.AGENT, handler)).toBe(true);
       expect(() => canActivate(UserRole.CONTADOR, handler)).toThrow(ForbiddenException);
@@ -505,6 +545,18 @@ describe("FinanceController", () => {
       { type: "body", metatype: ReportedInvoicePaymentDto },
     )).rejects.toBeDefined();
     await expect(pipe.transform(
+      { currencyCode: "USD" },
+      { type: "query", metatype: CustomerContractPaymentTargetsQueryDto },
+    )).resolves.toMatchObject({ currencyCode: "USD" });
+    await expect(pipe.transform(
+      { currencyCode: "USD", amount: "100.00", contractId: "contract-a", commercialObligationId: "obligation-a", intendedAmount: "100.00" },
+      { type: "body", metatype: ReportedContractPaymentDto },
+    )).resolves.toMatchObject({ contractId: "contract-a", commercialObligationId: "obligation-a", intendedAmount: "100.00" });
+    await expect(pipe.transform(
+      { currencyCode: "USD", amount: "100.00", contractId: "contract-a", commercialObligationId: "obligation-a", intendedAmount: "100.00", targets: [{ targetId: "unexpected" }] },
+      { type: "body", metatype: ReportedContractPaymentDto },
+    )).rejects.toBeDefined();
+    await expect(pipe.transform(
       { receivedCurrencyCode: "CRC", settlementCurrencyCode: "USD", receivedAmount: "89988.00000" },
       { type: "query", metatype: CustomerPaymentSettlementPreviewQueryDto },
     )).resolves.toMatchObject({ receivedCurrencyCode: "CRC", settlementCurrencyCode: "USD", receivedAmount: "89988.00000" });
@@ -520,20 +572,20 @@ function context() {
   const allocations = { allocate: jest.fn().mockResolvedValue(undefined) };
   const reversals = { reverse: jest.fn() };
   const cancellations = { cancel: jest.fn() };
-  const reads = { paymentSummary: jest.fn((value) => ({ id: value.id, receivedAmount: value.receivedAmount.toFixed(), availableAmount: value.availableAmount.toFixed() })), getPaymentDetail: jest.fn(), getPaymentIdForAllocation: jest.fn(), getAccountReceivableDetail: jest.fn(), getContractCommercialObligation: jest.fn(), listContractPayments: jest.fn(), getAllocationSuggestion: jest.fn(), listAccountReceivables: jest.fn(), listAccountReceivableGroups: jest.fn(), listContractObligationGroups: jest.fn(), listContractObligationGroupContracts: jest.fn(), listAccountReceivableGroupItems: jest.fn(), listPayments: jest.fn(), listUnallocatedPaymentBalances: jest.fn(), getCustomerFinancialBalance: jest.fn(), getCustomerFinancialSummary: jest.fn(), listCustomerElectronicInvoices: jest.fn(), listCustomerInvoicePaymentTargets: jest.fn(), previewCustomerPaymentSettlement: jest.fn() };
-  const reportedInvoicePayments = { submit: jest.fn() };
+  const reads = { paymentSummary: jest.fn((value) => ({ id: value.id, receivedAmount: value.receivedAmount.toFixed(), availableAmount: value.availableAmount.toFixed() })), getPaymentDetail: jest.fn(), getPaymentIdForAllocation: jest.fn(), getAccountReceivableDetail: jest.fn(), getContractCommercialObligation: jest.fn(), getCustomerContractFinancialDetail: jest.fn(), listContractPayments: jest.fn(), getAllocationSuggestion: jest.fn(), listAccountReceivables: jest.fn(), listAccountReceivableGroups: jest.fn(), listContractObligationGroups: jest.fn(), listContractObligationGroupContracts: jest.fn(), listAccountReceivableGroupItems: jest.fn(), listPayments: jest.fn(), listUnallocatedPaymentBalances: jest.fn(), getCustomerFinancialBalance: jest.fn(), getCustomerFinancialSummary: jest.fn(), listCustomerElectronicInvoices: jest.fn(), listCustomerInvoicePaymentTargets: jest.fn(), listCustomerContractPaymentTargets: jest.fn(), previewCustomerPaymentSettlement: jest.fn() };
+  const reportedInvoicePayments = { submit: jest.fn(), submitContract: jest.fn() };
   const pendingInvoicePaymentEvidence = { extract: jest.fn(), attach: jest.fn(), getAccess: jest.fn(), acceptDestinationOverride: jest.fn() };
   const customerAcceptedInvoices = { get: jest.fn(), listArtifacts: jest.fn(), downloadArtifact: jest.fn() };
   const statements = { get: jest.fn(), render: jest.fn(), send: jest.fn() };
   const paymentAndApply = { execute: jest.fn() };
   const receipts = { render: jest.fn(), send: jest.fn() };
-  const contractReservations = { listPending: jest.fn(), getInvoicePendingDetail: jest.fn(), precheckInvoicePendingPayment: jest.fn(), approve: jest.fn(), reject: jest.fn(), getEvidenceUrl: jest.fn() };
+  const contractReservations = { listPending: jest.fn(), getInvoicePendingDetail: jest.fn(), precheckInvoicePendingPayment: jest.fn(), getPendingPaymentDetail: jest.fn(), precheckPendingPayment: jest.fn(), approve: jest.fn(), reject: jest.fn(), getEvidenceUrl: jest.fn() };
   const contractInstallments = { register: jest.fn() };
   return { registrations, allocations, reversals, cancellations, reads, statements, paymentAndApply, receipts, contractReservations, contractInstallments, reportedInvoicePayments, pendingInvoicePaymentEvidence, customerAcceptedInvoices, controller: new FinanceController(registrations as never, allocations as never, reversals as never, cancellations as never, reads as never, undefined, statements as never, paymentAndApply as never, receipts as never, contractReservations as never, contractInstallments as never, reportedInvoicePayments as never, pendingInvoicePaymentEvidence as never, customerAcceptedInvoices as never) };
 }
 
-function request(tenantId = "tenant-a") {
-  return { user: { id: "user-a", email: "finance@example.com", fullName: "Finance User", tenantId, role: UserRole.ADMIN } };
+function request(tenantId = "tenant-a", role: UserRole = UserRole.ADMIN) {
+  return { user: { id: "user-a", email: "finance@example.com", fullName: "Finance User", tenantId, role } };
 }
 
 function payment() {

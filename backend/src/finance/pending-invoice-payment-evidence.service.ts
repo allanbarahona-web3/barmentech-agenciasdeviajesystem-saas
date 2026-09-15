@@ -27,7 +27,7 @@ export type PaymentEvidenceExtractionInput = {
   confidence?: unknown;
 };
 
-type PendingInvoicePayment = {
+type PendingReportedPayment = {
   id: string;
   tenantId: string;
   customerId: string | null;
@@ -69,7 +69,7 @@ export class PendingInvoicePaymentEvidenceService {
 
   async attach(input: { tenantId: string; customerId: string; paymentId: string; file: EvidenceFile; extraction?: PaymentEvidenceExtractionInput | null }) {
     validateEvidenceFile(input.file, EVIDENCE_MIME_TYPES, "FINANCE_PAYMENT_EVIDENCE_INVALID");
-    validatePendingInvoicePayment(await this.findPayment(input.tenantId, input.paymentId), input.customerId);
+    validatePendingReportedPayment(await this.findPayment(input.tenantId, input.paymentId), input.customerId);
     const extractionMetadata = input.extraction
       ? await extractionMetadataFor(input.tenantId, input.extraction, this.destinationValidator)
       : null;
@@ -85,8 +85,8 @@ export class PendingInvoicePaymentEvidenceService {
         if (locked.length !== 1) throw new NotFoundException("FINANCE_PENDING_PAYMENT_NOT_FOUND");
         const payment = await tx.payment.findFirst({
           where: { id: input.paymentId, tenantId: input.tenantId },
-        }) as PendingInvoicePayment | null;
-        validatePendingInvoicePayment(payment, input.customerId);
+        }) as PendingReportedPayment | null;
+        validatePendingReportedPayment(payment, input.customerId);
         return tx.paymentEvidence.create({
           data: {
             tenantId: input.tenantId,
@@ -116,10 +116,19 @@ export class PendingInvoicePaymentEvidenceService {
         payment: {
           tenantId: input.tenantId,
           customerId: input.customerId,
-          purpose: PaymentPurpose.GENERAL,
-          contractId: null,
           status: PaymentStatus.PENDING_VERIFICATION,
-          allocationProposal: { path: ["kind"], equals: "INVOICES" },
+          OR: [
+            {
+              purpose: PaymentPurpose.GENERAL,
+              contractId: null,
+              allocationProposal: { path: ["kind"], equals: "INVOICES" },
+            },
+            {
+              purpose: PaymentPurpose.CONTRACT_INSTALLMENT,
+              contractId: { not: null },
+              allocationProposal: { path: ["kind"], equals: "CONTRACTS" },
+            },
+          ],
         },
       },
       select: { id: true, originalFileName: true, mimeType: true, size: true, objectKey: true },
@@ -150,8 +159,8 @@ export class PendingInvoicePaymentEvidenceService {
         FOR UPDATE
       `;
       if (locked.length !== 1) throw new NotFoundException("FINANCE_PENDING_PAYMENT_NOT_FOUND");
-      const payment = await tx.payment.findFirst({ where: { id: input.paymentId, tenantId: input.tenantId } }) as PendingInvoicePayment | null;
-      validatePendingInvoicePayment(payment, input.customerId);
+      const payment = await tx.payment.findFirst({ where: { id: input.paymentId, tenantId: input.tenantId } }) as PendingReportedPayment | null;
+      validatePendingReportedPayment(payment, input.customerId);
       const evidence = await tx.paymentEvidence.findFirst({
         where: { id: input.evidenceId, paymentId: input.paymentId, tenantId: input.tenantId },
         select: { id: true, extractionMetadata: true },
@@ -198,13 +207,13 @@ export class PendingInvoicePaymentEvidenceService {
     if (!customer) throw new NotFoundException("FINANCE_PENDING_PAYMENT_CUSTOMER_NOT_FOUND");
   }
 
-  private async findPayment(tenantId: string, paymentId: string): Promise<PendingInvoicePayment | null> {
-    return this.prisma.payment.findFirst({ where: { id: paymentId, tenantId } }) as unknown as Promise<PendingInvoicePayment | null>;
+  private async findPayment(tenantId: string, paymentId: string): Promise<PendingReportedPayment | null> {
+    return this.prisma.payment.findFirst({ where: { id: paymentId, tenantId } }) as unknown as Promise<PendingReportedPayment | null>;
   }
 }
 
-function validatePendingInvoicePayment(payment: PendingInvoicePayment | null, customerId: string): asserts payment is PendingInvoicePayment {
-  if (!payment || payment.customerId !== customerId || payment.purpose !== PaymentPurpose.GENERAL || payment.contractId !== null || !invoiceProposal(payment.allocationProposal)) {
+function validatePendingReportedPayment(payment: PendingReportedPayment | null, customerId: string): asserts payment is PendingReportedPayment {
+  if (!payment || payment.customerId !== customerId || !isPendingReportedPayment(payment)) {
     throw new NotFoundException("FINANCE_PENDING_PAYMENT_NOT_FOUND");
   }
   if (payment.status !== PaymentStatus.PENDING_VERIFICATION) {
@@ -212,8 +221,19 @@ function validatePendingInvoicePayment(payment: PendingInvoicePayment | null, cu
   }
 }
 
+function isPendingReportedPayment(payment: PendingReportedPayment): boolean {
+  return (
+    (payment.purpose === PaymentPurpose.GENERAL && payment.contractId === null && invoiceProposal(payment.allocationProposal)) ||
+    (payment.purpose === PaymentPurpose.CONTRACT_INSTALLMENT && payment.contractId !== null && contractProposal(payment.allocationProposal))
+  );
+}
+
 function invoiceProposal(value: unknown): boolean {
   return Boolean(value && typeof value === "object" && !Array.isArray(value) && (value as Record<string, unknown>).kind === "INVOICES");
+}
+
+function contractProposal(value: unknown): boolean {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value) && (value as Record<string, unknown>).kind === "CONTRACTS");
 }
 
 function validateEvidenceFile(file: EvidenceFile | undefined, allowedMimeTypes: Set<string>, errorCode: string): asserts file is EvidenceFile {

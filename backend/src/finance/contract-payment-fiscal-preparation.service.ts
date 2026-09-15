@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import { BillingMode, PaymentPurpose, Prisma } from "@prisma/client";
+import { BillingMode, PaymentAllocationStatus, PaymentPurpose, Prisma } from "@prisma/client";
 import { TravelFiscalClassificationService } from "../additional-services/travel-fiscal-classification.service";
 import { FiscalCatalogService } from "../fiscal-catalogs/fiscal-catalog.service";
 import { BillingDocumentService } from "../fiscal-billing/billing-document.service";
@@ -27,6 +27,7 @@ export const CONTRACT_PAYMENT_FISCAL_PREPARATION_ERRORS = {
   CLASSIFICATION_INACTIVE: "CONTRACT_PAYMENT_FISCAL_CLASSIFICATION_INACTIVE",
   CLASSIFICATION_UNSUPPORTED: "CONTRACT_PAYMENT_FISCAL_CLASSIFICATION_UNSUPPORTED",
   PAYMENT_METHOD_INVALID: "CONTRACT_PAYMENT_FISCAL_PAYMENT_METHOD_INVALID",
+  REPORTED_ALLOCATION_INVALID: "CONTRACT_PAYMENT_FISCAL_REPORTED_ALLOCATION_INVALID",
   CALCULATION_MISMATCH: "CONTRACT_PAYMENT_FISCAL_CALCULATION_MISMATCH",
   ISSUER_NOT_CONFIGURED: "CONTRACT_PAYMENT_FISCAL_ISSUER_NOT_CONFIGURED",
 } as const;
@@ -83,6 +84,7 @@ export class ContractPaymentFiscalPreparationService {
         purpose: true,
         status: true,
         contractId: true,
+        allocationProposal: true,
         contract: {
           select: {
             id: true,
@@ -164,6 +166,7 @@ export class ContractPaymentFiscalPreparationService {
     if (!contract || contract.tenantId !== tenantId || !contract.client) {
       fail(CONTRACT_PAYMENT_FISCAL_PREPARATION_ERRORS.PAYMENT_NOT_ELIGIBLE);
     }
+    const fiscalAmount = await this.fiscalAmountForPayment(payment, tenantId);
 
     const travel = resolveTravelClassification(contract);
     await validateTravelClassification(
@@ -215,7 +218,7 @@ export class ContractPaymentFiscalPreparationService {
       fail(CONTRACT_PAYMENT_FISCAL_PREPARATION_ERRORS.PAYMENT_METHOD_INVALID);
     }
     const issuer = await this.requireIssuer(tenantId);
-    const calculated = calculatePaymentSnapshot(payment, travel, contract.contractNumber);
+    const calculated = calculatePaymentSnapshot(payment, travel, contract.contractNumber, fiscalAmount.amount, fiscalAmount.currencyCode);
 
     return this.billingDocuments.createOrResumeCrV44CalculatedDraft({
       tenantId,
@@ -234,7 +237,7 @@ export class ContractPaymentFiscalPreparationService {
       fiscalCalculationPolicyVersion: CR_V44_DECIMAL_V1,
       schemaVersion: "4.4",
       countryCode: "CR",
-      currencyCode: payment.currencyCode,
+      currencyCode: fiscalAmount.currencyCode,
       paymentConditionCode: "01",
       creditTermDays: null,
       issuer: {
@@ -289,6 +292,53 @@ export class ContractPaymentFiscalPreparationService {
       fail(CONTRACT_PAYMENT_FISCAL_PREPARATION_ERRORS.ISSUER_NOT_CONFIGURED);
     }
     return { ...issuers[0], primaryActivity: issuers[0].economicActivities[0] };
+  }
+
+  private async fiscalAmountForPayment(
+    payment: {
+      id: string;
+      allocationProposal: Prisma.JsonValue | null;
+      purpose: PaymentPurpose;
+      contractId: string | null;
+      receivedAmount: Prisma.Decimal;
+      currencyCode: string;
+    },
+    tenantId: string,
+  ): Promise<{ amount: Prisma.Decimal; currencyCode: string }> {
+    if (!isReportedContractsPayment(payment)) {
+      return { amount: payment.receivedAmount, currencyCode: payment.currencyCode };
+    }
+    const allocations = await this.prisma.commercialObligationAllocation.findMany({
+      where: { tenantId, paymentId: payment.id, status: PaymentAllocationStatus.ACTIVE },
+      select: {
+        amount: true,
+        commercialObligation: {
+          select: { sourceType: true, sourceId: true, currencyCode: true },
+        },
+      },
+    });
+    if (
+      allocations.length !== 1 || !payment.contractId ||
+      allocations[0]!.commercialObligation.sourceType !== "CONTRACT" ||
+      allocations[0]!.commercialObligation.sourceId !== payment.contractId ||
+      !allocations[0]!.amount.isFinite() || allocations[0]!.amount.lessThanOrEqualTo(0)
+    ) {
+      fail(CONTRACT_PAYMENT_FISCAL_PREPARATION_ERRORS.REPORTED_ALLOCATION_INVALID);
+    }
+    const allocation = allocations[0]!;
+    try {
+      const amount = normalizeCurrencySettlementAmount(
+        allocation.amount,
+        allocation.commercialObligation.currencyCode,
+      );
+      if (!amount.equals(allocation.amount)) {
+        fail(CONTRACT_PAYMENT_FISCAL_PREPARATION_ERRORS.REPORTED_ALLOCATION_INVALID);
+      }
+      return { amount, currencyCode: allocation.commercialObligation.currencyCode };
+    } catch (error) {
+      if (error instanceof ContractPaymentFiscalPreparationError) throw error;
+      fail(CONTRACT_PAYMENT_FISCAL_PREPARATION_ERRORS.REPORTED_ALLOCATION_INVALID);
+    }
   }
 }
 
@@ -393,11 +443,17 @@ function receiverFor(client: {
   }
 }
 
-function calculatePaymentSnapshot(payment: any, travel: any, contractNumber: string) {
+function calculatePaymentSnapshot(
+  payment: any,
+  travel: any,
+  contractNumber: string,
+  fiscalAmount = payment.receivedAmount,
+  fiscalCurrencyCode = payment.currencyCode,
+) {
   const profile = travel.catalog.fiscalProfile;
   try {
     const candidate = resolveTaxIncludedGrossCrV44Candidate({
-      grossAmount: payment.receivedAmount,
+      grossAmount: fiscalAmount,
       category: travel.catalog.fiscalItemCategory,
       quantity: new Prisma.Decimal(1),
       tax: {
@@ -406,10 +462,10 @@ function calculatePaymentSnapshot(payment: any, travel: any, contractNumber: str
       },
     });
     if (!isFiscalTickReconciledTotal({
-      authoritativeGross: payment.receivedAmount,
+      authoritativeGross: fiscalAmount,
       calculatedTotal: candidate.calculatedTotal,
       normalizeSettlementAmount: (amount) =>
-        normalizeCurrencySettlementAmount(amount, payment.currencyCode),
+        normalizeCurrencySettlementAmount(amount, fiscalCurrencyCode),
     })) {
       fail(CONTRACT_PAYMENT_FISCAL_PREPARATION_ERRORS.CALCULATION_MISMATCH);
     }
@@ -425,6 +481,17 @@ function calculatePaymentSnapshot(payment: any, travel: any, contractNumber: str
     if (error instanceof ContractPaymentFiscalPreparationError) throw error;
     fail(CONTRACT_PAYMENT_FISCAL_PREPARATION_ERRORS.CALCULATION_MISMATCH);
   }
+}
+
+function isReportedContractsPayment(payment: {
+  purpose: PaymentPurpose;
+  allocationProposal: Prisma.JsonValue | null;
+}): boolean {
+  if (payment.purpose !== PaymentPurpose.CONTRACT_INSTALLMENT) return false;
+  const proposal = payment.allocationProposal;
+  if (!proposal || typeof proposal !== "object" || Array.isArray(proposal)) return false;
+  const record = proposal as Record<string, unknown>;
+  return record.kind === "CONTRACTS" && Array.isArray(record.targets) && record.targets.length === 1;
 }
 
 function contractPaymentDescription(

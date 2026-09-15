@@ -7,12 +7,12 @@ import { useRouter, useParams } from 'next/navigation';
 import { LoadingModal } from '@/components/loading-modal';
 import { getCustomerProfile, updateCustomer, getCustomerDocumentDownloadUrl, uploadCustomerDocument, createCustomerNote, updateCustomerNote, deleteCustomerNote, type CustomerContractItem, type CustomerProfile, type UpdateCustomerDto, type CustomerDocumentCategory } from '@/lib/customers-api';
 import { getStoredSession } from '@/lib/auth-api';
-import { getCustomerFinancialSummary, listCustomerElectronicInvoices, type CustomerElectronicInvoice, type CustomerElectronicInvoicesPage, type CustomerFinancialSummary } from '@/lib/finance-api';
+import { getCustomerFinancialSummary, listCustomerContractPaymentTargets, listCustomerElectronicInvoices, type CustomerContractPaymentTarget, type CustomerElectronicInvoice, type CustomerElectronicInvoicesPage, type CustomerFinancialSummary } from '@/lib/finance-api';
 import { formatFinanceMoneyDisplay } from '@/lib/finance-money-display';
 import { ContractFinanceDrawer } from '@/features/contracts-finance/contract-finance-drawer';
 import { CustomerAccountStatementModal } from '@/app/finance/accounts-receivable/customer-account-statement';
 import { CustomerEditModal, CustomerDocumentUploadModal } from '@/features/customers/components';
-import { CustomerInvoicePaymentIntakeSheet } from '@/features/finance/customer-invoice-payment-intake-sheet';
+import { CustomerContractPaymentIntakeSheet, CustomerInvoicePaymentIntakeSheet } from '@/features/finance/customer-invoice-payment-intake-sheet';
 import AttachmentViewer from '@/components/attachment-viewer';
 import { getContractFiles } from '@/lib/contracts-api';
 import { listCustomerOperationalNotes, createContractNoteForCustomer, updateContractNote, deleteContractNote, type ContractNote } from '@/lib/contract-notes-api';
@@ -51,6 +51,10 @@ export default function CustomerProfilePage() {
   const [invoicePaymentIntakeOpen, setInvoicePaymentIntakeOpen] = useState(false);
   const [invoicePaymentPreselection, setInvoicePaymentPreselection] = useState<CustomerElectronicInvoice | null>(null);
   const [invoicePaymentNotice, setInvoicePaymentNotice] = useState<string | null>(null);
+  const [contractPaymentTargets, setContractPaymentTargets] = useState<CustomerContractPaymentTarget[]>([]);
+  const [contractPaymentIntakeTarget, setContractPaymentIntakeTarget] = useState<CustomerContractPaymentTarget | null>(null);
+  const [contractPaymentIntakeOpen, setContractPaymentIntakeOpen] = useState(false);
+  const [contractPaymentNotice, setContractPaymentNotice] = useState<string | null>(null);
   const [statementCurrency, setStatementCurrency] = useState<CustomerFinancialSummary['currencies'][number]['currencyCode'] | null>(null);
   const [statementCurrencyPickerOpen, setStatementCurrencyPickerOpen] = useState(false);
   const [selectedFinancialContract, setSelectedFinancialContract] = useState<CustomerContractItem | null>(null);
@@ -133,6 +137,15 @@ export default function CustomerProfilePage() {
       });
     return () => controller.abort();
   }, [customerId, electronicInvoicesPage]);
+
+  useEffect(() => {
+    if (!customerId) return;
+    const controller = new AbortController();
+    void Promise.all((['CRC', 'USD'] as const).map((currencyCode) => listCustomerContractPaymentTargets(customerId, currencyCode, controller.signal)))
+      .then((results) => { if (!controller.signal.aborted) setContractPaymentTargets(results.flatMap((result) => result.targets)); })
+      .catch(() => { if (!controller.signal.aborted) setContractPaymentTargets([]); });
+    return () => controller.abort();
+  }, [customerId]);
 
   useEffect(() => {
     if (!customerId) return;
@@ -746,6 +759,16 @@ export default function CustomerProfilePage() {
     setInvoicePaymentPreselection(invoice);
     setInvoicePaymentIntakeOpen(true);
   };
+  const contractPaymentTargetByContractId = new Map(contractPaymentTargets.map((target) => [target.contractId, target]));
+  const openContractPaymentIntake = (target: CustomerContractPaymentTarget) => {
+    setContractPaymentNotice(null);
+    setContractPaymentIntakeTarget(target);
+    setContractPaymentIntakeOpen(true);
+  };
+  const closeContractPaymentIntake = (nextOpen: boolean) => {
+    setContractPaymentIntakeOpen(nextOpen);
+    if (!nextOpen) setContractPaymentIntakeTarget(null);
+  };
   const closeInvoicePaymentIntake = (nextOpen: boolean) => {
     setInvoicePaymentIntakeOpen(nextOpen);
     if (!nextOpen) setInvoicePaymentPreselection(null);
@@ -1190,6 +1213,8 @@ export default function CustomerProfilePage() {
           </h2>
         </div>
 
+        {contractPaymentNotice ? <Alert variant="success" className="mx-5 mt-4"><AlertTitle>Pago enviado a verificación</AlertTitle><AlertDescription>{contractPaymentNotice}</AlertDescription></Alert> : null}
+
         {contracts.length === 0 ? (
           <div style={{ padding: '60px 20px', textAlign: 'center' }}>
             <div style={{ fontSize: '64px', marginBottom: '16px' }}>📄</div>
@@ -1578,25 +1603,18 @@ export default function CustomerProfilePage() {
                     </td>
                     {!isMinor && (
                       <td style={{ padding: '14px 16px', textAlign: 'center' }}>
-                        <button
-                          type="button"
-                          style={{
-                            display: 'inline-block',
-                            padding: '6px 12px',
-                            background: '#10b981',
-                            color: 'white',
-                            borderRadius: '6px',
-                            fontSize: '12px',
-                            fontWeight: '600',
-                            textDecoration: 'none',
-                            transition: 'all 0.2s',
-                          }}
-                          onClick={() => setSelectedFinancialContract(contract)}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = '#059669')}
-                          onMouseLeave={(e) => (e.currentTarget.style.background = '#10b981')}
-                        >
-                          Detalle financiero
-                        </button>
+                        <div className="flex flex-wrap justify-center gap-2">
+                          <button
+                            type="button"
+                            style={{
+                              display: 'inline-block', padding: '6px 12px', background: '#10b981', color: 'white', borderRadius: '6px', fontSize: '12px', fontWeight: '600', textDecoration: 'none', transition: 'all 0.2s',
+                            }}
+                            onClick={() => setSelectedFinancialContract(contract)}
+                            onMouseEnter={(e) => (e.currentTarget.style.background = '#059669')}
+                            onMouseLeave={(e) => (e.currentTarget.style.background = '#10b981')}
+                          >Detalle financiero</button>
+                          {canRegisterInvoicePayment && contractPaymentTargetByContractId.get(contract.id) ? <Button type="button" variant="outline" size="sm" onClick={() => openContractPaymentIntake(contractPaymentTargetByContractId.get(contract.id)!)}><WalletCards aria-hidden="true" />Registrar pago</Button> : null}
+                        </div>
                       </td>
                     )}
                   </tr>
@@ -1714,6 +1732,19 @@ export default function CustomerProfilePage() {
           setInvoicePaymentNotice(`${destinationOverrideAccepted ? 'Excepción aceptada y registrada. ' : ''}El saldo se actualizará cuando Administración o Facturación valide el pago.`);
         }}
       />
+
+      {contractPaymentIntakeTarget ? <CustomerContractPaymentIntakeSheet
+        customerId={customerId}
+        open={contractPaymentIntakeOpen}
+        contractTarget={contractPaymentIntakeTarget}
+        onOpenChange={closeContractPaymentIntake}
+        onSubmitted={({ destinationOverrideAccepted }) => {
+          setContractPaymentNotice(`${destinationOverrideAccepted ? 'Excepción aceptada y registrada. ' : ''}El saldo se actualizará cuando Administración o Facturación valide el pago.`);
+          void Promise.all((['CRC', 'USD'] as const).map((currencyCode) => listCustomerContractPaymentTargets(customerId, currencyCode)))
+            .then((results) => setContractPaymentTargets(results.flatMap((result) => result.targets)))
+            .catch(() => undefined);
+        }}
+      /> : null}
 
       <Dialog open={showAddNoteModal} onOpenChange={(open) => { if (!open) { setShowAddNoteModal(false); setNewNoteText(''); } }}>
         <DialogContent>
@@ -1919,6 +1950,7 @@ export default function CustomerProfilePage() {
       /> : null}
 
       {selectedFinancialContract ? <ContractFinanceDrawer
+        customerId={customerId}
         contract={{
           contractId: selectedFinancialContract.id,
           contractNumber: selectedFinancialContract.contractNumber,

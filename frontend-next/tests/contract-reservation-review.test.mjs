@@ -61,7 +61,7 @@ test("keeps multiple signed evidence URLs in viewer order and supports no eviden
   assert.deepEqual(toViewerAttachments([]), []);
 });
 
-test("pending-payments page keeps the Finance contract review path and adds a reviewKind invoice branch", () => {
+test("pending-payments page keeps the Finance contract review path and adds invoice/CONTRACTS branches", () => {
   const source = readFileSync(new URL("../src/app/admin/pending-payments/page.tsx", import.meta.url), "utf8");
   assert.match(source, /listPendingContractReservationPayments/);
   assert.match(source, /approveContractReservationPayment/);
@@ -69,8 +69,8 @@ test("pending-payments page keeps the Finance contract review path and adds a re
   assert.match(source, /getContractReservationEvidence/);
   assert.match(source, /reviewKind === "INVOICES"/);
   assert.match(source, /Pago de facturas/);
-  assert.match(source, /getInvoicePendingPaymentReviewDetail/);
-  assert.match(source, /precheckInvoicePendingPaymentApproval/);
+  assert.match(source, /getPendingPaymentReviewDetail/);
+  assert.match(source, /precheckPendingPaymentApproval/);
   assert.match(source, /Esta factura ya no tiene saldo suficiente para aplicar el monto solicitado/);
   assert.match(source, /Total propuesto/);
   assert.match(source, /Moneda de aplicación/);
@@ -78,7 +78,7 @@ test("pending-payments page keeps the Finance contract review path and adds a re
   assert.match(source, /getCustomerPaymentSettlementPreview/);
   assert.match(source, /getReportedInvoicePaymentEvidence/);
   assert.match(source, /Sin comprobantes identificables/);
-  assert.match(source, /const detail = await getInvoicePendingPaymentReviewDetail\(payment\.id\)/);
+  assert.match(source, /const detail = await getPendingPaymentReviewDetail\(payment\.id\)/);
   assert.doesNotMatch(source, /payment\.evidence \?\? \[\][\s\S]{0,300}Sin comprobantes identificables/);
   assert.match(source, /useTenantDateTimeFormatter/);
   assert.match(source, /formatFinancePaymentMethod\(payment\.paymentMethod\)/);
@@ -88,4 +88,50 @@ test("pending-payments page keeps the Finance contract review path and adds a re
   assert.doesNotMatch(source, /getBillingAdminReports|verifyBillingPayment|rejectBillingPayment|BillingAdminReportData/);
   assert.doesNotMatch(source, /\/billing\/admin\/reports|\/billing\/payments\//);
   assert.doesNotMatch(source, /PaymentAllocation|BillingReceipt|BillingDocument/);
+});
+
+test("CONTRACTS payments render business-readable Contract, physical-money, and application details", () => {
+  const source = readFileSync(new URL("../src/app/admin/pending-payments/page.tsx", import.meta.url), "utf8");
+  assert.match(source, /reviewKind === "CONTRACTS"/);
+  assert.match(source, /Pago contractual/);
+  assert.match(source, /contract\.contractNumber/);
+  assert.match(source, /contract\.travelName/);
+  assert.match(source, /formatFinanceMoney\(contract\.intendedAmount, contract\.obligationCurrencyCode\)/);
+  assert.match(source, /formatFinanceMoney\(payment\.receivedAmount, payment\.currencyCode\)/);
+  assert.match(source, /formatFinancePaymentMethod\(payment\.paymentMethod\)/);
+  assert.match(source, /formatTenantDateTime\(payment\.createdAt\)/);
+});
+
+test("CONTRACTS evidence uses the same detail-first viewer path as INVOICES", () => {
+  const source = readFileSync(new URL("../src/app/admin/pending-payments/page.tsx", import.meta.url), "utf8");
+
+  assert.match(source, /if \(isReportedContractPayment\(payment\)\) \{[\s\S]{0,2500}openReportedEvidence\(payment, 0\)/);
+  assert.match(source, /if \(isReportedContractPayment\(payment\)\) \{[\s\S]{0,2500}Ver comprobantes/);
+  assert.doesNotMatch(source, /if \(isReportedContractPayment\(payment\)\) \{[\s\S]{0,2500}Sin comprobantes identificables/);
+  assert.match(source, /const detail = await getPendingPaymentReviewDetail\(payment\.id\)/);
+  assert.match(source, /const evidence = detail\.evidence \?\? \[\];/);
+  assert.match(source, /if \(!selectedEvidence \|\| !detail\.customerId\) throw new Error\("Sin comprobantes identificables\."\);/);
+});
+
+test("CONTRACTS review reuses settlement, destination validation, generic precheck, and AttachmentViewer", () => {
+  const source = readFileSync(new URL("../src/app/admin/pending-payments/page.tsx", import.meta.url), "utf8");
+  assert.match(source, /ContractReviewDetails/);
+  assert.match(source, /SettlementReviewDetails/);
+  assert.match(source, /Tipo de cambio/);
+  assert.match(source, /Fecha efectiva/);
+  assert.match(source, /DestinationValidationSummary/);
+  assert.match(source, /Cuenta destino verificada/);
+  assert.match(source, /openReportedEvidence/);
+  assert.match(source, /AttachmentViewer/);
+  assert.match(source, /await precheckPendingPaymentApproval\(paymentId\)/);
+  assert.match(source, /Pago contractual aprobado\./);
+  assert.match(source, /paymentLabel === "pago contractual" \? "Pago contractual" : "Pago de reserva"/);
+  assert.equal((source.match(/await load\(\)/g) || []).length >= 2, true);
+});
+
+test("approval detail remains in ConfirmDialog content instead of a description paragraph", () => {
+  const source = readFileSync(new URL("../src/app/admin/pending-payments/page.tsx", import.meta.url), "utf8");
+  assert.match(source, /content=\{approvePayment && isInvoicePayment\(approvePayment\)/);
+  assert.match(source, /isReportedContractPayment\(approvePayment\)\n\s*\? <ContractReviewDetails/);
+  assert.doesNotMatch(source, /description=\{approvePayment[\s\S]{0,500}<ContractReviewDetails/);
 });

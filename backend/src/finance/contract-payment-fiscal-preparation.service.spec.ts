@@ -1,4 +1,4 @@
-import { PaymentPurpose, Prisma } from "@prisma/client";
+import { PaymentAllocationStatus, PaymentPurpose, Prisma } from "@prisma/client";
 import {
   ContractPaymentFiscalPreparationError,
   ContractPaymentFiscalPreparationService,
@@ -101,6 +101,69 @@ describe("ContractPaymentFiscalPreparationService", () => {
     expect(command.lines[0].unitPrice).toBe("294.69026");
   });
 
+  it("uses the single reported Contract allocation as the fiscal amount in the application currency", async () => {
+    const context = createContext({
+      purpose: PaymentPurpose.CONTRACT_INSTALLMENT,
+      reportedContracts: true,
+      receivedAmount: "300",
+      currencyCode: "USD",
+      allocationAmount: "200",
+      allocationCurrencyCode: "USD",
+    });
+
+    await context.service.prepareOrResume("tenant-a", "payment-a", "user-a");
+
+    const command = context.billing.createOrResumeCrV44CalculatedDraft.mock.calls[0][0];
+    expect(command.currencyCode).toBe("USD");
+    expect(command.totals.total).toBe("200");
+    expect(command.source).toMatchObject({ sourceType: "CONTRACT_PAYMENT", sourceId: "payment-a" });
+    expect(context.prisma.commercialObligationAllocation.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { tenantId: "tenant-a", paymentId: "payment-a", status: PaymentAllocationStatus.ACTIVE },
+    }));
+  });
+
+  it("never uses physical CRC received money as a reported USD Contract fiscal amount", async () => {
+    const context = createContext({
+      purpose: PaymentPurpose.CONTRACT_INSTALLMENT,
+      reportedContracts: true,
+      receivedAmount: "135000",
+      currencyCode: "CRC",
+      allocationAmount: "300",
+      allocationCurrencyCode: "USD",
+    });
+
+    await context.service.prepareOrResume("tenant-a", "payment-a", "user-a");
+
+    const command = context.billing.createOrResumeCrV44CalculatedDraft.mock.calls[0][0];
+    expect(command.currencyCode).toBe("USD");
+    expect(command.totals.total).toBe("300");
+    expect(JSON.stringify(command)).not.toContain("135000");
+  });
+
+  it("fiscalizes only the allocation and not a reported settlement remainder", async () => {
+    const context = createContext({
+      purpose: PaymentPurpose.CONTRACT_INSTALLMENT,
+      reportedContracts: true,
+      receivedAmount: "157500",
+      currencyCode: "CRC",
+      allocationAmount: "300",
+      allocationCurrencyCode: "USD",
+    });
+
+    await context.service.prepareOrResume("tenant-a", "payment-a", "user-a");
+
+    const command = context.billing.createOrResumeCrV44CalculatedDraft.mock.calls[0][0];
+    expect(command.totals.total).toBe("300");
+    expect(command.totals.total).not.toBe("350");
+  });
+
+  it("rejects a reported Contract fiscalization without exactly one active Contract allocation", async () => {
+    const context = createContext({ purpose: PaymentPurpose.CONTRACT_INSTALLMENT, reportedContracts: true, allocations: [] });
+    await expect(context.service.prepareOrResume("tenant-a", "payment-a", "user-a"))
+      .rejects.toMatchObject({ code: CONTRACT_PAYMENT_FISCAL_PREPARATION_ERRORS.REPORTED_ALLOCATION_INVALID });
+    expect(context.billing.createOrResumeCrV44CalculatedDraft).not.toHaveBeenCalled();
+  });
+
   it("rejects a one-tick fiscal result when it changes currency settlement", async () => {
     const context = createContext({ receivedAmount: "0.005", currencyCode: "USD" });
     await expect(context.service.prepareOrResume("tenant-a", "payment-a", "user-a"))
@@ -133,6 +196,10 @@ function createContext(options: {
   clientIdType?: string;
   missingClassification?: boolean;
   classificationError?: string;
+  reportedContracts?: boolean;
+  allocationAmount?: string;
+  allocationCurrencyCode?: "CRC" | "USD";
+  allocations?: any[];
 } = {}) {
   const classification = options.missingClassification
     ? null
@@ -188,10 +255,19 @@ function createContext(options: {
     purpose: options.purpose ?? PaymentPurpose.CONTRACT_PAYMENT,
     status: options.status ?? "FULLY_ALLOCATED",
     contractId: contract ? "contract-a" : null,
+    allocationProposal: options.reportedContracts
+      ? { kind: "CONTRACTS", targets: [{ targetType: "COMMERCIAL_OBLIGATION", targetId: "obligation-a", intendedAmount: options.allocationAmount ?? "300.00" }] }
+      : null,
     contract,
   };
   const prisma = {
     payment: { findFirst: jest.fn().mockResolvedValue(payment) },
+    commercialObligationAllocation: {
+      findMany: jest.fn().mockResolvedValue(options.allocations ?? (options.reportedContracts ? [{
+        amount: new Prisma.Decimal(options.allocationAmount ?? "300"),
+        commercialObligation: { sourceType: "CONTRACT", sourceId: "contract-a", currencyCode: options.allocationCurrencyCode ?? "USD" },
+      }] : [])),
+    },
     tenantBillingConfiguration: {
       findUnique: jest.fn().mockResolvedValue({
         billingEnabled: true,

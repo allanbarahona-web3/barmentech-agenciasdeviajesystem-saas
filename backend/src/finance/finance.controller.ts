@@ -15,8 +15,10 @@ import {
   ListAccountReceivableGroupItemsDto,
   ListCustomerElectronicInvoicesDto,
   CustomerInvoicePaymentTargetsQueryDto,
+  CustomerContractPaymentTargetsQueryDto,
   CustomerPaymentSettlementPreviewQueryDto,
   ReportedInvoicePaymentDto,
+  ReportedContractPaymentDto,
   ListAccountReceivableGroupsDto,
   ListContractObligationGroupContractsDto,
   ListContractObligationGroupsDto,
@@ -88,6 +90,22 @@ export class FinanceController {
     return this.reads.listContractPayments(request.user.tenantId, contractId, query);
   }
 
+  @Get("customers/:customerId/contracts/:contractId/financial-detail")
+  @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.AGENT, UserRole.CONTADOR)
+  getCustomerContractFinancialDetail(
+    @Req() request: FinanceRequest,
+    @Param("customerId") customerId: string,
+    @Param("contractId") contractId: string,
+    @Query() query: ListContractPaymentsDto,
+  ) {
+    return this.reads.getCustomerContractFinancialDetail(
+      request.user.tenantId,
+      customerId,
+      contractId,
+      query,
+    );
+  }
+
   @Post("contracts/:contractId/installments")
   @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS)
   async registerContractInstallment(
@@ -121,13 +139,13 @@ export class FinanceController {
   @Get("contract-reservation-payments/:paymentId")
   @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS)
   getInvoicePendingPaymentReviewDetail(@Req() request: FinanceRequest, @Param("paymentId") paymentId: string) {
-    return this.contractReservations!.getInvoicePendingDetail(request.user.tenantId, paymentId);
+    return this.contractReservations!.getPendingPaymentDetail(request.user.tenantId, paymentId);
   }
 
   @Post("contract-reservation-payments/:paymentId/approve-precheck")
   @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS)
   precheckInvoicePendingPaymentApproval(@Req() request: FinanceRequest, @Param("paymentId") paymentId: string) {
-    return this.contractReservations!.precheckInvoicePendingPayment(request.user.tenantId, paymentId);
+    return this.contractReservations!.precheckPendingPayment(request.user.tenantId, paymentId);
   }
 
   @Post("contract-reservation-payments/:paymentId/approve")
@@ -434,6 +452,20 @@ export class FinanceController {
     return this.reads.listCustomerInvoicePaymentTargets(request.user.tenantId, customerId, query);
   }
 
+  @Get("customers/:customerId/payment-targets/contracts")
+  @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.AGENT)
+  listCustomerContractPaymentTargets(
+    @Req() request: FinanceRequest,
+    @Param("customerId") customerId: string,
+    @Query() query: CustomerContractPaymentTargetsQueryDto,
+  ) {
+    return this.reads.listCustomerContractPaymentTargets(
+      request.user.tenantId,
+      customerId,
+      query.currencyCode,
+    );
+  }
+
   @Get("customers/:customerId/payment-settlement-preview")
   @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.AGENT)
   previewCustomerPaymentSettlement(
@@ -467,6 +499,34 @@ export class FinanceController {
           accountReceivableId: target.accountReceivableId,
           intendedAmount: decimal(target.intendedAmount),
         })),
+      });
+    } catch (error) {
+      return translateFinanceError(error);
+    }
+  }
+
+  @Post("customers/:customerId/reported-payments/contracts")
+  @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.AGENT)
+  async submitReportedContractPayment(
+    @Req() request: FinanceRequest,
+    @Param("customerId") customerId: string,
+    @Body() body: ReportedContractPaymentDto,
+  ) {
+    try {
+      return await this.reportedInvoicePayments!.submitContract({
+        tenantId: request.user.tenantId,
+        customerId,
+        actor: { userId: request.user.id, name: request.user.fullName },
+        currencyCode: body.currencyCode,
+        amount: decimal(body.amount),
+        paymentMethod: body.paymentMethod,
+        paymentDate: body.paymentDate ? new Date(body.paymentDate) : undefined,
+        reference: body.reference,
+        payerName: body.payerName,
+        notes: body.notes,
+        contractId: body.contractId,
+        commercialObligationId: body.commercialObligationId,
+        intendedAmount: decimal(body.intendedAmount),
       });
     } catch (error) {
       return translateFinanceError(error);

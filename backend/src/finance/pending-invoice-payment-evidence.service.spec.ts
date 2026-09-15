@@ -27,6 +27,21 @@ describe("PendingInvoicePaymentEvidenceService", () => {
     expect(c.tx).not.toHaveProperty("billingDocument");
   });
 
+  it("reuses the same evidence flow for a pending reported Contract installment", async () => {
+    const c = context({ payment: payment({
+      purpose: PaymentPurpose.CONTRACT_INSTALLMENT,
+      contractId: "contract-a",
+      allocationProposal: { kind: "CONTRACTS", targets: [{ targetType: "COMMERCIAL_OBLIGATION", targetId: "obligation-a", intendedAmount: "100.00" }] },
+    }) });
+
+    await expect(c.service.attach(attachInput())).resolves.toMatchObject({ id: "evidence-a", paymentId: "payment-a" });
+    expect(c.tx.paymentEvidence.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ tenantId: "tenant-a", paymentId: "payment-a" }),
+    }));
+    expect(c.tx).not.toHaveProperty("paymentAllocation");
+    expect(c.tx).not.toHaveProperty("billingDocument");
+  });
+
   it("rejects a non-pending Payment before uploading evidence", async () => {
     const c = context({ payment: payment({ status: PaymentStatus.RECEIVED }) });
 

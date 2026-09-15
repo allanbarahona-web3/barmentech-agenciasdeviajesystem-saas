@@ -26,7 +26,7 @@ describe("invoice pending-payment review integration", () => {
         currentStatus: AccountReceivableStatus.OPEN,
       }],
     });
-    expect(c.prisma.payment.findMany).toHaveBeenCalledTimes(2);
+    expect(c.prisma.payment.findMany).toHaveBeenCalledTimes(3);
     expect(c.prisma.client.findMany).toHaveBeenCalledTimes(1);
     expect(c.prisma.accountReceivable.findMany).toHaveBeenCalledTimes(1);
     expect(c.prisma.billingDocument.findMany).toHaveBeenCalledTimes(1);
@@ -496,7 +496,7 @@ function context(options: {
   const prisma = {
     $transaction: jest.fn(async (work: (client: typeof tx) => unknown) => work(tx)),
     payment: {
-      findMany: jest.fn(({ where }) => Promise.resolve(where.purpose?.in ? [] : [payment])),
+      findMany: jest.fn(({ where }) => Promise.resolve(where.purpose === PaymentPurpose.GENERAL ? [payment] : [])),
       findFirst: jest.fn().mockResolvedValue(payment),
     },
     client: { findMany: jest.fn().mockResolvedValue([{ id: "customer-a", fullName: "Customer A", idNumber: "1", email: "customer@example.com", phone: "80000000" }]) },

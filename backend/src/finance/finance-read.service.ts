@@ -38,34 +38,141 @@ export class FinanceReadService {
     });
     if (!contract) throw new NotFoundException("CONTRACT_NOT_FOUND");
 
+    return {
+      contractId: contract.id,
+      ...(await this.contractCommercialObligation(tenantId, contract.id)),
+    };
+  }
+
+  async getCustomerContractFinancialDetail(
+    tenantId: string,
+    customerId: string,
+    contractId: string,
+    query: ListContractPaymentsDto,
+  ) {
+    const customer = await this.prisma.client.findFirst({
+      where: { id: customerId, tenantId },
+      select: { id: true },
+    });
+    if (!customer) throw new NotFoundException("CONTRACT_NOT_FOUND");
+
+    const contract = await this.prisma.contract.findFirst({
+      where: { id: contractId, tenantId, clientId: customerId },
+      select: {
+        id: true,
+        contractNumber: true,
+        destination: true,
+        travelPackage: { select: { name: true } },
+        internalTrip: { select: { name: true } },
+      },
+    });
+    if (!contract) throw new NotFoundException("CONTRACT_NOT_FOUND");
+
+    const [obligation, payments] = await Promise.all([
+      this.contractCommercialObligation(tenantId, contract.id),
+      this.contractPaymentHistory(tenantId, contract.id, query),
+    ]);
+    return {
+      contract: {
+        contractId: contract.id,
+        contractNumber: contract.contractNumber,
+        travelName: contract.travelPackage?.name ?? contract.internalTrip?.name ?? contract.destination,
+      },
+      ...obligation,
+      payments,
+    };
+  }
+
+  private async contractCommercialObligation(tenantId: string, contractId: string) {
     const obligation = await this.prisma.commercialObligation.findUnique({
       where: {
         tenantId_sourceType_sourceId: {
           tenantId,
           sourceType: "CONTRACT",
-          sourceId: contract.id,
+          sourceId: contractId,
         },
       },
     });
     if (!obligation) {
-      return { contractId: contract.id, commercialObligation: null, payable: false };
+      return { commercialObligation: null, payable: false };
     }
     const payable =
       (obligation.status === CommercialObligationStatus.OPEN ||
         obligation.status === CommercialObligationStatus.PARTIALLY_SETTLED) &&
       obligation.outstandingAmount.greaterThan(0);
     return {
-      contractId: contract.id,
       commercialObligation: {
         id: obligation.id,
         currencyCode: obligation.currencyCode,
         originalAmount: money(obligation.originalAmount),
+        paidAmount: money(obligation.originalAmount.minus(obligation.outstandingAmount)),
         outstandingAmount: money(obligation.outstandingAmount),
         status: obligation.status,
         dueDate: obligation.dueDate,
         settledAt: obligation.settledAt,
       },
       payable,
+    };
+  }
+
+  async listCustomerContractPaymentTargets(
+    tenantId: string,
+    customerId: string,
+    currencyCode: string,
+  ) {
+    const obligations = await this.prisma.commercialObligation.findMany({
+      where: {
+        tenantId,
+        customerId,
+        sourceType: "CONTRACT",
+        currencyCode,
+        status: { in: [CommercialObligationStatus.OPEN, CommercialObligationStatus.PARTIALLY_SETTLED] },
+        outstandingAmount: { gt: new Prisma.Decimal(0) },
+      },
+      select: {
+        id: true,
+        sourceId: true,
+        currencyCode: true,
+        originalAmount: true,
+        outstandingAmount: true,
+        status: true,
+      },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    });
+    if (!obligations.length) return { targets: [] };
+    const contracts = await this.prisma.contract.findMany({
+      where: {
+        tenantId,
+        clientId: customerId,
+        id: { in: obligations.map((obligation) => obligation.sourceId) },
+        cancelledAt: null,
+        status: { not: "CANCELLED" },
+      },
+      select: {
+        id: true,
+        contractNumber: true,
+        destination: true,
+        travelPackage: { select: { name: true } },
+        internalTrip: { select: { name: true } },
+      },
+    });
+    const contractById = new Map(contracts.map((contract) => [contract.id, contract]));
+    return {
+      targets: obligations.flatMap((obligation) => {
+        const contract = contractById.get(obligation.sourceId);
+        if (!contract) return [];
+        return [{
+          contractId: contract.id,
+          commercialObligationId: obligation.id,
+          contractNumber: contract.contractNumber,
+          travelName: contract.travelPackage?.name ?? contract.internalTrip?.name ?? contract.destination,
+          currencyCode: obligation.currencyCode,
+          originalAmount: money(obligation.originalAmount),
+          paidAmount: money(obligation.originalAmount.minus(obligation.outstandingAmount)),
+          outstandingAmount: money(obligation.outstandingAmount),
+          status: obligation.status,
+        }];
+      }),
     };
   }
 
@@ -549,11 +656,19 @@ export class FinanceReadService {
       select: { id: true },
     });
     if (!contract) throw new NotFoundException("CONTRACT_NOT_FOUND");
+    return this.contractPaymentHistory(tenantId, contract.id, query);
+  }
+
+  private async contractPaymentHistory(
+    tenantId: string,
+    contractId: string,
+    query: ListContractPaymentsDto,
+  ) {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
     const where: Prisma.PaymentWhereInput = {
       tenantId,
-      contractId: contract.id,
+      contractId,
       purpose: { in: contractPaymentPurposes },
     };
     const [payments, total] = await Promise.all([

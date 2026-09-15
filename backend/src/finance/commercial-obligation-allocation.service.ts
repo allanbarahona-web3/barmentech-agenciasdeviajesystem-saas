@@ -85,13 +85,14 @@ export class CommercialObligationAllocationService {
 
     validatePayment(payment);
     validateObligation(obligation);
-    if (payment.currencyCode !== obligation.currencyCode) {
+    const pool = allocationPool(payment);
+    if (pool.currencyCode !== obligation.currencyCode) {
       fail(COMMERCIAL_OBLIGATION_ALLOCATION_ERRORS.CURRENCY_MISMATCH);
     }
     if (!payment.customerId || payment.customerId !== obligation.customerId) {
       fail(COMMERCIAL_OBLIGATION_ALLOCATION_ERRORS.CUSTOMER_MISMATCH);
     }
-    if (input.amount.greaterThan(payment.availableAmount)) {
+    if (input.amount.greaterThan(pool.availableAmount)) {
       fail(COMMERCIAL_OBLIGATION_ALLOCATION_ERRORS.PAYMENT_INSUFFICIENT);
     }
     if (input.amount.greaterThan(obligation.outstandingAmount)) {
@@ -120,9 +121,10 @@ export class CommercialObligationAllocationService {
       fail(COMMERCIAL_OBLIGATION_ALLOCATION_ERRORS.CONFLICT);
     }
 
-    const availableAmount = payment.availableAmount.minus(input.amount);
+    const settlementAvailableAmount = pool.availableAmount.minus(input.amount);
+    const availableAmount = remainingPhysicalAmount(payment, pool, input.amount);
     const outstandingAmount = obligation.outstandingAmount.minus(input.amount);
-    if (availableAmount.isNegative() || outstandingAmount.isNegative()) {
+    if (settlementAvailableAmount.isNegative() || availableAmount.isNegative() || outstandingAmount.isNegative()) {
       fail(COMMERCIAL_OBLIGATION_ALLOCATION_ERRORS.CONFLICT);
     }
     const obligationStatus = outstandingAmount.isZero()
@@ -149,6 +151,7 @@ export class CommercialObligationAllocationService {
             commercialObligationId: obligation.id,
             amount: financeMoney(input.amount),
             paymentAvailableAmount: financeMoney(availableAmount),
+            paymentSettlementAvailableAmount: pool.usesSettlement ? financeMoney(settlementAvailableAmount) : null,
             commercialObligationOutstandingAmount: financeMoney(outstandingAmount),
             commercialObligationStatus: obligationStatus,
           },
@@ -177,9 +180,10 @@ export class CommercialObligationAllocationService {
       where: { id: payment.id },
       data: {
         availableAmount,
-        status: availableAmount.isZero()
+        status: settlementAvailableAmount.isZero()
           ? PaymentStatus.FULLY_ALLOCATED
           : PaymentStatus.PARTIALLY_ALLOCATED,
+        ...(pool.usesSettlement ? { settlementAvailableAmount } : {}),
       },
     });
     await tx.commercialObligation.update({
@@ -193,6 +197,51 @@ export class CommercialObligationAllocationService {
 
     return { allocation: persisted, applied: true };
   }
+}
+
+type AllocationPool = {
+  currencyCode: string;
+  availableAmount: Prisma.Decimal;
+  usesSettlement: boolean;
+};
+
+function allocationPool(payment: Payment): AllocationPool {
+  const currencyCode = payment.settlementCurrencyCode?.toUpperCase();
+  if (!currencyCode) {
+    return { currencyCode: payment.currencyCode, availableAmount: payment.availableAmount, usesSettlement: false };
+  }
+  const settlementAmount = payment.settlementAmount;
+  const availableAmount = payment.settlementAvailableAmount;
+  if (
+    !(settlementAmount instanceof Prisma.Decimal) || !(availableAmount instanceof Prisma.Decimal) ||
+    !validPositiveAmount(settlementAmount) || !validNonNegativeAmount(availableAmount) ||
+    availableAmount.greaterThan(settlementAmount)
+  ) fail(COMMERCIAL_OBLIGATION_ALLOCATION_ERRORS.PAYMENT_INVALID);
+  if (currencyCode !== payment.currencyCode) {
+    const rate = payment.settlementExchangeRate;
+    if (!(rate instanceof Prisma.Decimal) || !validPositiveAmount(rate)) {
+      fail(COMMERCIAL_OBLIGATION_ALLOCATION_ERRORS.PAYMENT_INVALID);
+    }
+  }
+  return { currencyCode, availableAmount, usesSettlement: true };
+}
+
+function remainingPhysicalAmount(payment: Payment, pool: AllocationPool, allocatedSettlementAmount: Prisma.Decimal): Prisma.Decimal {
+  if (!pool.usesSettlement || pool.currencyCode === payment.currencyCode) {
+    return payment.availableAmount.minus(allocatedSettlementAmount);
+  }
+  const remainingSettlement = pool.availableAmount.minus(allocatedSettlementAmount);
+  if (remainingSettlement.isZero()) return new Prisma.Decimal(0);
+  const rate = payment.settlementExchangeRate!;
+  const spent = payment.currencyCode === "CRC" && pool.currencyCode === "USD"
+    ? allocatedSettlementAmount.times(rate)
+    : payment.currencyCode === "USD" && pool.currencyCode === "CRC"
+      ? allocatedSettlementAmount.dividedBy(rate)
+      : null;
+  if (!spent) fail(COMMERCIAL_OBLIGATION_ALLOCATION_ERRORS.PAYMENT_INVALID);
+  const remaining = payment.availableAmount.minus(spent.toDecimalPlaces(5, Prisma.Decimal.ROUND_HALF_UP));
+  if (remaining.isNegative()) fail(COMMERCIAL_OBLIGATION_ALLOCATION_ERRORS.PAYMENT_INSUFFICIENT);
+  return remaining.toDecimalPlaces(5, Prisma.Decimal.ROUND_HALF_UP);
 }
 
 async function lockPayment(

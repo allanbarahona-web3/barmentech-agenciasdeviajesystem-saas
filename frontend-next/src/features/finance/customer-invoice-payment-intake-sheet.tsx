@@ -19,7 +19,9 @@ import {
   extractReportedInvoicePaymentEvidence,
   getCustomerPaymentSettlementPreview,
   listCustomerInvoicePaymentTargets,
+  submitReportedContractPayment,
   submitReportedInvoicePayment,
+  type CustomerContractPaymentTarget,
   type CustomerElectronicInvoice,
   type CustomerInvoicePaymentTarget,
   type CustomerPaymentSettlementPreview,
@@ -48,6 +50,7 @@ type Props = {
   customerId: string;
   open: boolean;
   preselectedInvoice: CustomerElectronicInvoice | null;
+  contractTarget?: CustomerContractPaymentTarget | null;
   currencies: FinanceCurrency[];
   onOpenChange: (open: boolean) => void;
   onSubmitted: (input: { paymentId: string; evidenceAttached: boolean; destinationOverrideAccepted?: boolean }) => void;
@@ -57,7 +60,7 @@ const EMPTY_FORM: PaymentForm = {
   receivedCurrencyCode: '', amount: '', paymentMethod: 'BANK_TRANSFER', paymentDate: '', reference: '', payerName: '', notes: '',
 };
 
-export function CustomerInvoicePaymentIntakeSheet({ customerId, open, preselectedInvoice, currencies, onOpenChange, onSubmitted }: Props) {
+export function CustomerInvoicePaymentIntakeSheet({ customerId, open, preselectedInvoice, contractTarget = null, currencies, onOpenChange, onSubmitted }: Props) {
   const [form, setForm] = useState<PaymentForm>(EMPTY_FORM);
   const [applicationCurrencyCode, setApplicationCurrencyCode] = useState<FinanceCurrency | ''>('');
   const [targets, setTargets] = useState<CustomerInvoicePaymentTarget[]>([]);
@@ -81,20 +84,21 @@ export function CustomerInvoicePaymentIntakeSheet({ customerId, open, preselecte
 
   const preselectedReceivableId = preselectedInvoice?.financialDetail?.type === 'ACCOUNT_RECEIVABLE'
     ? preselectedInvoice.financialDetail.accountReceivableId : null;
+  const contractMode = contractTarget !== null;
   const receivedCurrencyOptions = useMemo(() => Array.from(new Set<FinanceCurrency>([...currencies, 'CRC', 'USD'])), [currencies]);
 
   useEffect(() => {
     if (!open) return;
     setForm(EMPTY_FORM);
-    setApplicationCurrencyCode(preselectedInvoice?.currencyCode ?? (currencies.length === 1 ? currencies[0]! : ''));
-    setAllocations({}); setEvidenceFile(null); setExtractionDetails(null); setDestinationValidation(null); setExtractionError(null);
+    setApplicationCurrencyCode(contractTarget?.currencyCode ?? preselectedInvoice?.currencyCode ?? (currencies.length === 1 ? currencies[0]! : ''));
+    setAllocations(contractTarget ? { [contractTarget.commercialObligationId]: '' } : {}); setEvidenceFile(null); setExtractionDetails(null); setDestinationValidation(null); setExtractionError(null);
     setSettlementPreview(null); setPreviewError(null); setSubmitError(null); setPendingEvidencePaymentId(null);
     setPendingDestinationOverride(null); setOverrideDialogStage(null); setTargets([]); setTargetError(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
-  }, [currencies, open, preselectedInvoice?.billingDocumentId, preselectedInvoice?.currencyCode]);
+  }, [contractTarget, currencies, open, preselectedInvoice?.billingDocumentId, preselectedInvoice?.currencyCode]);
 
   useEffect(() => {
-    if (!open || !applicationCurrencyCode) { setTargets([]); return; }
+    if (!open || !applicationCurrencyCode || contractMode) { setTargets([]); return; }
     const controller = new AbortController();
     setTargetLoading(true); setTargetError(null);
     void listCustomerInvoicePaymentTargets(customerId, applicationCurrencyCode, controller.signal)
@@ -108,7 +112,7 @@ export function CustomerInvoicePaymentIntakeSheet({ customerId, open, preselecte
       .catch((error) => { if (!controller.signal.aborted) setTargetError(error instanceof Error ? error.message : 'No se pudieron cargar las facturas disponibles.'); })
       .finally(() => { if (!controller.signal.aborted) setTargetLoading(false); });
     return () => controller.abort();
-  }, [applicationCurrencyCode, customerId, open, preselectedReceivableId]);
+  }, [applicationCurrencyCode, contractMode, customerId, open, preselectedReceivableId]);
 
   const selectedTargets = useMemo(() => targets.filter((target) => Object.prototype.hasOwnProperty.call(allocations, target.accountReceivableId)), [allocations, targets]);
   const totalUnits = decimalUnits(form.amount);
@@ -136,18 +140,25 @@ export function CustomerInvoicePaymentIntakeSheet({ customerId, open, preselecte
 
   const previewAvailable = !crossCurrency || Boolean(settlementPreview?.status === 'AVAILABLE' && settlementPreview.settlementAmount);
   const allocationBudgetUnits = crossCurrency ? decimalUnits(settlementPreview?.status === 'AVAILABLE' ? settlementPreview.settlementAmount ?? '' : '') : totalUnits;
-  const allocationUnits = selectedTargets.reduce<bigint | null>((total, target) => {
+  const invoiceAllocationUnits = selectedTargets.reduce<bigint | null>((total, target) => {
     const value = decimalUnits(allocations[target.accountReceivableId] ?? '');
     return total === null || value === null ? null : total + value;
   }, ZERO);
+  const allocationUnits = contractTarget
+    ? decimalUnits(allocations[contractTarget.commercialObligationId] ?? '')
+    : invoiceAllocationUnits;
+  const contractOutstandingUnits = contractTarget ? decimalUnits(contractTarget.outstandingAmount) : null;
   const remainingUnits = allocationBudgetUnits !== null && allocationUnits !== null ? allocationBudgetUnits - allocationUnits : null;
   const allocationsExceedPayment = remainingUnits !== null && remainingUnits < ZERO;
-  const hasUnassignedSelection = selectedTargets.some((target) => (decimalUnits(allocations[target.accountReceivableId] ?? '') ?? ZERO) <= ZERO);
+  const hasUnassignedSelection = contractTarget
+    ? (allocationUnits ?? ZERO) <= ZERO
+    : selectedTargets.some((target) => (decimalUnits(allocations[target.accountReceivableId] ?? '') ?? ZERO) <= ZERO);
+  const contractAmountExceedsOutstanding = Boolean(contractTarget && allocationUnits !== null && contractOutstandingUnits !== null && allocationUnits > contractOutstandingUnits);
   const paymentAlreadyCreated = Boolean(pendingEvidencePaymentId || pendingDestinationOverride);
-  const canSubmit = !submitting && !paymentAlreadyCreated && Boolean(form.receivedCurrencyCode) && Boolean(applicationCurrencyCode) && totalUnits !== null && totalUnits > ZERO && selectedTargets.length > 0 && !hasUnassignedSelection && !allocationsExceedPayment && previewAvailable && !previewLoading;
+  const canSubmit = !submitting && !paymentAlreadyCreated && Boolean(form.receivedCurrencyCode) && Boolean(applicationCurrencyCode) && totalUnits !== null && totalUnits > ZERO && (contractTarget ? allocationUnits !== null && !contractAmountExceedsOutstanding : selectedTargets.length > 0) && !hasUnassignedSelection && !allocationsExceedPayment && previewAvailable && !previewLoading;
 
   function updateForm<K extends keyof PaymentForm>(key: K, value: PaymentForm[K]) { setForm((current) => ({ ...current, [key]: value })); }
-  function changeApplicationCurrency(currencyCode: FinanceCurrency | '') { setApplicationCurrencyCode(currencyCode); setAllocations({}); setTargets([]); }
+  function changeApplicationCurrency(currencyCode: FinanceCurrency | '') { if (contractMode) return; setApplicationCurrencyCode(currencyCode); setAllocations({}); setTargets([]); }
   function toggleTarget(target: CustomerInvoicePaymentTarget) {
     setAllocations((current) => {
       if (Object.prototype.hasOwnProperty.call(current, target.accountReceivableId)) {
@@ -179,11 +190,18 @@ export function CustomerInvoicePaymentIntakeSheet({ customerId, open, preselecte
     if (!canSubmit || !form.receivedCurrencyCode || !applicationCurrencyCode) return;
     setSubmitting(true); setSubmitError(null);
     try {
-      const payment = await submitReportedInvoicePayment(customerId, {
-        currencyCode: form.receivedCurrencyCode, amount: form.amount.trim(), paymentMethod: form.paymentMethod,
-        paymentDate: form.paymentDate || undefined, reference: emptyToUndefined(form.reference), payerName: emptyToUndefined(form.payerName), notes: emptyToUndefined(form.notes),
-        targets: selectedTargets.map((target) => ({ accountReceivableId: target.accountReceivableId, intendedAmount: allocations[target.accountReceivableId]!.trim() })),
-      });
+      const payment = contractTarget
+        ? await submitReportedContractPayment(customerId, {
+            contractId: contractTarget.contractId, commercialObligationId: contractTarget.commercialObligationId,
+            intendedAmount: allocations[contractTarget.commercialObligationId]!.trim(),
+            currencyCode: form.receivedCurrencyCode, amount: form.amount.trim(), paymentMethod: form.paymentMethod,
+            paymentDate: form.paymentDate || undefined, reference: emptyToUndefined(form.reference), payerName: emptyToUndefined(form.payerName), notes: emptyToUndefined(form.notes),
+          })
+        : await submitReportedInvoicePayment(customerId, {
+            currencyCode: form.receivedCurrencyCode, amount: form.amount.trim(), paymentMethod: form.paymentMethod,
+            paymentDate: form.paymentDate || undefined, reference: emptyToUndefined(form.reference), payerName: emptyToUndefined(form.payerName), notes: emptyToUndefined(form.notes),
+            targets: selectedTargets.map((target) => ({ accountReceivableId: target.accountReceivableId, intendedAmount: allocations[target.accountReceivableId]!.trim() })),
+          });
       if (!evidenceFile) { completeSubmission(payment.paymentId, false); return; }
       await attachEvidenceAndContinue(payment.paymentId);
     } catch (error) { setSubmitError(error instanceof Error ? error.message : 'No se pudo enviar el pago para verificación.'); }
@@ -242,9 +260,13 @@ export function CustomerInvoicePaymentIntakeSheet({ customerId, open, preselecte
     <FormSheet open={open} onOpenChange={onOpenChange} title="Registrar pago" description="El pago se enviará para verificación. Los saldos no cambian hasta que Administración o Facturación lo valide." contentClassName="space-y-5" actions={<><Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>Cancelar</Button><Button type="button" onClick={() => void (pendingEvidencePaymentId ? retryEvidence() : pendingDestinationOverride ? setOverrideDialogStage('FIRST') : submit())} disabled={pendingEvidencePaymentId ? submitting || !evidenceFile : pendingDestinationOverride ? submitting : !canSubmit}>{submitting ? 'Enviando…' : actionLabel}</Button></>}>
       {submitError ? <Alert variant={paymentAlreadyCreated ? 'warning' : 'destructive'}><AlertTitle>{paymentAlreadyCreated ? 'Pago enviado; acción pendiente' : 'No se pudo enviar el pago'}</AlertTitle><AlertDescription>{submitError}</AlertDescription></Alert> : null}
       {pendingDestinationOverride && !overrideDialogStage ? <Badge variant="destructive">Cuenta destino no verificada · excepción pendiente</Badge> : null}
+      {contractTarget ? <section className="rounded-lg border border-border bg-muted/30 p-4" aria-label="Contrato seleccionado">
+        <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-sm font-semibold text-foreground">Contrato {contractTarget.contractNumber}</p><p className="mt-1 text-xs text-muted-foreground">{contractTarget.travelName}</p></div><Badge variant="outline">Destino fijo</Badge></div>
+        <div className="mt-3 grid gap-2 text-sm sm:grid-cols-2"><span className="text-muted-foreground">Moneda de aplicación: <strong className="text-foreground">{contractTarget.currencyCode}</strong></span><span className="text-muted-foreground">Estado: <strong className="text-foreground">{contractTarget.status}</strong></span><span className="text-muted-foreground">Monto original: <strong className="text-foreground">{formatFinanceMoneyDisplay(contractTarget.originalAmount, contractTarget.currencyCode)}</strong></span><span className="text-muted-foreground">Pagado: <strong className="text-foreground">{formatFinanceMoneyDisplay(contractTarget.paidAmount, contractTarget.currencyCode)}</strong></span><span className="text-muted-foreground">Saldo pendiente: <strong className="text-foreground">{formatFinanceMoneyDisplay(contractTarget.outstandingAmount, contractTarget.currencyCode)}</strong></span></div>
+      </section> : null}
       <div className="grid gap-4 sm:grid-cols-2">
         <FormField htmlFor="invoice-payment-received-currency" label="Moneda recibida" required><Select id="invoice-payment-received-currency" value={form.receivedCurrencyCode} onChange={(event) => updateForm('receivedCurrencyCode', event.target.value as FinanceCurrency | '')} disabled={paymentAlreadyCreated || extracting}><option value="">Seleccione moneda</option>{receivedCurrencyOptions.map((currency) => <option key={currency} value={currency}>{currency}</option>)}</Select></FormField>
-        <FormField htmlFor="invoice-payment-application-currency" label="Moneda de aplicación" required><Select id="invoice-payment-application-currency" value={applicationCurrencyCode} onChange={(event) => changeApplicationCurrency(event.target.value as FinanceCurrency | '')} disabled={paymentAlreadyCreated || extracting}><option value="">Seleccione moneda</option>{currencies.map((currency) => <option key={currency} value={currency}>{currency}</option>)}</Select></FormField>
+        {contractTarget ? <FormField htmlFor="contract-payment-intended-amount" label={`Monto a aplicar (${contractTarget.currencyCode})`} required><Input id="contract-payment-intended-amount" inputMode="decimal" placeholder="0.00" value={allocations[contractTarget.commercialObligationId] ?? ''} onChange={(event) => setAllocations({ [contractTarget.commercialObligationId]: event.target.value })} disabled={paymentAlreadyCreated} />{contractAmountExceedsOutstanding ? <p className="mt-1 text-xs text-destructive">El monto a aplicar no puede superar el saldo pendiente del contrato.</p> : null}</FormField> : <FormField htmlFor="invoice-payment-application-currency" label="Moneda de aplicación" required><Select id="invoice-payment-application-currency" value={applicationCurrencyCode} onChange={(event) => changeApplicationCurrency(event.target.value as FinanceCurrency | '')} disabled={paymentAlreadyCreated || extracting}><option value="">Seleccione moneda</option>{currencies.map((currency) => <option key={currency} value={currency}>{currency}</option>)}</Select></FormField>}
         <FormField htmlFor="invoice-payment-amount" label="Monto recibido" required><Input id="invoice-payment-amount" inputMode="decimal" placeholder="0.00" value={form.amount} onChange={(event) => updateForm('amount', event.target.value)} disabled={paymentAlreadyCreated} /></FormField>
         <FormField htmlFor="invoice-payment-method" label="Método de pago"><Select id="invoice-payment-method" value={form.paymentMethod} onChange={(event) => updateForm('paymentMethod', event.target.value as FinancePaymentMethod)} disabled={paymentAlreadyCreated}>{FINANCE_PAYMENT_METHOD_OPTIONS.map((option) => <option key={option.token} value={option.token}>{option.label}</option>)}</Select></FormField>
         <FormField htmlFor="invoice-payment-date" label="Fecha de pago"><Input id="invoice-payment-date" type="date" value={form.paymentDate} onChange={(event) => updateForm('paymentDate', event.target.value)} disabled={paymentAlreadyCreated} /></FormField>
@@ -260,7 +282,7 @@ export function CustomerInvoicePaymentIntakeSheet({ customerId, open, preselecte
         {extractionDetails ? <div className="mt-3 rounded-md border border-border bg-card p-3 text-xs text-muted-foreground"><p className="font-medium text-foreground">Datos detectados — revíselos antes de enviar</p><div className="mt-2 grid gap-1 sm:grid-cols-2">{extractionDetails.originBank ? <span>Banco origen: {extractionDetails.originBank}</span> : null}{extractionDetails.destinationBank ? <span>Banco destino: {extractionDetails.destinationBank}</span> : null}{extractionDetails.destinationAccount ? <span>Cuenta destino: {maskIdentifier(extractionDetails.destinationAccount)}</span> : null}{extractionDetails.paymentCode ? <span>Código: {extractionDetails.paymentCode}</span> : null}{extractionDetails.confidence !== undefined ? <span>Confianza: {String(extractionDetails.confidence)}</span> : null}</div></div> : null}
         {activeValidation ? <DestinationValidationAlert validation={activeValidation} /> : null}
       </div>
-      <div className="space-y-3">
+      {!contractTarget ? <div className="space-y-3">
         <div><h3 className="text-sm font-semibold text-foreground">Facturas a proponer</h3><p className="mt-1 text-xs text-muted-foreground">Seleccione una o varias facturas abiertas en la moneda de aplicación. La propuesta se valida nuevamente durante la revisión.</p></div>
         {targetLoading ? <p className="text-sm text-muted-foreground">Cargando facturas disponibles…</p> : null}
         {targetError ? <Alert variant="destructive"><AlertDescription>{targetError}</AlertDescription></Alert> : null}
@@ -269,13 +291,17 @@ export function CustomerInvoicePaymentIntakeSheet({ customerId, open, preselecte
           const selected = Object.prototype.hasOwnProperty.call(allocations, target.accountReceivableId);
           return <div key={target.accountReceivableId} className="rounded-lg border border-border bg-card p-3"><div className="flex items-start gap-3"><input aria-label={`Seleccionar ${target.reference}`} type="checkbox" checked={selected} onChange={() => toggleTarget(target)} disabled={paymentAlreadyCreated} className="mt-1 size-4 accent-primary" /><div className="min-w-0 flex-1"><p className="font-medium text-foreground">{target.reference}</p><p className="mt-1 text-xs text-muted-foreground">{target.issuedAt ? new Date(target.issuedAt).toLocaleDateString('es-CR') : 'Fecha no disponible'} · {target.currencyCode}</p><div className="mt-2 grid gap-1 text-xs text-muted-foreground sm:grid-cols-3"><span>Original: {formatFinanceMoneyDisplay(target.originalAmount, target.currencyCode)}</span><span>Aplicado: {formatFinanceMoneyDisplay(target.appliedAmount, target.currencyCode)}</span><span>Saldo: {formatFinanceMoneyDisplay(target.outstandingAmount, target.currencyCode)}</span></div></div>{selected ? <div className="w-32"><Input aria-label={`Monto para ${target.reference}`} inputMode="decimal" placeholder="0.00" value={allocations[target.accountReceivableId] ?? ''} onChange={(event) => setAllocations((current) => ({ ...current, [target.accountReceivableId]: event.target.value }))} disabled={paymentAlreadyCreated} /></div> : null}</div></div>;
         })}
-      </div>
-      {form.receivedCurrencyCode && applicationCurrencyCode ? <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm"><div className="flex justify-between gap-3"><span className="text-muted-foreground">Monto recibido</span><strong>{displayUnits(totalUnits, form.receivedCurrencyCode)}</strong></div><div className="mt-2 flex justify-between gap-3"><span className="text-muted-foreground">Total propuesto</span><strong>{displayUnits(allocationUnits, applicationCurrencyCode)}</strong></div><div className="mt-2 flex justify-between gap-3"><span className="text-muted-foreground">{crossCurrency ? 'Equivalente sin asignar' : 'Sin asignar'}</span><strong className={allocationsExceedPayment ? 'text-destructive' : ''}>{displayUnits(remainingUnits, applicationCurrencyCode)}</strong></div>{allocationsExceedPayment ? <p className="mt-3 text-xs text-destructive">La propuesta no puede superar el monto disponible para aplicar.</p> : null}{hasUnassignedSelection ? <p className="mt-3 text-xs text-destructive">Asigne un monto mayor que cero a cada factura seleccionada.</p> : null}</div> : null}
+      </div> : null}
+      {form.receivedCurrencyCode && applicationCurrencyCode ? <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm"><div className="flex justify-between gap-3"><span className="text-muted-foreground">Monto recibido</span><strong>{displayUnits(totalUnits, form.receivedCurrencyCode)}</strong></div><div className="mt-2 flex justify-between gap-3"><span className="text-muted-foreground">Total propuesto</span><strong>{displayUnits(allocationUnits, applicationCurrencyCode)}</strong></div><div className="mt-2 flex justify-between gap-3"><span className="text-muted-foreground">{crossCurrency ? 'Equivalente sin asignar' : 'Sin asignar'}</span><strong className={allocationsExceedPayment ? 'text-destructive' : ''}>{displayUnits(remainingUnits, applicationCurrencyCode)}</strong></div>{allocationsExceedPayment ? <p className="mt-3 text-xs text-destructive">La propuesta no puede superar el monto disponible para aplicar.</p> : null}{hasUnassignedSelection ? <p className="mt-3 text-xs text-destructive">{contractTarget ? 'Indique un monto mayor que cero para aplicar al contrato.' : 'Asigne un monto mayor que cero a cada factura seleccionada.'}</p> : null}</div> : null}
     </FormSheet>
     <LoadingModal isOpen={extracting} state="loading" loadingMessage="Analizando comprobante…" successMessage="" errorMessage="" onClose={() => undefined} />
     <ConfirmDialog open={overrideDialogStage === 'FIRST'} onOpenChange={(nextOpen) => { if (!nextOpen) setOverrideDialogStage((current) => current === 'FIRST' ? null : current); }} title="Cuenta destino no registrada" description="La cuenta o SINPE detectado no coincide con una cuenta activa registrada. Detenga la operación si el comprobante requiere corrección." cancelLabel="Detener operación" confirmLabel="Continuar" variant="destructive" onConfirm={() => setOverrideDialogStage('SECOND')} />
     <ConfirmDialog open={overrideDialogStage === 'SECOND'} onOpenChange={(nextOpen) => { if (!nextOpen && !submitting) setOverrideDialogStage(null); }} title="Confirmar excepción de destino" description="Confirmo que deseo registrar este pago aunque la cuenta o SINPE destino no coincide con una cuenta registrada en el sistema." cancelLabel="Cancelar" confirmLabel="Confirmar y continuar" variant="destructive" isPending={submitting} onConfirm={() => void acceptDestinationOverride()} />
   </>;
+}
+
+export function CustomerContractPaymentIntakeSheet(props: Omit<Props, 'preselectedInvoice' | 'contractTarget' | 'currencies'> & { contractTarget: CustomerContractPaymentTarget }) {
+  return <CustomerInvoicePaymentIntakeSheet {...props} preselectedInvoice={null} contractTarget={props.contractTarget} currencies={[props.contractTarget.currencyCode]} />;
 }
 
 function SettlementPreviewPanel({ preview, loading, error }: { preview: CustomerPaymentSettlementPreview | null; loading: boolean; error: string | null }) {

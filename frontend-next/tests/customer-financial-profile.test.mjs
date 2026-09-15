@@ -88,10 +88,20 @@ test('Customer Profile opens the canonical contract financial drawer without a B
   assert.match(profileSource, /Detalle financiero/);
   assert.match(profileSource, /setSelectedFinancialContract\(contract\)/);
   assert.match(profileSource, /<ContractFinanceDrawer/);
+  assert.match(profileSource, /customerId=\{customerId\}/);
   assert.doesNotMatch(profileSource, /Open Account|\/billing\//);
   assert.doesNotMatch(profileSource, /getContractCommercialObligation|listContractPayments/);
-  assert.match(drawerSource, /getContractCommercialObligation\(contract\.contractId/);
-  assert.match(drawerSource, /listContractPayments\(contract\.contractId/);
+  assert.match(financeApiSource, /export function getCustomerContractFinancialDetail/);
+  assert.match(financeApiSource, /customers\/\$\{encodeURIComponent\(customerId\)\}\/contracts\/\$\{encodeURIComponent\(contractId\)\}\/financial-detail/);
+  assert.match(drawerSource, /if \(customerId\) \{[\s\S]{0,500}getCustomerContractFinancialDetail\(customerId, contract\.contractId/);
+  assert.match(drawerSource, /\} else \{[\s\S]{0,500}getContractCommercialObligation\(contract\.contractId/);
+});
+
+test('Customer-scoped drawer errors never render the successful empty-obligation state', () => {
+  assert.match(drawerSource, /\{error \? <div className=\{styles\.inlineError\}/);
+  assert.match(drawerSource, /\{!loading && !error \? <>/);
+  assert.match(drawerSource, /Este contrato aún no tiene una obligación financiera disponible\./);
+  assert.match(financeApiSource, /CONTRACT_NOT_FOUND: 'El contrato ya no está disponible para este cliente\.'/);
 });
 
 test('the shared drawer returns to the mounted Customer Profile only in Profile context', () => {

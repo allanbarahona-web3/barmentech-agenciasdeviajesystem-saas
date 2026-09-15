@@ -55,6 +55,53 @@ describe("CommercialObligationAllocationService", () => {
     expect(data.settledAt).toBeInstanceOf(Date);
   });
 
+  it("uses the persisted USD settlement pool, not physical CRC received money", async () => {
+    const c = context({
+      payment: payment("135000", {
+        currencyCode: "CRC",
+        receivedAmount: d("135000"),
+        settlementCurrencyCode: "USD",
+        settlementAmount: d("300"),
+        settlementAvailableAmount: d("300"),
+        settlementExchangeRate: d("450"),
+        settlementExchangeRateSource: "MANUAL",
+        settlementExchangeRateEffectiveDate: new Date("2026-09-14T00:00:00.000Z"),
+      }),
+      obligation: obligation("300", { currencyCode: "USD", originalAmount: d("300") }),
+    });
+
+    await c.service.allocateInTransaction(c.tx as never, command({ amount: d("300") }));
+
+    expect(c.tx.commercialObligationAllocation.createMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: [expect.objectContaining({ amount: d("300") })],
+    }));
+    expect(c.tx.payment.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ availableAmount: d("0"), settlementAvailableAmount: d("0"), status: PaymentStatus.FULLY_ALLOCATED }),
+    }));
+  });
+
+  it("preserves an unallocated settlement remainder and derives the physical remainder once", async () => {
+    const c = context({
+      payment: payment("157500", {
+        currencyCode: "CRC",
+        receivedAmount: d("157500"),
+        settlementCurrencyCode: "USD",
+        settlementAmount: d("350"),
+        settlementAvailableAmount: d("350"),
+        settlementExchangeRate: d("450"),
+        settlementExchangeRateSource: "MANUAL",
+        settlementExchangeRateEffectiveDate: new Date("2026-09-14T00:00:00.000Z"),
+      }),
+      obligation: obligation("300", { currencyCode: "USD", originalAmount: d("300") }),
+    });
+
+    await c.service.allocateInTransaction(c.tx as never, command({ amount: d("300") }));
+
+    expect(c.tx.payment.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ availableAmount: d("22500"), settlementAvailableAmount: d("50"), status: PaymentStatus.PARTIALLY_ALLOCATED }),
+    }));
+  });
+
   it.each([
     ["currency mismatch", { payment: payment("300", { currencyCode: "CRC" }) }, COMMERCIAL_OBLIGATION_ALLOCATION_ERRORS.CURRENCY_MISMATCH],
     ["customer mismatch", { payment: payment("300", { customerId: "customer-2" }) }, COMMERCIAL_OBLIGATION_ALLOCATION_ERRORS.CUSTOMER_MISMATCH],

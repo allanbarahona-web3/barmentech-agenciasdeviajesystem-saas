@@ -38,6 +38,31 @@ describe("ContractPaymentFiscalizationOutboxService", () => {
     );
   });
 
+  it("enqueues a partially allocated reported Contract installment exactly once", async () => {
+    const createMany = jest.fn().mockResolvedValue({ count: 1 });
+    await new ContractPaymentFiscalizationOutboxService().enqueueConfirmedPaymentInTransaction(
+      { billingOutboxEvent: { createMany } } as never,
+      payment({
+        purpose: PaymentPurpose.CONTRACT_INSTALLMENT,
+        status: PaymentStatus.PARTIALLY_ALLOCATED,
+        allocationProposal: { kind: "CONTRACTS", targets: [{ targetType: "COMMERCIAL_OBLIGATION", targetId: "obligation-a", intendedAmount: "300.00" }] },
+      }),
+    );
+    expect(createMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: [expect.objectContaining({ deduplicationKey: "contract-payment:fiscalization-requested:payment-a:v1" })],
+      skipDuplicates: true,
+    }));
+  });
+
+  it("does not enqueue a partially allocated legacy installment", async () => {
+    const createMany = jest.fn();
+    await new ContractPaymentFiscalizationOutboxService().enqueueConfirmedPaymentInTransaction(
+      { billingOutboxEvent: { createMany } } as never,
+      payment({ purpose: PaymentPurpose.CONTRACT_INSTALLMENT, status: PaymentStatus.PARTIALLY_ALLOCATED }),
+    );
+    expect(createMany).not.toHaveBeenCalled();
+  });
+
   it.each([
     [PaymentPurpose.GENERAL, PaymentStatus.FULLY_ALLOCATED],
     [PaymentPurpose.CONTRACT_PAYMENT, PaymentStatus.PENDING_VERIFICATION],

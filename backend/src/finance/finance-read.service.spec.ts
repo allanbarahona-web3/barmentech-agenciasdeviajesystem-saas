@@ -95,6 +95,7 @@ describe("FinanceReadService", () => {
       contractId: "contract-1",
       commercialObligation: {
         id: "obligation-1", currencyCode: "USD", originalAmount: "1350", outstandingAmount,
+        paidAmount: String(1350 - Number(outstandingAmount)),
         status, dueDate: new Date("2026-12-31T00:00:00.000Z"), settledAt: status === CommercialObligationStatus.SETTLED ? new Date("2026-09-05T12:00:00.000Z") : null,
       },
       payable,
@@ -116,6 +117,104 @@ describe("FinanceReadService", () => {
       contractId: "contract-1", commercialObligation: null, payable: false,
     });
     expect(Object.keys(prisma.commercialObligation)).toEqual(["findUnique"]);
+  });
+
+  it("returns one customer-scoped readonly Contract financial detail without per-payment reads", async () => {
+    const customerFindFirst = jest.fn().mockResolvedValue({ id: "customer-1" });
+    const contractFindFirst = jest.fn().mockResolvedValue({
+      id: "contract-1", contractNumber: "CTR-100", destination: "San José",
+      travelPackage: { name: "Costa Rica" }, internalTrip: null,
+    });
+    const obligationFindUnique = jest.fn().mockResolvedValue(contractObligation({
+      originalAmount: d("1000"), outstandingAmount: d("600"), status: CommercialObligationStatus.PARTIALLY_SETTLED,
+    }));
+    const paymentFindMany = jest.fn().mockResolvedValue([]);
+    const paymentCount = jest.fn().mockResolvedValue(0);
+    const service = new FinanceReadService({
+      client: { findFirst: customerFindFirst },
+      contract: { findFirst: contractFindFirst },
+      commercialObligation: { findUnique: obligationFindUnique },
+      payment: { findMany: paymentFindMany, count: paymentCount },
+    } as unknown as PrismaService);
+
+    await expect(service.getCustomerContractFinancialDetail("tenant-1", "customer-1", "contract-1", { page: 1, pageSize: 10 })).resolves.toEqual({
+      contract: { contractId: "contract-1", contractNumber: "CTR-100", travelName: "Costa Rica" },
+      commercialObligation: expect.objectContaining({ id: "obligation-1", originalAmount: "1000", paidAmount: "400", outstandingAmount: "600" }),
+      payable: true,
+      payments: { items: [], total: 0, page: 1, pageSize: 10, totalPages: 0 },
+    });
+    expect(customerFindFirst).toHaveBeenCalledWith({ where: { id: "customer-1", tenantId: "tenant-1" }, select: { id: true } });
+    expect(contractFindFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "contract-1", tenantId: "tenant-1", clientId: "customer-1" } }));
+    expect(paymentFindMany).toHaveBeenCalledTimes(1);
+    expect(paymentCount).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not disclose a customer-scoped Contract financial detail outside the supplied customer or tenant", async () => {
+    const customerFindFirst = jest.fn().mockResolvedValue({ id: "customer-other" });
+    const contractFindFirst = jest.fn().mockResolvedValue(null);
+    const obligationFindUnique = jest.fn();
+    const paymentFindMany = jest.fn();
+    const service = new FinanceReadService({
+      client: { findFirst: customerFindFirst },
+      contract: { findFirst: contractFindFirst },
+      commercialObligation: { findUnique: obligationFindUnique },
+      payment: { findMany: paymentFindMany, count: jest.fn() },
+    } as unknown as PrismaService);
+
+    await expect(service.getCustomerContractFinancialDetail("tenant-1", "customer-other", "contract-1", {})).rejects.toBeInstanceOf(NotFoundException);
+    expect(contractFindFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "contract-1", tenantId: "tenant-1", clientId: "customer-other" } }));
+    expect(obligationFindUnique).not.toHaveBeenCalled();
+    expect(paymentFindMany).not.toHaveBeenCalled();
+  });
+
+  it("does not look up a Contract when the supplied customer is outside the tenant", async () => {
+    const customerFindFirst = jest.fn().mockResolvedValue(null);
+    const contractFindFirst = jest.fn();
+    const service = new FinanceReadService({
+      client: { findFirst: customerFindFirst },
+      contract: { findFirst: contractFindFirst },
+    } as unknown as PrismaService);
+
+    await expect(service.getCustomerContractFinancialDetail("tenant-1", "customer-other", "contract-1", {})).rejects.toBeInstanceOf(NotFoundException);
+    expect(contractFindFirst).not.toHaveBeenCalled();
+  });
+
+  it("lists only set-based open Contract payment targets for the requested customer and currency", async () => {
+    const commercialObligation = {
+      findMany: jest.fn().mockResolvedValue([
+        {
+          id: "obligation-a", sourceId: "contract-a", currencyCode: "USD", originalAmount: d("1000"),
+          outstandingAmount: d("600"), status: CommercialObligationStatus.PARTIALLY_SETTLED,
+        },
+      ]),
+    };
+    const contract = {
+      findMany: jest.fn().mockResolvedValue([
+        {
+          id: "contract-a", contractNumber: "CTR-100", destination: "San José",
+          travelPackage: { name: "Costa Rica" }, internalTrip: null,
+        },
+      ]),
+    };
+    const service = new FinanceReadService({ commercialObligation, contract } as unknown as PrismaService);
+
+    await expect(service.listCustomerContractPaymentTargets("tenant-a", "customer-a", "USD")).resolves.toEqual({
+      targets: [{
+        contractId: "contract-a", commercialObligationId: "obligation-a", contractNumber: "CTR-100",
+        travelName: "Costa Rica", currencyCode: "USD", originalAmount: "1000", paidAmount: "400",
+        outstandingAmount: "600", status: CommercialObligationStatus.PARTIALLY_SETTLED,
+      }],
+    });
+    expect(commercialObligation.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        tenantId: "tenant-a", customerId: "customer-a", sourceType: "CONTRACT", currencyCode: "USD",
+        status: { in: [CommercialObligationStatus.OPEN, CommercialObligationStatus.PARTIALLY_SETTLED] },
+        outstandingAmount: { gt: d("0") },
+      }),
+    }));
+    expect(contract.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ tenantId: "tenant-a", clientId: "customer-a", cancelledAt: null, status: { not: "CANCELLED" } }),
+    }));
   });
 
   it("does not expose a Contract or obligation outside the authenticated tenant", async () => {

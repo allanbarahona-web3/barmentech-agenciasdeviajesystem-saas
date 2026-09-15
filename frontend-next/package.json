@@ -10,6 +10,7 @@
     "test:contract-initial-payment": "node --experimental-strip-types tests/contract-initial-payment.test.mjs",
     "test:finance-payment-method-labels": "node --experimental-strip-types tests/finance-payment-method-labels.test.mjs",
     "test:customer-invoice-payment-intake": "node --experimental-strip-types tests/customer-invoice-payment-intake.test.mjs",
+    "test:customer-contract-payment-intake": "node --experimental-strip-types tests/customer-contract-payment-intake.test.mjs",
     "test:contract-installment-registration": "node --experimental-strip-types tests/contract-installment-registration.test.mjs",
     "test:contracts-finance-portfolio": "node --experimental-strip-types tests/contracts-finance-portfolio.test.mjs",
     "test:contract-history-actions": "node --experimental-strip-types tests/contract-history-actions.test.mjs",

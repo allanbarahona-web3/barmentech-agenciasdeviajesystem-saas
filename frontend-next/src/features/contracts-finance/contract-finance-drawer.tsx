@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { formatContractPaymentPurpose, formatContractPaymentStatus } from '@/features/contracts-finance/contract-payment-labels';
 import { buildContractInstallmentRequest, canRegisterContractInstallments, CONTRACT_OBLIGATION_STATUS_LABELS, createContractInstallmentDeduplicationKey, installmentFormError } from '@/features/contracts-finance/contract-installment';
 import { getStoredSession } from '@/lib/auth-api';
-import { downloadPaymentReceipt, FinanceApiError, formatFinanceMoney, getContractCommercialObligation, listContractPayments, registerContractInstallment, type CommercialObligationStatus, type ContractObligationPortfolioItem, type ContractPaymentsPage } from '@/lib/finance-api';
+import { downloadPaymentReceipt, FinanceApiError, formatFinanceMoney, getContractCommercialObligation, getCustomerContractFinancialDetail, listContractPayments, registerContractInstallment, type CommercialObligationStatus, type ContractObligationPortfolioItem, type ContractPaymentsPage } from '@/lib/finance-api';
 import { FINANCE_PAYMENT_METHOD_OPTIONS, formatFinancePaymentMethod, type FinancePaymentMethod } from '@/lib/finance-payment-methods';
 import { formatBusinessDate } from '@/shared/regional';
 import styles from '@/app/finance/accounts-receivable/accounts-receivable.module.css';
@@ -105,7 +105,7 @@ export function ContractInstallmentForm({ contractId, outstandingAmount, onSucce
   </form>;
 }
 
-export function ContractFinanceDrawer({ contract, canWrite, onClose, onChanged, onReturnToCustomer }: { contract: ContractFinanceDrawerContract; canWrite: boolean; onClose: () => void; onChanged: () => void; onReturnToCustomer?: () => void }) {
+export function ContractFinanceDrawer({ contract, customerId, canWrite, onClose, onChanged, onReturnToCustomer }: { contract: ContractFinanceDrawerContract; customerId?: string; canWrite: boolean; onClose: () => void; onChanged: () => void; onReturnToCustomer?: () => void }) {
   const [obligationResult, setObligationResult] = useState<Awaited<ReturnType<typeof getContractCommercialObligation>> | null>(null);
   const [paymentsResult, setPaymentsResult] = useState<ContractPaymentsPage | null>(null);
   const [paymentPage, setPaymentPage] = useState(1);
@@ -118,12 +118,21 @@ export function ContractFinanceDrawer({ contract, canWrite, onClose, onChanged, 
   const refresh = useCallback(async (signal?: AbortSignal) => {
     setLoading(true); setError(null);
     try {
-      const [obligation, payments] = await Promise.all([getContractCommercialObligation(contract.contractId, signal), listContractPayments(contract.contractId, { page: paymentPage, pageSize: PAYMENT_PAGE_SIZE }, signal)]);
-      if (!signal?.aborted) { setObligationResult(obligation); setPaymentsResult(payments); if (payments.totalPages > 0 && paymentPage > payments.totalPages) setPaymentPage(payments.totalPages); }
+      if (customerId) {
+        const detail = await getCustomerContractFinancialDetail(customerId, contract.contractId, { page: paymentPage, pageSize: PAYMENT_PAGE_SIZE }, signal);
+        if (!signal?.aborted) {
+          setObligationResult({ contractId: detail.contract.contractId, commercialObligation: detail.commercialObligation, payable: detail.payable });
+          setPaymentsResult(detail.payments);
+          if (detail.payments.totalPages > 0 && paymentPage > detail.payments.totalPages) setPaymentPage(detail.payments.totalPages);
+        }
+      } else {
+        const [obligation, payments] = await Promise.all([getContractCommercialObligation(contract.contractId, signal), listContractPayments(contract.contractId, { page: paymentPage, pageSize: PAYMENT_PAGE_SIZE }, signal)]);
+        if (!signal?.aborted) { setObligationResult(obligation); setPaymentsResult(payments); if (payments.totalPages > 0 && paymentPage > payments.totalPages) setPaymentPage(payments.totalPages); }
+      }
     } catch (requestError) {
       if (!signal?.aborted) setError(requestError instanceof Error ? requestError.message : 'No se pudo cargar el detalle financiero del contrato.');
     } finally { if (!signal?.aborted) setLoading(false); }
-  }, [contract.contractId, paymentPage]);
+  }, [contract.contractId, customerId, paymentPage]);
 
   useEffect(() => { const controller = new AbortController(); void refresh(controller.signal); return () => controller.abort(); }, [refresh]);
   useEffect(() => { const closeOnEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); }; window.addEventListener('keydown', closeOnEscape); return () => window.removeEventListener('keydown', closeOnEscape); }, [onClose]);
@@ -132,6 +141,7 @@ export function ContractFinanceDrawer({ contract, canWrite, onClose, onChanged, 
   const currencyCode = commercialObligation?.currencyCode ?? contract.currencyCode;
   const effectiveStatus = commercialObligation?.status ?? contract.status;
   const effectiveOriginal = commercialObligation?.originalAmount ?? contract.originalAmount;
+  const effectivePaid = commercialObligation?.paidAmount ?? contract.paidAmount;
   const effectiveOutstanding = commercialObligation?.outstandingAmount ?? contract.outstandingAmount;
   const effectiveDueDate = commercialObligation?.dueDate ?? contract.dueDate;
   const effectiveSettledAt = commercialObligation?.settledAt ?? contract.settledAt;
@@ -152,12 +162,12 @@ export function ContractFinanceDrawer({ contract, canWrite, onClose, onChanged, 
       <div className={styles.drawerBody}>
         {loading && !obligationResult ? <div className={styles.state}><LoadingSpinner message="Cargando detalle financiero…" /></div> : null}
         {error ? <div className={styles.inlineError} role="alert"><AlertCircle aria-hidden="true" /><span>{error}</span></div> : null}
-        {!loading || obligationResult ? <>
+        {!loading && !error ? <>
           <section className={styles.detailCard}><h3>{contract.contractNumber}</h3><p className={styles.contractTravelLabel}>{contract.travelLabel ?? 'Viaje sin nombre registrado'}</p>{travelContextLabel(contract) ? <p className={styles.contractTravelContext}>{travelContextLabel(contract)}</p> : null}</section>
           {currencyCode && effectiveStatus && effectiveOriginal && effectiveOutstanding ? <section className={styles.detailCard}><h3>Estado financiero</h3><dl className={styles.facts}>
             <div><dt>Estado</dt><dd><span className={styles.badgeGroup}><Badge className={statusClass(effectiveStatus)} variant="outline">{CONTRACT_OBLIGATION_STATUS_LABELS[effectiveStatus]}</Badge>{contract.isOverdue && <Badge className={styles.overdueBadge} variant="outline">Vencido</Badge>}</span></dd></div>
             <div><dt>Total contratado</dt><dd>{formatFinanceMoney(effectiveOriginal, currencyCode)}</dd></div>
-            {contract.paidAmount ? <div><dt>Pagado</dt><dd className={styles.availableAmount}>{formatFinanceMoney(contract.paidAmount, currencyCode)}</dd></div> : null}
+            {effectivePaid ? <div><dt>Pagado</dt><dd className={styles.availableAmount}>{formatFinanceMoney(effectivePaid, currencyCode)}</dd></div> : null}
             <div><dt>Saldo pendiente</dt><dd className={styles.pendingAmount}>{formatFinanceMoney(effectiveOutstanding, currencyCode)}</dd></div><div><dt>Moneda</dt><dd>{currencyCode}</dd></div><div><dt>Vencimiento</dt><dd>{formatOptionalBusinessDate(effectiveDueDate)}</dd></div><div><dt>Liquidado</dt><dd>{formatOptionalBusinessDate(effectiveSettledAt)}</dd></div>
           </dl></section> : <section className={styles.detailCard}><p className={styles.secondary}>Este contrato aún no tiene una obligación financiera disponible.</p></section>}
           {notice ? <div className={styles.paymentSuccess} role="status"><CircleDollarSign aria-hidden="true" /><div><strong>Abono registrado</strong><p>{notice}</p></div></div> : null}

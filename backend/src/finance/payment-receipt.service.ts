@@ -14,14 +14,89 @@ export class PaymentReceiptService {
   constructor(private readonly prisma: PrismaService, private readonly pdf: DocumentPdfService, private readonly email: EmailService, private readonly tenants: TenantService) {}
 
   async get(tenantId: string, paymentId: string): Promise<PaymentReceipt> {
-    const payment = await this.prisma.payment.findFirst({ where: { id: paymentId, tenantId }, include: { allocations: { orderBy: [{ allocatedAt: "asc" }, { id: "asc" }], include: { accountReceivable: { select: { sourceNumber: true, sourceId: true } } } } } });
+    const payment = await this.prisma.payment.findFirst({
+      where: { id: paymentId, tenantId },
+      include: {
+        allocations: {
+          orderBy: [{ allocatedAt: "asc" }, { id: "asc" }],
+          include: { accountReceivable: { select: { sourceNumber: true, sourceDocumentType: true } } },
+        },
+        commercialObligationAllocations: {
+          orderBy: [{ allocatedAt: "asc" }, { id: "asc" }],
+          include: { commercialObligation: { select: { sourceType: true, sourceId: true, sourceReference: true, currencyCode: true } } },
+        },
+      },
+    });
     if (!payment) throw new NotFoundException("PAYMENT_NOT_FOUND");
     const receiptNumber = eligibleReceiptNumber(payment.status, payment.receiptNumber);
-    const customer = payment.customerId ? await this.prisma.client.findFirst({ where: { id: payment.customerId, tenantId }, select: { fullName: true, idNumber: true, email: true } }) : null;
-    const applied = payment.allocations.filter((allocation) => allocation.status === "ACTIVE").reduce((total, allocation) => total.plus(allocation.amount), new Prisma.Decimal(0));
+    const contractIds = [...new Set(payment.commercialObligationAllocations
+      .filter((allocation) => allocation.commercialObligation.sourceType === "CONTRACT")
+      .map((allocation) => allocation.commercialObligation.sourceId))];
+    const [customer, contracts, registered] = await Promise.all([
+      payment.customerId ? this.prisma.client.findFirst({ where: { id: payment.customerId, tenantId }, select: { fullName: true, idNumber: true, email: true } }) : null,
+      contractIds.length ? this.prisma.contract.findMany({
+        where: { tenantId, id: { in: contractIds } },
+        select: { id: true, contractNumber: true, destination: true, travelPackage: { select: { name: true } }, internalTrip: { select: { name: true } } },
+      }) : [],
+      this.prisma.billingAuditLog.findFirst({ where: { tenantId, entityType: FINANCE_AUDIT_ENTITY_TYPES.PAYMENT, entityId: payment.id, action: FINANCE_AUDIT_ACTIONS.REGISTERED }, orderBy: { createdAt: "asc" }, select: { actorName: true } }),
+    ]);
+    const contractById = new Map(contracts.map((contract) => [contract.id, contract]));
+    const applications = [
+      ...payment.allocations.map((allocation) => ({
+        type: "ACCOUNT_RECEIVABLE" as const,
+        reference: allocation.accountReceivable.sourceNumber ?? "Cuenta por cobrar",
+        description: allocation.accountReceivable.sourceDocumentType ?? null,
+        applicationDate: allocation.allocatedAt,
+        currencyCode: payment.settlementCurrencyCode ?? payment.currencyCode,
+        amount: allocation.amount,
+        statusLabel: allocationStatusLabel(allocation.status),
+        status: allocation.status,
+        relatedDocumentReference: allocation.accountReceivable.sourceNumber ?? null,
+      })),
+      ...payment.commercialObligationAllocations.map((allocation) => {
+        const obligation = allocation.commercialObligation;
+        const contract = obligation.sourceType === "CONTRACT" ? contractById.get(obligation.sourceId) : null;
+        return {
+          type: "COMMERCIAL_OBLIGATION" as const,
+          reference: contract?.contractNumber ?? obligation.sourceReference ?? "Obligación comercial",
+          description: contract ? contract.travelPackage?.name ?? contract.internalTrip?.name ?? contract.destination : null,
+          applicationDate: allocation.allocatedAt,
+          currencyCode: obligation.currencyCode,
+          amount: allocation.amount,
+          statusLabel: allocationStatusLabel(allocation.status),
+          status: allocation.status,
+          relatedDocumentReference: null,
+        };
+      }),
+    ].sort((left, right) => left.applicationDate.getTime() - right.applicationDate.getTime() || left.reference.localeCompare(right.reference));
+    const applied = applications.filter((application) => application.status === "ACTIVE").reduce((total, application) => total.plus(application.amount), new Prisma.Decimal(0));
     const money = (value: Prisma.Decimal) => value.toFixed(Math.max(2, value.decimalPlaces()));
-    const registered = await this.prisma.billingAuditLog.findFirst({ where: { tenantId, entityType: FINANCE_AUDIT_ENTITY_TYPES.PAYMENT, entityId: payment.id, action: FINANCE_AUDIT_ACTIONS.REGISTERED }, orderBy: { createdAt: "asc" }, select: { actorName: true } });
-    return { receiptNumber, customer: { name: customer?.fullName ?? payment.payerDisplayName, identification: customer?.idNumber ?? payment.payerIdentificationNumber, email: customer?.email ?? null }, currencyCode: payment.currencyCode, receivedAmount: money(payment.receivedAmount), appliedAmount: money(applied), availableAmount: money(payment.availableAmount), receivedAt: payment.receivedAt, paymentMethodLabel: paymentMethodLabel(payment.paymentMethod), externalReference: payment.externalReference, description: payment.description, statusLabel: paymentStatusLabel(payment.status), registeredBy: registered?.actorName ?? null, allocations: payment.allocations.map((allocation) => ({ sourceNumber: allocation.accountReceivable.sourceNumber ?? allocation.accountReceivable.sourceId, amount: money(allocation.amount), statusLabel: allocationStatusLabel(allocation.status), allocatedAt: allocation.allocatedAt })) };
+    const settlement = payment.settlementCurrencyCode && payment.settlementAmount && payment.settlementAvailableAmount ? {
+      currencyCode: payment.settlementCurrencyCode,
+      amount: money(payment.settlementAmount),
+      availableAmount: money(payment.settlementAvailableAmount),
+      exchangeRate: payment.settlementExchangeRate ? payment.settlementExchangeRate.toFixed(Math.max(2, payment.settlementExchangeRate.decimalPlaces())) : null,
+      exchangeRateSource: payment.settlementExchangeRateSource ?? null,
+      exchangeRateEffectiveDate: payment.settlementExchangeRateEffectiveDate ?? null,
+    } : null;
+    const crossCurrency = Boolean(settlement && settlement.currencyCode !== payment.currencyCode);
+    return {
+      receiptNumber,
+      customer: { name: customer?.fullName ?? payment.payerDisplayName, identification: customer?.idNumber ?? payment.payerIdentificationNumber, email: customer?.email ?? null },
+      currencyCode: payment.currencyCode,
+      receivedAmount: money(payment.receivedAmount),
+      applicationCurrencyCode: crossCurrency ? settlement!.currencyCode : payment.currencyCode,
+      appliedAmount: money(applied),
+      availableAmount: crossCurrency ? settlement!.availableAmount : money(payment.availableAmount),
+      settlement,
+      receivedAt: payment.receivedAt,
+      paymentMethodLabel: paymentMethodLabel(payment.paymentMethod),
+      externalReference: payment.externalReference,
+      description: payment.description,
+      statusLabel: paymentStatusLabel(payment.status),
+      registeredBy: registered?.actorName ?? null,
+      applications: applications.map((application) => ({ ...application, amount: money(application.amount) })),
+    };
   }
 
   async render(tenantId: string, paymentId: string) {

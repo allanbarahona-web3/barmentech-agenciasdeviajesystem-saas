@@ -51,7 +51,7 @@ test('AI extraction uses the shared blocking LoadingModal and returns to the edi
 });
 
 test('submission creates one pending Finance Payment before attaching selected evidence', () => {
-  assert.match(intakeSource, /const payment = await submitReportedInvoicePayment/);
+  assert.match(intakeSource, /submitReportedInvoicePayment\(customerId/);
   assert.match(intakeSource, /attachEvidenceAndContinue\(payment\.paymentId\)/);
   assert.match(intakeSource, /attachReportedInvoicePaymentEvidence\(customerId, paymentId, evidenceFile, evidenceExtractionMetadata/);
   assert.match(intakeSource, /setPendingEvidencePaymentId\(paymentId\)/);

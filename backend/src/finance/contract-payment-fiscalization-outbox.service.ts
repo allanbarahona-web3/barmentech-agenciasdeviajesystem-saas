@@ -43,10 +43,19 @@ export class ContractPaymentFiscalizationOutboxService {
 function eligible(payment: Payment): boolean {
   return (
     ELIGIBLE_PURPOSES.has(payment.purpose) &&
-    payment.status === PaymentStatus.FULLY_ALLOCATED &&
+    (payment.status === PaymentStatus.FULLY_ALLOCATED ||
+      (payment.status === PaymentStatus.PARTIALLY_ALLOCATED && isReportedContractsPayment(payment))) &&
     payment.contractId !== null &&
     payment.receiptNumber !== null &&
     payment.receiptNumber.trim().length > 0 &&
     payment.receivedAmount.greaterThan(0)
   );
+}
+
+function isReportedContractsPayment(payment: Payment): boolean {
+  if (payment.purpose !== PaymentPurpose.CONTRACT_INSTALLMENT) return false;
+  const proposal = payment.allocationProposal;
+  if (!proposal || typeof proposal !== "object" || Array.isArray(proposal)) return false;
+  const record = proposal as Record<string, unknown>;
+  return record.kind === "CONTRACTS" && Array.isArray(record.targets) && record.targets.length === 1;
 }

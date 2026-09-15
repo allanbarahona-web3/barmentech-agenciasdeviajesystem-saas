@@ -154,7 +154,7 @@ describe("ContractReservationReviewService", () => {
     const c = context();
     c.prisma.payment.findMany.mockResolvedValue([]);
     await expect(c.service.listPending("tenant-1", 200)).resolves.toEqual({ payments: [] });
-    expect(c.prisma.payment.findMany).toHaveBeenCalledTimes(2);
+    expect(c.prisma.payment.findMany).toHaveBeenCalledTimes(3);
     expect(c.prisma.payment.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: { tenantId: "tenant-1", purpose: { in: [PaymentPurpose.CONTRACT_RESERVATION, PaymentPurpose.CONTRACT_PAYMENT] }, status: PaymentStatus.PENDING_VERIFICATION },
       take: 200,

@@ -20,6 +20,7 @@ export type ContractCommercialObligation = {
   id: string;
   currencyCode: FinanceCurrency;
   originalAmount: string;
+  paidAmount: string;
   outstandingAmount: string;
   status: CommercialObligationStatus;
   dueDate: string | null;
@@ -30,6 +31,17 @@ export type ContractCommercialObligationResult = {
   contractId: string;
   commercialObligation: ContractCommercialObligation | null;
   payable: boolean;
+};
+
+export type CustomerContractFinancialDetail = {
+  contract: {
+    contractId: string;
+    contractNumber: string;
+    travelName: string | null;
+  };
+  commercialObligation: ContractCommercialObligation | null;
+  payable: boolean;
+  payments: ContractPaymentsPage;
 };
 
 export type ContractObligationGroup = {
@@ -181,6 +193,9 @@ export type ContractReservationEvidence = {
   originalFileName: string;
   mimeType: string;
   size: number;
+  extractionMetadata?: {
+    destinationValidation?: PaymentDestinationValidation;
+  };
 };
 
 export type ContractReservationPayment = {
@@ -247,7 +262,48 @@ export type InvoicePendingPaymentReview = {
   evidence?: ContractReservationEvidence[];
 };
 
-export type PendingPaymentReviewItem = ContractReservationPayment | InvoicePendingPaymentReview;
+export type ContractPendingPaymentTarget = {
+  commercialObligationId: string;
+  intendedAmount: string;
+  currentOriginalAmount: string | null;
+  currentOutstandingAmount: string | null;
+  currentCurrencyCode: string | null;
+  currentStatus: 'OPEN' | 'PARTIALLY_SETTLED' | 'SETTLED' | 'CANCELLED' | null;
+};
+
+export type ContractPendingPaymentReview = {
+  id: string;
+  reviewKind: 'CONTRACTS';
+  customerId: string | null;
+  payerDisplayName: string;
+  currencyCode: string;
+  receivedAmount: string;
+  availableAmount: string;
+  receivedAt: string;
+  createdAt: string;
+  paymentMethod: string;
+  externalReference: string | null;
+  description: string | null;
+  status: 'PENDING_VERIFICATION';
+  receiptNumber: null;
+  reviewer: { reviewedAt: string | null; reviewedByUserId: string | null; reviewedByName: string | null; rejectionReason: string | null };
+  contract: {
+    contractId: string;
+    contractNumber: string;
+    travelName: string;
+    commercialObligationId: string;
+    obligationCurrencyCode: string;
+    originalAmount: string;
+    outstandingAmount: string;
+    obligationStatus: 'OPEN' | 'PARTIALLY_SETTLED' | 'SETTLED' | 'CANCELLED';
+    intendedAmount: string;
+  } | null;
+  allocationProposal: { kind: 'CONTRACTS'; targets: [{ targetType: 'COMMERCIAL_OBLIGATION'; targetId: string; intendedAmount: string }] } | null;
+  targets: ContractPendingPaymentTarget[];
+  evidence?: ContractReservationEvidence[];
+};
+
+export type PendingPaymentReviewItem = ContractReservationPayment | InvoicePendingPaymentReview | ContractPendingPaymentReview;
 
 export type InvoicePendingPaymentPrecheck = {
   ok: true;
@@ -258,6 +314,16 @@ export type InvoicePendingPaymentPrecheck = {
   amount: string;
   allocationProposal: NonNullable<InvoicePendingPaymentReview['allocationProposal']>;
   targets: InvoicePendingPaymentTarget[];
+};
+
+export type ContractPendingPaymentPrecheck = Omit<InvoicePendingPaymentPrecheck, 'allocationProposal' | 'targets'> & {
+  settlementCurrencyCode: string;
+  settlementAmount: string;
+  settlementExchangeRate: string | null;
+  settlementExchangeRateSource: 'MANUAL' | 'BCCR' | null;
+  settlementExchangeRateEffectiveDate: string | null;
+  allocationProposal: NonNullable<ContractPendingPaymentReview['allocationProposal']>;
+  targets: ContractPendingPaymentTarget[];
 };
 
 export type AccountReceivableSource = {
@@ -585,6 +651,36 @@ export type ReportedInvoicePaymentResult = {
   allocationProposal: { kind: 'INVOICES'; targets: Array<{ targetType: 'ACCOUNT_RECEIVABLE'; targetId: string; intendedAmount: string }> };
 };
 
+export type CustomerContractPaymentTarget = {
+  contractId: string;
+  commercialObligationId: string;
+  contractNumber: string;
+  travelName: string;
+  currencyCode: FinanceCurrency;
+  originalAmount: string;
+  paidAmount: string;
+  outstandingAmount: string;
+  status: 'OPEN' | 'PARTIALLY_SETTLED';
+};
+
+export type ReportedContractPaymentInput = {
+  contractId: string;
+  commercialObligationId: string;
+  intendedAmount: string;
+  currencyCode: FinanceCurrency;
+  amount: string;
+  paymentMethod?: FinancePaymentMethod;
+  paymentDate?: string;
+  reference?: string;
+  payerName?: string;
+  notes?: string;
+};
+
+export type ReportedContractPaymentResult = Omit<ReportedInvoicePaymentResult, 'allocationProposal'> & {
+  contractId: string;
+  allocationProposal: { kind: 'CONTRACTS'; targets: [{ targetType: 'COMMERCIAL_OBLIGATION'; targetId: string; intendedAmount: string }] };
+};
+
 export type PendingPaymentEvidence = {
   id: string;
   paymentId: string;
@@ -675,6 +771,7 @@ export class FinanceApiError extends Error {
 }
 
 const ERROR_MESSAGES: Record<string, string> = {
+  CONTRACT_NOT_FOUND: 'El contrato ya no está disponible para este cliente.',
   ACCOUNT_RECEIVABLE_NOT_FOUND: 'La cuenta por cobrar ya no está disponible.',
   ACCOUNT_RECEIVABLE_GROUP_NOT_FOUND: 'El grupo financiero ya no está disponible.',
   PAYMENT_NOT_FOUND: 'El pago ya no está disponible.',
@@ -710,6 +807,11 @@ const ERROR_MESSAGES: Record<string, string> = {
   CONTRACT_RESERVATION_PENDING_STATE_INVALID: 'El pago pendiente ya no tiene un estado válido para revisión.',
   CONTRACT_RESERVATION_EVIDENCE_NOT_FOUND: 'El comprobante ya no está disponible.',
   CONTRACT_RESERVATION_CAPACITY_UNAVAILABLE: 'Ya no hay capacidad suficiente para aprobar esta reserva.',
+  CONTRACTS_PENDING_PAYMENT_STALE_TARGET: 'El contrato o su saldo cambió. Actualice la revisión antes de aprobar.',
+  CONTRACTS_PENDING_PAYMENT_CUSTOMER_MISMATCH: 'El contrato ya no corresponde al cliente del pago.',
+  CONTRACTS_PENDING_PAYMENT_CURRENCY_PRECISION_INVALID: 'El monto solicitado no respeta la precisión de la moneda del contrato.',
+  CONTRACTS_PENDING_PAYMENT_INSUFFICIENT: 'El monto solicitado supera el equivalente disponible para aplicar.',
+  CONTRACTS_PENDING_PAYMENT_EXCHANGE_RATE_UNAVAILABLE: 'No hay un tipo de cambio diario disponible para este pago.',
   CONTRACT_INSTALLMENT_PAYMENT_METHOD_INVALID: 'Método de pago inválido.',
   CONTRACT_INSTALLMENT_AMOUNT_INVALID: 'El monto del abono no es válido.',
   CONTRACT_INSTALLMENT_AMOUNT_EXCEEDS_OUTSTANDING: 'El abono no puede superar el saldo pendiente.',
@@ -853,6 +955,18 @@ export function getContractCommercialObligation(
   );
 }
 
+export function getCustomerContractFinancialDetail(
+  customerId: string,
+  contractId: string,
+  params: PageParams,
+  signal?: AbortSignal,
+): Promise<CustomerContractFinancialDetail> {
+  return request<CustomerContractFinancialDetail>(
+    `/finance/customers/${encodeURIComponent(customerId)}/contracts/${encodeURIComponent(contractId)}/financial-detail${queryString(params)}`,
+    signal,
+  );
+}
+
 export function listContractPayments(
   contractId: string,
   params: PageParams,
@@ -956,6 +1070,10 @@ export function listCustomerInvoicePaymentTargets(customerId: string, currencyCo
   return request<{ targets: CustomerInvoicePaymentTarget[] }>(`/finance/customers/${encodeURIComponent(customerId)}/payment-targets/invoices${queryString({ currencyCode })}`, signal);
 }
 
+export function listCustomerContractPaymentTargets(customerId: string, currencyCode: FinanceCurrency, signal?: AbortSignal): Promise<{ targets: CustomerContractPaymentTarget[] }> {
+  return request<{ targets: CustomerContractPaymentTarget[] }>(`/finance/customers/${encodeURIComponent(customerId)}/payment-targets/contracts${queryString({ currencyCode })}`, signal);
+}
+
 export function getCustomerPaymentSettlementPreview(
   customerId: string,
   input: { receivedCurrencyCode: FinanceCurrency; settlementCurrencyCode: FinanceCurrency; receivedAmount: string },
@@ -969,6 +1087,10 @@ export function getCustomerPaymentSettlementPreview(
 
 export function submitReportedInvoicePayment(customerId: string, input: ReportedInvoicePaymentInput): Promise<ReportedInvoicePaymentResult> {
   return post<ReportedInvoicePaymentResult>(`/finance/customers/${encodeURIComponent(customerId)}/reported-payments/invoices`, input);
+}
+
+export function submitReportedContractPayment(customerId: string, input: ReportedContractPaymentInput): Promise<ReportedContractPaymentResult> {
+  return post<ReportedContractPaymentResult>(`/finance/customers/${encodeURIComponent(customerId)}/reported-payments/contracts`, input);
 }
 
 export function extractReportedInvoicePaymentEvidence(customerId: string, file: File): Promise<FinancePaymentEvidenceExtraction> {
@@ -1016,12 +1138,20 @@ export function listPendingContractReservationPayments(limit = 100, signal?: Abo
   return request<{ payments: PendingPaymentReviewItem[] }>(`${contractReservationPendingPath()}${queryString({ limit })}`, signal);
 }
 
+export function getPendingPaymentReviewDetail(paymentId: string, signal?: AbortSignal): Promise<InvoicePendingPaymentReview | ContractPendingPaymentReview> {
+  return request<InvoicePendingPaymentReview | ContractPendingPaymentReview>(invoicePendingPaymentDetailPath(paymentId), signal);
+}
+
 export function getInvoicePendingPaymentReviewDetail(paymentId: string, signal?: AbortSignal): Promise<InvoicePendingPaymentReview> {
-  return request<InvoicePendingPaymentReview>(invoicePendingPaymentDetailPath(paymentId), signal);
+  return getPendingPaymentReviewDetail(paymentId, signal) as Promise<InvoicePendingPaymentReview>;
+}
+
+export function precheckPendingPaymentApproval(paymentId: string): Promise<InvoicePendingPaymentPrecheck | ContractPendingPaymentPrecheck> {
+  return post<InvoicePendingPaymentPrecheck | ContractPendingPaymentPrecheck>(invoicePendingPaymentPrecheckPath(paymentId), {});
 }
 
 export function precheckInvoicePendingPaymentApproval(paymentId: string): Promise<InvoicePendingPaymentPrecheck> {
-  return post<InvoicePendingPaymentPrecheck>(invoicePendingPaymentPrecheckPath(paymentId), {});
+  return precheckPendingPaymentApproval(paymentId) as Promise<InvoicePendingPaymentPrecheck>;
 }
 
 export function approveContractReservationPayment(paymentId: string): Promise<{ ok: true; paymentId: string; status: 'RECEIVED' | 'PARTIALLY_ALLOCATED' | 'FULLY_ALLOCATED'; receiptNumber: string | null }> {
