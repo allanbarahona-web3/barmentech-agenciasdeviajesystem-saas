@@ -56,8 +56,8 @@ function basePayment() {
     settlementCurrencyCode: null, settlementAmount: null, settlementAvailableAmount: null, settlementExchangeRate: null, settlementExchangeRateSource: null, settlementExchangeRateEffectiveDate: null,
     receivedAt: new Date("2026-09-01T01:30:00.000Z"), paymentMethod: "BANK_TRANSFER", externalReference: "REF-123", description: "Nota", status: "PARTIALLY_ALLOCATED",
     allocations: [
-      { id: "allocation-1", amount: new Prisma.Decimal("40.125"), status: "ACTIVE", allocatedAt: new Date("2026-09-01T01:30:00.000Z"), accountReceivable: { sourceNumber: "FE-1", sourceDocumentType: "Factura electrónica" } },
-      { id: "allocation-2", amount: new Prisma.Decimal("10"), status: "REVERSED", allocatedAt: new Date("2026-09-01T01:30:00.000Z"), accountReceivable: { sourceNumber: null, sourceDocumentType: null } },
+      { id: "allocation-1", amount: new Prisma.Decimal("40.125"), status: "ACTIVE", allocatedAt: new Date("2026-09-01T01:30:00.000Z"), accountReceivable: { sourceNumber: "FE-1", sourceDocumentType: "Factura electrónica", currencyCode: "USD" } },
+      { id: "allocation-2", amount: new Prisma.Decimal("10"), status: "REVERSED", allocatedAt: new Date("2026-09-01T01:30:00.000Z"), accountReceivable: { sourceNumber: null, sourceDocumentType: null, currencyCode: "USD" } },
     ],
     commercialObligationAllocations: [],
   };

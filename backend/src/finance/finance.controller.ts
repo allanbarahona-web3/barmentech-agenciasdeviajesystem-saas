@@ -14,6 +14,8 @@ import {
   CancelPaymentDto,
   ListAccountReceivableGroupItemsDto,
   ListCustomerElectronicInvoicesDto,
+  ListElectronicInvoicesDto,
+  ListCustomerPaymentsDto,
   CustomerInvoicePaymentTargetsQueryDto,
   CustomerContractPaymentTargetsQueryDto,
   CustomerPaymentSettlementPreviewQueryDto,
@@ -104,6 +106,30 @@ export class FinanceController {
       contractId,
       query,
     );
+  }
+
+  @Get("customers/:customerId/payments")
+  @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.AGENT, UserRole.CONTADOR)
+  listCustomerPayments(
+    @Req() request: FinanceRequest,
+    @Param("customerId") customerId: string,
+    @Query() query: ListCustomerPaymentsDto,
+  ) {
+    return this.reads.listCustomerPayments(request.user.tenantId, customerId, query);
+  }
+
+  @Get("customers/:customerId/payments/:paymentId/receipt")
+  @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.AGENT, UserRole.CONTADOR)
+  async getCustomerPaymentReceipt(
+    @Req() request: FinanceRequest,
+    @Param("customerId") customerId: string,
+    @Param("paymentId") paymentId: string,
+    @Res() response: Response,
+  ): Promise<void> {
+    await this.reads.assertCustomerPaymentAccess(request.user.tenantId, customerId, paymentId);
+    const result = await this.receipts!.render(request.user.tenantId, paymentId);
+    response.set({ "Content-Type": "application/pdf", "Content-Length": result.pdfBuffer.length.toString(), "Content-Disposition": `attachment; filename="${result.fileName}"`, "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" });
+    response.send(result.pdfBuffer);
   }
 
   @Post("contracts/:contractId/installments")
@@ -491,7 +517,7 @@ export class FinanceController {
         currencyCode: body.currencyCode,
         amount: decimal(body.amount),
         paymentMethod: body.paymentMethod,
-        paymentDate: body.paymentDate ? new Date(body.paymentDate) : undefined,
+        paymentDate: body.paymentDate,
         reference: body.reference,
         payerName: body.payerName,
         notes: body.notes,
@@ -520,7 +546,7 @@ export class FinanceController {
         currencyCode: body.currencyCode,
         amount: decimal(body.amount),
         paymentMethod: body.paymentMethod,
-        paymentDate: body.paymentDate ? new Date(body.paymentDate) : undefined,
+        paymentDate: body.paymentDate,
         reference: body.reference,
         payerName: body.payerName,
         notes: body.notes,
@@ -591,6 +617,12 @@ export class FinanceController {
   @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.CONTADOR)
   listPayments(@Req() request: FinanceRequest, @Query() query: ListPaymentsDto) {
     return this.reads.listPayments(request.user.tenantId, query);
+  }
+
+  @Get("electronic-invoices")
+  @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.CONTADOR)
+  listElectronicInvoices(@Req() request: FinanceRequest, @Query() query: ListElectronicInvoicesDto) {
+    return this.reads.listElectronicInvoices(request.user.tenantId, query);
   }
 
   @Get("payments/:paymentId/allocation-suggestions/:accountReceivableId")

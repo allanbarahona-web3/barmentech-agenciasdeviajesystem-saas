@@ -1,5 +1,5 @@
 import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
-import { AccountReceivableStatus, BillingDocumentSourceRole, BillingTaxAuthorityStatus, CommercialObligationStatus, PaymentAllocationStatus, PaymentPurpose, PaymentStatus, Prisma } from "@prisma/client";
+import { AccountReceivableStatus, BillingDocumentArtifactStatus, BillingDocumentSourceRole, BillingTaxAuthorityStatus, CommercialObligationStatus, PaymentAllocationStatus, PaymentPurpose, PaymentStatus, Prisma } from "@prisma/client";
 import { PrismaService } from "../prisma/prisma.service";
 import { DailyExchangeRateResolver, convertDailyExchangeRateAmount, resolveDailySettlement } from "../exchange-rate/daily-exchange-rate.resolver";
 import {
@@ -10,19 +10,22 @@ import {
   ListContractPaymentsDto,
   CustomerInvoicePaymentTargetsQueryDto,
   CustomerPaymentSettlementPreviewQueryDto,
+  ListElectronicInvoicesDto,
   ListCustomerElectronicInvoicesDto,
+  ListCustomerPaymentsDto,
   ListAccountReceivablesDto,
   ListPaymentsDto,
   ListUnallocatedPaymentBalancesDto,
+  PaymentApplicationTypeFilter,
 } from "./dto/finance.dto";
+import { hasAvailablePaymentReceipt, loadPaymentApplicationContractLabels, normalizePaymentApplications, paymentApplicationSelect, type PaymentApplicationSource } from "./payment-application-read-model";
+import { DEFAULT_FISCAL_TIMEZONE, nextTenantCalendarDate, tenantCalendarDateStartAsUtc } from "./tenant-fiscal-date";
 import {
   FINANCE_AUDIT_ACTIONS,
   FINANCE_AUDIT_ENTITY_TYPES,
 } from "./finance-audit";
 import { hasCompatibleAllocationCustomer } from "./payment-allocation.service";
 import { canCancelPayment } from "./payment-cancellation-eligibility";
-
-const DEFAULT_FISCAL_TIMEZONE = "America/Costa_Rica";
 
 @Injectable()
 export class FinanceReadService {
@@ -81,6 +84,56 @@ export class FinanceReadService {
       ...obligation,
       payments,
     };
+  }
+
+  async listCustomerPayments(
+    tenantId: string,
+    customerId: string,
+    query: ListCustomerPaymentsDto,
+  ) {
+    await this.assertCustomerExists(tenantId, customerId);
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 25;
+    const where = { tenantId, customerId };
+    const [payments, total] = await Promise.all([
+      this.prisma.payment.findMany({
+        where,
+        select: customerPaymentListSelect,
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      this.prisma.payment.count({ where }),
+    ]);
+    const contractById = await loadPaymentApplicationContractLabels(this.prisma, tenantId, payments);
+    return {
+      items: payments.map((payment) => customerPaymentListItem(payment, contractById)),
+      page,
+      pageSize,
+      total,
+      totalPages: Math.ceil(total / pageSize),
+    };
+  }
+
+  async assertCustomerPaymentAccess(
+    tenantId: string,
+    customerId: string,
+    paymentId: string,
+  ): Promise<void> {
+    await this.assertCustomerExists(tenantId, customerId);
+    const payment = await this.prisma.payment.findFirst({
+      where: { id: paymentId, tenantId, customerId },
+      select: { id: true },
+    });
+    if (!payment) throw new NotFoundException("PAYMENT_NOT_FOUND");
+  }
+
+  private async assertCustomerExists(tenantId: string, customerId: string): Promise<void> {
+    const customer = await this.prisma.client.findFirst({
+      where: { id: customerId, tenantId },
+      select: { id: true },
+    });
+    if (!customer) throw new NotFoundException("CUSTOMER_NOT_FOUND");
   }
 
   private async contractCommercialObligation(tenantId: string, contractId: string) {
@@ -226,16 +279,46 @@ export class FinanceReadService {
           orderBy: { allocatedAt: "asc" },
           include: { accountReceivable: true, reversal: true },
         },
+        commercialObligationAllocations: {
+          orderBy: { allocatedAt: "asc" },
+          include: { commercialObligation: true, reversal: true },
+        },
+        evidence: {
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+          select: { id: true, originalFileName: true, mimeType: true, createdAt: true },
+        },
       },
     });
     if (!payment) throw new NotFoundException("PAYMENT_NOT_FOUND");
-    const auditRows = await this.financeAuditRows(
-      tenantId,
-      [payment.id],
-      payment.allocations.map((allocation) => allocation.id),
-      payment.allocations.flatMap((allocation) => allocation.reversal ? [allocation.reversal.id] : []),
-    );
-    return paymentDetail(payment as FinancePaymentDetailRow, auditRows);
+    const applicationsSource = {
+      allocations: payment.allocations,
+      commercialObligationAllocations: payment.commercialObligationAllocations,
+    } as PaymentApplicationSource;
+    const [auditRows, contractById] = await Promise.all([
+      this.financeAuditRows(
+        tenantId,
+        [payment.id],
+        payment.allocations.map((allocation) => allocation.id),
+        payment.allocations.flatMap((allocation) => allocation.reversal ? [allocation.reversal.id] : []),
+      ),
+      loadPaymentApplicationContractLabels(this.prisma, tenantId, [applicationsSource]),
+    ]);
+    return {
+      ...paymentDetail(payment as FinancePaymentDetailRow, auditRows),
+      createdAt: payment.createdAt,
+      paymentDate: payment.receivedAt,
+      rejectionReason: payment.rejectionReason,
+      reviewedAt: payment.reviewedAt,
+      evidencePresent: payment.evidence.length > 0,
+      evidence: payment.evidence.map((evidence) => ({
+        id: evidence.id,
+        originalFileName: evidence.originalFileName,
+        mimeType: evidence.mimeType,
+        createdAt: evidence.createdAt,
+      })),
+      receiptAvailable: hasAvailablePaymentReceipt(payment.status, payment.receiptNumber),
+      applications: paymentApplicationsForRead(applicationsSource, contractById),
+    };
   }
 
   async getAllocationSuggestion(
@@ -752,11 +835,39 @@ export class FinanceReadService {
 
   async listPayments(tenantId: string, query: ListPaymentsDto) {
     const page = query.page ?? 1;
-    const pageSize = query.pageSize ?? 20;
+    const pageSize = query.pageSize ?? 25;
     const constraints: Prisma.PaymentWhereInput[] = [];
     if (query.status) constraints.push({ status: query.status });
+    if (query.paymentMethod) constraints.push({ paymentMethod: query.paymentMethod });
+    if (query.reference) {
+      constraints.push({ externalReference: { contains: query.reference, mode: "insensitive" } });
+    }
+    if (query.receiptNumber) {
+      constraints.push({ receiptNumber: { contains: query.receiptNumber, mode: "insensitive" } });
+    }
+    if (query.applicationType) constraints.push(paymentApplicationTypeConstraint(query.applicationType));
     if (query.availableOnly) {
       constraints.push(availablePaymentConstraint());
+    }
+    if (query.dateFrom || query.dateTo) {
+      const timezone = await this.getTenantFiscalTimezone(tenantId);
+      const receivedAt: Prisma.DateTimeFilter = {};
+      if (query.dateFrom) receivedAt.gte = tenantCalendarDateStartAsUtc(query.dateFrom, timezone);
+      if (query.dateTo) receivedAt.lt = tenantCalendarDateStartAsUtc(nextTenantCalendarDate(query.dateTo), timezone);
+      constraints.push({ receivedAt });
+    }
+    if (query.customerSearch) {
+      const customers = await this.prisma.client.findMany({
+        where: {
+          tenantId,
+          OR: [
+            { fullName: { contains: query.customerSearch, mode: "insensitive" } },
+            { idNumber: { contains: query.customerSearch, mode: "insensitive" } },
+          ],
+        },
+        select: { id: true },
+      });
+      constraints.push({ customerId: { in: customers.map((customer) => customer.id) } });
     }
     const where: Prisma.PaymentWhereInput = {
       tenantId,
@@ -767,15 +878,26 @@ export class FinanceReadService {
     const [payments, total] = await Promise.all([
       this.prisma.payment.findMany({
         where,
-        select: paymentListSelect,
+        select: globalPaymentListSelect,
         orderBy: [{ receivedAt: "desc" }, { id: "desc" }],
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),
       this.prisma.payment.count({ where }),
     ]);
+    const customerIds = [...new Set(payments.flatMap((payment) => payment.customerId ? [payment.customerId] : []))];
+    const [contractById, customers] = await Promise.all([
+      loadPaymentApplicationContractLabels(this.prisma, tenantId, payments),
+      customerIds.length === 0
+        ? []
+        : this.prisma.client.findMany({
+            where: { tenantId, id: { in: customerIds } },
+            select: { id: true, fullName: true, idNumber: true },
+          }),
+    ]);
+    const customerById = new Map(customers.map((customer) => [customer.id, customer]));
     return {
-      payments: payments.map(paymentListItem),
+      payments: payments.map((payment) => globalPaymentListItem(payment, customerById, contractById)),
       total,
       page,
       pageSize,
@@ -956,6 +1078,72 @@ export class FinanceReadService {
     };
   }
 
+  async listElectronicInvoices(
+    tenantId: string,
+    query: ListElectronicInvoicesDto,
+  ) {
+    const page = query.page ?? 1;
+    const pageSize = query.pageSize ?? 25;
+    const constraints: Prisma.BillingDocumentWhereInput[] = [];
+    if (query.dateFrom || query.dateTo) {
+      const timezone = await this.getTenantFiscalTimezone(tenantId);
+      const issuedAt: Prisma.DateTimeFilter = {};
+      if (query.dateFrom) issuedAt.gte = tenantCalendarDateStartAsUtc(query.dateFrom, timezone);
+      if (query.dateTo) issuedAt.lt = tenantCalendarDateStartAsUtc(nextTenantCalendarDate(query.dateTo), timezone);
+      constraints.push({ issuedAt });
+    }
+    if (query.customerSearch) {
+      const customers = await this.prisma.client.findMany({
+        where: {
+          tenantId,
+          OR: [
+            { fullName: { contains: query.customerSearch, mode: "insensitive" } },
+            { idNumber: { contains: query.customerSearch, mode: "insensitive" } },
+          ],
+        },
+        select: { id: true },
+      });
+      constraints.push({ customerId: { in: customers.map((customer) => customer.id) } });
+    }
+    if (query.fiscalReference) {
+      constraints.push({ fiscalNumber: { contains: query.fiscalReference, mode: "insensitive" } });
+    }
+    const where: Prisma.BillingDocumentWhereInput = {
+      tenantId,
+      taxAuthorityStatus: query.taxAuthorityStatus ?? BillingTaxAuthorityStatus.ACCEPTED,
+      ...(query.currency ? { currencyCode: query.currency } : {}),
+      ...(query.documentType ? { documentTypeCode: query.documentType } : {}),
+      ...(query.source ? { sourceType: query.source } : {}),
+      ...(constraints.length ? { AND: constraints } : {}),
+    };
+    const [documents, total] = await Promise.all([
+      this.prisma.billingDocument.findMany({
+        where,
+        select: globalElectronicInvoiceSelect,
+        orderBy: [{ issuedAt: { sort: "desc", nulls: "last" } }, { id: "desc" }],
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      this.prisma.billingDocument.count({ where }),
+    ]);
+    const [{ receivableByDocumentId, contractIdByPaymentId }, artifacts] = await Promise.all([
+      this.electronicInvoiceFinancialContext(tenantId, documents),
+      this.electronicInvoiceArtifacts(tenantId, documents.map((document) => document.id)),
+    ]);
+    return {
+      items: documents.map((document) => globalElectronicInvoice(
+        document,
+        receivableByDocumentId.get(document.id),
+        document.sourceId ? contractIdByPaymentId.get(document.sourceId) ?? null : null,
+        artifacts.get(document.id),
+      )),
+      page,
+      pageSize,
+      total,
+      totalPages: Math.ceil(total / pageSize),
+    };
+  }
+
   async listCustomerElectronicInvoices(
     tenantId: string,
     customerId: string,
@@ -991,6 +1179,30 @@ export class FinanceReadService {
       this.prisma.billingDocument.count({ where }),
     ]);
 
+    const { receivableByDocumentId, contractIdByPaymentId } = await this.electronicInvoiceFinancialContext(
+      tenantId,
+      documents,
+      customerId,
+    );
+
+    return {
+      invoices: documents.map((document) => customerElectronicInvoice(
+        document,
+        receivableByDocumentId.get(document.id),
+        document.sourceId ? contractIdByPaymentId.get(document.sourceId) ?? null : null,
+      )),
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+    };
+  }
+
+  private async electronicInvoiceFinancialContext(
+    tenantId: string,
+    documents: readonly ElectronicInvoiceFinancialDocument[],
+    customerId?: string,
+  ) {
     const documentIds = documents.map((document) => document.id);
     const contractPaymentIds = documents
       .filter((document) => document.sourceType === "CONTRACT_PAYMENT" && document.sourceId !== null)
@@ -1001,7 +1213,7 @@ export class FinanceReadService {
         : this.prisma.accountReceivable.findMany({
             where: {
               tenantId,
-              customerId,
+              ...(customerId ? { customerId } : {}),
               sourceType: "BILLING_DOCUMENT",
               sourceId: { in: documentIds },
             },
@@ -1018,27 +1230,37 @@ export class FinanceReadService {
         : this.prisma.payment.findMany({
             where: {
               tenantId,
-              customerId,
+              ...(customerId ? { customerId } : {}),
               id: { in: contractPaymentIds },
               contractId: { not: null },
             },
             select: { id: true, contractId: true },
           }),
     ]);
-    const receivableByDocumentId = new Map(receivables.map((receivable) => [receivable.sourceId, receivable]));
-    const contractIdByPaymentId = new Map(contractPayments.map((payment) => [payment.id, payment.contractId!]));
-
     return {
-      invoices: documents.map((document) => customerElectronicInvoice(
-        document,
-        receivableByDocumentId.get(document.id),
-        document.sourceId ? contractIdByPaymentId.get(document.sourceId) ?? null : null,
-      )),
-      total,
-      page,
-      pageSize,
-      totalPages: Math.ceil(total / pageSize),
+      receivableByDocumentId: new Map(receivables.map((receivable) => [receivable.sourceId, receivable])),
+      contractIdByPaymentId: new Map(contractPayments.map((payment) => [payment.id, payment.contractId!])),
     };
+  }
+
+  private async electronicInvoiceArtifacts(tenantId: string, documentIds: readonly string[]) {
+    if (documentIds.length === 0) return new Map<string, Set<string>>();
+    const artifacts = await this.prisma.billingDocumentArtifact.findMany({
+      where: {
+        tenantId,
+        billingDocumentId: { in: [...documentIds] },
+        status: BillingDocumentArtifactStatus.AVAILABLE,
+        artifactType: { in: ["INTERNAL_PDF", "SIGNED_FISCAL_XML", "TAX_AUTHORITY_RESPONSE_XML"] },
+      },
+      select: { billingDocumentId: true, artifactType: true },
+    });
+    const artifactsByDocumentId = new Map<string, Set<string>>();
+    for (const artifact of artifacts) {
+      const available = artifactsByDocumentId.get(artifact.billingDocumentId) ?? new Set<string>();
+      available.add(artifact.artifactType);
+      artifactsByDocumentId.set(artifact.billingDocumentId, available);
+    }
+    return artifactsByDocumentId;
   }
 
   async listCustomerInvoicePaymentTargets(
@@ -1201,14 +1423,15 @@ export class FinanceReadService {
   }
 
   private async getTenantCurrentCalendarDate(tenantId: string): Promise<string> {
+    return tenantCalendarDate(new Date(), await this.getTenantFiscalTimezone(tenantId));
+  }
+
+  private async getTenantFiscalTimezone(tenantId: string): Promise<string> {
     const configuration = await this.prisma.tenantBillingConfiguration.findUnique({
       where: { tenantId },
       select: { fiscalTimezone: true },
     });
-    return tenantCalendarDate(
-      new Date(),
-      configuration?.fiscalTimezone ?? DEFAULT_FISCAL_TIMEZONE,
-    );
+    return configuration?.fiscalTimezone ?? DEFAULT_FISCAL_TIMEZONE;
   }
 }
 
@@ -1231,23 +1454,62 @@ const accountReceivableListSelect = {
   sourceDocumentType: true,
 } satisfies Prisma.AccountReceivableSelect;
 
-const paymentListSelect = {
+const customerPaymentListSelect = {
   id: true,
   receiptNumber: true,
-  customerId: true,
-  payerDisplayName: true,
-  payerIdentificationType: true,
-  payerIdentificationNumber: true,
-  currencyCode: true,
-  receivedAmount: true,
-  availableAmount: true,
+  createdAt: true,
   receivedAt: true,
   paymentMethod: true,
   externalReference: true,
-  description: true,
+  receivedAmount: true,
+  currencyCode: true,
+  settlementCurrencyCode: true,
+  settlementAmount: true,
+  settlementAvailableAmount: true,
+  settlementExchangeRate: true,
+  settlementExchangeRateSource: true,
+  settlementExchangeRateEffectiveDate: true,
   status: true,
-  cancelledAt: true,
+  rejectionReason: true,
+  reviewedAt: true,
+  _count: { select: { evidence: true } },
+  evidence: {
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    select: {
+      id: true,
+      originalFileName: true,
+      mimeType: true,
+      createdAt: true,
+    },
+  },
+  ...paymentApplicationSelect,
 } satisfies Prisma.PaymentSelect;
+
+const globalPaymentListSelect = {
+  ...customerPaymentListSelect,
+  customerId: true,
+  availableAmount: true,
+  payerDisplayName: true,
+  payerIdentificationNumber: true,
+} satisfies Prisma.PaymentSelect;
+
+const globalElectronicInvoiceSelect = {
+  id: true,
+  customerId: true,
+  fiscalNumber: true,
+  documentTypeCode: true,
+  issuedAt: true,
+  sourceType: true,
+  sourceId: true,
+  sourceNumber: true,
+  internalNumber: true,
+  currencyCode: true,
+  total: true,
+  taxAuthorityStatus: true,
+  receiverName: true,
+  receiverIdentification: true,
+  customer: { select: { id: true, fullName: true, idNumber: true } },
+} satisfies Prisma.BillingDocumentSelect;
 
 const contractPaymentPurposes: PaymentPurpose[] = [
   PaymentPurpose.CONTRACT_RESERVATION,
@@ -1375,7 +1637,7 @@ type CustomerFinancialSummaryRow = {
   available: Prisma.Decimal;
 };
 
-type CustomerElectronicInvoiceDocument = {
+type ElectronicInvoiceFinancialDocument = {
   id: string;
   fiscalNumber: string | null;
   documentTypeCode: string;
@@ -1387,6 +1649,15 @@ type CustomerElectronicInvoiceDocument = {
   currencyCode: string;
   total: Prisma.Decimal;
   taxAuthorityStatus: BillingTaxAuthorityStatus;
+};
+
+type CustomerElectronicInvoiceDocument = ElectronicInvoiceFinancialDocument;
+
+type GlobalElectronicInvoiceDocument = ElectronicInvoiceFinancialDocument & {
+  customerId: string | null;
+  receiverName: string | null;
+  receiverIdentification: string | null;
+  customer: { id: string; fullName: string; idNumber: string } | null;
 };
 
 type CustomerElectronicInvoiceReceivable = {
@@ -1402,16 +1673,6 @@ function customerElectronicInvoice(
   receivable: CustomerElectronicInvoiceReceivable | undefined,
   contractId: string | null,
 ) {
-  const contractPayment = document.sourceType === "CONTRACT_PAYMENT";
-  const financial = contractPayment
-    ? {
-        financialStatus: "PAID",
-        financialOutstanding: "0",
-        financialDetail: contractId ? { type: "CONTRACT" as const, contractId } : null,
-      }
-    : receivable
-      ? receivableFinancialStatus(receivable)
-      : { financialStatus: "NOT_APPLICABLE", financialOutstanding: null, financialDetail: null };
   return {
     billingDocumentId: document.id,
     fiscalNumber: document.fiscalNumber,
@@ -1424,8 +1685,62 @@ function customerElectronicInvoice(
     currencyCode: document.currencyCode,
     total: money(document.total),
     taxAuthorityStatus: document.taxAuthorityStatus,
-    ...financial,
+    ...electronicInvoiceFinancialStatus(document, receivable, contractId),
   };
+}
+
+function globalElectronicInvoice(
+  document: GlobalElectronicInvoiceDocument,
+  receivable: CustomerElectronicInvoiceReceivable | undefined,
+  contractId: string | null,
+  artifacts: ReadonlySet<string> | undefined,
+) {
+  return {
+    billingDocumentId: document.id,
+    issuedAt: document.issuedAt,
+    fiscalNumber: document.fiscalNumber,
+    documentType: document.documentTypeCode,
+    customerId: document.customerId,
+    customerDisplayName: document.customer?.fullName ?? document.receiverName,
+    customerIdentification: document.customer?.idNumber ?? document.receiverIdentification,
+    currencyCode: document.currencyCode,
+    total: money(document.total),
+    taxAuthorityStatus: document.taxAuthorityStatus,
+    sourceType: document.sourceType,
+    sourceId: document.sourceId,
+    sourceNumber: document.sourceNumber,
+    sourceReference: document.sourceNumber ?? document.internalNumber,
+    originLabel: electronicInvoiceOriginLabel(document.sourceType),
+    artifactAvailability: {
+      pdf: artifacts?.has("INTERNAL_PDF") ?? false,
+      xml: artifacts?.has("SIGNED_FISCAL_XML") ?? false,
+      haciendaResponse: artifacts?.has("TAX_AUTHORITY_RESPONSE_XML") ?? false,
+    },
+    ...electronicInvoiceFinancialStatus(document, receivable, contractId),
+  };
+}
+
+function electronicInvoiceFinancialStatus(
+  document: ElectronicInvoiceFinancialDocument,
+  receivable: CustomerElectronicInvoiceReceivable | undefined,
+  contractId: string | null,
+) {
+  if (document.sourceType === "CONTRACT_PAYMENT") {
+    return {
+      financialStatus: "PAID",
+      financialOutstanding: "0",
+      financialDetail: contractId ? { type: "CONTRACT" as const, contractId } : null,
+    };
+  }
+  return receivable
+    ? receivableFinancialStatus(receivable)
+    : { financialStatus: "NOT_APPLICABLE", financialOutstanding: null, financialDetail: null };
+}
+
+function electronicInvoiceOriginLabel(sourceType: string | null) {
+  if (sourceType === "SALES_ORDER") return "Servicios adicionales";
+  if (sourceType === "CONTRACT_PAYMENT") return "Contrato";
+  return null;
 }
 
 function receivableFinancialStatus(receivable: CustomerElectronicInvoiceReceivable) {
@@ -1699,14 +2014,87 @@ function exactCount(value: bigint | number): number {
   return count;
 }
 
-function paymentListItem(
-  payment: Prisma.PaymentGetPayload<{ select: typeof paymentListSelect }>,
+function globalPaymentListItem(
+  payment: Prisma.PaymentGetPayload<{ select: typeof globalPaymentListSelect }>,
+  customerById: ReadonlyMap<string, { id: string; fullName: string; idNumber: string }>,
+  contractById: ReadonlyMap<string, { contractNumber: string; travelName: string | null }>,
+) {
+  const customer = payment.customerId ? customerById.get(payment.customerId) : null;
+  return {
+    id: payment.id,
+    paymentId: payment.id,
+    customerId: payment.customerId,
+    customerDisplayName: customer?.fullName ?? payment.payerDisplayName,
+    customerIdentification: customer?.idNumber ?? payment.payerIdentificationNumber ?? null,
+    createdAt: payment.createdAt,
+    paymentDate: payment.receivedAt,
+    receiptNumber: payment.receiptNumber,
+    paymentMethod: payment.paymentMethod,
+    reference: payment.externalReference,
+    receivedAmount: money(payment.receivedAmount),
+    currencyCode: payment.currencyCode,
+    availableAmount: money(payment.availableAmount),
+    settlementCurrencyCode: payment.settlementCurrencyCode,
+    settlementAmount: payment.settlementAmount ? money(payment.settlementAmount) : null,
+    settlementAvailableAmount: payment.settlementAvailableAmount ? money(payment.settlementAvailableAmount) : null,
+    settlementExchangeRate: payment.settlementExchangeRate ? payment.settlementExchangeRate.toFixed() : null,
+    settlementExchangeRateSource: payment.settlementExchangeRateSource,
+    settlementExchangeRateEffectiveDate: payment.settlementExchangeRateEffectiveDate,
+    status: payment.status,
+    rejectionReason: payment.rejectionReason,
+    evidencePresent: payment._count.evidence > 0,
+    receiptAvailable: hasAvailablePaymentReceipt(payment.status, payment.receiptNumber),
+    applications: paymentApplicationsForRead(payment, contractById),
+  };
+}
+
+function customerPaymentListItem(
+  payment: Prisma.PaymentGetPayload<{ select: typeof customerPaymentListSelect }>,
+  contractById: ReadonlyMap<string, { contractNumber: string; travelName: string | null }>,
 ) {
   return {
-    ...payment,
+    id: payment.id,
+    receiptNumber: payment.receiptNumber,
+    createdAt: payment.createdAt,
+    paymentDate: payment.receivedAt,
+    paymentMethod: payment.paymentMethod,
+    reference: payment.externalReference,
     receivedAmount: money(payment.receivedAmount),
-    availableAmount: money(payment.availableAmount),
+    currencyCode: payment.currencyCode,
+    settlementCurrencyCode: payment.settlementCurrencyCode,
+    settlementAmount: payment.settlementAmount ? money(payment.settlementAmount) : null,
+    settlementAvailableAmount: payment.settlementAvailableAmount ? money(payment.settlementAvailableAmount) : null,
+    settlementExchangeRate: payment.settlementExchangeRate ? payment.settlementExchangeRate.toFixed() : null,
+    settlementExchangeRateSource: payment.settlementExchangeRateSource,
+    settlementExchangeRateEffectiveDate: payment.settlementExchangeRateEffectiveDate,
+    status: payment.status,
+    rejectionReason: payment.rejectionReason,
+    reviewedAt: payment.reviewedAt,
+    evidencePresent: payment._count.evidence > 0,
+    evidence: payment.evidence.map((evidence) => ({
+      id: evidence.id,
+      originalFileName: evidence.originalFileName,
+      mimeType: evidence.mimeType,
+      createdAt: evidence.createdAt,
+    })),
+    receiptAvailable: hasAvailablePaymentReceipt(payment.status, payment.receiptNumber),
+    applications: paymentApplicationsForRead(payment, contractById),
   };
+}
+
+function paymentApplicationsForRead(
+  payment: PaymentApplicationSource,
+  contractById: ReadonlyMap<string, { contractNumber: string; travelName: string | null }>,
+) {
+  return normalizePaymentApplications(payment, contractById).map((application) => ({
+    type: application.type,
+    reference: application.reference,
+    description: application.description,
+    amount: money(application.amount),
+    currencyCode: application.currencyCode,
+    applicationDate: application.applicationDate,
+    status: application.status,
+  }));
 }
 
 function accountReceivableWhere(tenantId: string, query: ListAccountReceivablesDto): Prisma.AccountReceivableWhereInput {
@@ -1726,6 +2114,21 @@ function availablePaymentConstraint(): Prisma.PaymentWhereInput {
   return {
     availableAmount: { gt: new Prisma.Decimal(0) },
     status: { in: [PaymentStatus.RECEIVED, PaymentStatus.PARTIALLY_ALLOCATED] },
+  };
+}
+
+function paymentApplicationTypeConstraint(
+  type: PaymentApplicationTypeFilter,
+): Prisma.PaymentWhereInput {
+  if (type === PaymentApplicationTypeFilter.ACCOUNT_RECEIVABLE) {
+    return { allocations: { some: {} } };
+  }
+  if (type === PaymentApplicationTypeFilter.COMMERCIAL_OBLIGATION) {
+    return { commercialObligationAllocations: { some: {} } };
+  }
+  return {
+    allocations: { none: {} },
+    commercialObligationAllocations: { none: {} },
   };
 }
 
@@ -1801,17 +2204,6 @@ function isCommercialObligationOverdue(
     obligation.outstandingAmount.greaterThan(0) &&
     obligation.dueDate !== null &&
     obligation.dueDate.getTime() < dateOnly(tenantCurrentCalendarDate).getTime()
-  );
-}
-
-function hasAvailablePaymentReceipt(status: PaymentStatus, receiptNumber: string | null): boolean {
-  return (
-    (status === PaymentStatus.RECEIVED ||
-      status === PaymentStatus.PARTIALLY_ALLOCATED ||
-      status === PaymentStatus.FULLY_ALLOCATED ||
-      status === PaymentStatus.CANCELLED) &&
-    typeof receiptNumber === "string" &&
-    receiptNumber.trim().length > 0
   );
 }
 

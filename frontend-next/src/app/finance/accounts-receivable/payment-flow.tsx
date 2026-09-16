@@ -32,6 +32,8 @@ const CANDIDATE_PAGE_SIZE = 100;
 const DECIMAL_TEXT = /^\d+(?:\.\d+)?$/;
 
 const PAYMENT_STATUS_LABELS: Record<PaymentStatus, string> = {
+  PENDING_VERIFICATION: 'Pendiente de aprobación',
+  REJECTED: 'Rechazado',
   RECEIVED: 'Recibido',
   PARTIALLY_ALLOCATED: 'Aplicado parcialmente',
   FULLY_ALLOCATED: 'Aplicado por completo',

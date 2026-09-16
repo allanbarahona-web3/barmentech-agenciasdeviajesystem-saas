@@ -71,6 +71,64 @@ describe("PendingInvoicePaymentEvidenceService", () => {
     expect(c.prisma.paymentEvidence.findFirst).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({ id: "evidence-a", paymentId: "payment-a", tenantId: "tenant-a" }),
     }));
+    expect(c.prisma.paymentEvidence.findFirst.mock.calls[0][0].where.payment).toMatchObject({
+      tenantId: "tenant-a",
+      customerId: "customer-a",
+      status: { in: expect.arrayContaining([PaymentStatus.PENDING_VERIFICATION]) },
+    });
+  });
+
+  it.each([
+    PaymentStatus.RECEIVED,
+    PaymentStatus.PARTIALLY_ALLOCATED,
+    PaymentStatus.FULLY_ALLOCATED,
+    PaymentStatus.REJECTED,
+    PaymentStatus.CANCELLED,
+  ])("returns evidence for a customer-visible reviewed payment in %s status", async (status) => {
+    const c = context();
+    c.prisma.paymentEvidence.findFirst.mockResolvedValue(evidenceRecord());
+
+    await expect(c.service.getAccess({ tenantId: "tenant-a", customerId: "customer-a", paymentId: "payment-a", evidenceId: "evidence-a" })).resolves.toMatchObject({
+      id: "evidence-a",
+      url: "https://signed.example/evidence",
+    });
+
+    expect(c.prisma.paymentEvidence.findFirst.mock.calls[0][0].where.payment.status).toEqual({
+      in: expect.arrayContaining([status]),
+    });
+  });
+
+  it.each([
+    ["tenant", { tenantId: "tenant-other", customerId: "customer-a", paymentId: "payment-a", evidenceId: "evidence-a" }],
+    ["customer", { tenantId: "tenant-a", customerId: "customer-other", paymentId: "payment-a", evidenceId: "evidence-a" }],
+  ])("denies signed evidence access outside the scoped %s", async (_, input) => {
+    const c = context();
+    c.prisma.paymentEvidence.findFirst.mockResolvedValue(null);
+
+    await expect(c.service.getAccess(input)).rejects.toThrow("FINANCE_PENDING_PAYMENT_EVIDENCE_NOT_FOUND");
+    expect(c.prisma.paymentEvidence.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        id: "evidence-a",
+        paymentId: "payment-a",
+        tenantId: input.tenantId,
+        payment: expect.objectContaining({ tenantId: input.tenantId, customerId: input.customerId }),
+      }),
+    }));
+    expect(c.storage.generateSignedUrl).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["missing evidence", { tenantId: "tenant-a", customerId: "customer-a", paymentId: "payment-a", evidenceId: "evidence-missing" }],
+    ["evidence from another payment", { tenantId: "tenant-a", customerId: "customer-a", paymentId: "payment-a", evidenceId: "evidence-other" }],
+  ])("denies %s", async (_, input) => {
+    const c = context();
+    c.prisma.paymentEvidence.findFirst.mockResolvedValue(null);
+
+    await expect(c.service.getAccess(input)).rejects.toThrow("FINANCE_PENDING_PAYMENT_EVIDENCE_NOT_FOUND");
+    expect(c.prisma.paymentEvidence.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: input.evidenceId, paymentId: "payment-a", tenantId: "tenant-a" }),
+    }));
+    expect(c.storage.generateSignedUrl).not.toHaveBeenCalled();
   });
 
   it("uses OpenAiVisionService for prefill-only extraction without persisting a file or financial data", async () => {
@@ -176,6 +234,10 @@ function metadata(validation: Record<string, unknown>) {
     extraction: { destinationAccount: "CR001234", sinpePhone: null, destinationBank: "Banco A", reference: "REF-1", paymentCode: null, confidence: 0.9 },
     destinationValidation: { evaluatedAt: "2026-09-14T00:00:00.000Z", overrideAccepted: false, ...validation },
   };
+}
+
+function evidenceRecord() {
+  return { id: "evidence-a", originalFileName: "receipt.png", mimeType: "image/png", size: 12, objectKey: "finance/payment-evidence/file" };
 }
 
 function context(options: { payment?: ReturnType<typeof payment> | null; accounts?: unknown[]; evidenceMetadata?: unknown } = {}) {

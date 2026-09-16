@@ -102,6 +102,18 @@ describe("ReportedInvoicePaymentIntakeService contract intake", () => {
       receivedAmount: d("135000"),
     });
   });
+
+  it("persists a Costa Rica date-only reported Contract payment without moving it to the previous local day", async () => {
+    const c = context({ fiscalTimezone: "America/Costa_Rica" });
+
+    await c.service.submitContract(command({ paymentDate: "2026-09-11" }));
+
+    expect(c.tx.payment.create.mock.calls[0][0].data.receivedAt.toISOString()).toBe("2026-09-11T06:00:00.000Z");
+    expect(c.prisma.tenantBillingConfiguration.findUnique).toHaveBeenCalledWith({
+      where: { tenantId: "tenant-a" },
+      select: { fiscalTimezone: true },
+    });
+  });
 });
 
 function command(overrides: Record<string, unknown> = {}) {
@@ -133,7 +145,7 @@ function obligation(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function context(options: { obligation?: ReturnType<typeof obligation> | null; contract?: { id: string } | null } = {}) {
+function context(options: { obligation?: ReturnType<typeof obligation> | null; contract?: { id: string } | null; fiscalTimezone?: string | null } = {}) {
   const target = options.obligation === undefined ? obligation() : options.obligation;
   const contract = options.contract === undefined ? { id: "contract-a" } : options.contract;
   const tx = {
@@ -142,7 +154,14 @@ function context(options: { obligation?: ReturnType<typeof obligation> | null; c
     payment: { create: jest.fn(async ({ data }) => ({ id: "payment-contract-1", createdAt: new Date("2026-09-14T12:01:00.000Z"), ...data })) },
     billingAuditLog: { create: jest.fn().mockResolvedValue({ id: "audit-a" }) },
   };
-  const prisma = { $transaction: jest.fn(async (work: (client: typeof tx) => unknown) => work(tx)) };
+  const prisma = {
+    $transaction: jest.fn(async (work: (client: typeof tx) => unknown) => work(tx)),
+    tenantBillingConfiguration: {
+      findUnique: jest.fn().mockResolvedValue(
+        options.fiscalTimezone === null ? null : { fiscalTimezone: options.fiscalTimezone ?? "America/Costa_Rica" },
+      ),
+    },
+  };
   return { service: new ReportedInvoicePaymentIntakeService(prisma as never), prisma, tx };
 }
 

@@ -427,10 +427,63 @@ export type AccountReceivableGroupsPage = {
 };
 
 export type PaymentStatus =
+  | 'PENDING_VERIFICATION'
+  | 'REJECTED'
   | 'RECEIVED'
   | 'PARTIALLY_ALLOCATED'
   | 'FULLY_ALLOCATED'
   | 'CANCELLED';
+
+export type CustomerPaymentStatus = PaymentStatus;
+
+export type CustomerPaymentApplication = {
+  type: 'ACCOUNT_RECEIVABLE' | 'COMMERCIAL_OBLIGATION';
+  reference: string;
+  description: string | null;
+  amount: string;
+  currencyCode: FinanceCurrency;
+  applicationDate: string;
+  status: 'ACTIVE' | 'REVERSED';
+};
+
+export type CustomerPaymentEvidence = {
+  id: string;
+  originalFileName: string;
+  mimeType: string;
+  createdAt: string;
+};
+
+export type CustomerPaymentListItem = {
+  id: string;
+  receiptNumber: string | null;
+  createdAt: string;
+  paymentDate: string;
+  paymentMethod: string;
+  reference: string | null;
+  receivedAmount: string;
+  currencyCode: FinanceCurrency;
+  settlementCurrencyCode: FinanceCurrency | null;
+  settlementAmount: string | null;
+  settlementAvailableAmount: string | null;
+  settlementExchangeRate: string | null;
+  settlementExchangeRateSource: 'MANUAL' | 'BCCR' | null;
+  settlementExchangeRateEffectiveDate: string | null;
+  status: CustomerPaymentStatus;
+  rejectionReason: string | null;
+  reviewedAt: string | null;
+  evidencePresent: boolean;
+  evidence: CustomerPaymentEvidence[];
+  receiptAvailable: boolean;
+  applications: CustomerPaymentApplication[];
+};
+
+export type CustomerPaymentsPage = {
+  items: CustomerPaymentListItem[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+};
 
 export type PaymentAllocationDetail = {
   id: string;
@@ -458,7 +511,7 @@ export type PaymentAllocationDetail = {
 
 export type PaymentDetail = {
   id: string;
-  receiptNumber: string;
+  receiptNumber: string | null;
   customerId: string | null;
   payerDisplayName: string;
   payerIdentificationType: string | null;
@@ -477,9 +530,51 @@ export type PaymentDetail = {
   registeredBy: { userId: string; name: string; at: string } | null;
   cancelledBy: { userId: string; name: string; at: string; reason: string | null } | null;
   allocations: PaymentAllocationDetail[];
+  createdAt?: string;
+  paymentDate?: string;
+  rejectionReason?: string | null;
+  reviewedAt?: string | null;
+  settlement?: {
+    currencyCode: FinanceCurrency;
+    amount: string;
+    availableAmount: string;
+    appliedAmount: string;
+    exchangeRate: string | null;
+    exchangeRateSource: 'MANUAL' | 'BCCR' | null;
+    exchangeRateEffectiveDate: string | null;
+  } | null;
+  evidencePresent?: boolean;
+  evidence?: CustomerPaymentEvidence[];
+  receiptAvailable?: boolean;
+  applications?: CustomerPaymentApplication[];
 };
 
-export type PaymentListItem = Omit<PaymentDetail, 'allocations'>;
+export type PaymentListItem = {
+  id: string;
+  paymentId: string;
+  customerId: string | null;
+  customerDisplayName: string;
+  customerIdentification: string | null;
+  createdAt: string;
+  paymentDate: string;
+  receiptNumber: string | null;
+  paymentMethod: string;
+  reference: string | null;
+  receivedAmount: string;
+  currencyCode: FinanceCurrency;
+  availableAmount: string;
+  settlementCurrencyCode: FinanceCurrency | null;
+  settlementAmount: string | null;
+  settlementAvailableAmount: string | null;
+  settlementExchangeRate: string | null;
+  settlementExchangeRateSource: 'MANUAL' | 'BCCR' | null;
+  settlementExchangeRateEffectiveDate: string | null;
+  status: PaymentStatus;
+  rejectionReason: string | null;
+  evidencePresent: boolean;
+  receiptAvailable: boolean;
+  applications: CustomerPaymentApplication[];
+};
 
 export type PaymentsPage = {
   payments: PaymentListItem[];
@@ -615,6 +710,50 @@ export type CustomerElectronicInvoicesPage = {
   page: number;
   pageSize: number;
   totalPages: number;
+};
+
+export type ElectronicInvoiceFinancialStatus = CustomerElectronicInvoiceFinancialStatus;
+export type ElectronicInvoiceTaxAuthorityStatus = 'NOT_SUBMITTED' | 'PROCESSING' | 'ACCEPTED' | 'REJECTED';
+
+export type ElectronicInvoiceListItem = {
+  billingDocumentId: string;
+  issuedAt: string | null;
+  fiscalNumber: string | null;
+  documentType: string;
+  customerId: string | null;
+  customerDisplayName: string | null;
+  customerIdentification: string | null;
+  currencyCode: FinanceCurrency;
+  total: string;
+  taxAuthorityStatus: ElectronicInvoiceTaxAuthorityStatus;
+  sourceType: string | null;
+  sourceId: string | null;
+  sourceNumber: string | null;
+  sourceReference: string | null;
+  originLabel: string | null;
+  artifactAvailability: { pdf: boolean; xml: boolean; haciendaResponse: boolean };
+  financialStatus: ElectronicInvoiceFinancialStatus;
+  financialOutstanding: string | null;
+  financialDetail: CustomerElectronicInvoice['financialDetail'];
+};
+
+export type ElectronicInvoicesPage = {
+  items: ElectronicInvoiceListItem[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+};
+
+export type ListElectronicInvoicesParams = PageParams & {
+  dateFrom?: string;
+  dateTo?: string;
+  customerSearch?: string;
+  currency?: FinanceCurrency;
+  documentType?: string;
+  source?: string;
+  fiscalReference?: string;
+  taxAuthorityStatus?: ElectronicInvoiceTaxAuthorityStatus;
 };
 
 export type CustomerInvoicePaymentTarget = {
@@ -760,6 +899,13 @@ export type ListPaymentsParams = PageParams & {
   customerId?: string;
   currency?: FinanceCurrency;
   status?: PaymentStatus;
+  dateFrom?: string;
+  dateTo?: string;
+  customerSearch?: string;
+  paymentMethod?: string;
+  reference?: string;
+  receiptNumber?: string;
+  applicationType?: 'ACCOUNT_RECEIVABLE' | 'COMMERCIAL_OBLIGATION' | 'UNALLOCATED';
   availableOnly?: boolean;
 };
 
@@ -941,6 +1087,13 @@ export function listPayments(
   return request<PaymentsPage>(`/finance/payments${queryString(params)}`, signal);
 }
 
+export function listElectronicInvoices(
+  params: ListElectronicInvoicesParams,
+  signal?: AbortSignal,
+): Promise<ElectronicInvoicesPage> {
+  return request<ElectronicInvoicesPage>(`/finance/electronic-invoices${queryString(params)}`, signal);
+}
+
 export function getPayment(id: string, signal?: AbortSignal): Promise<PaymentDetail> {
   return request<PaymentDetail>(`/finance/payments/${encodeURIComponent(id)}`, signal);
 }
@@ -1064,6 +1217,17 @@ export function getCustomerFinancialSummary(customerId: string, signal?: AbortSi
 
 export function listCustomerElectronicInvoices(customerId: string, params: PageParams = {}, signal?: AbortSignal): Promise<CustomerElectronicInvoicesPage> {
   return request<CustomerElectronicInvoicesPage>(`/finance/customers/${encodeURIComponent(customerId)}/electronic-invoices${queryString(params)}`, signal);
+}
+
+export function listCustomerPayments(customerId: string, params: PageParams = {}, signal?: AbortSignal): Promise<CustomerPaymentsPage> {
+  return request<CustomerPaymentsPage>(`/finance/customers/${encodeURIComponent(customerId)}/payments${queryString(params)}`, signal);
+}
+
+export async function downloadCustomerPaymentReceipt(customerId: string, paymentId: string): Promise<{ blob: Blob; fileName: string }> {
+  const response = await fetchApi(`/finance/customers/${encodeURIComponent(customerId)}/payments/${encodeURIComponent(paymentId)}/receipt`, { method: 'GET' });
+  if (!response.ok) throw new FinanceApiError('CUSTOMER_PAYMENT_RECEIPT_PDF_FAILED', 'No se pudo descargar el recibo.');
+  const disposition = response.headers.get('content-disposition') ?? '';
+  return { blob: await response.blob(), fileName: /filename="([^"]+)"/.exec(disposition)?.[1] ?? `recibo-${paymentId}.pdf` };
 }
 
 export function listCustomerInvoicePaymentTargets(customerId: string, currencyCode: FinanceCurrency, signal?: AbortSignal): Promise<{ targets: CustomerInvoicePaymentTarget[] }> {

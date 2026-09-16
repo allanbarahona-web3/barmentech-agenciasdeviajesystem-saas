@@ -88,6 +88,11 @@ describe("FiscalBillingController accepted invoice", () => {
     expect(Reflect.getMetadata(METHOD_METADATA, handler)).toBe(
       RequestMethod.GET,
     );
+    expect(Reflect.getMetadata(ROLES_KEY, handler)).toEqual([
+      UserRole.ADMIN,
+      UserRole.FACTURACION_COBROS,
+      UserRole.CONTADOR,
+    ]);
     await expect(
       controller.invoice(
         {
@@ -113,6 +118,9 @@ describe('FiscalBillingController artifact reads', () => {
     const request = { user: { id: 'user-a', tenantId: 'tenant-a', role: UserRole.FACTURACION_COBROS } };
     expect(Reflect.getMetadata(PATH_METADATA, FiscalBillingController.prototype.listArtifacts)).toBe('documents/:billingDocumentId/artifacts');
     expect(Reflect.getMetadata(PATH_METADATA, FiscalBillingController.prototype.downloadArtifact)).toBe('documents/:billingDocumentId/artifacts/:artifactType/versions/:version/download');
+    for (const handler of [FiscalBillingController.prototype.listArtifacts, FiscalBillingController.prototype.downloadArtifact]) {
+      expect(Reflect.getMetadata(ROLES_KEY, handler)).toEqual([UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.CONTADOR]);
+    }
     await expect(controller.listArtifacts(request, 'document-a')).resolves.toBe(artifacts);
     expect(read.list).toHaveBeenCalledWith('tenant-a', 'document-a');
     const response = { set: jest.fn(), send: jest.fn() };

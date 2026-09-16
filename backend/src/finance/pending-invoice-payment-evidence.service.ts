@@ -10,6 +10,14 @@ import { PaymentDestinationValidator, type PaymentDestinationValidationResult, t
 const MAX_EVIDENCE_BYTES = 10 * 1024 * 1024;
 const EVIDENCE_MIME_TYPES = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp", "application/pdf"]);
 const VISION_MIME_TYPES = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"]);
+const CUSTOMER_VISIBLE_EVIDENCE_STATUSES = [
+  PaymentStatus.PENDING_VERIFICATION,
+  PaymentStatus.RECEIVED,
+  PaymentStatus.PARTIALLY_ALLOCATED,
+  PaymentStatus.FULLY_ALLOCATED,
+  PaymentStatus.REJECTED,
+  PaymentStatus.CANCELLED,
+] as const;
 
 type EvidenceFile = {
   buffer: Buffer;
@@ -116,7 +124,7 @@ export class PendingInvoicePaymentEvidenceService {
         payment: {
           tenantId: input.tenantId,
           customerId: input.customerId,
-          status: PaymentStatus.PENDING_VERIFICATION,
+          status: { in: CUSTOMER_VISIBLE_EVIDENCE_STATUSES },
           OR: [
             {
               purpose: PaymentPurpose.GENERAL,

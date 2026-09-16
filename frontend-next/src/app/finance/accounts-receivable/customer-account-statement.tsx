@@ -9,7 +9,7 @@ import { useTenantDateTimeFormatter } from '@/shared/regional/tenant-regional-pr
 import styles from './accounts-receivable.module.css';
 
 const CHARGE_LABEL = { OPEN: 'Abierta', PARTIALLY_SETTLED: 'Abonada', SETTLED: 'Cancelada', CANCELLED: 'Anulada' } as const;
-const PAYMENT_LABEL = { RECEIVED: 'Recibido', PARTIALLY_ALLOCATED: 'Aplicado parcialmente', FULLY_ALLOCATED: 'Aplicado por completo', CANCELLED: 'Anulado' } as const;
+const PAYMENT_LABEL = { PENDING_VERIFICATION: 'Pendiente de aprobación', REJECTED: 'Rechazado', RECEIVED: 'Recibido', PARTIALLY_ALLOCATED: 'Aplicado parcialmente', FULLY_ALLOCATED: 'Aplicado por completo', CANCELLED: 'Anulado' } as const;
 
 export type CustomerAccountStatementGroup = Pick<AccountReceivableGroup, 'customerId' | 'debtor' | 'currencyCode'>;
 

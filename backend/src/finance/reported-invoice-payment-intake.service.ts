@@ -11,6 +11,7 @@ import {
 } from "./finance-audit";
 import { normalizeFinancialPaymentMethod, type FinancialPaymentMethod } from "./finance-payment-method";
 import { normalizeCurrencySettlementAmount } from "./currency-settlement.policy";
+import { DEFAULT_FISCAL_TIMEZONE, tenantLocalMidnightAsUtc } from "./tenant-fiscal-date";
 
 const MAX_AMOUNT = new Prisma.Decimal("99999999999999.99999");
 const OPEN_STATUSES = [AccountReceivableStatus.OPEN, AccountReceivableStatus.PARTIALLY_SETTLED] as const;
@@ -40,7 +41,7 @@ export interface ReportedInvoicePaymentCommand {
   currencyCode: string;
   amount: Prisma.Decimal;
   paymentMethod?: string;
-  paymentDate?: Date;
+  paymentDate?: Date | string;
   reference?: string;
   payerName?: string;
   notes?: string;
@@ -54,7 +55,7 @@ export interface ReportedContractPaymentCommand {
   currencyCode: string;
   amount: Prisma.Decimal;
   paymentMethod?: string;
-  paymentDate?: Date;
+  paymentDate?: Date | string;
   reference?: string;
   payerName?: string;
   notes?: string;
@@ -82,6 +83,11 @@ export class ReportedInvoicePaymentIntakeService {
   async submit(command: ReportedInvoicePaymentCommand) {
     const input = normalize(command);
     try {
+      const receivedAt = await this.resolveReportedPaymentReceivedAt(
+        input.tenantId,
+        input.paymentDate,
+        () => fail(REPORTED_INVOICE_PAYMENT_ERRORS.INVALID),
+      );
       return await this.prisma.$transaction(async (tx) => {
         const targetIds = input.targets.map((target) => target.accountReceivableId);
         const receivables = await tx.accountReceivable.findMany({
@@ -145,7 +151,7 @@ export class ReportedInvoicePaymentIntakeService {
             currencyCode: input.currencyCode,
             receivedAmount: input.amount,
             availableAmount: new Prisma.Decimal(0),
-            receivedAt: input.paymentDate ?? new Date(),
+            receivedAt,
             paymentMethod: input.paymentMethod,
             externalReference: input.reference,
             description: input.notes,
@@ -219,6 +225,11 @@ export class ReportedInvoicePaymentIntakeService {
   async submitContract(command: ReportedContractPaymentCommand) {
     const input = normalizeContract(command);
     try {
+      const receivedAt = await this.resolveReportedPaymentReceivedAt(
+        input.tenantId,
+        input.paymentDate,
+        () => failContract(REPORTED_CONTRACT_PAYMENT_ERRORS.INVALID),
+      );
       return await this.prisma.$transaction(async (tx) => {
         const obligation = await tx.commercialObligation.findFirst({
           where: {
@@ -280,7 +291,7 @@ export class ReportedInvoicePaymentIntakeService {
             currencyCode: input.currencyCode,
             receivedAmount: input.amount,
             availableAmount: new Prisma.Decimal(0),
-            receivedAt: input.paymentDate ?? new Date(),
+            receivedAt,
             paymentMethod: input.paymentMethod,
             externalReference: input.reference,
             description: input.notes,
@@ -330,6 +341,35 @@ export class ReportedInvoicePaymentIntakeService {
     } catch (error) {
       if (error instanceof ReportedContractPaymentError) throw error;
       throw new ReportedContractPaymentError(REPORTED_CONTRACT_PAYMENT_ERRORS.PERSISTENCE_FAILED);
+    }
+  }
+
+  private async resolveReportedPaymentReceivedAt(
+    tenantId: string,
+    paymentDate: ReportedPaymentDate | null,
+    invalid: () => never,
+  ): Promise<Date> {
+    if (paymentDate === null) return new Date();
+    if (paymentDate instanceof Date) return new Date(paymentDate.getTime());
+
+    const calendarDate = parseCalendarDate(paymentDate, invalid);
+    if (calendarDate === null) {
+      const instant = new Date(paymentDate);
+      if (Number.isNaN(instant.getTime())) invalid();
+      return instant;
+    }
+
+    const configuration = await this.prisma.tenantBillingConfiguration.findUnique({
+      where: { tenantId },
+      select: { fiscalTimezone: true },
+    });
+    try {
+      return tenantLocalMidnightAsUtc(
+        calendarDate,
+        configuration?.fiscalTimezone ?? DEFAULT_FISCAL_TIMEZONE,
+      );
+    } catch {
+      invalid();
     }
   }
 }
@@ -424,10 +464,13 @@ function paymentMethod(value: unknown): FinancialPaymentMethod {
   return normalized;
 }
 
-function optionalDate(value: unknown): Date | null {
+type ReportedPaymentDate = Date | string;
+
+function optionalDate(value: unknown): ReportedPaymentDate | null {
   if (value === undefined || value === null) return null;
-  if (!(value instanceof Date) || Number.isNaN(value.getTime())) fail(REPORTED_INVOICE_PAYMENT_ERRORS.INVALID);
-  return new Date(value.getTime());
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return new Date(value.getTime());
+  if (typeof value === "string" && value.trim()) return value.trim();
+  fail(REPORTED_INVOICE_PAYMENT_ERRORS.INVALID);
 }
 
 function exactAmount(value: unknown): Prisma.Decimal {
@@ -468,10 +511,11 @@ function paymentMethodContract(value: unknown): FinancialPaymentMethod {
   return normalized;
 }
 
-function optionalDateContract(value: unknown): Date | null {
+function optionalDateContract(value: unknown): ReportedPaymentDate | null {
   if (value === undefined || value === null) return null;
-  if (!(value instanceof Date) || Number.isNaN(value.getTime())) failContract(REPORTED_CONTRACT_PAYMENT_ERRORS.INVALID);
-  return new Date(value.getTime());
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return new Date(value.getTime());
+  if (typeof value === "string" && value.trim()) return value.trim();
+  failContract(REPORTED_CONTRACT_PAYMENT_ERRORS.INVALID);
 }
 
 function exactContractAmount(value: unknown): Prisma.Decimal {
@@ -483,4 +527,24 @@ function exactContractAmount(value: unknown): Prisma.Decimal {
 
 function failContract(code: (typeof REPORTED_CONTRACT_PAYMENT_ERRORS)[keyof typeof REPORTED_CONTRACT_PAYMENT_ERRORS]): never {
   throw new ReportedContractPaymentError(code);
+}
+
+function parseCalendarDate(
+  value: string,
+  invalid: () => never,
+): { year: number; month: number; day: number } | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const instant = new Date(Date.UTC(year, month - 1, day));
+  if (
+    instant.getUTCFullYear() !== year ||
+    instant.getUTCMonth() !== month - 1 ||
+    instant.getUTCDate() !== day
+  ) {
+    invalid();
+  }
+  return { year, month, day };
 }

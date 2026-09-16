@@ -179,6 +179,67 @@ describe("FinanceReadService", () => {
     expect(contractFindFirst).not.toHaveBeenCalled();
   });
 
+  it("lists one customer's Payments with generic Finance applications, settlement snapshots, and no per-payment queries", async () => {
+    const customerFindFirst = jest.fn().mockResolvedValue({ id: "customer-1" });
+    const paymentFindMany = jest.fn().mockResolvedValue([
+      customerPaymentRow({
+        id: "payment-ar", receiptNumber: "RCP-1", status: "FULLY_ALLOCATED", receivedAmount: d("100"),
+        allocations: [{ amount: d("100"), status: "ACTIVE", allocatedAt: new Date("2026-09-15T12:00:00.000Z"), accountReceivable: { sourceNumber: "FE-123", sourceDocumentType: "Factura electrónica", currencyCode: "USD" } }],
+      }),
+      customerPaymentRow({
+        id: "payment-contract", receiptNumber: "RCP-2", currencyCode: "CRC", receivedAmount: d("23000"), status: "PARTIALLY_ALLOCATED", settlementCurrencyCode: "USD", settlementAmount: d("51.17"), settlementAvailableAmount: d("0.05"), settlementExchangeRate: d("449.49"), settlementExchangeRateSource: "BCCR", settlementExchangeRateEffectiveDate: new Date("2026-09-15T00:00:00.000Z"),
+        _count: { evidence: 1 }, evidence: [{ id: "evidence-1", originalFileName: "comprobante.png", mimeType: "image/png", createdAt: new Date("2026-09-15T11:00:00.000Z"), extractionMetadata: { hidden: true }, objectKey: "hidden" }], allocations: [], commercialObligationAllocations: [{ amount: d("51.12"), status: "ACTIVE", allocatedAt: new Date("2026-09-15T12:00:00.000Z"), commercialObligation: { sourceType: "CONTRACT", sourceId: "contract-1", sourceReference: "CTR-1", currencyCode: "USD" } }],
+      }),
+      customerPaymentRow({ id: "payment-rejected", receiptNumber: null, status: "REJECTED", rejectionReason: "Comprobante ilegible", reviewedAt: new Date("2026-09-15T13:00:00.000Z") }),
+      customerPaymentRow({ id: "payment-pending", receiptNumber: null, status: "PENDING_VERIFICATION" }),
+    ]);
+    const paymentCount = jest.fn().mockResolvedValue(4);
+    const contractFindMany = jest.fn().mockResolvedValue([{ id: "contract-1", contractNumber: "CTR-1", destination: "San José", travelPackage: { name: "Paquete Costa Rica" }, internalTrip: null }]);
+    const service = new FinanceReadService({
+      client: { findFirst: customerFindFirst }, payment: { findMany: paymentFindMany, count: paymentCount }, contract: { findMany: contractFindMany },
+    } as unknown as PrismaService);
+
+    await expect(service.listCustomerPayments("tenant-1", "customer-1", {})).resolves.toMatchObject({
+      page: 1, pageSize: 25, total: 4, totalPages: 1,
+      items: [
+        { id: "payment-ar", receiptAvailable: true, evidencePresent: false, applications: [{ type: "ACCOUNT_RECEIVABLE", reference: "FE-123", amount: "100", currencyCode: "USD" }] },
+        { id: "payment-contract", currencyCode: "CRC", settlementAmount: "51.17", settlementAvailableAmount: "0.05", settlementExchangeRate: "449.49", evidencePresent: true, evidence: [{ id: "evidence-1", originalFileName: "comprobante.png", mimeType: "image/png" }], receiptAvailable: true, applications: [{ type: "COMMERCIAL_OBLIGATION", reference: "CTR-1", description: "Paquete Costa Rica", amount: "51.12", currencyCode: "USD" }] },
+        { id: "payment-rejected", receiptAvailable: false, rejectionReason: "Comprobante ilegible" },
+        { id: "payment-pending", status: "PENDING_VERIFICATION", receiptAvailable: false },
+      ],
+    });
+    expect(paymentFindMany).toHaveBeenCalledWith(expect.objectContaining({ where: { tenantId: "tenant-1", customerId: "customer-1" }, skip: 0, take: 25 }));
+    expect(paymentCount).toHaveBeenCalledWith({ where: { tenantId: "tenant-1", customerId: "customer-1" } });
+    expect(contractFindMany).toHaveBeenCalledTimes(1);
+    const paymentQuery = paymentFindMany.mock.calls[0]![0];
+    expect(paymentQuery.select.evidence.select).toEqual({ id: true, originalFileName: true, mimeType: true, createdAt: true });
+    expect(paymentQuery.select.evidence.select).not.toHaveProperty("extractionMetadata");
+    expect(paymentQuery.select.evidence.select).not.toHaveProperty("objectKey");
+  });
+
+  it("does not disclose another tenant/customer's Payments or receipt", async () => {
+    const customerFindFirst = jest.fn().mockResolvedValue(null);
+    const paymentFindMany = jest.fn();
+    const paymentFindFirst = jest.fn();
+    const service = new FinanceReadService({
+      client: { findFirst: customerFindFirst }, payment: { findMany: paymentFindMany, findFirst: paymentFindFirst },
+    } as unknown as PrismaService);
+
+    await expect(service.listCustomerPayments("tenant-1", "customer-other", {})).rejects.toBeInstanceOf(NotFoundException);
+    await expect(service.assertCustomerPaymentAccess("tenant-1", "customer-other", "payment-other")).rejects.toBeInstanceOf(NotFoundException);
+    expect(paymentFindMany).not.toHaveBeenCalled();
+    expect(paymentFindFirst).not.toHaveBeenCalled();
+  });
+
+  it("checks payment ownership before a customer-scoped receipt is rendered", async () => {
+    const customerFindFirst = jest.fn().mockResolvedValue({ id: "customer-1" });
+    const paymentFindFirst = jest.fn().mockResolvedValue(null);
+    const service = new FinanceReadService({ client: { findFirst: customerFindFirst }, payment: { findFirst: paymentFindFirst } } as unknown as PrismaService);
+
+    await expect(service.assertCustomerPaymentAccess("tenant-1", "customer-1", "payment-other")).rejects.toBeInstanceOf(NotFoundException);
+    expect(paymentFindFirst).toHaveBeenCalledWith({ where: { id: "payment-other", tenantId: "tenant-1", customerId: "customer-1" }, select: { id: true } });
+  });
+
   it("lists only set-based open Contract payment targets for the requested customer and currency", async () => {
     const commercialObligation = {
       findMany: jest.fn().mockResolvedValue([
@@ -704,6 +765,89 @@ describe("FinanceReadService", () => {
     expect(paymentFindMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ tenantId: "tenant-auth", customerId: "customer-a", id: { in: ["payment-contract"] } }) }));
   });
 
+  it("lists global electronic invoices with accepted defaults, financial state, origin, and artifact availability in bounded reads", async () => {
+    const findMany = jest.fn().mockResolvedValue([
+      {
+        id: "document-contract", customerId: "customer-a", fiscalNumber: "001-contract", documentTypeCode: "01", issuedAt: new Date("2026-09-12T12:00:00.000Z"),
+        sourceType: "CONTRACT_PAYMENT", sourceId: "payment-contract", sourceNumber: "RCP-1", internalNumber: "FE-1", currencyCode: "USD", total: d("100"), taxAuthorityStatus: "ACCEPTED",
+        receiverName: "Cliente contrato", receiverIdentification: "1-1111-1111", customer: { id: "customer-a", fullName: "Cliente contrato", idNumber: "1-1111-1111" },
+      },
+      {
+        id: "document-partial", customerId: "customer-b", fiscalNumber: "001-partial", documentTypeCode: "04", issuedAt: new Date("2026-09-11T12:00:00.000Z"),
+        sourceType: "SALES_ORDER", sourceId: "order-partial", sourceNumber: "SO-1", internalNumber: "FE-2", currencyCode: "CRC", total: d("200"), taxAuthorityStatus: "ACCEPTED",
+        receiverName: "Cliente parcial", receiverIdentification: "2-2222-2222", customer: { id: "customer-b", fullName: "Cliente parcial", idNumber: "2-2222-2222" },
+      },
+      {
+        id: "document-open", customerId: "customer-c", fiscalNumber: "001-open", documentTypeCode: "01", issuedAt: new Date("2026-09-10T12:00:00.000Z"),
+        sourceType: "SALES_ORDER", sourceId: "order-open", sourceNumber: "SO-2", internalNumber: "FE-3", currencyCode: "USD", total: d("300"), taxAuthorityStatus: "ACCEPTED",
+        receiverName: "Cliente pendiente", receiverIdentification: "3-3333-3333", customer: { id: "customer-c", fullName: "Cliente pendiente", idNumber: "3-3333-3333" },
+      },
+    ]);
+    const count = jest.fn().mockResolvedValue(3);
+    const receivableFindMany = jest.fn().mockResolvedValue([
+      { id: "ar-partial", sourceId: "document-partial", originalAmount: d("200"), outstandingAmount: d("50"), status: "PARTIALLY_SETTLED" },
+      { id: "ar-open", sourceId: "document-open", originalAmount: d("300"), outstandingAmount: d("300"), status: "OPEN" },
+    ]);
+    const paymentFindMany = jest.fn().mockResolvedValue([{ id: "payment-contract", contractId: "contract-a" }]);
+    const artifactFindMany = jest.fn().mockResolvedValue([
+      { billingDocumentId: "document-contract", artifactType: "INTERNAL_PDF" },
+      { billingDocumentId: "document-contract", artifactType: "TAX_AUTHORITY_RESPONSE_XML" },
+      { billingDocumentId: "document-partial", artifactType: "SIGNED_FISCAL_XML" },
+    ]);
+    const service = new FinanceReadService({
+      billingDocument: { findMany, count }, accountReceivable: { findMany: receivableFindMany }, payment: { findMany: paymentFindMany }, billingDocumentArtifact: { findMany: artifactFindMany },
+    } as unknown as PrismaService);
+
+    await expect(service.listElectronicInvoices("tenant-auth", {})).resolves.toMatchObject({
+      page: 1, pageSize: 25, total: 3,
+      items: [
+        expect.objectContaining({ billingDocumentId: "document-contract", originLabel: "Contrato", financialStatus: "PAID", financialOutstanding: "0", artifactAvailability: { pdf: true, xml: false, haciendaResponse: true } }),
+        expect.objectContaining({ billingDocumentId: "document-partial", originLabel: "Servicios adicionales", financialStatus: "PARTIALLY_PAID", financialOutstanding: "50", artifactAvailability: { pdf: false, xml: true, haciendaResponse: false } }),
+        expect.objectContaining({ billingDocumentId: "document-open", financialStatus: "PENDING", financialOutstanding: "300" }),
+      ],
+    });
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { tenantId: "tenant-auth", taxAuthorityStatus: "ACCEPTED" },
+      orderBy: [{ issuedAt: { sort: "desc", nulls: "last" } }, { id: "desc" }], skip: 0, take: 25,
+    }));
+    expect(receivableFindMany).toHaveBeenCalledTimes(1);
+    expect(paymentFindMany).toHaveBeenCalledTimes(1);
+    expect(artifactFindMany).toHaveBeenCalledTimes(1);
+    expect(artifactFindMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ tenantId: "tenant-auth", billingDocumentId: { in: ["document-contract", "document-partial", "document-open"] }, status: "AVAILABLE" }) }));
+  });
+
+  it("applies global electronic-invoice filters with tenant-calendar date bounds without per-document reads", async () => {
+    const findMany = jest.fn().mockResolvedValue([]);
+    const count = jest.fn().mockResolvedValue(0);
+    const clientFindMany = jest.fn().mockResolvedValue([{ id: "customer-a" }]);
+    const timezone = jest.fn().mockResolvedValue({ fiscalTimezone: "America/Costa_Rica" });
+    const artifactFindMany = jest.fn();
+    const receivableFindMany = jest.fn();
+    const paymentFindMany = jest.fn();
+    const service = new FinanceReadService({
+      billingDocument: { findMany, count }, client: { findMany: clientFindMany }, tenantBillingConfiguration: { findUnique: timezone },
+      billingDocumentArtifact: { findMany: artifactFindMany }, accountReceivable: { findMany: receivableFindMany }, payment: { findMany: paymentFindMany },
+    } as unknown as PrismaService);
+
+    await service.listElectronicInvoices("tenant-a", {
+      page: 2, pageSize: 25, dateFrom: "2026-09-10", dateTo: "2026-09-11", customerSearch: "cliente", currency: "USD" as never,
+      documentType: "01", source: "CONTRACT_PAYMENT", fiscalReference: "001", taxAuthorityStatus: "REJECTED" as never,
+    });
+
+    expect(clientFindMany).toHaveBeenCalledTimes(1);
+    expect(timezone).toHaveBeenCalledWith({ where: { tenantId: "tenant-a" }, select: { fiscalTimezone: true } });
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ tenantId: "tenant-a", taxAuthorityStatus: "REJECTED", currencyCode: "USD", documentTypeCode: "01", sourceType: "CONTRACT_PAYMENT", AND: expect.arrayContaining([
+        { customerId: { in: ["customer-a"] } },
+        { fiscalNumber: { contains: "001", mode: "insensitive" } },
+        { issuedAt: { gte: new Date("2026-09-10T06:00:00.000Z"), lt: new Date("2026-09-12T06:00:00.000Z") } },
+      ]) }), skip: 25, take: 25,
+    }));
+    expect(receivableFindMany).not.toHaveBeenCalled();
+    expect(paymentFindMany).not.toHaveBeenCalled();
+    expect(artifactFindMany).not.toHaveBeenCalled();
+  });
+
   it("does not run Finance lookups for an empty accepted-document page", async () => {
     const findMany = jest.fn().mockResolvedValue([]);
     const count = jest.fn().mockResolvedValue(0);
@@ -1198,13 +1342,13 @@ describe("FinanceReadService", () => {
       paymentListRow({ receivedAmount: d("123.12345"), availableAmount: d("23.00005") }),
     ]);
     const count = jest.fn().mockResolvedValue(21);
-    const prisma = { payment: { findMany, count } };
+    const prisma = { payment: { findMany, count }, client: { findMany: jest.fn().mockResolvedValue([{ id: "customer-a", fullName: "Customer A", idNumber: "123" }]) } };
     const service = new FinanceReadService(prisma as unknown as PrismaService);
 
     await expect(service.listPayments("tenant-auth", {
       page: 2, pageSize: 10, customerId: "customer-a", currency: "CRC", availableOnly: true,
     })).resolves.toEqual({
-      payments: [expect.objectContaining({ id: "payment-a", receiptNumber: "RCP-2026-000001", receivedAmount: "123.12345", availableAmount: "23.00005" })],
+      payments: [expect.objectContaining({ id: "payment-a", paymentId: "payment-a", customerDisplayName: "Customer A", receiptNumber: "RCP-2026-000001", receivedAmount: "123.12345", availableAmount: "23.00005" })],
       total: 21, page: 2, pageSize: 10, totalPages: 3,
     });
     expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
@@ -1218,7 +1362,118 @@ describe("FinanceReadService", () => {
       orderBy: [{ receivedAt: "desc" }, { id: "desc" }], skip: 10, take: 10,
     }));
     expect(findMany.mock.calls[0][0]).not.toHaveProperty("include");
+    expect(prisma.client.findMany).toHaveBeenCalledTimes(1);
     expect(prisma).not.toHaveProperty("accountReceivable");
+  });
+
+  it("projects global Payments with tenant-local date ranges, operational filters, and one bounded customer lookup", async () => {
+    const findMany = jest.fn().mockResolvedValue([paymentListRow({
+      receivedAmount: d("23000"), currencyCode: "CRC", settlementCurrencyCode: "USD", settlementAmount: d("51.17"),
+      settlementAvailableAmount: d("0.05"), settlementExchangeRate: d("449.49"), settlementExchangeRateSource: "BCCR",
+      settlementExchangeRateEffectiveDate: new Date("2026-09-11T00:00:00.000Z"), status: "REJECTED", rejectionReason: "Comprobante ilegible",
+      receiptNumber: null, _count: { evidence: 1 }, evidence: [{ id: "evidence-a", originalFileName: "comprobante.png", mimeType: "image/png", createdAt: new Date() }],
+    })]);
+    const clientFindMany = jest.fn()
+      .mockResolvedValueOnce([{ id: "customer-a" }])
+      .mockResolvedValueOnce([{ id: "customer-a", fullName: "Cliente A", idNumber: "3101000000" }]);
+    const prisma = {
+      payment: { findMany, count: jest.fn().mockResolvedValue(1) },
+      client: { findMany: clientFindMany },
+      contract: { findMany: jest.fn().mockResolvedValue([]) },
+      tenantBillingConfiguration: { findUnique: jest.fn().mockResolvedValue({ fiscalTimezone: "America/Costa_Rica" }) },
+    };
+    const service = new FinanceReadService(prisma as unknown as PrismaService);
+
+    await expect(service.listPayments("tenant-a", {
+      dateFrom: "2026-09-11", dateTo: "2026-09-12", customerSearch: "Cliente A", status: "REJECTED" as never,
+      currency: "CRC" as never, paymentMethod: "BANK_TRANSFER", reference: "bank", receiptNumber: "RCP",
+      applicationType: "ACCOUNT_RECEIVABLE" as never,
+    })).resolves.toMatchObject({
+      page: 1, pageSize: 25, total: 1,
+      payments: [{ paymentId: "payment-a", customerDisplayName: "Cliente A", customerIdentification: "3101000000", receivedAmount: "23000", settlementAmount: "51.17", settlementAvailableAmount: "0.05", rejectionReason: "Comprobante ilegible", evidencePresent: true, receiptAvailable: false }],
+    });
+    const where = findMany.mock.calls[0]![0].where;
+    expect(where.tenantId).toBe("tenant-a");
+    expect(where.currencyCode).toBe("CRC");
+    expect(where.AND).toEqual(expect.arrayContaining([
+      { status: "REJECTED" },
+      { paymentMethod: "BANK_TRANSFER" },
+      { externalReference: { contains: "bank", mode: "insensitive" } },
+      { receiptNumber: { contains: "RCP", mode: "insensitive" } },
+      { allocations: { some: {} } },
+      { receivedAt: { gte: new Date("2026-09-11T06:00:00.000Z"), lt: new Date("2026-09-13T06:00:00.000Z") } },
+      { customerId: { in: ["customer-a"] } },
+    ]));
+    expect(clientFindMany).toHaveBeenCalledTimes(2);
+    expect(prisma.contract.findMany).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["customer name", "Cliente A"],
+    ["customer identification", "3101000000"],
+  ])("filters global Payments by %s without per-Payment customer reads", async (_, customerSearch) => {
+    const clientFindMany = jest.fn()
+      .mockResolvedValueOnce([{ id: "customer-a" }])
+      .mockResolvedValueOnce([{ id: "customer-a", fullName: "Cliente A", idNumber: "3101000000" }]);
+    const findMany = jest.fn().mockResolvedValue([paymentListRow()]);
+    const service = new FinanceReadService({
+      payment: { findMany, count: jest.fn().mockResolvedValue(1) }, client: { findMany: clientFindMany }, contract: { findMany: jest.fn() },
+    } as unknown as PrismaService);
+
+    await service.listPayments("tenant-a", { customerSearch });
+
+    expect(clientFindMany.mock.calls[0]![0]).toEqual(expect.objectContaining({
+      where: expect.objectContaining({ tenantId: "tenant-a", OR: [
+        { fullName: { contains: customerSearch, mode: "insensitive" } },
+        { idNumber: { contains: customerSearch, mode: "insensitive" } },
+      ] }),
+    }));
+    expect(clientFindMany).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    ["ACCOUNT_RECEIVABLE", { allocations: { some: {} } }],
+    ["COMMERCIAL_OBLIGATION", { commercialObligationAllocations: { some: {} } }],
+    ["UNALLOCATED", { allocations: { none: {} }, commercialObligationAllocations: { none: {} } }],
+  ])("filters global Payments by %s application type", async (applicationType, expectedConstraint) => {
+    const findMany = jest.fn().mockResolvedValue([]);
+    const service = new FinanceReadService({ payment: { findMany, count: jest.fn().mockResolvedValue(0) } } as unknown as PrismaService);
+
+    await service.listPayments("tenant-a", { applicationType: applicationType as never });
+
+    expect(findMany.mock.calls[0]![0].where.AND).toContainEqual(expectedConstraint);
+  });
+
+  it("returns generic invoice and Contract applications from the global Payment detail", async () => {
+    const row = payment({
+      status: "FULLY_ALLOCATED", receiptNumber: "RCP-2026-000021", availableAmount: d("0"), rejectionReason: "Razón visible",
+      settlementCurrencyCode: "USD", settlementAmount: d("51.17"), settlementAvailableAmount: d("0.05"), settlementExchangeRate: d("449.49"), settlementExchangeRateSource: "BCCR", settlementExchangeRateEffectiveDate: new Date("2026-09-11T00:00:00.000Z"),
+      evidence: [{ id: "evidence-a", originalFileName: "comprobante.png", mimeType: "image/png", createdAt: new Date() }],
+      commercialObligationAllocations: [{
+        id: "contract-allocation-a", amount: d("51.12"), status: "ACTIVE", allocatedAt: new Date("2026-09-11T12:00:00.000Z"), reversal: null,
+        commercialObligation: { sourceType: "CONTRACT", sourceId: "contract-a", sourceReference: "CTR-1", currencyCode: "USD" },
+      }],
+    });
+    const prisma = {
+      payment: { findFirst: jest.fn().mockResolvedValue(row) }, billingAuditLog: { findMany: jest.fn().mockResolvedValue([]) },
+      contract: { findMany: jest.fn().mockResolvedValue([{ id: "contract-a", contractNumber: "CTR-1", destination: "Costa Rica", travelPackage: null, internalTrip: null }]) },
+    };
+    const service = new FinanceReadService(prisma as unknown as PrismaService);
+
+    const detail = await service.getPaymentDetail("tenant-a", "payment-a");
+    expect(detail).toMatchObject({
+      paymentDate: row.receivedAt, rejectionReason: "Razón visible", evidencePresent: true, receiptAvailable: true,
+      settlement: { currencyCode: "USD", amount: "51.17", availableAmount: "0.05", exchangeRate: "449.49", exchangeRateSource: "BCCR" },
+    });
+    expect(detail.applications).toEqual(expect.arrayContaining([
+        expect.objectContaining({ type: "ACCOUNT_RECEIVABLE", amount: "4.12345", currencyCode: "CRC" }),
+        expect.objectContaining({ type: "COMMERCIAL_OBLIGATION", reference: "CTR-1", description: "Costa Rica", amount: "51.12", currencyCode: "USD" }),
+    ]));
+    expect(prisma.payment.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: "payment-a", tenantId: "tenant-a" },
+      include: expect.objectContaining({ commercialObligationAllocations: expect.any(Object), evidence: expect.any(Object) }),
+    }));
+    expect(prisma.contract.findMany).toHaveBeenCalledTimes(1);
   });
 
   it("aggregates paginated unallocated payment balances by customer and currency without related lookups", async () => {
@@ -1285,6 +1540,7 @@ function payment(overrides: Record<string, unknown> = {}) {
     id: "payment-a", receiptNumber: "RCP-2026-000001", customerId: "customer-a", payerDisplayName: "Payer", payerIdentificationType: null, payerIdentificationNumber: null,
     currencyCode: "CRC", receivedAmount: new Prisma.Decimal("10.12345"), availableAmount: new Prisma.Decimal("6.00000"), receivedAt: new Date(), paymentMethod: "CASH", externalReference: null, description: null, status: "PARTIALLY_ALLOCATED", cancelledAt: null,
     allocations: [{ id: "allocation-a", accountReceivableId: "ar-a", amount: new Prisma.Decimal("4.12345"), status: "ACTIVE", allocatedAt: new Date(), reversal: null, accountReceivable: { id: "ar-a", currencyCode: "CRC", originalAmount: new Prisma.Decimal("10"), outstandingAmount: new Prisma.Decimal("5.87655"), status: "PARTIALLY_SETTLED" } }],
+    commercialObligationAllocations: [], evidence: [], rejectionReason: null,
     ...overrides,
   };
 }
@@ -1442,8 +1698,20 @@ function paymentListRow(overrides: Record<string, unknown> = {}) {
   return {
     id: "payment-a", receiptNumber: "RCP-2026-000001", customerId: "customer-a", payerDisplayName: "Payer",
     payerIdentificationType: "01", payerIdentificationNumber: "123", currencyCode: "CRC",
-    receivedAmount: d("10"), availableAmount: d("10"), receivedAt: new Date("2026-08-31T12:00:00.000Z"),
+    receivedAmount: d("10"), availableAmount: d("10"), createdAt: new Date("2026-08-31T12:00:00.000Z"), receivedAt: new Date("2026-08-31T12:00:00.000Z"),
     paymentMethod: "BANK_TRANSFER", externalReference: "bank-a", description: "Payment",
+    settlementCurrencyCode: null, settlementAmount: null, settlementAvailableAmount: null, settlementExchangeRate: null, settlementExchangeRateSource: null, settlementExchangeRateEffectiveDate: null,
+    rejectionReason: null, reviewedAt: null, _count: { evidence: 0 }, evidence: [], allocations: [], commercialObligationAllocations: [],
     status: "RECEIVED", cancelledAt: null, ...overrides,
+  };
+}
+
+function customerPaymentRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "payment-a", receiptNumber: null, createdAt: new Date("2026-09-15T10:00:00.000Z"), receivedAt: new Date("2026-09-15T09:00:00.000Z"),
+    paymentMethod: "BANK_TRANSFER", externalReference: "REF-1", receivedAmount: d("100"), currencyCode: "USD",
+    settlementCurrencyCode: null, settlementAmount: null, settlementAvailableAmount: null, settlementExchangeRate: null, settlementExchangeRateSource: null, settlementExchangeRateEffectiveDate: null,
+    status: "PENDING_VERIFICATION", rejectionReason: null, reviewedAt: null, _count: { evidence: 0 }, evidence: [], allocations: [], commercialObligationAllocations: [],
+    ...overrides,
   };
 }

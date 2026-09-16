@@ -67,6 +67,18 @@ describe("ReportedInvoicePaymentIntakeService", () => {
     });
   });
 
+  it("interprets a date-only reported payment in the tenant fiscal timezone and persists its UTC instant", async () => {
+    const c = context({ fiscalTimezone: "America/Costa_Rica" });
+
+    await c.service.submit(command({ paymentDate: "2026-09-11" }));
+
+    expect(c.tx.payment.create.mock.calls[0][0].data.receivedAt.toISOString()).toBe("2026-09-11T06:00:00.000Z");
+    expect(c.prisma.tenantBillingConfiguration.findUnique).toHaveBeenCalledWith({
+      where: { tenantId: "tenant-a" },
+      select: { fiscalTimezone: true },
+    });
+  });
+
   it("rejects duplicate AR targets before starting a transaction", async () => {
     const c = context();
     await expect(c.service.submit(command({ targets: [
@@ -157,7 +169,7 @@ function receivable(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function context(options: { receivables?: ReturnType<typeof receivable>[] } = {}) {
+function context(options: { receivables?: ReturnType<typeof receivable>[]; fiscalTimezone?: string | null } = {}) {
   const receivables = options.receivables ?? [receivable(), receivable({ id: "ar-b", sourceId: "document-b" })];
   const tx = {
     accountReceivable: { findMany: jest.fn(({ where }) => Promise.resolve(
@@ -173,7 +185,14 @@ function context(options: { receivables?: ReturnType<typeof receivable>[] } = {}
     },
     billingAuditLog: { create: jest.fn().mockResolvedValue({ id: "audit-1" }) },
   };
-  const prisma = { $transaction: jest.fn(async (work: (client: typeof tx) => unknown) => work(tx)) };
+  const prisma = {
+    $transaction: jest.fn(async (work: (client: typeof tx) => unknown) => work(tx)),
+    tenantBillingConfiguration: {
+      findUnique: jest.fn().mockResolvedValue(
+        options.fiscalTimezone === null ? null : { fiscalTimezone: options.fiscalTimezone ?? "America/Costa_Rica" },
+      ),
+    },
+  };
   return { service: new ReportedInvoicePaymentIntakeService(prisma as never), prisma, tx };
 }
 

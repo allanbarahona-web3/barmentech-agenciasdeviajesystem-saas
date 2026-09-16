@@ -1,5 +1,5 @@
 import { Transform, Type } from "class-transformer";
-import { AccountReceivableStatus, Currency, PaymentStatus } from "@prisma/client";
+import { AccountReceivableStatus, BillingTaxAuthorityStatus, Currency, PaymentStatus } from "@prisma/client";
 import {
   ArrayMinSize,
   ArrayMaxSize,
@@ -17,6 +17,12 @@ import {
   Min,
   ValidateNested,
 } from "class-validator";
+
+export enum PaymentApplicationTypeFilter {
+  ACCOUNT_RECEIVABLE = "ACCOUNT_RECEIVABLE",
+  COMMERCIAL_OBLIGATION = "COMMERCIAL_OBLIGATION",
+  UNALLOCATED = "UNALLOCATED",
+}
 
 const trim = ({ value }: { value: unknown }) =>
   typeof value === "string" ? value.trim() : value;
@@ -114,6 +120,36 @@ export class ListCustomerElectronicInvoicesDto {
   pageSize?: number;
 }
 
+export class ListElectronicInvoicesDto {
+  @IsOptional() @Transform(({ value }) => Number.parseInt(String(value), 10)) @IsInt() @Min(1)
+  page?: number;
+  @IsOptional() @Transform(({ value }) => Number.parseInt(String(value), 10)) @IsInt() @Min(1) @Max(100)
+  pageSize?: number;
+  @IsOptional() @IsDateString({ strict: true }) @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  dateFrom?: string;
+  @IsOptional() @IsDateString({ strict: true }) @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  dateTo?: string;
+  @IsOptional() @Transform(trim) @IsString() @MaxLength(191) @Matches(/\S/)
+  customerSearch?: string;
+  @IsOptional() @IsEnum(Currency)
+  currency?: Currency;
+  @IsOptional() @Transform(trim) @IsString() @Matches(/^\d{2}$/)
+  documentType?: string;
+  @IsOptional() @Transform(trim) @IsString() @MaxLength(50) @Matches(/\S/)
+  source?: string;
+  @IsOptional() @Transform(trim) @IsString() @MaxLength(50) @Matches(/\S/)
+  fiscalReference?: string;
+  @IsOptional() @IsEnum(BillingTaxAuthorityStatus)
+  taxAuthorityStatus?: BillingTaxAuthorityStatus;
+}
+
+export class ListCustomerPaymentsDto {
+  @IsOptional() @Transform(({ value }) => Number.parseInt(String(value), 10)) @IsInt() @Min(1)
+  page?: number;
+  @IsOptional() @Transform(({ value }) => Number.parseInt(String(value), 10)) @IsInt() @Min(1) @Max(100)
+  pageSize?: number;
+}
+
 export class CustomerInvoicePaymentTargetsQueryDto {
   @Transform(trim) @IsEnum(Currency)
   currencyCode!: Currency;
@@ -208,6 +244,20 @@ export class ListPaymentsDto {
   currency?: Currency;
   @IsOptional() @IsEnum(PaymentStatus)
   status?: PaymentStatus;
+  @IsOptional() @IsDateString({ strict: true }) @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  dateFrom?: string;
+  @IsOptional() @IsDateString({ strict: true }) @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  dateTo?: string;
+  @IsOptional() @Transform(trim) @IsString() @MaxLength(191) @Matches(/\S/)
+  customerSearch?: string;
+  @IsOptional() @Transform(trim) @IsString() @MaxLength(50) @Matches(/\S/)
+  paymentMethod?: string;
+  @IsOptional() @Transform(trim) @IsString() @MaxLength(150) @Matches(/\S/)
+  reference?: string;
+  @IsOptional() @Transform(trim) @IsString() @MaxLength(50) @Matches(/\S/)
+  receiptNumber?: string;
+  @IsOptional() @IsEnum(PaymentApplicationTypeFilter)
+  applicationType?: PaymentApplicationTypeFilter;
   @IsOptional() @Transform(queryBoolean) @IsBoolean()
   availableOnly?: boolean;
 }

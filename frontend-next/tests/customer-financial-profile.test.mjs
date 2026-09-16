@@ -131,7 +131,7 @@ test('Customer Profile keeps invoice financial status in the Finance read model'
 test('Total facturas targets the separate electronic-invoice section', () => {
   assert.match(profileSource, /label: 'Total facturas'/);
   assert.match(profileSource, /value: electronicInvoices\?\.total \?\? 0/);
-  assert.match(profileSource, /scrollToSection\(electronicInvoicesRef\)/);
+  assert.match(profileSource, /scrollToTabSection\('finance', electronicInvoicesRef\)/);
   assert.match(profileSource, /ref=\{electronicInvoicesRef\}/);
 });
 

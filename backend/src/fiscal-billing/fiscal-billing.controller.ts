@@ -88,6 +88,7 @@ export class FiscalBillingController {
   }
 
   @Get("invoices/:billingDocumentId")
+  @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.CONTADOR)
   invoice(
     @Req() request: FiscalBillingRequest,
     @Param("billingDocumentId") billingDocumentId: string,
@@ -114,6 +115,7 @@ export class FiscalBillingController {
   }
 
   @Get('documents/:billingDocumentId/artifacts')
+  @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.CONTADOR)
   listArtifacts(
     @Req() request: FiscalBillingRequest,
     @Param('billingDocumentId') billingDocumentId: string,
@@ -122,6 +124,7 @@ export class FiscalBillingController {
   }
 
   @Get('documents/:billingDocumentId/artifacts/:artifactType/versions/:version/download')
+  @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.CONTADOR)
   async downloadArtifact(
     @Req() request: FiscalBillingRequest,
     @Param('billingDocumentId') billingDocumentId: string,

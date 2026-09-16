@@ -37,17 +37,18 @@ const groupRowsSource = portfolioSource.slice(
   portfolioSource.indexOf('export function ContractObligationGroupsView'),
 );
 
-test('Accounts Receivable orders tabs as Cartera, Contratos, then Pagos', () => {
+test('Accounts Receivable orders tabs as Cartera, Contratos, Recibos, then Facturas electrónicas', () => {
   const tabsSource = pageSource.slice(
     pageSource.indexOf('<nav className={styles.viewTabs}'),
     pageSource.indexOf('</nav>') + '</nav>'.length,
   );
-  assert.match(tabsSource, />Cartera<\/button>[\s\S]*>Contratos<\/button>[\s\S]*>Pagos<\/button>/);
+  assert.match(tabsSource, />Cartera<\/button>[\s\S]*>Contratos<\/button>[\s\S]*>Recibos<\/button>[\s\S]*>Facturas electrónicas<\/button>/);
   assert.doesNotMatch(tabsSource, /Cartera por cliente/);
-  assert.match(pageSource, /useState<'receivables' \| 'payments' \| 'contracts'>\('receivables'\)/);
+  assert.match(pageSource, /useState<'receivables' \| 'payments' \| 'contracts' \| 'electronic-invoices'>\('receivables'\)/);
   assert.match(pageSource, /<ReceivableGroupsView/);
   assert.match(pageSource, /<PaymentsView/);
   assert.match(pageSource, /<ContractObligationGroupsView/);
+  assert.match(pageSource, /<ElectronicInvoicesView/);
 });
 
 test('Cartera retains its canonical statement action and invoicing subtitle', () => {

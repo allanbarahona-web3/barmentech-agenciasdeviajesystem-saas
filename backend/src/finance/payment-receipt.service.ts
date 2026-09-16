@@ -8,6 +8,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { TenantService } from "../tenant/tenant.service";
 import { FINANCE_AUDIT_ACTIONS, FINANCE_AUDIT_ENTITY_TYPES, financeAuditRecord } from "./finance-audit";
 import { allocationStatusLabel, paymentMethodLabel, paymentReceiptTemplate, paymentStatusLabel, type PaymentReceipt } from "./payment-receipt.template";
+import { hasAvailablePaymentReceipt, loadPaymentApplicationContractLabels, normalizePaymentApplications, paymentApplicationSelect } from "./payment-application-read-model";
 
 @Injectable()
 export class PaymentReceiptService {
@@ -16,59 +17,16 @@ export class PaymentReceiptService {
   async get(tenantId: string, paymentId: string): Promise<PaymentReceipt> {
     const payment = await this.prisma.payment.findFirst({
       where: { id: paymentId, tenantId },
-      include: {
-        allocations: {
-          orderBy: [{ allocatedAt: "asc" }, { id: "asc" }],
-          include: { accountReceivable: { select: { sourceNumber: true, sourceDocumentType: true } } },
-        },
-        commercialObligationAllocations: {
-          orderBy: [{ allocatedAt: "asc" }, { id: "asc" }],
-          include: { commercialObligation: { select: { sourceType: true, sourceId: true, sourceReference: true, currencyCode: true } } },
-        },
-      },
+      select: { id: true, customerId: true, receiptNumber: true, payerDisplayName: true, payerIdentificationNumber: true, currencyCode: true, receivedAmount: true, availableAmount: true, settlementCurrencyCode: true, settlementAmount: true, settlementAvailableAmount: true, settlementExchangeRate: true, settlementExchangeRateSource: true, settlementExchangeRateEffectiveDate: true, receivedAt: true, paymentMethod: true, externalReference: true, description: true, status: true, ...paymentApplicationSelect },
     });
     if (!payment) throw new NotFoundException("PAYMENT_NOT_FOUND");
     const receiptNumber = eligibleReceiptNumber(payment.status, payment.receiptNumber);
-    const contractIds = [...new Set(payment.commercialObligationAllocations
-      .filter((allocation) => allocation.commercialObligation.sourceType === "CONTRACT")
-      .map((allocation) => allocation.commercialObligation.sourceId))];
-    const [customer, contracts, registered] = await Promise.all([
+    const [customer, contractById, registered] = await Promise.all([
       payment.customerId ? this.prisma.client.findFirst({ where: { id: payment.customerId, tenantId }, select: { fullName: true, idNumber: true, email: true } }) : null,
-      contractIds.length ? this.prisma.contract.findMany({
-        where: { tenantId, id: { in: contractIds } },
-        select: { id: true, contractNumber: true, destination: true, travelPackage: { select: { name: true } }, internalTrip: { select: { name: true } } },
-      }) : [],
+      loadPaymentApplicationContractLabels(this.prisma, tenantId, [payment]),
       this.prisma.billingAuditLog.findFirst({ where: { tenantId, entityType: FINANCE_AUDIT_ENTITY_TYPES.PAYMENT, entityId: payment.id, action: FINANCE_AUDIT_ACTIONS.REGISTERED }, orderBy: { createdAt: "asc" }, select: { actorName: true } }),
     ]);
-    const contractById = new Map(contracts.map((contract) => [contract.id, contract]));
-    const applications = [
-      ...payment.allocations.map((allocation) => ({
-        type: "ACCOUNT_RECEIVABLE" as const,
-        reference: allocation.accountReceivable.sourceNumber ?? "Cuenta por cobrar",
-        description: allocation.accountReceivable.sourceDocumentType ?? null,
-        applicationDate: allocation.allocatedAt,
-        currencyCode: payment.settlementCurrencyCode ?? payment.currencyCode,
-        amount: allocation.amount,
-        statusLabel: allocationStatusLabel(allocation.status),
-        status: allocation.status,
-        relatedDocumentReference: allocation.accountReceivable.sourceNumber ?? null,
-      })),
-      ...payment.commercialObligationAllocations.map((allocation) => {
-        const obligation = allocation.commercialObligation;
-        const contract = obligation.sourceType === "CONTRACT" ? contractById.get(obligation.sourceId) : null;
-        return {
-          type: "COMMERCIAL_OBLIGATION" as const,
-          reference: contract?.contractNumber ?? obligation.sourceReference ?? "Obligación comercial",
-          description: contract ? contract.travelPackage?.name ?? contract.internalTrip?.name ?? contract.destination : null,
-          applicationDate: allocation.allocatedAt,
-          currencyCode: obligation.currencyCode,
-          amount: allocation.amount,
-          statusLabel: allocationStatusLabel(allocation.status),
-          status: allocation.status,
-          relatedDocumentReference: null,
-        };
-      }),
-    ].sort((left, right) => left.applicationDate.getTime() - right.applicationDate.getTime() || left.reference.localeCompare(right.reference));
+    const applications = normalizePaymentApplications(payment, contractById);
     const applied = applications.filter((application) => application.status === "ACTIVE").reduce((total, application) => total.plus(application.amount), new Prisma.Decimal(0));
     const money = (value: Prisma.Decimal) => value.toFixed(Math.max(2, value.decimalPlaces()));
     const settlement = payment.settlementCurrencyCode && payment.settlementAmount && payment.settlementAvailableAmount ? {
@@ -95,7 +53,7 @@ export class PaymentReceiptService {
       description: payment.description,
       statusLabel: paymentStatusLabel(payment.status),
       registeredBy: registered?.actorName ?? null,
-      applications: applications.map((application) => ({ ...application, amount: money(application.amount) })),
+      applications: applications.map((application) => ({ ...application, statusLabel: allocationStatusLabel(application.status), amount: money(application.amount) })),
     };
   }
 
@@ -117,11 +75,7 @@ export class PaymentReceiptService {
 }
 
 function eligibleReceiptNumber(status: PaymentStatus, receiptNumber: string | null): string {
-  const eligible = status === PaymentStatus.RECEIVED ||
-    status === PaymentStatus.PARTIALLY_ALLOCATED ||
-    status === PaymentStatus.FULLY_ALLOCATED ||
-    status === PaymentStatus.CANCELLED;
-  if (!eligible || typeof receiptNumber !== "string" || !receiptNumber.trim()) {
+  if (!hasAvailablePaymentReceipt(status, receiptNumber) || typeof receiptNumber !== "string") {
     throw new ConflictException("PAYMENT_RECEIPT_UNAVAILABLE");
   }
   return receiptNumber;

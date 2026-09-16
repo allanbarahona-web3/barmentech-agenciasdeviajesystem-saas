@@ -3,7 +3,7 @@
 export const dynamic = 'force-dynamic';
 
 import { useEffect, useState, useRef } from 'react';
-import { useRouter, useParams } from 'next/navigation';
+import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { LoadingModal } from '@/components/loading-modal';
 import { getCustomerProfile, updateCustomer, getCustomerDocumentDownloadUrl, uploadCustomerDocument, createCustomerNote, updateCustomerNote, deleteCustomerNote, type CustomerContractItem, type CustomerProfile, type UpdateCustomerDto, type CustomerDocumentCategory } from '@/lib/customers-api';
 import { getStoredSession } from '@/lib/auth-api';
@@ -13,6 +13,7 @@ import { ContractFinanceDrawer } from '@/features/contracts-finance/contract-fin
 import { CustomerAccountStatementModal } from '@/app/finance/accounts-receivable/customer-account-statement';
 import { CustomerEditModal, CustomerDocumentUploadModal } from '@/features/customers/components';
 import { CustomerContractPaymentIntakeSheet, CustomerInvoicePaymentIntakeSheet } from '@/features/finance/customer-invoice-payment-intake-sheet';
+import { CustomerPaymentsReceipts } from '@/features/finance/customer-payments-receipts';
 import AttachmentViewer from '@/components/attachment-viewer';
 import { getContractFiles } from '@/lib/contracts-api';
 import { listCustomerOperationalNotes, createContractNoteForCustomer, updateContractNote, deleteContractNote, type ContractNote } from '@/lib/contract-notes-api';
@@ -36,8 +37,11 @@ import { ArrowLeft, ChevronDown, ClipboardList, Eye, FileText, FolderOpen, Info,
 export default function CustomerProfilePage() {
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
   const customerId = params?.id as string;
   const formatTenantDateTime = useTenantDateTimeFormatter();
+  const requestedTab = searchParams.get('tab') === 'finance' ? 'finance' : 'information';
+  const [activeTab, setActiveTab] = useState<'information' | 'finance'>(requestedTab);
 
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<CustomerProfile | null>(null);
@@ -119,6 +123,10 @@ export default function CustomerProfilePage() {
   useEffect(() => {
     loadProfile();
   }, [customerId]);
+
+  useEffect(() => {
+    setActiveTab(requestedTab);
+  }, [requestedTab]);
 
   useEffect(() => {
     if (!customerId) return;
@@ -313,6 +321,19 @@ export default function CustomerProfilePage() {
   const scrollToSection = (ref: React.RefObject<HTMLDivElement | null>) => {
     ref.current?.scrollIntoView({ behavior: 'smooth' });
     ref.current?.focus({ preventScroll: true });
+  };
+
+  const selectProfileTab = (tab: 'information' | 'finance') => {
+    setActiveTab(tab);
+    const url = new URL(window.location.href);
+    if (tab === 'finance') url.searchParams.set('tab', 'finance');
+    else url.searchParams.delete('tab');
+    router.replace(`${url.pathname}${url.search}${url.hash}`, { scroll: false });
+  };
+
+  const scrollToTabSection = (tab: 'information' | 'finance', ref: React.RefObject<HTMLDivElement | null>) => {
+    if (activeTab !== tab) selectProfileTab(tab);
+    window.setTimeout(() => scrollToSection(ref), 0);
   };
 
   function getFirstLinePreview(text: string): string {
@@ -835,6 +856,12 @@ export default function CustomerProfilePage() {
         }
       />
 
+      <nav className="mb-6 flex max-w-full gap-1 overflow-x-auto rounded-lg border border-border bg-muted/50 p-1" aria-label="Secciones del perfil de cliente" role="tablist">
+        <button type="button" role="tab" aria-selected={activeTab === 'information'} className={activeTab === 'information' ? 'min-h-9 shrink-0 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-ui-xs' : 'min-h-9 shrink-0 rounded-md px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground'} onClick={() => selectProfileTab('information')}>Información</button>
+        <button type="button" role="tab" aria-selected={activeTab === 'finance'} className={activeTab === 'finance' ? 'min-h-9 shrink-0 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow-ui-xs' : 'min-h-9 shrink-0 rounded-md px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground'} onClick={() => selectProfileTab('finance')}>Finanzas</button>
+      </nav>
+
+      <div hidden={activeTab !== 'information'}>
       {isMinor && profile.responsibleAdult && (
         <SectionCard
           className="mb-6"
@@ -850,7 +877,7 @@ export default function CustomerProfilePage() {
         </SectionCard>
       )}
 
-      <div className="mb-6 grid gap-5 lg:grid-cols-3">
+      <div className="mb-6 grid gap-5 lg:grid-cols-2">
         {/* Section 1: Customer Information */}
         <SectionCard
           className="lg:col-span-1"
@@ -874,10 +901,10 @@ export default function CustomerProfilePage() {
         <SectionCard className="lg:col-span-1" title={<span className="flex items-center gap-2"><IconBadge tone="info" size="sm"><ClipboardList aria-hidden="true" /></IconBadge>Estadísticas</span>}>
           <div className="grid gap-3">
             {[
-              { label: 'Total contratos', value: statistics.totalContracts, icon: FileText, tone: 'primary' as const, onClick: () => scrollToSection(contractsRef) },
-              { label: 'Total facturas', value: electronicInvoices?.total ?? 0, icon: ReceiptText, tone: 'success' as const, onClick: () => scrollToSection(electronicInvoicesRef) },
-              { label: 'Documentos', value: statistics.totalDocuments, icon: FolderOpen, tone: 'info' as const, onClick: () => scrollToSection(documentsRef) },
-              { label: 'Notas', value: statistics.totalNotes, icon: StickyNote, tone: 'primary' as const, onClick: () => scrollToSection(notesRef) },
+              { label: 'Total contratos', value: statistics.totalContracts, icon: FileText, tone: 'primary' as const, onClick: () => scrollToTabSection('finance', contractsRef) },
+              { label: 'Total facturas', value: electronicInvoices?.total ?? 0, icon: ReceiptText, tone: 'success' as const, onClick: () => scrollToTabSection('finance', electronicInvoicesRef) },
+              { label: 'Documentos', value: statistics.totalDocuments, icon: FolderOpen, tone: 'info' as const, onClick: () => scrollToTabSection('information', documentsRef) },
+              { label: 'Notas', value: statistics.totalNotes, icon: StickyNote, tone: 'primary' as const, onClick: () => scrollToTabSection('information', notesRef) },
             ].map(({ label, value, icon: Icon, tone, onClick }) => (
               <button key={label} type="button" onClick={onClick} className="flex items-center justify-between rounded-lg border border-border bg-muted/40 p-4 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
                 <span><span className="block text-xs font-medium text-muted-foreground">{label}</span><span className="mt-1 block text-2xl font-semibold tracking-tight text-foreground">{value}</span></span>
@@ -887,6 +914,11 @@ export default function CustomerProfilePage() {
           </div>
         </SectionCard>
 
+      </div>
+      </div>
+
+      <div hidden={activeTab !== 'finance'}>
+      <div className="mb-6 grid gap-5">
         {/* Section 3: Financial Summary */}
         {!isMinor && (
           <SectionCard className="lg:col-span-1" title={<span className="flex items-center gap-2"><IconBadge tone="primary" size="sm"><WalletCards aria-hidden="true" /></IconBadge>Resumen financiero</span>}>
@@ -911,6 +943,9 @@ export default function CustomerProfilePage() {
         )}
       </div>
 
+      </div>
+
+      <div hidden={activeTab !== 'information'}>
       {/* Notas Operativas Section - Full Width */}
       <SectionCard
         className="mb-6"
@@ -1205,6 +1240,8 @@ export default function CustomerProfilePage() {
       </SectionCard>
       </div>
 
+      </div>
+      <div hidden={activeTab !== 'finance'}>
       {/* Section 5: Contracts */}
       <div ref={contractsRef} className="mb-6 overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-ui-xs">
         <div className="border-b border-border px-5 py-4">
@@ -1676,6 +1713,10 @@ export default function CustomerProfilePage() {
         </SectionCard>
       </div>
 
+      <CustomerPaymentsReceipts customerId={customerId} />
+
+      </div>
+      <div hidden={activeTab !== 'information'}>
       {/* Section 6: Customer Notes */}
       <div ref={notesRef} className="mb-6">
       <SectionCard
@@ -1708,6 +1749,7 @@ export default function CustomerProfilePage() {
       </SectionCard>
       </div>
 
+      </div>
       <CustomerEditModal
         isOpen={editModalOpen}
         customer={customer}
