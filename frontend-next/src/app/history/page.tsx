@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { getStoredToken } from "@/lib/auth-api";
+import { getHomeRouteForRole, getStoredSession, getStoredToken } from "@/lib/auth-api";
 import {
   type ContractFileDocument,
   type HistoryContractItem,
@@ -183,6 +183,12 @@ export default function HistoryPage() {
     const token = getStoredToken();
     if (!token) {
       router.replace("/");
+      return;
+    }
+
+    const role = String(getStoredSession()?.user?.role || "").toUpperCase();
+    if (!["ADMIN", "AGENT", "OPERACIONES", "VENTAS"].includes(role)) {
+      router.replace(getHomeRouteForRole(role));
       return;
     }
 

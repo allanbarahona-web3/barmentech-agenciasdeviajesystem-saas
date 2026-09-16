@@ -25,12 +25,18 @@ import { ReportPaymentDto } from "./dto/report-payment.dto";
 import { SendAccountStatementDto } from "./dto/send-account-statement.dto";
 import { BillingService } from "./billing.service";
 
+const LEGACY_BILLING_ACCESS_ROLES = ["SUPER_ADMIN", "ADMIN", "VENTAS", "OPERACIONES", "AGENT"] as const;
+const BILLING_OPERATION_ROLES = LEGACY_BILLING_ACCESS_ROLES;
+
 @Controller("billing")
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(...LEGACY_BILLING_ACCESS_ROLES)
 export class BillingController {
   constructor(private readonly billingService: BillingService) {}
 
   @Post("contracts/:contractId/bootstrap")
+  @Roles(...BILLING_OPERATION_ROLES)
+  @UseGuards(RolesGuard)
   bootstrapContractBilling(
     @Req()
     req: {
@@ -112,6 +118,8 @@ export class BillingController {
   }
 
   @Post("contracts/:contractId/account/send-email")
+  @Roles(...BILLING_OPERATION_ROLES)
+  @UseGuards(RolesGuard)
   sendAccountStatementEmail(
     @Req()
     req: {
@@ -136,6 +144,8 @@ export class BillingController {
   }
 
   @Post("contracts/:contractId/payments/report")
+  @Roles(...BILLING_OPERATION_ROLES)
+  @UseGuards(RolesGuard)
   @UseInterceptors(
     FileFieldsInterceptor([
       { name: "attachments", maxCount: 10 },
@@ -174,6 +184,8 @@ export class BillingController {
   }
 
   @Post("payments/:paymentId/review")
+  @Roles(...BILLING_OPERATION_ROLES)
+  @UseGuards(RolesGuard)
   markPaymentInReview(
     @Req()
     req: {
@@ -190,7 +202,7 @@ export class BillingController {
   }
 
   @Post("payments/:paymentId/verify")
-  @Roles("ADMIN", "FACTURACION_COBROS")
+  @Roles("ADMIN")
   @UseGuards(RolesGuard)
   verifyPayment(
     @Req()
@@ -208,7 +220,7 @@ export class BillingController {
   }
 
   @Post("payments/:paymentId/reject")
-  @Roles("ADMIN", "FACTURACION_COBROS")
+  @Roles("ADMIN")
   @UseGuards(RolesGuard)
   rejectPayment(
     @Req()
@@ -245,7 +257,7 @@ export class BillingController {
   }
 
   @Post("receipts/:receiptId/approve-send")
-  @Roles("ADMIN", "FACTURACION_COBROS", "AGENT")
+  @Roles("ADMIN", "AGENT")
   @UseGuards(RolesGuard)
   approveAndSendReceipt(
     @Req()
@@ -282,6 +294,8 @@ export class BillingController {
   }
 
   @Post("credit-notes/:creditNoteId/send-email")
+  @Roles(...BILLING_OPERATION_ROLES)
+  @UseGuards(RolesGuard)
   sendCreditNoteEmail(
     @Req()
     req: {
@@ -306,6 +320,8 @@ export class BillingController {
   }
 
   @Post("contracts/:contractId/credit-notes")
+  @Roles(...BILLING_OPERATION_ROLES)
+  @UseGuards(RolesGuard)
   createCreditNote(
     @Req()
     req: {
@@ -381,7 +397,7 @@ export class BillingController {
   }
 
   @Get("admin/dashboard-metrics")
-  @Roles("ADMIN", "CONTADOR")
+  @Roles("ADMIN")
   @UseGuards(RolesGuard)
   getDashboardMetrics(
     @Req()
@@ -400,7 +416,7 @@ export class BillingController {
   }
 
   @Get("admin/reports")
-  @Roles("ADMIN", "CONTADOR", "FACTURACION_COBROS")
+  @Roles("ADMIN")
   @UseGuards(RolesGuard)
   getAdminReports(
     @Req()

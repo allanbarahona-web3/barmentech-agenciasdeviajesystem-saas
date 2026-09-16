@@ -21,6 +21,7 @@ interface ExchangeRateHistoryProps {
   onFilterEndDateChange: (value: string) => void;
   onFilter: () => void;
   onExportPdf: () => void;
+  canEmail: boolean;
   onOpenEmail: () => void;
   formatTimestamp: (date: string) => string;
   formatBusinessDate: (date: string) => string;
@@ -36,6 +37,7 @@ export function ExchangeRateHistory({
   onFilterEndDateChange,
   onFilter,
   onExportPdf,
+  canEmail,
   onOpenEmail,
   formatTimestamp,
   formatBusinessDate,
@@ -78,10 +80,10 @@ export function ExchangeRateHistory({
           {exporting ? 'Exportando...' : 'Exportar PDF'}
         </Button>
 
-        <Button type="button" variant="outline" onClick={onOpenEmail} disabled={!hasHistory}>
+        {canEmail ? <Button type="button" variant="outline" onClick={onOpenEmail} disabled={!hasHistory}>
           <Mail aria-hidden="true" />
           Enviar por Correo
-        </Button>
+        </Button> : null}
       </div>
 
       <DataTableShell

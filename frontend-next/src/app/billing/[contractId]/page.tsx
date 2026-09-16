@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { getStoredSession, getStoredToken, getTenantConfig } from "@/lib/auth-api";
+import { getHomeRouteForRole, getStoredSession, getStoredToken, getTenantConfig } from "@/lib/auth-api";
 import {
   approveAndSendBillingReceipt,
   createBillingCreditNote,
@@ -191,6 +191,7 @@ function BillingContractAccountContent() {
 
   const role = String(getStoredSession()?.user?.role || "").toUpperCase();
   const isAdmin = role === "ADMIN" || role === "FACTURACION_COBROS";
+  const canOperate = role !== "CONTADOR";
 
   const load = async () => {
     if (!contractId) return;
@@ -224,6 +225,11 @@ function BillingContractAccountContent() {
       router.replace("/");
       return;
     }
+    const role = String(getStoredSession()?.user?.role || "").toUpperCase();
+    if (["CONTADOR", "FACTURACION_COBROS"].includes(role)) {
+      router.replace(getHomeRouteForRole(role));
+      return;
+    }
     void loadTenantDisplayName();
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -232,7 +238,7 @@ function BillingContractAccountContent() {
   // Auto-abrir modal de reserva si se llegó desde el formulario de creación de contrato
   useEffect(() => {
     const autoModal = searchParams?.get("autoModal");
-    if (autoModal === "RESERVATION" && !loading && account) {
+    if (canOperate && autoModal === "RESERVATION" && !loading && account) {
       setModalMode("RESERVATION");
       // Limpiar el query param para que no vuelva a abrir el modal al refrescar
       const url = new URL(window.location.href);
@@ -240,7 +246,7 @@ function BillingContractAccountContent() {
       window.history.replaceState({}, "", url.toString());
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, account]);
+  }, [loading, account, canOperate]);
 
   // Auto-refresh cada 30 segundos para agentes
   useEffect(() => {
@@ -443,6 +449,7 @@ function BillingContractAccountContent() {
   };
 
   const onReportPayment = async (type: "RESERVATION" | "INSTALLMENT") => {
+    if (!canOperate) return;
     if (!contractId || !amount.trim()) {
       setStatusText("Debes ingresar monto para continuar.");
       return;
@@ -556,6 +563,7 @@ function BillingContractAccountContent() {
   };
 
   const onVerify = async (paymentId: string) => {
+    if (!canOperate) return;
     setActionBusy(`verify:${paymentId}`);
     try {
       await verifyBillingPayment(paymentId);
@@ -569,6 +577,7 @@ function BillingContractAccountContent() {
   };
 
   const onReject = async () => {
+    if (!canOperate) return;
     const paymentId = String(rejectModalPaymentId || "").trim();
     const reason = String(rejectReason || "").trim();
     if (!paymentId) return;
@@ -612,6 +621,7 @@ function BillingContractAccountContent() {
   };
 
   const onSendDocumentEmail = async () => {
+    if (!canOperate) return;
     if (!documentEmailModal) return;
     const toEmail = String(documentEmailTo || "").trim();
     if (!toEmail) {
@@ -693,6 +703,7 @@ function BillingContractAccountContent() {
   };
 
   const onCreateCreditNote = async () => {
+    if (!canOperate) return;
     if (!contractId || !creditNoteReason.trim() || !creditNoteAmount.trim()) {
       setStatusText("Debes indicar motivo y monto para la nota de credito.");
       return;
@@ -771,6 +782,7 @@ function BillingContractAccountContent() {
   };
 
   const onSendStatementEmail = async () => {
+    if (!canOperate) return;
     if (!contractId || !account) return;
     const toEmail = String(statementEmailTo || "").trim();
     if (!toEmail) {
@@ -1064,9 +1076,9 @@ function BillingContractAccountContent() {
             ) : null}
 
             <section className="billing-actions-row">
-              <button type="button" className="rounded-xl px-4 py-2.5 bg-white text-blue-900 border border-blue-200 font-semibold transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md active:translate-y-0" onClick={openInstallmentModal}>
+              {canOperate ? <button type="button" className="rounded-xl px-4 py-2.5 bg-white text-blue-900 border border-blue-200 font-semibold transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md active:translate-y-0" onClick={openInstallmentModal}>
                 Generar abono
-              </button>
+              </button> : null}
               <button type="button" className="rounded-xl px-4 py-2.5 bg-white text-blue-900 border border-blue-200 font-semibold transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md active:translate-y-0" onClick={openStatement}>
                 Estado de cuenta
               </button>
@@ -1078,9 +1090,9 @@ function BillingContractAccountContent() {
               >
                 {actionBusy === "invoice:pdf" ? "Abriendo..." : "Abrir documento del contrato"}
               </button>
-              <button type="button" className="rounded-xl px-4 py-2.5 bg-white text-blue-900 border border-blue-200 font-semibold transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md active:translate-y-0" onClick={() => setModalMode("CREDIT_NOTE")}>
+              {canOperate ? <button type="button" className="rounded-xl px-4 py-2.5 bg-white text-blue-900 border border-blue-200 font-semibold transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md active:translate-y-0" onClick={() => setModalMode("CREDIT_NOTE")}>
                 Generar nota de credito
-              </button>
+              </button> : null}
             </section>
 
             <section className="billing-summary-grid">
@@ -1254,7 +1266,7 @@ function BillingContractAccountContent() {
                             </button>
                           ) : null}
 
-                          {!isAdmin && payment.status === "ABONO_VERIFICADO" && payment.receipt?.status === "RECIBO_APROBADO_ENVIADO" ? (
+                          {canOperate && !isAdmin && payment.status === "ABONO_VERIFICADO" && payment.receipt?.status === "RECIBO_APROBADO_ENVIADO" ? (
                             <button
                               type="button"
                               className="rounded-xl px-4 py-3 bg-linear-to-b from-blue-500 to-blue-700 text-white font-bold shadow-lg shadow-blue-500/25 transition-all duration-150 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-blue-500/30 active:translate-y-0 active:saturate-75 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-lg"
@@ -1378,7 +1390,7 @@ function BillingContractAccountContent() {
                                 >
                                   Enviar por correo
                                 </button>
-                              ) : (
+                              ) : canOperate ? (
                                 <button
                                   type="button"
                                   className="rounded-xl px-4 py-3 bg-linear-to-b from-blue-500 to-blue-700 text-white font-bold shadow-lg shadow-blue-500/25 transition-all duration-150 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-blue-500/30 active:translate-y-0 active:saturate-75 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-lg"
@@ -1394,7 +1406,7 @@ function BillingContractAccountContent() {
                                 >
                                   Reenviar por correo
                                 </button>
-                              )}
+                              ) : null}
                             </>
                           ) : (
                             <span className="history-col-muted">En espera de aprobacion admin</span>
@@ -1452,28 +1464,28 @@ function BillingContractAccountContent() {
                   >
                     {actionBusy === "statement:pdf" ? "Generando..." : "Generar PDF"}
                   </button>
-                  <button
+                  {canOperate ? <button
                     type="button"
                     className="rounded-xl px-4 py-2.5 bg-white text-blue-900 border border-blue-200 font-semibold transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-none"
                     onClick={() => void onShareStatementWhatsApp()}
                     disabled={actionBusy === "statement:wa"}
                   >
                     {actionBusy === "statement:wa" ? "Preparando..." : "Compartir por WhatsApp"}
-                  </button>
-                  <button
+                  </button> : null}
+                  {canOperate ? <button
                     type="button"
                     className="rounded-xl px-4 py-2.5 bg-white text-blue-900 border border-blue-200 font-semibold transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-none"
                     onClick={() => setShowStatementEmailForm((prev) => !prev)}
                     disabled={actionBusy === "statement:email"}
                   >
                     {showStatementEmailForm ? "Ocultar correo" : "Enviar por correo"}
-                  </button>
+                  </button> : null}
                 </div>
 
                 {statementEmailSuccess ? <p className="form-success">{statementEmailSuccess}</p> : null}
                 {statementEmailError ? <p className="form-error">{statementEmailError}</p> : null}
 
-                {showStatementEmailForm ? (
+                {canOperate && showStatementEmailForm ? (
                   <div className="billing-summary-card" style={{ marginTop: 10 }}>
                     <h3>Enviar estado de cuenta</h3>
                     <label className="reject-modal-label">
@@ -1549,7 +1561,7 @@ function BillingContractAccountContent() {
         </section>
       ) : null}
 
-      {documentEmailModal ? (
+      {canOperate && documentEmailModal ? (
         <section
           className="viewer-modal"
           onClick={(event) => {
@@ -1609,7 +1621,7 @@ function BillingContractAccountContent() {
         </section>
       ) : null}
 
-      {modalMode !== "NONE" ? (
+      {canOperate && modalMode !== "NONE" ? (
         <section
           className="viewer-modal"
           onClick={(event) => {
@@ -1866,7 +1878,7 @@ function BillingContractAccountContent() {
         </section>
       ) : null}
 
-      {rejectModalPaymentId ? (
+      {canOperate && rejectModalPaymentId ? (
         <section
           className="viewer-modal"
           onClick={(event) => {

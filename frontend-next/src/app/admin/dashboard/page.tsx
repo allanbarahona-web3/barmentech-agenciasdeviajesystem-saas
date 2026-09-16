@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { getStoredSession, getStoredToken } from "@/lib/auth-api";
+import { getHomeRouteForRole, getStoredSession, getStoredToken } from "@/lib/auth-api";
 import { getBillingDashboardMetrics, type DashboardMetrics } from "@/lib/billing-api";
 import { ExchangeRateChecker } from "@/components/exchange-rate-checker";
 import { useRouter } from "next/navigation";
@@ -80,11 +80,11 @@ export default function AdminDashboardPage() {
     setMounted(true);
     const token = getStoredToken();
     const role = String(getStoredSession()?.user?.role || "").toUpperCase();
-    const authorized = ["ADMIN", "CONTADOR"].includes(role);
+    const authorized = role === "ADMIN";
     setIsAuthorized(authorized);
     
     if (!token || !authorized) {
-      router.replace("/");
+      router.replace(token ? getHomeRouteForRole(role) : "/");
       return;
     }
     void load();

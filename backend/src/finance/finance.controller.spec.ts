@@ -77,6 +77,7 @@ describe("FinanceController", () => {
     for (const role of [UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.AGENT, UserRole.CONTADOR]) {
       expect(canActivate(role, "getCustomerContractFinancialDetail")).toBe(true);
     }
+    expect(canActivate(UserRole.CONTADOR, "getContractCommercialObligation")).toBe(true);
     expect(() => canActivate(UserRole.AGENT, "getContractCommercialObligation")).toThrow(ForbiddenException);
     expect(() => canActivate(UserRole.AGENT, "listContractPayments")).toThrow(ForbiddenException);
   });
@@ -176,7 +177,6 @@ describe("FinanceController", () => {
   });
 
   it.each([
-    "getContractCommercialObligation",
     "registerContractInstallment",
     "listPendingContractReservations",
     "getInvoicePendingPaymentReviewDetail",
@@ -431,9 +431,42 @@ describe("FinanceController", () => {
     c.customerAcceptedInvoices.get.mockResolvedValue(invoice);
     await expect(c.controller.getCustomerAcceptedInvoice(request("tenant-auth"), "customer-a", "document-a")).resolves.toBe(invoice);
     expect(c.customerAcceptedInvoices.get).toHaveBeenCalledWith("tenant-auth", "customer-a", "document-a");
-    expect(Reflect.getMetadata(ROLES_KEY, FinanceController.prototype.getCustomerAcceptedInvoice)).toEqual([UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.AGENT]);
+    expect(Reflect.getMetadata(ROLES_KEY, FinanceController.prototype.getCustomerAcceptedInvoice)).toEqual([UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.CONTADOR, UserRole.AGENT]);
     expect(canActivate(UserRole.AGENT, "getCustomerAcceptedInvoice")).toBe(true);
-    expect(() => canActivate(UserRole.CONTADOR, "getCustomerAcceptedInvoice")).toThrow(ForbiddenException);
+    expect(canActivate(UserRole.CONTADOR, "getCustomerAcceptedInvoice")).toBe(true);
+  });
+
+  it("keeps CONTADOR readonly across Finance mutation routes while preserving Finance dashboard reads", () => {
+    for (const handler of [
+      "registerContractInstallment",
+      "previewCustomerFunds",
+      "allocateCustomerFunds",
+      "registerPayment",
+      "registerPaymentAndApply",
+      "allocatePayment",
+      "reverseAllocation",
+      "cancelPayment",
+      "sendPaymentReceipt",
+      "submitReportedInvoicePayment",
+      "submitReportedContractPayment",
+    ] as const) {
+      expect(() => canActivate(UserRole.CONTADOR, handler)).toThrow(ForbiddenException);
+    }
+    for (const handler of [
+      "listAccountReceivableGroups",
+      "listContractObligationGroups",
+      "listPayments",
+      "listElectronicInvoices",
+      "getPaymentReceipt",
+      "getCustomerAcceptedInvoice",
+      "listCustomerAcceptedInvoiceArtifacts",
+      "downloadCustomerAcceptedInvoiceArtifact",
+    ] as const) {
+      expect(canActivate(UserRole.CONTADOR, handler)).toBe(true);
+    }
+    expect(canActivate(UserRole.ADMIN, "registerPayment")).toBe(true);
+    expect(canActivate(UserRole.FACTURACION_COBROS, "registerPayment")).toBe(true);
+    expect(() => canActivate(UserRole.AGENT, "registerPayment")).toThrow(ForbiddenException);
   });
 
   it("delegates grouped AR, lazy children, and payment discovery reads using the authenticated tenant", async () => {

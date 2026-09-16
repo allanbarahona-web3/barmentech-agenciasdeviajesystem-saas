@@ -11,6 +11,8 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { Roles } from '../auth/roles.decorator';
+import { RolesGuard } from '../auth/roles.guard';
 import { PaymentVerificationService } from './payment-verification.service';
 
 @Controller('payment-verification')
@@ -21,6 +23,8 @@ export class PaymentVerificationController {
   ) {}
 
   @Post('process-receipt')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'FACTURACION_COBROS', 'VENTAS', 'OPERACIONES', 'AGENT')
+  @UseGuards(RolesGuard)
   @UseInterceptors(FileInterceptor('receipt'))
   async processReceipt(
     @Req() req: { user: { id: string; fullName: string; tenantId: string } },

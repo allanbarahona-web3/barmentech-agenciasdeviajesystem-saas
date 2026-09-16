@@ -151,8 +151,8 @@ export function VerticalNav() {
   };
 
   const navElements: NavElement[] = [
-    // Dashboard para Admin/Contador (NO roles operacionales)
-    ...(isAdminOrContador
+    // Dashboard de gestión exclusivamente administrativo.
+    ...(isAdmin
       ? [
           {
             href: "/admin/dashboard",
@@ -259,11 +259,11 @@ export function VerticalNav() {
                 label: "Cuentas por cobrar",
                 icon: "📒",
               },
-              {
+              ...(isAdmin ? [{
                 href: "/billing",
                 label: "Estados de cuenta",
                 icon: "💰",
-              },
+              }] : []),
               ...(isAdmin || role === "FACTURACION_COBROS"
                 ? [{
                     href: "/admin/pending-payments",
@@ -306,8 +306,8 @@ export function VerticalNav() {
         ]
       : []),
     
-    // Sección de Administración (SOLO Admin/Contador, NO Facturacion)
-    ...(isAdminOrContador
+    // Reportes legacy remain available only to ADMIN until the independent engine replaces its consumers.
+    ...(isAdmin
       ? [
           {
             href: "/billing/admin/reports",
@@ -315,13 +315,17 @@ export function VerticalNav() {
             icon: "📈",
             adminOnly: true,
           },
-          {
+        ]
+      : []),
+
+    // Auditoría de Billing es exclusivamente administrativa.
+    ...(isAdmin
+      ? [{
             href: "/billing/audit",
             label: "Auditoría",
             icon: "🔍",
             adminOnly: true,
-          },
-        ]
+          }]
       : []),
     
     // Configuración Operativa (mantiene permisos existentes por opción)
@@ -465,8 +469,8 @@ export function VerticalNav() {
         ]
       : []),
     
-    // Historial (todos EXCEPTO Facturacion) — badge de "listos para firmar" SOLO para agentes
-    ...(role !== "FACTURACION_COBROS"
+    // Historial es un flujo operativo/administrativo, no una superficie Finance.
+    ...(role !== "FACTURACION_COBROS" && !isContador
       ? [
           {
             href: "/history",

@@ -35,6 +35,7 @@ export default function AdminExchangeRatePage() {
   const session = getStoredSession();
   const role = String(session?.user?.role || "").toUpperCase();
   const canEdit = role === "ADMIN"; // Solo ADMIN puede editar
+  const canEmailHistory = role === "ADMIN" || role === "FACTURACION_COBROS";
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -363,6 +364,7 @@ export default function AdminExchangeRatePage() {
   };
 
   const handleSendEmail = async () => {
+    if (!canEmailHistory) return;
     if (!filterStartDate || !filterEndDate) {
       showWarningModal("Rango requerido", "Debe seleccionar ambas fechas");
       return;
@@ -535,13 +537,14 @@ export default function AdminExchangeRatePage() {
         onFilterEndDateChange={setFilterEndDate}
         onFilter={handleFilter}
         onExportPdf={handleExportPdf}
+        canEmail={canEmailHistory}
         onOpenEmail={() => setShowEmailModal(true)}
         formatTimestamp={formatTimestamp}
         formatBusinessDate={formatBusinessDate}
       />
 
       {/* Email Modal */}
-      {showEmailModal && (
+      {canEmailHistory && showEmailModal && (
         <div
           style={{
             position: "fixed",

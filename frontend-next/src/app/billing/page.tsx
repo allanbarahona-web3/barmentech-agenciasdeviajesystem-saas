@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { getStoredToken } from "@/lib/auth-api";
+import { getHomeRouteForRole, getStoredSession, getStoredToken } from "@/lib/auth-api";
 import { listBillingContracts, type BillingListItem } from "@/lib/billing-api";
 import { ToastNotification, useToast } from "@/components/toast-notification";
 import { PageLoader } from "@/components/loading-spinner";
@@ -91,6 +91,12 @@ export default function BillingPage() {
     const token = getStoredToken();
     if (!token) {
       router.replace("/");
+      return;
+    }
+
+    const role = String(getStoredSession()?.user?.role || "").toUpperCase();
+    if (["CONTADOR", "FACTURACION_COBROS"].includes(role)) {
+      router.replace(getHomeRouteForRole(role));
       return;
     }
 

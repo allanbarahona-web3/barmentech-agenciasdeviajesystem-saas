@@ -77,7 +77,7 @@ export class FinanceController {
   ) {}
 
   @Get("contracts/:contractId/commercial-obligation")
-  @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS)
+  @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.CONTADOR)
   getContractCommercialObligation(@Req() request: FinanceRequest, @Param("contractId") contractId: string) {
     return this.reads.getContractCommercialObligation(request.user.tenantId, contractId);
   }
@@ -201,7 +201,7 @@ export class FinanceController {
   }
 
   @Get("customers/:customerId/electronic-invoices/:billingDocumentId")
-  @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.AGENT)
+  @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.CONTADOR, UserRole.AGENT)
   getCustomerAcceptedInvoice(
     @Req() request: FinanceRequest,
     @Param("customerId") customerId: string,
@@ -211,7 +211,7 @@ export class FinanceController {
   }
 
   @Get("customers/:customerId/electronic-invoices/:billingDocumentId/artifacts")
-  @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.AGENT)
+  @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.CONTADOR, UserRole.AGENT)
   listCustomerAcceptedInvoiceArtifacts(
     @Req() request: FinanceRequest,
     @Param("customerId") customerId: string,
@@ -221,7 +221,7 @@ export class FinanceController {
   }
 
   @Get("customers/:customerId/electronic-invoices/:billingDocumentId/artifacts/:artifactType/versions/:version/download")
-  @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.AGENT)
+  @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.CONTADOR, UserRole.AGENT)
   async downloadCustomerAcceptedInvoiceArtifact(
     @Req() request: FinanceRequest,
     @Param("customerId") customerId: string,
@@ -257,7 +257,7 @@ export class FinanceController {
   }
 
   @Post("customer-funds/allocation-preview")
-  @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.CONTADOR)
+  @Roles(UserRole.ADMIN, UserRole.FACTURACION_COBROS)
   async previewCustomerFunds(@Req() request: FinanceRequest, @Body() body: CustomerFundsAllocationPreviewDto) {
     try { return await this.customerFunds!.preview({ tenantId: request.user.tenantId, actor: { userId: request.user.id, name: request.user.fullName }, customerId: body.customerId, currencyCode: body.currencyCode, targets: body.targets.map(x => ({ accountReceivableId: x.accountReceivableId, amount: decimal(x.amount) })) }); } catch (error) { return translateFinanceError(error); }
   }

@@ -628,7 +628,7 @@ export const getHomeRouteForRole = (role?: string): string => {
     case "ADMIN":
       return "/admin/dashboard";
     case "CONTADOR":
-      return "/admin/dashboard";
+      return "/finance/accounts-receivable";
     case "FACTURACION_COBROS":
       return "/admin/pending-payments";
     case "VENTAS":
@@ -1132,4 +1132,3 @@ export const deleteTenantSignature = async (): Promise<{ success: boolean; messa
 
   return response.json();
 };
-

@@ -771,7 +771,7 @@ export default function CustomerProfilePage() {
   const { customer, contracts, statistics, documents } = profile;
   const isMinor = profile.participationRole === 'MINOR';
   const sessionRole = String(session?.user?.role ?? '').toUpperCase();
-  const canViewAcceptedInvoice = ['ADMIN', 'FACTURACION_COBROS', 'AGENT'].includes(sessionRole);
+  const canViewAcceptedInvoice = ['ADMIN', 'FACTURACION_COBROS', 'CONTADOR', 'AGENT'].includes(sessionRole);
   const canViewInvoiceFinancialDetail = ['ADMIN', 'FACTURACION_COBROS', 'CONTADOR'].includes(sessionRole);
   const canRegisterInvoicePayment = ['ADMIN', 'FACTURACION_COBROS', 'AGENT'].includes(sessionRole);
   const invoicePaymentCurrencies = Array.from(new Set((electronicInvoices?.invoices ?? []).map((invoice) => invoice.currencyCode)));

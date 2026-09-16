@@ -202,7 +202,8 @@ export class ContractsController {
     return this.contractsService.searchContracts(req.user, query);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles("ADMIN", "AGENT", "OPERACIONES", "VENTAS")
   @Get("history")
   getContractHistory(
     @Req()
