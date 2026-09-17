@@ -49,13 +49,6 @@ describe("BillingController readonly accountant authorization", () => {
     }
   });
 
-  it("keeps legacy reports ADMIN-only until their replacement is available", () => {
-    expect(canActivate(UserRole.ADMIN, "getAdminReports")).toBe(true);
-    for (const role of [UserRole.CONTADOR, UserRole.FACTURACION_COBROS, UserRole.AGENT]) {
-      expect(() => canActivate(role, "getAdminReports")).toThrow(ForbiddenException);
-    }
-  });
-
   it("keeps dashboard metrics ADMIN-only", () => {
     expect(canActivate(UserRole.ADMIN, "getDashboardMetrics")).toBe(true);
     for (const role of [UserRole.CONTADOR, UserRole.FACTURACION_COBROS, UserRole.AGENT]) {

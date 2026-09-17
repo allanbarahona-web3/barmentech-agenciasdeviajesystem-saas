@@ -6,7 +6,6 @@ const nav = readFileSync(new URL('../src/components/vertical-nav.tsx', import.me
 const dashboardPage = readFileSync(new URL('../src/app/admin/dashboard/page.tsx', import.meta.url), 'utf8');
 const historyPage = readFileSync(new URL('../src/app/history/page.tsx', import.meta.url), 'utf8');
 const auditPage = readFileSync(new URL('../src/app/billing/audit/page.tsx', import.meta.url), 'utf8');
-const legacyReportsPage = readFileSync(new URL('../src/app/billing/admin/reports/page.tsx', import.meta.url), 'utf8');
 const billingPage = readFileSync(new URL('../src/app/billing/page.tsx', import.meta.url), 'utf8');
 const billingDetailPage = readFileSync(new URL('../src/app/billing/[contractId]/page.tsx', import.meta.url), 'utf8');
 const financePage = readFileSync(new URL('../src/app/finance/accounts-receivable/page.tsx', import.meta.url), 'utf8');
@@ -25,10 +24,10 @@ test('Dashboard is ADMIN-only in navigation and direct route authorization', () 
   assert.match(dashboardPage, /const authorized = role === "ADMIN"/);
 });
 
-test('legacy Reportes is ADMIN-only until the independent engine replaces its consumers', () => {
-  assert.match(nav, /Reportes legacy remain available only to ADMIN[\s\S]*?\.\.\.\(isAdmin/);
-  assert.doesNotMatch(nav, /Reportes legacy remain available only to ADMIN[\s\S]*?\.\.\.\(isAdminOrContador/);
-  assert.match(legacyReportsPage, /if \(role !== "ADMIN"\)/);
+test('Reporting Engine is available to ADMIN and CONTADOR without legacy Reports navigation', () => {
+  assert.match(nav, /Reporting Engine: readonly reports are available through their own domain\.[\s\S]*?\.\.\.\(isAdminOrContador/);
+  assert.match(nav, /href: "\/reports"/);
+  assert.doesNotMatch(nav, /billing\/admin\/reports/);
 });
 
 test('only ADMIN sees Auditoría and its existing route guard remains ADMIN-only', () => {
@@ -57,9 +56,9 @@ test('Calculator and current exchange-rate visibility remain unchanged', () => {
   assert.match(exchangeRatePage, /const canEdit = role === "ADMIN"/);
 });
 
-test('ADMIN navigation remains available for Dashboard, Finance, legacy reports, audit, and configuration', () => {
-  for (const href of ["/admin/dashboard", "/finance/accounts-receivable", "/billing", "/billing/admin/reports", "/billing/audit", "/admin/exchange-rate"]) {
+test('ADMIN navigation remains available for Dashboard, Finance, Reports, audit, and configuration', () => {
+  for (const href of ["/admin/dashboard", "/finance/accounts-receivable", "/billing", "/reports", "/billing/audit", "/admin/exchange-rate"]) {
     assert.match(nav, new RegExp(`href: "${href.replaceAll('/', '\\/')}"`));
   }
-  assert.match(legacyReportsPage, /if \(role !== "ADMIN"\)/);
+  assert.doesNotMatch(nav, /billing\/admin\/reports/);
 });

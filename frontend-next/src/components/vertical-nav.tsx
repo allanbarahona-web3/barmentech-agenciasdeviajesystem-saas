@@ -306,14 +306,13 @@ export function VerticalNav() {
         ]
       : []),
     
-    // Reportes legacy remain available only to ADMIN until the independent engine replaces its consumers.
-    ...(isAdmin
+    // Reporting Engine: readonly reports are available through their own domain.
+    ...(isAdminOrContador
       ? [
           {
-            href: "/billing/admin/reports",
+            href: "/reports",
             label: "Reportes",
-            icon: "📈",
-            adminOnly: true,
+            icon: "📊",
           },
         ]
       : []),

@@ -33,6 +33,7 @@ import { FiscalBillingModule } from "./fiscal-billing/fiscal-billing.module";
 import { OfficialExchangeRateModule } from "./official-exchange-rates/official-exchange-rate.module";
 import { TerritorialCatalogModule } from "./territorial-catalogs/territorial-catalog.module";
 import { FinanceModule } from "./finance/finance.module";
+import { ReportingApplicationModule } from "./reporting/reporting-application.module";
 
 @Module({
   controllers: [AppController],
@@ -75,6 +76,7 @@ import { FinanceModule } from "./finance/finance.module";
     OfficialExchangeRateModule,
     TerritorialCatalogModule,
     FinanceModule,
+    ReportingApplicationModule,
   ],
   providers: [
     {

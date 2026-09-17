@@ -76,7 +76,7 @@ function ContractsPageContent() {
     }
 
     if (String(session?.user?.role || "").toUpperCase() === "ADMIN") {
-      router.replace("/billing/admin/reports");
+      router.replace("/reports");
     }
   }, [router, session?.user?.role, token]);
 

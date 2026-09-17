@@ -415,33 +415,6 @@ export class BillingController {
     });
   }
 
-  @Get("admin/reports")
-  @Roles("ADMIN")
-  @UseGuards(RolesGuard)
-  getAdminReports(
-    @Req()
-    req: {
-      user: { id: string; email: string; fullName: string; role: string };
-    },
-    @Query("from") from?: string,
-    @Query("to") to?: string,
-    @Query("q") q?: string,
-    @Query("invoiceStatus") invoiceStatus?: string,
-    @Query("paymentStatus") paymentStatus?: string,
-    @Query("limitInvoices") limitInvoices?: string,
-    @Query("limitPayments") limitPayments?: string,
-  ) {
-    return this.billingService.getAdminReports(req.user, {
-      from: String(from || "").trim() || undefined,
-      to: String(to || "").trim() || undefined,
-      q: String(q || "").trim() || undefined,
-      invoiceStatus: String(invoiceStatus || "").trim() || undefined,
-      paymentStatus: String(paymentStatus || "").trim() || undefined,
-      limitInvoices: limitInvoices ? Number(limitInvoices) : undefined,
-      limitPayments: limitPayments ? Number(limitPayments) : undefined,
-    });
-  }
-
   @Post("admin/credit-notes/:creditNoteId/approve")
   @Roles("ADMIN")
   @UseGuards(RolesGuard)

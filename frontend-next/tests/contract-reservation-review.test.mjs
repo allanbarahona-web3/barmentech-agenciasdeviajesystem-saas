@@ -85,7 +85,7 @@ test("pending-payments page keeps the Finance contract review path and adds invo
   assert.match(source, /content=\{approvePayment && isInvoicePayment\(approvePayment\)/);
   assert.doesNotMatch(source, /description=\{approvePayment[\s\S]{0,350}<InvoiceReviewDetails/);
   assert.equal((source.match(/await load\(\)/g) || []).length >= 2, true);
-  assert.doesNotMatch(source, /getBillingAdminReports|verifyBillingPayment|rejectBillingPayment|BillingAdminReportData/);
+  assert.doesNotMatch(source, /verifyBillingPayment|rejectBillingPayment/);
   assert.doesNotMatch(source, /\/billing\/admin\/reports|\/billing\/payments\//);
   assert.doesNotMatch(source, /PaymentAllocation|BillingReceipt|BillingDocument/);
 });

@@ -76,7 +76,7 @@ function InternalTripBookingPageContent() {
 
     const role = String(session?.user?.role || "").toUpperCase();
     if (role === "ADMIN") {
-      router.replace("/billing/admin/reports");
+      router.replace("/reports");
     }
   }, [router, session?.user?.role, token]);
 
