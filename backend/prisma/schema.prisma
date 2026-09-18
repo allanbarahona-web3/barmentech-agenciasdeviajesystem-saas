@@ -116,6 +116,10 @@ model Tenant {
   paymentEvidence                         PaymentEvidence[]
   businessNumberSequences                 BusinessNumberSequence[]
   customerFundsAllocationCommands         CustomerFundsAllocationCommand[]
+  costingProjects                         CostingProject[]
+  costCategories                          CostCategory[]
+  costSuppliers                           CostSupplier[]
+  costComponents                          CostComponent[]
 
   @@map("tenants")
 }
@@ -965,6 +969,106 @@ model TravelPackageParticipant {
   @@index([clientId])
   @@index([role])
   @@map("travel_package_participants")
+}
+
+enum CostingProjectStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum CostCategoryOrigin {
+  STANDARD
+  CUSTOM
+}
+
+enum CostComponentStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+model CostingProject {
+  id              String               @id @default(cuid())
+  tenantId        String
+  displayName     String
+  baseCurrency    String               @db.VarChar(3)
+  status          CostingProjectStatus @default(DRAFT)
+  createdByUserId String
+  createdByName   String
+  updatedByUserId String?
+  updatedByName   String?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  tenant          Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  components      CostComponent[]
+
+  @@unique([id, tenantId], map: "costing_projects_id_tenant_key")
+  @@index([tenantId, status, updatedAt, id], map: "costing_projects_tenant_status_updated_idx")
+  @@map("costing_projects")
+}
+
+model CostCategory {
+  id          String             @id @default(cuid())
+  tenantId    String
+  code        String
+  displayName String
+  origin      CostCategoryOrigin @default(CUSTOM)
+  isActive    Boolean            @default(true)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  tenant      Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  components  CostComponent[]
+
+  @@unique([tenantId, code], map: "cost_categories_tenant_code_key")
+  @@unique([id, tenantId], map: "cost_categories_id_tenant_key")
+  @@index([tenantId, isActive], map: "cost_categories_tenant_active_idx")
+  @@map("cost_categories")
+}
+
+model CostSupplier {
+  id         String          @id @default(cuid())
+  tenantId   String
+  name       String
+  website    String?
+  notes      String?
+  isActive   Boolean         @default(true)
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+  tenant     Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  components CostComponent[]
+
+  @@unique([tenantId, name], map: "cost_suppliers_tenant_name_key")
+  @@unique([id, tenantId], map: "cost_suppliers_id_tenant_key")
+  @@index([tenantId, isActive], map: "cost_suppliers_tenant_active_idx")
+  @@index([tenantId, name, id], map: "cost_suppliers_tenant_name_idx")
+  @@map("cost_suppliers")
+}
+
+model CostComponent {
+  id               String              @id @default(cuid())
+  tenantId         String
+  costingProjectId String
+  costCategoryId   String
+  costSupplierId   String?
+  title            String
+  description      String?
+  status           CostComponentStatus @default(ACTIVE)
+  sortPosition     Int                 @default(0)
+  createdByUserId  String
+  createdByName    String
+  updatedByUserId  String?
+  updatedByName    String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  tenant           Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  costingProject   CostingProject      @relation(fields: [costingProjectId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "cost_components_project_tenant_fkey")
+  costCategory     CostCategory        @relation(fields: [costCategoryId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "cost_components_category_tenant_fkey")
+  costSupplier     CostSupplier?       @relation(fields: [costSupplierId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "cost_components_supplier_tenant_fkey")
+
+  @@unique([id, tenantId], map: "cost_components_id_tenant_key")
+  @@index([tenantId, costingProjectId, status, sortPosition, id], map: "cost_components_project_status_sort_idx")
+  @@index([tenantId, costingProjectId, costCategoryId], map: "cost_components_project_category_idx")
+  @@map("cost_components")
 }
 
 model Employee {
