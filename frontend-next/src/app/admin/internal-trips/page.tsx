@@ -30,6 +30,7 @@ export default function AdminInternalTripsPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [mounted, setMounted] = useState(false);
+  const [canComposeCosts, setCanComposeCosts] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -47,6 +48,8 @@ export default function AdminInternalTripsPage() {
       router.replace('/');
       return;
     }
+
+    setCanComposeCosts(role === 'ADMIN');
 
     loadTrips(token);
   }, [router]);
@@ -97,7 +100,7 @@ export default function AdminInternalTripsPage() {
           </div>
         )}
 
-        <InternalTripsList trips={trips} onTripsUpdated={() => loadTrips()} />
+        <InternalTripsList trips={trips} canComposeCosts={canComposeCosts} onTripsUpdated={() => loadTrips()} />
       </div>
     </main>
   );

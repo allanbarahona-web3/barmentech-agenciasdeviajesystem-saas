@@ -120,6 +120,14 @@ model Tenant {
   costCategories                          CostCategory[]
   costSuppliers                           CostSupplier[]
   costComponents                          CostComponent[]
+  costSnapshots                           CostSnapshot[]
+  costApplicabilities                     CostApplicability[]
+  costEvidence                            CostEvidence[]
+  costAuditEvents                         CostAuditEvent[]
+  airfareDailyAuthorities                 AirfareDailyAuthority[]
+  airfareDailyAuthorityRevisions          AirfareDailyAuthorityRevision[]
+  travelPackageCostingProjectLinks        TravelPackageCostingProjectLink[]
+  internalTripCostingProjectLinks         InternalTripCostingProjectLink[]
 
   @@map("tenants")
 }
@@ -918,30 +926,32 @@ model PaymentReceiptImage {
 }
 
 model TravelPackage {
-  id                            String                     @id @default(cuid())
+  id                            String                            @id @default(cuid())
   name                          String
   destination                   String
   departureDate                 DateTime
   returnDate                    DateTime
   capacity                      Int
-  occupiedSlots                 Int                        @default(0)
-  status                        String                     @default("OPEN")
-  travelType                    TravelPackageType          @default(INTERNATIONAL)
-  packagePrice                  Decimal?                   @db.Decimal(14, 2)
-  priceCurrency                 String                     @default("USD")
+  occupiedSlots                 Int                               @default(0)
+  status                        String                            @default("OPEN")
+  travelType                    TravelPackageType                 @default(INTERNATIONAL)
+  packagePrice                  Decimal?                          @db.Decimal(14, 2)
+  priceCurrency                 String                            @default("USD")
   createdByUserId               String
-  createdAt                     DateTime                   @default(now())
-  updatedAt                     DateTime                   @updatedAt
-  packageCode                   String                     @unique
+  createdAt                     DateTime                          @default(now())
+  updatedAt                     DateTime                          @updatedAt
+  packageCode                   String                            @unique
   tenantId                      String
-  minReservation                Decimal?                   @db.Decimal(14, 2)
+  minReservation                Decimal?                          @db.Decimal(14, 2)
   fiscalClassificationCatalogId String?
   contracts                     Contract[]
-  tenant                        Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  fiscalClassificationCatalog   AdditionalServiceCatalog?  @relation("TravelPackageFiscalClassification", fields: [fiscalClassificationCatalogId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "travel_packages_fiscal_classification_tenant_fkey")
+  tenant                        Tenant                            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  fiscalClassificationCatalog   AdditionalServiceCatalog?         @relation("TravelPackageFiscalClassification", fields: [fiscalClassificationCatalogId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "travel_packages_fiscal_classification_tenant_fkey")
   additionalServiceOrders       AdditionalServiceOrder[]
   participants                  TravelPackageParticipant[]
+  costingProjectLinks           TravelPackageCostingProjectLink[]
 
+  @@unique([id, tenantId], map: "TravelPackage_id_tenantId_key")
   @@index([departureDate])
   @@index([status])
   @@index([createdAt])
@@ -988,23 +998,45 @@ enum CostComponentStatus {
 }
 
 model CostingProject {
-  id              String               @id @default(cuid())
-  tenantId        String
-  displayName     String
-  baseCurrency    String               @db.VarChar(3)
-  status          CostingProjectStatus @default(DRAFT)
-  createdByUserId String
-  createdByName   String
-  updatedByUserId String?
-  updatedByName   String?
-  createdAt       DateTime             @default(now())
-  updatedAt       DateTime             @updatedAt
-  tenant          Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  components      CostComponent[]
+  id                      String                            @id @default(cuid())
+  tenantId                String
+  displayName             String
+  baseCurrency            String                            @db.VarChar(3)
+  status                  CostingProjectStatus              @default(DRAFT)
+  createdByUserId         String
+  createdByName           String
+  updatedByUserId         String?
+  updatedByName           String?
+  createdAt               DateTime                          @default(now())
+  updatedAt               DateTime                          @updatedAt
+  tenant                  Tenant                            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  components              CostComponent[]
+  snapshots               CostSnapshot[]
+  auditEvents             CostAuditEvent[]
+  airfareDailyAuthorities AirfareDailyAuthority[]
+  travelPackageLinks      TravelPackageCostingProjectLink[]
+  internalTripLinks       InternalTripCostingProjectLink[]
 
   @@unique([id, tenantId], map: "costing_projects_id_tenant_key")
   @@index([tenantId, status, updatedAt, id], map: "costing_projects_tenant_status_updated_idx")
   @@map("costing_projects")
+}
+
+model TravelPackageCostingProjectLink {
+  id               String         @id @default(cuid())
+  tenantId         String
+  travelPackageId  String
+  costingProjectId String
+  createdByUserId  String
+  createdByName    String
+  createdAt        DateTime       @default(now())
+  tenant           Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  travelPackage    TravelPackage  @relation(fields: [travelPackageId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "travel_package_costing_project_links_travel_package_tenant_fkey")
+  costingProject   CostingProject @relation(fields: [costingProjectId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "travel_package_costing_project_links_project_tenant_fkey")
+
+  @@unique([tenantId, travelPackageId], map: "travel_package_costing_project_links_tenant_package_key")
+  @@unique([tenantId, costingProjectId], map: "travel_package_costing_project_links_tenant_project_key")
+  @@map("travel_package_costing_project_links")
 }
 
 model CostCategory {
@@ -1045,30 +1077,189 @@ model CostSupplier {
 }
 
 model CostComponent {
-  id               String              @id @default(cuid())
-  tenantId         String
-  costingProjectId String
-  costCategoryId   String
-  costSupplierId   String?
-  title            String
-  description      String?
-  status           CostComponentStatus @default(ACTIVE)
-  sortPosition     Int                 @default(0)
-  createdByUserId  String
-  createdByName    String
-  updatedByUserId  String?
-  updatedByName    String?
-  createdAt        DateTime            @default(now())
-  updatedAt        DateTime            @updatedAt
-  tenant           Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  costingProject   CostingProject      @relation(fields: [costingProjectId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "cost_components_project_tenant_fkey")
-  costCategory     CostCategory        @relation(fields: [costCategoryId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "cost_components_category_tenant_fkey")
-  costSupplier     CostSupplier?       @relation(fields: [costSupplierId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "cost_components_supplier_tenant_fkey")
+  id                      String                  @id @default(cuid())
+  tenantId                String
+  costingProjectId        String
+  costCategoryId          String
+  costSupplierId          String?
+  title                   String
+  description             String?
+  detailPayload           Json?
+  detailSchemaVersion     Int?
+  quantity                Decimal?                @db.Decimal(19, 5)
+  unit                    String?
+  status                  CostComponentStatus     @default(ACTIVE)
+  sortPosition            Int                     @default(0)
+  createdByUserId         String
+  createdByName           String
+  updatedByUserId         String?
+  updatedByName           String?
+  currentSnapshotId       String?
+  createdAt               DateTime                @default(now())
+  updatedAt               DateTime                @updatedAt
+  tenant                  Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  costingProject          CostingProject          @relation(fields: [costingProjectId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "cost_components_project_tenant_fkey")
+  costCategory            CostCategory            @relation(fields: [costCategoryId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "cost_components_category_tenant_fkey")
+  costSupplier            CostSupplier?           @relation(fields: [costSupplierId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "cost_components_supplier_tenant_fkey")
+  snapshots               CostSnapshot[]          @relation("CostComponentSnapshots")
+  currentSnapshot         CostSnapshot?           @relation("CostComponentCurrentSnapshot", fields: [currentSnapshotId, tenantId, id], references: [id, tenantId, costComponentId], onDelete: Restrict, map: "cost_components_current_snapshot_tenant_fkey")
+  applicabilities         CostApplicability[]
+  auditEvents             CostAuditEvent[]
+  airfareDailyAuthorities AirfareDailyAuthority[]
 
   @@unique([id, tenantId], map: "cost_components_id_tenant_key")
+  @@unique([id, tenantId, costingProjectId], map: "cost_components_id_tenant_project_key")
+  @@unique([currentSnapshotId, tenantId, id], map: "cost_components_current_snapshot_tenant_key")
   @@index([tenantId, costingProjectId, status, sortPosition, id], map: "cost_components_project_status_sort_idx")
   @@index([tenantId, costingProjectId, costCategoryId], map: "cost_components_project_category_idx")
   @@map("cost_components")
+}
+
+model CostSnapshot {
+  id                             String                          @id @default(cuid())
+  tenantId                       String
+  costingProjectId               String
+  costComponentId                String
+  amount                         Decimal                         @db.Decimal(19, 5)
+  currency                       String                          @db.VarChar(3)
+  sequence                       Int
+  capturedAt                     DateTime                        @default(now())
+  capturedByUserId               String
+  capturedByName                 String
+  sourceReference                String?
+  sourceUrl                      String?
+  reason                         String?
+  tenant                         Tenant                          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  costingProject                 CostingProject                  @relation(fields: [costingProjectId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "cost_snapshots_project_tenant_fkey")
+  costComponent                  CostComponent                   @relation("CostComponentSnapshots", fields: [costComponentId, tenantId, costingProjectId], references: [id, tenantId, costingProjectId], onDelete: Restrict, map: "cost_snapshots_component_project_tenant_fkey")
+  currentFor                     CostComponent?                  @relation("CostComponentCurrentSnapshot")
+  evidence                       CostEvidence[]
+  airfareDailyAuthorityRevisions AirfareDailyAuthorityRevision[]
+
+  @@unique([id, tenantId], map: "cost_snapshots_id_tenant_key")
+  @@unique([id, tenantId, costComponentId], map: "cost_snapshots_id_tenant_component_key")
+  @@unique([id, tenantId, costComponentId, costingProjectId], map: "cost_snapshots_id_tenant_component_project_key")
+  @@unique([tenantId, costComponentId, sequence], map: "cost_snapshots_tenant_component_sequence_key")
+  @@index([tenantId, costComponentId, capturedAt, id], map: "cost_snapshots_component_history_idx")
+  @@index([tenantId, costingProjectId, capturedAt, id], map: "cost_snapshots_project_history_idx")
+  @@map("cost_snapshots")
+}
+
+model CostApplicability {
+  id              String        @id @default(cuid())
+  tenantId        String
+  costComponentId String
+  scopeType       String
+  scopeKey        String?
+  label           String?
+  startDate       DateTime?     @db.Date
+  endDate         DateTime?     @db.Date
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  tenant          Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  costComponent   CostComponent @relation(fields: [costComponentId, tenantId], references: [id, tenantId], onDelete: Cascade, map: "cost_applicabilities_component_tenant_fkey")
+
+  @@unique([id, tenantId], map: "cost_applicabilities_id_tenant_key")
+  @@index([tenantId, costComponentId], map: "cost_applicabilities_tenant_component_idx")
+  @@map("cost_applicabilities")
+}
+
+model CostEvidence {
+  id               String       @id @default(cuid())
+  tenantId         String
+  costSnapshotId   String
+  objectKey        String       @unique
+  originalFileName String
+  mimeType         String
+  byteSize         Int
+  contentHash      String?
+  uploadedAt       DateTime     @default(now())
+  uploadedByUserId String
+  uploadedByName   String
+  tenant           Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  costSnapshot     CostSnapshot @relation(fields: [costSnapshotId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "cost_evidence_snapshot_tenant_fkey")
+
+  @@unique([id, tenantId], map: "cost_evidence_id_tenant_key")
+  @@index([tenantId, costSnapshotId], map: "cost_evidence_tenant_snapshot_idx")
+  @@map("cost_evidence")
+}
+
+model CostAuditEvent {
+  id               String         @id @default(cuid())
+  tenantId         String
+  costingProjectId String
+  costComponentId  String?
+  action           String
+  actorUserId      String
+  actorName        String
+  reason           String?
+  metadata         Json?
+  createdAt        DateTime       @default(now())
+  tenant           Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  costingProject   CostingProject @relation(fields: [costingProjectId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "cost_audit_events_project_tenant_fkey")
+  costComponent    CostComponent? @relation(fields: [costComponentId, tenantId, costingProjectId], references: [id, tenantId, costingProjectId], onDelete: Restrict, map: "cost_audit_events_component_project_tenant_fkey")
+
+  @@unique([id, tenantId], map: "cost_audit_events_id_tenant_key")
+  @@index([tenantId, costingProjectId, createdAt, id], map: "cost_audit_events_project_history_idx")
+  @@index([tenantId, costComponentId, createdAt, id], map: "cost_audit_events_component_history_idx")
+  @@map("cost_audit_events")
+}
+
+enum AirfareDailyAuthorityRevisionKind {
+  AGENT_INITIAL
+  ADMIN_OVERRIDE
+}
+
+model AirfareDailyAuthority {
+  id                String                          @id @default(cuid())
+  tenantId          String
+  costingProjectId  String
+  costComponentId   String
+  businessDate      DateTime                        @db.Date
+  currentRevisionId String?
+  createdAt         DateTime                        @default(now())
+  tenant            Tenant                          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  costingProject    CostingProject                  @relation(fields: [costingProjectId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "airfare_daily_authorities_project_tenant_fkey")
+  costComponent     CostComponent                   @relation(fields: [costComponentId, tenantId, costingProjectId], references: [id, tenantId, costingProjectId], onDelete: Restrict, map: "airfare_daily_authorities_component_project_tenant_fkey")
+  revisions         AirfareDailyAuthorityRevision[] @relation("AirfareDailyAuthorityRevisions")
+  currentRevision   AirfareDailyAuthorityRevision?  @relation("AirfareDailyAuthorityCurrentRevision", fields: [currentRevisionId, tenantId, id], references: [id, tenantId, airfareDailyAuthorityId], onDelete: Restrict, map: "airfare_daily_authorities_current_revision_tenant_fkey")
+
+  @@unique([id, tenantId], map: "airfare_daily_authorities_id_tenant_key")
+  @@unique([id, tenantId, costingProjectId, costComponentId], map: "airfare_daily_authorities_id_tenant_project_component_key")
+  @@unique([currentRevisionId, tenantId, id], map: "airfare_daily_authorities_current_revision_tenant_key")
+  @@unique([tenantId, costComponentId, businessDate], map: "airfare_daily_authorities_tenant_component_business_date_key")
+  @@index([tenantId, costComponentId, businessDate(sort: Desc), createdAt(sort: Desc), id(sort: Desc)], map: "airfare_daily_authorities_component_history_idx")
+  @@index([tenantId, costingProjectId, businessDate(sort: Desc), createdAt(sort: Desc), id(sort: Desc)], map: "airfare_daily_authorities_project_history_idx")
+  @@map("airfare_daily_authorities")
+}
+
+model AirfareDailyAuthorityRevision {
+  id                      String                            @id @default(cuid())
+  tenantId                String
+  airfareDailyAuthorityId String
+  costingProjectId        String
+  costComponentId         String
+  revisionNumber          Int
+  kind                    AirfareDailyAuthorityRevisionKind
+  observedAmount          Decimal                           @db.Decimal(19, 5)
+  appliedSnapshotId       String
+  sourceReference         String?
+  sourceUrl               String?
+  overrideReason          String?
+  observedAt              DateTime                          @default(now())
+  actorUserId             String
+  actorName               String
+  createdAt               DateTime                          @default(now())
+  tenant                  Tenant                            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  airfareDailyAuthority   AirfareDailyAuthority             @relation("AirfareDailyAuthorityRevisions", fields: [airfareDailyAuthorityId, tenantId, costingProjectId, costComponentId], references: [id, tenantId, costingProjectId, costComponentId], onDelete: Restrict, map: "airfare_daily_authority_revisions_authority_tenant_fkey")
+  appliedSnapshot         CostSnapshot                      @relation(fields: [appliedSnapshotId, tenantId, costComponentId, costingProjectId], references: [id, tenantId, costComponentId, costingProjectId], onDelete: Restrict, map: "airfare_daily_authority_revisions_snapshot_tenant_fkey")
+  currentFor              AirfareDailyAuthority?            @relation("AirfareDailyAuthorityCurrentRevision")
+
+  @@unique([id, tenantId], map: "airfare_daily_authority_revisions_id_tenant_key")
+  @@unique([id, tenantId, airfareDailyAuthorityId], map: "airfare_daily_authority_revisions_id_tenant_authority_key")
+  @@unique([tenantId, airfareDailyAuthorityId, revisionNumber], map: "airfare_daily_authority_revisions_tenant_authority_revision_key")
+  @@index([tenantId, airfareDailyAuthorityId, revisionNumber(sort: Desc), id(sort: Desc)], map: "airfare_daily_authority_revisions_history_idx")
+  @@map("airfare_daily_authority_revisions")
 }
 
 model Employee {
@@ -1135,8 +1326,8 @@ model EmployeeDocument {
 }
 
 model InternalTrip {
-  id                            String                    @id @default(cuid())
-  tripCode                      String                    @unique
+  id                            String                           @id @default(cuid())
+  tripCode                      String                           @unique
   name                          String
   destination                   String
   description                   String?
@@ -1145,30 +1336,49 @@ model InternalTrip {
   departureTime                 String?
   returnTime                    String?
   capacity                      Int
-  occupiedSlots                 Int                       @default(0)
-  price                         Decimal                   @db.Decimal(12, 2)
+  occupiedSlots                 Int                              @default(0)
+  price                         Decimal                          @db.Decimal(12, 2)
   currency                      String
-  minReservation                Decimal?                  @db.Decimal(12, 2)
+  minReservation                Decimal?                         @db.Decimal(12, 2)
   transportType                 TransportType
   itinerary                     String
-  status                        String                    @default("OPEN")
+  status                        String                           @default("OPEN")
   createdByUserId               String
   createdByName                 String
-  createdAt                     DateTime                  @default(now())
-  updatedAt                     DateTime                  @updatedAt
+  createdAt                     DateTime                         @default(now())
+  updatedAt                     DateTime                         @updatedAt
   tenantId                      String
   fiscalClassificationCatalogId String?
   contracts                     Contract[]
   bookings                      InternalTourBooking[]
-  tenant                        Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  fiscalClassificationCatalog   AdditionalServiceCatalog? @relation("InternalTripFiscalClassification", fields: [fiscalClassificationCatalogId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "internal_trips_fiscal_classification_tenant_fkey")
+  tenant                        Tenant                           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  fiscalClassificationCatalog   AdditionalServiceCatalog?        @relation("InternalTripFiscalClassification", fields: [fiscalClassificationCatalogId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "internal_trips_fiscal_classification_tenant_fkey")
+  costingProjectLinks           InternalTripCostingProjectLink[]
 
+  @@unique([id, tenantId], map: "internal_trips_id_tenantId_key")
   @@index([departureDate])
   @@index([tenantId])
   @@index([status])
   @@index([tripCode])
   @@index([tenantId, fiscalClassificationCatalogId], map: "internal_trips_tenant_fiscal_classification_idx")
   @@map("internal_trips")
+}
+
+model InternalTripCostingProjectLink {
+  id               String         @id @default(cuid())
+  tenantId         String
+  internalTripId   String
+  costingProjectId String
+  createdByUserId  String
+  createdByName    String
+  createdAt        DateTime       @default(now())
+  tenant           Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  internalTrip     InternalTrip   @relation(fields: [internalTripId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "internal_trip_costing_project_links_internal_trip_tenant_fkey")
+  costingProject   CostingProject @relation(fields: [costingProjectId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "internal_trip_costing_project_links_project_tenant_fkey")
+
+  @@unique([tenantId, internalTripId], map: "internal_trip_costing_project_links_tenant_trip_key")
+  @@unique([tenantId, costingProjectId], map: "internal_trip_costing_project_links_tenant_project_key")
+  @@map("internal_trip_costing_project_links")
 }
 
 model InternalTourBooking {

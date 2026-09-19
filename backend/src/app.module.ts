@@ -34,6 +34,7 @@ import { OfficialExchangeRateModule } from "./official-exchange-rates/official-e
 import { TerritorialCatalogModule } from "./territorial-catalogs/territorial-catalog.module";
 import { FinanceModule } from "./finance/finance.module";
 import { ReportingApplicationModule } from "./reporting/reporting-application.module";
+import { CostEngineModule } from "./cost-engine/cost-engine.module";
 
 @Module({
   controllers: [AppController],
@@ -77,6 +78,7 @@ import { ReportingApplicationModule } from "./reporting/reporting-application.mo
     TerritorialCatalogModule,
     FinanceModule,
     ReportingApplicationModule,
+    CostEngineModule,
   ],
   providers: [
     {

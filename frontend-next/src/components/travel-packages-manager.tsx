@@ -20,6 +20,7 @@ import {
   useAdminTravelFiscalClassifications,
 } from "@/components/travel-fiscal-classification-field";
 import { withFiscalClassification } from "@/lib/travel-fiscal-classification";
+import { Button } from "@/components/ui/button";
 
 const formatPrice = (price: number | string | null | undefined, currency: string): string => {
   if (price === null || price === undefined) return "Sin precio";
@@ -558,6 +559,18 @@ export function TravelPackagesManager({ travelType, title, icon }: TravelPackage
                           Cancelar Viaje
                         </button>
                       )}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="mt-3 w-full"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          router.push(`/admin/cost-engine/travel-package/${encodeURIComponent(pkg.id)}`);
+                        }}
+                      >
+                        Componer costos
+                      </Button>
                     </div>
                   );
                 })}

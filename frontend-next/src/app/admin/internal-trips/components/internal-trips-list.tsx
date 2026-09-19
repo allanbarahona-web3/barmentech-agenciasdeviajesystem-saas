@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { getStoredToken } from '@/lib/auth-api';
 import { resolveApiBase } from '@/lib/runtime-config';
 import { ConfirmModal } from '@/components/confirm-modal';
@@ -11,6 +12,7 @@ import {
   useAdminTravelFiscalClassifications,
 } from '@/components/travel-fiscal-classification-field';
 import { withFiscalClassification } from '@/lib/travel-fiscal-classification';
+import { Button } from '@/components/ui/button';
 
 interface InternalTrip {
   id: string;
@@ -35,6 +37,7 @@ interface InternalTrip {
 
 interface InternalTripsListProps {
   trips: InternalTrip[];
+  canComposeCosts?: boolean;
   onTripsUpdated?: () => void;
 }
 
@@ -66,7 +69,8 @@ const getStatusBadge = (status: string) => {
   }
 };
 
-export function InternalTripsList({ trips, onTripsUpdated }: InternalTripsListProps) {
+export function InternalTripsList({ trips, canComposeCosts = false, onTripsUpdated }: InternalTripsListProps) {
+  const router = useRouter();
   const [editingTrip, setEditingTrip] = useState<InternalTrip | null>(null);
   const [saving, setSaving] = useState(false);
   const [showLoadingModal, setShowLoadingModal] = useState(false);
@@ -530,6 +534,20 @@ export function InternalTripsList({ trips, onTripsUpdated }: InternalTripsListPr
                   ❌
                 </button>
               )}
+              {canComposeCosts ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="flex-1"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    router.push(`/admin/cost-engine/internal-trip/${encodeURIComponent(trip.id)}`);
+                  }}
+                >
+                  Componer costos
+                </Button>
+              ) : null}
             </div>
             </div>
           );

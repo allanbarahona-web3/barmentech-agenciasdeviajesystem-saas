@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import type { AirfareDailyStatus } from "@/lib/cost-engine-api";
 
 type ActionMenuModalProps = {
   isOpen: boolean;
@@ -11,6 +12,10 @@ type ActionMenuModalProps = {
   onSelectAdditionalServices: () => void;
   onSelectQuote: () => void;
   onSelectCustom: () => void;
+  airfareStatus?: AirfareDailyStatus | null;
+  airfareStatusLoading?: boolean;
+  airfareStatusError?: string | null;
+  onSelectAirfare?: () => void;
 };
 
 export function ActionMenuModal({ 
@@ -20,6 +25,10 @@ export function ActionMenuModal({
   onSelectInternalTrips,
   onSelectCustomers,
   onSelectAdditionalServices,
+  airfareStatus,
+  airfareStatusLoading = false,
+  airfareStatusError,
+  onSelectAirfare,
 }: ActionMenuModalProps) {
   useEffect(() => {
     if (isOpen) {
@@ -88,6 +97,50 @@ export function ActionMenuModal({
         </p>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {airfareStatusLoading ? (
+            <p className="sr-only" role="status">
+              Verificando tarifas aéreas de hoy…
+            </p>
+          ) : null}
+
+          {airfareStatusError ? (
+            <p style={{ margin: 0, color: "#b45309", fontSize: "0.85rem", textAlign: "center" }} role="alert">
+              No se pudieron verificar las tarifas aéreas. Puedes continuar con las demás tareas.
+            </p>
+          ) : null}
+
+          {airfareStatus && airfareStatus.pendingToday > 0 && onSelectAirfare ? (
+            <button
+              type="button"
+              onClick={onSelectAirfare}
+              style={{
+                padding: "20px 24px",
+                background: "linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%)",
+                color: "white",
+                border: "none",
+                borderRadius: 12,
+                fontSize: "1.05rem",
+                fontWeight: 600,
+                cursor: "pointer",
+                textAlign: "left",
+                display: "flex",
+                alignItems: "center",
+                gap: 16,
+                boxShadow: "0 4px 12px rgba(124, 58, 237, 0.3)",
+              }}
+            >
+              <span style={{ fontSize: "2rem" }}>✈️</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700 }}>Actualización de tarifas aéreas</div>
+                <div style={{ fontSize: "0.85rem", opacity: 0.9, marginTop: 4 }}>
+                  {airfareStatus?.pendingToday ?? 0} {(airfareStatus?.pendingToday ?? 0) === 1 ? "tarifa pendiente de revisar hoy" : "tarifas pendientes de revisar hoy"}
+                  {(airfareStatus?.registeredToday ?? 0) > 0 ? ` · ${airfareStatus?.registeredToday ?? 0} actualizadas hoy` : ""}
+                </div>
+              </div>
+              <span style={{ fontSize: "0.85rem", fontWeight: 700 }}>Revisar tarifas</span>
+            </button>
+          ) : null}
+
           {/* Opción 1: Viajes Disponibles - HABILITADA */}
           <button
             onClick={onSelectTrips}

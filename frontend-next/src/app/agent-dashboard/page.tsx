@@ -2,17 +2,24 @@
 
 export const dynamic = "force-dynamic";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ActionMenuModal } from "@/components/action-menu-modal";
 import { PageLoader } from "@/components/loading-spinner";
 import { getAttendanceStatus } from "@/lib/attendance-api";
 import { usesAttendance } from "@/lib/attendance-permissions";
 import { getStoredSession } from "@/lib/auth-api";
+import { AirfareDailyTaskDialog } from "@/features/cost-engine/airfare-daily-task-dialog";
+import { getAgentAirfareDailyStatus, type AirfareDailyStatus } from "@/lib/cost-engine-api";
 
 export default function AgentDashboardPage() {
   const router = useRouter();
   const [authorized, setAuthorized] = useState(false);
+  const [isAgent, setIsAgent] = useState(false);
+  const [airfareStatus, setAirfareStatus] = useState<AirfareDailyStatus | null>(null);
+  const [airfareStatusLoading, setAirfareStatusLoading] = useState(false);
+  const [airfareStatusError, setAirfareStatusError] = useState("");
+  const [showAirfareTasks, setShowAirfareTasks] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -44,6 +51,7 @@ export default function AgentDashboardPage() {
         }
 
         setAuthorized(true);
+        setIsAgent(role === "AGENT");
       } catch {
         if (active) {
           router.replace("/agent-start");
@@ -57,6 +65,23 @@ export default function AgentDashboardPage() {
       active = false;
     };
   }, [router]);
+
+  const refreshAirfareStatus = useCallback(async () => {
+    if (!isAgent) return;
+    setAirfareStatusLoading(true);
+    setAirfareStatusError("");
+    try {
+      setAirfareStatus(await getAgentAirfareDailyStatus());
+    } catch (error) {
+      setAirfareStatusError(error instanceof Error ? error.message : "No se pudo verificar el estado de tarifas aéreas.");
+    } finally {
+      setAirfareStatusLoading(false);
+    }
+  }, [isAgent]);
+
+  useEffect(() => {
+    if (authorized && isAgent) void refreshAirfareStatus();
+  }, [authorized, isAgent, refreshAirfareStatus]);
 
   if (!authorized) {
     return <PageLoader />;
@@ -85,7 +110,7 @@ export default function AgentDashboardPage() {
       </main>
 
       <ActionMenuModal
-        isOpen
+        isOpen={!showAirfareTasks}
         onSelectTrips={() => router.push("/trips?travelType=INTERNATIONAL")}
         onSelectMigration={() => router.push("/trips?travelType=MIGRATION")}
         onSelectInternalTrips={() => router.push("/internal-trips-available")}
@@ -97,7 +122,20 @@ export default function AgentDashboardPage() {
         onSelectCustom={() => {
           console.log("Viaje personalizado seleccionado (futuro)");
         }}
+        airfareStatus={isAgent ? airfareStatus : null}
+        airfareStatusLoading={isAgent && airfareStatusLoading}
+        airfareStatusError={isAgent ? airfareStatusError : null}
+        onSelectAirfare={isAgent ? () => setShowAirfareTasks(true) : undefined}
       />
+
+      {isAgent ? (
+        <AirfareDailyTaskDialog
+          isOpen={showAirfareTasks}
+          status={airfareStatus}
+          onClose={() => setShowAirfareTasks(false)}
+          onChanged={refreshAirfareStatus}
+        />
+      ) : null}
     </>
   );
 }
