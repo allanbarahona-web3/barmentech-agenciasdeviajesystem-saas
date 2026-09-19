@@ -65,6 +65,18 @@ export class CostEngineService {
     };
   }
 
+  async getComponentMonetaryTimeline(tenantId: string, costComponentId: string, page = 1, pageSize = 20) {
+    const result = await this.repository.getComponentMonetaryTimeline(tenantId, costComponentId, page, pageSize);
+    if (!result) throw new NotFoundException("Cost component not found.");
+    return monetaryTimelineResponse(result);
+  }
+
+  async getProjectMonetaryTimeline(tenantId: string, costingProjectId: string, page = 1, pageSize = 20) {
+    const result = await this.repository.getProjectMonetaryTimeline(tenantId, costingProjectId, page, pageSize);
+    if (!result) throw new NotFoundException("Costing project not found.");
+    return monetaryTimelineResponse(result);
+  }
+
   async getProjectTotalEvolution(tenantId: string, costingProjectId: string, page = 1, pageSize = 20) {
     const result = await this.repository.getProjectTotalEvolution(tenantId, costingProjectId, page, pageSize);
     if (!result) throw new NotFoundException("Costing project not found.");
@@ -245,4 +257,42 @@ function decimalString(value: unknown): string {
     return (value as { toFixed: () => string }).toFixed();
   }
   return String(value);
+}
+
+function monetaryTimelineResponse(result: { events: Array<any>; total: number; page: number; pageSize: number }) {
+  return {
+    events: result.events.map((event) => ({
+      eventId: event.eventId,
+      eventType: event.eventType,
+      costingProjectId: event.costingProjectId,
+      costComponentId: event.costComponentId,
+      costCategoryCode: event.costCategoryCode,
+      costCategoryDisplayName: event.costCategoryDisplayName,
+      category: { code: event.costCategoryCode, displayName: event.costCategoryDisplayName },
+      componentTitle: event.componentTitle,
+      effectiveAt: event.effectiveAt,
+      businessDate: dateString(event.businessDate),
+      appliedAmount: decimalString(event.appliedAmount),
+      observedAmount: event.observedAmount === null ? null : decimalString(event.observedAmount),
+      currency: event.currency,
+      actor: { userId: event.actorUserId, name: event.actorName },
+      sourceReference: event.sourceReference,
+      sourceUrl: event.sourceUrl,
+      snapshotId: event.snapshotId,
+      appliedSnapshotId: event.appliedSnapshotId,
+      airfareDailyAuthorityId: event.airfareDailyAuthorityId,
+      overrideReason: event.overrideReason,
+      evidenceCount: event.evidenceCount,
+      hasEvidence: event.evidenceCount > 0,
+    })),
+    total: result.total,
+    page: result.page,
+    pageSize: result.pageSize,
+    totalPages: Math.ceil(result.total / result.pageSize),
+  };
+}
+
+function dateString(value: Date | string | null): string | null {
+  if (value === null) return null;
+  return value instanceof Date ? value.toISOString().slice(0, 10) : String(value).slice(0, 10);
 }

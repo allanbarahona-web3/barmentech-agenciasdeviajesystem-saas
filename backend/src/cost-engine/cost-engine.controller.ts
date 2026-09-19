@@ -55,6 +55,11 @@ export class CostEngineController {
     return this.service.getProjectTotalEvolution(req.user.tenantId, costingProjectId, query.page ?? 1, query.pageSize ?? 20);
   }
 
+  @Get("projects/:costingProjectId/monetary-timeline")
+  getProjectMonetaryTimeline(@Req() req: CostEngineRequest, @Param("costingProjectId") costingProjectId: string, @Query() query: ListCostComponentsDto) {
+    return this.service.getProjectMonetaryTimeline(req.user.tenantId, costingProjectId, query.page ?? 1, query.pageSize ?? 20);
+  }
+
   @Get("categories")
   listCategories(@Req() req: CostEngineRequest, @Query() query: ListCostComponentsDto) {
     return this.service.listCategories(req.user.tenantId, query.page ?? 1, query.pageSize ?? 20);
@@ -93,6 +98,11 @@ export class CostEngineController {
   @Get("components/:costComponentId/history")
   getComponentHistory(@Req() req: CostEngineRequest, @Param("costComponentId") costComponentId: string, @Query() query: ListCostComponentsDto) {
     return this.service.getComponentHistory(req.user.tenantId, costComponentId, query.page ?? 1, query.pageSize ?? 20);
+  }
+
+  @Get("components/:costComponentId/monetary-timeline")
+  getComponentMonetaryTimeline(@Req() req: CostEngineRequest, @Param("costComponentId") costComponentId: string, @Query() query: ListCostComponentsDto) {
+    return this.service.getComponentMonetaryTimeline(req.user.tenantId, costComponentId, query.page ?? 1, query.pageSize ?? 20);
   }
 
   @Get("snapshots/:costSnapshotId/evidence")

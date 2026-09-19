@@ -6,6 +6,7 @@ const readSource = (relativePath) => readFileSync(new URL(relativePath, import.m
 const api = readSource("../src/lib/cost-engine-api.ts");
 const workspace = readSource("../src/features/cost-engine/cost-workspace.tsx");
 const evolution = readSource("../src/features/cost-engine/airfare-evolution-dialog.tsx");
+const globalStyles = readSource("../src/app/globals.css");
 
 test("adds the ADMIN-only Cost Workspace entry point for AIRFARE evolution", () => {
   assert.match(workspace, /role !== "ADMIN"/);
@@ -14,33 +15,72 @@ test("adds the ADMIN-only Cost Workspace entry point for AIRFARE evolution", () 
   assert.match(workspace, /<AirfareEvolutionDialog/);
 });
 
-test("uses bounded project/component AIRFARE history endpoints and renders revision kinds distinctly", () => {
-  assert.match(api, /\/travel-costing\/airfare\/projects\/\$\{encodeURIComponent\(costingProjectId\)\}\/history/);
-  assert.match(api, /\/travel-costing\/airfare\/components\/\$\{encodeURIComponent\(costComponentId\)\}\/history/);
-  assert.match(evolution, /listAdminProjectAirfareHistory\(project\.id, page, 20\)/);
-  assert.match(evolution, /listAdminComponentAirfareHistory\(selectedComponentId, page, 20\)/);
-  assert.match(evolution, /row\.kind === "ADMIN_OVERRIDE"/);
-  assert.match(evolution, /revisionKindLabel\(row\.kind\)/);
-  assert.match(evolution, /Anulación administrativa/);
-  assert.match(evolution, /Registro de agente/);
+test("uses bounded unified component/project monetary timeline endpoints and renders stable event types", () => {
+  assert.match(api, /\/cost-engine\/projects\/\$\{encodeURIComponent\(costingProjectId\)\}\/monetary-timeline/);
+  assert.match(api, /\/cost-engine\/components\/\$\{encodeURIComponent\(costComponentId\)\}\/monetary-timeline/);
+  assert.match(evolution, /listProjectMonetaryTimeline\(project\.id, page, 20\)/);
+  assert.match(evolution, /listComponentMonetaryTimeline\(selectedComponentId, page, 20\)/);
+  assert.match(evolution, /INITIAL_COST: "Costo inicial"/);
+  assert.match(evolution, /COST_SNAPSHOT: "Actualización de costo"/);
+  assert.match(evolution, /AGENT_INITIAL: "Actualización diaria"/);
+  assert.match(evolution, /ADMIN_OVERRIDE: "Ajuste de administrador"/);
   assert.match(evolution, /row\.observedAmount/);
   assert.match(evolution, /row\.appliedAmount/);
 });
 
-test("uses history authority IDs for overrides and refreshes history plus current composition", () => {
+test("renders Cost Evolution instants in the tenant timezone and keeps business dates date-only", () => {
+  assert.match(evolution, /useTenantDateTimeFormatter/);
+  assert.match(evolution, /const formatTenantDateTime = useTenantDateTimeFormatter\(\)/);
+  assert.match(evolution, /formatTenantDateTime\(row\.effectiveAt\)/);
+  assert.match(evolution, /formatBusinessDate\(row\.businessDate\)/);
+  assert.doesNotMatch(evolution, /function timestamp\(/);
+  assert.doesNotMatch(evolution, /replace\("T", " "\)\.slice\(0, 16\)/);
+});
+
+test("uses only timeline authority IDs for overrides and refreshes history plus current composition", () => {
   assert.match(evolution, /overrideAdminAirfareDailyAuthority\(row\.airfareDailyAuthorityId/);
+  assert.match(evolution, /row\.airfareDailyAuthorityId \? <Button/);
   assert.match(evolution, /El motivo de anulación es requerido\./);
-  assert.match(evolution, /Promise\.all\(\[loadHistory\(\), onCompositionChanged\(\)\]\)/);
+  assert.match(evolution, /Promise\.all\(\[loadTimeline\(\), onCompositionChanged\(\)\]\)/);
   assert.match(evolution, /historial conserva las revisiones anteriores/);
   assert.doesNotMatch(evolution, /create.*daily-authority/i);
 });
 
-test("loads evidence lazily from the applied snapshot and uses signed access without per-row requests", () => {
-  assert.match(evolution, /listCostEvidence\(row\.appliedSnapshotId\)/);
-  assert.match(evolution, /getCostEvidenceAccess\(row\.appliedSnapshotId, item\.id\)/);
-  assert.match(evolution, /Los comprobantes se cargan solo al abrir esta revisión/);
-  assert.doesNotMatch(evolution, /history\.map\([^)]*listCostEvidence/);
+test("opens one evidence directly in AttachmentViewer with lazy snapshot-scoped access", () => {
+  assert.match(evolution, /row\.hasEvidence \? <Button/);
+  assert.match(evolution, /onEvidence=\{\(trigger\) => void openEvidence\(row, trigger\)\}/);
+  assert.match(evolution, /const response = await listCostEvidence\(row\.snapshotId\)/);
+  assert.match(evolution, /setEvidenceViewer\(\{ snapshotId: row\.snapshotId, attachments \}\)/);
+  assert.match(evolution, /<AttachmentViewer attachments=\{evidenceViewer\.attachments\} initialIndex=\{0\}/);
+  assert.match(evolution, /getCostEvidenceAccess\(evidenceViewer\.snapshotId, attachment\.id\)/);
+  assert.doesNotMatch(evolution, /window\.open/);
+  assert.doesNotMatch(evolution, /function EvidenceDialog/);
+  assert.doesNotMatch(evolution, /Comprobantes del costo/);
   assert.doesNotMatch(evolution, /getCostComponent\(/);
+});
+
+test("closing AttachmentViewer preserves the mounted Cost Evolution context and returns focus to its evidence action", () => {
+  assert.match(evolution, /const evidenceTriggerRef = useRef<HTMLButtonElement \| null>\(null\)/);
+  assert.match(evolution, /evidenceTriggerRef\.current = trigger/);
+  assert.match(evolution, /const closeEvidenceViewer = useCallback\(\(\) => \{[\s\S]*setEvidenceViewer\(null\);[\s\S]*requestAnimationFrame\(\(\) => evidenceTriggerRef\.current\?\.focus\(\)\)/);
+  assert.match(evolution, /onClose=\{closeEvidenceViewer\}/);
+  assert.match(evolution, /onEscapeKeyDown=\{\(event\) => \{ if \(evidenceViewer\) event\.preventDefault\(\); \}\}/);
+  assert.match(evolution, /onPointerDownOutside=\{\(event\) => \{ if \(evidenceViewer\) event\.preventDefault\(\); \}\}/);
+  assert.match(globalStyles, /\.attachment-viewer-overlay \{[\s\S]*pointer-events: auto/);
+  assert.doesNotMatch(evolution, /router\.(?:back|push|replace)|history\.back/);
+});
+
+test("viewer close does not reset the selected component, page, or loaded timeline", () => {
+  const closeViewer = evolution.match(/const closeEvidenceViewer = useCallback\(\(\) => \{([\s\S]*?)\n  \}, \[\]\);/);
+  assert.ok(closeViewer);
+  assert.doesNotMatch(closeViewer[1], /setSelectedComponentId|setPage|setTimelinePage|loadTimeline/);
+});
+
+test("passes all bounded evidence files directly to AttachmentViewer without an intermediate filename modal", () => {
+  assert.match(evolution, /response\.evidence\.map\(\(evidence\) => \(\{ id: evidence\.id, originalFileName: evidence\.originalFileName, mimeType: evidence\.mimeType \}\)\)/);
+  assert.match(evolution, /attachments=\{evidenceViewer\.attachments\}/);
+  assert.doesNotMatch(evolution, /evidence\.map\(\(item\) => <Button/);
+  assert.doesNotMatch(evolution, /Cargando comprobantes/);
 });
 
 test("preserves exact monetary strings and does not invent project-total variation or commercial data", () => {
@@ -48,4 +88,9 @@ test("preserves exact monetary strings and does not invent project-total variati
   assert.match(evolution, /function exactMoney\(amount: string, currency: string\) \{ return `\$\{currency\} \$\{amount\}`; \}/);
   assert.doesNotMatch(evolution, /parseFloat|Number\(.*Amount|percentage|variación|markup|selling price|published price|comisi[oó]n|impuesto/i);
   assert.match(evolution, /authoritativeTotalCost/);
+});
+
+test("keeps source navigation external and shows the unified empty state", () => {
+  assert.match(evolution, /href=\{row\.sourceUrl\} target="_blank" rel="noreferrer">Abrir fuente/);
+  assert.match(evolution, /No hay historial de costos todavía/);
 });

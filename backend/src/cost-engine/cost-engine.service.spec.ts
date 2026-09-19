@@ -224,6 +224,77 @@ describe("Cost Engine foundation", () => {
     }));
   });
 
+  it("reads the unified component monetary timeline in one tenant transaction with bounded evidence counts", async () => {
+    const context = repositoryContext();
+    context.tx.costComponent.findFirst.mockResolvedValue({ id: "component-a" });
+    context.tx.$queryRaw.mockResolvedValue([monetaryEvent({ eventType: "INITIAL_COST", evidenceCount: 2, total: 3 })]);
+
+    const result = await context.repository.getComponentMonetaryTimeline("tenant-a", "component-a", 1, 20);
+
+    expect(result).toMatchObject({ total: 3, page: 1, pageSize: 20, events: [expect.objectContaining({ eventType: "INITIAL_COST", evidenceCount: 2 })] });
+    expect(context.tx.costComponent.findFirst).toHaveBeenCalledWith({ where: { id: "component-a", tenantId: "tenant-a" }, select: { id: true } });
+    expect(context.tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(context.tx.costEvidence.findMany).not.toHaveBeenCalled();
+    const timelineSql = context.tx.$queryRaw.mock.calls[0][0].join("");
+    expect(timelineSql).toContain("CASE WHEN snapshot.\"sequence\" = 1 THEN 'INITIAL_COST' ELSE 'COST_SNAPSHOT' END");
+    expect(timelineSql).toContain("AND NOT EXISTS");
+    expect(timelineSql).toContain('revision."appliedSnapshotId" = snapshot."id"');
+    expect(timelineSql).toContain("evidence_counts AS");
+    expect(timelineSql).toContain("SELECT DISTINCT \"snapshotId\" FROM paged_events");
+    expect(timelineSql).toContain('ORDER BY "effectiveAt" DESC, "eventId" DESC');
+    expect(timelineSql).toContain("LIMIT ");
+  });
+
+  it("returns no cross-tenant component timeline rows before querying events", async () => {
+    const context = repositoryContext();
+    context.tx.costComponent.findFirst.mockResolvedValue(null);
+
+    await expect(context.repository.getComponentMonetaryTimeline("tenant-a", "component-b", 1, 20)).resolves.toBeNull();
+
+    expect(context.tx.$queryRaw).not.toHaveBeenCalled();
+  });
+
+  it("maps unified timeline events with exact monetary strings and supports non-AIRFARE project categories", async () => {
+    const repository = {
+      getProjectMonetaryTimeline: jest.fn().mockResolvedValue({
+        events: [monetaryEvent({ eventType: "COST_SNAPSHOT", costCategoryCode: "LODGING", costCategoryDisplayName: "Hospedaje", appliedAmount: "101.23000", observedAmount: null, evidenceCount: 1 })],
+        total: 1, page: 1, pageSize: 20,
+      }),
+    } as unknown as CostEngineRepository;
+    const service = new CostEngineService(repository);
+
+    const result = await service.getProjectMonetaryTimeline("tenant-a", "project-a");
+
+    expect(result.events[0]).toMatchObject({
+      eventType: "COST_SNAPSHOT", category: { code: "LODGING", displayName: "Hospedaje" }, appliedAmount: "101.23000",
+      costCategoryCode: "LODGING", costCategoryDisplayName: "Hospedaje", observedAmount: null, evidenceCount: 1, hasEvidence: true, snapshotId: "snapshot-a", airfareDailyAuthorityId: null,
+    });
+    expect(result.events[0].businessDate).toBeNull();
+    expect(repository.getProjectMonetaryTimeline).toHaveBeenCalledWith("tenant-a", "project-a", 1, 20);
+  });
+
+  it("keeps generic snapshots and each authority revision as distinct, non-duplicated timeline events", async () => {
+    const repository = {
+      getComponentMonetaryTimeline: jest.fn().mockResolvedValue({
+        events: [
+          monetaryEvent({ eventId: "snapshot-initial", eventType: "INITIAL_COST", snapshotId: "snapshot-initial", appliedSnapshotId: null, airfareDailyAuthorityId: null }),
+          monetaryEvent({ eventId: "snapshot-update", eventType: "COST_SNAPSHOT", snapshotId: "snapshot-update", appliedSnapshotId: null, airfareDailyAuthorityId: null }),
+          monetaryEvent({ eventId: "revision-agent", eventType: "AGENT_INITIAL", snapshotId: "snapshot-agent", appliedSnapshotId: "snapshot-agent", airfareDailyAuthorityId: "authority-a", observedAmount: "120.00000" }),
+          monetaryEvent({ eventId: "revision-admin", eventType: "ADMIN_OVERRIDE", snapshotId: "snapshot-admin", appliedSnapshotId: "snapshot-admin", airfareDailyAuthorityId: "authority-a", observedAmount: "118.00000", overrideReason: "Proveedor corrigió la tarifa" }),
+        ], total: 4, page: 1, pageSize: 20,
+      }),
+    } as unknown as CostEngineRepository;
+    const service = new CostEngineService(repository);
+
+    const result = await service.getComponentMonetaryTimeline("tenant-a", "component-a");
+
+    expect(result.events.map((event) => event.eventType)).toEqual(["INITIAL_COST", "COST_SNAPSHOT", "AGENT_INITIAL", "ADMIN_OVERRIDE"]);
+    expect(result.events.map((event) => event.eventId)).toEqual(["snapshot-initial", "snapshot-update", "revision-agent", "revision-admin"]);
+    expect(result.events[0].airfareDailyAuthorityId).toBeNull();
+    expect(result.events[2]).toMatchObject({ snapshotId: "snapshot-agent", appliedSnapshotId: "snapshot-agent", airfareDailyAuthorityId: "authority-a" });
+    expect(result.events[3].overrideReason).toBe("Proveedor corrigió la tarifa");
+  });
+
   it("reconstructs bounded project-total change points with exact strings from one joined history query", async () => {
     const context = repositoryContext();
     context.tx.costingProject.findFirst.mockResolvedValue(project());
@@ -275,6 +346,12 @@ describe("Cost Engine foundation", () => {
   it("exposes project-total evolution through the existing ADMIN-only Cost Engine controller", () => {
     expect(Reflect.getMetadata(ROLES_KEY, CostEngineController)).toEqual([UserRole.ADMIN]);
     expect(CostEngineController.prototype.getProjectTotalEvolution).toBeDefined();
+  });
+
+  it("exposes component and project monetary timelines through the existing ADMIN-only Cost Engine controller", () => {
+    expect(Reflect.getMetadata(ROLES_KEY, CostEngineController)).toEqual([UserRole.ADMIN]);
+    expect(CostEngineController.prototype.getComponentMonetaryTimeline).toBeDefined();
+    expect(CostEngineController.prototype.getProjectMonetaryTimeline).toBeDefined();
   });
 
   it("creates evidence metadata only after locking the tenant-scoped snapshot in the tenant transaction", async () => {
@@ -435,6 +512,7 @@ function project() { return { id: "project-a", baseCurrency: "USD", status: "ACT
 function component(overrides: Record<string, unknown> = {}) { return { id: "component-a", costingProjectId: "project-a", costCategoryId: "category-a", costSupplierId: null, title: "Lodging", description: null, detailPayload: null, detailSchemaVersion: null, quantity: null, unit: null, costCategory: { code: "OTHER", origin: "STANDARD" }, sortPosition: 0, ...overrides }; }
 function snapshot(amount: string) { return { id: "snapshot-a", amount: { toFixed: () => amount }, currency: "USD", sourceReference: null, sourceUrl: null }; }
 function evolutionPoint(overrides: Record<string, unknown> = {}) { return { effectiveAt: new Date("2026-01-01T10:00:00.000Z"), authoritativeTotal: "100.50000", delta: "100.50000", costComponentId: "component-a", costSnapshotId: "snapshot-a1", costCategoryCode: "LODGING", costCategoryDisplayName: "Lodging", sourceReference: "Quote", sourceUrl: null, reason: null, eventKind: "SNAPSHOT", eventId: "snapshot-a1", earliestReconstructableTotal: "100.50000", total: 1, ...overrides }; }
+function monetaryEvent(overrides: Record<string, unknown> = {}) { return { eventId: "snapshot-a", eventType: "INITIAL_COST", costingProjectId: "project-a", costComponentId: "component-a", costCategoryCode: "AIRFARE", costCategoryDisplayName: "Boleto aéreo", componentTitle: "SJO → MAD", effectiveAt: new Date("2026-01-01T10:00:00.000Z"), businessDate: null, appliedAmount: "100.00000", observedAmount: null, currency: "USD", actorUserId: "user-a", actorName: "Admin A", sourceReference: "Cotización", sourceUrl: "https://provider.example/quote", snapshotId: "snapshot-a", appliedSnapshotId: null, airfareDailyAuthorityId: null, overrideReason: null, evidenceCount: 0, total: 1, ...overrides }; }
 function componentInput() { return { costCategoryId: "category-a", costSupplierId: null, title: "Lodging", description: null, detailPayload: null, detailSchemaVersion: null, quantity: null, unit: null, sortPosition: 0 }; }
 function snapshotInput() { return { amount: "125.50", currency: "USD", sourceReference: null, sourceUrl: null, reason: null }; }
 function applicabilityInput() { return { scopeType: "UNIT", scopeKey: null, label: null, startDate: null, endDate: null }; }

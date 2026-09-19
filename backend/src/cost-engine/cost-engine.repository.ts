@@ -64,6 +64,33 @@ type ProjectTotalEvolutionRow = {
   total: number | bigint | string;
 };
 
+export type MonetaryTimelineEventType = "INITIAL_COST" | "COST_SNAPSHOT" | "AGENT_INITIAL" | "ADMIN_OVERRIDE";
+
+type MonetaryTimelineRow = {
+  eventId: string;
+  eventType: MonetaryTimelineEventType;
+  costingProjectId: string;
+  costComponentId: string;
+  costCategoryCode: string;
+  costCategoryDisplayName: string;
+  componentTitle: string;
+  effectiveAt: Date;
+  businessDate: Date | null;
+  appliedAmount: string;
+  observedAmount: string | null;
+  currency: string;
+  actorUserId: string;
+  actorName: string;
+  sourceReference: string | null;
+  sourceUrl: string | null;
+  snapshotId: string;
+  appliedSnapshotId: string | null;
+  airfareDailyAuthorityId: string | null;
+  overrideReason: string | null;
+  evidenceCount: bigint | number | string;
+  total: bigint | number | string;
+};
+
 @Injectable()
 export class CostEngineRepository {
   private readonly database: CostEngineDatabase;
@@ -178,6 +205,28 @@ export class CostEngineRepository {
         tx.costSnapshot.count({ where }),
       ]);
       return { snapshots, total, page, pageSize };
+    });
+  }
+
+  getComponentMonetaryTimeline(tenantId: string, costComponentId: string, page: number, pageSize: number) {
+    return this.withTenantTransaction(tenantId, "cost-engine.get-component-monetary-timeline", async (tx) => {
+      const component = await tx.costComponent.findFirst({
+        where: { id: costComponentId, tenantId },
+        select: { id: true },
+      });
+      if (!component) return null;
+      return this.monetaryTimeline(tx, tenantId, page, pageSize, costComponentId);
+    });
+  }
+
+  getProjectMonetaryTimeline(tenantId: string, costingProjectId: string, page: number, pageSize: number) {
+    return this.withTenantTransaction(tenantId, "cost-engine.get-project-monetary-timeline", async (tx) => {
+      const project = await tx.costingProject.findFirst({
+        where: { id: costingProjectId, tenantId },
+        select: { id: true },
+      });
+      if (!project) return null;
+      return this.monetaryTimeline(tx, tenantId, page, pageSize, undefined, costingProjectId);
     });
   }
 
@@ -538,6 +587,40 @@ export class CostEngineRepository {
     });
   }
 
+  assertAgentInitialSnapshotEvidenceAccess(tenantId: string, costSnapshotId: string, actorUserId: string) {
+    return this.withTenantTransaction(tenantId, "cost-engine.assert-agent-airfare-evidence-access", async (tx) => {
+      const snapshots = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT snapshot."id"
+        FROM "cost_snapshots" snapshot
+        JOIN "airfare_daily_authority_revisions" revision
+          ON revision."appliedSnapshotId" = snapshot."id"
+         AND revision."tenantId" = snapshot."tenantId"
+         AND revision."costComponentId" = snapshot."costComponentId"
+         AND revision."costingProjectId" = snapshot."costingProjectId"
+        JOIN "airfare_daily_authorities" authority
+          ON authority."id" = revision."airfareDailyAuthorityId"
+         AND authority."tenantId" = revision."tenantId"
+         AND authority."costComponentId" = revision."costComponentId"
+         AND authority."costingProjectId" = revision."costingProjectId"
+        JOIN "cost_components" component
+          ON component."id" = snapshot."costComponentId"
+         AND component."tenantId" = snapshot."tenantId"
+         AND component."costingProjectId" = snapshot."costingProjectId"
+        JOIN "cost_categories" category
+          ON category."id" = component."costCategoryId"
+         AND category."tenantId" = component."tenantId"
+        WHERE snapshot."id" = ${costSnapshotId}
+          AND snapshot."tenantId" = ${tenantId}
+          AND revision."kind" = 'AGENT_INITIAL'::"AirfareDailyAuthorityRevisionKind"
+          AND revision."actorUserId" = ${actorUserId}
+          AND snapshot."capturedByUserId" = ${actorUserId}
+          AND category."origin" = 'STANDARD'::"CostCategoryOrigin"
+          AND category."code" = 'AIRFARE'
+      `;
+      if (snapshots.length !== 1) throw new NotFoundException("AGENT AIRFARE evidence target not found.");
+    });
+  }
+
   createEvidence(tenantId: string, costSnapshotId: string, input: CostEvidenceInput) {
     return this.withTenantTransaction(tenantId, "cost-engine.create-evidence", async (tx) => {
       const locked = await tx.$queryRaw<Array<{ id: string }>>`
@@ -576,6 +659,99 @@ export class CostEngineRepository {
       where: { id: costEvidenceId, costSnapshotId, tenantId },
       select: { id: true, originalFileName: true, mimeType: true, byteSize: true, objectKey: true },
     }));
+  }
+
+  private async monetaryTimeline(
+    tx: CostEngineTransaction,
+    tenantId: string,
+    page: number,
+    pageSize: number,
+    costComponentId?: string,
+    costingProjectId?: string,
+  ) {
+    const rows = await tx.$queryRaw<MonetaryTimelineRow[]>`
+      WITH timeline_events AS (
+        SELECT snapshot."id" AS "eventId",
+               CASE WHEN snapshot."sequence" = 1 THEN 'INITIAL_COST' ELSE 'COST_SNAPSHOT' END AS "eventType",
+               snapshot."costingProjectId", snapshot."costComponentId",
+               category."code" AS "costCategoryCode", category."displayName" AS "costCategoryDisplayName",
+               component."title" AS "componentTitle", snapshot."capturedAt" AS "effectiveAt",
+               NULL::date AS "businessDate", snapshot."amount"::text AS "appliedAmount",
+               NULL::text AS "observedAmount", snapshot."currency"::text AS "currency",
+               snapshot."capturedByUserId" AS "actorUserId", snapshot."capturedByName" AS "actorName",
+               snapshot."sourceReference", snapshot."sourceUrl", snapshot."id" AS "snapshotId",
+               NULL::text AS "appliedSnapshotId", NULL::text AS "airfareDailyAuthorityId",
+               NULL::text AS "overrideReason"
+        FROM "cost_snapshots" snapshot
+        JOIN "cost_components" component
+          ON component."id" = snapshot."costComponentId"
+         AND component."tenantId" = snapshot."tenantId"
+         AND component."costingProjectId" = snapshot."costingProjectId"
+        JOIN "cost_categories" category
+          ON category."id" = component."costCategoryId"
+         AND category."tenantId" = component."tenantId"
+        WHERE snapshot."tenantId" = ${tenantId}
+          AND (${costComponentId ?? null}::text IS NULL OR snapshot."costComponentId" = ${costComponentId ?? null})
+          AND (${costingProjectId ?? null}::text IS NULL OR snapshot."costingProjectId" = ${costingProjectId ?? null})
+          AND NOT EXISTS (
+            SELECT 1
+            FROM "airfare_daily_authority_revisions" revision
+            WHERE revision."tenantId" = snapshot."tenantId"
+              AND revision."appliedSnapshotId" = snapshot."id"
+              AND revision."costComponentId" = snapshot."costComponentId"
+              AND revision."costingProjectId" = snapshot."costingProjectId"
+          )
+        UNION ALL
+        SELECT revision."id" AS "eventId", revision."kind"::text AS "eventType",
+               revision."costingProjectId", revision."costComponentId",
+               category."code" AS "costCategoryCode", category."displayName" AS "costCategoryDisplayName",
+               component."title" AS "componentTitle", revision."createdAt" AS "effectiveAt",
+               authority."businessDate" AS "businessDate", snapshot."amount"::text AS "appliedAmount",
+               revision."observedAmount"::text AS "observedAmount", snapshot."currency"::text AS "currency",
+               revision."actorUserId", revision."actorName", revision."sourceReference", revision."sourceUrl",
+               revision."appliedSnapshotId" AS "snapshotId", revision."appliedSnapshotId",
+               authority."id" AS "airfareDailyAuthorityId", revision."overrideReason"
+        FROM "airfare_daily_authority_revisions" revision
+        JOIN "airfare_daily_authorities" authority
+          ON authority."id" = revision."airfareDailyAuthorityId"
+         AND authority."tenantId" = revision."tenantId"
+         AND authority."costingProjectId" = revision."costingProjectId"
+         AND authority."costComponentId" = revision."costComponentId"
+        JOIN "cost_components" component
+          ON component."id" = revision."costComponentId"
+         AND component."tenantId" = revision."tenantId"
+         AND component."costingProjectId" = revision."costingProjectId"
+        JOIN "cost_categories" category
+          ON category."id" = component."costCategoryId"
+         AND category."tenantId" = component."tenantId"
+        JOIN "cost_snapshots" snapshot
+          ON snapshot."id" = revision."appliedSnapshotId"
+         AND snapshot."tenantId" = revision."tenantId"
+         AND snapshot."costComponentId" = revision."costComponentId"
+         AND snapshot."costingProjectId" = revision."costingProjectId"
+        WHERE revision."tenantId" = ${tenantId}
+          AND (${costComponentId ?? null}::text IS NULL OR revision."costComponentId" = ${costComponentId ?? null})
+          AND (${costingProjectId ?? null}::text IS NULL OR revision."costingProjectId" = ${costingProjectId ?? null})
+      ), paged_events AS (
+        SELECT timeline_events.*, COUNT(*) OVER() AS "total"
+        FROM timeline_events
+        ORDER BY "effectiveAt" DESC, "eventId" DESC
+        LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}
+      ), evidence_counts AS (
+        SELECT evidence."costSnapshotId", COUNT(*) AS "evidenceCount"
+        FROM "cost_evidence" evidence
+        JOIN (SELECT DISTINCT "snapshotId" FROM paged_events) event_snapshot
+          ON event_snapshot."snapshotId" = evidence."costSnapshotId"
+        WHERE evidence."tenantId" = ${tenantId}
+        GROUP BY evidence."costSnapshotId"
+      )
+      SELECT paged_events.*, COALESCE(evidence_counts."evidenceCount", 0) AS "evidenceCount"
+      FROM paged_events
+      LEFT JOIN evidence_counts ON evidence_counts."costSnapshotId" = paged_events."snapshotId"
+      ORDER BY paged_events."effectiveAt" DESC, paged_events."eventId" DESC
+    `;
+    const total = rows.length ? count(rows[0].total) : 0;
+    return { events: rows.map(({ total: _total, ...event }) => ({ ...event, evidenceCount: count(event.evidenceCount) })), total, page, pageSize };
   }
 
   private withTenantTransaction<T>(tenantId: string, operation: string, work: (tx: CostEngineTransaction) => Promise<T>): Promise<T> {
@@ -722,4 +898,8 @@ function decimalString(value: unknown): string {
 
 function nullableDecimalString(value: unknown): string | null {
   return value === null || value === undefined ? null : decimalString(value);
+}
+
+function count(value: bigint | number | string): number {
+  return Number(value);
 }

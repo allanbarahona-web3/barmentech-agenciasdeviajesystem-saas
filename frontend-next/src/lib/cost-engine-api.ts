@@ -190,7 +190,14 @@ export type AirfareDailyTask = {
   endDate: string;
   title: string;
   detailPayload: Record<string, unknown> | null;
-  currentSnapshot: { amount: string; currency: string | null } | null;
+  currentSnapshot: {
+    amount: string;
+    currency: string | null;
+    actorName: string | null;
+    capturedAt: string | null;
+    sourceReference: string | null;
+    sourceUrl: string | null;
+  } | null;
   baseCurrency: string;
   taskStatus: "PENDING";
 };
@@ -210,6 +217,15 @@ export type RegisterAirfareDailyAuthorityInput = {
   reason?: string | null;
 };
 
+export type RegisterAirfareDailyAuthorityResult = {
+  authorityId: string;
+  revisionId: string;
+  snapshotId: string;
+  businessDate: string;
+  evidenceAttached: boolean;
+  evidenceUploadError?: string;
+};
+
 export function getAgentAirfareDailyStatus() {
   return apiGet<AirfareDailyStatus>("/travel-costing/airfare/daily-status");
 }
@@ -218,11 +234,25 @@ export function listAgentAirfareDailyTasks(page = 1, pageSize = 20) {
   return apiGet<AirfareDailyTaskPage>("/travel-costing/airfare/daily-tasks", { params: { page, pageSize } });
 }
 
-export function registerAgentAirfareDailyAuthority(costComponentId: string, input: RegisterAirfareDailyAuthorityInput) {
-  return apiPost<{ authorityId: string; revisionId: string; snapshotId: string; businessDate: string }>(
-    `/travel-costing/airfare/components/${encodeURIComponent(costComponentId)}/daily-authority`,
-    input,
-  );
+export async function registerAgentAirfareDailyAuthority(costComponentId: string, input: RegisterAirfareDailyAuthorityInput, evidenceFile: File) {
+  const formData = airfareObservationFormData(input, evidenceFile);
+  const response = await fetchApi(`/travel-costing/airfare/components/${encodeURIComponent(costComponentId)}/daily-authority`, { method: "POST", body: formData });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(typeof payload?.message === "string" ? payload.message : `API Error: ${response.statusText}`);
+  }
+  return response.json() as Promise<RegisterAirfareDailyAuthorityResult>;
+}
+
+export async function retryAgentAirfareEvidence(costSnapshotId: string, evidenceFile: File) {
+  const formData = new FormData();
+  formData.append("file", evidenceFile);
+  const response = await fetchApi(`/travel-costing/airfare/snapshots/${encodeURIComponent(costSnapshotId)}/evidence`, { method: "POST", body: formData });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(typeof payload?.message === "string" ? payload.message : `API Error: ${response.statusText}`);
+  }
+  return response.json() as Promise<CostEvidence>;
 }
 
 export type AirfareHistoryItem = {
@@ -254,6 +284,41 @@ export type AirfareHistoryPage = {
   totalPages: number;
 };
 
+export type MonetaryTimelineEventType = "INITIAL_COST" | "COST_SNAPSHOT" | "AGENT_INITIAL" | "ADMIN_OVERRIDE";
+
+export type CostMonetaryTimelineItem = {
+  eventId: string;
+  eventType: MonetaryTimelineEventType;
+  costingProjectId: string;
+  costComponentId: string;
+  costCategoryCode: string;
+  costCategoryDisplayName: string;
+  category: { code: string; displayName: string };
+  componentTitle: string;
+  effectiveAt: string;
+  businessDate: string | null;
+  appliedAmount: string;
+  observedAmount: string | null;
+  currency: string;
+  actor: { userId: string; name: string };
+  sourceReference: string | null;
+  sourceUrl: string | null;
+  snapshotId: string;
+  appliedSnapshotId: string | null;
+  airfareDailyAuthorityId: string | null;
+  overrideReason: string | null;
+  evidenceCount: number;
+  hasEvidence: boolean;
+};
+
+export type CostMonetaryTimelinePage = {
+  events: CostMonetaryTimelineItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+};
+
 export type AdminAirfareOverrideInput = {
   observedAmount: string;
   overrideReason: string;
@@ -267,6 +332,14 @@ export function listAdminProjectAirfareHistory(costingProjectId: string, page = 
 
 export function listAdminComponentAirfareHistory(costComponentId: string, page = 1, pageSize = 20) {
   return apiGet<AirfareHistoryPage>(`/travel-costing/airfare/components/${encodeURIComponent(costComponentId)}/history`, { params: { page, pageSize } });
+}
+
+export function listComponentMonetaryTimeline(costComponentId: string, page = 1, pageSize = 20) {
+  return apiGet<CostMonetaryTimelinePage>(`/cost-engine/components/${encodeURIComponent(costComponentId)}/monetary-timeline`, { params: { page, pageSize } });
+}
+
+export function listProjectMonetaryTimeline(costingProjectId: string, page = 1, pageSize = 20) {
+  return apiGet<CostMonetaryTimelinePage>(`/cost-engine/projects/${encodeURIComponent(costingProjectId)}/monetary-timeline`, { params: { page, pageSize } });
 }
 
 export function overrideAdminAirfareDailyAuthority(airfareDailyAuthorityId: string, input: AdminAirfareOverrideInput) {
@@ -303,4 +376,14 @@ async function patch<T>(path: string, body: unknown): Promise<T> {
     throw new Error(message);
   }
   return response.json();
+}
+
+function airfareObservationFormData(input: RegisterAirfareDailyAuthorityInput, evidenceFile: File) {
+  const formData = new FormData();
+  formData.append("observedAmount", input.observedAmount);
+  if (input.sourceReference) formData.append("sourceReference", input.sourceReference);
+  if (input.sourceUrl) formData.append("sourceUrl", input.sourceUrl);
+  if (input.reason) formData.append("reason", input.reason);
+  formData.append("file", evidenceFile);
+  return formData;
 }

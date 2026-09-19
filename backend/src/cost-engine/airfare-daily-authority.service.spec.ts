@@ -92,6 +92,42 @@ describe("AIRFARE daily authority writes", () => {
     expect(canActivate(UserRole.AGENT, "override")).toBe(false);
   });
 
+  it("requires prepared evidence before registration and exposes only a strict retry state when attachment fails", async () => {
+    const service = { registerAgentInitial: jest.fn().mockResolvedValue({ authorityId: "authority-a", revisionId: "revision-a", snapshotId: "snapshot-a", businessDate: "2026-01-01" }) };
+    const evidence = {
+      prepare: jest.fn().mockResolvedValue({ bytes: Buffer.from("pdf"), mimeType: "application/pdf", fileName: "quote.pdf" }),
+      uploadPreparedAgentInitial: jest.fn().mockRejectedValue(new Error("storage unavailable")),
+    };
+    const controller = new AirfareDailyAuthorityController(service as any, evidence as any);
+
+    await expect(controller.registerAgentInitial({ user: { id: "agent-a", fullName: "Agent A", tenantId: "tenant-a" } }, "component-a", observation, { buffer: Buffer.from("pdf"), mimetype: "application/pdf", originalname: "quote.pdf", size: 3 })).resolves.toMatchObject({ snapshotId: "snapshot-a", evidenceAttached: false });
+
+    expect(evidence.prepare).toHaveBeenCalledTimes(1);
+    expect(service.registerAgentInitial).toHaveBeenCalledWith("tenant-a", "component-a", observation, agent);
+    expect(evidence.uploadPreparedAgentInitial).toHaveBeenCalledWith("tenant-a", "snapshot-a", expect.any(Object), agent);
+  });
+
+  it("does not attach evidence if first-write-wins rejects the registration", async () => {
+    const service = { registerAgentInitial: jest.fn().mockRejectedValue(new ConflictException("AIRFARE_DAILY_AUTHORITY_ALREADY_REGISTERED")) };
+    const evidence = { prepare: jest.fn().mockResolvedValue({ bytes: Buffer.from("pdf"), mimeType: "application/pdf", fileName: "quote.pdf" }), uploadPreparedAgentInitial: jest.fn() };
+    const controller = new AirfareDailyAuthorityController(service as any, evidence as any);
+
+    await expect(controller.registerAgentInitial({ user: { id: "agent-a", fullName: "Agent A", tenantId: "tenant-a" } }, "component-a", observation, { buffer: Buffer.from("pdf"), mimetype: "application/pdf", originalname: "quote.pdf", size: 3 })).rejects.toBeInstanceOf(ConflictException);
+
+    expect(evidence.uploadPreparedAgentInitial).not.toHaveBeenCalled();
+  });
+
+  it("rejects a missing AGENT evidence file before the monetary authority write", async () => {
+    const service = { registerAgentInitial: jest.fn() };
+    const evidence = { prepare: jest.fn().mockRejectedValue(new BadRequestException("Invalid Cost Engine evidence file.")), uploadPreparedAgentInitial: jest.fn() };
+    const controller = new AirfareDailyAuthorityController(service as any, evidence as any);
+
+    await expect(controller.registerAgentInitial({ user: { id: "agent-a", fullName: "Agent A", tenantId: "tenant-a" } }, "component-a", observation, undefined)).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(service.registerAgentInitial).not.toHaveBeenCalled();
+    expect(evidence.uploadPreparedAgentInitial).not.toHaveBeenCalled();
+  });
+
   it("returns a single bounded AGENT task read model with AIRFARE route details and exact current cost", async () => {
     const context = serviceContext({ now: new Date("2026-01-02T03:00:00.000Z") });
     context.tx.$queryRaw.mockResolvedValueOnce([dailyTask({ total: 1 })]);
@@ -102,7 +138,7 @@ describe("AIRFARE daily authority writes", () => {
       costComponentId: "component-a", costingProjectId: "project-a", title: "SJO to MAD",
       sourceTravelType: "TRAVEL_PACKAGE", sourceTravelId: "package-a", travelName: "Spain",
       detailPayload: { flightType: "INTERNATIONAL", tripType: "ONE_WAY", origin: "SJO", destination: "MAD", departureDate: "2026-02-01", airline: "IB" },
-      currentSnapshot: { amount: "125.50000", currency: "USD" }, baseCurrency: "USD", taskStatus: "PENDING",
+      currentSnapshot: { amount: "125.50000", currency: "USD", actorName: "Admin A", capturedAt: new Date("2026-01-01T12:00:00.000Z"), sourceReference: "Quote 123", sourceUrl: "https://supplier.example/full-quote" }, baseCurrency: "USD", taskStatus: "PENDING",
     }] });
     expect(context.tx.$queryRaw).toHaveBeenCalledTimes(1);
     expect(context.tx.costComponent.findFirst).toBeUndefined();
@@ -113,6 +149,9 @@ describe("AIRFARE daily authority writes", () => {
     expect(taskSql).toContain('authority."id" IS NULL');
     expect(taskSql).toContain("'CANCELLED', 'COMPLETED'");
     expect(taskSql).toContain('DISTINCT ON ("costComponentId")');
+    expect(taskSql).toContain('snapshot."capturedByName" AS "currentActorName"');
+    expect(taskSql).toContain('snapshot."sourceUrl" AS "currentSourceUrl"');
+    expect(taskSql).not.toContain('"cost_evidence"');
   });
 
   it("keeps independent AIRFARE components from the same travel entity as separate daily tasks", async () => {
@@ -183,6 +222,7 @@ describe("AIRFARE daily authority writes", () => {
   it("guards daily task and history routes by their respective AGENT and ADMIN roles", () => {
     expect(Reflect.getMetadata(ROLES_KEY, AirfareDailyAuthorityController.prototype.listDailyTasks)).toEqual([UserRole.AGENT]);
     expect(Reflect.getMetadata(ROLES_KEY, AirfareDailyAuthorityController.prototype.getDailyStatus)).toEqual([UserRole.AGENT]);
+    expect(Reflect.getMetadata(ROLES_KEY, AirfareDailyAuthorityController.prototype.uploadAgentInitialEvidence)).toEqual([UserRole.AGENT]);
     expect(Reflect.getMetadata(ROLES_KEY, AirfareDailyAuthorityController.prototype.listComponentHistory)).toEqual([UserRole.ADMIN]);
     expect(Reflect.getMetadata(ROLES_KEY, AirfareDailyAuthorityController.prototype.listProjectHistory)).toEqual([UserRole.ADMIN]);
     expect(canActivate(UserRole.ADMIN, "listDailyTasks")).toBe(false);
@@ -217,7 +257,7 @@ function dailyTask(overrides: Record<string, unknown> = {}) {
     costComponentId: "component-a", costingProjectId: "project-a", sourceType: "TRAVEL_PACKAGE", sourceTravelId: "package-a",
     travelName: "Spain", startDate: new Date("2026-02-01T00:00:00.000Z"), endDate: new Date("2026-02-10T00:00:00.000Z"),
     title: "SJO to MAD", detailPayload: { flightType: "INTERNATIONAL", tripType: "ONE_WAY", origin: "SJO", destination: "MAD", departureDate: "2026-02-01", airline: "IB", hidden: "not-returned" },
-    currentAmount: "125.50000", currentCurrency: "USD", baseCurrency: "USD", total: 1, ...overrides,
+    currentAmount: "125.50000", currentCurrency: "USD", currentActorName: "Admin A", currentCapturedAt: new Date("2026-01-01T12:00:00.000Z"), currentSourceReference: "Quote 123", currentSourceUrl: "https://supplier.example/full-quote", baseCurrency: "USD", total: 1, ...overrides,
   };
 }
 

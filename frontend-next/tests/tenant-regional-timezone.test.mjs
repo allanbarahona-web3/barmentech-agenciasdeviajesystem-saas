@@ -61,6 +61,28 @@ test('the shared formatter renders UTC instants in the configured tenant timezon
   assert.equal(normalizeTenantTimeZone('invalid/timezone'), DEFAULT_TENANT_TIMEZONE);
 });
 
+test('tenant-aware instant formatting is independent from the browser/runtime timezone', () => {
+  const instant = '2026-09-20T03:43:00.000Z';
+  const previousTimeZone = process.env.TZ;
+
+  try {
+    process.env.TZ = 'Pacific/Auckland';
+    assert.equal(
+      formatBusinessDateTime(instant, 'America/Costa_Rica'),
+      '19/09/2026 21:43',
+    );
+    assert.equal(
+      formatBusinessDateTime(instant, 'America/Mexico_City'),
+      '19/09/2026 21:43',
+    );
+  } finally {
+    if (previousTimeZone === undefined) delete process.env.TZ;
+    else process.env.TZ = previousTimeZone;
+  }
+
+  assert.equal(formatBusinessDate('2026-11-20'), '20/11/2026');
+});
+
 test('critical operational timestamp consumers use the shared tenant formatter', () => {
   for (const source of [pendingPaymentsSource, customerProfileSource, paymentsViewSource]) {
     assert.match(source, /useTenantDateTimeFormatter/);

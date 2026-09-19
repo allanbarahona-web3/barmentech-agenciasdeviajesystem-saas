@@ -1,4 +1,6 @@
 import { NotFoundException } from "@nestjs/common";
+import { createHash } from "node:crypto";
+import * as sharp from "sharp";
 import { CostEngineRepository } from "./cost-engine.repository";
 import { CostEvidenceService } from "./cost-evidence.service";
 import { StorageService } from "../storage/storage.service";
@@ -44,6 +46,50 @@ describe("CostEvidenceService", () => {
     expect(c.repository.createEvidence).not.toHaveBeenCalled();
   });
 
+  it("allows an AGENT upload only for that actor's AGENT_INITIAL AIRFARE snapshot", async () => {
+    const c = context();
+
+    await c.service.uploadAgentInitial("tenant-a", "snapshot-a", evidenceFile(), { userId: "agent-a", name: "Agent A" });
+
+    expect(c.repository.assertAgentInitialSnapshotEvidenceAccess).toHaveBeenCalledWith("tenant-a", "snapshot-a", "agent-a");
+    expect(c.repository.assertSnapshotAccess).not.toHaveBeenCalled();
+    expect(c.repository.createEvidence).toHaveBeenCalledWith("tenant-a", "snapshot-a", expect.objectContaining({ uploadedByUserId: "agent-a" }));
+  });
+
+  it("rejects AGENT evidence for arbitrary, previous, or ADMIN-owned snapshots before storage", async () => {
+    const c = context();
+    c.repository.assertAgentInitialSnapshotEvidenceAccess.mockRejectedValue(new NotFoundException("AGENT AIRFARE evidence target not found."));
+
+    await expect(c.service.uploadAgentInitial("tenant-a", "snapshot-admin", evidenceFile(), { userId: "agent-a", name: "Agent A" })).rejects.toBeInstanceOf(NotFoundException);
+
+    expect(c.storage.putObjectIfAbsent).not.toHaveBeenCalled();
+    expect(c.repository.createEvidence).not.toHaveBeenCalled();
+  });
+
+  it("stores converted image metadata and a hash of the actual WebP bytes", async () => {
+    const c = context();
+    const png = await sharp({ create: { width: 2, height: 2, channels: 3, background: "#16a34a" } }).png().toBuffer();
+
+    await c.service.upload("tenant-a", "snapshot-a", { buffer: png, mimetype: "image/png", originalname: "cotizacion-hotel.png", size: png.length }, actor);
+
+    const stored = c.storage.putObjectIfAbsent.mock.calls[0][0];
+    const metadata = c.repository.createEvidence.mock.calls[0][2];
+    expect(stored).toMatchObject({ contentType: "image/webp" });
+    expect(stored.objectKey).toMatch(/cotizacion-hotel\.webp$/);
+    await expect(sharp(stored.body).metadata()).resolves.toMatchObject({ format: "webp" });
+    expect(metadata).toMatchObject({ originalFileName: "cotizacion-hotel.webp", mimeType: "image/webp", byteSize: stored.body.length, contentHash: createHash("sha256").update(stored.body).digest("hex") });
+  });
+
+  it("rejects corrupt images before storage or metadata persistence", async () => {
+    const c = context();
+    const invalid = { buffer: Buffer.from("not-an-image"), mimetype: "image/png", originalname: "bad.png", size: 12 };
+
+    await expect(c.service.upload("tenant-a", "snapshot-a", invalid, actor)).rejects.toThrow("Invalid image file.");
+
+    expect(c.storage.putObjectIfAbsent).not.toHaveBeenCalled();
+    expect(c.repository.createEvidence).not.toHaveBeenCalled();
+  });
+
   it("signs only an authorized evidence metadata record, never a caller-supplied object key", async () => {
     const c = context();
     c.repository.findEvidenceForAccess.mockResolvedValue({
@@ -61,6 +107,15 @@ describe("CostEvidenceService", () => {
     c.repository.findEvidenceForAccess.mockResolvedValue(null);
     await expect(c.service.getAccess("tenant-a", "snapshot-a", "evidence-other")).rejects.toBeInstanceOf(NotFoundException);
     expect(c.storage.generateSignedUrl).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["image/png", "image/jpeg", "application/pdf"])("keeps historical %s evidence readable through authorized signed access", async (mimeType) => {
+    const c = context();
+    c.repository.findEvidenceForAccess.mockResolvedValue({ id: "evidence-a", originalFileName: "historical-file", mimeType, byteSize: 14, objectKey: "cost-engine/evidence/tenant-a/snapshot-a/historical-file" });
+
+    await expect(c.service.getAccess("tenant-a", "snapshot-a", "evidence-a")).resolves.toMatchObject({ mimeType, url: "https://signed.example/evidence" });
+
+    expect(c.repository.findEvidenceForAccess).toHaveBeenCalledWith("tenant-a", "snapshot-a", "evidence-a");
   });
 
   it("lists snapshot evidence with bounded deterministic pagination", async () => {
@@ -104,6 +159,7 @@ function evidenceFile() {
 function context() {
   const repository = {
     assertSnapshotAccess: jest.fn().mockResolvedValue(undefined),
+    assertAgentInitialSnapshotEvidenceAccess: jest.fn().mockResolvedValue(undefined),
     createEvidence: jest.fn().mockResolvedValue({
       id: "evidence-a", costSnapshotId: "snapshot-a", originalFileName: "quote.pdf", mimeType: "application/pdf", byteSize: 14,
     }),

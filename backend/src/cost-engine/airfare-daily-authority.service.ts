@@ -26,6 +26,7 @@ type DailyTaskRow = {
   costComponentId: string; costingProjectId: string; sourceType: "TRAVEL_PACKAGE" | "INTERNAL_TRIP";
   sourceTravelId: string; travelName: string; startDate: Date; endDate: Date;
   title: string; detailPayload: unknown; currentAmount: string | null; currentCurrency: string | null;
+  currentActorName: string | null; currentCapturedAt: Date | null; currentSourceReference: string | null; currentSourceUrl: string | null;
   baseCurrency: string; total: bigint | number | string;
 };
 type DailyStatusRow = { pendingToday: bigint | number | string; registeredToday: bigint | number | string };
@@ -123,6 +124,7 @@ export class AirfareDailyAuthorityService {
           SELECT component."id" AS "costComponentId", component."costingProjectId", 'TRAVEL_PACKAGE'::text AS "sourceType",
                  travel."id" AS "sourceTravelId", travel."name" AS "travelName", travel."departureDate" AS "startDate", travel."returnDate" AS "endDate",
                  component."title", component."detailPayload", snapshot."amount"::text AS "currentAmount", snapshot."currency"::text AS "currentCurrency",
+                 snapshot."capturedByName" AS "currentActorName", snapshot."capturedAt" AS "currentCapturedAt", snapshot."sourceReference" AS "currentSourceReference", snapshot."sourceUrl" AS "currentSourceUrl",
                  project."baseCurrency"
           FROM "cost_components" component
           JOIN "cost_categories" category ON category."id" = component."costCategoryId" AND category."tenantId" = component."tenantId"
@@ -138,7 +140,8 @@ export class AirfareDailyAuthorityService {
           UNION ALL
           SELECT component."id", component."costingProjectId", 'INTERNAL_TRIP'::text,
                  travel."id", travel."name", travel."departureDate", travel."returnDate",
-                 component."title", component."detailPayload", snapshot."amount"::text, snapshot."currency"::text, project."baseCurrency"
+                 component."title", component."detailPayload", snapshot."amount"::text, snapshot."currency"::text,
+                 snapshot."capturedByName", snapshot."capturedAt", snapshot."sourceReference", snapshot."sourceUrl", project."baseCurrency"
           FROM "cost_components" component
           JOIN "cost_categories" category ON category."id" = component."costCategoryId" AND category."tenantId" = component."tenantId"
           JOIN "costing_projects" project ON project."id" = component."costingProjectId" AND project."tenantId" = component."tenantId"
@@ -346,7 +349,10 @@ function taskResponse(row: DailyTaskRow) {
     endDate: row.endDate,
     title: row.title,
     detailPayload: airfareRouteDetail(row.detailPayload),
-    currentSnapshot: row.currentAmount === null ? null : { amount: row.currentAmount, currency: row.currentCurrency },
+    currentSnapshot: row.currentAmount === null ? null : {
+      amount: row.currentAmount, currency: row.currentCurrency, actorName: row.currentActorName,
+      capturedAt: row.currentCapturedAt, sourceReference: row.currentSourceReference, sourceUrl: row.currentSourceUrl,
+    },
     baseCurrency: row.baseCurrency,
     taskStatus: "PENDING",
   };

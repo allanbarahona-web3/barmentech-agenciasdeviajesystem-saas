@@ -150,7 +150,8 @@ test("supports save actions and explicit evidence upload/access through snapshot
   assert.match(api, /snapshots\/\$\{encodeURIComponent\(costSnapshotId\)\}\/evidence/);
   assert.match(api, /formData\.append\("file", file\)/);
   assert.match(workspace, /uploadCostEvidence\(snapshotForEvidence\.id, evidenceFile\)/);
-  assert.match(workspace, /getCostEvidenceAccess\(initialSnapshot\.id, item\.id\)/);
+  assert.match(workspace, /getCostEvidenceAccess\(evidenceViewer\.snapshotId, attachment\.id\)/);
+  assert.doesNotMatch(workspace, /window\.open/);
 });
 
 test("adds the ADMIN cost workspace entry point to each travel source", () => {

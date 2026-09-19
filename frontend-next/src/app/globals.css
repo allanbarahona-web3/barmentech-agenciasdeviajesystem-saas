@@ -2222,6 +2222,7 @@ body:has(.vertical-nav) .app-shell {
   bottom: 0;
   background: rgba(0, 0, 0, 0.92);
   z-index: 9999;
+  pointer-events: auto;
   display: flex;
   align-items: center;
   justify-content: center;

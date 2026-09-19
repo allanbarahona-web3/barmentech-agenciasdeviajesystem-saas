@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { createHash, randomUUID } from "node:crypto";
 import { StorageService } from "../storage/storage.service";
+import { processUploadedDocument } from "../storage/uploaded-document-processor";
 import { CostActor, CostEngineRepository } from "./cost-engine.repository";
 
 const MAX_EVIDENCE_BYTES = 10 * 1024 * 1024;
@@ -13,6 +14,12 @@ export type CostEvidenceFile = {
   size: number;
 };
 
+export type PreparedCostEvidence = {
+  bytes: Buffer;
+  mimeType: string;
+  fileName: string;
+};
+
 @Injectable()
 export class CostEvidenceService {
   constructor(
@@ -23,15 +30,37 @@ export class CostEvidenceService {
   async upload(tenantId: string, costSnapshotId: string, file: CostEvidenceFile | undefined, actor: CostActor) {
     validateEvidenceFile(file);
     await this.repository.assertSnapshotAccess(tenantId, costSnapshotId);
-    const objectKey = evidenceObjectKey(tenantId, costSnapshotId, file);
-    await this.storage.putObjectIfAbsent({ objectKey, contentType: file.mimetype, body: file.buffer });
+    const prepared = await this.prepare(file);
+    return this.persist(tenantId, costSnapshotId, prepared, actor);
+  }
+
+  async prepare(file: CostEvidenceFile | undefined): Promise<PreparedCostEvidence> {
+    validateEvidenceFile(file);
+    const processed = await processUploadedDocument({ bytes: file.buffer, mimeType: file.mimetype, originalFileName: file.originalname });
+    return { bytes: processed.bytes, mimeType: processed.mimeType, fileName: processed.fileName };
+  }
+
+  async uploadAgentInitial(tenantId: string, costSnapshotId: string, file: CostEvidenceFile | undefined, actor: CostActor) {
+    validateEvidenceFile(file);
+    await this.repository.assertAgentInitialSnapshotEvidenceAccess(tenantId, costSnapshotId, actor.userId);
+    return this.persist(tenantId, costSnapshotId, await this.prepare(file), actor);
+  }
+
+  async uploadPreparedAgentInitial(tenantId: string, costSnapshotId: string, prepared: PreparedCostEvidence, actor: CostActor) {
+    await this.repository.assertAgentInitialSnapshotEvidenceAccess(tenantId, costSnapshotId, actor.userId);
+    return this.persist(tenantId, costSnapshotId, prepared, actor);
+  }
+
+  private async persist(tenantId: string, costSnapshotId: string, prepared: PreparedCostEvidence, actor: CostActor) {
+    const objectKey = evidenceObjectKey(tenantId, costSnapshotId, prepared.fileName);
+    await this.storage.putObjectIfAbsent({ objectKey, contentType: prepared.mimeType, body: prepared.bytes });
     try {
       return await this.repository.createEvidence(tenantId, costSnapshotId, {
         objectKey,
-        originalFileName: safeFileName(file.originalname),
-        mimeType: file.mimetype,
-        byteSize: file.size,
-        contentHash: createHash("sha256").update(file.buffer).digest("hex"),
+        originalFileName: safeFileName(prepared.fileName),
+        mimeType: prepared.mimeType,
+        byteSize: prepared.bytes.length,
+        contentHash: createHash("sha256").update(prepared.bytes).digest("hex"),
         uploadedByUserId: actor.userId,
         uploadedByName: actor.name,
       });
@@ -71,8 +100,8 @@ function validateEvidenceFile(file: CostEvidenceFile | undefined): asserts file 
   }
 }
 
-function evidenceObjectKey(tenantId: string, costSnapshotId: string, file: CostEvidenceFile): string {
-  return ["cost-engine", "evidence", safeSegment(tenantId), safeSegment(costSnapshotId), `${randomUUID()}-${safeFileName(file.originalname)}`].join("/");
+function evidenceObjectKey(tenantId: string, costSnapshotId: string, fileName: string): string {
+  return ["cost-engine", "evidence", safeSegment(tenantId), safeSegment(costSnapshotId), `${randomUUID()}-${safeFileName(fileName)}`].join("/");
 }
 
 function safeSegment(value: string): string {
