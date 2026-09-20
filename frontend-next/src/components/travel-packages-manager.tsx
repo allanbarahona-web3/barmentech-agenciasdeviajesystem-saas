@@ -21,13 +21,7 @@ import {
 } from "@/components/travel-fiscal-classification-field";
 import { withFiscalClassification } from "@/lib/travel-fiscal-classification";
 import { Button } from "@/components/ui/button";
-
-const formatPrice = (price: number | string | null | undefined, currency: string): string => {
-  if (price === null || price === undefined) return "Sin precio";
-  const numPrice = typeof price === 'string' ? parseFloat(price) : price;
-  if (isNaN(numPrice)) return "Sin precio";
-  return `${currency} ${numPrice.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}`;
-};
+import { formatTravelCommercialPrice } from "@/lib/travel-commercial-price";
 
 const getProgressColor = (percentage: number): string => {
   if (percentage >= 86) return "#ef4444"; // Rojo
@@ -230,7 +224,7 @@ export function TravelPackagesManager({ travelType, title, icon }: TravelPackage
     }
 
     const priceNum = packagePrice.trim() ? parseFloat(packagePrice) : undefined;
-    if (priceNum !== undefined && (isNaN(priceNum) || priceNum < 0)) {
+    if (editingPackage?.commercialPriceStatus === "LEGACY" && priceNum !== undefined && (isNaN(priceNum) || priceNum < 0)) {
       showWarningModal("Precio inválido", "El precio debe ser un número válido");
       return;
     }
@@ -248,9 +242,9 @@ export function TravelPackagesManager({ travelType, title, icon }: TravelPackage
         departureDate,
         returnDate,
         capacity: capacityNum,
-        packagePrice: priceNum,
+        ...(editingPackage?.commercialPriceStatus === "LEGACY" && { packagePrice: priceNum }),
         minReservation: minResNum,
-        priceCurrency,
+        ...(editingPackage?.commercialPriceStatus !== "PRICING_PUBLISHED" && { priceCurrency }),
         travelType,
         status,
       },
@@ -494,7 +488,7 @@ export function TravelPackagesManager({ travelType, title, icon }: TravelPackage
                       {/* Precio */}
                       <div style={{ marginBottom: 16 }}>
                         <span style={{ fontSize: 22, fontWeight: 700, color: "#111827" }}>
-                          {formatPrice(pkg.packagePrice, pkg.priceCurrency)}
+                          {formatTravelCommercialPrice(pkg.packagePrice, pkg.priceCurrency, pkg.commercialPriceStatus)}
                         </span>
                       </div>
 
@@ -712,7 +706,7 @@ export function TravelPackagesManager({ travelType, title, icon }: TravelPackage
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-                <div>
+                {editingPackage?.commercialPriceStatus === "LEGACY" ? <div>
                   <label style={{ display: "block", marginBottom: 6, fontSize: 14, fontWeight: 500 }}>
                     Precio del Paquete
                   </label>
@@ -731,7 +725,11 @@ export function TravelPackagesManager({ travelType, title, icon }: TravelPackage
                     min="0"
                     step="0.01"
                   />
-                </div>
+                </div> : <p style={{ margin: 0, color: "#6b7280", alignSelf: "end" }}>
+                  {editingPackage?.commercialPriceStatus === "PRICING_PUBLISHED"
+                    ? "El precio comercial está controlado por Pricing y no puede editarse aquí."
+                    : "Precio pendiente. Configura costos y publica una versión aprobada de Pricing."}
+                </p>}
 
                 <div>
                   <label style={{ display: "block", marginBottom: 6, fontSize: 14, fontWeight: 500 }}>
@@ -740,6 +738,7 @@ export function TravelPackagesManager({ travelType, title, icon }: TravelPackage
                   <select
                     value={priceCurrency}
                     onChange={(e) => setPriceCurrency(e.target.value as "USD" | "CRC")}
+                    disabled={Boolean(editingPackage?.hasCostingProject)}
                     style={{
                       width: "100%",
                       padding: "10px 12px",
@@ -751,6 +750,9 @@ export function TravelPackagesManager({ travelType, title, icon }: TravelPackage
                     <option value="USD">USD</option>
                     <option value="CRC">CRC</option>
                   </select>
+                  {editingPackage?.hasCostingProject ? <p style={{ margin: "6px 0 0", color: "#6b7280", fontSize: 12 }}>
+                    La moneda no puede cambiarse después de iniciar la composición de costos.
+                  </p> : null}
                 </div>
               </div>
 

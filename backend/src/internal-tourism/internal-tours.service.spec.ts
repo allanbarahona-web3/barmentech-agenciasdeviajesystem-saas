@@ -46,6 +46,12 @@ describe('InternalToursService', () => {
               findMany: jest.fn(),
               update: jest.fn(),
             },
+            internalTripPricingPublication: {
+              findFirst: jest.fn().mockResolvedValue(null),
+            },
+            internalTripCostingProjectLink: {
+              findFirst: jest.fn().mockResolvedValue(null),
+            },
           },
         },
         {
@@ -89,8 +95,32 @@ describe('InternalToursService', () => {
         mockTenantConfig,
       );
 
-      expect(result).toEqual(mockTrip);
+      expect(result).toEqual({
+        ...mockTrip,
+        hasCostingProject: false,
+        commercialPriceStatus: 'LEGACY',
+      });
       expect(prismaService.internalTrip.create).toHaveBeenCalled();
+    });
+
+    it('creates a pending-price trip without using zero as a commercial price', async () => {
+      jest.spyOn(prismaService.internalTrip, 'create').mockResolvedValue({
+        ...mockTrip,
+        price: null,
+      });
+
+      const result = await service.createTrip(
+        mockTenantId,
+        mockUserId,
+        mockUserName,
+        { ...createTripDto, price: undefined },
+        mockTenantConfig,
+      );
+
+      expect(prismaService.internalTrip.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ price: null, currency: 'CRC' }) }),
+      );
+      expect(result).toMatchObject({ price: null, commercialPriceStatus: 'PENDING' });
     });
 
     it('should throw error if departure date is in the past', async () => {
@@ -207,6 +237,8 @@ describe('InternalToursService', () => {
 
       expect(result).toEqual({
         ...mockTrip,
+        hasCostingProject: false,
+        commercialPriceStatus: 'LEGACY',
         totalBookings: 0,
         paidBookings: 0,
         pendingBookings: 0,
@@ -239,6 +271,7 @@ describe('InternalToursService', () => {
 
       expect(result).toBeDefined();
       expect(result.length).toBe(2);
+      expect(result[0]).toMatchObject({ commercialPriceStatus: 'LEGACY' });
       expect(prismaService.internalTrip.findMany).toHaveBeenCalled();
     });
 
@@ -268,6 +301,53 @@ describe('InternalToursService', () => {
         }),
       );
     });
+
+    it('keeps pending trips visible in the ADMIN management list', async () => {
+      jest.spyOn(prismaService.internalTrip, 'findMany').mockResolvedValue([
+        { ...mockTrip, price: null, bookings: [], pricingPublications: [], costingProjectLinks: [] },
+      ]);
+
+      await expect(service.listTrips(mockTenantId, {})).resolves.toMatchObject([
+        { commercialPriceStatus: 'PENDING' },
+      ]);
+      expect(prismaService.internalTrip.findMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: expect.not.objectContaining({ OR: expect.anything() }),
+      }));
+    });
+
+    it('uses the commercial eligibility predicate for LEGACY and PRICING_PUBLISHED trips', async () => {
+      jest.spyOn(prismaService.internalTrip, 'findMany').mockResolvedValue([
+        { ...mockTrip, bookings: [], pricingPublications: [], costingProjectLinks: [] },
+        {
+          ...mockTrip,
+          id: 'trip-456',
+          price: null,
+          bookings: [],
+          pricingPublications: [{ id: 'publication-1' }],
+          costingProjectLinks: [{ id: 'link-1' }],
+        },
+      ]);
+
+      const result = await service.listCommercialTrips(mockTenantId);
+
+      expect(result).toMatchObject([
+        { commercialPriceStatus: 'LEGACY' },
+        { commercialPriceStatus: 'PRICING_PUBLISHED' },
+      ]);
+      for (const trip of result) {
+        expect(trip).not.toHaveProperty('pricingPublications');
+        expect(trip).not.toHaveProperty('costingProjectLinks');
+        expect(trip).not.toHaveProperty('hasCostingProject');
+      }
+      expect(prismaService.internalTrip.findMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: expect.objectContaining({
+          OR: [
+            { price: { not: null } },
+            { pricingPublications: { some: {} } },
+          ],
+        }),
+      }));
+    });
   });
 
   describe('updateTrip', () => {
@@ -286,6 +366,70 @@ describe('InternalToursService', () => {
       const result = await service.updateTrip(mockTenantId, 'trip-123', updateDto);
 
       expect(result).toEqual(updatedTrip);
+    });
+
+    it('does not permit an ordinary edit to overwrite a Pricing-published price', async () => {
+      jest.spyOn(prismaService.internalTrip, 'findFirst').mockResolvedValue(mockTrip);
+      jest.spyOn(prismaService.internalTourBooking, 'findFirst').mockResolvedValue(null);
+      (prismaService as any).internalTripPricingPublication.findFirst.mockResolvedValue({ id: 'publication-1' });
+
+      await expect(
+        service.updateTrip(mockTenantId, 'trip-123', { price: 100000 }),
+      ).rejects.toThrow('controlado por Pricing');
+      expect(prismaService.internalTrip.update).not.toHaveBeenCalled();
+    });
+
+    it('allows a currency change before a CostingProject exists', async () => {
+      jest.spyOn(prismaService.internalTrip, 'findFirst').mockResolvedValue(mockTrip);
+      jest.spyOn(prismaService.internalTourBooking, 'findFirst').mockResolvedValue(null);
+      jest.spyOn(prismaService.internalTrip, 'update').mockResolvedValue(mockTrip);
+
+      await service.updateTrip(mockTenantId, 'trip-123', { currency: 'USD' });
+
+      expect(prismaService.internalTrip.update).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ currency: 'USD' }),
+      }));
+    });
+
+    it('allows an unchanged currency after a CostingProject exists', async () => {
+      jest.spyOn(prismaService.internalTrip, 'findFirst').mockResolvedValue(mockTrip);
+      jest.spyOn(prismaService.internalTourBooking, 'findFirst').mockResolvedValue(null);
+      jest.spyOn(prismaService.internalTrip, 'update').mockResolvedValue(mockTrip);
+      (prismaService as any).internalTripCostingProjectLink.findFirst.mockResolvedValue({ id: 'link-1' });
+
+      await service.updateTrip(mockTenantId, 'trip-123', { currency: mockTrip.currency });
+
+      expect(prismaService.internalTrip.update).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ currency: mockTrip.currency }),
+      }));
+    });
+
+    it('rejects a different currency after a CostingProject exists', async () => {
+      jest.spyOn(prismaService.internalTrip, 'findFirst').mockResolvedValue(mockTrip);
+      jest.spyOn(prismaService.internalTourBooking, 'findFirst').mockResolvedValue(null);
+      (prismaService as any).internalTripCostingProjectLink.findFirst.mockResolvedValue({ id: 'link-1' });
+
+      await expect(
+        service.updateTrip(mockTenantId, 'trip-123', { currency: 'USD' }),
+      ).rejects.toThrow('La moneda no puede cambiarse después de iniciar la composición de costos.');
+      expect((prismaService as any).internalTripCostingProjectLink.findFirst).toHaveBeenCalledWith({
+        where: { tenantId: mockTenantId, internalTripId: 'trip-123' },
+        select: { id: true },
+      });
+      expect(prismaService.internalTrip.update).not.toHaveBeenCalled();
+    });
+
+    it('keeps unrelated trip fields editable after a CostingProject exists', async () => {
+      jest.spyOn(prismaService.internalTrip, 'findFirst').mockResolvedValue(mockTrip);
+      jest.spyOn(prismaService.internalTourBooking, 'findFirst').mockResolvedValue(null);
+      jest.spyOn(prismaService.internalTrip, 'update').mockResolvedValue(mockTrip);
+      (prismaService as any).internalTripCostingProjectLink.findFirst.mockResolvedValue({ id: 'link-1' });
+
+      await service.updateTrip(mockTenantId, 'trip-123', { name: 'Nombre actualizado' });
+
+      expect(prismaService.internalTrip.update).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ name: 'Nombre actualizado' }),
+      }));
     });
 
     it('should throw error if trying to modify trip dates with active bookings', async () => {

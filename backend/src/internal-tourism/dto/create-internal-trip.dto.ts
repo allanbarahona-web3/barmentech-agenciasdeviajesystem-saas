@@ -35,10 +35,12 @@ export class CreateInternalTripDto {
   @IsNotEmpty()
   capacity!: number; // 20
 
+  // Legacy/API compatibility only. New travels receive their commercial price
+  // through explicit Pricing publication, so this is intentionally optional.
   @IsNumber()
   @IsPositive()
-  @IsNotEmpty()
-  price!: number; // 45000
+  @IsOptional()
+  price?: number; // 45000
 
   @IsEnum(TransportType)
   @IsNotEmpty()

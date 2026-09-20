@@ -331,8 +331,10 @@ test("keeps cost entry before saved components and confirms generic component de
   assert.match(workspace, /Desactivar componente/);
   assert.match(workspace, /Sus costos, comprobantes y auditoría se conservarán/);
   assert.match(workspace, /onArchive=\{\(\) => setArchiveCandidate\(component\)\}/);
-  assert.match(workspace, /<Button type="button" size="sm" aria-current="page">Costos<\/Button>/);
-  assert.match(workspace, /Pricing · Próximamente/);
+  assert.match(workspace, /useState<"COSTS" \| "PRICING">\("COSTS"\)/);
+  assert.match(workspace, /onClick=\{\(\) => setActiveWorkspace\("COSTS"\)\}>Costos/);
+  assert.match(workspace, /onClick=\{\(\) => setActiveWorkspace\("PRICING"\)\}>Pricing/);
+  assert.match(workspace, /activeWorkspace === "PRICING" \? <PricingWorkspace/);
   assert.match(workspace, />Historial de costos<\/Button>/);
   assert.doesNotMatch(workspace, /additional-services|Additional Services|pricing-engine/i);
 });
@@ -351,4 +353,32 @@ test("adds the ADMIN cost workspace entry point to each travel source", () => {
   assert.match(travelPackages, /\/admin\/cost-engine\/travel-package\/\$\{encodeURIComponent\(pkg\.id\)\}/);
   assert.match(internalTrips, /canComposeCosts \? \(/);
   assert.match(internalTrips, /\/admin\/cost-engine\/internal-trip\/\$\{encodeURIComponent\(trip\.id\)\}/);
+});
+
+test("keeps TravelPackage operational dates independent from commercial-price status", () => {
+  const datesSection = travelPackages.slice(
+    travelPackages.indexOf('Fecha de Salida *'),
+    travelPackages.indexOf('Capacidad (personas) *'),
+  );
+  assert.match(datesSection, /Fecha de Salida \*/);
+  assert.match(datesSection, /value=\{departureDate\}/);
+  assert.match(datesSection, /onChange=\{\(e\) => setDepartureDate\(e\.target\.value\)\}/);
+  assert.match(datesSection, /Fecha de Regreso \*/);
+  assert.match(datesSection, /value=\{returnDate\}/);
+  assert.doesNotMatch(datesSection, /commercialPriceStatus/);
+  assert.match(travelPackages, /if \(!name\.trim\(\) \|\| !destination\.trim\(\) \|\| !departureDate \|\| !returnDate \|\| !capacity\)/);
+});
+
+test("keeps manual TravelPackage pricing only for LEGACY records", () => {
+  const priceSection = travelPackages.slice(
+    travelPackages.indexOf('editingPackage?.commercialPriceStatus === "LEGACY" ? <div>'),
+    travelPackages.indexOf('Monto Mínimo de Reserva'),
+  );
+  assert.match(priceSection, /editingPackage\?\.commercialPriceStatus === "LEGACY"/);
+  assert.match(priceSection, /Precio del Paquete/);
+  assert.match(priceSection, /value=\{packagePrice\}/);
+  assert.match(priceSection, /Precio pendiente\. Configura costos y publica una versión aprobada de Pricing\./);
+  assert.match(priceSection, /El precio comercial está controlado por Pricing y no puede editarse aquí\./);
+  assert.match(travelPackages, /editingPackage\?\.commercialPriceStatus === "LEGACY" && \{ packagePrice: priceNum \}/);
+  assert.match(travelPackages, /editingPackage\?\.commercialPriceStatus !== "PRICING_PUBLISHED" && \{ priceCurrency \}/);
 });

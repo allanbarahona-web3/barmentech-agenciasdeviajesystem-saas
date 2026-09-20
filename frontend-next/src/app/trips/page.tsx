@@ -9,13 +9,7 @@ import { getAvailableTravelPackages, type TravelPackage } from "@/lib/travel-pac
 import { ConfirmModal } from "@/components/confirm-modal";
 import { PageLoader } from "@/components/loading-spinner";
 import { formatBusinessDate } from "@/shared/regional";
-
-const formatPrice = (price: number | string | null | undefined, currency: string): string => {
-  if (price === null || price === undefined) return "Sin precio";
-  const numPrice = typeof price === 'string' ? parseFloat(price) : price;
-  if (isNaN(numPrice)) return "Sin precio";
-  return `${currency} ${numPrice.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}`;
-};
+import { formatTravelCommercialPrice } from "@/lib/travel-commercial-price";
 
 const getProgressColor = (percentage: number): string => {
   if (percentage >= 86) return "#ef4444"; // Rojo
@@ -120,6 +114,10 @@ function TripsPageContent() {
   const handleSelectTrip = (pkg: TravelPackage) => {
     // Solo permitir click si el viaje está OPEN
     if (pkg.status !== "OPEN") return;
+    if (pkg.commercialPriceStatus === "PENDING") {
+      showWarningModal("Precio pendiente", "Este viaje aún no tiene un precio comercial publicado.");
+      return;
+    }
     
     // Redirigir al formulario de contratos con el travelPackageId
     router.push(`/contracts?travelPackageId=${pkg.id}`);
@@ -273,7 +271,7 @@ function TripsPageContent() {
                   <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
                     <span style={{ fontSize: "1rem" }}>💰</span>
                     <span style={{ color: "#111827", fontSize: "1rem", fontWeight: 600 }}>
-                      {formatPrice(pkg.packagePrice, pkg.priceCurrency)}
+                      {formatTravelCommercialPrice(pkg.packagePrice, pkg.priceCurrency, pkg.commercialPriceStatus)}
                     </span>
                   </div>
 
@@ -282,7 +280,7 @@ function TripsPageContent() {
                     <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 16 }}>
                       <span style={{ fontSize: "1rem" }}>🏷️</span>
                       <span style={{ color: "#059669", fontSize: "0.9rem", fontWeight: 600 }}>
-                        Reserva: {formatPrice(pkg.minReservation, pkg.priceCurrency)}
+                        Reserva: {formatTravelCommercialPrice(pkg.minReservation, pkg.priceCurrency)}
                       </span>
                     </div>
                   )}

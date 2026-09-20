@@ -13,6 +13,8 @@ export type TravelPackage = {
   status: "OPEN" | "CLOSED" | "CANCELLED" | "COMPLETED";
   travelType: "INTERNATIONAL" | "MIGRATION";
   packagePrice: number | string | null; // Decimal comes as string from API
+  commercialPriceStatus: "PENDING" | "LEGACY" | "PRICING_PUBLISHED";
+  hasCostingProject?: boolean;
   minReservation?: number | string | null; // Monto de reserva mínima
   fiscalClassificationCatalogId?: string | null;
   priceCurrency: string;

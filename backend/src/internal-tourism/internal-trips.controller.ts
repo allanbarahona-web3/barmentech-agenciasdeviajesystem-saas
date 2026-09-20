@@ -66,6 +66,27 @@ export class InternalTripsController {
   }
 
   /**
+   * GET /internal-trips/available
+   * Lista viajes comercialmente elegibles para agentes y operaciones.
+   */
+  @Get('available')
+  @Roles('AGENT', 'OPERACIONES')
+  async listCommercialTrips(
+    @Tenant() tenant: ResolvedTenant,
+    @Query('status') status?: string,
+    @Query('destination') destination?: string,
+    @Query('skip') skip?: string,
+    @Query('take') take?: string,
+  ) {
+    return this.toursService.listCommercialTrips(tenant.id, {
+      status,
+      destination,
+      skip: skip ? parseInt(skip, 10) : 0,
+      take: take ? parseInt(take, 10) : 50,
+    });
+  }
+
+  /**
    * GET /internal-trips/:id
    * Obtener detalle de viaje
    */

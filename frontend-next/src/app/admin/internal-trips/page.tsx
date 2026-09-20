@@ -8,6 +8,7 @@ import { getStoredToken, getStoredSession } from '@/lib/auth-api';
 import { resolveApiBase } from '@/lib/runtime-config';
 import { InternalTripsList } from './components/internal-trips-list';
 import { PageLoader } from '@/components/loading-spinner';
+import type { CommercialPriceStatus } from '@/lib/travel-commercial-price';
 
 interface InternalTrip {
   id: string;
@@ -18,7 +19,9 @@ interface InternalTrip {
   returnDate: string;
   capacity: number;
   occupiedSlots: number;
-  price: number;
+  price: number | string | null;
+  commercialPriceStatus: CommercialPriceStatus;
+  hasCostingProject: boolean;
   currency: string;
   status: string;
   createdAt: string;

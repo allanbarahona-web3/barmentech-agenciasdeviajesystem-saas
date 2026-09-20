@@ -32,6 +32,7 @@ describe('InternalTripsController', () => {
             createTrip: jest.fn(),
             getTrip: jest.fn(),
             listTrips: jest.fn(),
+            listCommercialTrips: jest.fn(),
             updateTrip: jest.fn(),
             cancelTrip: jest.fn(),
             getTripStats: jest.fn(),
@@ -110,6 +111,19 @@ describe('InternalTripsController', () => {
           status: 'OPEN',
         }),
       );
+    });
+  });
+
+  describe('GET /internal-trips/available - Commercial Trips', () => {
+    it('uses the commercial-only service read for agent selectors', async () => {
+      const trips = [mockTrip];
+      jest.spyOn(service, 'listCommercialTrips').mockResolvedValue(trips);
+
+      await expect(controller.listCommercialTrips(mockTenant, 'OPEN')).resolves.toEqual(trips);
+
+      expect(service.listCommercialTrips).toHaveBeenCalledWith(mockTenant.id, {
+        status: 'OPEN', destination: undefined, skip: 0, take: 50,
+      });
     });
   });
 

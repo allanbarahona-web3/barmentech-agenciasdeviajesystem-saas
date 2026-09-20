@@ -35,6 +35,8 @@ import { TerritorialCatalogModule } from "./territorial-catalogs/territorial-cat
 import { FinanceModule } from "./finance/finance.module";
 import { ReportingApplicationModule } from "./reporting/reporting-application.module";
 import { CostEngineModule } from "./cost-engine/cost-engine.module";
+import { PricingModule } from "./pricing/pricing.module";
+import { TravelPricingModule } from "./travel-pricing/travel-pricing.module";
 
 @Module({
   controllers: [AppController],
@@ -79,6 +81,8 @@ import { CostEngineModule } from "./cost-engine/cost-engine.module";
     FinanceModule,
     ReportingApplicationModule,
     CostEngineModule,
+    PricingModule,
+    TravelPricingModule,
   ],
   providers: [
     {

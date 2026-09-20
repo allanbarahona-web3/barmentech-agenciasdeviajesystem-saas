@@ -86,7 +86,7 @@ describe('TravelPackagesService', () => {
       fiscalClassifications as any,
     );
 
-    await service.create(
+    const result = await service.create(
       {
         name: 'Europa',
         destination: 'España',
@@ -104,6 +104,7 @@ describe('TravelPackagesService', () => {
         data: expect.objectContaining({ fiscalClassificationCatalogId: null }),
       }),
     );
+    expect(result).toMatchObject({ commercialPriceStatus: 'PENDING' });
   });
 
   it('validates and persists the TravelPackage classification for migration travel', async () => {
@@ -230,6 +231,106 @@ describe('TravelPackagesService', () => {
     );
   });
 
+  it('does not permit an ordinary edit to overwrite a Pricing-published price', async () => {
+    const update = jest.fn();
+    const prisma = {
+      travelPackage: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'travel-1', tenantId: 'tenant-1', status: 'OPEN', occupiedSlots: 0, capacity: 20, pricingPublications: [],
+        }),
+        update,
+      },
+      travelPackagePricingPublication: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'publication-1' }),
+      },
+    };
+    const service = new TravelPackagesService(prisma as any, {} as any, fiscalClassifications as any);
+
+    await expect(service.update('travel-1', { packagePrice: 1000 }, 'tenant-1')).rejects.toThrow('controlado por Pricing');
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  describe('currency consistency with CostingProject', () => {
+    const travelPackage = {
+      id: 'travel-1',
+      tenantId: 'tenant-1',
+      status: 'OPEN',
+      occupiedSlots: 0,
+      capacity: 20,
+      priceCurrency: 'USD',
+      pricingPublications: [],
+      costingProjectLinks: [],
+    };
+
+    const createService = (costingProjectLink: { id: string } | null = null) => {
+      const update = jest.fn().mockResolvedValue({ id: 'travel-1' });
+      const prisma = {
+        travelPackage: {
+          findUnique: jest.fn().mockResolvedValue(travelPackage),
+          update,
+        },
+        travelPackageCostingProjectLink: {
+          findFirst: jest.fn().mockResolvedValue(costingProjectLink),
+        },
+        travelPackagePricingPublication: {
+          findFirst: jest.fn().mockResolvedValue(null),
+        },
+      };
+      return {
+        service: new TravelPackagesService(
+          prisma as any,
+          {} as any,
+          fiscalClassifications as any,
+        ),
+        prisma,
+        update,
+      };
+    };
+
+    it('allows a currency change before a CostingProject exists', async () => {
+      const { service, update } = createService(null);
+
+      await service.update('travel-1', { priceCurrency: 'CRC' }, 'tenant-1');
+
+      expect(update).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ priceCurrency: 'CRC' }),
+      }));
+    });
+
+    it('allows an unchanged currency after a CostingProject exists', async () => {
+      const { service, update } = createService({ id: 'link-1' });
+
+      await service.update('travel-1', { priceCurrency: 'USD' }, 'tenant-1');
+
+      expect(update).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ priceCurrency: 'USD' }),
+      }));
+    });
+
+    it('rejects a different currency after a CostingProject exists', async () => {
+      const { service, prisma, update } = createService({ id: 'link-1' });
+
+      await expect(
+        service.update('travel-1', { priceCurrency: 'CRC' }, 'tenant-1'),
+      ).rejects.toThrow('La moneda no puede cambiarse después de iniciar la composición de costos.');
+      expect(prisma.travelPackageCostingProjectLink.findFirst).toHaveBeenCalledWith({
+        where: { tenantId: 'tenant-1', travelPackageId: 'travel-1' },
+        select: { id: true },
+      });
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it('keeps unrelated travel fields editable after a CostingProject exists', async () => {
+      const { service, update } = createService({ id: 'link-1' });
+
+      await service.update('travel-1', { name: 'Nuevo nombre' }, 'tenant-1');
+
+      expect(update).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ name: 'Nuevo nombre' }),
+      }));
+    });
+  });
+
   it('does not query fiscal profiles per row in normal travel lists', async () => {
     const findMany = jest.fn().mockResolvedValue([]);
     const service = new TravelPackagesService(
@@ -242,5 +343,79 @@ describe('TravelPackagesService', () => {
 
     expect(findMany).toHaveBeenCalledTimes(1);
     expect(fiscalClassifications.validate).not.toHaveBeenCalled();
+  });
+
+  it('keeps a pre-Pricing manual package price readable as legacy', async () => {
+    const findMany = jest.fn().mockResolvedValue([
+      { id: 'travel-1', packagePrice: '1250.00000', priceCurrency: 'USD', pricingPublications: [] },
+    ]);
+    const service = new TravelPackagesService(
+      { travelPackage: { findMany } } as any,
+      {} as any,
+      fiscalClassifications as any,
+    );
+
+    await expect(service.findAvailable('tenant-1')).resolves.toMatchObject([
+      { packagePrice: '1250.00000', commercialPriceStatus: 'LEGACY' },
+    ]);
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        OR: [
+          { packagePrice: { not: null } },
+          { pricingPublications: { some: {} } },
+        ],
+      }),
+    }));
+  });
+
+  it('keeps Pricing-published packages commercially available without leaking relation internals', async () => {
+    const findMany = jest.fn().mockResolvedValue([
+      {
+        id: 'travel-1',
+        packagePrice: null,
+        priceCurrency: 'USD',
+        pricingPublications: [{ id: 'publication-1' }],
+        costingProjectLinks: [{ id: 'link-1' }],
+      },
+    ]);
+    const service = new TravelPackagesService(
+      { travelPackage: { findMany } } as any,
+      {} as any,
+      fiscalClassifications as any,
+    );
+
+    await expect(service.findAvailable('tenant-1')).resolves.toEqual([
+      expect.objectContaining({ commercialPriceStatus: 'PRICING_PUBLISHED' }),
+    ]);
+    const result = await service.findAvailable('tenant-1');
+    expect(result[0]).not.toHaveProperty('pricingPublications');
+    expect(result[0]).not.toHaveProperty('costingProjectLinks');
+    expect(result[0]).not.toHaveProperty('hasCostingProject');
+  });
+
+  it('keeps pending packages visible in the ADMIN management list', async () => {
+    const findMany = jest.fn().mockResolvedValue([
+      {
+        id: 'travel-1',
+        packagePrice: null,
+        priceCurrency: 'USD',
+        pricingPublications: [],
+        costingProjectLinks: [],
+        returnDate: new Date('2030-01-02T00:00:00.000Z'),
+        status: 'OPEN',
+      },
+    ]);
+    const service = new TravelPackagesService(
+      { travelPackage: { findMany, update: jest.fn() } } as any,
+      {} as any,
+      fiscalClassifications as any,
+    );
+
+    await expect(service.findAll('tenant-1')).resolves.toMatchObject([
+      { commercialPriceStatus: 'PENDING' },
+    ]);
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.not.objectContaining({ OR: expect.anything() }),
+    }));
   });
 });

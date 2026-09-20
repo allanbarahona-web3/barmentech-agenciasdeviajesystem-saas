@@ -115,6 +115,12 @@ export class InternalBookingsService {
       throw new BadRequestException('El viaje no está disponible para reservas');
     }
 
+    if (trip.price === null) {
+      throw new BadRequestException(
+        'Este viaje aún no tiene un precio comercial publicado.',
+      );
+    }
+
     // Validar todos los participantes en una sola consulta
     const participants = await this.prisma.client.findMany({
       where: {

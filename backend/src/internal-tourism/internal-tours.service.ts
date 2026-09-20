@@ -71,7 +71,7 @@ export class InternalToursService {
       throw new BadRequestException('La capacidad debe ser mayor a 0');
     }
 
-    if (dto.price <= 0) {
+    if (dto.price !== undefined && dto.price <= 0) {
       throw new BadRequestException('El precio debe ser mayor a 0');
     }
 
@@ -103,7 +103,7 @@ export class InternalToursService {
         departureTime: dto.departureTime || null,
         returnTime: dto.returnTime || null,
         capacity: dto.capacity,
-        price: new Decimal(String(dto.price)),
+        price: dto.price === undefined ? null : new Decimal(String(dto.price)),
         currency,
         minReservation: dto.minReservation ? new Decimal(String(dto.minReservation)) : null,
         transportType: dto.transportType,
@@ -116,7 +116,7 @@ export class InternalToursService {
       },
     });
 
-    return trip;
+    return internalTripCommercialPriceRead(trip, false);
   }
 
   /**
@@ -129,6 +129,7 @@ export class InternalToursService {
       destination?: string;
       skip?: number;
       take?: number;
+      commercialEligible?: boolean;
     },
   ) {
     const where: any = {
@@ -146,11 +147,26 @@ export class InternalToursService {
       };
     }
 
-    const trips = await this.prisma.internalTrip.findMany({
+    if (options?.commercialEligible) {
+      where.OR = [
+        { price: { not: null } },
+        { pricingPublications: { some: {} } },
+      ];
+    }
+
+    const trips = await (this.prisma.internalTrip as any).findMany({
       where,
       include: {
         bookings: {
           where: { status: 'PAID' }, // Solo contar pagadas
+        },
+        costingProjectLinks: {
+          select: { id: true },
+          take: 1,
+        },
+        pricingPublications: {
+          select: { id: true },
+          take: 1,
         },
       },
       skip: options?.skip || 0,
@@ -158,18 +174,37 @@ export class InternalToursService {
       orderBy: { departureDate: 'asc' },
     });
 
-    return trips.map((trip) => ({
-      ...trip,
+    return trips.map((trip: any) => ({
+      ...internalTripCommercialPriceRead(trip, hasPricingPublication(trip)),
       availableSlots: trip.capacity - trip.bookings.length,
       isFull: trip.bookings.length >= trip.capacity,
     }));
+  }
+
+  async listCommercialTrips(
+    tenantId: string,
+    options?: {
+      status?: string;
+      destination?: string;
+      skip?: number;
+      take?: number;
+    },
+  ) {
+    const trips = await this.listTrips(tenantId, {
+      ...options,
+      commercialEligible: true,
+    });
+    return trips.map((trip: any) => {
+      const { hasCostingProject: _hasCostingProject, ...commercialTrip } = trip;
+      return commercialTrip;
+    });
   }
 
   /**
    * Obtener detalles de un viaje
    */
   async getTrip(tenantId: string, tripId: string) {
-    const trip = await this.prisma.internalTrip.findFirst({
+    const trip = await (this.prisma.internalTrip as any).findFirst({
       where: {
         id: tripId,
         tenantId,
@@ -181,6 +216,14 @@ export class InternalToursService {
             invoice: true,
           },
         },
+        costingProjectLinks: {
+          select: { id: true },
+          take: 1,
+        },
+        pricingPublications: {
+          select: { id: true },
+          take: 1,
+        },
       },
     });
 
@@ -189,10 +232,10 @@ export class InternalToursService {
     }
 
     return {
-      ...trip,
+      ...internalTripCommercialPriceRead(trip, hasPricingPublication(trip)),
       totalBookings: trip.bookings.length,
-      paidBookings: trip.bookings.filter((b) => b.status === 'PAID').length,
-      pendingBookings: trip.bookings.filter((b) => b.status === 'PENDING').length,
+      paidBookings: trip.bookings.filter((b: any) => b.status === 'PAID').length,
+      pendingBookings: trip.bookings.filter((b: any) => b.status === 'PENDING').length,
     };
   }
 
@@ -228,8 +271,32 @@ export class InternalToursService {
       where: { internalTripId: tripId },
     });
 
-    if (hasBookings && (dto.departureDate || dto.returnDate || dto.capacity || dto.price)) {
+    if (hasBookings && (dto.departureDate || dto.returnDate || dto.capacity || dto.price !== undefined)) {
       throw new BadRequestException('No se puede modificar un viaje con reservas existentes');
+    }
+
+    if (dto.currency !== undefined && dto.currency !== trip.currency) {
+      const costingProjectLink = await (this.prisma as any).internalTripCostingProjectLink.findFirst({
+        where: { tenantId, internalTripId: tripId },
+        select: { id: true },
+      });
+      if (costingProjectLink) {
+        throw new BadRequestException(
+          'La moneda no puede cambiarse después de iniciar la composición de costos.',
+        );
+      }
+    }
+
+    if (dto.price !== undefined) {
+      const pricingPublication = await (this.prisma as any).internalTripPricingPublication.findFirst({
+        where: { tenantId, internalTripId: tripId },
+        select: { id: true },
+      });
+      if (pricingPublication) {
+        throw new BadRequestException(
+          'El precio comercial de este viaje está controlado por Pricing. Publica una nueva versión aprobada para cambiarlo.',
+        );
+      }
     }
 
     const updateData: any = {};
@@ -243,6 +310,7 @@ export class InternalToursService {
     if (dto.returnTime) updateData.returnTime = dto.returnTime;
     if (dto.capacity) updateData.capacity = dto.capacity;
     if (dto.price) updateData.price = new Decimal(String(dto.price));
+    if (dto.currency !== undefined) updateData.currency = dto.currency;
     if (dto.transportType) updateData.transportType = dto.transportType;
     if (dto.itinerary) updateData.itinerary = dto.itinerary;
     if (dto.status) updateData.status = dto.status;
@@ -423,4 +491,29 @@ export class InternalToursService {
       data: { occupiedSlots: { decrement: count } },
     });
   }
+}
+
+function hasPricingPublication(trip: { pricingPublications?: unknown[] }): boolean {
+  return Array.isArray(trip.pricingPublications) && trip.pricingPublications.length > 0;
+}
+
+function hasCostingProject(trip: { costingProjectLinks?: unknown[] }): boolean {
+  return Array.isArray(trip.costingProjectLinks) && trip.costingProjectLinks.length > 0;
+}
+
+function internalTripCommercialPriceRead(trip: any, pricingPublished: boolean) {
+  const {
+    pricingPublications: _pricingPublications,
+    costingProjectLinks: _costingProjectLinks,
+    ...travel
+  } = trip;
+  return {
+    ...travel,
+    hasCostingProject: hasCostingProject(trip),
+    commercialPriceStatus: pricingPublished
+      ? 'PRICING_PUBLISHED'
+      : travel.price === null || travel.price === undefined
+        ? 'PENDING'
+        : 'LEGACY',
+  };
 }

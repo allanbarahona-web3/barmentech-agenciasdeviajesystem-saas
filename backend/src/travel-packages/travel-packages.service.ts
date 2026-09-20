@@ -210,14 +210,24 @@ export class TravelPackagesService {
       `Created travel package: ${travelPackage.packageCode} - ${travelPackage.name}`,
     );
 
-    return travelPackage;
+    return commercialPriceRead(travelPackage, false);
   }
 
   async findAll(tenantId: string, travelType?: string) {
-    const packages = await this.prisma.travelPackage.findMany({
+    const packages = await (this.prisma.travelPackage as any).findMany({
       where: { 
         tenantId, // 🔒 SEGURIDAD: Filtrar por tenant
         ...(travelType && { travelType: travelType as TravelPackageType }), // Filtrar por travelType si se proporciona
+      },
+      include: {
+        costingProjectLinks: {
+          select: { id: true },
+          take: 1,
+        },
+        pricingPublications: {
+          select: { id: true },
+          take: 1,
+        },
       },
       orderBy: { departureDate: 'asc' },
     });
@@ -236,23 +246,51 @@ export class TravelPackagesService {
       }
     }
 
-    return packages;
+    return packages.map((travelPackage: any) =>
+      commercialPriceRead(travelPackage, hasPricingPublication(travelPackage)),
+    );
   }
 
   async findAvailable(tenantId: string, travelType?: string) {
-    return await this.prisma.travelPackage.findMany({
+    const packages = await (this.prisma.travelPackage as any).findMany({
       where: {
         tenantId, // 🔒 SEGURIDAD: Filtrar por tenant
         status: 'OPEN',
+        OR: [
+          { packagePrice: { not: null } },
+          { pricingPublications: { some: {} } },
+        ],
         ...(travelType && { travelType: travelType as TravelPackageType }), // Filtrar por travelType si se proporciona
+      },
+      include: {
+        pricingPublications: {
+          select: { id: true },
+          take: 1,
+        },
       },
       orderBy: { departureDate: 'asc' },
     });
+    return packages.map((travelPackage: any) =>
+      commercialTravelOptionRead(
+        travelPackage,
+        hasPricingPublication(travelPackage),
+      ),
+    );
   }
 
   async findById(id: string, tenantId: string) {
-    const travelPackage = await this.prisma.travelPackage.findUnique({
+    const travelPackage = await (this.prisma.travelPackage as any).findUnique({
       where: { id },
+      include: {
+        costingProjectLinks: {
+          select: { id: true },
+          take: 1,
+        },
+        pricingPublications: {
+          select: { id: true },
+          take: 1,
+        },
+      },
     });
 
     if (!travelPackage) {
@@ -264,12 +302,22 @@ export class TravelPackagesService {
       throw new NotFoundException(`Travel package ${id} not found`);
     }
 
-    return travelPackage;
+    return commercialPriceRead(travelPackage, hasPricingPublication(travelPackage));
   }
 
   async findByCode(packageCode: string, tenantId: string) {
-    const travelPackage = await this.prisma.travelPackage.findUnique({
+    const travelPackage = await (this.prisma.travelPackage as any).findUnique({
       where: { packageCode },
+      include: {
+        costingProjectLinks: {
+          select: { id: true },
+          take: 1,
+        },
+        pricingPublications: {
+          select: { id: true },
+          take: 1,
+        },
+      },
     });
 
     if (!travelPackage) {
@@ -281,7 +329,7 @@ export class TravelPackagesService {
       throw new NotFoundException(`Travel package ${packageCode} not found`);
     }
 
-    return travelPackage;
+    return commercialPriceRead(travelPackage, hasPricingPublication(travelPackage));
   }
 
   async update(id: string, dto: UpdateTravelPackageDto, tenantId: string) {
@@ -294,6 +342,33 @@ export class TravelPackagesService {
 
     if (travelPackage.status === 'COMPLETED') {
       throw new BadRequestException('Cannot update a completed travel package (trip already occurred)');
+    }
+
+    if (
+      dto.priceCurrency !== undefined &&
+      dto.priceCurrency !== travelPackage.priceCurrency
+    ) {
+      const costingProjectLink = await (this.prisma as any).travelPackageCostingProjectLink.findFirst({
+        where: { tenantId, travelPackageId: id },
+        select: { id: true },
+      });
+      if (costingProjectLink) {
+        throw new BadRequestException(
+          'La moneda no puede cambiarse después de iniciar la composición de costos.',
+        );
+      }
+    }
+
+    if (dto.packagePrice !== undefined) {
+      const pricingPublication = await (this.prisma as any).travelPackagePricingPublication.findFirst({
+        where: { tenantId, travelPackageId: id },
+        select: { id: true },
+      });
+      if (pricingPublication) {
+        throw new BadRequestException(
+          'El precio comercial de este viaje está controlado por Pricing. Publica una nueva versión aprobada para cambiarlo.',
+        );
+      }
     }
 
     const updatesFiscalClassification = Object.prototype.hasOwnProperty.call(
@@ -437,4 +512,40 @@ export class TravelPackagesService {
       },
     });
   }
+}
+
+function hasPricingPublication(travelPackage: { pricingPublications?: unknown[] }): boolean {
+  return Array.isArray(travelPackage.pricingPublications) && travelPackage.pricingPublications.length > 0;
+}
+
+function hasCostingProject(travelPackage: { costingProjectLinks?: unknown[] }): boolean {
+  return Array.isArray(travelPackage.costingProjectLinks) && travelPackage.costingProjectLinks.length > 0;
+}
+
+function commercialPriceRead(travelPackage: any, pricingPublished: boolean) {
+  const {
+    pricingPublications: _pricingPublications,
+    costingProjectLinks: _costingProjectLinks,
+    ...travel
+  } = travelPackage;
+  return {
+    ...travel,
+    hasCostingProject: hasCostingProject(travelPackage),
+    commercialPriceStatus: pricingPublished
+      ? 'PRICING_PUBLISHED'
+      : travel.packagePrice === null || travel.packagePrice === undefined
+        ? 'PENDING'
+        : 'LEGACY',
+  };
+}
+
+function commercialTravelOptionRead(
+  travelPackage: any,
+  pricingPublished: boolean,
+) {
+  const { hasCostingProject: _hasCostingProject, ...travel } = commercialPriceRead(
+    travelPackage,
+    pricingPublished,
+  );
+  return travel;
 }

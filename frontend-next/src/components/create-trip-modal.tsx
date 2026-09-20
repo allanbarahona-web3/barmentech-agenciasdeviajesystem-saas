@@ -60,7 +60,6 @@ export function CreateTripModal({
   const [departureDate, setDepartureDate] = useState('');
   const [returnDate, setReturnDate] = useState('');
   const [capacity, setCapacity] = useState('');
-  const [price, setPrice] = useState('');
   const [minReservation, setMinReservation] = useState('');
   const [currency, setCurrency] = useState<'USD' | 'CRC'>('USD');
   const [transportType, setTransportType] = useState<'BUS' | 'PRIVATE' | 'WALKING' | 'MIXED'>('BUS');
@@ -138,7 +137,7 @@ export function CreateTripModal({
 
     try {
       // Validaciones básicas
-      if (!name.trim() || !destination.trim() || !departureDate || !returnDate || !capacity || !price) {
+      if (!name.trim() || !destination.trim() || !departureDate || !returnDate || !capacity) {
         showWarningModal('Campos requeridos', 'Por favor completa todos los campos requeridos');
         return;
       }
@@ -160,11 +159,6 @@ export function CreateTripModal({
 
       if (parseInt(capacity) <= 0) {
         showWarningModal('Capacidad inválida', 'La capacidad debe ser mayor a 0');
-        return;
-      }
-
-      if (parseFloat(price) <= 0) {
-        showWarningModal('Precio inválido', 'El precio debe ser mayor a 0');
         return;
       }
 
@@ -190,7 +184,6 @@ export function CreateTripModal({
         tripType === 'internal'
           ? {
               ...baseData,
-              price: parseFloat(price),
               currency,
               description: `Viaje Interno: ${name.trim()}`,
               itinerary: `Viaje a ${destination.trim()}`,
@@ -199,7 +192,6 @@ export function CreateTripModal({
             }
           : {
               ...baseData,
-              packagePrice: parseFloat(price),
               priceCurrency: currency,
               ...(minReservation ? { minReservation: parseFloat(minReservation) } : {}),
             };
@@ -443,31 +435,8 @@ export function CreateTripModal({
             </div>
           </div>
 
-          {/* Precio + Moneda */}
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 10, marginBottom: 12 }}>
-            <div>
-              <label style={{ fontSize: 13, fontWeight: 600, color: '#111827', display: 'block', marginBottom: 4 }}>
-                Precio por Persona ({currency}) *
-              </label>
-              <input
-                type="number"
-                min="0.01"
-                step="0.01"
-                value={price}
-                onChange={(e) => setPrice(e.target.value)}
-                placeholder="ej: 150"
-                style={{
-                  width: '100%',
-                  padding: '8px 12px',
-                  border: '1px solid #d1d5db',
-                  borderRadius: 6,
-                  fontSize: 13,
-                  fontFamily: 'inherit',
-                  boxSizing: 'border-box',
-                }}
-              />
-            </div>
-
+          {/* Moneda y estado comercial */}
+          <div style={{ marginBottom: 12 }}>
             <div>
               <label style={{ fontSize: 13, fontWeight: 600, color: '#111827', display: 'block', marginBottom: 4 }}>
                 Moneda
@@ -489,6 +458,9 @@ export function CreateTripModal({
                 <option value="CRC">CRC (₡)</option>
               </select>
             </div>
+            <p style={{ margin: '8px 0 0', color: '#6b7280', fontSize: 13 }}>
+              Precio pendiente. Configura costos y publica una versión aprobada de Pricing para asignar el precio comercial.
+            </p>
           </div>
 
           {/* Monto de reserva mínima (para ambos tipos) */}

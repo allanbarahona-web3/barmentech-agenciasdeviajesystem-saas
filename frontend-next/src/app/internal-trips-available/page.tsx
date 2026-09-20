@@ -9,6 +9,7 @@ import { resolveApiBase } from '@/lib/runtime-config';
 import { ConfirmModal } from '@/components/confirm-modal';
 import { PageLoader } from '@/components/loading-spinner';
 import { formatBusinessDate } from '@/shared/regional';
+import { formatTravelCommercialPrice, type CommercialPriceStatus } from '@/lib/travel-commercial-price';
 
 interface InternalTrip {
   id: string;
@@ -19,19 +20,13 @@ interface InternalTrip {
   returnDate: string;
   capacity: number;
   occupiedSlots: number;
-  price: number;
+  price: number | string | null;
+  commercialPriceStatus: CommercialPriceStatus;
   currency: string;
   minReservation: number | null;
   status: string;
   createdAt: string;
 }
-
-const formatPrice = (price: number | string | null | undefined, currency: string): string => {
-  if (price === null || price === undefined) return 'Sin precio';
-  const numPrice = typeof price === 'string' ? parseFloat(price) : price;
-  if (isNaN(numPrice)) return 'Sin precio';
-  return `${currency} ${numPrice.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
-};
 
 const getProgressColor = (percentage: number): string => {
   if (percentage >= 86) return '#ef4444'; // Rojo
@@ -116,7 +111,7 @@ export default function InternalTripsAvailablePage() {
     try {
       setLoading(true);
       const apiBase = resolveApiBase();
-      const response = await fetch(`${apiBase}/internal-trips`, {
+      const response = await fetch(`${apiBase}/internal-trips/available`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -140,6 +135,10 @@ export default function InternalTripsAvailablePage() {
   };
 
   const handleSelectTrip = (trip: InternalTrip) => {
+    if (trip.commercialPriceStatus === 'PENDING') {
+      showWarningModal('Precio pendiente', 'Este viaje aún no tiene un precio comercial publicado.');
+      return;
+    }
     // Navegar al formulario de reserva para viajes internos
     console.log('Selected trip:', trip);
     router.push(`/internal-trips/${trip.id}/book`);
@@ -292,7 +291,7 @@ export default function InternalTripsAvailablePage() {
                         margin: 0,
                       }}
                     >
-                      {formatPrice(trip.price, trip.currency)}
+                      {formatTravelCommercialPrice(trip.price, trip.currency, trip.commercialPriceStatus)}
                     </p>
                     {trip.minReservation && (
                       <p
@@ -302,7 +301,7 @@ export default function InternalTripsAvailablePage() {
                           margin: '4px 0 0 0',
                         }}
                       >
-                        🔖 Reserva: {formatPrice(trip.minReservation, trip.currency)}
+                        🔖 Reserva: {formatTravelCommercialPrice(trip.minReservation, trip.currency)}
                       </p>
                     )}
                   </div>

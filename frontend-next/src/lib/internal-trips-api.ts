@@ -10,7 +10,7 @@ export interface CreateInternalTripInput {
   departureTime?: string;
   returnTime?: string;
   capacity: number;
-  price: number;
+  price?: number;
   minReservation?: number;
   currency: string;
   transportType: 'AIR' | 'BUS' | 'PRIVATE' | 'CRUISE' | 'WALKING' | 'MIXED';
@@ -27,7 +27,9 @@ export interface InternalTripDetail {
   returnDate: string;
   capacity: number;
   occupiedSlots: number;
-  price: number | string;
+  price: number | string | null;
+  commercialPriceStatus: "PENDING" | "LEGACY" | "PRICING_PUBLISHED";
+  hasCostingProject?: boolean;
   minReservation?: number | string | null;
   currency: string;
   status: string;

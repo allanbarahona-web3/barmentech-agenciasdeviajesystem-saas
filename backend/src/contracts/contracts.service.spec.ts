@@ -141,7 +141,7 @@ function createArchiveService(records: CustomerRecord[]) {
       findFirst: jest.fn(({ where }: any) =>
         Promise.resolve(
           where.id === "internal-trip-1" && where.tenantId === "tenant-1"
-            ? { id: "internal-trip-1", currency: "CRC" }
+            ? { id: "internal-trip-1", currency: "CRC", price: 100 }
             : null,
         ),
       ),
@@ -150,7 +150,7 @@ function createArchiveService(records: CustomerRecord[]) {
       findFirst: jest.fn(({ where }: any) =>
         Promise.resolve(
           where.id === "package-1" && where.tenantId === "tenant-1"
-            ? { id: "package-1", priceCurrency: "USD" }
+            ? { id: "package-1", priceCurrency: "USD", packagePrice: 100 }
             : null,
         ),
       ),
@@ -528,7 +528,7 @@ describe("ContractsService archive customer identity resolution", () => {
     );
     expect(internalTripFindFirst).toHaveBeenCalledWith({
       where: { id: "internal-trip-1", tenantId: "tenant-1" },
-      select: { id: true, currency: true },
+      select: { id: true, currency: true, price: true },
     });
     expect(customerCreate).not.toHaveBeenCalled();
     expect(customerUpdate).not.toHaveBeenCalled();
@@ -589,7 +589,7 @@ describe("ContractsService archive customer identity resolution", () => {
 
     expect(travelPackageFindFirst).toHaveBeenCalledWith({
       where: { id: "package-1", tenantId: "tenant-1" },
-      select: { id: true, priceCurrency: true },
+      select: { id: true, priceCurrency: true, packagePrice: true },
     });
     expect(contractCreate).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({
@@ -602,6 +602,28 @@ describe("ContractsService archive customer identity resolution", () => {
         }),
       }),
     }));
+  });
+
+  it("rejects a contract for a travel whose commercial price is still pending", async () => {
+    const { service, contractCreate, travelPackageFindFirst } = createArchiveService([holder]);
+    travelPackageFindFirst.mockResolvedValue({ id: "package-1", priceCurrency: "USD", packagePrice: null } as any);
+
+    await expect(service.archiveContract(
+      { id: "agent-1", email: "agent@example.com", fullName: "Agent", tenantId: "tenant-1" },
+      {
+        contractNumber: "CT-PENDING",
+        clientFullName: holder.fullName,
+        clientIdNumber: holder.idNumber,
+        clientEmail: "holder@example.com",
+        destination: "Destination",
+        contractHtml: "<html></html>",
+        paymentConditionType: "CASH",
+        paymentMethod: "BANK_TRANSFER",
+        payloadJson: JSON.stringify({ selectedCustomerId: holder.id, clientIdType: holder.idType, travelPackageId: "package-1", totalAmount: "750.00", reservationAmount: "0" }),
+      },
+      [],
+    )).rejects.toThrow("Este viaje aún no tiene un precio comercial publicado.");
+    expect(contractCreate).not.toHaveBeenCalled();
   });
 
   it("rejects positive reservations without an authoritative commercial currency", async () => {

@@ -16,6 +16,7 @@ import {
   useAdminTravelFiscalClassifications,
 } from '@/components/travel-fiscal-classification-field';
 import { withFiscalClassification } from '@/lib/travel-fiscal-classification';
+import type { CommercialPriceStatus } from '@/lib/travel-commercial-price';
 
 interface InternalTrip {
   id: string;
@@ -29,7 +30,9 @@ interface InternalTrip {
   returnTime?: string;
   capacity: number;
   occupiedSlots: number;
-  price: number;
+  price: number | string | null;
+  commercialPriceStatus: CommercialPriceStatus;
+  hasCostingProject: boolean;
   currency: string;
   minReservation?: number;
   transportType?: string;
@@ -159,7 +162,7 @@ export default function EditInternalTripPage() {
         setDepartureTime(data.departureTime || '');
         setReturnTime(data.returnTime || '');
         setCapacity(String(data.capacity));
-        setPrice(String(data.price));
+        setPrice(data.price === null ? '' : String(data.price));
         setCurrency(data.currency);
         setMinReservation(data.minReservation ? String(data.minReservation) : '');
         setTransportType(data.transportType || 'BUS');
@@ -182,7 +185,7 @@ export default function EditInternalTripPage() {
     e.preventDefault();
 
     // Validations
-    if (!name.trim() || !destination.trim() || !departureDate || !returnDate || !capacity || !price) {
+    if (!name.trim() || !destination.trim() || !departureDate || !returnDate || !capacity || (trip?.commercialPriceStatus === 'LEGACY' && !price)) {
       showWarningModal('Campos requeridos', 'Por favor completa todos los campos requeridos');
       return;
     }
@@ -200,7 +203,7 @@ export default function EditInternalTripPage() {
       return;
     }
 
-    if (parseFloat(price) <= 0) {
+    if (trip?.commercialPriceStatus === 'LEGACY' && parseFloat(price) <= 0) {
       showWarningModal('Precio inválido', 'El precio debe ser mayor a 0');
       return;
     }
@@ -221,8 +224,8 @@ export default function EditInternalTripPage() {
           departureTime: departureTime || undefined,
           returnTime: returnTime || undefined,
           capacity: parseInt(capacity),
-          price: parseFloat(price),
-          currency,
+          ...(trip?.commercialPriceStatus === 'LEGACY' && { price: parseFloat(price) }),
+          ...(trip?.commercialPriceStatus !== 'PRICING_PUBLISHED' && { currency }),
           minReservation: minReservation
             ? parseFloat(minReservation)
             : undefined,
@@ -412,7 +415,7 @@ export default function EditInternalTripPage() {
                 style={{ width: '100%', padding: '10px 12px', fontSize: '1rem', border: '1px solid #d1d5db', borderRadius: 8 }}
               />
             </div>
-            <div>
+            {trip?.commercialPriceStatus === 'LEGACY' ? <div>
               <label style={{ display: 'block', fontWeight: 500, marginBottom: 8 }}>Precio *</label>
               <input
                 type="number"
@@ -423,7 +426,11 @@ export default function EditInternalTripPage() {
                 min="0"
                 style={{ width: '100%', padding: '10px 12px', fontSize: '1rem', border: '1px solid #d1d5db', borderRadius: 8 }}
               />
-            </div>
+            </div> : <p style={{ margin: 0, color: '#6b7280', alignSelf: 'end' }}>
+              {trip?.commercialPriceStatus === 'PENDING'
+                ? 'Precio pendiente. Configura costos y publica una versión aprobada de Pricing.'
+                : 'El precio comercial está controlado por Pricing y no puede editarse aquí.'}
+            </p>}
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
@@ -432,11 +439,15 @@ export default function EditInternalTripPage() {
               <select
                 value={currency}
                 onChange={(e) => setCurrency(e.target.value)}
+                disabled={Boolean(trip?.hasCostingProject)}
                 style={{ width: '100%', padding: '10px 12px', fontSize: '1rem', border: '1px solid #d1d5db', borderRadius: 8 }}
               >
                 <option value="CRC">CRC</option>
                 <option value="USD">USD</option>
               </select>
+              {trip?.hasCostingProject ? <p style={{ margin: '6px 0 0', color: '#6b7280', fontSize: 12 }}>
+                La moneda no puede cambiarse después de iniciar la composición de costos.
+              </p> : null}
             </div>
             <div>
               <label style={{ display: 'block', fontWeight: 500, marginBottom: 8 }}>Reserva Mínima</label>

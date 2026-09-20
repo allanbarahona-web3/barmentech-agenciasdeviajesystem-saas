@@ -589,6 +589,10 @@ export function ContractsWizard({
       .then((travelPackage) => {
         // Almacenar el paquete cargado para detectar el tipo
         setLoadedTravelPackage(travelPackage);
+        if (travelPackage.commercialPriceStatus === "PENDING" || travelPackage.packagePrice === null) {
+          setStatus("Este viaje aún no tiene un precio comercial publicado.");
+          return;
+        }
         
         // Pre-llenar el formulario con los datos del paquete
         setState((prev) => {

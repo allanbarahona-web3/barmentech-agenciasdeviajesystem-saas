@@ -1572,11 +1572,16 @@ export class ContractsService {
     if (requestedInternalTripId) {
       const internalTrip = await this.prisma.internalTrip.findFirst({
         where: { id: requestedInternalTripId, tenantId: user.tenantId },
-        select: { id: true, currency: true },
+        select: { id: true, currency: true, price: true },
       });
       if (!internalTrip) {
         throw new BadRequestException(
           "El viaje interno no existe o no pertenece al tenant del contrato.",
+        );
+      }
+      if (internalTrip.price === null) {
+        throw new BadRequestException(
+          'Este viaje aún no tiene un precio comercial publicado.',
         );
       }
       internalTripId = internalTrip.id;
@@ -1586,11 +1591,16 @@ export class ContractsService {
     } else if (requestedTravelPackageId) {
       const travelPackage = await this.prisma.travelPackage.findFirst({
         where: { id: requestedTravelPackageId, tenantId: user.tenantId },
-        select: { id: true, priceCurrency: true },
+        select: { id: true, priceCurrency: true, packagePrice: true },
       });
       if (!travelPackage) {
         throw new BadRequestException(
           "El paquete de viaje no existe o no pertenece al tenant del contrato.",
+        );
+      }
+      if (travelPackage.packagePrice === null) {
+        throw new BadRequestException(
+          'Este viaje aún no tiene un precio comercial publicado.',
         );
       }
       travelPackageId = travelPackage.id;

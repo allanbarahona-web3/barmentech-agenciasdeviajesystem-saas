@@ -128,6 +128,10 @@ model Tenant {
   airfareDailyAuthorityRevisions          AirfareDailyAuthorityRevision[]
   travelPackageCostingProjectLinks        TravelPackageCostingProjectLink[]
   internalTripCostingProjectLinks         InternalTripCostingProjectLink[]
+  pricingConfigurations                   PricingConfiguration[]
+  pricingCalculationVersions              PricingCalculationVersion[]
+  TravelPackagePricingPublication         TravelPackagePricingPublication[]
+  InternalTripPricingPublication          InternalTripPricingPublication[]
 
   @@map("tenants")
 }
@@ -935,7 +939,7 @@ model TravelPackage {
   occupiedSlots                 Int                               @default(0)
   status                        String                            @default("OPEN")
   travelType                    TravelPackageType                 @default(INTERNATIONAL)
-  packagePrice                  Decimal?                          @db.Decimal(14, 2)
+  packagePrice                  Decimal?                          @db.Decimal(19, 5)
   priceCurrency                 String                            @default("USD")
   createdByUserId               String
   createdAt                     DateTime                          @default(now())
@@ -950,6 +954,7 @@ model TravelPackage {
   additionalServiceOrders       AdditionalServiceOrder[]
   participants                  TravelPackageParticipant[]
   costingProjectLinks           TravelPackageCostingProjectLink[]
+  pricingPublications           TravelPackagePricingPublication[]
 
   @@unique([id, tenantId], map: "TravelPackage_id_tenantId_key")
   @@index([departureDate])
@@ -997,29 +1002,127 @@ enum CostComponentStatus {
   ARCHIVED
 }
 
+enum PricingConfigurationStatus {
+  DRAFT
+  ARCHIVED
+}
+
+enum PricingCalculationVersionStatus {
+  DRAFT
+  APPROVED
+}
+
+enum PricingCalculationBasis {
+  BASE_COST
+  PRE_TAX_SELLING_PRICE
+  FINAL_CHARGED_PRICE
+}
+
 model CostingProject {
-  id                      String                            @id @default(cuid())
-  tenantId                String
-  displayName             String
-  baseCurrency            String                            @db.VarChar(3)
-  status                  CostingProjectStatus              @default(DRAFT)
-  createdByUserId         String
-  createdByName           String
-  updatedByUserId         String?
-  updatedByName           String?
-  createdAt               DateTime                          @default(now())
-  updatedAt               DateTime                          @updatedAt
-  tenant                  Tenant                            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  components              CostComponent[]
-  snapshots               CostSnapshot[]
-  auditEvents             CostAuditEvent[]
-  airfareDailyAuthorities AirfareDailyAuthority[]
-  travelPackageLinks      TravelPackageCostingProjectLink[]
-  internalTripLinks       InternalTripCostingProjectLink[]
+  id                               String                            @id @default(cuid())
+  tenantId                         String
+  displayName                      String
+  baseCurrency                     String                            @db.VarChar(3)
+  status                           CostingProjectStatus              @default(DRAFT)
+  createdByUserId                  String
+  createdByName                    String
+  updatedByUserId                  String?
+  updatedByName                    String?
+  createdAt                        DateTime                          @default(now())
+  updatedAt                        DateTime                          @updatedAt
+  tenant                           Tenant                            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  components                       CostComponent[]
+  snapshots                        CostSnapshot[]
+  auditEvents                      CostAuditEvent[]
+  airfareDailyAuthorities          AirfareDailyAuthority[]
+  travelPackageLinks               TravelPackageCostingProjectLink[]
+  internalTripLinks                InternalTripCostingProjectLink[]
+  pricingConfiguration             PricingConfiguration?
+  pricingCalculationVersions       PricingCalculationVersion[]
+  travelPackagePricingPublications TravelPackagePricingPublication[]
+  internalTripPricingPublications  InternalTripPricingPublication[]
 
   @@unique([id, tenantId], map: "costing_projects_id_tenant_key")
   @@index([tenantId, status, updatedAt, id], map: "costing_projects_tenant_status_updated_idx")
   @@map("costing_projects")
+}
+
+model PricingConfiguration {
+  id                        String                      @id @default(cuid())
+  tenantId                  String
+  costingProjectId          String
+  status                    PricingConfigurationStatus  @default(DRAFT)
+  operationalCostsAmount    Decimal                     @default(0) @db.Decimal(19, 5)
+  riskMarginPercent         Decimal                     @default(0) @db.Decimal(9, 6)
+  targetProfitMarginPercent Decimal                     @default(0) @db.Decimal(9, 6)
+  salesCommissionPercent    Decimal                     @default(0) @db.Decimal(9, 6)
+  bankCommissionPercent     Decimal                     @default(0) @db.Decimal(9, 6)
+  applicableTaxPercent      Decimal                     @default(0) @db.Decimal(9, 6)
+  createdByUserId           String
+  createdByName             String
+  updatedByUserId           String?
+  updatedByName             String?
+  createdAt                 DateTime                    @default(now())
+  updatedAt                 DateTime                    @updatedAt
+  tenant                    Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  costingProject            CostingProject              @relation(fields: [costingProjectId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "pricing_configurations_project_tenant_fkey")
+  calculationVersions       PricingCalculationVersion[]
+
+  @@unique([id, tenantId], map: "pricing_configurations_id_tenant_key")
+  @@unique([costingProjectId, tenantId], map: "pricing_configurations_tenant_project_key")
+  @@unique([id, tenantId, costingProjectId], map: "pricing_configurations_id_tenant_project_key")
+  @@map("pricing_configurations")
+}
+
+model PricingCalculationVersion {
+  id                                   String                            @id @default(cuid())
+  tenantId                             String
+  pricingConfigurationId               String
+  costingProjectId                     String
+  versionNumber                        Int
+  status                               PricingCalculationVersionStatus   @default(DRAFT)
+  policyVersion                        String                            @db.VarChar(32)
+  currency                             String                            @db.VarChar(3)
+  authoritativeCostAmount              Decimal                           @db.Decimal(19, 5)
+  operationalCostsAmount               Decimal                           @db.Decimal(19, 5)
+  riskMarginPercent                    Decimal                           @db.Decimal(9, 6)
+  targetProfitMarginPercent            Decimal                           @db.Decimal(9, 6)
+  salesCommissionPercent               Decimal                           @db.Decimal(9, 6)
+  bankCommissionPercent                Decimal                           @db.Decimal(9, 6)
+  applicableTaxPercent                 Decimal                           @db.Decimal(9, 6)
+  riskBasis                            PricingCalculationBasis
+  targetProfitBasis                    PricingCalculationBasis
+  salesCommissionBasis                 PricingCalculationBasis
+  bankCommissionBasis                  PricingCalculationBasis
+  taxBasis                             PricingCalculationBasis
+  baseCostAmount                       Decimal                           @db.Decimal(19, 5)
+  riskAmount                           Decimal                           @db.Decimal(19, 5)
+  adjustedEconomicCostAmount           Decimal                           @db.Decimal(19, 5)
+  targetProfitAmount                   Decimal                           @db.Decimal(19, 5)
+  salesCommissionAmount                Decimal                           @db.Decimal(19, 5)
+  bankCommissionAmount                 Decimal                           @db.Decimal(19, 5)
+  preTaxSellingPrice                   Decimal                           @db.Decimal(19, 5)
+  taxAmount                            Decimal                           @db.Decimal(19, 5)
+  finalSellingPrice                    Decimal                           @db.Decimal(19, 5)
+  estimatedAgencyProfitBeforeIncomeTax Decimal                           @db.Decimal(19, 5)
+  createdAt                            DateTime                          @default(now())
+  createdByUserId                      String
+  createdByName                        String
+  approvedAt                           DateTime?
+  approvedByUserId                     String?
+  approvedByName                       String?
+  tenant                               Tenant                            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  pricingConfiguration                 PricingConfiguration              @relation(fields: [pricingConfigurationId, tenantId, costingProjectId], references: [id, tenantId, costingProjectId], onDelete: Restrict, map: "pricing_calculation_versions_configuration_project_tenant_fkey")
+  costingProject                       CostingProject                    @relation(fields: [costingProjectId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "pricing_calculation_versions_project_tenant_fkey")
+  travelPackagePublications            TravelPackagePricingPublication[]
+  internalTripPublications             InternalTripPricingPublication[]
+
+  @@unique([id, tenantId], map: "pricing_calculation_versions_id_tenant_key")
+  @@unique([id, tenantId, costingProjectId], map: "pricing_calculation_versions_id_tenant_project_key")
+  @@unique([tenantId, costingProjectId, versionNumber], map: "pricing_calculation_versions_tenant_project_version_key")
+  @@index([tenantId, costingProjectId, createdAt(sort: Desc), id(sort: Desc)], map: "pricing_calculation_versions_project_history_idx")
+  @@index([tenantId, costingProjectId, status, createdAt(sort: Desc), id(sort: Desc)], map: "pricing_calculation_versions_project_status_history_idx")
+  @@map("pricing_calculation_versions")
 }
 
 model TravelPackageCostingProjectLink {
@@ -1037,6 +1140,30 @@ model TravelPackageCostingProjectLink {
   @@unique([tenantId, travelPackageId], map: "travel_package_costing_project_links_tenant_package_key")
   @@unique([tenantId, costingProjectId], map: "travel_package_costing_project_links_tenant_project_key")
   @@map("travel_package_costing_project_links")
+}
+
+/// Travel-adapter publication history. Pricing Engine core does not depend on this model.
+model TravelPackagePricingPublication {
+  id                          String                    @id @default(cuid())
+  tenantId                    String
+  travelPackageId             String
+  costingProjectId            String
+  pricingCalculationVersionId String
+  publishedPrice              Decimal                   @db.Decimal(19, 5)
+  currency                    String                    @db.VarChar(3)
+  commercialFloorPrice        Decimal                   @db.Decimal(19, 5)
+  publishedAt                 DateTime                  @default(now())
+  publishedByUserId           String
+  publishedByName             String
+  tenant                      Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  travelPackage               TravelPackage             @relation(fields: [travelPackageId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "travel_package_pricing_publications_travel_tenant_fkey")
+  costingProject              CostingProject            @relation(fields: [costingProjectId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "travel_package_pricing_publications_project_tenant_fkey")
+  pricingCalculationVersion   PricingCalculationVersion @relation(fields: [pricingCalculationVersionId, tenantId, costingProjectId], references: [id, tenantId, costingProjectId], onDelete: Restrict, map: "travel_package_pricing_publications_version_project_tenant_fkey")
+
+  @@unique([id, tenantId], map: "travel_package_pricing_publications_id_tenant_key")
+  @@unique([tenantId, pricingCalculationVersionId], map: "travel_package_pricing_publications_tenant_version_key")
+  @@index([tenantId, travelPackageId, publishedAt(sort: Desc), id(sort: Desc)], map: "travel_package_pricing_publications_history_idx")
+  @@map("travel_package_pricing_publications")
 }
 
 model CostCategory {
@@ -1337,7 +1464,9 @@ model InternalTrip {
   returnTime                    String?
   capacity                      Int
   occupiedSlots                 Int                              @default(0)
-  price                         Decimal                          @db.Decimal(12, 2)
+  // A newly created trip may wait for an explicit Pricing publication.
+  // Existing manual prices remain valid; null is never a zero-price substitute.
+  price                         Decimal?                         @db.Decimal(19, 5)
   currency                      String
   minReservation                Decimal?                         @db.Decimal(12, 2)
   transportType                 TransportType
@@ -1354,6 +1483,7 @@ model InternalTrip {
   tenant                        Tenant                           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   fiscalClassificationCatalog   AdditionalServiceCatalog?        @relation("InternalTripFiscalClassification", fields: [fiscalClassificationCatalogId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "internal_trips_fiscal_classification_tenant_fkey")
   costingProjectLinks           InternalTripCostingProjectLink[]
+  pricingPublications           InternalTripPricingPublication[]
 
   @@unique([id, tenantId], map: "internal_trips_id_tenantId_key")
   @@index([departureDate])
@@ -1379,6 +1509,30 @@ model InternalTripCostingProjectLink {
   @@unique([tenantId, internalTripId], map: "internal_trip_costing_project_links_tenant_trip_key")
   @@unique([tenantId, costingProjectId], map: "internal_trip_costing_project_links_tenant_project_key")
   @@map("internal_trip_costing_project_links")
+}
+
+/// Travel-adapter publication history. Pricing Engine core does not depend on this model.
+model InternalTripPricingPublication {
+  id                          String                    @id @default(cuid())
+  tenantId                    String
+  internalTripId              String
+  costingProjectId            String
+  pricingCalculationVersionId String
+  publishedPrice              Decimal                   @db.Decimal(19, 5)
+  currency                    String                    @db.VarChar(3)
+  commercialFloorPrice        Decimal                   @db.Decimal(19, 5)
+  publishedAt                 DateTime                  @default(now())
+  publishedByUserId           String
+  publishedByName             String
+  tenant                      Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  internalTrip                InternalTrip              @relation(fields: [internalTripId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "internal_trip_pricing_publications_trip_tenant_fkey")
+  costingProject              CostingProject            @relation(fields: [costingProjectId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "internal_trip_pricing_publications_project_tenant_fkey")
+  pricingCalculationVersion   PricingCalculationVersion @relation(fields: [pricingCalculationVersionId, tenantId, costingProjectId], references: [id, tenantId, costingProjectId], onDelete: Restrict, map: "internal_trip_pricing_publications_version_project_tenant_fkey")
+
+  @@unique([id, tenantId], map: "internal_trip_pricing_publications_id_tenant_key")
+  @@unique([tenantId, pricingCalculationVersionId], map: "internal_trip_pricing_publications_tenant_version_key")
+  @@index([tenantId, internalTripId, publishedAt(sort: Desc), id(sort: Desc)], map: "internal_trip_pricing_publications_history_idx")
+  @@map("internal_trip_pricing_publications")
 }
 
 model InternalTourBooking {

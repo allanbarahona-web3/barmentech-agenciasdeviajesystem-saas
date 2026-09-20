@@ -13,6 +13,7 @@ import {
 } from '@/components/travel-fiscal-classification-field';
 import { withFiscalClassification } from '@/lib/travel-fiscal-classification';
 import { Button } from '@/components/ui/button';
+import { formatTravelCommercialPrice, type CommercialPriceStatus } from '@/lib/travel-commercial-price';
 
 interface InternalTrip {
   id: string;
@@ -23,7 +24,9 @@ interface InternalTrip {
   returnDate: string;
   capacity: number;
   occupiedSlots: number;
-  price: number;
+  price: number | string | null;
+  commercialPriceStatus: CommercialPriceStatus;
+  hasCostingProject: boolean;
   currency: string;
   status: string;
   description?: string;
@@ -40,13 +43,6 @@ interface InternalTripsListProps {
   canComposeCosts?: boolean;
   onTripsUpdated?: () => void;
 }
-
-const formatPrice = (price: number | string | null | undefined, currency: string): string => {
-  if (price === null || price === undefined) return "Sin precio";
-  const numPrice = typeof price === 'string' ? parseFloat(price) : price;
-  if (isNaN(numPrice)) return "Sin precio";
-  return `${currency} ${numPrice.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}`;
-};
 
 const getProgressColor = (percentage: number): string => {
   if (percentage >= 86) return "#ef4444"; // Rojo
@@ -161,7 +157,7 @@ export function InternalTripsList({ trips, canComposeCosts = false, onTripsUpdat
       departureDate: toLocalDateIso(trip.departureDate),
       returnDate: toLocalDateIso(trip.returnDate),
       capacity: String(trip.capacity),
-      price: String(trip.price),
+      price: trip.price === null ? '' : String(trip.price),
       minReservation: trip.minReservation ? String(trip.minReservation) : '',
       currency: trip.currency,
       status: trip.status,
@@ -250,7 +246,7 @@ export function InternalTripsList({ trips, canComposeCosts = false, onTripsUpdat
       return;
     }
 
-    if (parseFloat(formData.price) <= 0) {
+    if (editingTrip.commercialPriceStatus === 'LEGACY' && parseFloat(formData.price) <= 0) {
       showWarningModal('Precio inválido', 'El precio debe ser mayor a 0');
       return;
     }
@@ -268,11 +264,11 @@ export function InternalTripsList({ trips, canComposeCosts = false, onTripsUpdat
           departureDate: departureDateTime.toISOString(),
           returnDate: returnDateTime.toISOString(),
           capacity: parseInt(formData.capacity),
-          price: parseFloat(formData.price),
+          ...(editingTrip.commercialPriceStatus === 'LEGACY' && { price: parseFloat(formData.price) }),
           minReservation: formData.minReservation
             ? parseFloat(formData.minReservation)
             : undefined,
-          currency: formData.currency,
+          ...(editingTrip.commercialPriceStatus !== 'PRICING_PUBLISHED' && { currency: formData.currency }),
           status: formData.status,
         },
         fiscalSelector.enabled,
@@ -423,7 +419,7 @@ export function InternalTripsList({ trips, canComposeCosts = false, onTripsUpdat
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
               <span style={{ fontSize: "1rem" }}>💰</span>
               <span style={{ color: "#111827", fontSize: "1rem", fontWeight: 600 }}>
-                {formatPrice(trip.price, trip.currency)}
+                {formatTravelCommercialPrice(trip.price, trip.currency, trip.commercialPriceStatus)}
               </span>
             </div>
 
@@ -432,7 +428,7 @@ export function InternalTripsList({ trips, canComposeCosts = false, onTripsUpdat
               <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 16 }}>
                 <span style={{ fontSize: "1rem" }}>🏷️</span>
                 <span style={{ color: "#059669", fontSize: "0.9rem", fontWeight: 600 }}>
-                  Reserva: {formatPrice(trip.minReservation, trip.currency)}
+                  Reserva: {formatTravelCommercialPrice(trip.minReservation, trip.currency)}
                 </span>
               </div>
             )}
@@ -716,8 +712,8 @@ export function InternalTripsList({ trips, canComposeCosts = false, onTripsUpdat
                   />
                 </label>
 
-                {/* Precio */}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 16 }}>
+                {/* Precio comercial */}
+                {editingTrip.commercialPriceStatus === "LEGACY" ? <div>
                   <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                     <span style={{ fontSize: "0.9rem", fontWeight: 600, color: "#374151" }}>
                       💰 Precio del Paquete
@@ -738,25 +734,33 @@ export function InternalTripsList({ trips, canComposeCosts = false, onTripsUpdat
                       }}
                     />
                   </label>
+                </div> : <p style={{ margin: 0, color: "#6b7280", fontSize: 14 }}>
+                  {editingTrip.commercialPriceStatus === "PENDING"
+                    ? "Precio pendiente. Configura costos y publica una versión aprobada de Pricing."
+                    : "El precio comercial está controlado por Pricing y no puede editarse aquí."}
+                </p>}
 
-                  <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                    <span style={{ fontSize: "0.9rem", fontWeight: 600, color: "#374151" }}>Moneda</span>
-                    <select
-                      value={formData.currency}
-                      onChange={(e) => setFormData({ ...formData, currency: e.target.value })}
-                      style={{
-                        padding: "12px 16px",
-                        border: "1px solid #d1d5db",
-                        borderRadius: 8,
-                        fontSize: "1rem",
-                        cursor: "pointer",
-                      }}
-                    >
-                      <option value="USD">USD</option>
-                      <option value="CRC">CRC</option>
-                    </select>
-                  </label>
-                </div>
+                <label style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 16 }}>
+                  <span style={{ fontSize: "0.9rem", fontWeight: 600, color: "#374151" }}>Moneda</span>
+                  <select
+                    value={formData.currency}
+                    onChange={(e) => setFormData({ ...formData, currency: e.target.value })}
+                    disabled={editingTrip.hasCostingProject}
+                    style={{
+                      padding: "12px 16px",
+                      border: "1px solid #d1d5db",
+                      borderRadius: 8,
+                      fontSize: "1rem",
+                      cursor: editingTrip.hasCostingProject ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    <option value="USD">USD</option>
+                    <option value="CRC">CRC</option>
+                  </select>
+                  {editingTrip.hasCostingProject ? <span style={{ fontSize: "0.8rem", color: "#6b7280" }}>
+                    La moneda no puede cambiarse después de iniciar la composición de costos.
+                  </span> : null}
+                </label>
 
                 {/* Monto de Reserva */}
                 <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>

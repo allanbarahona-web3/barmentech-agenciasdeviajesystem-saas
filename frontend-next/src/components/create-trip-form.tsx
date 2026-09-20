@@ -62,7 +62,6 @@ export function CreateTripForm({
   const [departureTime, setDepartureTime] = useState('');
   const [returnTime, setReturnTime] = useState('');
   const [capacity, setCapacity] = useState('');
-  const [price, setPrice] = useState('');
   const [minReservation, setMinReservation] = useState('');
   const [currency, setCurrency] = useState<'CRC' | 'USD'>('USD');
   const [transportType, setTransportType] = useState<'AIR' | 'BUS' | 'PRIVATE' | 'CRUISE' | 'WALKING' | 'MIXED'>('AIR');
@@ -123,7 +122,7 @@ export function CreateTripForm({
 
     try {
       // Validaciones básicas
-      if (!name.trim() || !destination.trim() || !departureDate || !returnDate || !capacity || !price) {
+      if (!name.trim() || !destination.trim() || !departureDate || !returnDate || !capacity) {
         showWarningModal('Campos requeridos', 'Por favor completa todos los campos requeridos');
         return;
       }
@@ -148,11 +147,6 @@ export function CreateTripForm({
         return;
       }
 
-      if (parseFloat(price) <= 0) {
-        showWarningModal('Precio inválido', 'El precio debe ser mayor a 0');
-        return;
-      }
-
       setSaving(true);
       showLoadingState('Creando viaje...');
 
@@ -165,7 +159,6 @@ export function CreateTripForm({
         departureTime: departureTime || undefined,
         returnTime: returnTime || undefined,
         capacity: parseInt(capacity),
-        price: parseFloat(price),
         minReservation: minReservation ? parseFloat(minReservation) : undefined,
         currency,
         ...(showTransportType && { transportType }),
@@ -407,7 +400,7 @@ export function CreateTripForm({
             </div>
           </fieldset>
 
-          {/* Capacidad y Precio */}
+          {/* Capacidad y moneda */}
           <fieldset
             style={{
               border: '1px solid #e5e7eb',
@@ -418,10 +411,10 @@ export function CreateTripForm({
             }}
           >
             <legend style={{ fontSize: 14, fontWeight: 600, color: '#111827', padding: '0 8px' }}>
-              Capacidad y Precio
+              Capacidad y moneda
             </legend>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginBottom: 16 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
               <div>
                 <label style={{ fontSize: 14, fontWeight: 500, color: '#111827', display: 'block', marginBottom: 6 }}>
                   Capacidad (cupos) *
@@ -432,28 +425,6 @@ export function CreateTripForm({
                   value={capacity}
                   onChange={(e) => setCapacity(e.target.value)}
                   placeholder="ej: 30"
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    border: '1px solid #d1d5db',
-                    borderRadius: 6,
-                    fontSize: 14,
-                    fontFamily: 'inherit',
-                  }}
-                />
-              </div>
-
-              <div>
-                <label style={{ fontSize: 14, fontWeight: 500, color: '#111827', display: 'block', marginBottom: 6 }}>
-                  Precio por Persona *
-                </label>
-                <input
-                  type="number"
-                  min="0.01"
-                  step="0.01"
-                  value={price}
-                  onChange={(e) => setPrice(e.target.value)}
-                  placeholder="ej: 150"
                   style={{
                     width: '100%',
                     padding: '8px 12px',
@@ -486,6 +457,10 @@ export function CreateTripForm({
                 </select>
               </div>
             </div>
+
+            <p style={{ margin: '0 0 16px', color: '#6b7280', fontSize: 13 }}>
+              Precio pendiente. Configura costos y publica una versión aprobada de Pricing para asignar el precio comercial.
+            </p>
 
             <div>
               <label style={{ fontSize: 14, fontWeight: 500, color: '#111827', display: 'block', marginBottom: 6 }}>
