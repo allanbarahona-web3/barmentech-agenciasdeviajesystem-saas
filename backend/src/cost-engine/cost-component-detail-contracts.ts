@@ -20,10 +20,17 @@ const CABIN_CLASSES = ["ECONOMY", "PREMIUM_ECONOMY", "BUSINESS", "FIRST", "OTHER
 const BAGGAGE_TYPES = ["CHECKED", "CARRY_ON", "EXCESS", "SPORTS_EQUIPMENT", "OTHER"] as const;
 const LODGING_TYPES = ["HOTEL", "HOSTEL", "AIRBNB", "APARTMENT", "OTHER"] as const;
 const ROOM_TYPES = ["SINGLE", "MATRIMONIAL", "DOUBLE", "TRIPLE", "QUADRUPLE", "OTHER"] as const;
-const TRANSPORTATION_TYPES = ["PRIVATE_TRANSFER", "SHARED_TRANSFER", "CAR_RENTAL", "RAIL", "BUS", "FERRY", "OTHER"] as const;
-const INSURANCE_COVERAGE_TYPES = ["MEDICAL", "TRIP_CANCELLATION", "COMPREHENSIVE", "OTHER"] as const;
-const VISA_TYPES = ["TOURIST", "BUSINESS", "TRANSIT", "STUDENT", "WORK", "OTHER"] as const;
-const MEAL_PLAN_TYPES = ["BREAKFAST", "HALF_BOARD", "FULL_BOARD", "ALL_INCLUSIVE", "OTHER"] as const;
+// Legacy SHARED_TRANSFER, CAR_RENTAL, and RAIL values remain accepted for
+// historical payloads. New components use the approved Cost Engine codes.
+const TRANSPORTATION_TYPES = ["PRIVATE_TRANSFER", "SHARED_SHUTTLE", "BUS", "TRAIN", "FERRY", "TAXI_LOCAL", "RENTAL_CAR", "OTHER", "SHARED_TRANSFER", "CAR_RENTAL", "RAIL"] as const;
+const TOUR_TYPES = ["HALF_DAY", "FULL_DAY", "MULTI_DAY", "OTHER"] as const;
+// TRIP_CANCELLATION remains accepted for historical detail payloads. New
+// insurance components use the shorter Cost Engine-owned CANCELLATION code.
+const INSURANCE_COVERAGE_TYPES = ["MEDICAL", "CANCELLATION", "BAGGAGE", "COMPREHENSIVE", "OTHER", "TRIP_CANCELLATION"] as const;
+// TOURIST remains accepted for historical detail payloads. New components use
+// the approved Cost Engine-owned TOURISM code.
+const VISA_TYPES = ["TOURISM", "BUSINESS", "TRANSIT", "STUDENT", "WORK", "OTHER", "TOURIST"] as const;
+const MEAL_PLAN_TYPES = ["BREAKFAST", "LUNCH", "DINNER", "HALF_BOARD", "FULL_BOARD", "ALL_INCLUSIVE", "OTHER"] as const;
 
 const CONTRACTS: Record<string, DetailContract> = {
   AIRFARE: {
@@ -44,10 +51,11 @@ const CONTRACTS: Record<string, DetailContract> = {
   },
   BAGGAGE: {
     version: 1,
-    normalize: (payload) => object(payload, ["baggageType", "pieces", "weightKg"], (value) => ({
+    normalize: (payload) => object(payload, ["baggageType", "pieces", "weightKg", "relatedAirfareComponentId"], (value) => ({
       baggageType: requiredEnum(value, "baggageType", BAGGAGE_TYPES),
       pieces: requiredPositiveInteger(value, "pieces"),
       ...optionalField(value, "weightKg", optionalPositiveDecimal(value, "weightKg")),
+      ...optionalField(value, "relatedAirfareComponentId", optionalString(value, "relatedAirfareComponentId")),
     })),
   },
   LODGING: {
@@ -65,12 +73,13 @@ const CONTRACTS: Record<string, DetailContract> = {
   },
   TRANSPORTATION: {
     version: 1,
-    normalize: (payload) => object(payload, ["transportationType", "origin", "destination", "serviceDate", "serviceTime", "returnDate"], (value) => {
+    normalize: (payload) => object(payload, ["transportationType", "tripType", "origin", "destination", "serviceDate", "serviceTime", "returnDate"], (value) => {
+      const tripType = requiredEnum(value, "tripType", TRIP_TYPES);
       const serviceDate = requiredDate(value, "serviceDate");
-      const returnDate = optionalDate(value, "returnDate");
+      const returnDate = tripType === "ROUND_TRIP" ? requiredDate(value, "returnDate") : optionalDate(value, "returnDate");
       assertDateOrder(serviceDate, returnDate, "serviceDate", "returnDate");
       return {
-        transportationType: requiredEnum(value, "transportationType", TRANSPORTATION_TYPES),
+        transportationType: requiredEnum(value, "transportationType", TRANSPORTATION_TYPES), tripType,
         origin: requiredString(value, "origin"), destination: requiredString(value, "destination"), serviceDate,
         ...optionalField(value, "serviceTime", optionalTime(value, "serviceTime")),
         ...optionalField(value, "returnDate", returnDate),
@@ -79,8 +88,8 @@ const CONTRACTS: Record<string, DetailContract> = {
   },
   TOUR: {
     version: 1,
-    normalize: (payload) => object(payload, ["activityName", "location", "serviceDate", "duration"], (value) => ({
-      activityName: requiredString(value, "activityName"), location: requiredString(value, "location"),
+    normalize: (payload) => object(payload, ["activityName", "tourType", "location", "serviceDate", "duration"], (value) => ({
+      activityName: requiredString(value, "activityName"), tourType: requiredEnum(value, "tourType", TOUR_TYPES), location: requiredString(value, "location"),
       serviceDate: requiredDate(value, "serviceDate"), ...optionalField(value, "duration", optionalString(value, "duration")),
     })),
   },
@@ -146,10 +155,14 @@ export function normalizeCostComponentDetails(category: Category, details: CostC
     throw new BadRequestException(`Unsupported ${category.code} detail schema version.`);
   }
 
+  const normalizedQuantity = category.code === "EVENT_TICKET" || category.code === "MEALS"
+    ? requiredPositiveIntegerQuantity(details.quantity, "quantity")
+    : quantity;
+
   return {
     detailPayload: contract.normalize(details.detailPayload),
     detailSchemaVersion: contract.version,
-    quantity,
+    quantity: normalizedQuantity,
     unit,
   };
 }
@@ -202,6 +215,13 @@ function requiredPositiveInteger(value: Record<string, unknown>, field: string) 
   const raw = value[field];
   if (typeof raw !== "number" || !Number.isSafeInteger(raw) || raw <= 0) throw new BadRequestException(`${field} must be a positive integer.`);
   return raw;
+}
+
+function requiredPositiveIntegerQuantity(value: string | null, field: string) {
+  if (typeof value !== "string" || !/^\d+$/.test(value.trim()) || !Number.isSafeInteger(Number(value)) || Number(value) <= 0) {
+    throw new BadRequestException(`${field} must be a positive integer.`);
+  }
+  return String(Number(value));
 }
 
 function optionalPositiveDecimal(value: Record<string, unknown>, field: string) {

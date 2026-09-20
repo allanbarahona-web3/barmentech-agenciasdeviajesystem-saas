@@ -160,6 +160,10 @@ export function archiveCostComponent(costComponentId: string) {
   return patch<CostComponent>(`/cost-engine/components/${encodeURIComponent(costComponentId)}/archive`, {});
 }
 
+export function reactivateCostComponent(costComponentId: string) {
+  return patch<CostComponent>(`/cost-engine/components/${encodeURIComponent(costComponentId)}/reactivate`, {});
+}
+
 export function createCostApplicability(costComponentId: string, input: { scopeType: string; label?: string | null; startDate?: string | null; endDate?: string | null }) {
   return apiPost(`/cost-engine/components/${encodeURIComponent(costComponentId)}/applicabilities`, input);
 }
@@ -284,7 +288,7 @@ export type AirfareHistoryPage = {
   totalPages: number;
 };
 
-export type MonetaryTimelineEventType = "INITIAL_COST" | "COST_SNAPSHOT" | "AGENT_INITIAL" | "ADMIN_OVERRIDE";
+export type MonetaryTimelineEventType = "INITIAL_COST" | "COST_SNAPSHOT" | "AGENT_INITIAL" | "ADMIN_OVERRIDE" | "COMPONENT_DEACTIVATED" | "COMPONENT_REACTIVATED";
 
 export type CostMonetaryTimelineItem = {
   eventId: string;
@@ -297,16 +301,18 @@ export type CostMonetaryTimelineItem = {
   componentTitle: string;
   effectiveAt: string;
   businessDate: string | null;
-  appliedAmount: string;
+  appliedAmount: string | null;
   observedAmount: string | null;
-  currency: string;
+  currency: string | null;
   actor: { userId: string; name: string };
   sourceReference: string | null;
   sourceUrl: string | null;
-  snapshotId: string;
+  snapshotId: string | null;
   appliedSnapshotId: string | null;
   airfareDailyAuthorityId: string | null;
   overrideReason: string | null;
+  componentStatus: "ACTIVE" | "ARCHIVED";
+  resultingComponentStatus: "ACTIVE" | "ARCHIVED" | null;
   evidenceCount: number;
   hasEvidence: boolean;
 };
@@ -338,8 +344,8 @@ export function listComponentMonetaryTimeline(costComponentId: string, page = 1,
   return apiGet<CostMonetaryTimelinePage>(`/cost-engine/components/${encodeURIComponent(costComponentId)}/monetary-timeline`, { params: { page, pageSize } });
 }
 
-export function listProjectMonetaryTimeline(costingProjectId: string, page = 1, pageSize = 20) {
-  return apiGet<CostMonetaryTimelinePage>(`/cost-engine/projects/${encodeURIComponent(costingProjectId)}/monetary-timeline`, { params: { page, pageSize } });
+export function listProjectMonetaryTimeline(costingProjectId: string, page = 1, pageSize = 20, categoryCode?: string) {
+  return apiGet<CostMonetaryTimelinePage>(`/cost-engine/projects/${encodeURIComponent(costingProjectId)}/monetary-timeline`, { params: { page, pageSize, ...(categoryCode ? { categoryCode } : {}) } });
 }
 
 export function overrideAdminAirfareDailyAuthority(airfareDailyAuthorityId: string, input: AdminAirfareOverrideInput) {

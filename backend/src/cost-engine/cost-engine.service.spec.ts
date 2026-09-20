@@ -5,7 +5,7 @@ import { ROLES_KEY } from "../auth/roles.decorator";
 import { CostEngineController } from "./cost-engine.controller";
 import { CostEngineRepository } from "./cost-engine.repository";
 import { CostEngineService } from "./cost-engine.service";
-import { ListCostComponentsDto } from "./dto/cost-engine.dto";
+import { ListCostComponentsDto, ListCostMonetaryTimelineDto } from "./dto/cost-engine.dto";
 import { STANDARD_COST_CATEGORIES } from "./standard-cost-categories";
 
 const actor = { userId: "user-a", name: "Admin A" };
@@ -44,6 +44,49 @@ describe("Cost Engine foundation", () => {
     expect(context.tx.costAuditEvent.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ action: "COMPONENT_CREATED", costComponentId: "component-a" }),
     }));
+  });
+
+  it("accepts a BAGGAGE relation only after finding an active AIRFARE component in the same tenant project", async () => {
+    const context = repositoryContext();
+    context.tx.costingProject.findFirst.mockResolvedValue(project());
+    context.tx.costCategory.findFirst.mockResolvedValue({ id: "category-baggage", code: "BAGGAGE", origin: "STANDARD" });
+    context.tx.costComponent.findFirst.mockResolvedValue({ id: "component-airfare-a" });
+    context.tx.costComponent.create.mockResolvedValue({ id: "component-baggage-a" });
+    context.tx.costSnapshot.create.mockResolvedValue({ id: "snapshot-1" });
+    context.tx.costComponent.updateMany.mockResolvedValue({ count: 1 });
+    context.tx.costAuditEvent.create.mockResolvedValue({ id: "audit-1" });
+
+    await expect(context.repository.createComponent("tenant-a", "project-a", {
+      ...componentInput(),
+      detailPayload: { baggageType: "CHECKED", pieces: 1, relatedAirfareComponentId: "component-airfare-a" },
+      detailSchemaVersion: 1,
+    }, snapshotInput(), actor)).resolves.toBe("component-baggage-a");
+
+    expect(context.tx.costComponent.findFirst).toHaveBeenCalledWith({
+      where: {
+        id: "component-airfare-a", tenantId: "tenant-a", costingProjectId: "project-a", status: "ACTIVE",
+        costCategory: { code: "AIRFARE", origin: "STANDARD" },
+      },
+      select: { id: true },
+    });
+    expect(context.tx.costComponent.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ detailPayload: { baggageType: "CHECKED", pieces: 1, relatedAirfareComponentId: "component-airfare-a" } }),
+    }));
+  });
+
+  it("rejects a BAGGAGE relation that is not an active AIRFARE component in the same tenant project", async () => {
+    const context = repositoryContext();
+    context.tx.costingProject.findFirst.mockResolvedValue(project());
+    context.tx.costCategory.findFirst.mockResolvedValue({ id: "category-baggage", code: "BAGGAGE", origin: "STANDARD" });
+    context.tx.costComponent.findFirst.mockResolvedValue(null);
+
+    await expect(context.repository.createComponent("tenant-a", "project-a", {
+      ...componentInput(),
+      detailPayload: { baggageType: "CHECKED", pieces: 1, relatedAirfareComponentId: "component-other-project" },
+      detailSchemaVersion: 1,
+    }, snapshotInput(), actor)).rejects.toThrow("relatedAirfareComponentId");
+
+    expect(context.tx.costComponent.create).not.toHaveBeenCalled();
   });
 
   it("rolls back the monetary write when the transaction callback fails", async () => {
@@ -270,7 +313,10 @@ describe("Cost Engine foundation", () => {
       costCategoryCode: "LODGING", costCategoryDisplayName: "Hospedaje", observedAmount: null, evidenceCount: 1, hasEvidence: true, snapshotId: "snapshot-a", airfareDailyAuthorityId: null,
     });
     expect(result.events[0].businessDate).toBeNull();
-    expect(repository.getProjectMonetaryTimeline).toHaveBeenCalledWith("tenant-a", "project-a", 1, 20);
+    expect(repository.getProjectMonetaryTimeline).toHaveBeenCalledWith("tenant-a", "project-a", 1, 20, undefined);
+
+    await service.getProjectMonetaryTimeline("tenant-a", "project-a", 1, 20, "AIRFARE");
+    expect(repository.getProjectMonetaryTimeline).toHaveBeenLastCalledWith("tenant-a", "project-a", 1, 20, "AIRFARE");
   });
 
   it("keeps generic snapshots and each authority revision as distinct, non-duplicated timeline events", async () => {
@@ -318,6 +364,7 @@ describe("Cost Engine foundation", () => {
     expect(evolutionSql).toContain('LAG(snapshot."amount")');
     expect(evolutionSql).toContain('SUM(change."delta") OVER');
     expect(evolutionSql).toContain("'COMPONENT_ARCHIVED'");
+    expect(evolutionSql).toContain("'COMPONENT_REACTIVATED'");
     expect(evolutionSql).toContain('LIMIT ');
     expect(evolutionSql).toContain('ORDER BY "effectiveAt" DESC, "eventId" DESC');
   });
@@ -464,6 +511,59 @@ describe("Cost Engine foundation", () => {
     expect(context.tx.costSupplier.updateMany).toHaveBeenLastCalledWith(expect.objectContaining({ where: { id: "supplier-a", tenantId: "tenant-a" }, data: { isActive: false } }));
   });
 
+  it("archives a component tenant-safely without deleting its immutable history", async () => {
+    const context = repositoryContext();
+    context.tx.$queryRaw.mockResolvedValue([{ id: "component-a" }]);
+    context.tx.costComponent.findFirst.mockResolvedValue({ id: "component-a", costingProjectId: "project-a" });
+    context.tx.costComponent.updateMany.mockResolvedValue({ count: 1 });
+
+    await context.repository.archiveComponent("tenant-a", "component-a", actor);
+
+    expect(context.tx.costComponent.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: "component-a", tenantId: "tenant-a", status: { not: "ARCHIVED" } },
+      data: expect.objectContaining({ status: "ARCHIVED" }),
+    }));
+    expect(context.tx.costAuditEvent.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ tenantId: "tenant-a", costingProjectId: "project-a", costComponentId: "component-a", action: "COMPONENT_ARCHIVED" }),
+    }));
+    expect(context.tx.costSnapshot.deleteMany).not.toHaveBeenCalled();
+    expect(context.tx.costEvidence.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it("reactivates an archived component with its existing snapshot and structural audit only", async () => {
+    const context = repositoryContext();
+    context.tx.$queryRaw.mockResolvedValue([{ id: "component-a" }]);
+    context.tx.costComponent.findFirst.mockResolvedValue({ id: "component-a", costingProjectId: "project-a", currentSnapshotId: "snapshot-a" });
+    context.tx.costingProject.findFirst.mockResolvedValue({ id: "project-a", baseCurrency: "USD", status: "ACTIVE" });
+    context.tx.costComponent.updateMany.mockResolvedValue({ count: 1 });
+
+    await context.repository.reactivateComponent("tenant-a", "component-a", actor);
+
+    expect(context.tx.costComponent.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: "component-a", tenantId: "tenant-a", status: "ARCHIVED" },
+      data: expect.objectContaining({ status: "ACTIVE" }),
+    }));
+    expect(context.tx.costAuditEvent.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ action: "COMPONENT_REACTIVATED", costComponentId: "component-a" }),
+    }));
+    expect(context.tx.costSnapshot.create).not.toHaveBeenCalled();
+    expect(context.tx.costComponent.updateMany).not.toHaveBeenCalledWith(expect.objectContaining({ data: { currentSnapshotId: expect.anything() } }));
+  });
+
+  it("serializes lifecycle timeline events without manufacturing monetary values", async () => {
+    const repository = {
+      getProjectMonetaryTimeline: jest.fn().mockResolvedValue({
+        events: [monetaryEvent({ eventId: "audit-reactivate", eventType: "COMPONENT_REACTIVATED", appliedAmount: null, currency: null, snapshotId: null, evidenceCount: 0, componentStatus: "ACTIVE", resultingComponentStatus: "ACTIVE" })],
+        total: 1, page: 1, pageSize: 20,
+      }),
+    } as unknown as CostEngineRepository;
+    const service = new CostEngineService(repository);
+
+    const result = await service.getProjectMonetaryTimeline("tenant-a", "project-a");
+
+    expect(result.events[0]).toMatchObject({ eventType: "COMPONENT_REACTIVATED", appliedAmount: null, currency: null, snapshotId: null, componentStatus: "ACTIVE", resultingComponentStatus: "ACTIVE", hasEvidence: false });
+  });
+
   it("manages generic applicability only for components in the current tenant", async () => {
     const context = repositoryContext();
     context.tx.costComponent.findFirst.mockResolvedValue(null);
@@ -484,6 +584,8 @@ describe("Cost Engine foundation", () => {
   it("enforces the 25-item pagination maximum at the API DTO boundary", async () => {
     const pipe = new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true });
     await expect(pipe.transform({ page: "1", pageSize: "26" }, { type: "query", metatype: ListCostComponentsDto })).rejects.toBeDefined();
+    await expect(pipe.transform({ categoryCode: "airfare" }, { type: "query", metatype: ListCostMonetaryTimelineDto })).rejects.toBeDefined();
+    await expect(pipe.transform({ categoryCode: "AIRFARE", pageSize: "20" }, { type: "query", metatype: ListCostMonetaryTimelineDto })).resolves.toMatchObject({ categoryCode: "AIRFARE", pageSize: 20 });
   });
 });
 
@@ -512,7 +614,7 @@ function project() { return { id: "project-a", baseCurrency: "USD", status: "ACT
 function component(overrides: Record<string, unknown> = {}) { return { id: "component-a", costingProjectId: "project-a", costCategoryId: "category-a", costSupplierId: null, title: "Lodging", description: null, detailPayload: null, detailSchemaVersion: null, quantity: null, unit: null, costCategory: { code: "OTHER", origin: "STANDARD" }, sortPosition: 0, ...overrides }; }
 function snapshot(amount: string) { return { id: "snapshot-a", amount: { toFixed: () => amount }, currency: "USD", sourceReference: null, sourceUrl: null }; }
 function evolutionPoint(overrides: Record<string, unknown> = {}) { return { effectiveAt: new Date("2026-01-01T10:00:00.000Z"), authoritativeTotal: "100.50000", delta: "100.50000", costComponentId: "component-a", costSnapshotId: "snapshot-a1", costCategoryCode: "LODGING", costCategoryDisplayName: "Lodging", sourceReference: "Quote", sourceUrl: null, reason: null, eventKind: "SNAPSHOT", eventId: "snapshot-a1", earliestReconstructableTotal: "100.50000", total: 1, ...overrides }; }
-function monetaryEvent(overrides: Record<string, unknown> = {}) { return { eventId: "snapshot-a", eventType: "INITIAL_COST", costingProjectId: "project-a", costComponentId: "component-a", costCategoryCode: "AIRFARE", costCategoryDisplayName: "Boleto aéreo", componentTitle: "SJO → MAD", effectiveAt: new Date("2026-01-01T10:00:00.000Z"), businessDate: null, appliedAmount: "100.00000", observedAmount: null, currency: "USD", actorUserId: "user-a", actorName: "Admin A", sourceReference: "Cotización", sourceUrl: "https://provider.example/quote", snapshotId: "snapshot-a", appliedSnapshotId: null, airfareDailyAuthorityId: null, overrideReason: null, evidenceCount: 0, total: 1, ...overrides }; }
+function monetaryEvent(overrides: Record<string, unknown> = {}) { return { eventId: "snapshot-a", eventType: "INITIAL_COST", costingProjectId: "project-a", costComponentId: "component-a", costCategoryCode: "AIRFARE", costCategoryDisplayName: "Boleto aéreo", componentTitle: "SJO → MAD", effectiveAt: new Date("2026-01-01T10:00:00.000Z"), businessDate: null, appliedAmount: "100.00000", observedAmount: null, currency: "USD", actorUserId: "user-a", actorName: "Admin A", sourceReference: "Cotización", sourceUrl: "https://provider.example/quote", snapshotId: "snapshot-a", appliedSnapshotId: null, airfareDailyAuthorityId: null, overrideReason: null, componentStatus: "ACTIVE", resultingComponentStatus: null, evidenceCount: 0, total: 1, ...overrides }; }
 function componentInput() { return { costCategoryId: "category-a", costSupplierId: null, title: "Lodging", description: null, detailPayload: null, detailSchemaVersion: null, quantity: null, unit: null, sortPosition: 0 }; }
 function snapshotInput() { return { amount: "125.50", currency: "USD", sourceReference: null, sourceUrl: null, reason: null }; }
 function applicabilityInput() { return { scopeType: "UNIT", scopeKey: null, label: null, startDate: null, endDate: null }; }

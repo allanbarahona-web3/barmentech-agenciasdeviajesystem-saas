@@ -58,13 +58,13 @@ type ProjectTotalEvolutionRow = {
   sourceReference: string | null;
   sourceUrl: string | null;
   reason: string | null;
-  eventKind: "SNAPSHOT" | "COMPONENT_ARCHIVED";
+  eventKind: "SNAPSHOT" | "COMPONENT_ARCHIVED" | "COMPONENT_REACTIVATED";
   eventId: string;
   earliestReconstructableTotal: string;
   total: number | bigint | string;
 };
 
-export type MonetaryTimelineEventType = "INITIAL_COST" | "COST_SNAPSHOT" | "AGENT_INITIAL" | "ADMIN_OVERRIDE";
+export type MonetaryTimelineEventType = "INITIAL_COST" | "COST_SNAPSHOT" | "AGENT_INITIAL" | "ADMIN_OVERRIDE" | "COMPONENT_DEACTIVATED" | "COMPONENT_REACTIVATED";
 
 type MonetaryTimelineRow = {
   eventId: string;
@@ -76,17 +76,19 @@ type MonetaryTimelineRow = {
   componentTitle: string;
   effectiveAt: Date;
   businessDate: Date | null;
-  appliedAmount: string;
+  appliedAmount: string | null;
   observedAmount: string | null;
-  currency: string;
+  currency: string | null;
   actorUserId: string;
   actorName: string;
   sourceReference: string | null;
   sourceUrl: string | null;
-  snapshotId: string;
+  snapshotId: string | null;
   appliedSnapshotId: string | null;
   airfareDailyAuthorityId: string | null;
   overrideReason: string | null;
+  componentStatus: "ACTIVE" | "ARCHIVED";
+  resultingComponentStatus: "ACTIVE" | "ARCHIVED" | null;
   evidenceCount: bigint | number | string;
   total: bigint | number | string;
 };
@@ -219,14 +221,14 @@ export class CostEngineRepository {
     });
   }
 
-  getProjectMonetaryTimeline(tenantId: string, costingProjectId: string, page: number, pageSize: number) {
+  getProjectMonetaryTimeline(tenantId: string, costingProjectId: string, page: number, pageSize: number, categoryCode?: string) {
     return this.withTenantTransaction(tenantId, "cost-engine.get-project-monetary-timeline", async (tx) => {
       const project = await tx.costingProject.findFirst({
         where: { id: costingProjectId, tenantId },
         select: { id: true },
       });
       if (!project) return null;
-      return this.monetaryTimeline(tx, tenantId, page, pageSize, undefined, costingProjectId);
+      return this.monetaryTimeline(tx, tenantId, page, pageSize, undefined, costingProjectId, categoryCode);
     });
   }
 
@@ -284,13 +286,17 @@ export class CostEngineRepository {
       }
 
       const rows = await tx.$queryRaw<ProjectTotalEvolutionRow[]>`
-        WITH archive_events AS (
-          SELECT audit."id", audit."costComponentId", audit."createdAt", audit."reason"
+        WITH lifecycle_events AS (
+          SELECT audit."id", audit."costComponentId", audit."createdAt", audit."reason", audit."action"
           FROM "cost_audit_events" audit
           WHERE audit."tenantId" = ${tenantId}
             AND audit."costingProjectId" = ${costingProjectId}
-            AND audit."action" = 'COMPONENT_ARCHIVED'
+            AND audit."action" IN ('COMPONENT_ARCHIVED', 'COMPONENT_REACTIVATED')
             AND audit."costComponentId" IS NOT NULL
+        ), archive_events AS (
+          SELECT * FROM lifecycle_events WHERE "action" = 'COMPONENT_ARCHIVED'
+        ), reactivation_events AS (
+          SELECT * FROM lifecycle_events WHERE "action" = 'COMPONENT_REACTIVATED'
         ), eligible_snapshots AS (
           SELECT snapshot."id", snapshot."costComponentId", snapshot."amount", snapshot."capturedAt",
                  snapshot."sourceReference", snapshot."sourceUrl", snapshot."reason",
@@ -303,9 +309,15 @@ export class CostEngineRepository {
           WHERE snapshot."tenantId" = ${tenantId}
             AND snapshot."costingProjectId" = ${costingProjectId}
             AND NOT EXISTS (
-              SELECT 1 FROM archive_events archive
-              WHERE archive."costComponentId" = snapshot."costComponentId"
-                AND archive."createdAt" < snapshot."capturedAt"
+            SELECT 1 FROM archive_events archive
+            WHERE archive."costComponentId" = snapshot."costComponentId"
+              AND archive."createdAt" < snapshot."capturedAt"
+              AND NOT EXISTS (
+                SELECT 1 FROM reactivation_events reactivation
+                WHERE reactivation."costComponentId" = archive."costComponentId"
+                  AND reactivation."createdAt" > archive."createdAt"
+                  AND reactivation."createdAt" < snapshot."capturedAt"
+              )
             )
         ), snapshot_changes AS (
           SELECT snapshot."capturedAt" AS "effectiveAt", snapshot."id" AS "eventId", snapshot."costComponentId",
@@ -325,10 +337,25 @@ export class CostEngineRepository {
             ORDER BY eligible."capturedAt" DESC, eligible."id" DESC
             LIMIT 1
           ) snapshot ON true
+        ), reactivation_changes AS (
+          SELECT reactivation."createdAt" AS "effectiveAt", reactivation."id" AS "eventId", reactivation."costComponentId",
+                 NULL::text AS "costSnapshotId", snapshot."amount" AS "delta", snapshot."costCategoryId",
+                 NULL::text AS "sourceReference", NULL::text AS "sourceUrl", reactivation."reason", 'COMPONENT_REACTIVATED'::text AS "eventKind"
+          FROM reactivation_events reactivation
+          JOIN LATERAL (
+            SELECT eligible."amount", eligible."costCategoryId"
+            FROM eligible_snapshots eligible
+            WHERE eligible."costComponentId" = reactivation."costComponentId"
+              AND eligible."capturedAt" <= reactivation."createdAt"
+            ORDER BY eligible."capturedAt" DESC, eligible."id" DESC
+            LIMIT 1
+          ) snapshot ON true
         ), changes AS (
           SELECT * FROM snapshot_changes WHERE "delta" <> 0
           UNION ALL
           SELECT * FROM archive_changes WHERE "delta" <> 0
+          UNION ALL
+          SELECT * FROM reactivation_changes WHERE "delta" <> 0
         ), running AS (
           SELECT change.*, SUM(change."delta") OVER (ORDER BY change."effectiveAt" ASC, change."eventId" ASC ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS "authoritativeTotal"
           FROM changes change
@@ -369,6 +396,7 @@ export class CostEngineRepository {
       const category = await this.requireCategory(tx, tenantId, input.costCategoryId);
       if (input.costSupplierId) await this.requireSupplier(tx, tenantId, input.costSupplierId);
       const details = normalizeCostComponentDetails(category, componentDetails(input));
+      await this.requireRelatedAirfareComponent(tx, tenantId, costingProjectId, category, details);
 
       const component = await tx.costComponent.create({
         data: {
@@ -401,6 +429,7 @@ export class CostEngineRepository {
           quantity: input.quantity === undefined ? nullableDecimalString(component.quantity) : input.quantity,
           unit: input.unit === undefined ? component.unit : input.unit,
         }));
+        await this.requireRelatedAirfareComponent(tx, tenantId, component.costingProjectId, category, normalizedDetails);
         Object.assign(input, normalizedDetails);
       }
       const updated = await tx.costComponent.updateMany({
@@ -424,6 +453,20 @@ export class CostEngineRepository {
       });
       if (updated.count !== 1) throw new ConflictException("Cost component archive conflict.");
       await this.recordAudit(tx, tenantId, component.costingProjectId, costComponentId, "COMPONENT_ARCHIVED", actor);
+    });
+  }
+
+  reactivateComponent(tenantId: string, costComponentId: string, actor: CostActor) {
+    return this.withTenantTransaction(tenantId, "cost-engine.reactivate-component", async (tx) => {
+      const component = await this.lockAndRequireComponent(tx, tenantId, costComponentId);
+      await this.requireActiveProject(tx, tenantId, component.costingProjectId);
+      if (!component.currentSnapshotId) throw new BadRequestException("Cost component must have a current snapshot before reactivation.");
+      const updated = await tx.costComponent.updateMany({
+        where: { id: costComponentId, tenantId, status: ARCHIVED },
+        data: { status: ACTIVE, updatedByUserId: actor.userId, updatedByName: actor.name },
+      });
+      if (updated.count !== 1) throw new ConflictException("Cost component reactivation conflict.");
+      await this.recordAudit(tx, tenantId, component.costingProjectId, costComponentId, "COMPONENT_REACTIVATED", actor);
     });
   }
 
@@ -668,6 +711,7 @@ export class CostEngineRepository {
     pageSize: number,
     costComponentId?: string,
     costingProjectId?: string,
+    categoryCode?: string,
   ) {
     const rows = await tx.$queryRaw<MonetaryTimelineRow[]>`
       WITH timeline_events AS (
@@ -681,7 +725,8 @@ export class CostEngineRepository {
                snapshot."capturedByUserId" AS "actorUserId", snapshot."capturedByName" AS "actorName",
                snapshot."sourceReference", snapshot."sourceUrl", snapshot."id" AS "snapshotId",
                NULL::text AS "appliedSnapshotId", NULL::text AS "airfareDailyAuthorityId",
-               NULL::text AS "overrideReason"
+               NULL::text AS "overrideReason", component."status"::text AS "componentStatus",
+               NULL::text AS "resultingComponentStatus"
         FROM "cost_snapshots" snapshot
         JOIN "cost_components" component
           ON component."id" = snapshot."costComponentId"
@@ -693,6 +738,7 @@ export class CostEngineRepository {
         WHERE snapshot."tenantId" = ${tenantId}
           AND (${costComponentId ?? null}::text IS NULL OR snapshot."costComponentId" = ${costComponentId ?? null})
           AND (${costingProjectId ?? null}::text IS NULL OR snapshot."costingProjectId" = ${costingProjectId ?? null})
+          AND (${categoryCode ?? null}::text IS NULL OR category."code" = ${categoryCode ?? null})
           AND NOT EXISTS (
             SELECT 1
             FROM "airfare_daily_authority_revisions" revision
@@ -710,7 +756,8 @@ export class CostEngineRepository {
                revision."observedAmount"::text AS "observedAmount", snapshot."currency"::text AS "currency",
                revision."actorUserId", revision."actorName", revision."sourceReference", revision."sourceUrl",
                revision."appliedSnapshotId" AS "snapshotId", revision."appliedSnapshotId",
-               authority."id" AS "airfareDailyAuthorityId", revision."overrideReason"
+               authority."id" AS "airfareDailyAuthorityId", revision."overrideReason", component."status"::text AS "componentStatus",
+               NULL::text AS "resultingComponentStatus"
         FROM "airfare_daily_authority_revisions" revision
         JOIN "airfare_daily_authorities" authority
           ON authority."id" = revision."airfareDailyAuthorityId"
@@ -732,6 +779,32 @@ export class CostEngineRepository {
         WHERE revision."tenantId" = ${tenantId}
           AND (${costComponentId ?? null}::text IS NULL OR revision."costComponentId" = ${costComponentId ?? null})
           AND (${costingProjectId ?? null}::text IS NULL OR revision."costingProjectId" = ${costingProjectId ?? null})
+          AND (${categoryCode ?? null}::text IS NULL OR category."code" = ${categoryCode ?? null})
+        UNION ALL
+        SELECT audit."id" AS "eventId",
+               CASE audit."action" WHEN 'COMPONENT_ARCHIVED' THEN 'COMPONENT_DEACTIVATED' ELSE 'COMPONENT_REACTIVATED' END AS "eventType",
+               audit."costingProjectId", audit."costComponentId",
+               category."code" AS "costCategoryCode", category."displayName" AS "costCategoryDisplayName",
+               component."title" AS "componentTitle", audit."createdAt" AS "effectiveAt",
+               NULL::date AS "businessDate", NULL::text AS "appliedAmount", NULL::text AS "observedAmount", NULL::text AS "currency",
+               audit."actorUserId", audit."actorName", NULL::text AS "sourceReference", NULL::text AS "sourceUrl",
+               NULL::text AS "snapshotId", NULL::text AS "appliedSnapshotId", NULL::text AS "airfareDailyAuthorityId", audit."reason" AS "overrideReason",
+               component."status"::text AS "componentStatus",
+               CASE audit."action" WHEN 'COMPONENT_ARCHIVED' THEN 'ARCHIVED' ELSE 'ACTIVE' END AS "resultingComponentStatus"
+        FROM "cost_audit_events" audit
+        JOIN "cost_components" component
+          ON component."id" = audit."costComponentId"
+         AND component."tenantId" = audit."tenantId"
+         AND component."costingProjectId" = audit."costingProjectId"
+        JOIN "cost_categories" category
+          ON category."id" = component."costCategoryId"
+         AND category."tenantId" = component."tenantId"
+        WHERE audit."tenantId" = ${tenantId}
+          AND audit."action" IN ('COMPONENT_ARCHIVED', 'COMPONENT_REACTIVATED')
+          AND audit."costComponentId" IS NOT NULL
+          AND (${costComponentId ?? null}::text IS NULL OR audit."costComponentId" = ${costComponentId ?? null})
+          AND (${costingProjectId ?? null}::text IS NULL OR audit."costingProjectId" = ${costingProjectId ?? null})
+          AND (${categoryCode ?? null}::text IS NULL OR category."code" = ${categoryCode ?? null})
       ), paged_events AS (
         SELECT timeline_events.*, COUNT(*) OVER() AS "total"
         FROM timeline_events
@@ -789,6 +862,30 @@ export class CostEngineRepository {
     if (!supplier) throw new NotFoundException("Cost supplier not found.");
   }
 
+  private async requireRelatedAirfareComponent(
+    tx: CostEngineTransaction,
+    tenantId: string,
+    costingProjectId: string,
+    category: { code: string; origin: string },
+    details: CostComponentDetails,
+  ) {
+    if (category.origin !== "STANDARD" || category.code !== "BAGGAGE" || !details.detailPayload || typeof details.detailPayload !== "object" || Array.isArray(details.detailPayload)) return;
+    const relatedAirfareComponentId = (details.detailPayload as Record<string, unknown>).relatedAirfareComponentId;
+    if (typeof relatedAirfareComponentId !== "string") return;
+
+    const relatedAirfare = await tx.costComponent.findFirst({
+      where: {
+        id: relatedAirfareComponentId,
+        tenantId,
+        costingProjectId,
+        status: ACTIVE,
+        costCategory: { code: "AIRFARE", origin: "STANDARD" },
+      },
+      select: { id: true },
+    });
+    if (!relatedAirfare) throw new BadRequestException("relatedAirfareComponentId must reference an active AIRFARE component in this costing project.");
+  }
+
   private async requireComponent(tx: CostEngineTransaction, tenantId: string, costComponentId: string) {
     const component = await tx.costComponent.findFirst({ where: { id: costComponentId, tenantId }, select: { id: true } });
     if (!component) throw new NotFoundException("Cost component not found.");
@@ -825,7 +922,7 @@ export class CostEngineRepository {
     const component = await tx.costComponent.findFirst({
       where: { id: costComponentId, tenantId },
       select: {
-        id: true, costingProjectId: true, costCategoryId: true, costSupplierId: true,
+        id: true, costingProjectId: true, costCategoryId: true, costSupplierId: true, status: true, currentSnapshotId: true,
         title: true, description: true, detailPayload: true, detailSchemaVersion: true, quantity: true, unit: true,
         sortPosition: true, costCategory: { select: { code: true, origin: true } },
         ...(includeSnapshot ? { currentSnapshot: { select: { amount: true, currency: true, sourceReference: true, sourceUrl: true } } } : {}),

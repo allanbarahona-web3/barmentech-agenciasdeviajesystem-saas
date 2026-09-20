@@ -11,6 +11,7 @@ import {
   CreateCostSupplierDto,
   DuplicateCostComponentDto,
   ListCostComponentsDto,
+  ListCostMonetaryTimelineDto,
   UpdateCostApplicabilityDto,
   UpdateCostCategoryDto,
   UpdateCostComponentCostDto,
@@ -56,8 +57,8 @@ export class CostEngineController {
   }
 
   @Get("projects/:costingProjectId/monetary-timeline")
-  getProjectMonetaryTimeline(@Req() req: CostEngineRequest, @Param("costingProjectId") costingProjectId: string, @Query() query: ListCostComponentsDto) {
-    return this.service.getProjectMonetaryTimeline(req.user.tenantId, costingProjectId, query.page ?? 1, query.pageSize ?? 20);
+  getProjectMonetaryTimeline(@Req() req: CostEngineRequest, @Param("costingProjectId") costingProjectId: string, @Query() query: ListCostMonetaryTimelineDto) {
+    return this.service.getProjectMonetaryTimeline(req.user.tenantId, costingProjectId, query.page ?? 1, query.pageSize ?? 20, query.categoryCode);
   }
 
   @Get("categories")
@@ -159,6 +160,11 @@ export class CostEngineController {
   @Patch("components/:costComponentId/archive")
   archiveComponent(@Req() req: CostEngineRequest, @Param("costComponentId") costComponentId: string) {
     return this.service.archiveComponent(req.user.tenantId, costComponentId, actor(req));
+  }
+
+  @Patch("components/:costComponentId/reactivate")
+  reactivateComponent(@Req() req: CostEngineRequest, @Param("costComponentId") costComponentId: string) {
+    return this.service.reactivateComponent(req.user.tenantId, costComponentId, actor(req));
   }
 
   @Post("components/:costComponentId/duplicate")

@@ -71,8 +71,8 @@ export class CostEngineService {
     return monetaryTimelineResponse(result);
   }
 
-  async getProjectMonetaryTimeline(tenantId: string, costingProjectId: string, page = 1, pageSize = 20) {
-    const result = await this.repository.getProjectMonetaryTimeline(tenantId, costingProjectId, page, pageSize);
+  async getProjectMonetaryTimeline(tenantId: string, costingProjectId: string, page = 1, pageSize = 20, categoryCode?: string) {
+    const result = await this.repository.getProjectMonetaryTimeline(tenantId, costingProjectId, page, pageSize, categoryCode);
     if (!result) throw new NotFoundException("Costing project not found.");
     return monetaryTimelineResponse(result);
   }
@@ -106,6 +106,11 @@ export class CostEngineService {
 
   async archiveComponent(tenantId: string, costComponentId: string, actor: CostActor) {
     await this.repository.archiveComponent(tenantId, costComponentId, actor);
+    return this.getComponent(tenantId, costComponentId);
+  }
+
+  async reactivateComponent(tenantId: string, costComponentId: string, actor: CostActor) {
+    await this.repository.reactivateComponent(tenantId, costComponentId, actor);
     return this.getComponent(tenantId, costComponentId);
   }
 
@@ -272,7 +277,7 @@ function monetaryTimelineResponse(result: { events: Array<any>; total: number; p
       componentTitle: event.componentTitle,
       effectiveAt: event.effectiveAt,
       businessDate: dateString(event.businessDate),
-      appliedAmount: decimalString(event.appliedAmount),
+      appliedAmount: event.appliedAmount === null ? null : decimalString(event.appliedAmount),
       observedAmount: event.observedAmount === null ? null : decimalString(event.observedAmount),
       currency: event.currency,
       actor: { userId: event.actorUserId, name: event.actorName },
@@ -282,6 +287,8 @@ function monetaryTimelineResponse(result: { events: Array<any>; total: number; p
       appliedSnapshotId: event.appliedSnapshotId,
       airfareDailyAuthorityId: event.airfareDailyAuthorityId,
       overrideReason: event.overrideReason,
+      componentStatus: event.componentStatus,
+      resultingComponentStatus: event.resultingComponentStatus,
       evidenceCount: event.evidenceCount,
       hasEvidence: event.evidenceCount > 0,
     })),

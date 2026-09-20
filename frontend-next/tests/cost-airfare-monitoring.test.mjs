@@ -6,20 +6,19 @@ const readSource = (relativePath) => readFileSync(new URL(relativePath, import.m
 const api = readSource("../src/lib/cost-engine-api.ts");
 const workspace = readSource("../src/features/cost-engine/cost-workspace.tsx");
 const evolution = readSource("../src/features/cost-engine/airfare-evolution-dialog.tsx");
+const categoryLabels = readSource("../src/features/cost-engine/cost-category-label.ts");
 const globalStyles = readSource("../src/app/globals.css");
 
-test("adds the ADMIN-only Cost Workspace entry point for AIRFARE evolution", () => {
+test("adds the ADMIN-only Cost Workspace entry point for Cost History", () => {
   assert.match(workspace, /role !== "ADMIN"/);
-  assert.match(workspace, /Evolución de costos/);
+  assert.match(workspace, />Historial de costos<\/Button>/);
   assert.match(workspace, /setShowEvolution\(true\)/);
   assert.match(workspace, /<AirfareEvolutionDialog/);
 });
 
 test("uses bounded unified component/project monetary timeline endpoints and renders stable event types", () => {
   assert.match(api, /\/cost-engine\/projects\/\$\{encodeURIComponent\(costingProjectId\)\}\/monetary-timeline/);
-  assert.match(api, /\/cost-engine\/components\/\$\{encodeURIComponent\(costComponentId\)\}\/monetary-timeline/);
-  assert.match(evolution, /listProjectMonetaryTimeline\(project\.id, page, 20\)/);
-  assert.match(evolution, /listComponentMonetaryTimeline\(selectedComponentId, page, 20\)/);
+  assert.match(evolution, /listProjectMonetaryTimeline\(project\.id, page, 20, selectedCategoryCode \|\| undefined\)/);
   assert.match(evolution, /INITIAL_COST: "Costo inicial"/);
   assert.match(evolution, /COST_SNAPSHOT: "Actualización de costo"/);
   assert.match(evolution, /AGENT_INITIAL: "Actualización diaria"/);
@@ -28,7 +27,7 @@ test("uses bounded unified component/project monetary timeline endpoints and ren
   assert.match(evolution, /row\.appliedAmount/);
 });
 
-test("renders Cost Evolution instants in the tenant timezone and keeps business dates date-only", () => {
+test("renders Cost History instants in the tenant timezone and keeps business dates date-only", () => {
   assert.match(evolution, /useTenantDateTimeFormatter/);
   assert.match(evolution, /const formatTenantDateTime = useTenantDateTimeFormatter\(\)/);
   assert.match(evolution, /formatTenantDateTime\(row\.effectiveAt\)/);
@@ -40,7 +39,9 @@ test("renders Cost Evolution instants in the tenant timezone and keeps business 
 test("uses only timeline authority IDs for overrides and refreshes history plus current composition", () => {
   assert.match(evolution, /overrideAdminAirfareDailyAuthority\(row\.airfareDailyAuthorityId/);
   assert.match(evolution, /row\.airfareDailyAuthorityId \? <Button/);
-  assert.match(evolution, /El motivo de anulación es requerido\./);
+  assert.match(evolution, /Motivo del ajuste \*/);
+  assert.match(evolution, /Ajustar tarifa diaria/);
+  assert.doesNotMatch(evolution, /Anular costo de boleto aéreo/);
   assert.match(evolution, /Promise\.all\(\[loadTimeline\(\), onCompositionChanged\(\)\]\)/);
   assert.match(evolution, /historial conserva las revisiones anteriores/);
   assert.doesNotMatch(evolution, /create.*daily-authority/i);
@@ -59,7 +60,7 @@ test("opens one evidence directly in AttachmentViewer with lazy snapshot-scoped 
   assert.doesNotMatch(evolution, /getCostComponent\(/);
 });
 
-test("closing AttachmentViewer preserves the mounted Cost Evolution context and returns focus to its evidence action", () => {
+test("closing AttachmentViewer preserves the mounted Cost History context and returns focus to its evidence action", () => {
   assert.match(evolution, /const evidenceTriggerRef = useRef<HTMLButtonElement \| null>\(null\)/);
   assert.match(evolution, /evidenceTriggerRef\.current = trigger/);
   assert.match(evolution, /const closeEvidenceViewer = useCallback\(\(\) => \{[\s\S]*setEvidenceViewer\(null\);[\s\S]*requestAnimationFrame\(\(\) => evidenceTriggerRef\.current\?\.focus\(\)\)/);
@@ -93,4 +94,32 @@ test("preserves exact monetary strings and does not invent project-total variati
 test("keeps source navigation external and shows the unified empty state", () => {
   assert.match(evolution, /href=\{row\.sourceUrl\} target="_blank" rel="noreferrer">Abrir fuente/);
   assert.match(evolution, /No hay historial de costos todavía/);
+});
+
+test("filters Cost History by Spanish category while retaining archived history", () => {
+  assert.match(evolution, /const \[selectedCategoryCode, setSelectedCategoryCode\] = useState\(""\)/);
+  assert.match(evolution, /Todas las categorías/);
+  assert.match(evolution, /listProjectMonetaryTimeline\(project\.id, page, 20, selectedCategoryCode \|\| undefined\)/);
+  assert.match(evolution, /costCategoryDisplayName\(row\.category\)/);
+  assert.match(categoryLabels, /AIRFARE: "Boleto aéreo"/);
+  assert.match(categoryLabels, /EVENT_TICKET: "Entradas"/);
+  assert.doesNotMatch(evolution, /row\.category\.displayName/);
+});
+
+test("shows structural lifecycle events and allows only archived components to reactivate", () => {
+  assert.match(api, /COMPONENT_DEACTIVATED/);
+  assert.match(api, /COMPONENT_REACTIVATED/);
+  assert.match(api, /reactivateCostComponent/);
+  assert.match(evolution, /COMPONENT_DEACTIVATED: "Componente desactivado"/);
+  assert.match(evolution, /COMPONENT_REACTIVATED: "Componente reactivado"/);
+  assert.match(evolution, /const archived = row\.componentStatus === "ARCHIVED"/);
+  assert.match(evolution, /No incluido en el costo actual/);
+  assert.match(evolution, /<Badge variant="destructive" className="px-3 py-1 text-sm font-semibold shadow-sm">Desactivado<\/Badge>/);
+  assert.match(evolution, /<Badge variant="default" className="bg-success px-3 py-1 text-sm font-semibold text-white shadow-sm">Activo<\/Badge>/);
+  assert.match(evolution, /archived \? <Button[^>]*>Reactivar componente/);
+  assert.match(evolution, /<Dialog open=\{Boolean\(reactivationRow\)\}/);
+  assert.match(evolution, /reactivateCostComponent\(reactivationRow\.costComponentId\)/);
+  assert.match(evolution, /No se creará un nuevo registro monetario/);
+  assert.match(evolution, /formatTenantDateTime\(row\.effectiveAt\)/);
+  assert.doesNotMatch(evolution, /Volver a composición/);
 });

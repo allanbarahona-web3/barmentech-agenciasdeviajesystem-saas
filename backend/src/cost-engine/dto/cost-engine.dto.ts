@@ -172,6 +172,13 @@ export class ListCostComponentsDto {
   pageSize?: number;
 }
 
+export class ListCostMonetaryTimelineDto extends ListCostComponentsDto {
+  @IsOptional()
+  @IsString()
+  @Matches(/^[A-Z][A-Z0-9_]{1,63}$/)
+  categoryCode?: string;
+}
+
 export class CreateCostCategoryDto {
   @IsString()
   @Matches(/^[A-Z][A-Z0-9_]{1,63}$/)

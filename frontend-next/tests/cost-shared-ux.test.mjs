@@ -53,5 +53,5 @@ test("Cost Workspace keeps source links external and removes the inert travel-de
   assert.match(evolution, /href=\{row\.sourceUrl\} target="_blank" rel="noreferrer"/);
   assert.doesNotMatch(workspace, /Ver detalles del viaje/);
   assert.match(workspace, /← Volver a viajes/);
-  assert.match(workspace, /Evolución de costos/);
+  assert.match(workspace, /Historial de costos/);
 });
