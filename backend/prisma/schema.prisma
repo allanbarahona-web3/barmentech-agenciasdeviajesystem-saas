@@ -131,6 +131,7 @@ model Tenant {
   travelPackageCostingProjectLinks        TravelPackageCostingProjectLink[]
   internalTripCostingProjectLinks         InternalTripCostingProjectLink[]
   pricingConfigurations                   PricingConfiguration[]
+  tenantPricingPolicies                   TenantPricingPolicy[]
   pricingCalculationVersions              PricingCalculationVersion[]
   TravelPackagePricingPublication         TravelPackagePricingPublication[]
   InternalTripPricingPublication          InternalTripPricingPublication[]
@@ -1075,6 +1076,37 @@ model PricingConfiguration {
   @@unique([costingProjectId, tenantId], map: "pricing_configurations_tenant_project_key")
   @@unique([id, tenantId, costingProjectId], map: "pricing_configurations_id_tenant_project_key")
   @@map("pricing_configurations")
+}
+
+/// Mutable tenant-owned defaults. Future trusted adapters copy these inputs
+/// into project-specific PricingConfiguration records; calculations never read
+/// this model as live authority.
+model TenantPricingPolicy {
+  id                            String   @id @default(cuid())
+  tenantId                      String
+  name                          String   @db.VarChar(160)
+  description                   String?  @db.VarChar(500)
+  isDefaultForCustomQuotations  Boolean  @default(false)
+  active                        Boolean  @default(true)
+  calculationPolicyVersion      String   @default("PRICING_V1") @db.VarChar(32)
+  operationalCostsAmountDefault Decimal  @default(0) @db.Decimal(19, 5)
+  riskMarginPercent             Decimal  @default(0) @db.Decimal(9, 6)
+  targetProfitMarginPercent     Decimal  @default(0) @db.Decimal(9, 6)
+  salesCommissionPercent        Decimal  @default(0) @db.Decimal(9, 6)
+  bankCommissionPercent         Decimal  @default(0) @db.Decimal(9, 6)
+  applicableTaxPercent          Decimal  @default(0) @db.Decimal(9, 6)
+  createdByUserId               String
+  createdByName                 String
+  updatedByUserId               String?
+  updatedByName                 String?
+  createdAt                     DateTime @default(now())
+  updatedAt                     DateTime @updatedAt
+  tenant                        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([id, tenantId], map: "tenant_pricing_policies_id_tenant_key")
+  @@unique([tenantId, name], map: "tenant_pricing_policies_tenant_name_key")
+  @@index([tenantId, active, name, id], map: "tenant_pricing_policies_tenant_active_name_idx")
+  @@map("tenant_pricing_policies")
 }
 
 model PricingCalculationVersion {
