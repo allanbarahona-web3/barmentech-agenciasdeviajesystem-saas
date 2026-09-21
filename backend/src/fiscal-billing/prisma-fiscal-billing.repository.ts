@@ -145,6 +145,21 @@ export class PrismaSalesOrderFiscalBillingRepository
       total: order.total.toFixed(4),
       lines: order.lines.map((line) => ({
         ...line,
+        fiscalDescription: (line as typeof line & {
+          fiscalDescription: string | null;
+        }).fiscalDescription ?? null,
+        cabysCode: (line as typeof line & { cabysCode: string | null })
+          .cabysCode ?? null,
+        unitOfMeasureCode: (line as typeof line & {
+          unitOfMeasureCode: string | null;
+        }).unitOfMeasureCode ?? null,
+        taxCode: (line as typeof line & { taxCode: string | null }).taxCode ??
+          null,
+        taxRateCode: (line as typeof line & { taxRateCode: string | null })
+          .taxRateCode ?? null,
+        fiscalTaxPercentage: (
+          line as typeof line & { fiscalTaxPercentage: Prisma.Decimal | null }
+        ).fiscalTaxPercentage?.toFixed(4) ?? null,
         subtotal: line.subtotal.toFixed(4),
         vatPercentage: line.vatPercentage.toFixed(4),
         vatAmount: line.vatAmount.toFixed(4),

@@ -43,6 +43,7 @@ import {
 import { validateCrV44CalculatedSnapshot } from "./cr-v44-calculated-snapshot-validator";
 import { FiscalCalculationError } from "./fiscal-decimal";
 import { buildSalesOrderLineFiscalDescription } from "./sales-order-line-fiscal-description";
+import { resolveSalesOrderLineFiscalSnapshot } from "./sales-order-line-fiscal-snapshot";
 
 const MAX_SEQUENCE_NUMBER = 9_999_999_999n;
 const SUPPORTED_DOCUMENT_TYPES = new Set<string>([
@@ -214,16 +215,30 @@ const authoritativeSalesOrderInclude =
   Prisma.validator<Prisma.SalesOrderInclude>()({
     lines: {
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-      include: {
-        additionalServiceCatalog: {
-          include: { fiscalProfile: true },
-        },
-      },
     },
   });
-type AuthoritativeSalesOrder = Prisma.SalesOrderGetPayload<{
+const legacyAdditionalServiceCatalogInclude =
+  Prisma.validator<Prisma.AdditionalServiceCatalogInclude>()({
+    fiscalProfile: true,
+  });
+type LoadedSalesOrder = Prisma.SalesOrderGetPayload<{
   include: typeof authoritativeSalesOrderInclude;
 }>;
+type LegacyAdditionalServiceCatalog = Prisma.AdditionalServiceCatalogGetPayload<{
+  include: typeof legacyAdditionalServiceCatalogInclude;
+}>;
+type AuthoritativeSalesOrderLine = LoadedSalesOrder["lines"][number] & {
+  fiscalDescription: string | null;
+  cabysCode: string | null;
+  unitOfMeasureCode: string | null;
+  taxCode: string | null;
+  taxRateCode: string | null;
+  fiscalTaxPercentage: Prisma.Decimal | null;
+  additionalServiceCatalog: LegacyAdditionalServiceCatalog | null;
+};
+type AuthoritativeSalesOrder = Omit<LoadedSalesOrder, "lines"> & {
+  lines: AuthoritativeSalesOrderLine[];
+};
 type AllocationDocument = Prisma.BillingDocumentGetPayload<{
   include: { lines: { include: { taxes: { include: { exemption: true } } } } };
 }>;
@@ -410,11 +425,15 @@ export class PrismaBillingDocumentRepository
           request.paymentMethods,
         );
 
-        const salesOrder = await tx.salesOrder.findFirst({
+        const loadedSalesOrder = await tx.salesOrder.findFirst({
           where: { id: request.salesOrderId, tenantId: request.tenantId },
           include: authoritativeSalesOrderInclude,
         });
-        if (!salesOrder) throw fiscalBillingError("SALES_ORDER_NOT_FOUND");
+        if (!loadedSalesOrder) throw fiscalBillingError("SALES_ORDER_NOT_FOUND");
+        const salesOrder = await hydrateSalesOrderFiscalAuthorities(
+          tx,
+          loadedSalesOrder,
+        );
         requireEligibleFiscalSalesOrder(salesOrder);
         if (salesOrder.customerId !== null) {
           const customer = await tx.client.findFirst({
@@ -1341,8 +1360,55 @@ type CrV44LineMetadata = {
   taxRatePercentage: Prisma.Decimal;
 };
 
+async function hydrateSalesOrderFiscalAuthorities(
+  tx: Prisma.TransactionClient,
+  loadedSalesOrder: LoadedSalesOrder,
+): Promise<AuthoritativeSalesOrder> {
+  // The generated Prisma client is refreshed when the additive snapshot
+  // migration is adopted. Keep the cast localized so this backend story does
+  // not require running Prisma generate.
+  const salesOrder = loadedSalesOrder as unknown as AuthoritativeSalesOrder;
+  const legacyCatalogIds = [
+    ...new Set(
+      salesOrder.lines.flatMap((line) =>
+        resolveSalesOrderLineFiscalSnapshot(line).kind === "ABSENT" &&
+        line.additionalServiceCatalogId
+          ? [line.additionalServiceCatalogId]
+          : [],
+      ),
+    ),
+  ];
+  if (!legacyCatalogIds.length) return salesOrder;
+
+  const catalogs = await tx.additionalServiceCatalog.findMany({
+    where: {
+      tenantId: salesOrder.tenantId,
+      id: { in: legacyCatalogIds },
+    },
+    include: legacyAdditionalServiceCatalogInclude,
+  });
+  const catalogById = new Map(catalogs.map((catalog) => [catalog.id, catalog]));
+  return {
+    ...salesOrder,
+    lines: salesOrder.lines.map((line) => ({
+      ...line,
+      additionalServiceCatalog:
+        line.additionalServiceCatalogId === null
+          ? null
+          : (catalogById.get(line.additionalServiceCatalogId) ?? null),
+    })),
+  };
+}
+
 function requireEligibleFiscalSalesOrder(order: AuthoritativeSalesOrder): void {
-  if (order.sourceType !== ADDITIONAL_SERVICE_SALES_ORDER_SOURCE_TYPE) {
+  const snapshots = order.lines.map(resolveSalesOrderLineFiscalSnapshot);
+  if (snapshots.some((snapshot) => snapshot.kind === "PARTIAL")) {
+    throw fiscalBillingError("SALES_ORDER_LINE_FISCAL_SNAPSHOT_PARTIAL");
+  }
+  if (
+    order.sourceType !== ADDITIONAL_SERVICE_SALES_ORDER_SOURCE_TYPE &&
+    snapshots.some((snapshot) => snapshot.kind !== "COMPLETE")
+  ) {
     throw fiscalBillingError("SALES_ORDER_SOURCE_NOT_ELIGIBLE");
   }
   if (order.status !== ELIGIBLE_SALES_ORDER_STATUS) {
@@ -1456,56 +1522,96 @@ function crV44InputFromSalesOrder(order: AuthoritativeSalesOrder): {
   let commercialTotal = new Prisma.Decimal(0);
   const metadata: CrV44LineMetadata[] = [];
   const lines = order.lines.map((line, index) => {
-    if (line.fiscalItemCategory === null) {
-      throw fiscalBillingError(
-        "SALES_ORDER_LINE_FISCAL_CATEGORY_UNCLASSIFIED",
-      );
+    const snapshot = resolveSalesOrderLineFiscalSnapshot(line);
+    if (snapshot.kind === "PARTIAL") {
+      throw fiscalBillingError("SALES_ORDER_LINE_FISCAL_SNAPSHOT_PARTIAL");
     }
-    if (
-      line.fiscalItemCategory !== "SERVICE" &&
-      line.fiscalItemCategory !== "MERCHANDISE"
-    ) {
-      throw fiscalBillingError("BILLING_DRAFT_FISCAL_SOURCE_UNSUPPORTED");
-    }
-    if (!line.additionalServiceCatalogId) {
-      throw fiscalBillingError("SALES_ORDER_LINE_SOURCE_IDENTITY_MISSING");
-    }
-    const catalog = line.additionalServiceCatalog;
-    if (
-      !catalog ||
-      catalog.id !== line.additionalServiceCatalogId ||
-      catalog.tenantId !== order.tenantId
-    ) {
-      throw fiscalBillingError("BILLING_DRAFT_FISCAL_SOURCE_UNSUPPORTED");
-    }
-    const profile = catalog.fiscalProfile;
-    if (!profile) {
-      throw fiscalBillingError("SALES_ORDER_LINE_FISCAL_PROFILE_MISSING");
-    }
-    if (
-      profile.tenantId !== order.tenantId ||
-      profile.additionalServiceCatalogId !== catalog.id
-    ) {
-      throw fiscalBillingError("BILLING_DRAFT_FISCAL_SOURCE_UNSUPPORTED");
-    }
-    if (!profile.isActive) {
-      throw fiscalBillingError("SALES_ORDER_LINE_FISCAL_PROFILE_INACTIVE");
-    }
-    if (
-      !profile.cabysCode ||
-      !profile.unitOfMeasureCode ||
-      !profile.taxCode ||
-      !profile.taxRateCode ||
-      profile.taxPercentage === null
-    ) {
-      throw fiscalBillingError("SALES_ORDER_LINE_FISCAL_PROFILE_INVALID");
-    }
-    if (profile.taxCode !== "01") {
-      throw fiscalBillingError("BILLING_DRAFT_FISCAL_SOURCE_UNSUPPORTED");
-    }
-    if (!profile.taxPercentage.equals(line.vatPercentage)) {
-      throw fiscalBillingError("SALES_ORDER_LINE_TAX_MISMATCH");
-    }
+    const fiscal = (() => {
+      if (snapshot.kind === "COMPLETE") {
+        const frozen = snapshot.snapshot;
+        const taxPercentage = new Prisma.Decimal(frozen.fiscalTaxPercentage);
+        if (frozen.taxCode !== "01") {
+          throw fiscalBillingError("BILLING_DRAFT_FISCAL_SOURCE_UNSUPPORTED");
+        }
+        if (!taxPercentage.equals(line.vatPercentage)) {
+          throw fiscalBillingError("SALES_ORDER_LINE_TAX_MISMATCH");
+        }
+        return {
+          category: frozen.fiscalItemCategory,
+          cabysCode: frozen.cabysCode,
+          unitOfMeasureCode: frozen.unitOfMeasureCode,
+          taxCode: "01" as const,
+          taxRateCode: frozen.taxRateCode,
+          taxPercentage,
+          description: frozen.fiscalDescription,
+        };
+      }
+
+      if (line.fiscalItemCategory === null) {
+        throw fiscalBillingError(
+          "SALES_ORDER_LINE_FISCAL_CATEGORY_UNCLASSIFIED",
+        );
+      }
+      if (
+        line.fiscalItemCategory !== "SERVICE" &&
+        line.fiscalItemCategory !== "MERCHANDISE"
+      ) {
+        throw fiscalBillingError("BILLING_DRAFT_FISCAL_SOURCE_UNSUPPORTED");
+      }
+      if (!line.additionalServiceCatalogId) {
+        throw fiscalBillingError("SALES_ORDER_LINE_SOURCE_IDENTITY_MISSING");
+      }
+      const catalog = line.additionalServiceCatalog;
+      if (
+        !catalog ||
+        catalog.id !== line.additionalServiceCatalogId ||
+        catalog.tenantId !== order.tenantId
+      ) {
+        throw fiscalBillingError("BILLING_DRAFT_FISCAL_SOURCE_UNSUPPORTED");
+      }
+      const profile = catalog.fiscalProfile;
+      if (!profile) {
+        throw fiscalBillingError("SALES_ORDER_LINE_FISCAL_PROFILE_MISSING");
+      }
+      if (
+        profile.tenantId !== order.tenantId ||
+        profile.additionalServiceCatalogId !== catalog.id
+      ) {
+        throw fiscalBillingError("BILLING_DRAFT_FISCAL_SOURCE_UNSUPPORTED");
+      }
+      if (!profile.isActive) {
+        throw fiscalBillingError("SALES_ORDER_LINE_FISCAL_PROFILE_INACTIVE");
+      }
+      if (
+        !profile.cabysCode ||
+        !profile.unitOfMeasureCode ||
+        !profile.taxCode ||
+        !profile.taxRateCode ||
+        profile.taxPercentage === null
+      ) {
+        throw fiscalBillingError("SALES_ORDER_LINE_FISCAL_PROFILE_INVALID");
+      }
+      if (profile.taxCode !== "01") {
+        throw fiscalBillingError("BILLING_DRAFT_FISCAL_SOURCE_UNSUPPORTED");
+      }
+      if (!profile.taxPercentage.equals(line.vatPercentage)) {
+        throw fiscalBillingError("SALES_ORDER_LINE_TAX_MISMATCH");
+      }
+      return {
+        category: line.fiscalItemCategory,
+        cabysCode: profile.cabysCode,
+        unitOfMeasureCode: profile.unitOfMeasureCode,
+        taxCode: "01" as const,
+        taxRateCode: profile.taxRateCode,
+        taxPercentage: profile.taxPercentage,
+        description: buildSalesOrderLineFiscalDescription({
+          serviceName: line.serviceName,
+          serviceCode: line.serviceCode,
+          serviceDetailsVersion: line.serviceDetailsVersion,
+          serviceDetails: line.serviceDetails,
+        }),
+      };
+    })();
 
     commercialSubtotal = commercialSubtotal.plus(line.subtotal);
     commercialTax = commercialTax.plus(line.vatAmount);
@@ -1513,30 +1619,25 @@ function crV44InputFromSalesOrder(order: AuthoritativeSalesOrder): {
     const lineNumber = index + 1;
     metadata.push({
       lineNumber,
-      cabysCode: profile.cabysCode,
+      cabysCode: fiscal.cabysCode,
       itemCode: line.serviceCode,
-      description: buildSalesOrderLineFiscalDescription({
-        serviceName: line.serviceName,
-        serviceCode: line.serviceCode,
-        serviceDetailsVersion: line.serviceDetailsVersion,
-        serviceDetails: line.serviceDetails,
-      }),
-      unitOfMeasureCode: profile.unitOfMeasureCode,
-      taxCode: "01",
-      taxRateCode: profile.taxRateCode,
-      taxRatePercentage: profile.taxPercentage,
+      description: fiscal.description,
+      unitOfMeasureCode: fiscal.unitOfMeasureCode,
+      taxCode: fiscal.taxCode,
+      taxRateCode: fiscal.taxRateCode,
+      taxRatePercentage: fiscal.taxPercentage,
     });
     return Object.freeze({
       lineNumber,
-      category: line.fiscalItemCategory,
+      category: fiscal.category,
       quantity: "1",
       unitPrice: line.subtotal.toFixed(),
       discounts: Object.freeze([]),
       taxes: Object.freeze([
         Object.freeze({
           kind: "ORDINARY_IVA" as const,
-          tariffCode: profile.taxRateCode,
-          ratePercentage: profile.taxPercentage.toFixed(),
+          tariffCode: fiscal.taxRateCode,
+          ratePercentage: fiscal.taxPercentage.toFixed(),
         }),
       ]),
     });

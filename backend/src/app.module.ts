@@ -29,6 +29,7 @@ import { AdditionalServicesModule } from "./additional-services";
 import { TravelContextModule } from "./travel-context/travel-context.module";
 import { GeneratedDocumentsModule } from "./generated-documents";
 import { FiscalCatalogModule } from "./fiscal-catalogs/fiscal-catalog.module";
+import { FiscalClassificationModule } from "./fiscal-classifications/fiscal-classification.module";
 import { FiscalBillingModule } from "./fiscal-billing/fiscal-billing.module";
 import { OfficialExchangeRateModule } from "./official-exchange-rates/official-exchange-rate.module";
 import { TerritorialCatalogModule } from "./territorial-catalogs/territorial-catalog.module";
@@ -76,6 +77,7 @@ import { AirfarePricingModule } from "./airfare-pricing/airfare-pricing.module";
     TravelContextModule,
     GeneratedDocumentsModule,
     FiscalCatalogModule,
+    FiscalClassificationModule,
     FiscalBillingModule,
     OfficialExchangeRateModule,
     TerritorialCatalogModule,

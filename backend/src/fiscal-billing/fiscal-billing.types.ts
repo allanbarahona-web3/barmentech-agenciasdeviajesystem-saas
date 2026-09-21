@@ -4,6 +4,12 @@ export interface SalesOrderSourceLine {
   id: string;
   additionalServiceCatalogId: string | null;
   fiscalItemCategory: FiscalItemCategory | null;
+  fiscalDescription: string | null;
+  cabysCode: string | null;
+  unitOfMeasureCode: string | null;
+  taxCode: string | null;
+  taxRateCode: string | null;
+  fiscalTaxPercentage: string | null;
   serviceCode: string;
   serviceName: string;
   serviceDetailsVersion: number | null;

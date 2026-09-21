@@ -127,6 +127,7 @@ model Tenant {
   airfareDailyAuthorities                 AirfareDailyAuthority[]
   airfareDailyAuthorityRevisions          AirfareDailyAuthorityRevision[]
   airfarePricingRepriceRequests           AirfarePricingRepriceRequest[]
+  fiscalClassifications                   TenantFiscalClassification[]
   travelPackageCostingProjectLinks        TravelPackageCostingProjectLink[]
   internalTripCostingProjectLinks         InternalTripCostingProjectLink[]
   pricingConfigurations                   PricingConfiguration[]
@@ -1937,6 +1938,35 @@ enum FiscalItemCategory {
   MERCHANDISE
 }
 
+/// Neutral, tenant-owned fiscal business concept. It deliberately has no
+/// relation to Additional Services or a commercial source domain.
+model TenantFiscalClassification {
+  id                 String             @id @default(cuid())
+  tenantId           String
+  displayName        String             @db.VarChar(160)
+  description        String?            @db.VarChar(500)
+  fiscalItemCategory FiscalItemCategory
+  cabysCode          String             @db.VarChar(13)
+  unitOfMeasureCode  String             @db.VarChar(20)
+  taxCode            String             @db.VarChar(4)
+  taxRateCode        String             @db.VarChar(4)
+  taxPercentage      Decimal            @db.Decimal(7, 4)
+  isActive           Boolean            @default(true)
+  createdByUserId    String
+  createdByName      String
+  updatedByUserId    String?
+  updatedByName      String?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  tenant             Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  salesOrderLines    SalesOrderLine[]
+
+  @@unique([id, tenantId], map: "tenant_fiscal_classifications_id_tenant_key")
+  @@unique([tenantId, displayName], map: "tenant_fiscal_classifications_tenant_display_name_key")
+  @@index([tenantId, isActive, displayName, id], map: "tenant_fiscal_classifications_tenant_status_name_idx")
+  @@map("tenant_fiscal_classifications")
+}
+
 enum FiscalCatalogType {
   CABYS
   ELECTRONIC_INVOICE_CODING
@@ -2382,26 +2412,34 @@ model SalesOrder {
 }
 
 model SalesOrderLine {
-  id                         String                    @id @default(cuid())
+  id                         String                      @id @default(cuid())
   tenantId                   String
   salesOrderId               String
   additionalServiceCatalogId String?
+  fiscalClassificationId     String?
   fiscalItemCategory         FiscalItemCategory?
+  fiscalDescription          String?
+  cabysCode                  String?                     @db.VarChar(13)
+  unitOfMeasureCode          String?                     @db.VarChar(20)
+  taxCode                    String?                     @db.VarChar(4)
+  taxRateCode                String?                     @db.VarChar(4)
+  fiscalTaxPercentage        Decimal?                    @db.Decimal(7, 4)
   serviceCode                String
   serviceName                String
   serviceDetailsVersion      Int?
   serviceDetails             Json?
   commercialNotes            String?
-  subtotal                   Decimal                   @db.Decimal(18, 4)
-  vatPercentage              Decimal                   @db.Decimal(7, 4)
-  vatAmount                  Decimal                   @db.Decimal(18, 4)
-  total                      Decimal                   @db.Decimal(18, 4)
+  subtotal                   Decimal                     @db.Decimal(18, 4)
+  vatPercentage              Decimal                     @db.Decimal(7, 4)
+  vatAmount                  Decimal                     @db.Decimal(18, 4)
+  total                      Decimal                     @db.Decimal(18, 4)
   participants               Json
-  createdAt                  DateTime                  @default(now())
-  updatedAt                  DateTime                  @updatedAt
-  tenant                     Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  salesOrder                 SalesOrder                @relation(fields: [salesOrderId, tenantId], references: [id, tenantId], onDelete: Cascade)
-  additionalServiceCatalog   AdditionalServiceCatalog? @relation(fields: [additionalServiceCatalogId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  createdAt                  DateTime                    @default(now())
+  updatedAt                  DateTime                    @updatedAt
+  tenant                     Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  salesOrder                 SalesOrder                  @relation(fields: [salesOrderId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  additionalServiceCatalog   AdditionalServiceCatalog?   @relation(fields: [additionalServiceCatalogId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  fiscalClassification       TenantFiscalClassification? @relation(fields: [fiscalClassificationId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "sales_order_lines_fiscal_classification_tenant_fkey")
 
   @@index([tenantId])
   @@index([salesOrderId])

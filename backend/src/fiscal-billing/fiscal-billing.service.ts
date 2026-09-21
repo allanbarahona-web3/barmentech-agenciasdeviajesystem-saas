@@ -38,6 +38,7 @@ import {
   type FiscalReceiverIdentityPrefill,
 } from "./client-fiscal-receiver-prefill";
 import { buildSalesOrderLineFiscalDescription } from "./sales-order-line-fiscal-description";
+import { resolveSalesOrderLineFiscalSnapshot } from "./sales-order-line-fiscal-snapshot";
 
 type CreateDraftInput = {
   fiscalIssuerId: string;
@@ -120,12 +121,15 @@ export class SalesOrderFiscalBillingService {
         additionalServiceCatalogId: source.additionalServiceCatalogId,
         serviceCode: source.serviceCode,
         serviceName: source.serviceName,
-        description: buildSalesOrderLineFiscalDescription({
-          serviceName: source.serviceName,
-          serviceCode: source.serviceCode,
-          serviceDetailsVersion: source.serviceDetailsVersion,
-          serviceDetails: source.serviceDetails,
-        }),
+        description:
+          resolveSalesOrderLineFiscalSnapshot(source).kind === "COMPLETE"
+            ? source.fiscalDescription
+            : buildSalesOrderLineFiscalDescription({
+                serviceName: source.serviceName,
+                serviceCode: source.serviceCode,
+                serviceDetailsVersion: source.serviceDetailsVersion,
+                serviceDetails: source.serviceDetails,
+              }),
         serviceDetailsVersion: source.serviceDetailsVersion,
         serviceDetails: source.serviceDetails,
         commercialNotes: source.commercialNotes,
@@ -249,7 +253,25 @@ export class SalesOrderFiscalBillingService {
       salesOrderId,
     );
     if (!salesOrder) throw fiscalBillingError("SALES_ORDER_NOT_FOUND");
-    if (salesOrder.sourceType !== ADDITIONAL_SERVICE_SALES_ORDER_SOURCE_TYPE) {
+    const snapshotByLineId = new Map(
+      salesOrder.lines.map((line) => [
+        line.id,
+        resolveSalesOrderLineFiscalSnapshot(line),
+      ]),
+    );
+    if (
+      [...snapshotByLineId.values()].some(
+        (snapshot) => snapshot.kind === "PARTIAL",
+      )
+    ) {
+      throw fiscalBillingError("SALES_ORDER_LINE_FISCAL_SNAPSHOT_PARTIAL");
+    }
+    if (
+      salesOrder.sourceType !== ADDITIONAL_SERVICE_SALES_ORDER_SOURCE_TYPE &&
+      [...snapshotByLineId.values()].some(
+        (snapshot) => snapshot.kind !== "COMPLETE",
+      )
+    ) {
       throw fiscalBillingError("SALES_ORDER_SOURCE_NOT_ELIGIBLE");
     }
     if (salesOrder.status !== ELIGIBLE_SALES_ORDER_STATUS) {
@@ -262,6 +284,7 @@ export class SalesOrderFiscalBillingService {
     const catalogIds = [
       ...new Set(
         salesOrder.lines.flatMap((line) =>
+          snapshotByLineId.get(line.id)?.kind === "ABSENT" &&
           line.additionalServiceCatalogId
             ? [line.additionalServiceCatalogId]
             : [],
@@ -271,7 +294,9 @@ export class SalesOrderFiscalBillingService {
     const [configuration, profiles, issuers, existingPrimaryDocument] =
       await Promise.all([
         this.repository.findBillingConfiguration(tenantId),
-        this.repository.findFiscalProfiles(tenantId, catalogIds),
+        catalogIds.length
+          ? this.repository.findFiscalProfiles(tenantId, catalogIds)
+          : Promise.resolve([]),
         this.repository.findActiveIssuers(tenantId),
         this.billingDocumentService.findPrimaryDocument(
           tenantId,
@@ -314,6 +339,44 @@ export class SalesOrderFiscalBillingService {
     }
 
     const lines = salesOrder.lines.map((source) => {
+      const snapshot = snapshotByLineId.get(source.id);
+      if (snapshot?.kind === "COMPLETE") {
+        const frozen = snapshot.snapshot;
+        if (
+          !new Prisma.Decimal(frozen.fiscalTaxPercentage).equals(
+            new Prisma.Decimal(source.vatPercentage),
+          )
+        ) {
+          issues.push({
+            code: "SALES_ORDER_LINE_TAX_MISMATCH",
+            blocking: true,
+            lineId: source.id,
+          });
+          return {
+            source,
+            profile: null,
+            readinessStatus: "INVALID" as const,
+            issues: ["SALES_ORDER_LINE_TAX_MISMATCH"],
+          };
+        }
+        return {
+          source,
+          profile: {
+            additionalServiceCatalogId:
+              source.additionalServiceCatalogId ?? source.id,
+            cabysCode: frozen.cabysCode,
+            unitOfMeasureCode: frozen.unitOfMeasureCode,
+            taxCode: frozen.taxCode,
+            taxRateCode: frozen.taxRateCode,
+            taxPercentage: new Prisma.Decimal(
+              frozen.fiscalTaxPercentage,
+            ).toFixed(4),
+            isActive: true,
+          },
+          readinessStatus: "READY" as const,
+          issues: [],
+        };
+      }
       if (source.fiscalItemCategory === null) {
         issues.push({
           code: "SALES_ORDER_LINE_FISCAL_CATEGORY_UNCLASSIFIED",

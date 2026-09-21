@@ -6,11 +6,17 @@ import {
   SALES_ORDERS_REPOSITORY,
 } from "./sales-orders.repository.interface";
 import { PrismaSalesOrdersRepository } from "./prisma-sales-orders.repository";
+import { FiscalCatalogModule } from "../fiscal-catalogs/fiscal-catalog.module";
+import { SalesOrderFiscalSnapshotMaterializationService } from "./sales-order-fiscal-snapshot-materialization.service";
+import { SalesOrderSourceMaterializationService } from "./sales-order-source-materialization.service";
 
 @Module({
+  imports: [FiscalCatalogModule],
   controllers: [SalesOrdersController],
   providers: [
     SalesOrderConversionService,
+    SalesOrderFiscalSnapshotMaterializationService,
+    SalesOrderSourceMaterializationService,
     SalesOrdersReadService,
     PrismaSalesOrdersRepository,
     {
@@ -18,6 +24,10 @@ import { PrismaSalesOrdersRepository } from "./prisma-sales-orders.repository";
       useExisting: PrismaSalesOrdersRepository,
     },
   ],
-  exports: [SalesOrderConversionService],
+  exports: [
+    SalesOrderConversionService,
+    SalesOrderFiscalSnapshotMaterializationService,
+    SalesOrderSourceMaterializationService,
+  ],
 })
 export class SalesOrdersModule {}

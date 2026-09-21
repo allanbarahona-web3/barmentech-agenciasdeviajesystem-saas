@@ -171,6 +171,54 @@ describe("PrismaBillingDocumentRepository CR_V44_DECIMAL_V1 draft", () => {
     });
   });
 
+  it("uses a complete frozen fiscal snapshot without loading an Additional Services profile", async () => {
+    const order = salesOrder({
+      lines: [
+        sourceLine({
+          additionalServiceCatalogId: null,
+          fiscalDescription: "Transporte privado congelado",
+          cabysCode: "1234567890123",
+          unitOfMeasureCode: "Sp",
+          taxCode: "01",
+          taxRateCode: "08",
+          fiscalTaxPercentage: decimal("13.0000"),
+        }),
+      ],
+    });
+    order.sourceType = "CUSTOM_QUOTATION";
+    const context = setup({ order });
+
+    await context.repository.createCrV44SalesOrderDraft(command());
+
+    expect(context.tx.additionalServiceCatalog.findMany).not.toHaveBeenCalled();
+    const persisted = firstLine(createdData(context));
+    expect(persisted).toMatchObject({
+      description: "Transporte privado congelado",
+      cabysCode: "1234567890123",
+      unitOfMeasureCode: "Sp",
+    });
+    expect(firstTax(persisted)).toMatchObject({
+      taxCode: "01",
+      rateCode: "08",
+    });
+    expect((firstTax(persisted).ratePercentage as Prisma.Decimal).equals("13.0000")).toBe(true);
+  });
+
+  it("rejects a partial frozen fiscal snapshot without mixed fiscal authority", async () => {
+    const context = setup({
+      order: salesOrder({
+        lines: [sourceLine({ fiscalDescription: "Incomplete frozen value" })],
+      }),
+    });
+
+    await expectCode(
+      context.repository.createCrV44SalesOrderDraft(command()),
+      "SALES_ORDER_LINE_FISCAL_SNAPSHOT_PARTIAL",
+    );
+    expect(context.tx.additionalServiceCatalog.findMany).not.toHaveBeenCalled();
+    expect(context.tx.billingDocument.create).not.toHaveBeenCalled();
+  });
+
   it("falls back to serviceName when the persisted detail version is unsupported", async () => {
     const context = setup({
       order: salesOrder({
@@ -709,6 +757,13 @@ function setup(options: {
     },
     salesOrder: {
       findFirst: jest.fn().mockResolvedValue(order),
+    },
+    additionalServiceCatalog: {
+      findMany: jest.fn().mockImplementation(({ where }) =>
+        order.lines
+          .filter((line) => where.id.in.includes(line.additionalServiceCatalogId))
+          .map((line) => line.additionalServiceCatalog),
+      ),
     },
     client: {
       findFirst: jest.fn().mockResolvedValue(

@@ -39,6 +39,58 @@ describe("SalesOrderFiscalBillingService", () => {
     expect(fiscalCatalog.evaluateFiscalProfiles).toHaveBeenCalledTimes(1);
   });
 
+  it("uses a complete frozen fiscal tuple without consulting Additional Services", async () => {
+    const { service, repository, fiscalCatalog } = setup({
+      profiles: [],
+      salesOrder: salesOrder({
+        sourceType: "CUSTOM_QUOTATION",
+        lines: [
+          sourceLine({
+            additionalServiceCatalogId: null,
+            fiscalDescription: "Transporte privado",
+            cabysCode: "1234567890123",
+            unitOfMeasureCode: "Sp",
+            taxCode: "01",
+            taxRateCode: "08",
+            fiscalTaxPercentage: "13.0000",
+          }),
+        ],
+      }),
+    });
+
+    const result = await service.prepare("tenant-a", "sales-a");
+
+    expect(result.lines[0]).toMatchObject({
+      description: "Transporte privado",
+      fiscalReadiness: {
+        status: "READY",
+        profile: {
+          cabysCode: "1234567890123",
+          unitOfMeasureCode: "Sp",
+          taxCode: "01",
+          taxRateCode: "08",
+          taxPercentage: "13.0000",
+        },
+      },
+    });
+    expect(repository.findFiscalProfiles).not.toHaveBeenCalled();
+    expect(fiscalCatalog.evaluateFiscalProfiles).not.toHaveBeenCalled();
+  });
+
+  it("rejects a partial frozen fiscal tuple without falling back to a live profile", async () => {
+    const { service, repository } = setup({
+      salesOrder: salesOrder({
+        lines: [sourceLine({ fiscalDescription: "Only one snapshot field" })],
+      }),
+    });
+
+    await expectCode(
+      service.createOrResumeDraft("tenant-a", "sales-a", draftInput, "user-a"),
+      "SALES_ORDER_LINE_FISCAL_SNAPSHOT_PARTIAL",
+    );
+    expect(repository.findFiscalProfiles).not.toHaveBeenCalled();
+  });
+
   it("returns the same authoritative customer-visible line description used by draft persistence", async () => {
     const { service } = setup({
       salesOrder: salesOrder({
