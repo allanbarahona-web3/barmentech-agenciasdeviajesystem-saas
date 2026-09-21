@@ -37,6 +37,7 @@ import { ReportingApplicationModule } from "./reporting/reporting-application.mo
 import { CostEngineModule } from "./cost-engine/cost-engine.module";
 import { PricingModule } from "./pricing/pricing.module";
 import { TravelPricingModule } from "./travel-pricing/travel-pricing.module";
+import { AirfarePricingModule } from "./airfare-pricing/airfare-pricing.module";
 
 @Module({
   controllers: [AppController],
@@ -83,6 +84,7 @@ import { TravelPricingModule } from "./travel-pricing/travel-pricing.module";
     CostEngineModule,
     PricingModule,
     TravelPricingModule,
+    AirfarePricingModule,
   ],
   providers: [
     {

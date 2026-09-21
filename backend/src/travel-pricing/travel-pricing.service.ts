@@ -48,7 +48,7 @@ export class TravelPricingService {
     });
   }
 
-  publish(tenantId: string, pricingCalculationVersionId: string, actor: Actor) {
+  publish(tenantId: string, pricingCalculationVersionId: string, actor: Actor, automaticUpwardOnly = false) {
     return this.withTenantTransaction(tenantId, async (tx) => {
       const locked = await tx.$queryRaw<Array<{ id: string }>>`
         SELECT "id" FROM "pricing_calculation_versions"
@@ -78,6 +78,14 @@ export class TravelPricingService {
 
       const latest = await this.findLatestPublication(tx, tenantId, source);
       const recommendedPrice = decimalString(version.finalSellingPrice);
+      if (automaticUpwardOnly) {
+        if (!latest || source.currentCommercialPrice === null || !pricingAmountsEqual(source.currentCommercialPrice, decimalString(latest.publishedPrice))) {
+          throw new ConflictException("AIRFARE_REPRICE_TRAVEL_PUBLICATION_INELIGIBLE");
+        }
+        if (decimalComparison(recommendedPrice, decimalString(latest.publishedPrice)) <= 0) {
+          throw new ConflictException("AIRFARE_REPRICE_NOT_AN_INCREASE");
+        }
+      }
       const floor = latest ? decimalString(latest.commercialFloorPrice) : recommendedPrice;
       if (decimalComparison(recommendedPrice, floor) < 0) {
         throw new ConflictException(`El precio aprobado está por debajo del piso comercial de ${version.currency} ${floor}.`);

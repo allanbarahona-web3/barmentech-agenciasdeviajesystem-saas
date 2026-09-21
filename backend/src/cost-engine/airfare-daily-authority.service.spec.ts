@@ -28,6 +28,16 @@ describe("AIRFARE daily authority writes", () => {
     expect(context.tx.airfareDailyAuthority.updateMany).toHaveBeenCalledWith({ where: { id: "authority-a", tenantId: "tenant-a" }, data: { currentRevisionId: "revision-a" } });
     expect(context.tx.costComponent.updateMany).toHaveBeenCalledWith({ where: { id: "component-a", tenantId: "tenant-a" }, data: { currentSnapshotId: "snapshot-a" } });
     expect(context.tx.costAuditEvent.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ action: "AIRFARE_DAILY_AUTHORITY_REGISTERED", reason: "Daily quote" }) }));
+    expect(context.currentCosts.read).toHaveBeenCalledWith(context.tx, "tenant-a", "project-a");
+    expect(context.tx.airfarePricingRepriceRequest.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        tenantId: "tenant-a", costingProjectId: "project-a", costComponentId: "component-a",
+        airfareDailyAuthorityId: "authority-a", airfareDailyAuthorityRevisionId: "revision-a", costSnapshotId: "snapshot-a",
+        revisionKind: "AGENT_INITIAL", sourceActorUserId: agent.userId, sourceActorName: agent.name,
+        authoritativeTotalAmount: "1363.71000", currency: "USD", status: "PENDING",
+      }),
+    }));
+    expect(context.tx.costComponent.updateMany.mock.invocationCallOrder[0]).toBeLessThan(context.tx.airfarePricingRepriceRequest.create.mock.invocationCallOrder[0]);
   });
 
   it("uses the tenant fallback timezone rather than the UTC calendar date when configuration is absent", async () => {
@@ -36,7 +46,7 @@ describe("AIRFARE daily authority writes", () => {
     expect(context.tx.airfareDailyAuthority.create.mock.calls[0][0].data.businessDate.toISOString().slice(0, 10)).toBe("2026-01-01");
   });
 
-  it("maps only the daily authority unique conflict and leaves no surviving later writes", async () => {
+  it("preserves first-write-wins and does not create a duplicate repricing request", async () => {
     const context = serviceContext();
     context.tx.airfareDailyAuthority.create.mockRejectedValue({ code: "P2002", meta: { target: ["tenantId", "costComponentId", "businessDate"] } });
 
@@ -44,6 +54,19 @@ describe("AIRFARE daily authority writes", () => {
     expect(context.tx.costSnapshot.create).not.toHaveBeenCalled();
     expect(context.tx.airfareDailyAuthorityRevision.create).not.toHaveBeenCalled();
     expect(context.tx.costAuditEvent.create).not.toHaveBeenCalled();
+    expect(context.tx.airfarePricingRepriceRequest.create).not.toHaveBeenCalled();
+  });
+
+  it("creates only one repricing request when a repeated daily registration is rejected", async () => {
+    const context = serviceContext();
+    context.tx.airfareDailyAuthority.create
+      .mockResolvedValueOnce({ id: "authority-a" })
+      .mockRejectedValueOnce({ code: "P2002", meta: { target: ["tenantId", "costComponentId", "businessDate"] } });
+
+    await context.service.registerAgentInitial("tenant-a", "component-a", observation, agent);
+    await expect(context.service.registerAgentInitial("tenant-a", "component-a", observation, agent)).rejects.toThrow(new ConflictException("AIRFARE_DAILY_AUTHORITY_ALREADY_REGISTERED"));
+
+    expect(context.tx.airfarePricingRepriceRequest.create).toHaveBeenCalledTimes(1);
   });
 
   it("does not swallow unrelated persistence errors", async () => {
@@ -65,6 +88,16 @@ describe("AIRFARE daily authority writes", () => {
     expect(context.root.rollback).toHaveBeenCalledTimes(1);
   });
 
+  it("rolls back the AIRFARE mutation when durable repricing-request persistence fails", async () => {
+    const context = serviceContext({ rollbackOnError: true });
+    context.tx.airfarePricingRepriceRequest.create.mockRejectedValue(new Error("reprice request unavailable"));
+
+    await expect(context.service.registerAgentInitial("tenant-a", "component-a", observation, agent)).rejects.toThrow("reprice request unavailable");
+
+    expect(context.currentCosts.read).toHaveBeenCalledWith(context.tx, "tenant-a", "project-a");
+    expect(context.root.rollback).toHaveBeenCalledTimes(1);
+  });
+
   it("requires a nonblank ADMIN override reason", async () => {
     const context = serviceContext();
     await expect(context.service.override("tenant-a", "authority-a", { ...observation, overrideReason: " " }, admin)).rejects.toBeInstanceOf(BadRequestException);
@@ -75,13 +108,22 @@ describe("AIRFARE daily authority writes", () => {
     const context = serviceContext({ authority: true });
     const result = await context.service.override("tenant-a", "authority-a", { ...observation, observedAmount: "140.25", overrideReason: "Supplier correction" }, admin);
 
-    expect(result).toEqual({ authorityId: "authority-a", revisionId: "revision-a", snapshotId: "snapshot-a" });
+    expect(result).toEqual({ authorityId: "authority-a", revisionId: "revision-a", snapshotId: "snapshot-a", repriceRequestId: "reprice-a" });
     expect(context.tx.airfareDailyAuthorityRevision.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ kind: "ADMIN_OVERRIDE", revisionNumber: 2, observedAmount: "140.25", overrideReason: "Supplier correction", appliedSnapshotId: "snapshot-a" }) }));
     expect(context.tx.airfareDailyAuthorityRevision.updateMany).not.toHaveBeenCalled();
     expect(context.tx.costSnapshot.updateMany).not.toHaveBeenCalled();
     expect(context.tx.airfareDailyAuthority.updateMany).toHaveBeenCalledWith({ where: { id: "authority-a", tenantId: "tenant-a" }, data: { currentRevisionId: "revision-a" } });
     expect(context.tx.costComponent.updateMany).toHaveBeenCalledWith({ where: { id: "component-a", tenantId: "tenant-a" }, data: { currentSnapshotId: "snapshot-a" } });
     expect(context.tx.costAuditEvent.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ action: "AIRFARE_DAILY_AUTHORITY_OVERRIDDEN", reason: "Supplier correction", metadata: expect.objectContaining({ previousRevisionId: "revision-initial" }) }) }));
+    expect(context.currentCosts.read).toHaveBeenCalledWith(context.tx, "tenant-a", "project-a");
+    expect(context.tx.airfarePricingRepriceRequest.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        tenantId: "tenant-a", costingProjectId: "project-a", costComponentId: "component-a",
+        airfareDailyAuthorityId: "authority-a", airfareDailyAuthorityRevisionId: "revision-a", costSnapshotId: "snapshot-a",
+        revisionKind: "ADMIN_OVERRIDE", sourceActorUserId: admin.userId, sourceActorName: admin.name,
+        authoritativeTotalAmount: "1363.71000", currency: "USD", status: "PENDING",
+      }),
+    }));
   });
 
   it("exposes AGENT initial and ADMIN override on separate guarded routes", () => {
@@ -93,34 +135,63 @@ describe("AIRFARE daily authority writes", () => {
   });
 
   it("requires prepared evidence before registration and exposes only a strict retry state when attachment fails", async () => {
-    const service = { registerAgentInitial: jest.fn().mockResolvedValue({ authorityId: "authority-a", revisionId: "revision-a", snapshotId: "snapshot-a", businessDate: "2026-01-01" }) };
+    const service = { registerAgentInitial: jest.fn().mockResolvedValue({ authorityId: "authority-a", revisionId: "revision-a", snapshotId: "snapshot-a", repriceRequestId: "request-a", businessDate: "2026-01-01" }) };
     const evidence = {
       prepare: jest.fn().mockResolvedValue({ bytes: Buffer.from("pdf"), mimeType: "application/pdf", fileName: "quote.pdf" }),
       uploadPreparedAgentInitial: jest.fn().mockRejectedValue(new Error("storage unavailable")),
     };
-    const controller = new AirfareDailyAuthorityController(service as any, evidence as any);
+    const jobs = { dispatch: jest.fn().mockResolvedValue(undefined) };
+    const controller = new AirfareDailyAuthorityController(service as any, evidence as any, jobs as any);
 
     await expect(controller.registerAgentInitial({ user: { id: "agent-a", fullName: "Agent A", tenantId: "tenant-a" } }, "component-a", observation, { buffer: Buffer.from("pdf"), mimetype: "application/pdf", originalname: "quote.pdf", size: 3 })).resolves.toMatchObject({ snapshotId: "snapshot-a", evidenceAttached: false });
 
     expect(evidence.prepare).toHaveBeenCalledTimes(1);
     expect(service.registerAgentInitial).toHaveBeenCalledWith("tenant-a", "component-a", observation, agent);
+    expect(jobs.dispatch).toHaveBeenCalledWith(expect.objectContaining({
+      payload: { tenantId: "tenant-a", requestId: "request-a", eventVersion: 1 },
+    }));
     expect(evidence.uploadPreparedAgentInitial).toHaveBeenCalledWith("tenant-a", "snapshot-a", expect.any(Object), agent);
   });
 
   it("does not attach evidence if first-write-wins rejects the registration", async () => {
     const service = { registerAgentInitial: jest.fn().mockRejectedValue(new ConflictException("AIRFARE_DAILY_AUTHORITY_ALREADY_REGISTERED")) };
     const evidence = { prepare: jest.fn().mockResolvedValue({ bytes: Buffer.from("pdf"), mimeType: "application/pdf", fileName: "quote.pdf" }), uploadPreparedAgentInitial: jest.fn() };
-    const controller = new AirfareDailyAuthorityController(service as any, evidence as any);
+    const jobs = { dispatch: jest.fn() };
+    const controller = new AirfareDailyAuthorityController(service as any, evidence as any, jobs as any);
 
     await expect(controller.registerAgentInitial({ user: { id: "agent-a", fullName: "Agent A", tenantId: "tenant-a" } }, "component-a", observation, { buffer: Buffer.from("pdf"), mimetype: "application/pdf", originalname: "quote.pdf", size: 3 })).rejects.toBeInstanceOf(ConflictException);
 
     expect(evidence.uploadPreparedAgentInitial).not.toHaveBeenCalled();
+    expect(jobs.dispatch).not.toHaveBeenCalled();
+  });
+
+  it("dispatches a committed ADMIN override request", async () => {
+    const service = { override: jest.fn().mockResolvedValue({ authorityId: "authority-a", revisionId: "revision-a", snapshotId: "snapshot-a", repriceRequestId: "request-a" }) };
+    const jobs = { dispatch: jest.fn().mockResolvedValue(undefined) };
+    const controller = new AirfareDailyAuthorityController(service as any, {} as any, jobs as any);
+
+    await expect(controller.override({ user: { id: "admin-a", fullName: "Admin A", tenantId: "tenant-a" } }, "authority-a", { ...observation, overrideReason: "Supplier correction" })).resolves.toMatchObject({ repriceRequestId: "request-a" });
+
+    expect(jobs.dispatch).toHaveBeenCalledWith(expect.objectContaining({
+      payload: { tenantId: "tenant-a", requestId: "request-a", eventVersion: 1 },
+    }));
+  });
+
+  it("keeps the committed AIRFARE registration successful when queue dispatch fails", async () => {
+    const service = { registerAgentInitial: jest.fn().mockResolvedValue({ authorityId: "authority-a", revisionId: "revision-a", snapshotId: "snapshot-a", repriceRequestId: "request-a", businessDate: "2026-01-01" }) };
+    const evidence = { prepare: jest.fn().mockResolvedValue({ bytes: Buffer.from("pdf"), mimeType: "application/pdf", fileName: "quote.pdf" }), uploadPreparedAgentInitial: jest.fn().mockResolvedValue(undefined) };
+    const jobs = { dispatch: jest.fn().mockRejectedValue(new Error("redis unavailable")) };
+    const controller = new AirfareDailyAuthorityController(service as any, evidence as any, jobs as any);
+
+    await expect(controller.registerAgentInitial({ user: { id: "agent-a", fullName: "Agent A", tenantId: "tenant-a" } }, "component-a", observation, { buffer: Buffer.from("pdf"), mimetype: "application/pdf", originalname: "quote.pdf", size: 3 })).resolves.toMatchObject({ snapshotId: "snapshot-a", evidenceAttached: true });
+
+    expect(evidence.uploadPreparedAgentInitial).toHaveBeenCalled();
   });
 
   it("rejects a missing AGENT evidence file before the monetary authority write", async () => {
     const service = { registerAgentInitial: jest.fn() };
     const evidence = { prepare: jest.fn().mockRejectedValue(new BadRequestException("Invalid Cost Engine evidence file.")), uploadPreparedAgentInitial: jest.fn() };
-    const controller = new AirfareDailyAuthorityController(service as any, evidence as any);
+    const controller = new AirfareDailyAuthorityController(service as any, evidence as any, { dispatch: jest.fn() } as any);
 
     await expect(controller.registerAgentInitial({ user: { id: "agent-a", fullName: "Agent A", tenantId: "tenant-a" } }, "component-a", observation, undefined)).rejects.toBeInstanceOf(BadRequestException);
 
@@ -240,13 +311,15 @@ function serviceContext(options: { timezone?: string | null; now?: Date; eligibl
     costSnapshot: { findFirst: jest.fn().mockResolvedValue({ sequence: 2 }), create: jest.fn().mockResolvedValue({ id: "snapshot-a" }), updateMany: jest.fn() },
     costComponent: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
     costAuditEvent: { create: jest.fn().mockResolvedValue({ id: "audit-a" }) },
+    airfarePricingRepriceRequest: { create: jest.fn().mockResolvedValue({ id: "reprice-a" }) },
   };
   const root: any = { rollback: jest.fn(), $transaction: jest.fn(async (work: (value: typeof tx) => Promise<unknown>) => { try { return await work(tx); } catch (error) { if (options.rollbackOnError) root.rollback(); throw error; } }) };
   const resolver = new TenantBusinessDateResolver();
   const now = options.now ?? new Date("2026-01-02T18:00:00.000Z");
   const resolve = resolver.resolve.bind(resolver);
   jest.spyOn(resolver, "resolve").mockImplementation((transaction, tenantId) => resolve(transaction, tenantId, now));
-  return { root, tx, service: new AirfareDailyAuthorityService(root as PrismaService, resolver) };
+  const currentCosts = { read: jest.fn().mockResolvedValue({ costingProjectId: "project-a", baseCurrency: "USD", authoritativeTotalCost: "1363.71000" }) };
+  return { root, tx, currentCosts, service: new AirfareDailyAuthorityService(root as PrismaService, resolver, currentCosts as any) };
 }
 
 function component() { return { id: "component-a", costingProjectId: "project-a", baseCurrency: "USD" }; }

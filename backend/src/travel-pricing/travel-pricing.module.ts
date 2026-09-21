@@ -8,5 +8,6 @@ import { TravelPricingService } from "./travel-pricing.service";
   imports: [CostEngineModule],
   controllers: [TravelPricingController],
   providers: [TravelPricingService],
+  exports: [TravelPricingService],
 })
 export class TravelPricingModule {}

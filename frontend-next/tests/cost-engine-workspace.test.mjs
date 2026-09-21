@@ -119,23 +119,25 @@ test("keeps Boleto aéreo supporting fields, evidence, and observations without 
   assert.doesNotMatch(workspace, /Motivo \/ observación del costo/);
 });
 
-test("finalizes BAGGAGE with a generated title, stable detail values, and an optional same-project AIRFARE relation", () => {
+test("finalizes BAGGAGE independently without a related-flight selector", () => {
   assert.match(workspace, /const baggageCategory = selectedCategory\?\.code === "BAGGAGE"/);
   assert.match(workspace, /const polishedSpecializedCategory = lodgingCategory \|\| airfareCategory \|\| baggageCategory \|\| eventTicketCategory \|\| insuranceCategory \|\| mealsCategory \|\| tourCategory \|\| transportationCategory \|\| visaAssistanceCategory/);
-  assert.match(workspace, /baggageCategory \? baggageComponentTitle\(form\.details, relatedAirfareComponent\)/);
-  assert.match(workspace, /function baggageComponentTitle\(values: DetailValues, relatedAirfareComponent: CostComponent \| null\)/);
-  assert.match(workspace, /return route \? `\$\{baggageType\} - \$\{route\}` : baggageType/);
+  assert.match(workspace, /baggageCategory \? baggageComponentTitle\(form\.details\)/);
+  assert.match(workspace, /function baggageComponentTitle\(values: DetailValues\) \{ return enumLabel\(values\.baggageType \?\? "", "baggageType"\); \}/);
   assert.match(workspace, /baggageType: \["CHECKED", "CARRY_ON", "EXCESS", "SPORTS_EQUIPMENT", "OTHER"\]/);
   for (const label of ["Equipaje documentado", "Carry on", "Exceso de equipaje", "Equipo deportivo", "Otro"]) {
     assert.match(workspace, new RegExp(label));
   }
-  assert.match(workspace, /case "BAGGAGE": return <DetailGrid>[\s\S]*select\("Tipo de equipaje", "baggageType"\)[\s\S]*text\("Piezas", "pieces", "number"\)[\s\S]*text\("Peso \(kg\)", "weightKg"[\s\S]*<Field label="Vuelo relacionado">/);
-  assert.match(workspace, /<option value="">Sin vuelo específico<\/option>/);
-  assert.match(workspace, /relatedAirfareComponentId: optionalString\("relatedAirfareComponentId"\)/);
-  assert.match(workspace, /component\.costingProjectId === project\?\.id && component\.status === "ACTIVE" && component\.costCategory\.code === "AIRFARE"/);
-  assert.match(workspace, /function airfareComponentOptionLabel\(component: CostComponent\)/);
-  assert.match(workspace, /formatBusinessDate\(value\("departureDate"\)\)/);
+  const baggageForm = workspace.slice(workspace.indexOf('case "BAGGAGE": return <DetailGrid>'), workspace.indexOf('case "LODGING"'));
+  assert.match(baggageForm, /select\("Tipo de equipaje", "baggageType"\)/);
+  assert.match(baggageForm, /text\("Piezas", "pieces", "number"\)/);
+  assert.match(baggageForm, /text\("Peso \(kg\)", "weightKg"/);
+  assert.doesNotMatch(baggageForm, /Vuelo relacionado|Sin vuelo específico|relatedAirfareComponentId|AIRFARE/);
+  assert.match(workspace, /case "BAGGAGE": return compact\(\{ baggageType: enumValue\(string\("baggageType"\), "baggageType"\), pieces: positiveInteger\(values, "pieces"\), weightKg: optionalDecimal\("weightKg"\) \}\)/);
   assert.match(workspace, /formFromComponent\(component\)/);
+  assert.match(workspace, /function detailsFromPayload\(payload: Record<string, unknown> \| null\)/);
+  assert.match(workspace, /createGenericCostComponent\(project\.id, \{ \.\.\.structural, \.\.\.monetary \}\)/);
+  assert.match(workspace, /updateGenericCostComponent\(selectedComponentId, structural\)/);
   assert.doesNotMatch(workspace, /getCostComponent\(/);
 });
 

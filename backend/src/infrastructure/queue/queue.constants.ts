@@ -13,6 +13,7 @@ export const PLATFORM_QUEUE_KEYS = {
   NOTIFICATION: "notification",
   PACKAGE_COMPLETED: "package-completed",
   WORKER_RUNTIME: "worker-runtime",
+  AIRFARE_PRICING: "airfare-pricing",
 } as const;
 
 export type PlatformQueueKey =
@@ -33,6 +34,7 @@ export const DEFAULT_QUEUE_NAMES: Record<PlatformQueueKey, string> = {
   notification: "notification",
   "package-completed": "package-completed",
   "worker-runtime": "worker-runtime",
+  "airfare-pricing": "airfare-pricing",
 };
 
 export const QUEUE_NAME_ENV_KEYS: Record<PlatformQueueKey, string> = {
@@ -53,4 +55,5 @@ export const QUEUE_NAME_ENV_KEYS: Record<PlatformQueueKey, string> = {
   notification: "BULLMQ_NOTIFICATION_QUEUE_NAME",
   "package-completed": "BULLMQ_PACKAGE_COMPLETED_QUEUE_NAME",
   "worker-runtime": "BULLMQ_WORKER_RUNTIME_QUEUE_NAME",
+  "airfare-pricing": "BULLMQ_AIRFARE_PRICING_QUEUE_NAME",
 };

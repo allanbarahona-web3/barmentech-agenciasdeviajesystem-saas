@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { runCostEngineTenantTransaction } from "./cost-engine-transaction";
+import { CostingProjectCurrentCostReader } from "./costing-project-current-cost-reader";
 import { TenantBusinessDateResolver } from "./tenant-business-date.resolver";
 
 export type AirfareAuthorityActor = { userId: string; name: string };
@@ -16,6 +17,7 @@ type AirfareTransaction = {
   costSnapshot: Record<string, (args: any) => Promise<any>>;
   costComponent: Record<string, (args: any) => Promise<any>>;
   costAuditEvent: Record<string, (args: any) => Promise<any>>;
+  airfarePricingRepriceRequest: Record<string, (args: any) => Promise<any>>;
 };
 
 type AirfareDatabase = { $transaction<T>(work: (tx: AirfareTransaction) => Promise<T>): Promise<T> };
@@ -43,7 +45,11 @@ export class AirfareDailyAuthorityService {
   private readonly database: AirfareDatabase;
   private readonly logger = new Logger(AirfareDailyAuthorityService.name);
 
-  constructor(prisma: PrismaService, private readonly businessDates: TenantBusinessDateResolver) {
+  constructor(
+    prisma: PrismaService,
+    private readonly businessDates: TenantBusinessDateResolver,
+    private readonly currentCosts: CostingProjectCurrentCostReader,
+  ) {
     this.database = prisma as unknown as AirfareDatabase;
   }
 
@@ -76,7 +82,8 @@ export class AirfareDailyAuthorityService {
             reason: observation.reason, metadata: { airfareDailyAuthorityId: authority.id, airfareDailyAuthorityRevisionId: revision.id, businessDate: businessDate.toISOString().slice(0, 10), appliedSnapshotId: snapshot.id },
           },
         });
-        return { authorityId: authority.id, revisionId: revision.id, snapshotId: snapshot.id, businessDate: businessDate.toISOString().slice(0, 10) };
+        const repriceRequest = await this.createRepriceRequest(tx, tenantId, component, authority.id, revision.id, snapshot.id, "AGENT_INITIAL", actor);
+        return { authorityId: authority.id, revisionId: revision.id, snapshotId: snapshot.id, repriceRequestId: repriceRequest.id, businessDate: businessDate.toISOString().slice(0, 10) };
       });
     } catch (error) {
       if (isDailyAuthorityUniqueViolation(error)) throw new ConflictException("AIRFARE_DAILY_AUTHORITY_ALREADY_REGISTERED");
@@ -112,7 +119,8 @@ export class AirfareDailyAuthorityService {
           reason: overrideReason, metadata: { airfareDailyAuthorityId, airfareDailyAuthorityRevisionId: revision.id, previousRevisionId: authority.currentRevisionId, appliedSnapshotId: snapshot.id },
         },
       });
-      return { authorityId: airfareDailyAuthorityId, revisionId: revision.id, snapshotId: snapshot.id };
+      const repriceRequest = await this.createRepriceRequest(tx, tenantId, authority, airfareDailyAuthorityId, revision.id, snapshot.id, "ADMIN_OVERRIDE", actor);
+      return { authorityId: airfareDailyAuthorityId, revisionId: revision.id, snapshotId: snapshot.id, repriceRequestId: repriceRequest.id };
     });
   }
 
@@ -326,6 +334,36 @@ export class AirfareDailyAuthorityService {
     if (authority.count !== 1) throw new ConflictException("AIRFARE_DAILY_AUTHORITY_POINTER_CONFLICT");
     const component = await tx.costComponent.updateMany({ where: { id: costComponentId, tenantId }, data: { currentSnapshotId: snapshotId } });
     if (component.count !== 1) throw new ConflictException("AIRFARE_COMPONENT_POINTER_CONFLICT");
+  }
+
+  private async createRepriceRequest(
+    tx: AirfareTransaction,
+    tenantId: string,
+    component: EligibleComponent,
+    airfareDailyAuthorityId: string,
+    airfareDailyAuthorityRevisionId: string,
+    costSnapshotId: string,
+    revisionKind: "AGENT_INITIAL" | "ADMIN_OVERRIDE",
+    actor: AirfareAuthorityActor,
+  ) {
+    const currentCost = await this.currentCosts.read(tx, tenantId, component.costingProjectId);
+    return tx.airfarePricingRepriceRequest.create({
+      data: {
+        tenantId,
+        costingProjectId: component.costingProjectId,
+        costComponentId: component.id,
+        airfareDailyAuthorityId,
+        airfareDailyAuthorityRevisionId,
+        costSnapshotId,
+        revisionKind,
+        sourceActorUserId: actor.userId,
+        sourceActorName: actor.name,
+        authoritativeTotalAmount: currentCost.authoritativeTotalCost,
+        currency: currentCost.baseCurrency,
+        status: "PENDING",
+      },
+      select: { id: true },
+    });
   }
 }
 

@@ -88,6 +88,7 @@ export class PricingRepository {
     costingProjectId: string,
     actor: PricingActor,
     calculate: (configuration: any, currentCost: CostingProjectCurrentCost) => PricingV1Calculation,
+    persistWhen?: (calculation: PricingV1Calculation, currentCost: CostingProjectCurrentCost) => boolean,
   ) {
     return this.withTenantTransaction(tenantId, async (tx) => {
       const locked = await tx.$queryRaw<Array<{ id: string }>>`
@@ -103,6 +104,7 @@ export class PricingRepository {
 
       const currentCost = await this.currentCosts.read(tx, tenantId, costingProjectId);
       const calculation = calculate(configuration, currentCost);
+      if (persistWhen && !persistWhen(calculation, currentCost)) return null;
       const latest = await tx.pricingCalculationVersion.findFirst({
         where: { tenantId, costingProjectId },
         orderBy: [{ versionNumber: "desc" }, { id: "desc" }],

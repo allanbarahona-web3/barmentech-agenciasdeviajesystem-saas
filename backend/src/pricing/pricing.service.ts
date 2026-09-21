@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable } from "@nestjs/common";
 import {
   calculatePricingV1,
+  comparePricingAmounts,
   pricingAmountsEqual,
   validatePricingV1Configuration,
   type PricingV1ConfigurationInput,
@@ -38,6 +39,7 @@ export class PricingService {
       authoritativeCostAmount: currentCost.authoritativeTotalCost,
       ...configurationInput(configuration),
     }));
+    if (!version) throw new ConflictException("Pricing calculation was not persisted.");
     const result = await this.repository.findCalculation(tenantId, version.id);
     return calculationResponse(result.version, result.currentCost.authoritativeTotalCost);
   }
@@ -84,6 +86,28 @@ export class PricingService {
     if (!version) throw new ConflictException("Pricing calculation approval conflict.");
     const result = await this.repository.findCalculation(tenantId, version.id);
     return calculationResponse(result.version, result.currentCost.authoritativeTotalCost);
+  }
+
+  /** Internal AIRFARE integration contract. It never creates a version for an equal/lower price. */
+  async createAutomaticDraftIfHigher(
+    tenantId: string,
+    costingProjectId: string,
+    expectedAuthoritativeCost: string,
+    currentPublishedPrice: string,
+    actor: PricingActor,
+  ) {
+    return this.repository.createDraftCalculation(
+      tenantId,
+      costingProjectId,
+      actor,
+      (configuration, currentCost) => {
+        if (!pricingAmountsEqual(currentCost.authoritativeTotalCost, expectedAuthoritativeCost)) {
+          throw new ConflictException("AIRFARE_REPRICE_REQUEST_SUPERSEDED");
+        }
+        return calculatePricingV1({ authoritativeCostAmount: currentCost.authoritativeTotalCost, ...configurationInput(configuration) });
+      },
+      (calculation) => comparePricingAmounts(calculation.finalSellingPrice, currentPublishedPrice) > 0,
+    );
   }
 
   /** Internal adapter contract for later travel/quotation consumers; no breakdown leaks. */

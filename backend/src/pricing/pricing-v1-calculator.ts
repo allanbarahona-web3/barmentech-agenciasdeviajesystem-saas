@@ -155,6 +155,11 @@ export function pricingAmountsEqual(left: string, right: string): boolean {
   return compare(parseNonNegative(left, AMOUNT_SCALE), parseNonNegative(right, AMOUNT_SCALE)) === 0;
 }
 
+/** Exact Decimal(19,5)-compatible comparison for pricing orchestration. */
+export function comparePricingAmounts(left: string, right: string): number {
+  return compare(parseNonNegative(left, AMOUNT_SCALE), parseNonNegative(right, AMOUNT_SCALE));
+}
+
 function parseNonNegative(value: string, maximumScale: number): Decimal {
   const parsed = parse(value, maximumScale);
   if (parsed.coefficient < 0n) throw new PricingCalculationError("PRICING_INPUT_NEGATIVE");
