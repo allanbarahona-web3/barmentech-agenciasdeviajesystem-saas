@@ -25,17 +25,44 @@ export class PrismaSalesOrderFiscalBillingRepository
   ) {
     const where: Prisma.SalesOrderWhereInput = {
       tenantId,
-      sourceType: ADDITIONAL_SERVICE_SALES_ORDER_SOURCE_TYPE,
       status: ELIGIBLE_SALES_ORDER_STATUS,
-      lines: {
-        some: {},
-        none: {
-          OR: [
-            { additionalServiceCatalogId: null },
-            { fiscalItemCategory: null },
-          ],
+      OR: [
+        // Preserve the legacy Additional Services discovery path. Its fiscal
+        // profile remains the authority when a frozen line snapshot is absent.
+        {
+          sourceType: ADDITIONAL_SERVICE_SALES_ORDER_SOURCE_TYPE,
+          lines: {
+            some: {},
+            none: {
+              OR: [
+                { additionalServiceCatalogId: null },
+                { fiscalItemCategory: null },
+              ],
+            },
+          },
         },
-      },
+        // Every non-Additional-Services source must be self-contained. This
+        // deliberately uses only SalesOrderLine's frozen fiscal tuple and
+        // never makes a live Additional Services profile a fallback.
+        {
+          sourceType: { not: ADDITIONAL_SERVICE_SALES_ORDER_SOURCE_TYPE },
+          lines: {
+            some: {},
+            none: {
+              OR: [
+                { fiscalItemCategory: null },
+                { fiscalItemCategory: { notIn: ["SERVICE", "MERCHANDISE"] } },
+                { fiscalDescription: null },
+                { cabysCode: null },
+                { unitOfMeasureCode: null },
+                { taxCode: null },
+                { taxRateCode: null },
+                { fiscalTaxPercentage: null },
+              ],
+            },
+          },
+        },
+      ],
     };
     const [orders, total] = await Promise.all([
       this.prisma.salesOrder.findMany({
@@ -86,9 +113,9 @@ export class PrismaSalesOrderFiscalBillingRepository
         const document = documentBySource.get(order.id) ?? null;
         return {
           ...order,
-          commercialSubtotal: order.commercialSubtotal.toFixed(4),
-          totalVat: order.totalVat.toFixed(4),
-          total: order.total.toFixed(4),
+          commercialSubtotal: order.commercialSubtotal.toFixed(5),
+          totalVat: order.totalVat.toFixed(5),
+          total: order.total.toFixed(5),
           existingPrimaryDocument: document
             ? {
                 id: document.id,
@@ -140,9 +167,9 @@ export class PrismaSalesOrderFiscalBillingRepository
       ...order,
       customerFiscalIdentity,
       currency: order.currency,
-      commercialSubtotal: order.commercialSubtotal.toFixed(4),
-      totalVat: order.totalVat.toFixed(4),
-      total: order.total.toFixed(4),
+      commercialSubtotal: order.commercialSubtotal.toFixed(5),
+      totalVat: order.totalVat.toFixed(5),
+      total: order.total.toFixed(5),
       lines: order.lines.map((line) => ({
         ...line,
         fiscalDescription: (line as typeof line & {
@@ -160,10 +187,10 @@ export class PrismaSalesOrderFiscalBillingRepository
         fiscalTaxPercentage: (
           line as typeof line & { fiscalTaxPercentage: Prisma.Decimal | null }
         ).fiscalTaxPercentage?.toFixed(4) ?? null,
-        subtotal: line.subtotal.toFixed(4),
+        subtotal: line.subtotal.toFixed(5),
         vatPercentage: line.vatPercentage.toFixed(4),
-        vatAmount: line.vatAmount.toFixed(4),
-        total: line.total.toFixed(4),
+        vatAmount: line.vatAmount.toFixed(5),
+        total: line.total.toFixed(5),
       })),
     };
   }

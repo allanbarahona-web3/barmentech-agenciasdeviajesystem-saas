@@ -77,6 +77,55 @@ describe("SalesOrderFiscalBillingService", () => {
     expect(fiscalCatalog.evaluateFiscalProfiles).not.toHaveBeenCalled();
   });
 
+  it("preserves five-decimal commercial, line, and calculated preparation totals", async () => {
+    const { service, repository, fiscalCatalog } = setup({
+      profiles: [],
+      salesOrder: salesOrder({
+        sourceType: "CUSTOM_QUOTATION_VERSION",
+        commercialSubtotal: "1450.12345",
+        totalVat: "188.51605",
+        total: "1638.63950",
+        lines: [
+          sourceLine({
+            additionalServiceCatalogId: null,
+            fiscalDescription: "Paquete turístico personalizado",
+            cabysCode: "1234567890123",
+            unitOfMeasureCode: "Sp",
+            taxCode: "01",
+            taxRateCode: "08",
+            fiscalTaxPercentage: "13.0000",
+            subtotal: "1450.12345",
+            vatPercentage: "13.0000",
+            vatAmount: "188.51605",
+            total: "1638.63950",
+          }),
+        ],
+      }),
+    });
+
+    const result = await service.prepare("tenant-a", "sales-a");
+
+    expect(result.totals).toEqual({
+      commercialSubtotal: "1450.12345",
+      commercialVat: "188.51605",
+      commercialTotal: "1638.63950",
+      calculatedSubtotal: "1450.12345",
+      calculatedVat: "188.51605",
+      calculatedTotal: "1638.63950",
+    });
+    expect(result.lines[0]).toMatchObject({
+      subtotal: "1450.12345",
+      vatPercentage: "13.0000",
+      vatAmount: "188.51605",
+      total: "1638.63950",
+      fiscalReadiness: {
+        profile: { taxPercentage: "13.0000" },
+      },
+    });
+    expect(repository.findFiscalProfiles).not.toHaveBeenCalled();
+    expect(fiscalCatalog.evaluateFiscalProfiles).not.toHaveBeenCalled();
+  });
+
   it("rejects a partial frozen fiscal tuple without falling back to a live profile", async () => {
     const { service, repository } = setup({
       salesOrder: salesOrder({

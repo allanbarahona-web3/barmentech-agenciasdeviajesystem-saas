@@ -502,9 +502,9 @@ export class SalesOrderFiscalBillingService {
       },
     );
     const calculatedTotals = {
-      subtotal: totals.subtotal.toFixed(4),
-      tax: totals.tax.toFixed(4),
-      total: totals.total.toFixed(4),
+      subtotal: totals.subtotal.toFixed(5),
+      tax: totals.tax.toFixed(5),
+      total: totals.total.toFixed(5),
     };
     if (
       !totals.subtotal.equals(salesOrder.commercialSubtotal) ||
