@@ -46,6 +46,21 @@ describe("PricingRepository", () => {
     }));
   });
 
+  it("snapshots trusted policy inputs exactly once without overwriting an existing configuration", async () => {
+    const policySnapshot = {
+      operationalCostsAmount: "12.34567", riskMarginPercent: "1.250000", targetProfitMarginPercent: "20.000000",
+      salesCommissionPercent: "3.500000", bankCommissionPercent: "2.000000", applicableTaxPercent: "13.000000",
+    };
+    tx.pricingConfiguration.findFirst.mockResolvedValueOnce(null);
+    tx.pricingConfiguration.create.mockResolvedValue({ id: "configuration-a", ...policySnapshot });
+    await repository.resolveConfigurationFromSnapshot("tenant-a", "project-a", policySnapshot, actor);
+    expect(tx.pricingConfiguration.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining(policySnapshot) }));
+
+    tx.pricingConfiguration.findFirst.mockResolvedValueOnce({ id: "configuration-a", operationalCostsAmount: "12.34567" });
+    await repository.resolveConfigurationFromSnapshot("tenant-a", "project-a", { ...policySnapshot, operationalCostsAmount: "99.00000" }, actor);
+    expect(tx.pricingConfiguration.create).toHaveBeenCalledTimes(1);
+  });
+
   it("rejects a cross-tenant project before configuration access", async () => {
     currentCosts.read.mockRejectedValue(new NotFoundException("Costing project not found."));
 

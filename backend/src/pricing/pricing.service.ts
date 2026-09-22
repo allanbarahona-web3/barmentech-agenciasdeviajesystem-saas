@@ -6,7 +6,7 @@ import {
   validatePricingV1Configuration,
   type PricingV1ConfigurationInput,
 } from "./pricing-v1-calculator";
-import { PricingRepository, type PricingActor } from "./pricing.repository";
+import { PricingRepository, type PricingActor, type PricingTransaction } from "./pricing.repository";
 
 export type PricingConfigurationUpdate = Partial<PricingV1ConfigurationInput>;
 
@@ -17,6 +17,17 @@ export class PricingService {
   async resolveConfiguration(tenantId: string, costingProjectId: string, actor: PricingActor) {
     const result = await this.repository.resolveConfiguration(tenantId, costingProjectId, actor);
     return pricingContextResponse(result.configuration, result.currentCost);
+  }
+
+  /** Internal trusted-policy initializer. Never replaces an existing project snapshot. */
+  async resolveConfigurationFromSnapshot(
+    tenantId: string,
+    costingProjectId: string,
+    input: PricingV1ConfigurationInput,
+    actor: PricingActor,
+  ) {
+    validatePricingV1Configuration(input);
+    return this.repository.resolveConfigurationFromSnapshot(tenantId, costingProjectId, input, actor);
   }
 
   async updateConfiguration(
@@ -86,6 +97,28 @@ export class PricingService {
     if (!version) throw new ConflictException("Pricing calculation approval conflict.");
     const result = await this.repository.findCalculation(tenantId, version.id);
     return calculationResponse(result.version, result.currentCost.authoritativeTotalCost);
+  }
+
+  /** Internal transaction-composable approval for trusted commercial adapters. */
+  async approveCalculationInTransaction(
+    tx: PricingTransaction,
+    tenantId: string,
+    pricingCalculationVersionId: string,
+    actor: PricingActor,
+  ) {
+    const version = await this.repository.approveCalculationInTransaction(
+      tx,
+      tenantId,
+      pricingCalculationVersionId,
+      actor,
+      (candidate, currentCost) => {
+        if (!pricingAmountsEqual(decimalString(candidate.authoritativeCostAmount), currentCost.authoritativeTotalCost)) {
+          throw new ConflictException("Stale pricing calculation versions cannot be approved.");
+        }
+      },
+    );
+    if (!version) throw new ConflictException("Pricing calculation approval conflict.");
+    return version;
   }
 
   /** Internal AIRFARE integration contract. It never creates a version for an equal/lower price. */

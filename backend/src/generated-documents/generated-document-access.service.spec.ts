@@ -46,4 +46,35 @@ describe("GeneratedDocumentAccessService", () => {
       "invalid or expired",
     );
   });
+
+  it("rejects a token when its persisted purpose does not match the requested capability", async () => {
+    const prisma = {
+      generatedDocumentAccessToken: {
+        findUnique: jest.fn().mockResolvedValue({
+          purpose: "DOWNLOAD",
+          isActive: true,
+          usedAt: null,
+          revokedAt: null,
+          expiresAt: null,
+          generatedDocument: {},
+        }),
+      },
+    } as unknown as PrismaService;
+    const service = new GeneratedDocumentAccessService(prisma);
+
+    await expect(service.resolve("wrong-purpose", "APPROVAL")).rejects.toThrow("invalid or expired");
+  });
+
+  it("consumes a token through a caller-owned transaction with the existing single-use CAS", async () => {
+    const updateMany = jest.fn().mockResolvedValue({ count: 1 });
+    const service = new GeneratedDocumentAccessService({} as PrismaService);
+    const now = new Date("2026-09-21T12:00:00.000Z");
+
+    await expect(service.consumeInTransaction({ generatedDocumentAccessToken: { updateMany } }, "access-1", now)).resolves.toBe(true);
+
+    expect(updateMany).toHaveBeenCalledWith({
+      where: expect.objectContaining({ id: "access-1", isActive: true, usedAt: null, revokedAt: null, OR: [{ expiresAt: null }, { expiresAt: { gt: now } }] }),
+      data: { isActive: false, usedAt: now },
+    });
+  });
 });

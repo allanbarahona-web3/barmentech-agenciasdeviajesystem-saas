@@ -39,6 +39,7 @@ import { CostEngineModule } from "./cost-engine/cost-engine.module";
 import { PricingModule } from "./pricing/pricing.module";
 import { TravelPricingModule } from "./travel-pricing/travel-pricing.module";
 import { AirfarePricingModule } from "./airfare-pricing/airfare-pricing.module";
+import { CustomQuotationsModule } from "./custom-quotations/custom-quotations.module";
 
 @Module({
   controllers: [AppController],
@@ -87,6 +88,7 @@ import { AirfarePricingModule } from "./airfare-pricing/airfare-pricing.module";
     PricingModule,
     TravelPricingModule,
     AirfarePricingModule,
+    CustomQuotationsModule,
   ],
   providers: [
     {

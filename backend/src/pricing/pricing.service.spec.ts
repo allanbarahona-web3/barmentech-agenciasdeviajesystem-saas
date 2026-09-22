@@ -16,6 +16,8 @@ describe("PricingService", () => {
       findLatestCalculation: jest.fn(),
       listCalculations: jest.fn(),
       approveCalculation: jest.fn(),
+      approveCalculationInTransaction: jest.fn(),
+      resolveConfigurationFromSnapshot: jest.fn(),
     };
     service = new PricingService(repository as never);
   });
@@ -28,6 +30,13 @@ describe("PricingService", () => {
     expect(repository.resolveConfiguration).toHaveBeenCalledWith("tenant-a", "project-a", actor);
     expect(result.currentAuthoritativeCost).toBe("1000");
     expect(result.currency).toBe("USD");
+  });
+
+  it("delegates a trusted policy snapshot without exposing it through commercial adapters", async () => {
+    const snapshot = { operationalCostsAmount: "10", riskMarginPercent: "1", targetProfitMarginPercent: "20", salesCommissionPercent: "2", bankCommissionPercent: "1", applicableTaxPercent: "13" };
+    repository.resolveConfigurationFromSnapshot.mockResolvedValue({ configuration: configuration(), currentCost: currentCost() });
+    await service.resolveConfigurationFromSnapshot("tenant-a", "project-a", snapshot, actor);
+    expect(repository.resolveConfigurationFromSnapshot).toHaveBeenCalledWith("tenant-a", "project-a", snapshot, actor);
   });
 
   it("updates exact configuration values without calculating derived amounts", async () => {

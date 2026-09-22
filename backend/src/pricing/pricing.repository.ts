@@ -10,7 +10,7 @@ import type { PricingV1Calculation } from "./pricing-v1-calculator";
 
 export type PricingActor = { userId: string; name: string };
 
-type PricingTransaction = CostingProjectCurrentCostTransaction & {
+export type PricingTransaction = CostingProjectCurrentCostTransaction & {
   $executeRaw<T = unknown>(query: TemplateStringsArray, ...values: unknown[]): Promise<T>;
   pricingConfiguration: Record<string, (...args: any[]) => Promise<any>>;
   pricingCalculationVersion: Record<string, (...args: any[]) => Promise<any>>;
@@ -52,6 +52,53 @@ export class PricingRepository {
             salesCommissionPercent: "0",
             bankCommissionPercent: "0",
             applicableTaxPercent: "0",
+            createdByUserId: actor.userId,
+            createdByName: actor.name,
+          },
+        });
+        return { configuration, currentCost };
+      });
+    } catch (error) {
+      if (!isUniqueConstraint(error)) throw error;
+      return this.withTenantTransaction(tenantId, async (tx) => {
+        const currentCost = await this.currentCosts.read(tx, tenantId, costingProjectId);
+        const configuration = await tx.pricingConfiguration.findFirst({ where: { tenantId, costingProjectId } });
+        if (!configuration) throw new ConflictException("Pricing configuration resolve conflict.");
+        return { configuration, currentCost };
+      });
+    }
+  }
+
+  /**
+   * Internal adapter contract: initializes a project configuration exactly once
+   * from trusted, already-validated policy inputs. Existing snapshots win.
+   */
+  async resolveConfigurationFromSnapshot(
+    tenantId: string,
+    costingProjectId: string,
+    input: {
+      operationalCostsAmount: string;
+      riskMarginPercent: string;
+      targetProfitMarginPercent: string;
+      salesCommissionPercent: string;
+      bankCommissionPercent: string;
+      applicableTaxPercent: string;
+    },
+    actor: PricingActor,
+  ) {
+    try {
+      return await this.withTenantTransaction(tenantId, async (tx) => {
+        const currentCost = await this.currentCosts.read(tx, tenantId, costingProjectId);
+        const existing = await tx.pricingConfiguration.findFirst({
+          where: { tenantId, costingProjectId },
+        });
+        if (existing) return { configuration: existing, currentCost };
+        const configuration = await tx.pricingConfiguration.create({
+          data: {
+            tenantId,
+            costingProjectId,
+            status: "DRAFT",
+            ...input,
             createdByUserId: actor.userId,
             createdByName: actor.name,
           },
@@ -200,30 +247,45 @@ export class PricingRepository {
     actor: PricingActor,
     assertNotStale: (version: any, currentCost: CostingProjectCurrentCost) => void,
   ) {
-    return this.withTenantTransaction(tenantId, async (tx) => {
-      const locked = await tx.$queryRaw<Array<{ id: string }>>`
-        SELECT "id" FROM "pricing_calculation_versions"
-        WHERE "id" = ${pricingCalculationVersionId} AND "tenantId" = ${tenantId}
-        FOR UPDATE
-      `;
-      if (locked.length !== 1) throw new NotFoundException("Pricing calculation version not found.");
-      const version = await tx.pricingCalculationVersion.findFirst({ where: { id: pricingCalculationVersionId, tenantId } });
-      if (!version) throw new NotFoundException("Pricing calculation version not found.");
-      if (version.status !== "DRAFT") throw new ConflictException("Only draft pricing calculation versions can be approved.");
+    return this.withTenantTransaction(tenantId, (tx) =>
+      this.approveCalculationInTransaction(tx, tenantId, pricingCalculationVersionId, actor, assertNotStale),
+    );
+  }
 
-      const currentCost = await this.currentCosts.read(tx, tenantId, version.costingProjectId);
-      assertNotStale(version, currentCost);
-      await tx.pricingCalculationVersion.updateMany({
-        where: { id: version.id, tenantId, status: "DRAFT" },
-        data: {
-          status: "APPROVED",
-          approvedAt: new Date(),
-          approvedByUserId: actor.userId,
-          approvedByName: actor.name,
-        },
-      });
-      return tx.pricingCalculationVersion.findFirst({ where: { id: version.id, tenantId } });
+  /**
+   * Trusted application adapters can compose approval with their own aggregate
+   * transaction without reimplementing Pricing's lock/staleness invariant.
+   */
+  async approveCalculationInTransaction(
+    tx: PricingTransaction,
+    tenantId: string,
+    pricingCalculationVersionId: string,
+    actor: PricingActor,
+    assertNotStale: (version: any, currentCost: CostingProjectCurrentCost) => void,
+  ) {
+    const locked = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT "id" FROM "pricing_calculation_versions"
+      WHERE "id" = ${pricingCalculationVersionId} AND "tenantId" = ${tenantId}
+      FOR UPDATE
+    `;
+    if (locked.length !== 1) throw new NotFoundException("Pricing calculation version not found.");
+    const version = await tx.pricingCalculationVersion.findFirst({ where: { id: pricingCalculationVersionId, tenantId } });
+    if (!version) throw new NotFoundException("Pricing calculation version not found.");
+    if (version.status !== "DRAFT") throw new ConflictException("Only draft pricing calculation versions can be approved.");
+
+    const currentCost = await this.currentCosts.read(tx, tenantId, version.costingProjectId);
+    assertNotStale(version, currentCost);
+    const approved = await tx.pricingCalculationVersion.updateMany({
+      where: { id: version.id, tenantId, status: "DRAFT" },
+      data: {
+        status: "APPROVED",
+        approvedAt: new Date(),
+        approvedByUserId: actor.userId,
+        approvedByName: actor.name,
+      },
     });
+    if (approved.count !== 1) throw new ConflictException("Pricing calculation approval conflict.");
+    return tx.pricingCalculationVersion.findFirst({ where: { id: version.id, tenantId } });
   }
 
   private withTenantTransaction<T>(tenantId: string, work: (tx: PricingTransaction) => Promise<T>) {

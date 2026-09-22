@@ -133,8 +133,13 @@ model Tenant {
   pricingConfigurations                   PricingConfiguration[]
   tenantPricingPolicies                   TenantPricingPolicy[]
   pricingCalculationVersions              PricingCalculationVersion[]
+  customQuotations                        CustomQuotation[]
+  customQuotationCostingProjectLinks      CustomQuotationCostingProjectLink[]
+  customQuotationVersions                 CustomQuotationVersion[]
+  customQuotationVersionLines             CustomQuotationVersionLine[]
   TravelPackagePricingPublication         TravelPackagePricingPublication[]
   InternalTripPricingPublication          InternalTripPricingPublication[]
+  customQuotationLines                    CustomQuotationLine[]
 
   @@map("tenants")
 }
@@ -461,6 +466,7 @@ model Client {
   billingDocuments                     BillingDocument[]                   @relation("BillingDocumentCustomer")
   customerFundsAllocationCommands      CustomerFundsAllocationCommand[]
   commercialObligations                CommercialObligation[]
+  customQuotations                     CustomQuotation[]
 
   @@unique([tenantId, idType, idNumber])
   @@unique([id, tenantId], map: "Client_id_tenantId_key")
@@ -1022,18 +1028,18 @@ enum PricingCalculationBasis {
 }
 
 model CostingProject {
-  id                               String                            @id @default(cuid())
+  id                               String                             @id @default(cuid())
   tenantId                         String
   displayName                      String
-  baseCurrency                     String                            @db.VarChar(3)
-  status                           CostingProjectStatus              @default(DRAFT)
+  baseCurrency                     String                             @db.VarChar(3)
+  status                           CostingProjectStatus               @default(DRAFT)
   createdByUserId                  String
   createdByName                    String
   updatedByUserId                  String?
   updatedByName                    String?
-  createdAt                        DateTime                          @default(now())
-  updatedAt                        DateTime                          @updatedAt
-  tenant                           Tenant                            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt                        DateTime                           @default(now())
+  updatedAt                        DateTime                           @updatedAt
+  tenant                           Tenant                             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   components                       CostComponent[]
   snapshots                        CostSnapshot[]
   auditEvents                      CostAuditEvent[]
@@ -1045,6 +1051,8 @@ model CostingProject {
   pricingCalculationVersions       PricingCalculationVersion[]
   travelPackagePricingPublications TravelPackagePricingPublication[]
   internalTripPricingPublications  InternalTripPricingPublication[]
+  customQuotationLink              CustomQuotationCostingProjectLink?
+  customQuotationVersions          CustomQuotationVersion[]
 
   @@unique([id, tenantId], map: "costing_projects_id_tenant_key")
   @@index([tenantId, status, updatedAt, id], map: "costing_projects_tenant_status_updated_idx")
@@ -1152,6 +1160,7 @@ model PricingCalculationVersion {
   travelPackagePublications            TravelPackagePricingPublication[]
   internalTripPublications             InternalTripPricingPublication[]
   airfareRepriceResults                AirfarePricingRepriceRequest[]
+  customQuotationVersions              CustomQuotationVersion[]
 
   @@unique([id, tenantId], map: "pricing_calculation_versions_id_tenant_key")
   @@unique([id, tenantId, costingProjectId], map: "pricing_calculation_versions_id_tenant_project_key")
@@ -1973,25 +1982,27 @@ enum FiscalItemCategory {
 /// Neutral, tenant-owned fiscal business concept. It deliberately has no
 /// relation to Additional Services or a commercial source domain.
 model TenantFiscalClassification {
-  id                 String             @id @default(cuid())
-  tenantId           String
-  displayName        String             @db.VarChar(160)
-  description        String?            @db.VarChar(500)
-  fiscalItemCategory FiscalItemCategory
-  cabysCode          String             @db.VarChar(13)
-  unitOfMeasureCode  String             @db.VarChar(20)
-  taxCode            String             @db.VarChar(4)
-  taxRateCode        String             @db.VarChar(4)
-  taxPercentage      Decimal            @db.Decimal(7, 4)
-  isActive           Boolean            @default(true)
-  createdByUserId    String
-  createdByName      String
-  updatedByUserId    String?
-  updatedByName      String?
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
-  tenant             Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  salesOrderLines    SalesOrderLine[]
+  id                      String                   @id @default(cuid())
+  tenantId                String
+  displayName             String                   @db.VarChar(160)
+  description             String?                  @db.VarChar(500)
+  fiscalItemCategory      FiscalItemCategory
+  cabysCode               String                   @db.VarChar(13)
+  unitOfMeasureCode       String                   @db.VarChar(20)
+  taxCode                 String                   @db.VarChar(4)
+  taxRateCode             String                   @db.VarChar(4)
+  taxPercentage           Decimal                  @db.Decimal(7, 4)
+  isActive                Boolean                  @default(true)
+  createdByUserId         String
+  createdByName           String
+  updatedByUserId         String?
+  updatedByName           String?
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
+  tenant                  Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  salesOrderLines         SalesOrderLine[]
+  customQuotations        CustomQuotation[]
+  customQuotationVersions CustomQuotationVersion[]
 
   @@unique([id, tenantId], map: "tenant_fiscal_classifications_id_tenant_key")
   @@unique([tenantId, displayName], map: "tenant_fiscal_classifications_tenant_display_name_key")
@@ -2411,29 +2422,30 @@ model AdditionalServiceOrderParticipant {
 }
 
 model SalesOrder {
-  id                     String                @id @default(cuid())
-  tenantId               String
-  orderNumber            String
-  status                 String                @default("CREATED")
-  sourceType             String
-  sourceId               String
-  customerId             String?
-  customerName           String
-  customerEmail          String?
-  currency               Currency
-  commercialSubtotal     Decimal               @db.Decimal(18, 4)
-  totalVat               Decimal               @db.Decimal(18, 4)
-  total                  Decimal               @db.Decimal(18, 4)
-  paymentConditionType   PaymentConditionType?
-  paymentTermValue       Int?
-  paymentTermUnit        PaymentTermUnit?
-  commercialObservations String?
-  createdByUserId        String
-  createdByName          String
-  createdAt              DateTime              @default(now())
-  updatedAt              DateTime              @updatedAt
-  tenant                 Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  lines                  SalesOrderLine[]
+  id                      String                   @id @default(cuid())
+  tenantId                String
+  orderNumber             String
+  status                  String                   @default("CREATED")
+  sourceType              String
+  sourceId                String
+  customerId              String?
+  customerName            String
+  customerEmail           String?
+  currency                Currency
+  commercialSubtotal      Decimal                  @db.Decimal(19, 5)
+  totalVat                Decimal                  @db.Decimal(19, 5)
+  total                   Decimal                  @db.Decimal(19, 5)
+  paymentConditionType    PaymentConditionType?
+  paymentTermValue        Int?
+  paymentTermUnit         PaymentTermUnit?
+  commercialObservations  String?
+  createdByUserId         String
+  createdByName           String
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
+  tenant                  Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  lines                   SalesOrderLine[]
+  customQuotationVersions CustomQuotationVersion[]
 
   @@unique([tenantId, orderNumber])
   @@unique([tenantId, sourceType, sourceId])
@@ -2441,6 +2453,163 @@ model SalesOrder {
   @@index([tenantId])
   @@index([customerId])
   @@map("sales_orders")
+}
+
+enum CustomQuotationStatus {
+  DRAFT
+  ISSUED
+  ACCEPTED
+  REJECTED
+  EXPIRED
+  CANCELLED
+}
+
+enum CustomQuotationVersionStatus {
+  ISSUED
+  ACCEPTED
+  REJECTED
+  EXPIRED
+  CANCELLED
+}
+
+/// Independent commercial quotation aggregate. It has no Additional Services
+/// or travel-domain relation; Cost Engine and Pricing connect through adapters.
+model CustomQuotation {
+  id                     String                             @id @default(cuid())
+  tenantId               String
+  quotationNumber        String                             @db.VarChar(50)
+  customerId             String
+  currency               Currency
+  title                  String                             @db.VarChar(200)
+  commercialObservations String?                            @db.VarChar(2000)
+  quotationValidUntil    DateTime?
+  paymentConditionType   PaymentConditionType?
+  paymentTermValue       Int?
+  paymentTermUnit        PaymentTermUnit?
+  fiscalClassificationId String
+  status                 CustomQuotationStatus              @default(DRAFT)
+  createdByUserId        String
+  createdByName          String
+  updatedByUserId        String?
+  updatedByName          String?
+  createdAt              DateTime                           @default(now())
+  updatedAt              DateTime                           @updatedAt
+  tenant                 Tenant                             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer               Client                             @relation(fields: [customerId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "custom_quotations_customer_tenant_fkey")
+  fiscalClassification   TenantFiscalClassification         @relation(fields: [fiscalClassificationId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "custom_quotations_fiscal_classification_tenant_fkey")
+  lines                  CustomQuotationLine[]
+  costingProjectLink     CustomQuotationCostingProjectLink?
+  versions               CustomQuotationVersion[]
+
+  @@unique([id, tenantId], map: "custom_quotations_id_tenant_key")
+  @@unique([tenantId, quotationNumber], map: "custom_quotations_tenant_number_key")
+  @@index([tenantId, customerId, createdAt(sort: Desc), id(sort: Desc)], map: "custom_quotations_tenant_customer_created_idx")
+  @@index([tenantId, status, createdAt(sort: Desc), id(sort: Desc)], map: "custom_quotations_tenant_status_created_idx")
+  @@map("custom_quotations")
+}
+
+/// Customer-facing descriptive lines. They intentionally hold no selling-price
+/// allocation and inherit the quotation's principal fiscal classification.
+model CustomQuotationLine {
+  id                String          @id @default(cuid())
+  tenantId          String
+  customQuotationId String
+  displayOrder      Int
+  description       String          @db.VarChar(500)
+  quantity          Decimal         @default(1) @db.Decimal(18, 4)
+  commercialNote    String?         @db.VarChar(2000)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  tenant            Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customQuotation   CustomQuotation @relation(fields: [customQuotationId, tenantId], references: [id, tenantId], onDelete: Cascade, map: "custom_quotation_lines_quotation_tenant_fkey")
+
+  @@unique([id, tenantId], map: "custom_quotation_lines_id_tenant_key")
+  @@unique([tenantId, customQuotationId, displayOrder], map: "custom_quotation_lines_tenant_quotation_display_key")
+  @@index([tenantId, customQuotationId, displayOrder, id], map: "custom_quotation_lines_tenant_quotation_order_idx")
+  @@map("custom_quotation_lines")
+}
+
+/// Adapter link only: CostingProject remains independent of Custom Quotations.
+model CustomQuotationCostingProjectLink {
+  id                String          @id @default(cuid())
+  tenantId          String
+  customQuotationId String
+  costingProjectId  String
+  createdAt         DateTime        @default(now())
+  tenant            Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customQuotation   CustomQuotation @relation(fields: [customQuotationId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "custom_quotation_costing_links_quotation_tenant_fkey")
+  costingProject    CostingProject  @relation(fields: [costingProjectId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "custom_quotation_costing_links_project_tenant_fkey")
+
+  @@unique([id, tenantId], map: "custom_quotation_costing_links_id_tenant_key")
+  @@unique([customQuotationId, tenantId], map: "custom_quotation_costing_links_tenant_quotation_key")
+  @@unique([costingProjectId, tenantId], map: "custom_quotation_costing_links_tenant_project_key")
+  @@map("custom_quotation_costing_project_links")
+}
+
+/// Immutable commercial/fiscal issue snapshot. Only lifecycle metadata may be
+/// changed by a later approval workflow.
+model CustomQuotationVersion {
+  id                          String                       @id @default(cuid())
+  tenantId                    String
+  customQuotationId           String
+  versionNumber               Int
+  status                      CustomQuotationVersionStatus @default(ISSUED)
+  currency                    Currency
+  finalSellingPrice           Decimal                      @db.Decimal(19, 5)
+  quotationValidUntil         DateTime?
+  paymentConditionType        PaymentConditionType?
+  paymentTermValue            Int?
+  paymentTermUnit             PaymentTermUnit?
+  commercialObservations      String?                      @db.VarChar(2000)
+  costingProjectId            String
+  pricingCalculationVersionId String
+  fiscalClassificationId      String?
+  fiscalDescription           String                       @db.VarChar(500)
+  fiscalItemCategory          FiscalItemCategory
+  cabysCode                   String                       @db.VarChar(13)
+  unitOfMeasureCode           String                       @db.VarChar(20)
+  taxCode                     String                       @db.VarChar(4)
+  taxRateCode                 String                       @db.VarChar(4)
+  fiscalTaxPercentage         Decimal                      @db.Decimal(7, 4)
+  createdAt                   DateTime                     @default(now())
+  createdByUserId             String
+  createdByName               String
+  acceptedAt                  DateTime?
+  acceptedByUserId            String?
+  acceptedByName              String?
+  rejectedAt                  DateTime?
+  salesOrderId                String?
+  tenant                      Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customQuotation             CustomQuotation              @relation(fields: [customQuotationId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "custom_quotation_versions_quotation_tenant_fkey")
+  costingProject              CostingProject               @relation(fields: [costingProjectId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "custom_quotation_versions_project_tenant_fkey")
+  pricingCalculationVersion   PricingCalculationVersion    @relation(fields: [pricingCalculationVersionId, tenantId, costingProjectId], references: [id, tenantId, costingProjectId], onDelete: Restrict, map: "custom_quotation_versions_pricing_version_tenant_fkey")
+  fiscalClassification        TenantFiscalClassification?  @relation(fields: [fiscalClassificationId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "custom_quotation_versions_fiscal_classification_tenant_fkey")
+  salesOrder                  SalesOrder?                  @relation(fields: [salesOrderId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "custom_quotation_versions_sales_order_tenant_fkey")
+  lines                       CustomQuotationVersionLine[]
+
+  @@unique([id, tenantId], map: "custom_quotation_versions_id_tenant_key")
+  @@unique([tenantId, customQuotationId, versionNumber], map: "custom_quotation_versions_tenant_quotation_number_key")
+  @@unique([tenantId, salesOrderId], map: "custom_quotation_versions_tenant_sales_order_key")
+  @@index([tenantId, customQuotationId, createdAt(sort: Desc), id(sort: Desc)], map: "custom_quotation_versions_tenant_quotation_history_idx")
+  @@map("custom_quotation_versions")
+}
+
+/// Append-only customer-facing line snapshot for an issued quotation version.
+model CustomQuotationVersionLine {
+  id                       String                 @id @default(cuid())
+  tenantId                 String
+  customQuotationVersionId String
+  displayOrder             Int
+  description              String                 @db.VarChar(500)
+  quantity                 Decimal                @default(1) @db.Decimal(18, 4)
+  commercialNote           String?                @db.VarChar(2000)
+  createdAt                DateTime               @default(now())
+  tenant                   Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customQuotationVersion   CustomQuotationVersion @relation(fields: [customQuotationVersionId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "custom_quotation_version_lines_version_tenant_fkey")
+
+  @@unique([id, tenantId], map: "custom_quotation_version_lines_id_tenant_key")
+  @@unique([tenantId, customQuotationVersionId, displayOrder], map: "custom_quotation_version_lines_tenant_version_display_key")
+  @@map("custom_quotation_version_lines")
 }
 
 model SalesOrderLine {
@@ -2461,10 +2630,10 @@ model SalesOrderLine {
   serviceDetailsVersion      Int?
   serviceDetails             Json?
   commercialNotes            String?
-  subtotal                   Decimal                     @db.Decimal(18, 4)
+  subtotal                   Decimal                     @db.Decimal(19, 5)
   vatPercentage              Decimal                     @db.Decimal(7, 4)
-  vatAmount                  Decimal                     @db.Decimal(18, 4)
-  total                      Decimal                     @db.Decimal(18, 4)
+  vatAmount                  Decimal                     @db.Decimal(19, 5)
+  total                      Decimal                     @db.Decimal(19, 5)
   participants               Json
   createdAt                  DateTime                    @default(now())
   updatedAt                  DateTime                    @updatedAt

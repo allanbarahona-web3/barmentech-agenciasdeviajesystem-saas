@@ -4,6 +4,7 @@ import {
   type FrozenFiscalSalesOrderLineInput,
   type SourceNeutralSalesOrderMaterializationInput,
   type SourceNeutralSalesOrderMaterializationResult,
+  type SalesOrderMaterializationTransaction,
 } from "./sales-order-fiscal-snapshot-materialization.service";
 
 /**
@@ -52,6 +53,22 @@ export class SalesOrderSourceMaterializationService {
       throw new BadRequestException("SALES_ORDER_SOURCE_TENANT_INVALID");
     }
     return this.fiscalSnapshotMaterializer.materialize(context.tenantId, {
+      ...order,
+      sourceType: source.sourceType,
+      sourceId: source.sourceId,
+    });
+  }
+
+  async materializeInTransaction(
+    transaction: SalesOrderMaterializationTransaction,
+    context: SourceNeutralSalesOrderMaterializationContext,
+    command: SourceNeutralSalesOrderCommand,
+  ): Promise<SourceNeutralSalesOrderMaterializationResult> {
+    const { source, ...order } = command;
+    if (source.tenantId !== context.tenantId) {
+      throw new BadRequestException("SALES_ORDER_SOURCE_TENANT_INVALID");
+    }
+    return this.fiscalSnapshotMaterializer.materializeInTransaction(transaction, context.tenantId, {
       ...order,
       sourceType: source.sourceType,
       sourceId: source.sourceId,

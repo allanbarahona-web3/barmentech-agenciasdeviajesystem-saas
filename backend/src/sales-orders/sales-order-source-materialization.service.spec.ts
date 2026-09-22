@@ -57,6 +57,25 @@ describe("SalesOrderSourceMaterializationService", () => {
     expect(materialize).toHaveBeenCalledTimes(1);
   });
 
+  it("composes with a caller-owned tenant transaction without changing source idempotency", async () => {
+    const materializeInTransaction = jest.fn().mockResolvedValue({
+      salesOrderId: "sales-a", orderNumber: "SO-2026-000001", reusedExisting: false,
+    });
+    const service = new SalesOrderSourceMaterializationService({
+      materializeInTransaction,
+    } as never);
+    const transaction = {} as never;
+    const command = sourceNeutralCommand();
+    const { source, ...order } = command;
+
+    await expect(service.materializeInTransaction(transaction, { tenantId: "tenant-a" }, command)).resolves.toEqual({
+      salesOrderId: "sales-a", orderNumber: "SO-2026-000001", reusedExisting: false,
+    });
+    expect(materializeInTransaction).toHaveBeenCalledWith(transaction, "tenant-a", {
+      ...order, sourceType: source.sourceType, sourceId: source.sourceId,
+    });
+  });
+
   it("rejects a source resolved from another tenant before materialization", async () => {
     const materialize = jest.fn();
     const service = new SalesOrderSourceMaterializationService({

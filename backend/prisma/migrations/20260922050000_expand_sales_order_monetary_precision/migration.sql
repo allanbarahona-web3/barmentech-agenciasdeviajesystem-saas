@@ -1,0 +1,15 @@
+ALTER TABLE "sales_orders"
+ALTER COLUMN "commercialSubtotal" TYPE DECIMAL(19,5)
+USING "commercialSubtotal"::DECIMAL(19,5),
+ALTER COLUMN "totalVat" TYPE DECIMAL(19,5)
+USING "totalVat"::DECIMAL(19,5),
+ALTER COLUMN "total" TYPE DECIMAL(19,5)
+USING "total"::DECIMAL(19,5);
+
+ALTER TABLE "sales_order_lines"
+ALTER COLUMN "subtotal" TYPE DECIMAL(19,5)
+USING "subtotal"::DECIMAL(19,5),
+ALTER COLUMN "vatAmount" TYPE DECIMAL(19,5)
+USING "vatAmount"::DECIMAL(19,5),
+ALTER COLUMN "total" TYPE DECIMAL(19,5)
+USING "total"::DECIMAL(19,5);

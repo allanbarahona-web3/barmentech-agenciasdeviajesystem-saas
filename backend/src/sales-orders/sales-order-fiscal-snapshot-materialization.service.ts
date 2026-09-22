@@ -62,7 +62,7 @@ export interface SourceNeutralSalesOrderMaterializationResult {
   reusedExisting: boolean;
 }
 
-type SalesOrderTransaction = {
+export type SalesOrderMaterializationTransaction = {
   $executeRaw<T = unknown>(query: TemplateStringsArray, ...values: unknown[]): Promise<T>;
   $queryRaw<T = unknown>(query: TemplateStringsArray, ...values: unknown[]): Promise<T>;
   salesOrder: Record<string, (...args: any[]) => Promise<any>>;
@@ -71,7 +71,7 @@ type SalesOrderTransaction = {
 };
 
 type SalesOrderDatabase = {
-  $transaction<T>(work: (transaction: SalesOrderTransaction) => Promise<T>): Promise<T>;
+  $transaction<T>(work: (transaction: SalesOrderMaterializationTransaction) => Promise<T>): Promise<T>;
 };
 
 type ExistingSalesOrder = { id: string; orderNumber: string };
@@ -98,15 +98,44 @@ export class SalesOrderFiscalSnapshotMaterializationService {
 
     await this.validateFiscalSelections(tenantId, normalized.lines);
     try {
-      return await this.withTenantTransaction(tenantId, async (tx) => {
-        const winner = await findExistingInTransaction(tx, tenantId, normalized.sourceType, normalized.sourceId);
-        if (winner) return { salesOrderId: winner.id, orderNumber: winner.orderNumber, reusedExisting: true };
+      return await this.withTenantTransaction(tenantId, (tx) =>
+        this.materializeNormalizedInTransaction(tx, tenantId, normalized),
+      );
+    } catch (error) {
+      if (!isUniqueConstraint(error)) throw error;
+      const winner = await this.findExisting(tenantId, normalized.sourceType, normalized.sourceId);
+      if (!winner) throw new ConflictException("SALES_ORDER_SOURCE_MATERIALIZATION_CONFLICT");
+      return { salesOrderId: winner.id, orderNumber: winner.orderNumber, reusedExisting: true };
+    }
+  }
 
-        await assertClassificationsBelongToTenant(tx, tenantId, normalized.lines);
-        await assertCustomerBelongsToTenant(tx, tenantId, normalized.customerId);
-        const orderNumber = await allocateOrderNumber(tx, tenantId);
-        const salesOrderId = randomUUID();
-        await tx.$executeRaw`INSERT INTO "sales_orders" (
+  /**
+   * Transaction-composable form for an approved source that must atomically
+   * persist its own downstream reference with the Sales Order.
+   */
+  async materializeInTransaction(
+    tx: SalesOrderMaterializationTransaction,
+    tenantId: string,
+    input: SourceNeutralSalesOrderMaterializationInput,
+  ): Promise<SourceNeutralSalesOrderMaterializationResult> {
+    const normalized = normalize(input);
+    await this.validateFiscalSelections(tenantId, normalized.lines);
+    return this.materializeNormalizedInTransaction(tx, tenantId, normalized);
+  }
+
+  private async materializeNormalizedInTransaction(
+    tx: SalesOrderMaterializationTransaction,
+    tenantId: string,
+    normalized: NormalizedInput,
+  ): Promise<SourceNeutralSalesOrderMaterializationResult> {
+    const winner = await findExistingInTransaction(tx, tenantId, normalized.sourceType, normalized.sourceId);
+    if (winner) return { salesOrderId: winner.id, orderNumber: winner.orderNumber, reusedExisting: true };
+
+    await assertClassificationsBelongToTenant(tx, tenantId, normalized.lines);
+    await assertCustomerBelongsToTenant(tx, tenantId, normalized.customerId);
+    const orderNumber = await allocateOrderNumber(tx, tenantId);
+    const salesOrderId = randomUUID();
+    await tx.$executeRaw`INSERT INTO "sales_orders" (
           "id", "tenantId", "orderNumber", "status", "sourceType", "sourceId", "customerId",
           "customerName", "customerEmail", "currency", "commercialSubtotal", "totalVat", "total",
           "paymentConditionType", "paymentTermValue", "paymentTermUnit", "commercialObservations",
@@ -118,8 +147,8 @@ export class SalesOrderFiscalSnapshotMaterializationService {
           ${normalized.actor.userId}, ${normalized.actor.name}, CURRENT_TIMESTAMP
         )`;
 
-        for (const line of normalized.lines) {
-          await tx.$executeRaw`INSERT INTO "sales_order_lines" (
+    for (const line of normalized.lines) {
+      await tx.$executeRaw`INSERT INTO "sales_order_lines" (
             "id", "tenantId", "salesOrderId", "fiscalClassificationId", "fiscalItemCategory",
             "fiscalDescription", "cabysCode", "unitOfMeasureCode", "taxCode", "taxRateCode", "fiscalTaxPercentage",
             "serviceCode", "serviceName", "serviceDetailsVersion", "serviceDetails", "commercialNotes",
@@ -130,15 +159,8 @@ export class SalesOrderFiscalSnapshotMaterializationService {
             ${line.serviceCode}, ${line.description}, ${line.serviceDetailsVersion}, ${json(line.serviceDetails)}, ${line.commercialNotes},
             ${line.subtotal}, ${line.vatPercentage}, ${line.vatAmount}, ${line.total}, ${json(line.participants)}, CURRENT_TIMESTAMP
           )`;
-        }
-        return { salesOrderId, orderNumber, reusedExisting: false };
-      });
-    } catch (error) {
-      if (!isUniqueConstraint(error)) throw error;
-      const winner = await this.findExisting(tenantId, normalized.sourceType, normalized.sourceId);
-      if (!winner) throw new ConflictException("SALES_ORDER_SOURCE_MATERIALIZATION_CONFLICT");
-      return { salesOrderId: winner.id, orderNumber: winner.orderNumber, reusedExisting: true };
     }
+    return { salesOrderId, orderNumber, reusedExisting: false };
   }
 
   private async validateFiscalSelections(
@@ -171,7 +193,7 @@ export class SalesOrderFiscalSnapshotMaterializationService {
     );
   }
 
-  private withTenantTransaction<T>(tenantId: string, work: (tx: SalesOrderTransaction) => Promise<T>) {
+  private withTenantTransaction<T>(tenantId: string, work: (tx: SalesOrderMaterializationTransaction) => Promise<T>) {
     return runTenantTransaction(this.database, tenantId, work);
   }
 }
@@ -193,7 +215,7 @@ type NormalizedInput = Omit<SourceNeutralSalesOrderMaterializationInput, "lines"
 };
 
 async function findExistingInTransaction(
-  tx: SalesOrderTransaction,
+  tx: SalesOrderMaterializationTransaction,
   tenantId: string,
   sourceType: string,
   sourceId: string,
@@ -205,7 +227,7 @@ async function findExistingInTransaction(
 }
 
 async function assertClassificationsBelongToTenant(
-  tx: SalesOrderTransaction,
+  tx: SalesOrderMaterializationTransaction,
   tenantId: string,
   lines: readonly NormalizedLine[],
 ): Promise<void> {
@@ -221,7 +243,7 @@ async function assertClassificationsBelongToTenant(
 }
 
 async function assertCustomerBelongsToTenant(
-  tx: SalesOrderTransaction,
+  tx: SalesOrderMaterializationTransaction,
   tenantId: string,
   customerId: string | null,
 ): Promise<void> {
@@ -233,7 +255,7 @@ async function assertCustomerBelongsToTenant(
   if (!customer) throw new BadRequestException("SALES_ORDER_CUSTOMER_TENANT_INVALID");
 }
 
-async function allocateOrderNumber(tx: SalesOrderTransaction, tenantId: string): Promise<string> {
+async function allocateOrderNumber(tx: SalesOrderMaterializationTransaction, tenantId: string): Promise<string> {
   const year = new Date().getUTCFullYear();
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`${tenantId}:SALES_ORDER_NUMBER:${year}`}, 0))`;
   const rows = await tx.$queryRaw<Array<{ next: bigint }>>`

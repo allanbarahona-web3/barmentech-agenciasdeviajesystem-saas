@@ -6,6 +6,12 @@ export const GENERATED_DOCUMENT_ACCESS_PURPOSES = {
   APPROVAL: "APPROVAL",
 } as const;
 
+export type GeneratedDocumentAccessTransaction = {
+  generatedDocumentAccessToken: {
+    updateMany(args: unknown): Promise<{ count: number }>;
+  };
+};
+
 @Injectable()
 export class GeneratedDocumentAccessService {
   constructor(private readonly prisma: PrismaService) {}
@@ -52,15 +58,20 @@ export class GeneratedDocumentAccessService {
   }
 
   async consume(id: string): Promise<boolean> {
-    const result = await this.prisma.generatedDocumentAccessToken.updateMany({
+    return this.consumeInTransaction(this.prisma, id);
+  }
+
+  /** Allows an approval aggregate to atomically consume a token with its transition. */
+  async consumeInTransaction(transaction: GeneratedDocumentAccessTransaction, id: string, now: Date = new Date()): Promise<boolean> {
+    const result = await transaction.generatedDocumentAccessToken.updateMany({
       where: {
         id,
         isActive: true,
         usedAt: null,
         revokedAt: null,
-        OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
       },
-      data: { isActive: false, usedAt: new Date() },
+      data: { isActive: false, usedAt: now },
     });
     return result.count === 1;
   }
