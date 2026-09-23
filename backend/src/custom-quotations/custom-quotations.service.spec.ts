@@ -83,6 +83,80 @@ describe("CustomQuotationsService", () => {
     expect(result).toMatchObject({ page: 2, pageSize: 25, total: 1 });
   });
 
+  it("returns bounded tenant-safe Lead quotation summaries with the latest immutable version in the relational query", async () => {
+    const c = context();
+    c.tx.lead.findFirst.mockResolvedValue({ id: "lead-a" });
+    c.tx.customQuotation.findMany.mockResolvedValue([
+      leadQuotation({
+        customerId: "customer-a",
+        versions: [latestVersion({
+          status: "ACCEPTED",
+          finalSellingPrice: decimal("1450.12345"),
+          acceptedAt: new Date("2026-09-22T13:00:00.000Z"),
+          salesOrderId: "sales-a",
+          salesOrder: { id: "sales-a", orderNumber: "SO-2026-000001" },
+        })],
+      }),
+    ]);
+    c.tx.customQuotation.count.mockResolvedValue(1);
+
+    const result = await c.service.listForLead(tenantId, "lead-a", { page: 2, pageSize: 99 });
+    expect(result).toMatchObject({
+      page: 2,
+      pageSize: 25,
+      items: [{
+        id: "quotation-a",
+        customerId: "customer-a",
+        latestVersion: {
+          id: "version-a",
+          status: "ACCEPTED",
+          finalSellingPrice: "1450.12345",
+          acceptedAt: new Date("2026-09-22T13:00:00.000Z"),
+          salesOrder: { id: "sales-a", orderNumber: "SO-2026-000001" },
+        },
+      }],
+    });
+    expect(result.items[0]).not.toHaveProperty("fiscalClassificationId");
+    expect(result.items[0]).not.toHaveProperty("costingProjectId");
+    expect(result.items[0].latestVersion).not.toHaveProperty("pricingCalculationVersionId");
+    expect(c.tx.lead.findFirst).toHaveBeenCalledWith({ where: { id: "lead-a", tenantId }, select: { id: true } });
+    expect(c.tx.customQuotation.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { tenantId, leadId: "lead-a" },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      skip: 25,
+      take: 25,
+      select: expect.objectContaining({ versions: expect.objectContaining({ take: 1, orderBy: [{ versionNumber: "desc" }, { id: "desc" }] }) }),
+    }));
+    expect(c.tx.customQuotationVersion.findMany).not.toHaveBeenCalled();
+  });
+
+  it("keeps converted Lead quotations in history and rejects cross-tenant Lead access", async () => {
+    const converted = context();
+    converted.tx.lead.findFirst.mockResolvedValue({ id: "lead-a" });
+    converted.tx.customQuotation.findMany.mockResolvedValue([leadQuotation({ customerId: "customer-a", versions: [] })]);
+    converted.tx.customQuotation.count.mockResolvedValue(1);
+    await expect(converted.service.listForLead(tenantId, "lead-a", {})).resolves.toMatchObject({ page: 1, pageSize: 20, items: [{ customerId: "customer-a", latestVersion: null }] });
+
+    const crossTenant = context();
+    crossTenant.tx.lead.findFirst.mockResolvedValue(null);
+    await expect(crossTenant.service.listForLead("tenant-b", "lead-a", {})).rejects.toBeInstanceOf(NotFoundException);
+    expect(crossTenant.tx.customQuotation.findMany).not.toHaveBeenCalled();
+  });
+
+  it("returns persisted rejection metadata from the latest immutable version", async () => {
+    const c = context();
+    c.tx.lead.findFirst.mockResolvedValue({ id: "lead-a" });
+    c.tx.customQuotation.findMany.mockResolvedValue([leadQuotation({
+      status: "REJECTED",
+      versions: [latestVersion({ status: "REJECTED", rejectedAt: new Date("2026-09-22T14:00:00.000Z") })],
+    })]);
+    c.tx.customQuotation.count.mockResolvedValue(1);
+
+    await expect(c.service.listForLead(tenantId, "lead-a", {})).resolves.toMatchObject({
+      items: [{ latestVersion: { status: "REJECTED", rejectedAt: new Date("2026-09-22T14:00:00.000Z") } }],
+    });
+  });
+
   it("reads detail and updates only DRAFT metadata with tenant-safe validation", async () => {
     const c = context();
     c.tx.customQuotation.findFirst
@@ -169,40 +243,27 @@ describe("CustomQuotationsService", () => {
     expect(after.tx.customQuotation.updateMany).not.toHaveBeenCalled();
   });
 
-  it("manages descriptive lines only in a draft and preserves exact quantity strings", async () => {
+  it("retires all free-form line mutations, including for a DRAFT quotation", async () => {
     const c = context();
-    c.tx.customQuotation.findFirst.mockResolvedValue(quotation());
-    c.tx.customQuotationLine.findFirst
-      .mockResolvedValueOnce({ displayOrder: 1 })
-      .mockResolvedValueOnce(line({ id: "line-a", description: "Actualizado", quantity: decimal("2.5000") }))
-      .mockResolvedValueOnce(line({ id: "line-a", displayOrder: 1 }));
-    c.tx.customQuotationLine.create.mockResolvedValue(line({ id: "line-b", displayOrder: 2, quantity: decimal("2.5000") }));
-    c.tx.customQuotationLine.updateMany.mockResolvedValue({ count: 1 });
-    c.tx.customQuotationLine.deleteMany.mockResolvedValue({ count: 1 });
-    c.tx.customQuotation.updateMany.mockResolvedValue({ count: 1 });
-
-    await expect(c.service.addLine(tenantId, "quotation-a", { description: "Traslado", quantity: "2.5000" }, actor)).resolves.toMatchObject({ displayOrder: 2, quantity: "2.5000" });
-    await expect(c.service.updateLine(tenantId, "quotation-a", "line-a", { description: "Actualizado", quantity: "2.5000" }, actor)).resolves.toMatchObject({ quantity: "2.5000" });
-    await c.service.removeLine(tenantId, "quotation-a", "line-a", actor);
-    expect(c.tx.customQuotationLine.deleteMany).toHaveBeenCalledWith({ where: { id: "line-a", tenantId, customQuotationId: "quotation-a" } });
-    expect(c.tx.customQuotationLine.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: { displayOrder: { decrement: 1 } } }));
+    await expect(c.service.addLine(tenantId, "quotation-a", { description: "Traslado", quantity: "2.5000" }, actor)).rejects.toThrow("CUSTOM_QUOTATION_STRUCTURED_COMPONENTS_REQUIRED");
+    await expect(c.service.updateLine(tenantId, "quotation-a", "line-a", { description: "Actualizado" }, actor)).rejects.toThrow("CUSTOM_QUOTATION_STRUCTURED_COMPONENTS_REQUIRED");
+    await expect(c.service.removeLine(tenantId, "quotation-a", "line-a", actor)).rejects.toThrow("CUSTOM_QUOTATION_STRUCTURED_COMPONENTS_REQUIRED");
+    await expect(c.service.reorderLines(tenantId, "quotation-a", ["line-a"], actor)).rejects.toThrow("CUSTOM_QUOTATION_STRUCTURED_COMPONENTS_REQUIRED");
+    expect(c.tx.customQuotationLine.create).not.toHaveBeenCalled();
+    expect(c.tx.customQuotationLine.updateMany).not.toHaveBeenCalled();
+    expect(c.tx.customQuotationLine.deleteMany).not.toHaveBeenCalled();
   });
 
-  it("rejects a non-positive descriptive quantity before persistence", async () => {
+  it("does not retain free-form quantity validation as commercial authority", async () => {
     const c = context();
-    c.tx.customQuotation.findFirst.mockResolvedValue(quotation());
-    await expect(c.service.addLine(tenantId, "quotation-a", { description: "Traslado", quantity: "0" }, actor)).rejects.toBeInstanceOf(BadRequestException);
+    await expect(c.service.addLine(tenantId, "quotation-a", { description: "Traslado", quantity: "0" }, actor)).rejects.toBeInstanceOf(ConflictException);
     expect(c.tx.customQuotationLine.create).not.toHaveBeenCalled();
   });
 
-  it("reorders the complete tenant-owned line set without creating Cost, Pricing, or Sales Order side effects", async () => {
+  it("does not use free-form line reordering as a second commercial authority", async () => {
     const c = context();
-    c.tx.customQuotation.findFirst.mockResolvedValue(quotation());
-    c.tx.customQuotationLine.findMany.mockResolvedValue([line({ id: "line-a", displayOrder: 1 }), line({ id: "line-b", displayOrder: 2 })]);
-    c.tx.customQuotationLine.updateMany.mockResolvedValue({ count: 1 });
-    c.tx.customQuotation.updateMany.mockResolvedValue({ count: 1 });
-    await expect(c.service.reorderLines(tenantId, "quotation-a", ["line-b", "line-a"], actor)).resolves.toEqual({ lineIds: ["line-b", "line-a"] });
-    expect(c.tx.customQuotationLine.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: { displayOrder: { increment: 2 } } }));
+    await expect(c.service.reorderLines(tenantId, "quotation-a", ["line-b", "line-a"], actor)).rejects.toThrow("CUSTOM_QUOTATION_STRUCTURED_COMPONENTS_REQUIRED");
+    expect(c.tx.customQuotationLine.updateMany).not.toHaveBeenCalled();
     expect(c.tx.costingProject).toBeUndefined();
     expect(c.tx.pricingConfiguration).toBeUndefined();
     expect(c.tx.salesOrder).toBeUndefined();
@@ -241,4 +302,18 @@ function line(overrides: Record<string, unknown> = {}) {
   return { id: "line-a", tenantId, customQuotationId: "quotation-a", displayOrder: 1, description: "Traslado", quantity: decimal("1.0000"), commercialNote: null, createdAt: new Date(), updatedAt: new Date(), ...overrides };
 }
 
-function decimal(value: string) { return { toFixed: () => value }; }
+function leadQuotation(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "quotation-a", quotationNumber: "CQ-2026-000001", title: "Viaje corporativo", status: "ACCEPTED", currency: "USD",
+    createdAt: new Date("2026-09-21T00:00:00.000Z"), quotationValidUntil: null, customerId: null, versions: [], ...overrides,
+  };
+}
+
+function latestVersion(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "version-a", versionNumber: 1, status: "ISSUED", finalSellingPrice: decimal("1000.00000"),
+    createdAt: new Date("2026-09-21T01:00:00.000Z"), acceptedAt: null, rejectedAt: null, salesOrderId: null, salesOrder: null, ...overrides,
+  };
+}
+
+function decimal(value: string) { return { toFixed: () => value, toString: () => value }; }

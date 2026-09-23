@@ -31,7 +31,7 @@ export function CustomQuotationSalesOrderCompletion({
   const [version, setVersion] = useState<CustomQuotationVersion | null>(null);
   const [loadingVersion, setLoadingVersion] = useState(false);
   const [materializing, setMaterializing] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [conversionMessage, setConversionMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const isAccepted = quotation.status === 'ACCEPTED';
   const requiresCustomer = isAccepted && Boolean(quotation.leadId) && quotation.customerId === null;
@@ -59,14 +59,12 @@ export function CustomQuotationSalesOrderCompletion({
     if (!version || materializing || version.salesOrder) return;
     setMaterializing(true);
     setError(null);
-    setMessage(null);
     try {
       await materializeCustomQuotationSalesOrder(quotation.id, version.versionId);
       const persistedVersion = await getLatestCustomQuotationVersion(quotation.id);
       if (!persistedVersion.salesOrder) throw new Error('CUSTOM_QUOTATION_SALES_ORDER_READ_MISSING');
       setVersion(persistedVersion);
       await onQuotationRefreshed();
-      setMessage('Orden de venta creada correctamente.');
     } catch (requestError) {
       setError(materializationErrorMessage(requestError));
     } finally {
@@ -77,11 +75,11 @@ export function CustomQuotationSalesOrderCompletion({
   if (!isAccepted) return null;
 
   return <SectionCard title="Cierre comercial" description="Completa el cliente y genera la orden de venta para continuar con la operación.">
-    {requiresCustomer ? <div className="space-y-3"><Alert variant="warning"><AlertDescription>Completa los datos del cliente antes de generar la orden de venta.</AlertDescription></Alert><CustomQuotationLeadCustomerConversion quotation={quotation} onConversionCompleted={() => { void onQuotationRefreshed(); }} /></div> : null}
+    {conversionMessage ? <Alert variant="success" role="status"><CheckCircle2 aria-hidden="true" className="size-4" /><AlertTitle>Cliente completado</AlertTitle><AlertDescription>{conversionMessage}</AlertDescription></Alert> : null}
+    {requiresCustomer ? <div className="space-y-3"><Alert variant="warning"><AlertDescription>Completa los datos del cliente antes de generar la orden de venta.</AlertDescription></Alert><CustomQuotationLeadCustomerConversion quotation={quotation} onConversionCompleted={() => { setConversionMessage('El prospecto fue convertido correctamente en cliente.'); void onQuotationRefreshed(); }} /></div> : null}
     {canMaterialize ? <div className="space-y-3">
       {loadingVersion ? <p className="flex items-center gap-2 text-sm text-muted-foreground"><LoaderCircle aria-hidden="true" className="size-4 animate-spin" />Cargando estado de la orden de venta...</p> : null}
       {error ? <Alert variant="destructive"><AlertTitle>No se pudo generar la orden de venta</AlertTitle><AlertDescription>{error}</AlertDescription></Alert> : null}
-      {message ? <Alert variant="success" role="status"><AlertDescription>{message}</AlertDescription></Alert> : null}
       {!loadingVersion && version?.salesOrder ? <Alert variant="success" role="status"><CheckCircle2 aria-hidden="true" className="size-4" /><AlertTitle>Orden de venta creada</AlertTitle><AlertDescription>{version.salesOrder.orderNumber ? `Orden de venta creada: ${version.salesOrder.orderNumber}` : 'La orden de venta ya fue creada.'}</AlertDescription></Alert> : null}
       {!loadingVersion && version && !version.salesOrder ? <Button type="button" onClick={() => void materialize()} disabled={materializing}>{materializing ? <><LoaderCircle aria-hidden="true" className="animate-spin" />Creando orden de venta...</> : <><ShoppingCart aria-hidden="true" />Crear orden de venta</>}</Button> : null}
     </div> : null}

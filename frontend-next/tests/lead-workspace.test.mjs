@@ -11,6 +11,7 @@ const navigationSource = readFileSync(new URL('../src/components/vertical-nav.ts
 const listSource = readFileSync(new URL('../src/app/leads/page.tsx', import.meta.url), 'utf8');
 const detailSource = readFileSync(new URL('../src/app/leads/[id]/page.tsx', import.meta.url), 'utf8');
 const leadsApiSource = readFileSync(new URL('../src/lib/leads-api.ts', import.meta.url), 'utf8');
+const quotationsApiSource = readFileSync(new URL('../src/lib/custom-quotations-api.ts', import.meta.url), 'utf8');
 
 test('la navegación muestra Prospectos solo para los roles comerciales autorizados', () => {
   assert.match(navigationSource, /isAdmin \|\| role === "AGENT"/);
@@ -48,10 +49,11 @@ test('el detalle carga el prospecto y muestra conversión y fechas con la zona h
   assert.doesNotMatch(`${listSource}\n${detailSource}`, /new Date\(/);
 });
 
-test('Cotizaciones y Actividad permanecen como secciones no implementadas y no llaman otros dominios', () => {
-  const workspaceSource = `${listSource}\n${detailSource}\n${leadsApiSource}`;
-  assert.match(detailSource, /Cotizaciones · Próximamente/);
-  assert.match(detailSource, /Actividad · Próximamente/);
-  assert.match(detailSource, /disabled/);
-  assert.doesNotMatch(workspaceSource, /custom-quotations|createCustomQuotation|convert-lead-to-customer|customers-api/i);
+test('Cotizaciones y Actividad son pestañas reales, sin cambiar el Resumen', () => {
+  assert.match(detailSource, /activeTab === 'SUMMARY'/);
+  assert.match(detailSource, />Cotizaciones<\/Button>/);
+  assert.match(detailSource, />Actividad<\/Button>/);
+  assert.doesNotMatch(detailSource, /Cotizaciones · Próximamente|Actividad · Próximamente/);
+  assert.match(detailSource, /Información comercial del prospecto/);
+  assert.match(quotationsApiSource, /getLeadCustomQuotationSummaries/);
 });

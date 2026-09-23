@@ -6,6 +6,7 @@ import { runTenantTransaction } from "../tenant/tenant-transaction";
 import type {
   CreateCustomQuotationDto,
   CreateCustomQuotationLineDto,
+  ListLeadCustomQuotationSummariesDto,
   ListCustomQuotationsDto,
   UpdateCustomQuotationDto,
   UpdateCustomQuotationLineDto,
@@ -71,6 +72,28 @@ type QuotationLineRecord = {
   commercialNote: string | null;
   createdAt: Date;
   updatedAt: Date;
+};
+
+type LeadQuotationSummaryRecord = {
+  id: string;
+  quotationNumber: string;
+  title: string;
+  status: string;
+  currency: string;
+  createdAt: Date;
+  quotationValidUntil: Date | null;
+  customerId: string | null;
+  versions: Array<{
+    id: string;
+    versionNumber: number;
+    status: string;
+    finalSellingPrice: { toString: () => string } | string;
+    createdAt: Date;
+    acceptedAt: Date | null;
+    rejectedAt: Date | null;
+    salesOrderId: string | null;
+    salesOrder: { id: string; orderNumber: string | null } | null;
+  }>;
 };
 
 const CUSTOM_QUOTATION_SEQUENCE_KEY = "CUSTOM_QUOTATION";
@@ -155,6 +178,62 @@ export class CustomQuotationsService {
     });
   }
 
+  async listForLead(tenantId: string, leadId: string, input: ListLeadCustomQuotationSummariesDto) {
+    const page = positiveInteger(input.page, 1);
+    const pageSize = Math.min(25, positiveInteger(input.pageSize, 20));
+    return this.withTenantTransaction(tenantId, async (tx) => {
+      const lead = await tx.lead.findFirst({
+        where: { id: leadId, tenantId },
+        select: { id: true },
+      });
+      if (!lead) throw new NotFoundException("LEAD_NOT_FOUND");
+
+      const where = { tenantId, leadId };
+      const [quotations, total] = await Promise.all([
+        tx.customQuotation.findMany({
+          where,
+          select: {
+            id: true,
+            quotationNumber: true,
+            title: true,
+            status: true,
+            currency: true,
+            createdAt: true,
+            quotationValidUntil: true,
+            customerId: true,
+            versions: {
+              where: { tenantId },
+              orderBy: [{ versionNumber: "desc" }, { id: "desc" }],
+              take: 1,
+              select: {
+                id: true,
+                versionNumber: true,
+                status: true,
+                finalSellingPrice: true,
+                createdAt: true,
+                acceptedAt: true,
+                rejectedAt: true,
+                salesOrderId: true,
+                salesOrder: { select: { id: true, orderNumber: true } },
+              },
+            },
+          },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          skip: (page - 1) * pageSize,
+          take: pageSize,
+        }) as Promise<LeadQuotationSummaryRecord[]>,
+        tx.customQuotation.count({ where }) as Promise<number>,
+      ]);
+      return {
+        items: quotations.map(toLeadQuotationSummary),
+        total,
+        page,
+        pageSize,
+        totalPages: Math.ceil(total / pageSize),
+      };
+    });
+  }
+
   async find(tenantId: string, quotationId: string) {
     const quotation = await this.withTenantTransaction(tenantId, (tx) =>
       tx.customQuotation.findFirst({
@@ -214,86 +293,20 @@ export class CustomQuotationsService {
     });
   }
 
-  addLine(tenantId: string, quotationId: string, input: CreateCustomQuotationLineDto, actor: CustomQuotationActor) {
-    return this.withTenantTransaction(tenantId, async (tx) => {
-      await requireDraft(tx, tenantId, quotationId);
-      const last = await tx.customQuotationLine.findFirst({
-        where: { tenantId, customQuotationId: quotationId },
-        orderBy: [{ displayOrder: "desc" }, { id: "desc" }],
-        select: { displayOrder: true },
-      }) as { displayOrder: number } | null;
-      const line = await tx.customQuotationLine.create({
-        data: {
-          tenantId,
-          customQuotationId: quotationId,
-          displayOrder: (last?.displayOrder ?? 0) + 1,
-          description: requiredText(input.description, "CUSTOM_QUOTATION_LINE_DESCRIPTION_INVALID"),
-          quantity: positiveQuantity(input.quantity ?? "1"),
-          commercialNote: optionalText(input.commercialNote),
-        },
-      }) as QuotationLineRecord;
-      await touchQuotation(tx, tenantId, quotationId, actor);
-      return toLineResponse(line);
-    });
+  async addLine(tenantId: string, quotationId: string, input: CreateCustomQuotationLineDto, actor: CustomQuotationActor) {
+    throw new ConflictException("CUSTOM_QUOTATION_STRUCTURED_COMPONENTS_REQUIRED");
   }
 
-  updateLine(tenantId: string, quotationId: string, lineId: string, input: UpdateCustomQuotationLineDto, actor: CustomQuotationActor) {
-    if (Object.keys(input).length === 0) throw new BadRequestException("CUSTOM_QUOTATION_LINE_UPDATE_EMPTY");
-    return this.withTenantTransaction(tenantId, async (tx) => {
-      await requireDraft(tx, tenantId, quotationId);
-      const updated = await tx.customQuotationLine.updateMany({
-        where: { id: lineId, tenantId, customQuotationId: quotationId },
-        data: {
-          ...(input.description === undefined ? {} : { description: requiredText(input.description, "CUSTOM_QUOTATION_LINE_DESCRIPTION_INVALID") }),
-          ...(input.quantity === undefined ? {} : { quantity: positiveQuantity(input.quantity) }),
-          ...(input.commercialNote === undefined ? {} : { commercialNote: optionalText(input.commercialNote) }),
-        },
-      });
-      if (updated.count !== 1) throw new NotFoundException("CUSTOM_QUOTATION_LINE_NOT_FOUND");
-      const line = await tx.customQuotationLine.findFirst({ where: { id: lineId, tenantId, customQuotationId: quotationId } }) as QuotationLineRecord | null;
-      if (!line) throw new NotFoundException("CUSTOM_QUOTATION_LINE_NOT_FOUND");
-      await touchQuotation(tx, tenantId, quotationId, actor);
-      return toLineResponse(line);
-    });
+  async updateLine(tenantId: string, quotationId: string, lineId: string, input: UpdateCustomQuotationLineDto, actor: CustomQuotationActor) {
+    throw new ConflictException("CUSTOM_QUOTATION_STRUCTURED_COMPONENTS_REQUIRED");
   }
 
-  removeLine(tenantId: string, quotationId: string, lineId: string, actor: CustomQuotationActor) {
-    return this.withTenantTransaction(tenantId, async (tx) => {
-      await requireDraft(tx, tenantId, quotationId);
-      const line = await tx.customQuotationLine.findFirst({ where: { id: lineId, tenantId, customQuotationId: quotationId } }) as QuotationLineRecord | null;
-      if (!line) throw new NotFoundException("CUSTOM_QUOTATION_LINE_NOT_FOUND");
-      await tx.customQuotationLine.deleteMany({ where: { id: lineId, tenantId, customQuotationId: quotationId } });
-      await tx.customQuotationLine.updateMany({
-        where: { tenantId, customQuotationId: quotationId, displayOrder: { gt: line.displayOrder } },
-        data: { displayOrder: { decrement: 1 } },
-      });
-      await touchQuotation(tx, tenantId, quotationId, actor);
-    });
+  async removeLine(tenantId: string, quotationId: string, lineId: string, actor: CustomQuotationActor) {
+    throw new ConflictException("CUSTOM_QUOTATION_STRUCTURED_COMPONENTS_REQUIRED");
   }
 
-  reorderLines(tenantId: string, quotationId: string, lineIds: string[], actor: CustomQuotationActor) {
-    return this.withTenantTransaction(tenantId, async (tx) => {
-      await requireDraft(tx, tenantId, quotationId);
-      if (new Set(lineIds).size !== lineIds.length) throw new BadRequestException("CUSTOM_QUOTATION_LINE_REORDER_DUPLICATE");
-      const lines = await tx.customQuotationLine.findMany({
-        where: { tenantId, customQuotationId: quotationId },
-        orderBy: [{ displayOrder: "asc" }, { id: "asc" }],
-      }) as QuotationLineRecord[];
-      if (lineIds.length !== lines.length || !lineIds.every((lineId) => lines.some((line) => line.id === lineId))) {
-        throw new BadRequestException("CUSTOM_QUOTATION_LINE_REORDER_INVALID");
-      }
-      // Move every order out of the unique range before assigning its new one.
-      await tx.customQuotationLine.updateMany({
-        where: { tenantId, customQuotationId: quotationId },
-        data: { displayOrder: { increment: lines.length } },
-      });
-      await Promise.all(lineIds.map((lineId, index) => tx.customQuotationLine.updateMany({
-        where: { id: lineId, tenantId, customQuotationId: quotationId },
-        data: { displayOrder: index + 1 },
-      })));
-      await touchQuotation(tx, tenantId, quotationId, actor);
-      return { lineIds };
-    });
+  async reorderLines(tenantId: string, quotationId: string, lineIds: string[], actor: CustomQuotationActor) {
+    throw new ConflictException("CUSTOM_QUOTATION_STRUCTURED_COMPONENTS_REQUIRED");
   }
 
   private withTenantTransaction<T>(tenantId: string, work: (tx: CustomQuotationTransaction) => Promise<T>) {
@@ -470,6 +483,44 @@ function targetResponse(row: QuotationRecord) {
 
 function toQuotationDetailResponse(row: QuotationRecord) {
   return { ...toQuotationResponse(row), lines: (row.lines ?? []).map(toLineResponse) };
+}
+
+function toLeadQuotationSummary(row: LeadQuotationSummaryRecord) {
+  const version = row.versions[0] ?? null;
+  return {
+    id: row.id,
+    quotationNumber: row.quotationNumber,
+    title: row.title,
+    status: row.status,
+    currency: row.currency,
+    createdAt: row.createdAt,
+    quotationValidUntil: row.quotationValidUntil,
+    customerId: row.customerId,
+    latestVersion: version
+      ? {
+          id: version.id,
+          versionNumber: version.versionNumber,
+          status: version.status,
+          finalSellingPrice: decimalString(version.finalSellingPrice),
+          createdAt: version.createdAt,
+          acceptedAt: version.acceptedAt,
+          rejectedAt: version.rejectedAt,
+          salesOrder: salesOrderSummary(version),
+        }
+      : null,
+  };
+}
+
+function decimalString(value: { toString: () => string } | string): string {
+  return typeof value === "string" ? value : value.toString();
+}
+
+function salesOrderSummary(version: LeadQuotationSummaryRecord["versions"][number]) {
+  if (!version.salesOrderId) return null;
+  if (!version.salesOrder || version.salesOrder.id !== version.salesOrderId) {
+    throw new ConflictException("CUSTOM_QUOTATION_VERSION_SALES_ORDER_CONFLICT");
+  }
+  return { id: version.salesOrder.id, orderNumber: version.salesOrder.orderNumber };
 }
 
 function toLineResponse(row: QuotationLineRecord) {

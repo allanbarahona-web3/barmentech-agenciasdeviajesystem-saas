@@ -4,7 +4,7 @@ import { CustomQuotationVersionService } from "./custom-quotation-version.servic
 const actor = { userId: "agent-a", name: "Agent A" };
 
 describe("CustomQuotationVersionService", () => {
-  it("atomically issues version 1 with frozen commercial, fiscal, and descriptive-line snapshots", async () => {
+  it("atomically issues version 1 with frozen commercial, fiscal, and structured-component snapshots", async () => {
     const c = context();
     prepareIssuableQuotation(c);
 
@@ -26,6 +26,8 @@ describe("CustomQuotationVersionService", () => {
       { tenantId: "tenant-a", customQuotationVersionId: "issued-a", displayOrder: 1, description: "Traslado privado", quantity: "1.2500", commercialNote: "Hotel al aeropuerto" },
       { tenantId: "tenant-a", customQuotationVersionId: "issued-a", displayOrder: 2, description: "Servicio adicional", quantity: "2.0000", commercialNote: null },
     ] });
+    expect(c.commercialLines.listInTransaction).toHaveBeenCalledWith(c.tx, "tenant-a", "quotation-a");
+    expect(c.tx.customQuotationLine).toBeUndefined();
     expect(c.tx.customQuotation.updateMany).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: "quotation-a", tenantId: "tenant-a", status: "DRAFT" },
       data: expect.objectContaining({ status: "ISSUED" }),
@@ -56,7 +58,7 @@ describe("CustomQuotationVersionService", () => {
     expect(lineInput[0]).not.toHaveProperty("customQuotationLineId");
   });
 
-  it("rejects stale or missing pricing, no lines, missing defaults, non-DRAFT and cross-tenant quotations", async () => {
+  it("rejects stale or missing pricing, missing structured components, missing defaults, non-DRAFT and cross-tenant quotations", async () => {
     const stale = context();
     prepareIssuableQuotation(stale);
     stale.currentCosts.read.mockResolvedValue({ authoritativeTotalCost: "1001.00000", baseCurrency: "USD" });
@@ -69,10 +71,11 @@ describe("CustomQuotationVersionService", () => {
     missingCalculation.tx.pricingCalculationVersion.findFirst.mockResolvedValue(null);
     await expect(missingCalculation.service.issue("tenant-a", "quotation-a", actor)).rejects.toBeInstanceOf(NotFoundException);
 
-    const noLines = context();
-    prepareIssuableQuotation(noLines);
-    noLines.tx.customQuotationLine.findMany.mockResolvedValue([]);
-    await expect(noLines.service.issue("tenant-a", "quotation-a", actor)).rejects.toBeInstanceOf(BadRequestException);
+    const noComponents = context();
+    prepareIssuableQuotation(noComponents);
+    noComponents.commercialLines.listInTransaction.mockResolvedValue([]);
+    await expect(noComponents.service.issue("tenant-a", "quotation-a", actor)).rejects.toThrow("CUSTOM_QUOTATION_STRUCTURED_COMPONENTS_REQUIRED");
+    expect(noComponents.tx.customQuotationLine).toBeUndefined();
 
     const noDefault = context();
     prepareIssuableQuotation(noDefault);
@@ -178,7 +181,7 @@ describe("CustomQuotationVersionService", () => {
         lines: expect.objectContaining({ orderBy: [{ displayOrder: "asc" }, { id: "asc" }] }),
       }),
     }));
-    expect(c.tx.customQuotationLine.findMany).not.toHaveBeenCalled();
+    expect(c.tx.customQuotationLine).toBeUndefined();
     expect(c.tx.lead).toBeUndefined();
     expect(c.tx.client).toBeUndefined();
     expect(c.tx.pricingCalculationVersion.findFirst).not.toHaveBeenCalled();
@@ -205,7 +208,7 @@ describe("CustomQuotationVersionService", () => {
     expect(laterLiveCustomer.fullName).toBe("Cliente cambiado");
     expect(laterRootTitle).toBe("Título mutable posterior");
     expect(laterDraftLine.description).toBe("Línea mutable");
-    expect(c.tx.customQuotationLine.findMany).not.toHaveBeenCalled();
+    expect(c.tx.customQuotationLine).toBeUndefined();
     expect(c.tx.lead).toBeUndefined();
     expect(c.tx.client).toBeUndefined();
   });
@@ -285,7 +288,6 @@ function context() {
     $executeRaw: jest.fn(),
     $queryRaw: jest.fn().mockResolvedValue([{ id: "quotation-a" }]),
     customQuotation: { findFirst: jest.fn(), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
-    customQuotationLine: { findMany: jest.fn() },
     pricingCalculationVersion: { findFirst: jest.fn() },
     pricingConfiguration: {},
     customQuotationVersion: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue(issuedVersion()) },
@@ -295,12 +297,13 @@ function context() {
   const currentCosts = { read: jest.fn().mockResolvedValue({ costingProjectId: "project-a", baseCurrency: "USD", authoritativeTotalCost: "1000.00000" }) };
   const pricing = { approveCalculationInTransaction: jest.fn().mockResolvedValue(pricingCalculation({ status: "APPROVED" })) };
   const fiscalClassifications = { resolveDefaultCustomQuotationFiscalClassificationInTransaction: jest.fn().mockResolvedValue(classification()) };
-  return { tx, currentCosts, pricing, fiscalClassifications, service: new CustomQuotationVersionService(prisma as never, currentCosts as never, pricing as never, fiscalClassifications as never) };
+  const commercialLines = { listInTransaction: jest.fn().mockResolvedValue(lines()) };
+  return { tx, currentCosts, pricing, fiscalClassifications, commercialLines, service: new CustomQuotationVersionService(prisma as never, currentCosts as never, pricing as never, fiscalClassifications as never, commercialLines as never) };
 }
 
 function prepareIssuableQuotation(c: ReturnType<typeof context>, input: { pricing?: Record<string, unknown>; quotation?: Record<string, unknown> } = {}) {
   c.tx.customQuotation.findFirst.mockResolvedValue(input.quotation ?? quotation());
-  c.tx.customQuotationLine.findMany.mockResolvedValue(lines());
+  c.commercialLines.listInTransaction.mockResolvedValue(lines());
   c.tx.pricingCalculationVersion.findFirst.mockResolvedValue(input.pricing ?? pricingCalculation());
 }
 

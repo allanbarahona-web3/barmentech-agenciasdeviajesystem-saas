@@ -83,6 +83,21 @@ export type GenericCostComponentInput = {
   reason?: string | null;
 };
 
+export type CostCompositionApiAdapter = {
+  getComposition: (costingProjectId: string) => Promise<CostComposition>;
+  listCategories: () => Promise<CostCategory[]>;
+  listSuppliers: () => Promise<CostSupplier[]>;
+  createSupplier: (input: { name: string; website?: string | null; notes?: string | null }) => Promise<CostSupplier>;
+  createCategory: (input: { code: string; displayName: string }) => Promise<CostCategory>;
+  createComponent: (costingProjectId: string, input: GenericCostComponentInput) => Promise<CostComponent>;
+  updateComponent: (costComponentId: string, input: Omit<GenericCostComponentInput, "amount" | "currency" | "sourceReference" | "sourceUrl" | "reason">) => Promise<CostComponent>;
+  updateComponentCost: (costComponentId: string, input: Pick<GenericCostComponentInput, "amount" | "currency" | "sourceReference" | "sourceUrl" | "reason">) => Promise<CostComponent>;
+  archiveComponent: (costComponentId: string) => Promise<CostComponent>;
+  listEvidence: (costSnapshotId: string) => Promise<{ evidence: CostEvidence[] }>;
+  getEvidenceAccess: (costSnapshotId: string, costEvidenceId: string) => Promise<CostEvidenceAccess>;
+  uploadEvidence: (costSnapshotId: string, file: File) => Promise<CostEvidence>;
+};
+
 export const SPECIALIZED_STANDARD_CATEGORY_CODES = new Set([
   "AIRFARE",
   "BAGGAGE",
@@ -373,6 +388,23 @@ export async function uploadCostEvidence(costSnapshotId: string, file: File) {
 export function getCostEvidenceAccess(costSnapshotId: string, costEvidenceId: string) {
   return apiGet<CostEvidenceAccess>(`/cost-engine/snapshots/${encodeURIComponent(costSnapshotId)}/evidence/${encodeURIComponent(costEvidenceId)}/access`);
 }
+
+// The travel workspace keeps this adapter as its default. Other bounded
+// contexts can provide the same capability through a narrower scoped route.
+export const defaultCostCompositionApi: CostCompositionApiAdapter = {
+  getComposition: getCostComposition,
+  listCategories: listCostCategories,
+  listSuppliers: listCostSuppliers,
+  createSupplier: createCostSupplier,
+  createCategory: createCostCategory,
+  createComponent: createGenericCostComponent,
+  updateComponent: updateGenericCostComponent,
+  updateComponentCost: updateCostComponentCost,
+  archiveComponent: archiveCostComponent,
+  listEvidence: listCostEvidence,
+  getEvidenceAccess: getCostEvidenceAccess,
+  uploadEvidence: uploadCostEvidence,
+};
 
 async function patch<T>(path: string, body: unknown): Promise<T> {
   const response = await fetchApi(path, { method: "PATCH", body: JSON.stringify(body) });

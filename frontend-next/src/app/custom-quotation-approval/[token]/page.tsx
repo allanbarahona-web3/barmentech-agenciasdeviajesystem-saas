@@ -84,8 +84,8 @@ export default function CustomQuotationApprovalPage() {
         <Badge variant={statusVariant(proposal.status)}>{statusLabel(proposal.status)}</Badge>
       </header>
 
-      {message ? <Alert variant={proposal.status === 'ACCEPTED' ? 'success' : proposal.status === 'REJECTED' ? 'default' : 'warning'} role="status"><AlertTitle>{statusLabel(proposal.status)}</AlertTitle><AlertDescription>{message}</AlertDescription></Alert> : null}
-      {terminalMessage && !message ? <Alert variant={proposal.status === 'CANCELLED' || proposal.status === 'EXPIRED' ? 'warning' : 'success'} role="status"><AlertDescription>{terminalMessage}</AlertDescription></Alert> : null}
+      {message ? <Alert variant={proposal.status === 'ACCEPTED' ? 'success' : proposal.status === 'REJECTED' ? 'destructive' : 'warning'} role="status"><AlertTitle>{statusLabel(proposal.status)}</AlertTitle><AlertDescription>{message}</AlertDescription></Alert> : null}
+      {terminalMessage && !message ? <Alert variant={proposal.status === 'REJECTED' ? 'destructive' : proposal.status === 'CANCELLED' || proposal.status === 'EXPIRED' ? 'warning' : 'success'} role="status"><AlertDescription>{terminalMessage}</AlertDescription></Alert> : null}
 
       <Card>
         <CardHeader><CardTitle>{proposal.title || '—'}</CardTitle></CardHeader>
@@ -101,7 +101,7 @@ export default function CustomQuotationApprovalPage() {
           <section aria-labelledby="quotation-lines-title"><h2 id="quotation-lines-title" className="text-sm font-medium">Servicios incluidos</h2><ol className="mt-3 space-y-3">{proposal.lines.map((line) => <li key={`${line.displayOrder}-${line.description}`} className="rounded-lg border border-border bg-muted/20 p-3 text-sm"><p className="font-medium">{line.description}</p><p className="mt-1 text-muted-foreground">Cantidad: {line.quantity}{line.commercialNote ? ` · ${line.commercialNote}` : ''}</p></li>)}</ol></section>
           {proposal.commercialObservations ? <section aria-labelledby="quotation-observations-title"><h2 id="quotation-observations-title" className="text-sm font-medium">Observaciones</h2><p className="mt-2 whitespace-pre-wrap text-sm text-muted-foreground">{proposal.commercialObservations}</p></section> : null}
         </CardContent>
-        <CardFooter className="flex-col items-stretch sm:flex-row sm:justify-between"><Button asChild variant="outline"><a href={proposal.document.url} target="_blank" rel="noreferrer"><FileText aria-hidden="true" />Ver propuesta</a></Button>{canRespond ? <div className="flex flex-col gap-2 sm:flex-row"><Button type="button" onClick={() => setDecision('REJECT')} disabled={acting} variant="outline">Rechazar cotización</Button><Button type="button" onClick={() => setDecision('ACCEPT')} disabled={acting}>{acting ? <><LoaderCircle aria-hidden="true" className="animate-spin" />Procesando...</> : 'Aceptar cotización'}</Button></div> : null}</CardFooter>
+        <CardFooter className="flex-col items-stretch sm:flex-row sm:justify-between"><Button asChild variant="outline"><a href={proposal.document.url} target="_blank" rel="noreferrer"><FileText aria-hidden="true" />Ver propuesta</a></Button>{canRespond ? <div className="flex flex-col gap-2 sm:flex-row"><Button type="button" onClick={() => setDecision('REJECT')} disabled={acting} variant="destructive">Rechazar cotización</Button><Button type="button" onClick={() => setDecision('ACCEPT')} disabled={acting} variant="success">{acting ? <><LoaderCircle aria-hidden="true" className="animate-spin" />Procesando…</> : 'Aceptar cotización'}</Button></div> : null}</CardFooter>
       </Card>
     </div>
 
@@ -109,7 +109,7 @@ export default function CustomQuotationApprovalPage() {
       <DialogContent showCloseButton={!acting}>
         <DialogHeader><DialogTitle>{decision === 'ACCEPT' ? '¿Deseas aceptar esta cotización?' : '¿Deseas rechazar esta cotización?'}</DialogTitle><DialogDescription>{decision === 'ACCEPT' ? 'Esta decisión confirmará tu aceptación de la propuesta comercial.' : 'Esta decisión marcará la cotización como rechazada.'}</DialogDescription></DialogHeader>
         <dl className="mt-4 grid gap-3 rounded-lg border border-border bg-muted/30 p-3 text-sm"><Detail label="Cotización" value={proposal.quotationNumber} /><Detail label="Precio final" value={price} exactValue={proposal.finalSellingPrice} /><Detail label="Moneda" value={proposal.currency} /></dl>
-        <DialogFooter><Button type="button" variant="outline" onClick={() => setDecision(null)} disabled={acting}>Cancelar</Button><Button type="button" variant={decision === 'REJECT' ? 'destructive' : 'default'} onClick={() => void confirmDecision()} disabled={acting}>{acting ? <><LoaderCircle aria-hidden="true" className="animate-spin" />Procesando...</> : decision === 'ACCEPT' ? 'Aceptar cotización' : 'Rechazar cotización'}</Button></DialogFooter>
+        <DialogFooter><Button type="button" variant="outline" onClick={() => setDecision(null)} disabled={acting}>Cancelar</Button><Button type="button" variant={decision === 'REJECT' ? 'destructive' : 'success'} onClick={() => void confirmDecision()} disabled={acting}>{acting ? <><LoaderCircle aria-hidden="true" className="animate-spin" />Procesando…</> : decision === 'ACCEPT' ? 'Aceptar cotización' : 'Rechazar cotización'}</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   </main>;

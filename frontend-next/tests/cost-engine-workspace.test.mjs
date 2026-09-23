@@ -13,7 +13,9 @@ const internalTrips = readSource("../src/app/admin/internal-trips/components/int
 test("extracts a project-driven generic composition with read-only capability boundaries", () => {
   assert.match(workspace, /export function GenericCostComposition/);
   assert.match(workspace, /costingProjectId: string/);
-  assert.match(workspace, /getCostComposition\(costingProjectId\)/);
+  assert.match(workspace, /api\?: CostCompositionApiAdapter/);
+  assert.match(workspace, /api = defaultCostCompositionApi/);
+  assert.match(workspace, /api\.getComposition\(costingProjectId\)/);
   assert.match(workspace, /canEdit \? <>/);
   assert.match(workspace, /canEdit \? <Button[^>]*>Agregar componente/);
   assert.match(workspace, /canEdit \? <div className="flex gap-1">/);
@@ -101,7 +103,7 @@ test("keeps the approved Hospedaje cost, supporting-information, and edit flow",
   assert.doesNotMatch(workspace, /Motivo \/ observación del costo/);
   assert.match(workspace, /\{genericCategory && !otherCategory \? <div className="grid gap-4 sm:grid-cols-2">/);
   assert.match(workspace, /formFromComponent\(component\)/);
-  assert.match(workspace, /updateGenericCostComponent\(selectedComponentId, structural\)/);
+  assert.match(workspace, /api\.updateComponent\(selectedComponentId, structural\)/);
 });
 
 test("finalizes Boleto aéreo with generated route title and stable specialized values", () => {
@@ -147,8 +149,8 @@ test("finalizes BAGGAGE independently without a related-flight selector", () => 
   assert.match(workspace, /case "BAGGAGE": return compact\(\{ baggageType: enumValue\(string\("baggageType"\), "baggageType"\), pieces: positiveInteger\(values, "pieces"\), weightKg: optionalDecimal\("weightKg"\) \}\)/);
   assert.match(workspace, /formFromComponent\(component\)/);
   assert.match(workspace, /function detailsFromPayload\(payload: Record<string, unknown> \| null\)/);
-  assert.match(workspace, /createGenericCostComponent\(project\.id, \{ \.\.\.structural, \.\.\.monetary \}\)/);
-  assert.match(workspace, /updateGenericCostComponent\(selectedComponentId, structural\)/);
+  assert.match(workspace, /api\.createComponent\(project\.id, \{ \.\.\.structural, \.\.\.monetary \}\)/);
+  assert.match(workspace, /api\.updateComponent\(selectedComponentId, structural\)/);
   assert.doesNotMatch(workspace, /getCostComponent\(/);
 });
 
@@ -304,7 +306,7 @@ test("finalizes OTHER as an intentionally generic one-off cost form", () => {
   assert.match(workspace, /unit: eventTicketCategory \|\| mealsCategory \? null : genericCategory \? form\.unit\.trim\(\) \|\| null/);
   assert.match(workspace, /component\.costCategory\.code === "OTHER" \? \(component\.quantity && component\.unit \? `\$\{component\.quantity\} \$\{component\.unit\}`/);
   assert.match(workspace, /\+ Crear nueva opción/);
-  assert.match(workspace, /createCostCategory\(\{ code: normalizeCustomCostCategoryCode\(displayName\), displayName \}\)/);
+  assert.match(workspace, /api\.createCategory\(\{ code: normalizeCustomCostCategoryCode\(displayName\), displayName \}\)/);
   assert.match(workspace, /formFromComponent\(component\)/);
   assert.doesNotMatch(otherForm, /Aplicabilidad|Motivo \/ observación del costo|Referencia \/ fuente/);
   assert.doesNotMatch(otherForm, /Tipo de vuelo|Tipo de equipaje|Tipo de tour|Tipo de cobertura|Tipo de visa/);
@@ -322,8 +324,8 @@ test("removes generic applicability and duplicate cost-note controls from the wo
 test("creates a Cost Engine supplier inline and retains the component form", () => {
   assert.match(workspace, /\+ Nuevo proveedor/);
   assert.match(workspace, /<Dialog open=\{showNewSupplier\}/);
-  assert.match(workspace, /createCostSupplier\(\{ name, website: newSupplier\.website\.trim\(\) \|\| null, notes: newSupplier\.notes\.trim\(\) \|\| null \}\)/);
-  assert.match(workspace, /const refreshed = await listCostSuppliers\(\)/);
+  assert.match(workspace, /api\.createSupplier\(\{ name, website: newSupplier\.website\.trim\(\) \|\| null, notes: newSupplier\.notes\.trim\(\) \|\| null \}\)/);
+  assert.match(workspace, /const refreshed = await api\.listSuppliers\(\)/);
   assert.match(workspace, /setForm\(\(current\) => \(\{ \.\.\.current, costSupplierId: created\.id \}\)\)/);
   const supplierHandler = workspace.slice(workspace.indexOf("async function submitNewSupplier"), workspace.indexOf("async function openEvidence"));
   assert.doesNotMatch(supplierHandler, /resetForm\(\)/);
@@ -339,7 +341,7 @@ test("keeps generic quantity and unit for OTHER and custom categories", () => {
 
 test("keeps cost entry before saved components and confirms generic component deactivation", () => {
   assert.ok(workspace.indexOf('<CardHeader><CardTitle>{selectedComponentId ? "Editar componente" : "Agregar componente"}') < workspace.indexOf('<CardHeader><CardTitle>Componentes guardados</CardTitle>'));
-  assert.match(workspace, /archiveCostComponent\(component\.id\)/);
+  assert.match(workspace, /api\.archiveComponent\(component\.id\)/);
   assert.match(workspace, /<Dialog open=\{Boolean\(archiveCandidate\)\}/);
   assert.match(workspace, /Desactivar componente/);
   assert.match(workspace, /Sus costos, comprobantes y auditoría se conservarán/);
@@ -357,8 +359,8 @@ test("supports save actions and explicit evidence upload/access through snapshot
   assert.match(workspace, /Cancelar/);
   assert.match(api, /snapshots\/\$\{encodeURIComponent\(costSnapshotId\)\}\/evidence/);
   assert.match(api, /formData\.append\("file", file\)/);
-  assert.match(workspace, /uploadCostEvidence\(snapshotForEvidence\.id, evidenceFile\)/);
-  assert.match(workspace, /getCostEvidenceAccess\(evidenceViewer\.snapshotId, attachment\.id\)/);
+  assert.match(workspace, /api\.uploadEvidence\(snapshotForEvidence\.id, evidenceFile\)/);
+  assert.match(workspace, /api\.getEvidenceAccess\(evidenceViewer\.snapshotId, attachment\.id\)/);
   assert.doesNotMatch(workspace, /window\.open/);
 });
 

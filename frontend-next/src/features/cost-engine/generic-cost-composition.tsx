@@ -14,11 +14,9 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { formatFinanceMoneyDisplay } from "@/lib/finance-money-display";
 import {
-  archiveCostComponent, createCostCategory, createCostSupplier, createGenericCostComponent, getCostComposition,
-  getCostEvidenceAccess, isGenericCostCategory, listCostCategories, listCostEvidence, listCostSuppliers,
-  normalizeCustomCostCategoryCode,
-  updateCostComponentCost, updateGenericCostComponent, uploadCostEvidence,
-  type CostCategory, type CostComponent, type CostComposition, type CostSnapshot, type CostSupplier, type CostingProject,
+  defaultCostCompositionApi, isGenericCostCategory, normalizeCustomCostCategoryCode,
+  type CostCategory, type CostComponent, type CostComposition, type CostCompositionApiAdapter, type CostSnapshot,
+  type CostSupplier, type CostingProject,
 } from "@/lib/cost-engine-api";
 import { formatBusinessDate } from "@/shared/regional";
 import { getSpanishCountryName } from "@/shared/countries";
@@ -53,13 +51,14 @@ const OPTIONAL_DETAIL_FIELDS: Record<string, readonly string[]> = {
   TRANSPORTATION: ["serviceTime", "returnDate"], TOUR: ["duration"], INSURANCE: ["coverageAmount"], MEALS: ["endDate"],
 };
 
-export function GenericCostComposition({ costingProjectId, baseCurrency, canEdit, contextLabel, refreshToken = 0, onCompositionChanged }: {
+export function GenericCostComposition({ costingProjectId, baseCurrency, canEdit, contextLabel, refreshToken = 0, onCompositionChanged, api = defaultCostCompositionApi }: {
   costingProjectId: string;
   baseCurrency: string;
   canEdit: boolean;
   contextLabel?: string;
   refreshToken?: number;
   onCompositionChanged?: (composition: CostComposition) => void;
+  api?: CostCompositionApiAdapter;
 }) {
   const [loading, setLoading] = useState(true); const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null); const [project, setProject] = useState<CostingProject | null>(null);
@@ -92,14 +91,14 @@ export function GenericCostComposition({ costingProjectId, baseCurrency, canEdit
     async function load() {
       setLoading(true); setError(null);
       try {
-        const [nextComposition, nextCategories, nextSuppliers] = await Promise.all([getCostComposition(costingProjectId), listCostCategories(), listCostSuppliers()]);
+        const [nextComposition, nextCategories, nextSuppliers] = await Promise.all([api.getComposition(costingProjectId), api.listCategories(), api.listSuppliers()]);
         if (cancelled) return; setProject(nextComposition.project); setComposition(nextComposition); setCategories(nextCategories); setSuppliers(nextSuppliers); onCompositionChanged?.(nextComposition);
       } catch (caught) { if (!cancelled) setError(message(caught, "No se pudo abrir el espacio de costos.")); } finally { if (!cancelled) setLoading(false); }
     }
     void load(); return () => { cancelled = true; };
-  }, [costingProjectId, onCompositionChanged, refreshToken]);
+  }, [api, costingProjectId, onCompositionChanged, refreshToken]);
 
-  async function refreshComposition() { if (project) setComposition(await getCostComposition(project.id)); }
+  async function refreshComposition() { if (project) { const next = await api.getComposition(project.id); setComposition(next); onCompositionChanged?.(next); } }
   function resetForm() { setForm(EMPTY_FORM); setSelectedComponentId(null); setInitialSnapshot(null); setEvidenceFile(null); }
   function selectComponent(componentId: string) {
     const component = composition?.components.find((item) => item.id === componentId); if (!component) return;
@@ -114,20 +113,20 @@ export function GenericCostComposition({ costingProjectId, baseCurrency, canEdit
       const monetary = { amount: form.amount.trim(), currency: project.baseCurrency, sourceReference: form.sourceReference.trim() || null, sourceUrl: form.sourceUrl.trim() || null, reason: initialSnapshot?.reason ?? null };
       setSaving(true); setError(null); let snapshotForEvidence = initialSnapshot;
       if (!selectedComponentId) {
-        const created = await createGenericCostComponent(project.id, { ...structural, ...monetary }); snapshotForEvidence = created.currentSnapshot;
+        const created = await api.createComponent(project.id, { ...structural, ...monetary }); snapshotForEvidence = created.currentSnapshot;
       } else {
-        await updateGenericCostComponent(selectedComponentId, structural);
-        if (snapshotChanged(initialSnapshot, monetary)) snapshotForEvidence = (await updateCostComponentCost(selectedComponentId, monetary)).currentSnapshot;
+        await api.updateComponent(selectedComponentId, structural);
+        if (snapshotChanged(initialSnapshot, monetary)) snapshotForEvidence = (await api.updateComponentCost(selectedComponentId, monetary)).currentSnapshot;
       }
-      if (evidenceFile) { if (!snapshotForEvidence) throw new Error("No hay un costo autoritativo disponible para adjuntar el comprobante."); await uploadCostEvidence(snapshotForEvidence.id, evidenceFile); }
+      if (evidenceFile) { if (!snapshotForEvidence) throw new Error("No hay un costo autoritativo disponible para adjuntar el comprobante."); await api.uploadEvidence(snapshotForEvidence.id, evidenceFile); }
       await refreshComposition(); resetForm();
     } catch (caught) { setError(message(caught, "No se pudo guardar el componente.")); } finally { setSaving(false); }
   }
-  async function archiveComponent(component: CostComponent) { if (saving) return; setSaving(true); setError(null); try { await archiveCostComponent(component.id); await refreshComposition(); resetForm(); setArchiveCandidate(null); } catch (caught) { setError(message(caught, "No se pudo desactivar el componente.")); } finally { setSaving(false); } }
-  async function submitNewCategory(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const displayName = newCategoryName.trim(); if (!displayName || saving) return; setSaving(true); setError(null); try { const created = await createCostCategory({ code: normalizeCustomCostCategoryCode(displayName), displayName }); setCategories((current) => [...current, created].sort((left, right) => left.displayName.localeCompare(right.displayName))); resetForm(); setForm((current) => ({ ...current, costCategoryId: created.id })); setNewCategoryName(""); setShowNewCategory(false); } catch (caught) { setError(message(caught, "No se pudo crear la categoría.")); } finally { setSaving(false); } }
-  async function submitNewSupplier(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const name = newSupplier.name.trim(); if (!name || supplierSaving) return; setSupplierSaving(true); setSupplierError(""); try { const created = await createCostSupplier({ name, website: newSupplier.website.trim() || null, notes: newSupplier.notes.trim() || null }); const refreshed = await listCostSuppliers(); setSuppliers(refreshed); setForm((current) => ({ ...current, costSupplierId: created.id })); setNewSupplier({ name: "", website: "", notes: "" }); setShowNewSupplier(false); } catch (caught) { setSupplierError(message(caught, "No se pudo crear el proveedor.")); } finally { setSupplierSaving(false); } }
-  async function openEvidence() { if (!initialSnapshot || evidenceLoading) return; setEvidenceLoading(true); setError(null); try { const response = await listCostEvidence(initialSnapshot.id); if (!response.evidence.length) { setError("No hay comprobantes adjuntos."); return; } setEvidenceViewer({ snapshotId: initialSnapshot.id, attachments: response.evidence.map((item) => ({ id: item.id, originalFileName: item.originalFileName, mimeType: item.mimeType })) }); } catch (caught) { setError(message(caught, "No se pudieron cargar los comprobantes.")); } finally { setEvidenceLoading(false); } }
-  async function resolveEvidenceUrl(attachment: Attachment, _signal: AbortSignal) { if (!evidenceViewer) throw new Error("No se pudo cargar el comprobante."); return (await getCostEvidenceAccess(evidenceViewer.snapshotId, attachment.id)).url; }
+  async function archiveComponent(component: CostComponent) { if (saving) return; setSaving(true); setError(null); try { await api.archiveComponent(component.id); await refreshComposition(); resetForm(); setArchiveCandidate(null); } catch (caught) { setError(message(caught, "No se pudo desactivar el componente.")); } finally { setSaving(false); } }
+  async function submitNewCategory(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const displayName = newCategoryName.trim(); if (!displayName || saving) return; setSaving(true); setError(null); try { const created = await api.createCategory({ code: normalizeCustomCostCategoryCode(displayName), displayName }); setCategories((current) => [...current, created].sort((left, right) => left.displayName.localeCompare(right.displayName))); resetForm(); setForm((current) => ({ ...current, costCategoryId: created.id })); setNewCategoryName(""); setShowNewCategory(false); } catch (caught) { setError(message(caught, "No se pudo crear la categoría.")); } finally { setSaving(false); } }
+  async function submitNewSupplier(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const name = newSupplier.name.trim(); if (!name || supplierSaving) return; setSupplierSaving(true); setSupplierError(""); try { const created = await api.createSupplier({ name, website: newSupplier.website.trim() || null, notes: newSupplier.notes.trim() || null }); const refreshed = await api.listSuppliers(); setSuppliers(refreshed); setForm((current) => ({ ...current, costSupplierId: created.id })); setNewSupplier({ name: "", website: "", notes: "" }); setShowNewSupplier(false); } catch (caught) { setSupplierError(message(caught, "No se pudo crear el proveedor.")); } finally { setSupplierSaving(false); } }
+  async function openEvidence() { if (!initialSnapshot || evidenceLoading) return; setEvidenceLoading(true); setError(null); try { const response = await api.listEvidence(initialSnapshot.id); if (!response.evidence.length) { setError("No hay comprobantes adjuntos."); return; } setEvidenceViewer({ snapshotId: initialSnapshot.id, attachments: response.evidence.map((item) => ({ id: item.id, originalFileName: item.originalFileName, mimeType: item.mimeType })) }); } catch (caught) { setError(message(caught, "No se pudieron cargar los comprobantes.")); } finally { setEvidenceLoading(false); } }
+  async function resolveEvidenceUrl(attachment: Attachment, _signal: AbortSignal) { if (!evidenceViewer) throw new Error("No se pudo cargar el comprobante."); return (await api.getEvidenceAccess(evidenceViewer.snapshotId, attachment.id)).url; }
 
   if (loading) return <div className="grid min-h-[360px] place-items-center text-sm text-muted-foreground">Cargando espacio de costos…</div>;
   if (error && !project) return <Alert variant="destructive"><AlertTitle>No se pudo abrir el espacio de costos</AlertTitle><AlertDescription>{error}</AlertDescription></Alert>;

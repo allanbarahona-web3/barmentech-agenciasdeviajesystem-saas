@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UploadedFile, UseGuards, UseInterceptors } from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 import { UserRole } from "@prisma/client";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { Roles } from "../auth/roles.decorator";
@@ -6,6 +7,7 @@ import { RolesGuard } from "../auth/roles.guard";
 import {
   CreateCustomQuotationDto,
   CreateCustomQuotationLineDto,
+  ListLeadCustomQuotationSummariesDto,
   ListCustomQuotationsDto,
   ReorderCustomQuotationLinesDto,
   UpdateCustomQuotationDto,
@@ -21,6 +23,17 @@ import { CustomQuotationDeliveryService } from "./custom-quotation-delivery.serv
 import { CustomQuotationSalesOrderService } from "./custom-quotation-sales-order.service";
 import { CustomQuotationLeadCustomerConversionService } from "./custom-quotation-lead-customer-conversion.service";
 import { CreateCustomerDto } from "../customers/dto/create-customer.dto";
+import { type CostEvidenceFile } from "../cost-engine/cost-evidence.service";
+import {
+  CreateCostCategoryDto,
+  CreateCostComponentDto,
+  CreateCostSupplierDto,
+  ListCostComponentsDto,
+  UpdateCostComponentCostDto,
+  UpdateCostComponentDto,
+} from "../cost-engine/dto/cost-engine.dto";
+import { CustomQuotationCostEngineService } from "./custom-quotation-cost-engine.service";
+import { CustomQuotationCommercialLinesService } from "./custom-quotation-commercial-lines.service";
 
 type CommercialRequest = { user: { id: string; fullName: string; email: string; tenantId: string } };
 
@@ -38,6 +51,8 @@ export class CustomQuotationsController {
     private readonly delivery: CustomQuotationDeliveryService,
     private readonly salesOrders: CustomQuotationSalesOrderService,
     private readonly leadConversion: CustomQuotationLeadCustomerConversionService,
+    private readonly scopedCosts: CustomQuotationCostEngineService,
+    private readonly commercialLines: CustomQuotationCommercialLinesService,
   ) {}
 
   @Post()
@@ -48,6 +63,15 @@ export class CustomQuotationsController {
   @Get()
   list(@Req() request: CommercialRequest, @Query() query: ListCustomQuotationsDto) {
     return this.service.list(request.user.tenantId, query);
+  }
+
+  @Get("lead/:leadId")
+  listForLead(
+    @Req() request: CommercialRequest,
+    @Param("leadId") leadId: string,
+    @Query() query: ListLeadCustomQuotationSummariesDto,
+  ) {
+    return this.service.listForLead(request.user.tenantId, leadId, query);
   }
 
   @Get(":quotationId")
@@ -63,6 +87,72 @@ export class CustomQuotationsController {
   @Post(":quotationId/costing-project")
   resolveCostingProject(@Req() request: CommercialRequest, @Param("quotationId") quotationId: string) {
     return this.costing.resolveOrCreateCostingProject(request.user.tenantId, quotationId, actor(request));
+  }
+
+  @Get(":quotationId/commercial-lines")
+  getCommercialLines(@Req() request: CommercialRequest, @Param("quotationId") quotationId: string) {
+    return this.commercialLines.list(request.user.tenantId, quotationId);
+  }
+
+  @Get(":quotationId/cost-engine/composition")
+  getScopedCostComposition(@Req() request: CommercialRequest, @Param("quotationId") quotationId: string, @Query() query: ListCostComponentsDto) {
+    return this.scopedCosts.composition(request.user.tenantId, quotationId, query.page ?? 1, query.pageSize ?? 20);
+  }
+
+  @Get(":quotationId/cost-engine/categories")
+  listScopedCostCategories(@Req() request: CommercialRequest, @Param("quotationId") quotationId: string, @Query() query: ListCostComponentsDto) {
+    return this.scopedCosts.listCategories(request.user.tenantId, quotationId, query.page ?? 1, query.pageSize ?? 20);
+  }
+
+  @Post(":quotationId/cost-engine/categories")
+  createScopedCostCategory(@Req() request: CommercialRequest, @Param("quotationId") quotationId: string, @Body() body: CreateCostCategoryDto) {
+    return this.scopedCosts.createCategory(request.user.tenantId, quotationId, body);
+  }
+
+  @Get(":quotationId/cost-engine/suppliers")
+  listScopedCostSuppliers(@Req() request: CommercialRequest, @Param("quotationId") quotationId: string, @Query() query: ListCostComponentsDto) {
+    return this.scopedCosts.listSuppliers(request.user.tenantId, quotationId, query.page ?? 1, query.pageSize ?? 20);
+  }
+
+  @Post(":quotationId/cost-engine/suppliers")
+  createScopedCostSupplier(@Req() request: CommercialRequest, @Param("quotationId") quotationId: string, @Body() body: CreateCostSupplierDto) {
+    return this.scopedCosts.createSupplier(request.user.tenantId, quotationId, body);
+  }
+
+  @Post(":quotationId/cost-engine/components")
+  createScopedCostComponent(@Req() request: CommercialRequest, @Param("quotationId") quotationId: string, @Body() body: CreateCostComponentDto) {
+    return this.scopedCosts.createComponent(request.user.tenantId, quotationId, body, actor(request));
+  }
+
+  @Patch(":quotationId/cost-engine/components/:costComponentId/cost")
+  updateScopedCostComponentCost(@Req() request: CommercialRequest, @Param("quotationId") quotationId: string, @Param("costComponentId") costComponentId: string, @Body() body: UpdateCostComponentCostDto) {
+    return this.scopedCosts.updateComponentCost(request.user.tenantId, quotationId, costComponentId, body, actor(request));
+  }
+
+  @Patch(":quotationId/cost-engine/components/:costComponentId/archive")
+  archiveScopedCostComponent(@Req() request: CommercialRequest, @Param("quotationId") quotationId: string, @Param("costComponentId") costComponentId: string) {
+    return this.scopedCosts.archiveComponent(request.user.tenantId, quotationId, costComponentId, actor(request));
+  }
+
+  @Patch(":quotationId/cost-engine/components/:costComponentId")
+  updateScopedCostComponent(@Req() request: CommercialRequest, @Param("quotationId") quotationId: string, @Param("costComponentId") costComponentId: string, @Body() body: UpdateCostComponentDto) {
+    return this.scopedCosts.updateComponent(request.user.tenantId, quotationId, costComponentId, body, actor(request));
+  }
+
+  @Get(":quotationId/cost-engine/snapshots/:costSnapshotId/evidence")
+  listScopedCostEvidence(@Req() request: CommercialRequest, @Param("quotationId") quotationId: string, @Param("costSnapshotId") costSnapshotId: string, @Query() query: ListCostComponentsDto) {
+    return this.scopedCosts.listEvidence(request.user.tenantId, quotationId, costSnapshotId, query.page ?? 1, query.pageSize ?? 20);
+  }
+
+  @Get(":quotationId/cost-engine/snapshots/:costSnapshotId/evidence/:costEvidenceId/access")
+  getScopedCostEvidenceAccess(@Req() request: CommercialRequest, @Param("quotationId") quotationId: string, @Param("costSnapshotId") costSnapshotId: string, @Param("costEvidenceId") costEvidenceId: string) {
+    return this.scopedCosts.evidenceAccess(request.user.tenantId, quotationId, costSnapshotId, costEvidenceId);
+  }
+
+  @Post(":quotationId/cost-engine/snapshots/:costSnapshotId/evidence")
+  @UseInterceptors(FileInterceptor("file"))
+  uploadScopedCostEvidence(@Req() request: CommercialRequest, @Param("quotationId") quotationId: string, @Param("costSnapshotId") costSnapshotId: string, @UploadedFile() file: CostEvidenceFile | undefined) {
+    return this.scopedCosts.uploadEvidence(request.user.tenantId, quotationId, costSnapshotId, file, actor(request));
   }
 
   @Post(":quotationId/pricing/calculate")

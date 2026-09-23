@@ -7,10 +7,12 @@ import type { PricingTransaction } from "../pricing/pricing.repository";
 import { PrismaService } from "../prisma/prisma.service";
 import { runTenantTransaction } from "../tenant/tenant-transaction";
 import type { CustomQuotationActor } from "./custom-quotations.service";
+import { CustomQuotationCommercialLinesService } from "./custom-quotation-commercial-lines.service";
 
 type CustomQuotationIssueTransaction = PricingTransaction & {
   customQuotation: Record<string, (...args: any[]) => Promise<any>>;
-  customQuotationLine: Record<string, (...args: any[]) => Promise<any>>;
+  customQuotationCostingProjectLink: Record<string, (...args: any[]) => Promise<any>>;
+  costComponent: Record<string, (...args: any[]) => Promise<any>>;
   customQuotationVersion: Record<string, (...args: any[]) => Promise<any>>;
   customQuotationVersionLine: Record<string, (...args: any[]) => Promise<any>>;
 } & TenantFiscalClassificationReader;
@@ -28,6 +30,7 @@ export class CustomQuotationVersionService {
     private readonly currentCosts: CostingProjectCurrentCostReader,
     private readonly pricing: PricingService,
     private readonly fiscalClassifications: FiscalClassificationService,
+    private readonly commercialLines: CustomQuotationCommercialLinesService,
   ) {
     this.database = prisma as unknown as CustomQuotationIssueDatabase;
   }
@@ -72,11 +75,8 @@ export class CustomQuotationVersionService {
       validateValidityDate(quotation.quotationValidUntil);
       const recipient = recipientSnapshot(quotation);
 
-      const lines = await tx.customQuotationLine.findMany({
-        where: { tenantId, customQuotationId: quotationId },
-        orderBy: [{ displayOrder: "asc" }, { id: "asc" }],
-      });
-      if (lines.length === 0) throw new BadRequestException("CUSTOM_QUOTATION_LINES_REQUIRED");
+      const lines = await this.commercialLines.listInTransaction(tx, tenantId, quotation.id);
+      if (lines.length === 0) throw new BadRequestException("CUSTOM_QUOTATION_STRUCTURED_COMPONENTS_REQUIRED");
 
       const fiscalClassification = await this.fiscalClassifications
         .resolveDefaultCustomQuotationFiscalClassificationInTransaction(tx, tenantId);
@@ -139,7 +139,7 @@ export class CustomQuotationVersionService {
         },
       });
       const copiedLines = await tx.customQuotationVersionLine.createMany({
-        data: lines.map((line: any) => ({
+        data: lines.map((line) => ({
           tenantId,
           customQuotationVersionId: version.id,
           displayOrder: line.displayOrder,

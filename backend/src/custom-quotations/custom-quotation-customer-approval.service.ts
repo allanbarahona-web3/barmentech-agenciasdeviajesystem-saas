@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, HttpException, Injectable, InternalServerErrorException, NotFoundException } from "@nestjs/common";
 import {
   GENERATED_DOCUMENT_ACCESS_PURPOSES,
   GENERATED_DOCUMENT_OWNER_TYPES,
@@ -89,33 +89,38 @@ export class CustomQuotationCustomerApprovalService {
 
   private async transition(token: string, targetStatus: "ACCEPTED" | "REJECTED") {
     const context = await this.resolveToken(token);
-    return this.withTenantTransaction(context.document.tenantId, async (tx) => {
-      const target = await tx.customQuotationVersion.findFirst({
-        where: { id: context.document.ownerId, tenantId: context.document.tenantId },
-        select: {
-          id: true,
-          customQuotationId: true,
-          recipientFullName: true,
-          recipientEmail: true,
-          recipientPhone: true,
-          recipientCompanyName: true,
-        },
-      });
-      if (!target) throw new NotFoundException("CUSTOM_QUOTATION_VERSION_NOT_FOUND");
-      const recipientName = snapshotRecipientName(target);
-      if (!recipientName) throw new ConflictException("CUSTOM_QUOTATION_RECIPIENT_SNAPSHOT_REQUIRED");
+    try {
+      return await this.withTenantTransaction(context.document.tenantId, async (tx) => {
+        const target = await tx.customQuotationVersion.findFirst({
+          where: { id: context.document.ownerId, tenantId: context.document.tenantId },
+          select: {
+            id: true,
+            customQuotationId: true,
+            recipientFullName: true,
+            recipientEmail: true,
+            recipientPhone: true,
+            recipientCompanyName: true,
+          },
+        });
+        if (!target) throw new NotFoundException("CUSTOM_QUOTATION_VERSION_NOT_FOUND");
+        const recipientName = snapshotRecipientName(target);
+        if (!recipientName) throw new ConflictException("CUSTOM_QUOTATION_RECIPIENT_SNAPSHOT_REQUIRED");
 
-      const consumed = await this.documentAccess.consumeInTransaction(tx, context.access.id);
-      if (!consumed) throw new ConflictException("CUSTOM_QUOTATION_APPROVAL_TOKEN_ALREADY_USED");
-      return this.approvals.transitionInTransaction(
-        tx,
-        context.document.tenantId,
-        target.customQuotationId,
-        target.id,
-        targetStatus,
-        { userId: null, name: recipientName },
-      );
-    });
+        const consumed = await this.documentAccess.consumeInTransaction(tx, context.access.id);
+        if (!consumed) throw new ConflictException("CUSTOM_QUOTATION_APPROVAL_TOKEN_ALREADY_USED");
+        return this.approvals.transitionInTransaction(
+          tx,
+          context.document.tenantId,
+          target.customQuotationId,
+          target.id,
+          targetStatus,
+          { userId: null, name: recipientName },
+        );
+      });
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new InternalServerErrorException("CUSTOM_QUOTATION_APPROVAL_TRANSITION_FAILED");
+    }
   }
 
   private async resolveToken(token: string) {

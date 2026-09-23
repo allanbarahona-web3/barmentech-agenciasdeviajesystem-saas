@@ -114,11 +114,12 @@ test('travel-only items do not support Add-on pricing while Additional Services 
 
 test('restores existing Add-on actions and adds no row-level catalog editor', () => {
   const page = readSource('../src/app/admin/pricing-configurations/page.tsx');
+  const table = readSource('../src/features/pricing-configurations/pricing-configurations-table.tsx');
   assert.doesNotMatch(page, /Editar catálogo/);
-  assert.match(page, /openConfigurationModal\(item\)/);
-  assert.match(page, /Editar fiscal/);
-  assert.match(page, /Configurar fiscal/);
-  assert.match(page, /supportsPricing \? <Button/);
+  assert.match(page, /onConfigurePricing=\{openConfigurationModal\}/);
+  assert.match(table, /Editar fiscal/);
+  assert.match(table, /Configurar fiscal/);
+  assert.match(table, /supportsPricing \? \(/);
 });
 
 test('adds one page-level creation action and no generic usage editor', () => {
@@ -136,11 +137,12 @@ test('adds one page-level creation action and no generic usage editor', () => {
 
 test('travel-only rows show no pricing and retain the shared fiscal action', () => {
   const page = readSource('../src/app/admin/pricing-configurations/page.tsx');
+  const table = readSource('../src/features/pricing-configurations/pricing-configurations-table.tsx');
   const profileModal = readSource(
     '../src/app/admin/pricing-configurations/additional-service-fiscal-profile-modal.tsx',
   );
-  assert.match(page, /No aplica/);
-  assert.match(page, /setSelectedFiscalItem\(item\)/);
+  assert.match(table, /No aplica/);
+  assert.match(page, /onConfigureFiscal=\{setSelectedFiscalItem\}/);
   assert.match(page, /AdditionalServiceFiscalProfileModal/);
   assert.match(profileModal, /updateAdditionalServiceFiscalProfile/);
   assert.match(profileModal, /createAdditionalServiceFiscalProfile/);
@@ -152,10 +154,10 @@ test('travel-only Configure fiscal passes the selected catalog item to the exist
   const profileModal = readSource(
     '../src/app/admin/pricing-configurations/additional-service-fiscal-profile-modal.tsx',
   );
-  assert.match(page, /onClick=\{\(\) => setSelectedFiscalItem\(item\)\}/);
+  assert.match(page, /onConfigureFiscal=\{setSelectedFiscalItem\}/);
   assert.match(page, /item=\{selectedFiscalItem\}/);
-  assert.match(profileModal, /isOpen=\{item !== null\}/);
-  assert.match(profileModal, /value=\{item\.name\}/);
+  assert.match(profileModal, /open=\{item !== null\}/);
+  assert.match(profileModal, /\{item\.name\}/);
   assert.match(
     profileModal,
     /additionalServiceCatalogId: item\.id/,
@@ -178,17 +180,24 @@ test('the shared CABYS, UOM, tax, rate, percentage, and status workflow remains 
   const profileModal = readSource(
     '../src/app/admin/pricing-configurations/additional-service-fiscal-profile-modal.tsx',
   );
+  const selection = readSource(
+    '../src/features/fiscal-catalog/fiscal-catalog-selection.tsx',
+  );
+  const catalogApi = readSource('../src/lib/fiscal-catalog-api.ts');
   for (const expected of [
-    'searchFiscalCatalogCabys',
     'confirmFiscalCatalogCabys',
-    'getFiscalCatalogUnits',
-    'getFiscalCatalogTaxes',
-    'getFiscalCatalogTaxRates',
-    'Porcentaje fiscal de la tarifa seleccionada',
+    'FiscalCatalogSelection',
     'updateAdditionalServiceFiscalProfileStatus',
   ]) {
     assert.match(profileModal, new RegExp(expected));
   }
+  for (const expected of [
+    'searchFiscalCatalogCabys',
+    'getFiscalCatalogUnits',
+    'getFiscalCatalogTaxes',
+    'getFiscalCatalogTaxRates',
+    'Porcentaje fiscal de la tarifa seleccionada',
+  ]) assert.match(`${selection}\n${catalogApi}`, new RegExp(expected));
 });
 
 test('saving closes the same modal and refreshes readiness without a page reload', () => {

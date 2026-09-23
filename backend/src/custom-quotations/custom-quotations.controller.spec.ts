@@ -9,7 +9,7 @@ describe("CustomQuotationsController", () => {
   it("permits ADMIN and AGENT only, and derives tenant and actor from authentication", async () => {
     expect(Reflect.getMetadata(GUARDS_METADATA, CustomQuotationsController)).toEqual([JwtAuthGuard, RolesGuard]);
     expect(Reflect.getMetadata(ROLES_KEY, CustomQuotationsController)).toEqual([UserRole.ADMIN, UserRole.AGENT]);
-    const service = { create: jest.fn().mockResolvedValue({ id: "quotation-a" }) };
+    const service = { create: jest.fn().mockResolvedValue({ id: "quotation-a" }), listForLead: jest.fn().mockResolvedValue({ items: [] }) };
     const costing = { resolveOrCreateCostingProject: jest.fn().mockResolvedValue({ costingProjectId: "project-a" }) };
     const pricing = { calculate: jest.fn().mockResolvedValue({ pricingCalculationVersionId: "version-a" }), getLatestCommercialState: jest.fn().mockResolvedValue({ hasCalculation: false }) };
     const versions = {
@@ -22,13 +22,28 @@ describe("CustomQuotationsController", () => {
     const delivery = { send: jest.fn().mockResolvedValue({ documentId: "document-a" }) };
     const salesOrders = { materialize: jest.fn().mockResolvedValue({ salesOrderId: "sales-a" }) };
     const leadConversion = { convert: jest.fn().mockResolvedValue({ customerId: "customer-a", salesOrderReady: true }) };
-    const controller = new CustomQuotationsController(service as never, costing as never, pricing as never, versions as never, proposals as never, approvals as never, delivery as never, salesOrders as never, leadConversion as never);
+    const scopedCosts = {
+      composition: jest.fn().mockResolvedValue({ project: { id: "project-a" } }), listCategories: jest.fn(), createCategory: jest.fn(),
+      listSuppliers: jest.fn(), createSupplier: jest.fn(), createComponent: jest.fn(), updateComponent: jest.fn(), updateComponentCost: jest.fn(), archiveComponent: jest.fn(),
+      listEvidence: jest.fn(), evidenceAccess: jest.fn(), uploadEvidence: jest.fn(),
+    };
+    const commercialLines = { list: jest.fn().mockResolvedValue({ lines: [] }) };
+    const controller = new CustomQuotationsController(service as never, costing as never, pricing as never, versions as never, proposals as never, approvals as never, delivery as never, salesOrders as never, leadConversion as never, scopedCosts as never, commercialLines as never);
     const request = { user: { id: "agent-a", fullName: "Agent A", email: "agent@example.com", tenantId: "tenant-a" } };
     const body = { customerId: "customer-a" } as never;
     await controller.create(request, body);
     expect(service.create).toHaveBeenCalledWith("tenant-a", body, { userId: "agent-a", name: "Agent A" });
+    await controller.listForLead(request, "lead-a", { page: 1, pageSize: 20 } as never);
+    expect(service.listForLead).toHaveBeenCalledWith("tenant-a", "lead-a", { page: 1, pageSize: 20 });
     await controller.resolveCostingProject(request, "quotation-a");
     expect(costing.resolveOrCreateCostingProject).toHaveBeenCalledWith("tenant-a", "quotation-a", { userId: "agent-a", name: "Agent A" });
+    await controller.getScopedCostComposition(request, "quotation-a", {} as never);
+    expect(scopedCosts.composition).toHaveBeenCalledWith("tenant-a", "quotation-a", 1, 20);
+    await controller.getCommercialLines(request, "quotation-a");
+    expect(commercialLines.list).toHaveBeenCalledWith("tenant-a", "quotation-a");
+    const costDto = { costCategoryId: "category-a", title: "Vuelo", amount: "100", currency: "USD" } as never;
+    await controller.createScopedCostComponent(request, "quotation-a", costDto);
+    expect(scopedCosts.createComponent).toHaveBeenCalledWith("tenant-a", "quotation-a", costDto, { userId: "agent-a", name: "Agent A" });
     await controller.calculatePricing(request, "quotation-a");
     expect(pricing.calculate).toHaveBeenCalledWith("tenant-a", "quotation-a", { userId: "agent-a", name: "Agent A" });
     await controller.getLatestPricing(request, "quotation-a");

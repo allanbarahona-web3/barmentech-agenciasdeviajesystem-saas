@@ -95,33 +95,6 @@ export interface UpdateAdditionalServicePricingConfigurationInput {
   marginValue: number;
 }
 
-export interface FiscalCatalogCabysItem {
-  code: string;
-  description: string;
-  referenceTaxPercentage: string;
-  persisted: boolean;
-  source: "LOCAL" | "FACTURA_EN_CR";
-}
-
-export interface FiscalCatalogCodeItem {
-  code: string;
-  name: string;
-}
-
-export interface FiscalCatalogRateItem extends FiscalCatalogCodeItem {
-  percentage: string;
-}
-
-interface FiscalCatalogListResponse<T> {
-  items: T[];
-  release: { version: string };
-}
-
-interface FiscalCatalogCabysSearchResponse {
-  items: FiscalCatalogCabysItem[];
-  meta: { query: string; top: number; mode: "LIVE" | "LOCAL_FALLBACK"; degraded: boolean };
-}
-
 export interface AdditionalServiceSupplier {
   id: string;
   tenantId: string;
@@ -252,52 +225,6 @@ export function createAdditionalServiceCatalog(
   input: CreateAdditionalServiceCatalogInput,
 ): Promise<AdditionalServiceAdminCatalogItem> {
   return sendCatalogRequest("/additional-services/catalog", "POST", input);
-}
-
-async function getFiscalCatalogResponse<T>(path: string, fallback: string): Promise<T> {
-  const apiBase = resolveApiBase();
-  const token = getStoredToken();
-  if (!apiBase) throw new Error("No hay API configurada.");
-  const response = await authenticatedFetch(`${apiBase}${path}`, {
-    method: "GET",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-  });
-  if (!response.ok) throw new Error(await readErrorMessage(response, fallback));
-  return response.json();
-}
-
-export function searchFiscalCatalogCabys(query: string): Promise<FiscalCatalogCabysSearchResponse> {
-  const params = new URLSearchParams({ q: query, top: "20" });
-  return getFiscalCatalogResponse(`/fiscal-catalogs/cabys/search?${params.toString()}`, "No se pudo buscar en el catálogo CABYS.");
-}
-
-export async function confirmFiscalCatalogCabys(code: string): Promise<FiscalCatalogCabysItem> {
-  const apiBase = resolveApiBase();
-  const token = getStoredToken();
-  if (!apiBase) throw new Error("No hay API configurada.");
-  const response = await authenticatedFetch(`${apiBase}/fiscal-catalogs/cabys/confirm`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ code }),
-  });
-  if (!response.ok) throw new Error(await readErrorMessage(response, "No se pudo confirmar el código CABYS."));
-  return response.json();
-}
-
-export function getFiscalCatalogCabys(code: string): Promise<FiscalCatalogCabysItem> {
-  return getFiscalCatalogResponse(`/fiscal-catalogs/cabys/${encodeURIComponent(code)}`, "No se pudo cargar el código CABYS.");
-}
-
-export async function getFiscalCatalogUnits(): Promise<FiscalCatalogCodeItem[]> {
-  return (await getFiscalCatalogResponse<FiscalCatalogListResponse<FiscalCatalogCodeItem>>("/fiscal-catalogs/units", "No se pudieron cargar las unidades de medida.")).items;
-}
-
-export async function getFiscalCatalogTaxes(): Promise<FiscalCatalogCodeItem[]> {
-  return (await getFiscalCatalogResponse<FiscalCatalogListResponse<FiscalCatalogCodeItem>>("/fiscal-catalogs/taxes", "No se pudieron cargar los impuestos.")).items;
-}
-
-export async function getFiscalCatalogTaxRates(taxCode: string): Promise<FiscalCatalogRateItem[]> {
-  return (await getFiscalCatalogResponse<FiscalCatalogListResponse<FiscalCatalogRateItem>>(`/fiscal-catalogs/taxes/${encodeURIComponent(taxCode)}/rates`, "No se pudieron cargar las tarifas fiscales.")).items;
 }
 
 async function sendPricingConfigurationRequest(

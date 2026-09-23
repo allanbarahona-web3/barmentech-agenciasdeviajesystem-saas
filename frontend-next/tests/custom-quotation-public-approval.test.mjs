@@ -31,7 +31,7 @@ test('la página pública muestra propuesta firmada y confirma decisiones termin
   assert.match(api, /\$\{publicApprovalPath\(token\)\}\/accept/, 'el POST de aceptación usa sólo el token');
   assert.match(api, /\$\{publicApprovalPath\(token\)\}\/reject/, 'el POST de rechazo usa sólo el token');
   assert.match(page, /disabled=\{acting\}/);
-  assert.match(page, /Procesando\.\.\./);
+  assert.match(page, /Procesando…/);
 });
 
 test('los estados terminales y enlaces inválidos son seguros y no exponen información interna', () => {

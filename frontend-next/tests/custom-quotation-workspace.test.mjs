@@ -47,21 +47,26 @@ test('el editor exige un solo destinatario y reutiliza selector de cliente y cre
   assert.match(editor, /\.\.\.\(leadId \? \{ leadId \} : \{ customerId: customerId! \}\)/);
 });
 
-test('el detalle deja editar borradores, mantiene estados no borrador de solo lectura y opera líneas descriptivas', () => {
+test('el detalle muestra sólo servicios comerciales derivados y no permite líneas libres', () => {
   assert.match(detail, /const draft = quotation\.status === 'DRAFT'/);
   assert.match(detail, /Editar detalle/);
-  assert.match(detail, /addCustomQuotationLine/);
-  assert.match(detail, /updateCustomQuotationLine/);
-  assert.match(detail, /removeCustomQuotationLine/);
-  assert.match(detail, /reorderCustomQuotationLines/);
+  assert.match(api, /getCustomQuotationCommercialLines/);
+  assert.match(api, /\/commercial-lines/);
+  assert.match(detail, /Servicios cotizados/);
+  assert.match(detail, /No hay servicios agregados a esta cotización/);
+  assert.match(detail, /Agrega los servicios desde la sección de Costos/);
+  assert.match(detail, /Ir a Costos/);
+  assert.doesNotMatch(detail, /addCustomQuotationLine|updateCustomQuotationLine|removeCustomQuotationLine|reorderCustomQuotationLines|Agregar línea|Editar línea|Eliminar línea|Subir línea|Bajar línea/);
   assert.match(detail, /onClick=\{\(\) => void openCosts\(\)\}>Costos/);
-  assert.match(detail, /onClick=\{\(\) => void openPricing\(\)\}>Precio/);
-  assert.match(detail, /setActiveTab\('PROPOSAL'\)/);
+  assert.match(detail, /setActiveTab\('QUOTE'\)/);
+  assert.match(detail, />Cotización<\/Button>/);
+  assert.doesNotMatch(detail, /openPricing|activeTab === 'PRICE'|activeTab === 'PROPOSAL'|>Precio<\/Button>|>Propuesta<\/Button>/);
   assert.match(detail, /CustomQuotationProposalTab/);
 });
 
 test('la conversión reutiliza el componente existente y se excluye de cotizaciones con cliente', () => {
-  assert.match(detail, /CustomQuotationSalesOrderCompletion/);
+  assert.match(proposalTab, /CustomQuotationSalesOrderCompletion/);
+  assert.match(proposalTab, /quotation\.status === 'ACCEPTED'/);
   assert.match(salesOrderCompletion, /CustomQuotationLeadCustomerConversion/);
   assert.match(salesOrderCompletion, /const isAccepted = quotation\.status === 'ACCEPTED'/);
   assert.match(editor, /customerId: customerId!/);
@@ -71,28 +76,31 @@ test('el tab Costos resuelve un CostingProject independiente y reutiliza la comp
   assert.match(api, /\/custom-quotations\/\$\{encodeURIComponent\(id\)\}\/costing-project/);
   assert.match(api, /method: 'POST'/);
   assert.match(detail, /resolveCustomQuotationCostingProject\(id\)/);
-  assert.match(detail, /GenericCostComposition costingProjectId=\{costingProject\.costingProjectId\} baseCurrency=\{costingProject\.baseCurrency\} canEdit=\{quotation\.status === 'DRAFT'\}/);
+  assert.match(api, /createCustomQuotationCostEngineApi/);
+  assert.match(api, /\/custom-quotations\/\$\{encodeURIComponent\(quotationId\)\}\/cost-engine/);
+  assert.match(api, /\$\{scope\}\/composition/);
+  assert.match(api, /\$\{scope\}\/components/);
+  assert.match(detail, /GenericCostComposition costingProjectId=\{costingProject\.costingProjectId\} baseCurrency=\{costingProject\.baseCurrency\} canEdit=\{quotation\.status === 'DRAFT'\}[\s\S]*api=\{scopedCostApi\}/);
+  assert.match(detail, /onCompositionChanged=\{handleCompositionChanged\}/);
   assert.match(detail, /setActiveTab\('COSTS'\)/);
   assert.match(detail, /setActiveTab\('DETAIL'\)/);
   assert.doesNotMatch(detail, /\/admin\/cost-engine|AirfareEvolutionDialog|AirfareDailyTaskDialog|PricingWorkspace/);
 });
 
-test('el tab Precio consume solo el contrato comercial de cotización', () => {
+test('Cotización consume solo el contrato comercial de precios', () => {
   assert.match(api, /getCustomQuotationPricing/);
   assert.match(api, /calculateCustomQuotationPricing/);
   assert.match(api, /\/custom-quotations\/\$\{encodeURIComponent\(id\)\}\/pricing/);
-  assert.match(detail, /No hay un precio calculado todavía/);
-  assert.match(detail, /Calcular precio/);
-  assert.match(detail, /Recalcular precio/);
-  assert.match(detail, /Precio comercial/);
-  assert.match(detail, /Los costos cambiaron desde este cálculo/);
-  assert.match(detail, /can.*quotation\.status !== 'DRAFT'|quotation\.status === 'DRAFT'/);
-  assert.doesNotMatch(detail, /PricingWorkspace|pricing-api|travel-pricing|riskMarginPercent|salesCommissionPercent|bankCommissionPercent|agency profit/i);
+  assert.match(proposalTab, /No hay un precio calculado todavía/);
+  assert.match(proposalTab, /Calcular precio/);
+  assert.match(proposalTab, /Recalcular precio/);
+  assert.match(proposalTab, /Estado del precio/);
+  assert.doesNotMatch(`${detail}\n${proposalTab}`, /Precio comercial|PricingWorkspace|pricing-api|travel-pricing|riskMarginPercent|salesCommissionPercent|bankCommissionPercent|agency profit/i);
 });
 
 test('la UI comercial no expone fiscalidad ni valores internos de pricing', () => {
   const source = `${api}\n${editor}\n${list}\n${detail}\n${proposalTab}`;
-  assert.doesNotMatch(source, /fiscalClassificationId|CABYS|UoM|taxCode|taxRate|TenantPricingPolicy|PricingConfiguration|authoritativeCostAmount|operationalCostsAmount|riskMarginPercent|targetProfitMarginPercent|salesCommissionPercent|bankCommissionPercent|applicableTaxPercent|targetProfitAmount|commissionAmount|agencyProfit|cost-engine-api|pricing-api/i);
+  assert.doesNotMatch(source, /fiscalClassificationId|CABYS|UoM|taxCode|taxRate|TenantPricingPolicy|PricingConfiguration|authoritativeCostAmount|operationalCostsAmount|riskMarginPercent|targetProfitMarginPercent|salesCommissionPercent|bankCommissionPercent|applicableTaxPercent|targetProfitAmount|commissionAmount|agencyProfit|pricing-api/i);
   assert.equal(paymentConditionLabel('CREDIT', 30, 'DAYS'), 'Crédito · 30 días');
 });
 
@@ -111,7 +119,9 @@ test('la pestaña Propuesta emite sin autoridad financiera del cliente y refresc
 test('Propuesta guía los prerrequisitos de borrador y renderiza sólo snapshots emitidos', () => {
   assert.match(proposalTab, /Calcula el precio antes de emitir la cotización/);
   assert.match(proposalTab, /Los costos cambiaron\. Recalcula el precio antes de emitir/);
-  assert.match(proposalTab, /Agrega al menos una línea descriptiva antes de emitir la cotización/);
+  assert.match(proposalTab, /Agrega al menos un servicio desde Costos antes de emitir la cotización/);
+  assert.match(proposalTab, /commercialLines\.map/);
+  assert.doesNotMatch(proposalTab, /quotation\.lines/);
   assert.match(proposalTab, /version\.recipientFullName/);
   assert.match(proposalTab, /version\.recipientEmail/);
   assert.match(proposalTab, /version\.lines\.map/);
@@ -120,13 +130,13 @@ test('Propuesta guía los prerrequisitos de borrador y renderiza sólo snapshots
   assert.doesNotMatch(proposalTab, /quotation\.target\?\.displayName[\s\S]{0,400}Propuesta emitida/);
 });
 
-test('Propuesta usa el documento firmado inmutable sin controles de aprobación', () => {
+test('Cotización usa el documento firmado inmutable sin depender de controles públicos', () => {
   assert.match(api, /generateCustomQuotationProposal.*\/proposal.*'POST'/);
   assert.match(api, /getCustomQuotationProposal/);
   assert.match(proposalTab, /Generar PDF/);
   assert.match(proposalTab, /Ver propuesta/);
   assert.match(proposalTab, /href=\{proposal\.url\} target="_blank" rel="noreferrer"/);
-  assert.doesNotMatch(proposalTab, /approval|accept\(|reject\(|sales-order/i);
+  assert.doesNotMatch(proposalTab, /approvalToken|approvalUrl|publicUrl|\/public\/custom-quotation-approval/);
 });
 
 test('la entrega sólo usa la versión emitida, PDF existente y el endpoint de cotización', () => {

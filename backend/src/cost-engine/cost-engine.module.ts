@@ -15,6 +15,6 @@ import { JobDispatcherModule } from "../infrastructure/job-dispatcher";
   imports: [StorageModule, JobDispatcherModule],
   controllers: [CostEngineController, AirfareDailyAuthorityController],
   providers: [CostEngineRepository, CostEngineService, CostEvidenceService, TravelCostingProjectResolverService, AirfareDailyAuthorityService, TenantBusinessDateResolver, CostingProjectCurrentCostReader],
-  exports: [CostEngineService, CostingProjectCurrentCostReader],
+  exports: [CostEngineService, CostEvidenceService, CostingProjectCurrentCostReader],
 })
 export class CostEngineModule {}

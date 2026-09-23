@@ -99,6 +99,14 @@ export class ListCustomQuotationsDto {
   pageSize?: number;
 }
 
+export class ListLeadCustomQuotationSummariesDto {
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1)
+  page?: number;
+
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(25)
+  pageSize?: number;
+}
+
 export class CreateCustomQuotationLineDto {
   @Transform(trim) @IsString() @MaxLength(500) @Matches(/\S/)
   description!: string;

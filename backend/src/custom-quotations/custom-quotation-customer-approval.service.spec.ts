@@ -88,7 +88,7 @@ describe("CustomQuotationCustomerApprovalService", () => {
 
     expect(c.access.consumeInTransaction).toHaveBeenCalledWith(c.tx, "access-a");
     expect(c.tx.customQuotationVersion.updateMany).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ status: "ACCEPTED", acceptedByUserId: null, acceptedByName: "Ana Cliente" }),
+      data: expect.objectContaining({ status: "ACCEPTED", acceptedAt: expect.any(Date), acceptedByUserId: null, acceptedByName: "Ana Cliente" }),
     }));
     expect(c.tx.customQuotation.updateMany).toHaveBeenCalledWith(expect.objectContaining({
       data: { status: "ACCEPTED", updatedByUserId: null, updatedByName: "Ana Cliente" },
@@ -110,6 +110,15 @@ describe("CustomQuotationCustomerApprovalService", () => {
     expect(c.tx.customQuotationVersion.updateMany).not.toHaveBeenCalled();
     expect(c.tx.customQuotation.updateMany).not.toHaveBeenCalled();
     noDownstreamSideEffects(c);
+  });
+
+  it("keeps an actually expired approval token distinct from a transition failure", async () => {
+    const c = context();
+    c.access.resolve.mockRejectedValue(new NotFoundException("Approval link is invalid or expired."));
+
+    await expect(c.service.accept("expired-token")).rejects.toThrow("Approval link is invalid or expired.");
+    expect(c.access.consumeInTransaction).not.toHaveBeenCalled();
+    expect(c.tx.customQuotationVersion.findFirst).not.toHaveBeenCalled();
   });
 
   it("rejects an ISSUED version with the same one-use token protection", async () => {
@@ -138,6 +147,26 @@ describe("CustomQuotationCustomerApprovalService", () => {
     expect(c.tx.customQuotationVersion.updateMany).not.toHaveBeenCalled();
     expect(c.tx.customQuotation.updateMany).not.toHaveBeenCalled();
   });
+
+  it("rolls back token consumption and returns a stable transition error when persistence fails, allowing a retry", async () => {
+    const c = rollbackContext();
+    c.access.resolve.mockResolvedValue(access());
+    c.tx.customQuotationVersion.findFirst
+      .mockResolvedValueOnce(transitionTarget())
+      .mockResolvedValueOnce(lifecycleVersion())
+      .mockResolvedValueOnce(transitionTarget())
+      .mockResolvedValueOnce(lifecycleVersion());
+    c.tx.customQuotationVersion.updateMany
+      .mockRejectedValueOnce(new Error('PostgreSQL 23514 custom_quotation_versions_acceptance_metadata_chk'))
+      .mockResolvedValueOnce({ count: 1 });
+
+    await expect(c.service.accept("secure-token")).rejects.toMatchObject({ message: "CUSTOM_QUOTATION_APPROVAL_TRANSITION_FAILED" });
+    expect(c.tokenActive()).toBe(true);
+
+    await expect(c.service.accept("secure-token")).resolves.toMatchObject({ status: "ACCEPTED" });
+    expect(c.access.consumeInTransaction).toHaveBeenCalledTimes(2);
+    expect(c.tokenActive()).toBe(false);
+  });
 });
 
 function context() {
@@ -157,6 +186,46 @@ function context() {
   return {
     tx, access, documents,
     service: new CustomQuotationCustomerApprovalService(prisma as never, access as never, documents as never, internalApprovals),
+  };
+}
+
+function rollbackContext() {
+  const tx = {
+    $executeRaw: jest.fn(),
+    $queryRaw: jest.fn().mockResolvedValue([{ id: "locked" }]),
+    customQuotation: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+    customQuotationVersion: { findFirst: jest.fn(), updateMany: jest.fn() },
+    tenantBillingConfiguration: { findUnique: jest.fn().mockResolvedValue({ fiscalTimezone: "America/Costa_Rica" }) },
+    generatedDocumentAccessToken: { updateMany: jest.fn() },
+    tenant: { findUnique: jest.fn().mockResolvedValue({ name: "Viajes Ejemplo", logoUrl: null }) },
+  } as any;
+  let active = true;
+  const prisma = {
+    $transaction: jest.fn(async (work: (value: typeof tx) => Promise<unknown>) => {
+      const activeBeforeTransaction = active;
+      try {
+        return await work(tx);
+      } catch (error) {
+        active = activeBeforeTransaction;
+        throw error;
+      }
+    }),
+  };
+  const access = {
+    resolve: jest.fn(),
+    consumeInTransaction: jest.fn().mockImplementation(async () => {
+      if (!active) return false;
+      active = false;
+      return true;
+    }),
+  };
+  const documents = { getSignedUrl: jest.fn() };
+  const internalApprovals = new CustomQuotationApprovalService(prisma as never);
+  return {
+    tx,
+    access,
+    service: new CustomQuotationCustomerApprovalService(prisma as never, access as never, documents as never, internalApprovals),
+    tokenActive: () => active,
   };
 }
 

@@ -10,6 +10,8 @@ import { SalesOrdersModule } from "../sales-orders/sales-orders.module";
 import { FiscalClassificationModule } from "../fiscal-classifications/fiscal-classification.module";
 import { CustomersModule } from "../customers/customers.module";
 import { CustomQuotationCostingService } from "./custom-quotation-costing.service";
+import { CustomQuotationCostEngineService } from "./custom-quotation-cost-engine.service";
+import { CustomQuotationCommercialLinesService } from "./custom-quotation-commercial-lines.service";
 import { CustomQuotationPricingService } from "./custom-quotation-pricing.service";
 import { CustomQuotationVersionService } from "./custom-quotation-version.service";
 import { CustomQuotationProposalMapper } from "./custom-quotation-proposal.mapper";
@@ -27,7 +29,7 @@ import { CustomQuotationsService } from "./custom-quotations.service";
 @Module({
   imports: [BusinessNumberingModule, CostEngineModule, PricingModule, DocumentsModule, GeneratedDocumentsModule, StorageModule, EmailModule, SalesOrdersModule, FiscalClassificationModule, CustomersModule],
   controllers: [CustomQuotationsController, CustomQuotationCustomerApprovalPublicController],
-  providers: [CustomQuotationsService, CustomQuotationCostingService, CustomQuotationPricingService, CustomQuotationVersionService, CustomQuotationProposalMapper, CustomQuotationProposalService, CustomQuotationApprovalService, CustomQuotationCustomerApprovalService, CustomQuotationDeliveryEmailMapper, CustomQuotationDeliveryService, CustomQuotationSalesOrderService, CustomQuotationLeadCustomerConversionService],
+  providers: [CustomQuotationsService, CustomQuotationCostingService, CustomQuotationCostEngineService, CustomQuotationCommercialLinesService, CustomQuotationPricingService, CustomQuotationVersionService, CustomQuotationProposalMapper, CustomQuotationProposalService, CustomQuotationApprovalService, CustomQuotationCustomerApprovalService, CustomQuotationDeliveryEmailMapper, CustomQuotationDeliveryService, CustomQuotationSalesOrderService, CustomQuotationLeadCustomerConversionService],
   exports: [CustomQuotationsService, CustomQuotationCostingService, CustomQuotationPricingService, CustomQuotationVersionService, CustomQuotationProposalService, CustomQuotationApprovalService],
 })
 export class CustomQuotationsModule {}

@@ -366,6 +366,12 @@ export function VerticalNav() {
                       icon: "🏦",
                       adminOnly: true,
                     },
+                    {
+                      href: "/admin/custom-quotation-settings",
+                      label: "Cotizaciones personalizadas",
+                      icon: "🧾",
+                      adminOnly: true,
+                    },
                   ]
                 : []),
             ],
