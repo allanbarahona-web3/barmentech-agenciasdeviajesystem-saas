@@ -49,15 +49,18 @@ export class CustomQuotationDeliveryService {
         select: {
           id: true,
           status: true,
+          title: true,
           currency: true,
           finalSellingPrice: true,
           quotationValidUntil: true,
+          recipientFullName: true,
+          recipientEmail: true,
+          recipientPhone: true,
+          recipientCompanyName: true,
           customQuotation: {
             select: {
               quotationNumber: true,
-              title: true,
               status: true,
-              customer: { select: { fullName: true, email: true } },
             },
           },
         },
@@ -70,9 +73,11 @@ export class CustomQuotationDeliveryService {
       return { version, timezone };
     });
 
-    const recipientEmail = version.customQuotation.customer.email?.trim().toLowerCase();
+    const recipient = snapshotRecipient(version);
+    if (!recipient) throw new ConflictException("CUSTOM_QUOTATION_RECIPIENT_SNAPSHOT_REQUIRED");
+    const recipientEmail = recipient?.email?.trim().toLowerCase();
     if (!recipientEmail || !isEmail(recipientEmail)) {
-      throw new BadRequestException("CUSTOM_QUOTATION_CUSTOMER_EMAIL_INVALID");
+      throw new BadRequestException("CUSTOM_QUOTATION_RECIPIENT_EMAIL_INVALID");
     }
     const document = await this.documents.findLatest({
       tenantId,
@@ -97,9 +102,9 @@ export class CustomQuotationDeliveryService {
       const tenant = await this.tenants.getTenantConfig(tenantId);
       const approvalUrl = `${getPublicAppBaseUrl(this.config, tenant)}/custom-quotation-approval/${encodeURIComponent(approvalToken)}`;
       const message = this.mapper.map({
-        customerName: version.customQuotation.customer.fullName,
+        customerName: recipient!.fullName,
         quotationNumber: version.customQuotation.quotationNumber,
-        title: version.customQuotation.title,
+        title: version.title,
         currency: version.currency,
         finalSellingPrice: decimalString(version.finalSellingPrice),
         quotationValidUntil: version.quotationValidUntil,
@@ -127,6 +132,22 @@ export class CustomQuotationDeliveryService {
   private withTenantTransaction<T>(tenantId: string, work: (tx: DeliveryTransaction) => Promise<T>) {
     return runTenantTransaction(this.database, tenantId, work);
   }
+}
+
+function hasRecipientSnapshot(version: any) {
+  return typeof version.recipientFullName === "string" && Boolean(version.recipientFullName.trim());
+}
+
+function snapshotRecipient(version: any) {
+  if (!hasRecipientSnapshot(version)) return null;
+  return {
+    fullName: version.recipientFullName.trim(),
+    email: normalizedOrNull(version.recipientEmail),
+  };
+}
+
+function normalizedOrNull(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
 function decimalString(value: unknown): string {

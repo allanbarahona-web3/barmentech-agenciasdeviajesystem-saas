@@ -16,8 +16,9 @@ export type CustomQuotationActor = { userId: string; name: string };
 type CustomQuotationTransaction = {
   $executeRaw<T = unknown>(query: TemplateStringsArray, ...values: unknown[]): Promise<T>;
   client: Record<string, (...args: any[]) => Promise<any>>;
-  tenantFiscalClassification: Record<string, (...args: any[]) => Promise<any>>;
+  lead: Record<string, (...args: any[]) => Promise<any>>;
   customQuotation: Record<string, (...args: any[]) => Promise<any>>;
+  customQuotationVersion: Record<string, (...args: any[]) => Promise<any>>;
   customQuotationLine: Record<string, (...args: any[]) => Promise<any>>;
   customQuotationCostingProjectLink: Record<string, (...args: any[]) => Promise<any>>;
 };
@@ -30,7 +31,8 @@ type QuotationRecord = {
   id: string;
   tenantId: string;
   quotationNumber: string;
-  customerId: string;
+  leadId: string | null;
+  customerId: string | null;
   currency: string;
   title: string;
   commercialObservations: string | null;
@@ -38,7 +40,7 @@ type QuotationRecord = {
   paymentConditionType: string | null;
   paymentTermValue: number | null;
   paymentTermUnit: string | null;
-  fiscalClassificationId: string;
+  fiscalClassificationId: string | null;
   status: string;
   createdByUserId: string;
   createdByName: string;
@@ -47,6 +49,16 @@ type QuotationRecord = {
   createdAt: Date;
   updatedAt: Date;
   lines?: QuotationLineRecord[];
+  lead?: CommercialTargetRecord | null;
+  customer?: CommercialTargetRecord | null;
+};
+
+type CommercialTargetRecord = {
+  id: string;
+  fullName: string;
+  email: string | null;
+  phone: string | null;
+  companyName?: string | null;
 };
 
 type QuotationLineRecord = {
@@ -79,8 +91,8 @@ export class CustomQuotationsService {
   async create(tenantId: string, input: CreateCustomQuotationDto, actor: CustomQuotationActor) {
     const terms = normalizePaymentTerms(input);
     return this.withTenantTransaction(tenantId, async (tx) => {
-      await requireCustomer(tx, tenantId, input.customerId);
-      await requireActiveClassification(tx, tenantId, input.fiscalClassificationId);
+      const target = initialTarget(input);
+      await requireTarget(tx, tenantId, target);
       const now = new Date();
       const sequence = await this.businessNumbers.next(tx as never, {
         tenantId,
@@ -91,13 +103,13 @@ export class CustomQuotationsService {
         data: {
           tenantId,
           quotationNumber: quotationNumber(now.getUTCFullYear(), sequence),
-          customerId: input.customerId,
+          leadId: target.type === "LEAD" ? target.id : null,
+          customerId: target.type === "CUSTOMER" ? target.id : null,
           currency: input.currency,
           title: requiredText(input.title, "CUSTOM_QUOTATION_TITLE_INVALID"),
           commercialObservations: optionalText(input.commercialObservations),
           quotationValidUntil: optionalInstant(input.quotationValidUntil),
           ...terms,
-          fiscalClassificationId: input.fiscalClassificationId,
           status: "DRAFT",
           createdByUserId: actor.userId,
           createdByName: actor.name,
@@ -126,6 +138,7 @@ export class CustomQuotationsService {
       const [quotations, total] = await Promise.all([
         tx.customQuotation.findMany({
           where,
+          include: targetInclude(),
           orderBy: [{ createdAt: "desc" }, { id: "desc" }],
           skip: (page - 1) * pageSize,
           take: pageSize,
@@ -146,7 +159,7 @@ export class CustomQuotationsService {
     const quotation = await this.withTenantTransaction(tenantId, (tx) =>
       tx.customQuotation.findFirst({
         where: { id: quotationId, tenantId },
-        include: { lines: { orderBy: [{ displayOrder: "asc" }, { id: "asc" }] } },
+        include: { lines: { orderBy: [{ displayOrder: "asc" }, { id: "asc" }] }, ...targetInclude() },
       }) as Promise<QuotationRecord | null>,
     );
     if (!quotation) throw new NotFoundException("CUSTOM_QUOTATION_NOT_FOUND");
@@ -164,25 +177,38 @@ export class CustomQuotationsService {
         });
         if (costingLink) throw new ConflictException("CUSTOM_QUOTATION_CURRENCY_LOCKED_BY_COSTING_PROJECT");
       }
-      if (input.customerId !== undefined) await requireCustomer(tx, tenantId, input.customerId);
-      if (input.fiscalClassificationId !== undefined) await requireActiveClassification(tx, tenantId, input.fiscalClassificationId);
+      const target = requestedDraftTarget(input);
+      if (target && targetChanged(current, target)) {
+        await requireTarget(tx, tenantId, target);
+        const issuedVersion = await tx.customQuotationVersion.findFirst({
+          where: { tenantId, customQuotationId: quotationId },
+          select: { id: true },
+        });
+        if (issuedVersion) throw new ConflictException("CUSTOM_QUOTATION_TARGET_LOCKED_BY_ISSUED_VERSION");
+      }
       const terms = normalizePaymentTerms(input, current);
       const updated = await tx.customQuotation.updateMany({
         where: { id: quotationId, tenantId, status: "DRAFT" },
         data: {
-          ...(input.customerId === undefined ? {} : { customerId: input.customerId }),
+          ...(target === null
+            ? {}
+            : target.type === "LEAD"
+              ? { leadId: target.id, customerId: null }
+              : { leadId: null, customerId: target.id }),
           ...(input.currency === undefined ? {} : { currency: input.currency }),
           ...(input.title === undefined ? {} : { title: requiredText(input.title, "CUSTOM_QUOTATION_TITLE_INVALID") }),
           ...(input.commercialObservations === undefined ? {} : { commercialObservations: optionalText(input.commercialObservations) }),
           ...(input.quotationValidUntil === undefined ? {} : { quotationValidUntil: optionalInstant(input.quotationValidUntil) }),
-          ...(input.fiscalClassificationId === undefined ? {} : { fiscalClassificationId: input.fiscalClassificationId }),
           ...terms,
           updatedByUserId: actor.userId,
           updatedByName: actor.name,
         },
       });
       if (updated.count !== 1) throw new ConflictException("CUSTOM_QUOTATION_DRAFT_UPDATE_CONFLICT");
-      const quotation = await tx.customQuotation.findFirst({ where: { id: quotationId, tenantId } }) as QuotationRecord | null;
+      const quotation = await tx.customQuotation.findFirst({
+        where: { id: quotationId, tenantId },
+        include: targetInclude(),
+      }) as QuotationRecord | null;
       if (!quotation) throw new NotFoundException("CUSTOM_QUOTATION_NOT_FOUND");
       return toQuotationResponse(quotation);
     });
@@ -275,15 +301,56 @@ export class CustomQuotationsService {
   }
 }
 
-async function requireCustomer(tx: CustomQuotationTransaction, tenantId: string, customerId: string) {
-  const customer = await tx.client.findFirst({ where: { id: customerId, tenantId }, select: { id: true } });
-  if (!customer) throw new NotFoundException("CUSTOM_QUOTATION_CUSTOMER_NOT_FOUND");
+type CommercialTargetInput = { type: "LEAD" | "CUSTOMER"; id: string };
+
+function initialTarget(input: CreateCustomQuotationDto): CommercialTargetInput {
+  const leadId = identifier(input.leadId);
+  const customerId = identifier(input.customerId);
+  if (Boolean(leadId) === Boolean(customerId)) {
+    throw new BadRequestException(leadId || customerId
+      ? "CUSTOM_QUOTATION_TARGET_EXACTLY_ONE_REQUIRED"
+      : "CUSTOM_QUOTATION_TARGET_REQUIRED");
+  }
+  return leadId ? { type: "LEAD", id: leadId } : { type: "CUSTOMER", id: customerId! };
 }
 
-async function requireActiveClassification(tx: CustomQuotationTransaction, tenantId: string, fiscalClassificationId: string) {
-  const classification = await tx.tenantFiscalClassification.findFirst({ where: { id: fiscalClassificationId, tenantId }, select: { id: true, isActive: true } });
-  if (!classification) throw new NotFoundException("CUSTOM_QUOTATION_FISCAL_CLASSIFICATION_NOT_FOUND");
-  if (!classification.isActive) throw new BadRequestException("CUSTOM_QUOTATION_FISCAL_CLASSIFICATION_INACTIVE");
+function requestedDraftTarget(input: UpdateCustomQuotationDto): CommercialTargetInput | null {
+  const leadSupplied = input.leadId !== undefined;
+  const customerSupplied = input.customerId !== undefined;
+  if (!leadSupplied && !customerSupplied) return null;
+  if (leadSupplied && customerSupplied) {
+    throw new BadRequestException("CUSTOM_QUOTATION_TARGET_EXACTLY_ONE_REQUIRED");
+  }
+  if (leadSupplied) return { type: "LEAD", id: requiredText(input.leadId!, "CUSTOM_QUOTATION_LEAD_INVALID") };
+  return { type: "CUSTOMER", id: requiredText(input.customerId!, "CUSTOM_QUOTATION_CUSTOMER_INVALID") };
+}
+
+async function requireTarget(tx: CustomQuotationTransaction, tenantId: string, target: CommercialTargetInput) {
+  if (target.type === "CUSTOMER") {
+    const customer = await tx.client.findFirst({ where: { id: target.id, tenantId }, select: { id: true } });
+    if (!customer) throw new NotFoundException("CUSTOM_QUOTATION_CUSTOMER_NOT_FOUND");
+    return;
+  }
+  const lead = await tx.lead.findFirst({ where: { id: target.id, tenantId }, select: { id: true, status: true } });
+  if (!lead) throw new NotFoundException("CUSTOM_QUOTATION_LEAD_NOT_FOUND");
+  if (lead.status !== "OPEN") throw new ConflictException("CUSTOM_QUOTATION_LEAD_NOT_OPEN");
+}
+
+function targetChanged(current: QuotationRecord, target: CommercialTargetInput) {
+  return target.type === "LEAD"
+    ? current.leadId !== target.id || current.customerId !== null
+    : current.customerId !== target.id || current.leadId !== null;
+}
+
+function targetInclude() {
+  return {
+    lead: { select: { id: true, fullName: true, email: true, phone: true, companyName: true } },
+    customer: { select: { id: true, fullName: true, email: true, phone: true } },
+  };
+}
+
+function identifier(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
 async function requireDraft(tx: CustomQuotationTransaction, tenantId: string, quotationId: string) {
@@ -357,7 +424,9 @@ function toQuotationResponse(row: QuotationRecord) {
   return {
     id: row.id,
     quotationNumber: row.quotationNumber,
+    leadId: row.leadId,
     customerId: row.customerId,
+    target: targetResponse(row),
     currency: row.currency,
     title: row.title,
     commercialObservations: row.commercialObservations,
@@ -365,13 +434,38 @@ function toQuotationResponse(row: QuotationRecord) {
     paymentConditionType: row.paymentConditionType,
     paymentTermValue: row.paymentTermValue,
     paymentTermUnit: row.paymentTermUnit,
-    fiscalClassificationId: row.fiscalClassificationId,
     status: row.status,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     createdBy: { userId: row.createdByUserId, name: row.createdByName },
     updatedBy: row.updatedByUserId ? { userId: row.updatedByUserId, name: row.updatedByName } : null,
   };
+}
+
+function targetResponse(row: QuotationRecord) {
+  const customer = row.customer;
+  if (customer) {
+    return {
+      type: "CUSTOMER" as const,
+      id: customer.id,
+      displayName: customer.fullName,
+      email: customer.email,
+      phone: customer.phone,
+      companyName: null,
+    };
+  }
+  const lead = row.lead;
+  if (lead) {
+    return {
+      type: "LEAD" as const,
+      id: lead.id,
+      displayName: lead.fullName,
+      email: lead.email,
+      phone: lead.phone,
+      companyName: lead.companyName ?? null,
+    };
+  }
+  return null;
 }
 
 function toQuotationDetailResponse(row: QuotationRecord) {

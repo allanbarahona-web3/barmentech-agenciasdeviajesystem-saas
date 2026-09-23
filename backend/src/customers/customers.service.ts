@@ -28,6 +28,15 @@ import {
 } from "./client-identification";
 import { resolveContractParticipation } from "../contracts/contract-participation";
 
+export type CustomerIdentityTransaction = {
+  client: Record<string, (...args: any[]) => Promise<any>>;
+};
+
+export type ResolvedCustomerIdentity = {
+  customer: Client;
+  reusedExisting: boolean;
+};
+
 /**
  * CustomersService
  * 
@@ -130,20 +139,7 @@ export class CustomersService {
 
     // Step 4: No existing client - create new record
     const client = await this.prisma.client.create({
-      data: {
-        fullName: normalized.fullName,
-        idNumber: normalized.idNumber,
-        idType: normalized.idType,
-        email: normalized.email,
-        phone: normalized.phone,
-        emergencyContactName: normalized.emergencyContactName,
-        emergencyContactPhone: normalized.emergencyContactPhone,
-        nationality: normalized.nationality,
-        occupation: normalized.occupation,
-        maritalStatus: normalized.maritalStatus,
-        address: normalized.address,
-        tenantId: normalized.tenantId,
-      },
+      data: this.clientCreateData(normalized),
     });
 
     return client;
@@ -180,6 +176,39 @@ export class CustomersService {
     };
 
     return this.upsertClient(clientDto);
+  }
+
+  /** Resolves a Customer identity inside a caller-owned tenant transaction. */
+  async resolveCustomerIdentityInTransaction(
+    tx: CustomerIdentityTransaction,
+    tenantId: string,
+    dto: CreateCustomerDto,
+  ): Promise<ResolvedCustomerIdentity> {
+    const normalized = this.normalizeClientData({ ...dto, tenantId });
+    const existing = await tx.client.findFirst({
+      where: {
+        tenantId: normalized.tenantId,
+        idType: normalized.idType,
+        idNumber: normalized.idNumber,
+      },
+    }) as Client | null;
+
+    if (existing) {
+      if (
+        this.normalizeNameForComparison(existing.fullName) !==
+        this.normalizeNameForComparison(normalized.fullName)
+      ) {
+        throw new ConflictException(
+          `Ya existe un cliente con este número de identificación pero la información de identidad no coincide. Cliente existente: "${existing.fullName}". Información proporcionada: "${normalized.fullName}".`,
+        );
+      }
+      return { customer: existing, reusedExisting: true };
+    }
+
+    const customer = await tx.client.create({
+      data: this.clientCreateData(normalized),
+    }) as Client;
+    return { customer, reusedExisting: false };
   }
 
   async resolveMinorCustomer(
@@ -1346,6 +1375,23 @@ export class CustomersService {
       maritalStatus: String(dto.maritalStatus || "").trim() || null,
       address: String(dto.address || "").trim() || null,
       tenantId: String(dto.tenantId || "").trim(),
+    };
+  }
+
+  private clientCreateData(normalized: CreateOrUpdateClientDto): Prisma.ClientUncheckedCreateInput {
+    return {
+      fullName: normalized.fullName,
+      idNumber: normalized.idNumber,
+      idType: normalized.idType,
+      email: normalized.email,
+      phone: normalized.phone,
+      emergencyContactName: normalized.emergencyContactName,
+      emergencyContactPhone: normalized.emergencyContactPhone,
+      nationality: normalized.nationality,
+      occupation: normalized.occupation,
+      maritalStatus: normalized.maritalStatus,
+      address: normalized.address,
+      tenantId: normalized.tenantId,
     };
   }
 

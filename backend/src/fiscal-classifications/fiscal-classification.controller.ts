@@ -6,6 +6,7 @@ import { RolesGuard } from "../auth/roles.guard";
 import {
   CreateFiscalClassificationDto,
   ListFiscalClassificationsDto,
+  UpdateFiscalClassificationDefaultDto,
   UpdateFiscalClassificationDto,
   UpdateFiscalClassificationStatusDto,
 } from "./fiscal-classification.dto";
@@ -47,6 +48,16 @@ export class FiscalClassificationController {
   @Patch(":classificationId/status")
   setStatus(@Req() request: AdminRequest, @Param("classificationId") classificationId: string, @Body() body: UpdateFiscalClassificationStatusDto) {
     return this.service.setStatus(request.user.tenantId, classificationId, body.isActive, actor(request));
+  }
+
+  @Patch(":classificationId/default-for-custom-quotations")
+  setDefaultForCustomQuotations(@Req() request: AdminRequest, @Param("classificationId") classificationId: string, @Body() body: UpdateFiscalClassificationDefaultDto) {
+    return this.service.setDefaultForCustomQuotations(
+      request.user.tenantId,
+      classificationId,
+      body.isDefaultForCustomQuotations,
+      actor(request),
+    );
   }
 }
 

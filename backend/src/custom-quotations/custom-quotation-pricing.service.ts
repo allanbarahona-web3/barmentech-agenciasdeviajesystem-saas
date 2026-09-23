@@ -82,7 +82,40 @@ export class CustomQuotationPricingService {
     };
   }
 
+  /**
+   * Commercial projection only. For issued quotations this remains the latest
+   * Pricing result; the immutable CustomQuotationVersion is proposal authority.
+   */
+  async getLatestCommercialState(tenantId: string, quotationId: string) {
+    const quotation = await this.withTenantTransaction(tenantId, (tx) =>
+      tx.customQuotation.findFirst({
+        where: { id: quotationId, tenantId },
+        select: {
+          currency: true,
+          costingProjectLink: { select: { costingProject: { select: { id: true } } } },
+        },
+      }) as Promise<{ currency: string; costingProjectLink: { costingProject: { id: string } } | null } | null>,
+    );
+    if (!quotation) throw new NotFoundException("CUSTOM_QUOTATION_NOT_FOUND");
+    const costingProjectId = quotation.costingProjectLink?.costingProject.id;
+    if (!costingProjectId) return noCalculation(quotation.currency);
+
+    const calculation = await this.pricing.getLatestCalculation(tenantId, costingProjectId);
+    if (!calculation) return noCalculation(quotation.currency);
+    return {
+      hasCalculation: true,
+      currency: calculation.currency,
+      finalSellingPrice: calculation.finalSellingPrice,
+      status: calculation.status,
+      stale: calculation.stale,
+    };
+  }
+
   private withTenantTransaction<T>(tenantId: string, work: (tx: CustomQuotationPricingTransaction) => Promise<T>) {
     return runTenantTransaction(this.database, tenantId, work);
   }
+}
+
+function noCalculation(currency: string) {
+  return { hasCalculation: false, currency, finalSellingPrice: null, status: null, stale: false };
 }

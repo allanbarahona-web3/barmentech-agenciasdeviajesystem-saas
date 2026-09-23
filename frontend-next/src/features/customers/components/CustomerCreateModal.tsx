@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createCustomer, type CreateCustomerDto, type CustomerInfo } from '@/lib/customers-api';
 import {
   CLIENT_IDENTIFICATION_OPTIONS,
@@ -17,27 +17,37 @@ import { FormSheet } from '@/components/patterns/form-sheet';
 interface CustomerCreateModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onCustomerCreated: (customer: CustomerInfo) => void;
+  onCustomerCreated?: (customer: CustomerInfo) => void;
   presentation?: 'legacy' | 'foundation';
+  initialValues?: Pick<CreateCustomerDto, 'fullName' | 'email' | 'phone'>;
+  onSubmitCustomer?: (customer: CreateCustomerDto) => Promise<void>;
+  title?: string;
+  description?: string;
+  submitLabel?: string;
 }
 
-export function CustomerCreateModal({ isOpen, onClose, onCustomerCreated, presentation = 'legacy' }: CustomerCreateModalProps) {
-  const [formData, setFormData] = useState<CreateCustomerDto>({
-    fullName: '',
-    idNumber: '',
-    idType: 'CEDULA_FISICA',
-    email: '',
-    phone: '',
-    emergencyContactName: '',
-    emergencyContactPhone: '',
-    nationality: '',
-    occupation: '',
-    maritalStatus: '',
-    address: '',
-  });
+export function CustomerCreateModal({
+  isOpen,
+  onClose,
+  onCustomerCreated,
+  presentation = 'legacy',
+  initialValues,
+  onSubmitCustomer,
+  title = 'Crear cliente',
+  description = 'Registra la información de contacto y perfil del cliente.',
+  submitLabel = 'Crear cliente',
+}: CustomerCreateModalProps) {
+  const [formData, setFormData] = useState<CreateCustomerDto>(() => createCustomerForm(initialValues));
 
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      setFormData(createCustomerForm(initialValues));
+      setError(null);
+    }
+  }, [isOpen, initialValues?.email, initialValues?.fullName, initialValues?.phone]);
 
   function handleChange(field: keyof CreateCustomerDto, value: string) {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -46,20 +56,11 @@ export function CustomerCreateModal({ isOpen, onClose, onCustomerCreated, presen
 
   function handleClose() {
     if (isSaving) return;
-    // Reset form
-    setFormData({
-      fullName: '',
-      idNumber: '',
-      idType: 'CEDULA_FISICA',
-      email: '',
-      phone: '',
-      emergencyContactName: '',
-      emergencyContactPhone: '',
-      nationality: '',
-      occupation: '',
-      maritalStatus: '',
-      address: '',
-    });
+    resetAndClose();
+  }
+
+  function resetAndClose() {
+    setFormData(createCustomerForm());
     setError(null);
     onClose();
   }
@@ -87,12 +88,17 @@ export function CustomerCreateModal({ isOpen, onClose, onCustomerCreated, presen
     setError(null);
 
     try {
-      const createdCustomer = await createCustomer({
+      const customerInput = {
         ...formData,
         idNumber: formData.idNumber.trim(),
-      });
-      onCustomerCreated(createdCustomer);
-      handleClose();
+      };
+      if (onSubmitCustomer) {
+        await onSubmitCustomer(customerInput);
+      } else {
+        const createdCustomer = await createCustomer(customerInput);
+        onCustomerCreated?.(createdCustomer);
+      }
+      resetAndClose();
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Error al crear cliente';
       setError(errorMessage);
@@ -110,13 +116,13 @@ export function CustomerCreateModal({ isOpen, onClose, onCustomerCreated, presen
         onOpenChange={(open) => {
           if (!open) handleClose();
         }}
-        title="Crear cliente"
-        description="Registra la información de contacto y perfil del cliente."
+        title={title}
+        description={description}
         actions={
           <>
             <Button type="button" variant="outline" onClick={handleClose} disabled={isSaving}>Cancelar</Button>
             <Button type="button" onClick={() => void handleSave()} disabled={isSaving}>
-              {isSaving ? 'Guardando…' : 'Crear cliente'}
+              {isSaving ? 'Guardando…' : submitLabel}
             </Button>
           </>
         }
@@ -215,7 +221,7 @@ export function CustomerCreateModal({ isOpen, onClose, onCustomerCreated, presen
           }}
         >
           <h2 style={{ fontSize: '24px', fontWeight: '700', color: '#1f2937' }}>
-            ➕ Crear Cliente
+            ➕ {title}
           </h2>
           <button
             onClick={handleClose}
@@ -595,7 +601,7 @@ export function CustomerCreateModal({ isOpen, onClose, onCustomerCreated, presen
                   onMouseEnter={(e) => !isSaving && (e.currentTarget.style.background = '#059669')}
                   onMouseLeave={(e) => !isSaving && (e.currentTarget.style.background = '#10b981')}
                 >
-                  {isSaving ? 'Guardando...' : '💾 Crear Cliente'}
+                  {isSaving ? 'Guardando...' : `💾 ${submitLabel}`}
                 </button>
               </div>
             </div>
@@ -604,4 +610,20 @@ export function CustomerCreateModal({ isOpen, onClose, onCustomerCreated, presen
       </div>
     </div>
   );
+}
+
+function createCustomerForm(initialValues?: Pick<CreateCustomerDto, 'fullName' | 'email' | 'phone'>): CreateCustomerDto {
+  return {
+    fullName: initialValues?.fullName ?? '',
+    idNumber: '',
+    idType: 'CEDULA_FISICA',
+    email: initialValues?.email ?? '',
+    phone: initialValues?.phone ?? '',
+    emergencyContactName: '',
+    emergencyContactPhone: '',
+    nationality: '',
+    occupation: '',
+    maritalStatus: '',
+    address: '',
+  };
 }

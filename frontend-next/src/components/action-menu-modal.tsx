@@ -25,6 +25,7 @@ export function ActionMenuModal({
   onSelectInternalTrips,
   onSelectCustomers,
   onSelectAdditionalServices,
+  onSelectQuote,
   airfareStatus,
   airfareStatusLoading = false,
   airfareStatusError,
@@ -330,29 +331,30 @@ export function ActionMenuModal({
             </div>
           </button>
 
-          {/* Opción 6: Cotización - DISABLED */}
+          {/* Opción 6: Cotización */}
           <button
-            disabled
+            type="button"
+            onClick={onSelectQuote}
             style={{
               padding: "20px 24px",
-              background: "#f3f4f6",
-              color: "#9ca3af",
-              border: "1px solid #e5e7eb",
+              background: "linear-gradient(135deg, #0f766e 0%, #0d9488 100%)",
+              color: "white",
+              border: "none",
               borderRadius: 12,
               fontSize: "1.05rem",
               fontWeight: 600,
-              cursor: "not-allowed",
+              cursor: "pointer",
               textAlign: "left",
               display: "flex",
               alignItems: "center",
               gap: 16,
-              opacity: 0.6,
+              boxShadow: "0 4px 12px rgba(13, 148, 136, 0.3)",
             }}
           >
             <span style={{ fontSize: "2rem" }}>📋</span>
             <div>
               <div style={{ fontWeight: 700 }}>Solicitud de Cotización</div>
-              <div style={{ fontSize: "0.85rem", marginTop: 4 }}>Próximamente disponible</div>
+              <div style={{ fontSize: "0.85rem", marginTop: 4, opacity: 0.9 }}>Crear y gestionar cotizaciones personalizadas</div>
             </div>
           </button>
 

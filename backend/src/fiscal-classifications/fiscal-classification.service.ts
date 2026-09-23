@@ -11,7 +11,7 @@ import type {
 
 export type FiscalClassificationActor = { userId: string; name: string };
 
-type ClassificationRecord = {
+export type TenantFiscalClassificationRecord = {
   id: string;
   tenantId: string;
   displayName: string;
@@ -23,6 +23,7 @@ type ClassificationRecord = {
   taxRateCode: string;
   taxPercentage: { toFixed: (digits?: number) => string };
   isActive: boolean;
+  isDefaultForCustomQuotations: boolean;
   createdByUserId: string;
   createdByName: string;
   updatedByUserId: string | null;
@@ -31,9 +32,12 @@ type ClassificationRecord = {
   updatedAt: Date;
 };
 
-type ClassificationTransaction = {
-  $executeRaw<T = unknown>(query: TemplateStringsArray, ...values: unknown[]): Promise<T>;
+export type TenantFiscalClassificationReader = {
   tenantFiscalClassification: Record<string, (...args: any[]) => Promise<any>>;
+};
+
+type ClassificationTransaction = TenantFiscalClassificationReader & {
+  $executeRaw<T = unknown>(query: TemplateStringsArray, ...values: unknown[]): Promise<T>;
 };
 
 type ClassificationDatabase = {
@@ -61,7 +65,7 @@ export class FiscalClassificationService {
           orderBy: [{ displayName: "asc" }, { id: "asc" }],
           skip: (page - 1) * pageSize,
           take: pageSize,
-        }) as Promise<ClassificationRecord[]>,
+        }) as Promise<TenantFiscalClassificationRecord[]>,
         tx.tenantFiscalClassification.count({ where }) as Promise<number>,
       ]);
       return { items: rows.map(toResponse), total, page, pageSize, totalPages: Math.ceil(total / pageSize) };
@@ -93,7 +97,7 @@ export class FiscalClassificationService {
             createdByUserId: actor.userId,
             createdByName: actor.name,
           },
-        }) as ClassificationRecord;
+        }) as TenantFiscalClassificationRecord;
         return toResponse(row);
       });
     } catch (error) {
@@ -139,7 +143,7 @@ export class FiscalClassificationService {
           if (!exists) throw new NotFoundException("FISCAL_CLASSIFICATION_NOT_FOUND");
           throw new ConflictException("FISCAL_CLASSIFICATION_UPDATE_CONFLICT");
         }
-        const row = await tx.tenantFiscalClassification.findFirst({ where: { id: classificationId, tenantId } }) as ClassificationRecord | null;
+        const row = await tx.tenantFiscalClassification.findFirst({ where: { id: classificationId, tenantId } }) as TenantFiscalClassificationRecord | null;
         if (!row) throw new NotFoundException("FISCAL_CLASSIFICATION_NOT_FOUND");
         return toResponse(row);
       });
@@ -157,30 +161,107 @@ export class FiscalClassificationService {
     isActive: boolean,
     actor: FiscalClassificationActor,
   ) {
-    const current = isActive ? await this.findRecord(tenantId, classificationId) : null;
-    if (isActive && !current) throw new NotFoundException("FISCAL_CLASSIFICATION_NOT_FOUND");
-    if (current) {
+    const current = await this.findRecord(tenantId, classificationId);
+    if (!current) throw new NotFoundException("FISCAL_CLASSIFICATION_NOT_FOUND");
+    if (isActive) {
       await this.resolveSelection(tenantId, current);
     }
     return this.withTenantTransaction(tenantId, async (tx) => {
       const updated = await tx.tenantFiscalClassification.updateMany({
         where: { id: classificationId, tenantId, ...(current ? { updatedAt: current.updatedAt } : {}) },
-        data: { isActive, updatedByUserId: actor.userId, updatedByName: actor.name },
+        data: {
+          isActive,
+          ...(isActive ? {} : { isDefaultForCustomQuotations: false }),
+          updatedByUserId: actor.userId,
+          updatedByName: actor.name,
+        },
       });
       if (updated.count !== 1) {
         const exists = await tx.tenantFiscalClassification.findFirst({ where: { id: classificationId, tenantId } });
         if (!exists) throw new NotFoundException("FISCAL_CLASSIFICATION_NOT_FOUND");
         throw new ConflictException("FISCAL_CLASSIFICATION_UPDATE_CONFLICT");
       }
-      const row = await tx.tenantFiscalClassification.findFirst({ where: { id: classificationId, tenantId } }) as ClassificationRecord | null;
+      const row = await tx.tenantFiscalClassification.findFirst({ where: { id: classificationId, tenantId } }) as TenantFiscalClassificationRecord | null;
       if (!row) throw new NotFoundException("FISCAL_CLASSIFICATION_NOT_FOUND");
       return toResponse(row);
     });
   }
 
+  async setDefaultForCustomQuotations(
+    tenantId: string,
+    classificationId: string,
+    isDefaultForCustomQuotations: boolean,
+    actor: FiscalClassificationActor,
+  ) {
+    try {
+      return await this.withTenantTransaction(tenantId, async (tx) => {
+        const current = await tx.tenantFiscalClassification.findFirst({
+          where: { id: classificationId, tenantId },
+        }) as TenantFiscalClassificationRecord | null;
+        if (!current) throw new NotFoundException("FISCAL_CLASSIFICATION_NOT_FOUND");
+        if (isDefaultForCustomQuotations && !current.isActive) {
+          throw new BadRequestException("FISCAL_CLASSIFICATION_DEFAULT_REQUIRES_ACTIVE");
+        }
+
+        if (isDefaultForCustomQuotations) {
+          await tx.tenantFiscalClassification.updateMany({
+            where: {
+              tenantId,
+              isActive: true,
+              isDefaultForCustomQuotations: true,
+              id: { not: classificationId },
+            },
+            data: {
+              isDefaultForCustomQuotations: false,
+              updatedByUserId: actor.userId,
+              updatedByName: actor.name,
+            },
+          });
+        }
+
+        const updated = await tx.tenantFiscalClassification.updateMany({
+          where: { id: classificationId, tenantId, updatedAt: current.updatedAt },
+          data: {
+            isDefaultForCustomQuotations,
+            updatedByUserId: actor.userId,
+            updatedByName: actor.name,
+          },
+        });
+        if (updated.count !== 1) {
+          const exists = await tx.tenantFiscalClassification.findFirst({ where: { id: classificationId, tenantId } });
+          if (!exists) throw new NotFoundException("FISCAL_CLASSIFICATION_NOT_FOUND");
+          throw new ConflictException("FISCAL_CLASSIFICATION_UPDATE_CONFLICT");
+        }
+        const row = await tx.tenantFiscalClassification.findFirst({ where: { id: classificationId, tenantId } }) as TenantFiscalClassificationRecord | null;
+        if (!row) throw new NotFoundException("FISCAL_CLASSIFICATION_NOT_FOUND");
+        return toResponse(row);
+      });
+    } catch (error) {
+      if (isUniqueConstraint(error)) throw new ConflictException("FISCAL_CLASSIFICATION_DEFAULT_CONFLICT");
+      throw error;
+    }
+  }
+
+  async resolveDefaultCustomQuotationFiscalClassification(tenantId: string) {
+    return this.withTenantTransaction(tenantId, (tx) =>
+      this.resolveDefaultCustomQuotationFiscalClassificationInTransaction(tx, tenantId),
+    );
+  }
+
+  async resolveDefaultCustomQuotationFiscalClassificationInTransaction(
+    tx: TenantFiscalClassificationReader,
+    tenantId: string,
+  ): Promise<TenantFiscalClassificationRecord> {
+    const classification = await tx.tenantFiscalClassification.findFirst({
+      where: { tenantId, isActive: true, isDefaultForCustomQuotations: true },
+    }) as TenantFiscalClassificationRecord | null;
+    if (!classification) throw new NotFoundException("CUSTOM_QUOTATION_FISCAL_DEFAULT_NOT_CONFIGURED");
+    return classification;
+  }
+
   private findRecord(tenantId: string, classificationId: string) {
     return this.withTenantTransaction(tenantId, (tx) =>
-      tx.tenantFiscalClassification.findFirst({ where: { id: classificationId, tenantId } }) as Promise<ClassificationRecord | null>,
+      tx.tenantFiscalClassification.findFirst({ where: { id: classificationId, tenantId } }) as Promise<TenantFiscalClassificationRecord | null>,
     );
   }
 
@@ -218,7 +299,7 @@ function isUniqueConstraint(error: unknown) {
   return typeof error === "object" && error !== null && "code" in error && (error as { code?: unknown }).code === "P2002";
 }
 
-function toResponse(row: ClassificationRecord) {
+function toResponse(row: TenantFiscalClassificationRecord) {
   return {
     id: row.id,
     displayName: row.displayName,
@@ -230,6 +311,7 @@ function toResponse(row: ClassificationRecord) {
     taxRateCode: row.taxRateCode,
     taxPercentage: row.taxPercentage.toFixed(4),
     isActive: row.isActive,
+    isDefaultForCustomQuotations: row.isDefaultForCustomQuotations,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     createdBy: { userId: row.createdByUserId, name: row.createdByName },

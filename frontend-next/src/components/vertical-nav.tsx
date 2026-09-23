@@ -38,6 +38,7 @@ export function VerticalNav() {
   const isPublicPage =
   pathname.startsWith("/sign-contract") ||
   pathname.startsWith("/commercial-proposals") ||
+  pathname.startsWith("/custom-quotation-approval") ||
   pathname.startsWith("/reset-password");
   const [showCalculator, setShowCalculator] = useState(false);
   const [showSupportModal, setShowSupportModal] = useState(false);
@@ -302,6 +303,16 @@ export function VerticalNav() {
             href: "/admin/customers",
             label: "Clientes",
             icon: "👥",
+          },
+        ]
+      : []),
+
+    ...(isAdmin || role === "AGENT"
+      ? [
+          {
+            href: "/leads",
+            label: "Prospectos",
+            icon: "🎯",
           },
         ]
       : []),

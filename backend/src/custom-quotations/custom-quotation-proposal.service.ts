@@ -107,6 +107,7 @@ export class CustomQuotationProposalService {
           id: true,
           status: true,
           versionNumber: true,
+          title: true,
           currency: true,
           finalSellingPrice: true,
           quotationValidUntil: true,
@@ -114,9 +115,13 @@ export class CustomQuotationProposalService {
           paymentTermValue: true,
           paymentTermUnit: true,
           commercialObservations: true,
+          recipientFullName: true,
+          recipientEmail: true,
+          recipientPhone: true,
+          recipientCompanyName: true,
           createdAt: true,
           lines: { orderBy: [{ displayOrder: "asc" }, { id: "asc" }], select: { displayOrder: true, description: true, quantity: true, commercialNote: true } },
-          customQuotation: { select: { quotationNumber: true, title: true, customer: { select: { fullName: true, idNumber: true, email: true, phone: true } } } },
+          customQuotation: { select: { quotationNumber: true } },
         },
       });
       if (!version) throw new NotFoundException("CUSTOM_QUOTATION_VERSION_NOT_FOUND");

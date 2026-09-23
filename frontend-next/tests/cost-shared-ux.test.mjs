@@ -7,7 +7,8 @@ const airportData = JSON.parse(readSource("../src/shared/airports/data/airports.
 const airportSearch = readSource("../src/shared/airports/airport-search.ts");
 const airportSelector = readSource("../src/components/airport-location-field.tsx");
 const additionalServicesAirport = readSource("../src/components/airport-search-field.tsx");
-const workspace = readSource("../src/features/cost-engine/cost-workspace.tsx");
+const workspace = readSource("../src/features/cost-engine/generic-cost-composition.tsx");
+const travelWorkspace = readSource("../src/features/cost-engine/cost-workspace.tsx");
 const evolution = readSource("../src/features/cost-engine/airfare-evolution-dialog.tsx");
 const viewer = readSource("../src/components/attachment-viewer.tsx");
 
@@ -52,6 +53,6 @@ test("Cost Engine opens evidence inline and resolves signed URLs only for the se
 test("Cost Workspace keeps source links external and removes the inert travel-detail button", () => {
   assert.match(evolution, /href=\{row\.sourceUrl\} target="_blank" rel="noreferrer"/);
   assert.doesNotMatch(workspace, /Ver detalles del viaje/);
-  assert.match(workspace, /← Volver a viajes/);
-  assert.match(workspace, /Historial de costos/);
+  assert.match(travelWorkspace, /← Volver a viajes/);
+  assert.match(travelWorkspace, /Historial de costos/);
 });

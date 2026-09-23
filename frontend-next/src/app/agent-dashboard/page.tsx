@@ -117,7 +117,7 @@ export default function AgentDashboardPage() {
         onSelectCustomers={() => router.push("/admin/customers")}
         onSelectAdditionalServices={() => router.push("/additional-services/orders")}
         onSelectQuote={() => {
-          console.log("Cotización seleccionada (futuro)");
+          router.push('/custom-quotations');
         }}
         onSelectCustom={() => {
           console.log("Viaje personalizado seleccionado (futuro)");

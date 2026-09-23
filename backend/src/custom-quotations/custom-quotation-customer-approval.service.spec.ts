@@ -15,6 +15,7 @@ describe("CustomQuotationCustomerApprovalService", () => {
     expect(c.documents.getSignedUrl).toHaveBeenCalledWith("tenant-a", "document-a", 900);
     expect(result).toEqual(expect.objectContaining({
       quotationNumber: "CQ-2026-000001", versionNumber: 1, currency: "USD", finalSellingPrice: "1450.12345", status: "ISSUED",
+      title: "Propuesta congelada", recipientFullName: "Ana Cliente",
       lines: [
         { displayOrder: 1, description: "Vuelo SJO – MAD", quantity: "1.0000", commercialNote: null },
         { displayOrder: 2, description: "Hospedaje 5 noches", quantity: "1.0000", commercialNote: "Incluye desayuno" },
@@ -43,6 +44,39 @@ describe("CustomQuotationCustomerApprovalService", () => {
     expect(expired.tx.customQuotationVersion.findFirst).not.toHaveBeenCalled();
   });
 
+  it("rejects public reads and approvals without a recipient snapshot instead of reading a live Customer", async () => {
+    const read = context();
+    read.access.resolve.mockResolvedValue(access());
+    read.tx.customQuotationVersion.findFirst.mockResolvedValue(publicVersion({ recipientFullName: null }));
+    await expect(read.service.getPublicProposal("secure-token"))
+      .rejects.toThrow("CUSTOM_QUOTATION_RECIPIENT_SNAPSHOT_REQUIRED");
+    expect(read.tx.customQuotation.findFirst).toBeUndefined();
+
+    const approval = context();
+    approval.access.resolve.mockResolvedValue(access());
+    approval.tx.customQuotationVersion.findFirst.mockResolvedValue(transitionTarget({ recipientFullName: null }));
+    await expect(approval.service.accept("secure-token"))
+      .rejects.toThrow("CUSTOM_QUOTATION_RECIPIENT_SNAPSHOT_REQUIRED");
+    expect(approval.access.consumeInTransaction).not.toHaveBeenCalled();
+    expect(approval.tx.customQuotation.findFirst).toBeUndefined();
+  });
+
+  it("returns a missing immutable title as null without falling back to a mutable quotation title", async () => {
+    const c = context();
+    c.access.resolve.mockResolvedValue(access());
+    c.tx.customQuotationVersion.findFirst.mockResolvedValue(publicVersion({
+      title: null,
+      customQuotation: { quotationNumber: "CQ-2026-000001", title: "Título mutable" },
+    }));
+    c.documents.getSignedUrl.mockResolvedValue("https://signed.example/proposal.pdf");
+
+    await expect(c.service.getPublicProposal("secure-token"))
+      .resolves.toEqual(expect.objectContaining({ title: null }));
+    expect(c.tx.customQuotationVersion.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      select: expect.objectContaining({ customQuotation: { select: { quotationNumber: true } } }),
+    }));
+  });
+
   it("accepts an ISSUED version atomically, consumes the token, and records an external customer without fabricating a user id", async () => {
     const c = context();
     c.access.resolve.mockResolvedValue(access());
@@ -60,6 +94,7 @@ describe("CustomQuotationCustomerApprovalService", () => {
       data: { status: "ACCEPTED", updatedByUserId: null, updatedByName: "Ana Cliente" },
     }));
     expect(result).toMatchObject({ status: "ACCEPTED", acceptedBy: { userId: null, name: "Ana Cliente" } });
+    expect(c.tx.customQuotation.findFirst).toBeUndefined();
     noDownstreamSideEffects(c);
   });
 
@@ -133,16 +168,23 @@ function document(overrides: Record<string, unknown> = {}) {
   return { id: "document-a", tenantId: "tenant-a", ownerType: "CUSTOM_QUOTATION_VERSION", ownerId: "version-a", documentType: "COMMERCIAL_PROPOSAL", variant: "GENERATED", version: 1, fileName: "propuesta-comercial.pdf", mimeType: "application/pdf", size: 2048, ...overrides };
 }
 
-function publicVersion() {
+function publicVersion(overrides: Record<string, unknown> = {}) {
   return {
-    id: "version-a", versionNumber: 1, status: "ISSUED", currency: "USD", finalSellingPrice: "1450.12345", quotationValidUntil: new Date("2099-12-31T12:00:00.000Z"), paymentConditionType: "CREDIT", paymentTermValue: 30, paymentTermUnit: "DAYS", commercialObservations: "Tarifa sujeta a disponibilidad",
+    id: "version-a", versionNumber: 1, status: "ISSUED", title: "Propuesta congelada", currency: "USD", finalSellingPrice: "1450.12345", quotationValidUntil: new Date("2099-12-31T12:00:00.000Z"), paymentConditionType: "CREDIT", paymentTermValue: 30, paymentTermUnit: "DAYS", commercialObservations: "Tarifa sujeta a disponibilidad",
     lines: [{ displayOrder: 1, description: "Vuelo SJO – MAD", quantity: "1.0000", commercialNote: null }, { displayOrder: 2, description: "Hospedaje 5 noches", quantity: "1.0000", commercialNote: "Incluye desayuno" }],
+    recipientFullName: "Ana Cliente", recipientEmail: "ana@example.test", recipientPhone: null, recipientCompanyName: null,
     customQuotation: { quotationNumber: "CQ-2026-000001" },
+    ...overrides,
   };
 }
 
-function transitionTarget() {
-  return { id: "version-a", customQuotationId: "quotation-a", customQuotation: { customer: { fullName: "Ana Cliente" } } };
+function transitionTarget(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "version-a", customQuotationId: "quotation-a",
+    recipientFullName: "Ana Cliente", recipientEmail: "ana@example.test",
+    recipientPhone: null, recipientCompanyName: null,
+    ...overrides,
+  };
 }
 
 function lifecycleVersion(overrides: Record<string, unknown> = {}) {

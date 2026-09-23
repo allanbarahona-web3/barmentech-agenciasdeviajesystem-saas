@@ -4,10 +4,21 @@ import test from "node:test";
 
 const readSource = (relativePath) => readFileSync(new URL(relativePath, import.meta.url), "utf8");
 const api = readSource("../src/lib/cost-engine-api.ts");
-const workspace = readSource("../src/features/cost-engine/cost-workspace.tsx");
+const workspace = readSource("../src/features/cost-engine/generic-cost-composition.tsx");
+const travelWorkspace = readSource("../src/features/cost-engine/cost-workspace.tsx");
 const categoryLabels = readSource("../src/features/cost-engine/cost-category-label.ts");
 const travelPackages = readSource("../src/components/travel-packages-manager.tsx");
 const internalTrips = readSource("../src/app/admin/internal-trips/components/internal-trips-list.tsx");
+
+test("extracts a project-driven generic composition with read-only capability boundaries", () => {
+  assert.match(workspace, /export function GenericCostComposition/);
+  assert.match(workspace, /costingProjectId: string/);
+  assert.match(workspace, /getCostComposition\(costingProjectId\)/);
+  assert.match(workspace, /canEdit \? <>/);
+  assert.match(workspace, /canEdit \? <Button[^>]*>Agregar componente/);
+  assert.match(workspace, /canEdit \? <div className="flex gap-1">/);
+  assert.doesNotMatch(workspace, /PricingWorkspace|AirfareEvolutionDialog|resolveTravelPackageCostingProject|resolveInternalTripCostingProject/);
+});
 
 test("uses source-specific resolver routes and does not send tenant or project authority", () => {
   assert.match(api, /\/cost-engine\/travel-packages\/\$\{encodeURIComponent\(travelPackageId\)\}\/costing-project/);
@@ -333,11 +344,11 @@ test("keeps cost entry before saved components and confirms generic component de
   assert.match(workspace, /Desactivar componente/);
   assert.match(workspace, /Sus costos, comprobantes y auditoría se conservarán/);
   assert.match(workspace, /onArchive=\{\(\) => setArchiveCandidate\(component\)\}/);
-  assert.match(workspace, /useState<"COSTS" \| "PRICING">\("COSTS"\)/);
-  assert.match(workspace, /onClick=\{\(\) => setActiveWorkspace\("COSTS"\)\}>Costos/);
-  assert.match(workspace, /onClick=\{\(\) => setActiveWorkspace\("PRICING"\)\}>Pricing/);
-  assert.match(workspace, /activeWorkspace === "PRICING" \? <PricingWorkspace/);
-  assert.match(workspace, />Historial de costos<\/Button>/);
+  assert.match(travelWorkspace, /useState<"COSTS" \| "PRICING">\("COSTS"\)/);
+  assert.match(travelWorkspace, /onClick=\{\(\) => setActiveWorkspace\("COSTS"\)\}>Costos/);
+  assert.match(travelWorkspace, /onClick=\{\(\) => setActiveWorkspace\("PRICING"\)\}>Pricing/);
+  assert.match(travelWorkspace, /PricingWorkspace/);
+  assert.match(travelWorkspace, />Historial de costos<\/Button>/);
   assert.doesNotMatch(workspace, /additional-services|Additional Services|pricing-engine/i);
 });
 

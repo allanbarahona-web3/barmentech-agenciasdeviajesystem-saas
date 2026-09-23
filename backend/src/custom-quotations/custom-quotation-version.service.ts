@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { CostingProjectCurrentCostReader } from "../cost-engine/costing-project-current-cost-reader";
+import { FiscalClassificationService, type TenantFiscalClassificationReader } from "../fiscal-classifications/fiscal-classification.service";
 import { pricingAmountsEqual } from "../pricing/pricing-v1-calculator";
 import { PricingService } from "../pricing/pricing.service";
 import type { PricingTransaction } from "../pricing/pricing.repository";
@@ -12,8 +13,7 @@ type CustomQuotationIssueTransaction = PricingTransaction & {
   customQuotationLine: Record<string, (...args: any[]) => Promise<any>>;
   customQuotationVersion: Record<string, (...args: any[]) => Promise<any>>;
   customQuotationVersionLine: Record<string, (...args: any[]) => Promise<any>>;
-  tenantFiscalClassification: Record<string, (...args: any[]) => Promise<any>>;
-};
+} & TenantFiscalClassificationReader;
 
 type CustomQuotationIssueDatabase = {
   $transaction<T>(work: (transaction: CustomQuotationIssueTransaction) => Promise<T>): Promise<T>;
@@ -27,6 +27,7 @@ export class CustomQuotationVersionService {
     prisma: PrismaService,
     private readonly currentCosts: CostingProjectCurrentCostReader,
     private readonly pricing: PricingService,
+    private readonly fiscalClassifications: FiscalClassificationService,
   ) {
     this.database = prisma as unknown as CustomQuotationIssueDatabase;
   }
@@ -45,14 +46,18 @@ export class CustomQuotationVersionService {
         select: {
           id: true,
           quotationNumber: true,
+          title: true,
           currency: true,
           commercialObservations: true,
           quotationValidUntil: true,
           paymentConditionType: true,
           paymentTermValue: true,
           paymentTermUnit: true,
-          fiscalClassificationId: true,
           status: true,
+          leadId: true,
+          customerId: true,
+          lead: { select: { fullName: true, email: true, phone: true, companyName: true } },
+          customer: { select: { fullName: true, email: true, phone: true } },
           costingProjectLink: { select: { costingProject: { select: { id: true, baseCurrency: true } } } },
         },
       });
@@ -65,6 +70,7 @@ export class CustomQuotationVersionService {
       }
       validatePaymentTerms(quotation);
       validateValidityDate(quotation.quotationValidUntil);
+      const recipient = recipientSnapshot(quotation);
 
       const lines = await tx.customQuotationLine.findMany({
         where: { tenantId, customQuotationId: quotationId },
@@ -72,13 +78,8 @@ export class CustomQuotationVersionService {
       });
       if (lines.length === 0) throw new BadRequestException("CUSTOM_QUOTATION_LINES_REQUIRED");
 
-      const fiscalClassification = await tx.tenantFiscalClassification.findFirst({
-        where: { id: quotation.fiscalClassificationId, tenantId },
-      });
-      if (!fiscalClassification) throw new NotFoundException("CUSTOM_QUOTATION_FISCAL_CLASSIFICATION_NOT_FOUND");
-      if (!fiscalClassification.isActive) {
-        throw new BadRequestException("CUSTOM_QUOTATION_FISCAL_CLASSIFICATION_INACTIVE");
-      }
+      const fiscalClassification = await this.fiscalClassifications
+        .resolveDefaultCustomQuotationFiscalClassificationInTransaction(tx, tenantId);
 
       const pricingCalculation = await tx.pricingCalculationVersion.findFirst({
         where: { tenantId, costingProjectId: costingProject.id },
@@ -117,7 +118,12 @@ export class CustomQuotationVersionService {
           paymentConditionType: quotation.paymentConditionType,
           paymentTermValue: quotation.paymentTermValue,
           paymentTermUnit: quotation.paymentTermUnit,
+          title: quotation.title,
           commercialObservations: quotation.commercialObservations,
+          recipientFullName: recipient.fullName,
+          recipientEmail: recipient.email,
+          recipientPhone: recipient.phone,
+          recipientCompanyName: recipient.companyName,
           costingProjectId: costingProject.id,
           pricingCalculationVersionId: approvedCalculation.id,
           fiscalClassificationId: fiscalClassification.id,
@@ -154,6 +160,29 @@ export class CustomQuotationVersionService {
     });
   }
 
+  async find(tenantId: string, quotationId: string, versionId: string) {
+    return this.withTenantTransaction(tenantId, async (tx) => {
+      const version = await tx.customQuotationVersion.findFirst({
+        where: { id: versionId, tenantId, customQuotationId: quotationId },
+        select: immutableVersionSelect(),
+      });
+      if (!version) throw new NotFoundException("CUSTOM_QUOTATION_VERSION_NOT_FOUND");
+      return immutableVersionResponse(version);
+    });
+  }
+
+  async findLatest(tenantId: string, quotationId: string) {
+    return this.withTenantTransaction(tenantId, async (tx) => {
+      const version = await tx.customQuotationVersion.findFirst({
+        where: { tenantId, customQuotationId: quotationId },
+        orderBy: [{ versionNumber: "desc" }, { id: "desc" }],
+        select: immutableVersionSelect(),
+      });
+      if (!version) throw new NotFoundException("CUSTOM_QUOTATION_VERSION_NOT_FOUND");
+      return immutableVersionResponse(version);
+    });
+  }
+
   private withTenantTransaction<T>(tenantId: string, work: (tx: CustomQuotationIssueTransaction) => Promise<T>) {
     return runTenantTransaction(this.database, tenantId, work);
   }
@@ -177,6 +206,40 @@ function validateValidityDate(value: Date | null) {
   }
 }
 
+function recipientSnapshot(quotation: any) {
+  const customer = quotation.customer;
+  if (quotation.customerId && customer) {
+    return {
+      fullName: requiredRecipientName(customer.fullName),
+      email: optionalRecipientText(customer.email),
+      phone: optionalRecipientText(customer.phone),
+      companyName: null,
+    };
+  }
+  const lead = quotation.lead;
+  if (quotation.leadId && lead) {
+    return {
+      fullName: requiredRecipientName(lead.fullName),
+      email: optionalRecipientText(lead.email),
+      phone: optionalRecipientText(lead.phone),
+      companyName: optionalRecipientText(lead.companyName),
+    };
+  }
+  throw new ConflictException("CUSTOM_QUOTATION_TARGET_SNAPSHOT_INVALID");
+}
+
+function requiredRecipientName(value: unknown) {
+  const normalized = optionalRecipientText(value);
+  if (!normalized) throw new ConflictException("CUSTOM_QUOTATION_RECIPIENT_SNAPSHOT_INVALID");
+  return normalized;
+}
+
+function optionalRecipientText(value: unknown) {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return normalized || null;
+}
+
 function fiscalDescription(classification: { displayName: string; description: string | null }) {
   return classification.description?.trim() || classification.displayName;
 }
@@ -193,6 +256,7 @@ function issuedVersionResponse(version: any, quotationNumber: string, lines: any
     quotationId: version.customQuotationId,
     versionNumber: version.versionNumber,
     quotationNumber,
+    title: version.title,
     currency: version.currency,
     finalSellingPrice: decimalString(version.finalSellingPrice),
     quotationValidUntil: version.quotationValidUntil,
@@ -205,4 +269,80 @@ function issuedVersionResponse(version: any, quotationNumber: string, lines: any
       commercialNote: line.commercialNote,
     })),
   };
+}
+
+/**
+ * The quotation relation supplies only its immutable business number. All
+ * customer-facing commercial data is read from the issued version snapshots.
+ */
+function immutableVersionSelect() {
+  return {
+    id: true,
+    customQuotationId: true,
+    versionNumber: true,
+    status: true,
+    title: true,
+    salesOrderId: true,
+    salesOrder: { select: { id: true, orderNumber: true } },
+    recipientFullName: true,
+    recipientEmail: true,
+    recipientPhone: true,
+    recipientCompanyName: true,
+    currency: true,
+    finalSellingPrice: true,
+    quotationValidUntil: true,
+    paymentConditionType: true,
+    paymentTermValue: true,
+    paymentTermUnit: true,
+    commercialObservations: true,
+    createdAt: true,
+    acceptedAt: true,
+    rejectedAt: true,
+    customQuotation: { select: { quotationNumber: true } },
+    lines: {
+      orderBy: [{ displayOrder: "asc" }, { id: "asc" }],
+      select: { id: true, displayOrder: true, description: true, quantity: true, commercialNote: true },
+    },
+  };
+}
+
+function immutableVersionResponse(version: any) {
+  return {
+    versionId: version.id,
+    quotationId: version.customQuotationId,
+    quotationNumber: version.customQuotation.quotationNumber,
+    versionNumber: version.versionNumber,
+    status: version.status,
+    title: version.title,
+    salesOrder: salesOrderSummary(version),
+    recipientFullName: version.recipientFullName,
+    recipientEmail: version.recipientEmail,
+    recipientPhone: version.recipientPhone,
+    recipientCompanyName: version.recipientCompanyName,
+    lines: version.lines.map((line: any) => ({
+      id: line.id,
+      displayOrder: line.displayOrder,
+      description: line.description,
+      quantity: decimalString(line.quantity),
+      commercialNote: line.commercialNote,
+    })),
+    currency: version.currency,
+    finalSellingPrice: decimalString(version.finalSellingPrice),
+    quotationValidUntil: version.quotationValidUntil,
+    paymentConditionType: version.paymentConditionType,
+    paymentTermValue: version.paymentTermValue,
+    paymentTermUnit: version.paymentTermUnit,
+    commercialObservations: version.commercialObservations,
+    createdAt: version.createdAt,
+    acceptedAt: version.acceptedAt,
+    rejectedAt: version.rejectedAt,
+  };
+}
+
+function salesOrderSummary(version: any) {
+  if (!version.salesOrderId) return null;
+  if (!version.salesOrder || version.salesOrder.id !== version.salesOrderId) {
+    throw new ConflictException("CUSTOM_QUOTATION_VERSION_SALES_ORDER_CONFLICT");
+  }
+  return { id: version.salesOrder.id, orderNumber: version.salesOrder.orderNumber };
 }

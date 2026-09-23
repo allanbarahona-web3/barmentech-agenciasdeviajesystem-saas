@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { ConflictException, Injectable } from "@nestjs/common";
 import type { CustomQuotationProposalDocument } from "./custom-quotation-proposal.types";
 
 @Injectable()
@@ -8,6 +8,8 @@ export class CustomQuotationProposalMapper {
     company: CustomQuotationProposalDocument["company"],
     timezone: string,
   ): CustomQuotationProposalDocument {
+    const recipient = snapshotRecipient(version);
+    if (!recipient) throw new ConflictException("CUSTOM_QUOTATION_RECIPIENT_SNAPSHOT_REQUIRED");
     return {
       company: { ...company },
       quotationNumber: version.customQuotation.quotationNumber,
@@ -16,12 +18,12 @@ export class CustomQuotationProposalMapper {
       quotationValidUntil: version.quotationValidUntil,
       timezone,
       customer: {
-        fullName: version.customQuotation.customer.fullName,
-        identification: version.customQuotation.customer.idNumber,
-        email: version.customQuotation.customer.email,
-        phone: version.customQuotation.customer.phone,
+        fullName: recipient.fullName,
+        identification: null,
+        email: recipient.email,
+        phone: recipient.phone,
       },
-      title: version.customQuotation.title,
+      title: version.title,
       lines: version.lines.map((line: any) => ({
         displayOrder: line.displayOrder,
         description: line.description,
@@ -36,6 +38,19 @@ export class CustomQuotationProposalMapper {
       finalSellingPrice: decimalString(version.finalSellingPrice),
     };
   }
+}
+
+function snapshotRecipient(version: any) {
+  if (typeof version.recipientFullName !== "string" || !version.recipientFullName.trim()) return null;
+  return {
+    fullName: version.recipientFullName.trim(),
+    email: normalizedOrNull(version.recipientEmail),
+    phone: normalizedOrNull(version.recipientPhone),
+  };
+}
+
+function normalizedOrNull(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
 function decimalString(value: unknown): string {

@@ -67,6 +67,18 @@ describe("CustomQuotationSalesOrderService", () => {
     expect(c.tx.customQuotationVersion.updateMany).not.toHaveBeenCalled();
   });
 
+  it("blocks an accepted Lead-only quotation until a Customer is resolved", async () => {
+    const c = context();
+    c.tx.customQuotationVersion.findFirst.mockResolvedValue(version({
+      customQuotation: { id: "quotation-a", status: "ACCEPTED", leadId: "lead-a", customerId: null, customer: null },
+    }));
+
+    await expect(c.service.materialize("tenant-a", "quotation-a", "version-a", actor))
+      .rejects.toThrow("CUSTOM_QUOTATION_CUSTOMER_REQUIRED_FOR_SALES_ORDER");
+    expect(c.salesOrders.materializeInTransaction).not.toHaveBeenCalled();
+    expect(c.tx.client).toBeUndefined();
+  });
+
   it("rejects non-accepted, malformed, and cross-tenant versions before materialization", async () => {
     const issued = context();
     issued.tx.customQuotationVersion.findFirst.mockResolvedValue(version({ status: "ISSUED" }));

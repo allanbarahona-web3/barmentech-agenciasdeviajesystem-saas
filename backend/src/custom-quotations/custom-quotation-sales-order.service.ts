@@ -77,6 +77,9 @@ export class CustomQuotationSalesOrderService {
       if (version.status !== "ACCEPTED" || version.customQuotation.status !== "ACCEPTED") {
         throw new ConflictException("CUSTOM_QUOTATION_VERSION_NOT_ACCEPTED");
       }
+      if (!version.customQuotation.customerId) {
+        throw new ConflictException("CUSTOM_QUOTATION_CUSTOMER_REQUIRED_FOR_SALES_ORDER");
+      }
       validateVersionSnapshot(version);
 
       if (version.salesOrderId) {

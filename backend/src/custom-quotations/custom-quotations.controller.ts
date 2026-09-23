@@ -19,6 +19,8 @@ import { CustomQuotationProposalService } from "./custom-quotation-proposal.serv
 import { CustomQuotationApprovalService } from "./custom-quotation-approval.service";
 import { CustomQuotationDeliveryService } from "./custom-quotation-delivery.service";
 import { CustomQuotationSalesOrderService } from "./custom-quotation-sales-order.service";
+import { CustomQuotationLeadCustomerConversionService } from "./custom-quotation-lead-customer-conversion.service";
+import { CreateCustomerDto } from "../customers/dto/create-customer.dto";
 
 type CommercialRequest = { user: { id: string; fullName: string; email: string; tenantId: string } };
 
@@ -35,6 +37,7 @@ export class CustomQuotationsController {
     private readonly approvals: CustomQuotationApprovalService,
     private readonly delivery: CustomQuotationDeliveryService,
     private readonly salesOrders: CustomQuotationSalesOrderService,
+    private readonly leadConversion: CustomQuotationLeadCustomerConversionService,
   ) {}
 
   @Post()
@@ -67,9 +70,24 @@ export class CustomQuotationsController {
     return this.pricing.calculate(request.user.tenantId, quotationId, actor(request));
   }
 
+  @Get(":quotationId/pricing")
+  getLatestPricing(@Req() request: CommercialRequest, @Param("quotationId") quotationId: string) {
+    return this.pricing.getLatestCommercialState(request.user.tenantId, quotationId);
+  }
+
   @Post(":quotationId/issue")
   issue(@Req() request: CommercialRequest, @Param("quotationId") quotationId: string) {
     return this.versions.issue(request.user.tenantId, quotationId, actor(request));
+  }
+
+  @Get(":quotationId/versions/latest")
+  getLatestVersion(@Req() request: CommercialRequest, @Param("quotationId") quotationId: string) {
+    return this.versions.findLatest(request.user.tenantId, quotationId);
+  }
+
+  @Get(":quotationId/versions/:versionId")
+  getVersion(@Req() request: CommercialRequest, @Param("quotationId") quotationId: string, @Param("versionId") versionId: string) {
+    return this.versions.find(request.user.tenantId, quotationId, versionId);
   }
 
   @Post(":quotationId/versions/:versionId/proposal")
@@ -101,6 +119,15 @@ export class CustomQuotationsController {
   @Post(":quotationId/versions/:versionId/sales-order")
   materializeSalesOrder(@Req() request: CommercialRequest, @Param("quotationId") quotationId: string, @Param("versionId") versionId: string) {
     return this.salesOrders.materialize(request.user.tenantId, quotationId, versionId, actor(request));
+  }
+
+  @Post(":quotationId/convert-lead-to-customer")
+  convertLeadToCustomer(
+    @Req() request: CommercialRequest,
+    @Param("quotationId") quotationId: string,
+    @Body() body: CreateCustomerDto,
+  ) {
+    return this.leadConversion.convert(request.user.tenantId, quotationId, body, actor(request));
   }
 
   @Post(":quotationId/lines")

@@ -75,13 +75,41 @@ describe("CustomQuotationPricingService", () => {
     expect(c.tx.salesOrder).toBeUndefined();
     expect(c.tx.billingDocument).toBeUndefined();
   });
+
+  it("returns a tenant-safe, exact commercial projection without creating a calculation", async () => {
+    const c = context();
+    c.tx.customQuotation.findFirst.mockResolvedValue(quotation({ status: "ISSUED" }));
+    c.pricing.getLatestCalculation.mockResolvedValue(calculation({ finalSellingPrice: "1450.12345", stale: true }));
+
+    await expect(c.service.getLatestCommercialState("tenant-a", "quotation-a")).resolves.toEqual({
+      hasCalculation: true, currency: "USD", finalSellingPrice: "1450.12345", status: "DRAFT", stale: true,
+    });
+    expect(c.pricing.calculate).not.toHaveBeenCalled();
+    expect(c.policies.resolveDefaultCustomQuotationPricingPolicy).not.toHaveBeenCalled();
+  });
+
+  it("returns a no-calculation state for missing CostingProject or Pricing version and rejects cross-tenant quotations", async () => {
+    const noProject = context();
+    noProject.tx.customQuotation.findFirst.mockResolvedValue(quotation({ costingProjectLink: null }));
+    await expect(noProject.service.getLatestCommercialState("tenant-a", "quotation-a")).resolves.toEqual({ hasCalculation: false, currency: "USD", finalSellingPrice: null, status: null, stale: false });
+    expect(noProject.pricing.getLatestCalculation).not.toHaveBeenCalled();
+
+    const noVersion = context();
+    noVersion.tx.customQuotation.findFirst.mockResolvedValue(quotation());
+    noVersion.pricing.getLatestCalculation.mockResolvedValue(null);
+    await expect(noVersion.service.getLatestCommercialState("tenant-a", "quotation-a")).resolves.toEqual({ hasCalculation: false, currency: "USD", finalSellingPrice: null, status: null, stale: false });
+
+    const crossTenant = context();
+    crossTenant.tx.customQuotation.findFirst.mockResolvedValue(null);
+    await expect(crossTenant.service.getLatestCommercialState("tenant-a", "quotation-b")).rejects.toBeInstanceOf(NotFoundException);
+  });
 });
 
 function context() {
   const tx = { $executeRaw: jest.fn(), customQuotation: { findFirst: jest.fn() } } as any;
   const prisma = { $transaction: jest.fn(async (work: (value: typeof tx) => Promise<unknown>) => work(tx)) };
   const policies = { resolveDefaultCustomQuotationPricingPolicy: jest.fn() };
-  const pricing = { resolveConfigurationFromSnapshot: jest.fn(), calculate: jest.fn() };
+  const pricing = { resolveConfigurationFromSnapshot: jest.fn(), calculate: jest.fn(), getLatestCalculation: jest.fn() };
   return { tx, policies, pricing, service: new CustomQuotationPricingService(prisma as never, policies as never, pricing as never) };
 }
 

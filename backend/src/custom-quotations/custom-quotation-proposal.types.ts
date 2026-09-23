@@ -13,7 +13,7 @@ export type CustomQuotationProposalDocument = {
   quotationValidUntil: Date | null;
   timezone: string;
   customer: { fullName: string; identification: string | null; email: string | null; phone: string | null };
-  title: string;
+  title: string | null;
   lines: Array<{ displayOrder: number; description: string; quantity: string; commercialNote: string | null }>;
   paymentConditionType: string | null;
   paymentTermValue: number | null;

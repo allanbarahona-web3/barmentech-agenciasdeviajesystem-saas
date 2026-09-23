@@ -1,4 +1,4 @@
-import { ConflictException, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, NotFoundException } from "@nestjs/common";
 import { FiscalItemCategory } from "@prisma/client";
 import { FiscalClassificationService } from "./fiscal-classification.service";
 
@@ -73,6 +73,8 @@ describe("FiscalClassificationService", () => {
     const c = context();
     c.tx.tenantFiscalClassification.updateMany.mockResolvedValue({ count: 1 });
     c.tx.tenantFiscalClassification.findFirst
+      .mockResolvedValueOnce(record({ isActive: true, isDefaultForCustomQuotations: true }))
+      .mockResolvedValueOnce(record({ isActive: false, isDefaultForCustomQuotations: false }))
       .mockResolvedValueOnce(record({ isActive: false }))
       .mockResolvedValueOnce(record({ isActive: true }))
       .mockResolvedValueOnce(record({ isActive: true }));
@@ -80,7 +82,7 @@ describe("FiscalClassificationService", () => {
     await expect(c.service.setStatus(tenantId, "classification-a", false, actor)).resolves.toMatchObject({ isActive: false });
     await expect(c.service.setStatus(tenantId, "classification-a", true, actor)).resolves.toMatchObject({ isActive: true });
     expect(c.tx.tenantFiscalClassification.updateMany).toHaveBeenNthCalledWith(1, expect.objectContaining({
-      where: { id: "classification-a", tenantId }, data: expect.objectContaining({ isActive: false }),
+      where: expect.objectContaining({ id: "classification-a", tenantId }), data: expect.objectContaining({ isActive: false, isDefaultForCustomQuotations: false }),
     }));
     expect(c.tx.tenantFiscalClassification.delete).not.toHaveBeenCalled();
   });
@@ -90,6 +92,55 @@ describe("FiscalClassificationService", () => {
     c.tx.tenantFiscalClassification.create.mockRejectedValue({ code: "P2002" });
 
     await expect(c.service.create(tenantId, create(), actor)).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it("atomically switches and unsets the active Custom Quotation default", async () => {
+    const c = context();
+    const current = record({ id: "classification-b", isDefaultForCustomQuotations: false });
+    c.tx.tenantFiscalClassification.findFirst
+      .mockResolvedValueOnce(current)
+      .mockResolvedValueOnce(record({ id: "classification-b", isDefaultForCustomQuotations: true }))
+      .mockResolvedValueOnce(record({ id: "classification-b", isDefaultForCustomQuotations: true }))
+      .mockResolvedValueOnce(record({ id: "classification-b", isDefaultForCustomQuotations: false }));
+    c.tx.tenantFiscalClassification.updateMany.mockResolvedValue({ count: 1 });
+
+    await expect(c.service.setDefaultForCustomQuotations(tenantId, "classification-b", true, actor))
+      .resolves.toMatchObject({ id: "classification-b", isDefaultForCustomQuotations: true });
+    expect(c.tx.tenantFiscalClassification.updateMany).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      where: expect.objectContaining({ tenantId, isActive: true, isDefaultForCustomQuotations: true, id: { not: "classification-b" } }),
+      data: expect.objectContaining({ isDefaultForCustomQuotations: false }),
+    }));
+    expect(c.tx.tenantFiscalClassification.updateMany).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      where: expect.objectContaining({ id: "classification-b", tenantId }),
+      data: expect.objectContaining({ isDefaultForCustomQuotations: true }),
+    }));
+
+    await expect(c.service.setDefaultForCustomQuotations(tenantId, "classification-b", false, actor))
+      .resolves.toMatchObject({ isDefaultForCustomQuotations: false });
+  });
+
+  it("rejects inactive or cross-tenant default selection and resolves only the active tenant default", async () => {
+    const inactive = context();
+    inactive.tx.tenantFiscalClassification.findFirst.mockResolvedValue(record({ isActive: false }));
+    await expect(inactive.service.setDefaultForCustomQuotations(tenantId, "classification-a", true, actor))
+      .rejects.toBeInstanceOf(BadRequestException);
+
+    const crossTenant = context();
+    crossTenant.tx.tenantFiscalClassification.findFirst.mockResolvedValue(null);
+    await expect(crossTenant.service.setDefaultForCustomQuotations("tenant-b", "classification-a", true, actor))
+      .rejects.toBeInstanceOf(NotFoundException);
+
+    const resolver = context();
+    resolver.tx.tenantFiscalClassification.findFirst
+      .mockResolvedValueOnce(record({ id: "classification-b", isDefaultForCustomQuotations: true }))
+      .mockResolvedValueOnce(null);
+    await expect(resolver.service.resolveDefaultCustomQuotationFiscalClassification(tenantId))
+      .resolves.toMatchObject({ id: "classification-b", isDefaultForCustomQuotations: true });
+    expect(resolver.tx.tenantFiscalClassification.findFirst).toHaveBeenCalledWith({
+      where: { tenantId, isActive: true, isDefaultForCustomQuotations: true },
+    });
+    await expect(resolver.service.resolveDefaultCustomQuotationFiscalClassification(tenantId))
+      .rejects.toThrow("CUSTOM_QUOTATION_FISCAL_DEFAULT_NOT_CONFIGURED");
   });
 });
 
@@ -144,6 +195,7 @@ function record(overrides: Record<string, unknown> = {}) {
     taxRateCode: selection.taxRateCode,
     taxPercentage: decimal(selection.taxPercentage),
     isActive: true,
+    isDefaultForCustomQuotations: false,
     createdByUserId: actor.userId,
     createdByName: actor.name,
     updatedByUserId: null,

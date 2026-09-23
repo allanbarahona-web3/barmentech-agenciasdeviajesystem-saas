@@ -52,6 +52,8 @@ export class CustomQuotationCustomerApprovalService {
     return {
       quotationNumber: proposal.version.customQuotation.quotationNumber,
       versionNumber: proposal.version.versionNumber,
+      title: proposal.version.title,
+      recipientFullName: proposal.version.recipientFullName,
       tenant: { name: proposal.tenant.name, logoUrl: proposal.tenant.logoUrl },
       lines: proposal.version.lines.map((line: any) => ({
         displayOrder: line.displayOrder,
@@ -90,9 +92,18 @@ export class CustomQuotationCustomerApprovalService {
     return this.withTenantTransaction(context.document.tenantId, async (tx) => {
       const target = await tx.customQuotationVersion.findFirst({
         where: { id: context.document.ownerId, tenantId: context.document.tenantId },
-        select: { id: true, customQuotationId: true, customQuotation: { select: { customer: { select: { fullName: true } } } }, },
+        select: {
+          id: true,
+          customQuotationId: true,
+          recipientFullName: true,
+          recipientEmail: true,
+          recipientPhone: true,
+          recipientCompanyName: true,
+        },
       });
       if (!target) throw new NotFoundException("CUSTOM_QUOTATION_VERSION_NOT_FOUND");
+      const recipientName = snapshotRecipientName(target);
+      if (!recipientName) throw new ConflictException("CUSTOM_QUOTATION_RECIPIENT_SNAPSHOT_REQUIRED");
 
       const consumed = await this.documentAccess.consumeInTransaction(tx, context.access.id);
       if (!consumed) throw new ConflictException("CUSTOM_QUOTATION_APPROVAL_TOKEN_ALREADY_USED");
@@ -102,7 +113,7 @@ export class CustomQuotationCustomerApprovalService {
         target.customQuotationId,
         target.id,
         targetStatus,
-        { userId: null, name: target.customQuotation.customer.fullName },
+        { userId: null, name: recipientName },
       );
     });
   }
@@ -130,6 +141,7 @@ export class CustomQuotationCustomerApprovalService {
         id: true,
         versionNumber: true,
         status: true,
+        title: true,
         currency: true,
         finalSellingPrice: true,
         quotationValidUntil: true,
@@ -137,17 +149,30 @@ export class CustomQuotationCustomerApprovalService {
         paymentTermValue: true,
         paymentTermUnit: true,
         commercialObservations: true,
+        recipientFullName: true,
+        recipientEmail: true,
+        recipientPhone: true,
+        recipientCompanyName: true,
         lines: { orderBy: [{ displayOrder: "asc" }, { id: "asc" }], select: { displayOrder: true, description: true, quantity: true, commercialNote: true } },
         customQuotation: { select: { quotationNumber: true } },
       },
     });
     if (!version) throw new NotFoundException("CUSTOM_QUOTATION_VERSION_NOT_FOUND");
+    if (!snapshotRecipientName(version)) {
+      throw new ConflictException("CUSTOM_QUOTATION_RECIPIENT_SNAPSHOT_REQUIRED");
+    }
     return version;
   }
 
   private withTenantTransaction<T>(tenantId: string, work: (tx: CustomerApprovalTransaction) => Promise<T>) {
     return runTenantTransaction(this.database, tenantId, work);
   }
+}
+
+function snapshotRecipientName(version: any) {
+  return typeof version.recipientFullName === "string" && version.recipientFullName.trim()
+    ? version.recipientFullName.trim()
+    : null;
 }
 
 function decimalString(value: unknown): string {

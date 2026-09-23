@@ -5,7 +5,7 @@ import { tenantCalendarDate } from "../cost-engine/tenant-business-date.resolver
 export type CustomQuotationDeliveryEmailInput = {
   customerName: string;
   quotationNumber: string;
-  title: string;
+  title: string | null;
   currency: string;
   finalSellingPrice: string;
   quotationValidUntil: Date | null;
@@ -16,7 +16,7 @@ export type CustomQuotationDeliveryEmailInput = {
 @Injectable()
 export class CustomQuotationDeliveryEmailMapper {
   map(input: CustomQuotationDeliveryEmailInput) {
-    const title = input.title.trim();
+    const title = input.title?.trim() ?? "";
     const validity = input.quotationValidUntil
       ? tenantCalendarDate(input.quotationValidUntil, input.timezone).split("-").reverse().join("/")
       : "No indicada";

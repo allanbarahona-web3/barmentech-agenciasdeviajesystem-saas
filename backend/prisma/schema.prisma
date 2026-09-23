@@ -54,6 +54,7 @@ model Tenant {
   billingPayments                         BillingPayment[]
   billingReceipts                         BillingReceipt[]
   clients                                 Client[]
+  leads                                   Lead[]
   clientPortalUsers                       ClientPortalUser[]
   companyBankAccounts                     CompanyBankAccount[]
   contracts                               Contract[]
@@ -467,6 +468,7 @@ model Client {
   customerFundsAllocationCommands      CustomerFundsAllocationCommand[]
   commercialObligations                CommercialObligation[]
   customQuotations                     CustomQuotation[]
+  convertedLeads                       Lead[]                              @relation("LeadConvertedCustomer")
 
   @@unique([tenantId, idType, idNumber])
   @@unique([id, tenantId], map: "Client_id_tenantId_key")
@@ -477,6 +479,40 @@ model Client {
   @@index([assignedToUserId])
   @@index([lastContactDate])
   @@index([nextFollowUpDate])
+}
+
+enum LeadStatus {
+  OPEN
+  CONVERTED
+}
+
+/// Pre-sale commercial identity. A Lead becomes associated with a Customer
+/// only after an explicit conversion workflow.
+model Lead {
+  id                  String            @id @default(cuid())
+  tenantId            String
+  fullName            String
+  email               String
+  phone               String?
+  companyName         String?
+  status              LeadStatus        @default(OPEN)
+  convertedCustomerId String?
+  convertedAt         DateTime?
+  createdByUserId     String
+  createdByName       String
+  updatedByUserId     String?
+  updatedByName       String?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  tenant              Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  convertedCustomer   Client?           @relation("LeadConvertedCustomer", fields: [convertedCustomerId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "leads_converted_customer_tenant_fkey")
+  customQuotations    CustomQuotation[]
+
+  @@unique([id, tenantId], map: "leads_id_tenant_key")
+  @@index([tenantId, status, createdAt(sort: Desc), id(sort: Desc)], map: "leads_tenant_status_created_idx")
+  @@index([tenantId, email], map: "leads_tenant_email_idx")
+  @@index([tenantId, convertedCustomerId], map: "leads_tenant_converted_customer_idx")
+  @@map("leads")
 }
 
 model CustomerDocument {
@@ -1982,27 +2018,28 @@ enum FiscalItemCategory {
 /// Neutral, tenant-owned fiscal business concept. It deliberately has no
 /// relation to Additional Services or a commercial source domain.
 model TenantFiscalClassification {
-  id                      String                   @id @default(cuid())
-  tenantId                String
-  displayName             String                   @db.VarChar(160)
-  description             String?                  @db.VarChar(500)
-  fiscalItemCategory      FiscalItemCategory
-  cabysCode               String                   @db.VarChar(13)
-  unitOfMeasureCode       String                   @db.VarChar(20)
-  taxCode                 String                   @db.VarChar(4)
-  taxRateCode             String                   @db.VarChar(4)
-  taxPercentage           Decimal                  @db.Decimal(7, 4)
-  isActive                Boolean                  @default(true)
-  createdByUserId         String
-  createdByName           String
-  updatedByUserId         String?
-  updatedByName           String?
-  createdAt               DateTime                 @default(now())
-  updatedAt               DateTime                 @updatedAt
-  tenant                  Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  salesOrderLines         SalesOrderLine[]
-  customQuotations        CustomQuotation[]
-  customQuotationVersions CustomQuotationVersion[]
+  id                           String                   @id @default(cuid())
+  tenantId                     String
+  displayName                  String                   @db.VarChar(160)
+  description                  String?                  @db.VarChar(500)
+  fiscalItemCategory           FiscalItemCategory
+  cabysCode                    String                   @db.VarChar(13)
+  unitOfMeasureCode            String                   @db.VarChar(20)
+  taxCode                      String                   @db.VarChar(4)
+  taxRateCode                  String                   @db.VarChar(4)
+  taxPercentage                Decimal                  @db.Decimal(7, 4)
+  isActive                     Boolean                  @default(true)
+  isDefaultForCustomQuotations Boolean                  @default(false)
+  createdByUserId              String
+  createdByName                String
+  updatedByUserId              String?
+  updatedByName                String?
+  createdAt                    DateTime                 @default(now())
+  updatedAt                    DateTime                 @updatedAt
+  tenant                       Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  salesOrderLines              SalesOrderLine[]
+  customQuotations             CustomQuotation[]
+  customQuotationVersions      CustomQuotationVersion[]
 
   @@unique([id, tenantId], map: "tenant_fiscal_classifications_id_tenant_key")
   @@unique([tenantId, displayName], map: "tenant_fiscal_classifications_tenant_display_name_key")
@@ -2478,7 +2515,8 @@ model CustomQuotation {
   id                     String                             @id @default(cuid())
   tenantId               String
   quotationNumber        String                             @db.VarChar(50)
-  customerId             String
+  leadId                 String?
+  customerId             String?
   currency               Currency
   title                  String                             @db.VarChar(200)
   commercialObservations String?                            @db.VarChar(2000)
@@ -2486,7 +2524,7 @@ model CustomQuotation {
   paymentConditionType   PaymentConditionType?
   paymentTermValue       Int?
   paymentTermUnit        PaymentTermUnit?
-  fiscalClassificationId String
+  fiscalClassificationId String?
   status                 CustomQuotationStatus              @default(DRAFT)
   createdByUserId        String
   createdByName          String
@@ -2495,14 +2533,16 @@ model CustomQuotation {
   createdAt              DateTime                           @default(now())
   updatedAt              DateTime                           @updatedAt
   tenant                 Tenant                             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  customer               Client                             @relation(fields: [customerId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "custom_quotations_customer_tenant_fkey")
-  fiscalClassification   TenantFiscalClassification         @relation(fields: [fiscalClassificationId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "custom_quotations_fiscal_classification_tenant_fkey")
+  lead                   Lead?                              @relation(fields: [leadId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "custom_quotations_lead_tenant_fkey")
+  customer               Client?                            @relation(fields: [customerId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "custom_quotations_customer_tenant_fkey")
+  fiscalClassification   TenantFiscalClassification?        @relation(fields: [fiscalClassificationId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "custom_quotations_fiscal_classification_tenant_fkey")
   lines                  CustomQuotationLine[]
   costingProjectLink     CustomQuotationCostingProjectLink?
   versions               CustomQuotationVersion[]
 
   @@unique([id, tenantId], map: "custom_quotations_id_tenant_key")
   @@unique([tenantId, quotationNumber], map: "custom_quotations_tenant_number_key")
+  @@index([tenantId, leadId, createdAt(sort: Desc), id(sort: Desc)], map: "custom_quotations_tenant_lead_created_idx")
   @@index([tenantId, customerId, createdAt(sort: Desc), id(sort: Desc)], map: "custom_quotations_tenant_customer_created_idx")
   @@index([tenantId, status, createdAt(sort: Desc), id(sort: Desc)], map: "custom_quotations_tenant_status_created_idx")
   @@map("custom_quotations")
@@ -2560,7 +2600,12 @@ model CustomQuotationVersion {
   paymentConditionType        PaymentConditionType?
   paymentTermValue            Int?
   paymentTermUnit             PaymentTermUnit?
+  title                       String?                      @db.VarChar(200)
   commercialObservations      String?                      @db.VarChar(2000)
+  recipientFullName           String?
+  recipientEmail              String?
+  recipientPhone              String?
+  recipientCompanyName        String?
   costingProjectId            String
   pricingCalculationVersionId String
   fiscalClassificationId      String?

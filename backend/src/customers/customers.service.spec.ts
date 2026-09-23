@@ -2,6 +2,31 @@ import { CustomersService } from "./customers.service";
 import { ConflictException } from "@nestjs/common";
 
 describe("CustomersService", () => {
+  it("resolves Customer identity in a caller-owned transaction using canonical normalization and name conflicts", async () => {
+    const transaction = {
+      client: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: "customer-1", fullName: "Ana Cliente" }),
+      },
+    };
+    const service = new CustomersService({} as any, {} as any, {} as any);
+
+    await expect(service.resolveCustomerIdentityInTransaction(transaction, "tenant-1", {
+      fullName: " Ana Cliente ", idType: "CEDULA_FISICA", idNumber: "1-2345-6789", email: " ANA@EXAMPLE.TEST ", phone: " 8888 ",
+    })).resolves.toMatchObject({ customer: { id: "customer-1" }, reusedExisting: false });
+    expect(transaction.client.findFirst).toHaveBeenCalledWith({
+      where: { tenantId: "tenant-1", idType: "CEDULA_FISICA", idNumber: "123456789" },
+    });
+    expect(transaction.client.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+      fullName: "Ana Cliente", email: "ana@example.test", phone: "8888", tenantId: "tenant-1",
+    }) });
+
+    transaction.client.findFirst.mockResolvedValueOnce({ id: "customer-1", fullName: "Different Name" });
+    await expect(service.resolveCustomerIdentityInTransaction(transaction, "tenant-1", {
+      fullName: "Ana Cliente", idType: "CEDULA_FISICA", idNumber: "123456789", email: "ana@example.test",
+    })).rejects.toBeInstanceOf(ConflictException);
+  });
+
   it("preserves existing profile fields when an upsert omits them", async () => {
     const existingClient = {
       id: "customer-1",

@@ -30,11 +30,12 @@ describe("CustomQuotationDeliveryService", () => {
     }));
     const sent = c.email.sendEmail.mock.calls[0][0];
     expect(sent.templateData.message).toContain("USD 1.450,12");
-    expect(sent.templateData.message).toContain("Viaje corporativo");
+    expect(sent.templateData.message).toContain("Propuesta congelada");
     for (const forbidden of ["authoritativeCostAmount", "supplier", "riskMarginPercent", "cabysCode", "commission"]) {
       expect(JSON.stringify(sent)).not.toContain(forbidden);
     }
     expect(result).toEqual({ documentId: "document-a", sentTo: "ana@example.com", emailId: "email-a" });
+    expect(c.tx.customQuotationVersion.findFirst).toHaveBeenCalledTimes(1);
     noLifecycleOrDownstreamSideEffects(c);
   });
 
@@ -50,9 +51,16 @@ describe("CustomQuotationDeliveryService", () => {
     expect(terminal.documents.findLatest).not.toHaveBeenCalled();
 
     const missingEmail = context();
-    missingEmail.tx.customQuotationVersion.findFirst.mockResolvedValue(version({ customQuotation: { quotationNumber: "CQ-2026-000001", title: "Viaje corporativo", status: "ISSUED", customer: { fullName: "Ana Cliente", email: null } } }));
+    missingEmail.tx.customQuotationVersion.findFirst.mockResolvedValue(version({ recipientEmail: null }));
     await expect(missingEmail.service.send("tenant-a", "quotation-a", "version-a", actor)).rejects.toBeInstanceOf(BadRequestException);
     expect(missingEmail.documents.findLatest).not.toHaveBeenCalled();
+
+    const missingRecipient = context();
+    missingRecipient.tx.customQuotationVersion.findFirst.mockResolvedValue(version({ recipientFullName: null }));
+    await expect(missingRecipient.service.send("tenant-a", "quotation-a", "version-a", actor))
+      .rejects.toThrow("CUSTOM_QUOTATION_RECIPIENT_SNAPSHOT_REQUIRED");
+    expect(missingRecipient.documents.findLatest).not.toHaveBeenCalled();
+    expect(missingRecipient.tx.customQuotationVersion.findFirst).toHaveBeenCalledTimes(1);
 
     const crossTenant = context();
     crossTenant.tx.customQuotationVersion.findFirst.mockResolvedValue(null);
@@ -89,6 +97,23 @@ describe("CustomQuotationDeliveryService", () => {
     expect(c.email.sendEmail.mock.calls.every(([input]) => /^custom-quotation-proposal:tenant-a:document-a:delivery:/.test(input.idempotencyKey))).toBe(true);
     expect(c.access.issue).toHaveBeenCalledTimes(2);
   });
+
+  it("does not fall back to the mutable quotation title when the title snapshot is absent", async () => {
+    const c = context();
+    c.tx.customQuotationVersion.findFirst.mockResolvedValue(version({ title: null }));
+    c.documents.findLatest.mockResolvedValue(document());
+    c.documents.download.mockResolvedValue(Buffer.from("proposal-pdf"));
+    c.access.issue.mockResolvedValue("approval-token");
+    c.email.sendEmail.mockResolvedValue({ success: true, emailId: "email-a" });
+
+    await c.service.send("tenant-a", "quotation-a", "version-a", actor);
+
+    const sent = c.email.sendEmail.mock.calls[0][0];
+    expect(sent.templateData.message).not.toContain("Título mutable");
+    expect(c.tx.customQuotationVersion.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      select: expect.objectContaining({ customQuotation: { select: { quotationNumber: true, status: true } } }),
+    }));
+  });
 });
 
 function context() {
@@ -109,7 +134,9 @@ function context() {
 function version(overrides: Record<string, unknown> = {}) {
   return {
     id: "version-a", status: "ISSUED", currency: "USD", finalSellingPrice: "1450.12345", quotationValidUntil: new Date("2099-12-31T12:00:00.000Z"),
-    customQuotation: { quotationNumber: "CQ-2026-000001", title: "Viaje corporativo", status: "ISSUED", customer: { fullName: "Ana Cliente", email: " Ana@Example.com " } },
+    recipientFullName: "Ana Cliente", recipientEmail: " Ana@Example.com ", recipientPhone: "+506 8888-8888", recipientCompanyName: null,
+    title: "Propuesta congelada",
+    customQuotation: { quotationNumber: "CQ-2026-000001", title: "Título mutable", status: "ISSUED" },
     ...overrides,
   };
 }

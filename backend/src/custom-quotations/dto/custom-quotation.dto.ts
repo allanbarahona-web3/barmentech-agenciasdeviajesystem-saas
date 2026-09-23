@@ -19,8 +19,11 @@ const trim = ({ value }: { value: unknown }) => typeof value === "string" ? valu
 const supplied = (_object: unknown, value: unknown) => value !== undefined;
 
 export class CreateCustomQuotationDto {
-  @Transform(trim) @IsString() @Matches(/\S/)
-  customerId!: string;
+  @IsOptional() @Transform(trim) @IsString() @Matches(/\S/)
+  leadId?: string;
+
+  @IsOptional() @Transform(trim) @IsString() @Matches(/\S/)
+  customerId?: string;
 
   @IsEnum(Currency)
   currency!: Currency;
@@ -45,11 +48,12 @@ export class CreateCustomQuotationDto {
   @IsEnum(PaymentTermUnit)
   paymentTermUnit?: PaymentTermUnit | null;
 
-  @Transform(trim) @IsString() @Matches(/\S/)
-  fiscalClassificationId!: string;
 }
 
 export class UpdateCustomQuotationDto {
+  @ValidateIf(supplied) @Transform(trim) @IsString() @Matches(/\S/)
+  leadId?: string;
+
   @ValidateIf(supplied) @Transform(trim) @IsString() @Matches(/\S/)
   customerId?: string;
 
@@ -76,8 +80,6 @@ export class UpdateCustomQuotationDto {
   @IsEnum(PaymentTermUnit)
   paymentTermUnit?: PaymentTermUnit | null;
 
-  @ValidateIf(supplied) @Transform(trim) @IsString() @Matches(/\S/)
-  fiscalClassificationId?: string;
 }
 
 export class ListCustomQuotationsDto {

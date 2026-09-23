@@ -69,6 +69,11 @@ export class UpdateFiscalClassificationStatusDto {
   isActive!: boolean;
 }
 
+export class UpdateFiscalClassificationDefaultDto {
+  @IsBoolean()
+  isDefaultForCustomQuotations!: boolean;
+}
+
 export class ListFiscalClassificationsDto {
   @IsOptional() @IsBooleanString()
   active?: string;

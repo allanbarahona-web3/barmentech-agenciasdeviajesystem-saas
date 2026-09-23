@@ -17,6 +17,7 @@ describe("CustomQuotationProposalService", () => {
     expect(html.indexOf("Traslado privado")).toBeLessThan(html.indexOf("Hospedaje 5 noches"));
     expect(html).toContain("USD 1.450,12");
     expect(html).toContain("Ana Cliente");
+    expect(html).toContain("Propuesta congelada");
     expect(html).toContain("Crédito");
     for (const forbidden of ["CABYS", "1234567890123", "authoritativeCostAmount", "riskMarginPercent", "bankCommission", "supplier"]) {
       expect(html).not.toContain(forbidden);
@@ -36,7 +37,7 @@ describe("CustomQuotationProposalService", () => {
     expect(c.tx.billingDocument).toBeUndefined();
   });
 
-  it("uses the tenant branding and customer relation but keeps immutable version content authoritative", async () => {
+  it("uses tenant branding, recipient, and title snapshots without reading mutable quotation content", async () => {
     const c = context();
     c.tx.customQuotationVersion.findFirst.mockResolvedValue(version());
 
@@ -45,12 +46,26 @@ describe("CustomQuotationProposalService", () => {
     expect(c.tenants.getTenantConfig).toHaveBeenCalledWith("tenant-a");
     expect(proposal.company).toMatchObject({ name: "Viajes Ejemplo", logoSrc: "https://example.test/logo.png", primaryColor: "#123456" });
     expect(proposal.finalSellingPrice).toBe("1450.12345");
+    expect(proposal.title).toBe("Propuesta congelada");
     expect(proposal.lines).toEqual([
       { displayOrder: 1, description: "Traslado privado", quantity: "1.2500", commercialNote: "Hotel al aeropuerto" },
       { displayOrder: 2, description: "Hospedaje 5 noches", quantity: "1.0000", commercialNote: null },
     ]);
     expect(proposal).not.toHaveProperty("fiscalClassification");
     expect(proposal).not.toHaveProperty("authoritativeCostAmount");
+    expect(c.tx.customQuotationVersion.findFirst).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders an absent title snapshot without falling back to the mutable quotation title", async () => {
+    const c = context();
+    c.tx.customQuotationVersion.findFirst.mockResolvedValue(version({ title: null }));
+
+    const proposal = await c.service.prepareDocument("tenant-a", "quotation-a", "version-a");
+
+    expect(proposal.title).toBeNull();
+    expect(c.tx.customQuotationVersion.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      select: expect.objectContaining({ customQuotation: { select: { quotationNumber: true } } }),
+    }));
   });
 
   it("provides tenant-safe persisted proposal access without changing approval or commercial state", async () => {
@@ -79,6 +94,13 @@ describe("CustomQuotationProposalService", () => {
     notIssued.tx.customQuotationVersion.findFirst.mockResolvedValue(version({ status: "CANCELLED" }));
     await expect(notIssued.service.persist("tenant-a", "quotation-a", "version-a")).rejects.toBeInstanceOf(ConflictException);
     expect(notIssued.pdf.renderDocumentToBuffer).not.toHaveBeenCalled();
+
+    const missingRecipient = context();
+    missingRecipient.tx.customQuotationVersion.findFirst.mockResolvedValue(version({ recipientFullName: null }));
+    await expect(missingRecipient.service.persist("tenant-a", "quotation-a", "version-a"))
+      .rejects.toThrow("CUSTOM_QUOTATION_RECIPIENT_SNAPSHOT_REQUIRED");
+    expect(missingRecipient.pdf.renderDocumentToBuffer).not.toHaveBeenCalled();
+    expect(missingRecipient.tx.customQuotationVersion.findFirst).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -109,7 +131,9 @@ function version(overrides: Record<string, unknown> = {}) {
       { displayOrder: 1, description: "Traslado privado", quantity: "1.2500", commercialNote: "Hotel al aeropuerto" },
       { displayOrder: 2, description: "Hospedaje 5 noches", quantity: "1.0000", commercialNote: null },
     ],
-    customQuotation: { quotationNumber: "CQ-2026-000001", title: "Viaje corporativo", customer: { fullName: "Ana Cliente", idNumber: "1-1111-1111", email: "ana@example.com", phone: "+506 8888-8888" } },
+    recipientFullName: "Ana Cliente", recipientEmail: "ana@example.com", recipientPhone: "+506 8888-8888", recipientCompanyName: "Orbit Travel",
+    title: "Propuesta congelada",
+    customQuotation: { quotationNumber: "CQ-2026-000001", title: "Título mutable" },
     ...overrides,
   };
 }
