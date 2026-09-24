@@ -2623,6 +2623,8 @@ model CustomQuotationVersion {
   acceptedByUserId            String?
   acceptedByName              String?
   rejectedAt                  DateTime?
+  deliverySentAt              DateTime?
+  deliveryRecipientEmail      String?
   salesOrderId                String?
   tenant                      Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   customQuotation             CustomQuotation              @relation(fields: [customQuotationId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "custom_quotation_versions_quotation_tenant_fkey")

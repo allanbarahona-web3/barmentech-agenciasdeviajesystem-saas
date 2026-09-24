@@ -70,7 +70,8 @@ describe("CustomQuotationProposalService", () => {
 
   it("provides tenant-safe persisted proposal access without changing approval or commercial state", async () => {
     const c = context();
-    c.tx.customQuotationVersion.findFirst.mockResolvedValue(version());
+    const sentAt = new Date("2026-09-23T16:05:00.000Z");
+    c.tx.customQuotationVersion.findFirst.mockResolvedValue(version({ deliverySentAt: sentAt, deliveryRecipientEmail: "ana@example.com" }));
     c.generated.findLatest.mockResolvedValue({ id: "document-a", fileName: "propuesta-comercial.pdf", mimeType: "application/pdf", size: 2048, createdAt: new Date(), updatedAt: new Date() });
     c.generated.getSignedUrl.mockResolvedValue("https://signed.example/proposal.pdf");
 
@@ -80,7 +81,9 @@ describe("CustomQuotationProposalService", () => {
       tenantId: "tenant-a", ownerType: "CUSTOM_QUOTATION_VERSION", ownerId: "version-a",
       documentType: "COMMERCIAL_PROPOSAL", variant: "GENERATED", version: 1,
     });
-    expect(result).toMatchObject({ id: "document-a", url: "https://signed.example/proposal.pdf", expiresInSeconds: 900 });
+    expect(result).toMatchObject({ id: "document-a", url: "https://signed.example/proposal.pdf", expiresInSeconds: 900, delivery: { sentAt, recipientEmail: "ana@example.com" } });
+    expect(JSON.stringify(result.delivery)).not.toContain("emailId");
+    expect(JSON.stringify(result.delivery)).not.toContain("provider");
     expect(c.tx.customQuotationVersion.updateMany).toBeUndefined();
   });
 

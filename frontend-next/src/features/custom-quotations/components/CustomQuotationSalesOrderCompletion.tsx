@@ -1,13 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { CheckCircle2, LoaderCircle, ShoppingCart } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { SectionCard } from '@/components/patterns/section-card';
 import { CustomQuotationLeadCustomerConversion } from '@/features/custom-quotations/components/CustomQuotationLeadCustomerConversion';
 import {
-  getLatestCustomQuotationVersion,
   materializeCustomQuotationSalesOrder,
   type CustomQuotationVersion,
 } from '@/lib/custom-quotations-api';
@@ -21,15 +20,17 @@ type CompletionQuotation = {
 
 type CustomQuotationSalesOrderCompletionProps = {
   quotation: CompletionQuotation;
+  version: CustomQuotationVersion;
+  onVersionRefreshed: () => Promise<CustomQuotationVersion | null>;
   onQuotationRefreshed: () => Promise<void>;
 };
 
 export function CustomQuotationSalesOrderCompletion({
   quotation,
+  version,
+  onVersionRefreshed,
   onQuotationRefreshed,
 }: CustomQuotationSalesOrderCompletionProps) {
-  const [version, setVersion] = useState<CustomQuotationVersion | null>(null);
-  const [loadingVersion, setLoadingVersion] = useState(false);
   const [materializing, setMaterializing] = useState(false);
   const [conversionMessage, setConversionMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -37,33 +38,14 @@ export function CustomQuotationSalesOrderCompletion({
   const requiresCustomer = isAccepted && Boolean(quotation.leadId) && quotation.customerId === null;
   const canMaterialize = isAccepted && quotation.customerId !== null;
 
-  async function refreshVersion() {
-    if (!canMaterialize) return;
-    setLoadingVersion(true);
-    setError(null);
-    try {
-      setVersion(await getLatestCustomQuotationVersion(quotation.id));
-    } catch {
-      setVersion(null);
-      setError('No se pudo confirmar el estado de la orden de venta.');
-    } finally {
-      setLoadingVersion(false);
-    }
-  }
-
-  useEffect(() => {
-    void refreshVersion();
-  }, [quotation.id, canMaterialize]);
-
   async function materialize() {
     if (!version || materializing || version.salesOrder) return;
     setMaterializing(true);
     setError(null);
     try {
       await materializeCustomQuotationSalesOrder(quotation.id, version.versionId);
-      const persistedVersion = await getLatestCustomQuotationVersion(quotation.id);
-      if (!persistedVersion.salesOrder) throw new Error('CUSTOM_QUOTATION_SALES_ORDER_READ_MISSING');
-      setVersion(persistedVersion);
+      const persistedVersion = await onVersionRefreshed();
+      if (!persistedVersion?.salesOrder) throw new Error('CUSTOM_QUOTATION_SALES_ORDER_READ_MISSING');
       await onQuotationRefreshed();
     } catch (requestError) {
       setError(materializationErrorMessage(requestError));
@@ -78,10 +60,9 @@ export function CustomQuotationSalesOrderCompletion({
     {conversionMessage ? <Alert variant="success" role="status"><CheckCircle2 aria-hidden="true" className="size-4" /><AlertTitle>Cliente completado</AlertTitle><AlertDescription>{conversionMessage}</AlertDescription></Alert> : null}
     {requiresCustomer ? <div className="space-y-3"><Alert variant="warning"><AlertDescription>Completa los datos del cliente antes de generar la orden de venta.</AlertDescription></Alert><CustomQuotationLeadCustomerConversion quotation={quotation} onConversionCompleted={() => { setConversionMessage('El prospecto fue convertido correctamente en cliente.'); void onQuotationRefreshed(); }} /></div> : null}
     {canMaterialize ? <div className="space-y-3">
-      {loadingVersion ? <p className="flex items-center gap-2 text-sm text-muted-foreground"><LoaderCircle aria-hidden="true" className="size-4 animate-spin" />Cargando estado de la orden de venta...</p> : null}
       {error ? <Alert variant="destructive"><AlertTitle>No se pudo generar la orden de venta</AlertTitle><AlertDescription>{error}</AlertDescription></Alert> : null}
-      {!loadingVersion && version?.salesOrder ? <Alert variant="success" role="status"><CheckCircle2 aria-hidden="true" className="size-4" /><AlertTitle>Orden de venta creada</AlertTitle><AlertDescription>{version.salesOrder.orderNumber ? `Orden de venta creada: ${version.salesOrder.orderNumber}` : 'La orden de venta ya fue creada.'}</AlertDescription></Alert> : null}
-      {!loadingVersion && version && !version.salesOrder ? <Button type="button" onClick={() => void materialize()} disabled={materializing}>{materializing ? <><LoaderCircle aria-hidden="true" className="animate-spin" />Creando orden de venta...</> : <><ShoppingCart aria-hidden="true" />Crear orden de venta</>}</Button> : null}
+      {version.salesOrder ? <Alert variant="success" role="status"><CheckCircle2 aria-hidden="true" className="size-4" /><AlertTitle>Orden de venta creada</AlertTitle><AlertDescription>{version.salesOrder.orderNumber ? `Orden de venta creada: ${version.salesOrder.orderNumber}` : 'La orden de venta ya fue creada.'}</AlertDescription></Alert> : null}
+      {!version.salesOrder ? <Button type="button" onClick={() => void materialize()} disabled={materializing}>{materializing ? <><LoaderCircle aria-hidden="true" className="animate-spin" />Creando orden de venta...</> : <><ShoppingCart aria-hidden="true" />Crear orden de venta</>}</Button> : null}
     </div> : null}
   </SectionCard>;
 }

@@ -66,6 +66,7 @@ export class CustomQuotationSalesOrderService {
           customQuotation: {
             select: {
               id: true,
+              quotationNumber: true,
               status: true,
               customerId: true,
               customer: { select: { fullName: true, email: true } },
@@ -95,6 +96,7 @@ export class CustomQuotationSalesOrderService {
 
       const fiscalTaxPercentage = asPercentage(version.fiscalTaxPercentage, "CUSTOM_QUOTATION_VERSION_FISCAL_TAX_INVALID");
       const amounts = inclusiveAmounts(version.finalSellingPrice, fiscalTaxPercentage);
+      const consolidatedFiscalDescription = quotationFiscalDescription(version.customQuotation.quotationNumber);
       const result = await this.salesOrders.materializeInTransaction(tx, { tenantId }, {
         source: { tenantId, sourceType: SOURCE_TYPE, sourceId: version.id },
         customerId: version.customQuotation.customerId,
@@ -111,9 +113,9 @@ export class CustomQuotationSalesOrderService {
         actor,
         lines: [{
           serviceCode: SERVICE_CODE,
-          description: version.fiscalDescription,
+          description: consolidatedFiscalDescription,
           fiscalItemCategory: version.fiscalItemCategory,
-          fiscalDescription: version.fiscalDescription,
+          fiscalDescription: consolidatedFiscalDescription,
           cabysCode: version.cabysCode,
           unitOfMeasureCode: version.unitOfMeasureCode,
           taxCode: version.taxCode,
@@ -181,6 +183,13 @@ function validateVersionSnapshot(version: any) {
     || (condition === "CASH" && version.paymentTermValue === null && version.paymentTermUnit === null)
     || (condition === "CREDIT" && Number.isInteger(version.paymentTermValue) && version.paymentTermValue > 0 && (version.paymentTermUnit === "DAYS" || version.paymentTermUnit === "MONTHS"));
   if (!validTerms) throw new ConflictException("CUSTOM_QUOTATION_VERSION_PAYMENT_TERMS_INVALID");
+}
+
+function quotationFiscalDescription(quotationNumber: unknown) {
+  if (typeof quotationNumber !== "string" || !quotationNumber.trim()) {
+    throw new ConflictException("CUSTOM_QUOTATION_VERSION_SNAPSHOT_INVALID");
+  }
+  return `Servicios de viaje según cotización ${quotationNumber}`;
 }
 
 function inclusiveAmounts(finalSellingPrice: unknown, fiscalTaxPercentage: unknown) {

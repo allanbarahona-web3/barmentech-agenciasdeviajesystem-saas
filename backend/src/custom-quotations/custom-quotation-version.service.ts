@@ -194,9 +194,12 @@ function validatePaymentTerms(quotation: {
   paymentTermUnit: string | null;
 }) {
   const { paymentConditionType: condition, paymentTermValue: value, paymentTermUnit: unit } = quotation;
+  if (condition === "CREDIT" && unit === "MONTHS") {
+    throw new BadRequestException("CUSTOM_QUOTATION_CREDIT_TERM_UNIT_INVALID");
+  }
   const valid = (condition === null && value === null && unit === null)
     || (condition === "CASH" && value === null && unit === null)
-    || (condition === "CREDIT" && Number.isInteger(value) && value !== null && value > 0 && !!unit);
+    || (condition === "CREDIT" && Number.isInteger(value) && value !== null && value > 0 && unit === "DAYS");
   if (!valid) throw new BadRequestException("CUSTOM_QUOTATION_PAYMENT_TERMS_INVALID");
 }
 
@@ -298,6 +301,8 @@ function immutableVersionSelect() {
     createdAt: true,
     acceptedAt: true,
     rejectedAt: true,
+    deliverySentAt: true,
+    deliveryRecipientEmail: true,
     customQuotation: { select: { quotationNumber: true } },
     lines: {
       orderBy: [{ displayOrder: "asc" }, { id: "asc" }],
@@ -336,7 +341,13 @@ function immutableVersionResponse(version: any) {
     createdAt: version.createdAt,
     acceptedAt: version.acceptedAt,
     rejectedAt: version.rejectedAt,
+    delivery: deliverySummary(version),
   };
+}
+
+function deliverySummary(version: any) {
+  if (!version.deliverySentAt || !version.deliveryRecipientEmail) return null;
+  return { sentAt: version.deliverySentAt, recipientEmail: version.deliveryRecipientEmail };
 }
 
 function salesOrderSummary(version: any) {

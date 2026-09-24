@@ -156,8 +156,8 @@ export class SalesOrderFiscalSnapshotMaterializationService {
           ) VALUES (
             ${randomUUID()}, ${tenantId}, ${salesOrderId}, ${line.fiscalClassificationId}, ${line.fiscalItemCategory}::"FiscalItemCategory",
             ${line.fiscalDescription}, ${line.cabysCode}, ${line.unitOfMeasureCode}, ${line.taxCode}, ${line.taxRateCode}, ${line.fiscalTaxPercentage},
-            ${line.serviceCode}, ${line.description}, ${line.serviceDetailsVersion}, ${json(line.serviceDetails)}, ${line.commercialNotes},
-            ${line.subtotal}, ${line.vatPercentage}, ${line.vatAmount}, ${line.total}, ${json(line.participants)}, CURRENT_TIMESTAMP
+            ${line.serviceCode}, ${line.description}, ${line.serviceDetailsVersion}, ${json(line.serviceDetails)}::jsonb, ${line.commercialNotes},
+            ${line.subtotal}, ${line.vatPercentage}, ${line.vatAmount}, ${line.total}, ${json(line.participants)}::jsonb, CURRENT_TIMESTAMP
           )`;
     }
     return { salesOrderId, orderNumber, reusedExisting: false };

@@ -394,7 +394,10 @@ function normalizePaymentTerms(input: CreateCustomQuotationDto | UpdateCustomQuo
     }
     return { paymentConditionType: condition, paymentTermValue: null, paymentTermUnit: null };
   }
-  if (condition !== "CREDIT" || typeof value !== "number" || !Number.isInteger(value) || value < 1 || !unit) {
+  if (condition === "CREDIT" && unit === "MONTHS") {
+    throw new BadRequestException("CUSTOM_QUOTATION_CREDIT_TERM_UNIT_INVALID");
+  }
+  if (condition !== "CREDIT" || typeof value !== "number" || !Number.isInteger(value) || value < 1 || unit !== "DAYS") {
     throw new BadRequestException("CUSTOM_QUOTATION_PAYMENT_TERMS_INVALID");
   }
   return { paymentConditionType: condition, paymentTermValue: value, paymentTermUnit: unit };

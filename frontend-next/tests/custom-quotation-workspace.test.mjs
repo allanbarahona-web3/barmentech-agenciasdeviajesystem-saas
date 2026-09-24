@@ -109,8 +109,9 @@ test('la pestaña Propuesta emite sin autoridad financiera del cliente y refresc
   assert.match(api, /getLatestCustomQuotationVersion.*\/versions\/latest.*'GET'/);
   assert.match(api, /getCustomQuotationVersion.*\/versions\/\$\{encodeURIComponent\(versionId\)\}.*'GET'/);
   assert.match(proposalTab, /await issueCustomQuotation\(quotation\.id\)/);
+  assert.match(proposalTab, /const issued = await refreshVersion\(\{ loadDocument: true \}\)/);
   assert.match(proposalTab, /await onIssued\(\)/);
-  assert.match(proposalTab, /await getLatestCustomQuotationVersion\(quotation\.id\)/);
+  assert.match(proposalTab, /request = getLatestCustomQuotationVersion\(quotation\.id\)/);
   assert.match(proposalTab, /disabled=\{issuing \|\| issueBlocked\}/);
   assert.match(proposalTab, /Emitiendo…/);
   assert.doesNotMatch(api, /issueCustomQuotation[\s\S]{0,180}(finalSellingPrice|fiscalClassificationId|recipientFullName|tenantId)/);

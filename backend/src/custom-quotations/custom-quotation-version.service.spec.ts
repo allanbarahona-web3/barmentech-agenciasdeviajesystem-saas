@@ -94,6 +94,18 @@ describe("CustomQuotationVersionService", () => {
     await expect(crossTenant.service.issue("tenant-a", "quotation-b", actor)).rejects.toBeInstanceOf(NotFoundException);
   });
 
+  it("rejects a legacy DRAFT with CREDIT/MONTHS before creating an immutable version", async () => {
+    const c = context();
+    prepareIssuableQuotation(c, { quotation: quotation({ paymentTermValue: 12, paymentTermUnit: "MONTHS" }) });
+
+    await expect(c.service.issue("tenant-a", "quotation-a", actor))
+      .rejects.toThrow("CUSTOM_QUOTATION_CREDIT_TERM_UNIT_INVALID");
+
+    expect(c.commercialLines.listInTransaction).not.toHaveBeenCalled();
+    expect(c.pricing.approveCalculationInTransaction).not.toHaveBeenCalled();
+    expect(c.tx.customQuotationVersion.create).not.toHaveBeenCalled();
+  });
+
   it("reuses an already approved, fresh pricing version without approving it again", async () => {
     const c = context();
     prepareIssuableQuotation(c, { pricing: pricingCalculation({ status: "APPROVED" }) });
@@ -171,6 +183,7 @@ describe("CustomQuotationVersionService", () => {
       createdAt: new Date("2026-09-21T00:00:00.000Z"),
       acceptedAt: null,
       rejectedAt: null,
+      delivery: null,
     });
 
     expect(c.tx.customQuotationVersion.findFirst).toHaveBeenCalledWith(expect.objectContaining({
@@ -178,6 +191,8 @@ describe("CustomQuotationVersionService", () => {
       select: expect.objectContaining({
         salesOrderId: true,
         salesOrder: { select: { id: true, orderNumber: true } },
+        deliverySentAt: true,
+        deliveryRecipientEmail: true,
         lines: expect.objectContaining({ orderBy: [{ displayOrder: "asc" }, { id: "asc" }] }),
       }),
     }));
@@ -241,6 +256,21 @@ describe("CustomQuotationVersionService", () => {
     expect(result.salesOrder).not.toHaveProperty("fiscalSnapshot");
     expect(result.salesOrder).not.toHaveProperty("billingStatus");
     expect(result.salesOrder).not.toHaveProperty("accountReceivable");
+  });
+
+  it("returns the durable commercial-safe delivery summary from the immutable version", async () => {
+    const c = context();
+    const sentAt = new Date("2026-09-23T16:05:00.000Z");
+    c.tx.customQuotationVersion.findFirst.mockResolvedValue(versionSnapshot({
+      deliverySentAt: sentAt,
+      deliveryRecipientEmail: "ana@example.test",
+    }));
+
+    const result = await c.service.find("tenant-a", "quotation-a", "version-a");
+
+    expect(result.delivery).toEqual({ sentAt, recipientEmail: "ana@example.test" });
+    expect(JSON.stringify(result.delivery)).not.toContain("emailId");
+    expect(JSON.stringify(result.delivery)).not.toContain("provider");
   });
 
   it("fails deterministically if an immutable version has an unresolved Sales Order link", async () => {
@@ -364,6 +394,8 @@ function versionSnapshot(overrides: Record<string, unknown> = {}) {
     createdAt: new Date("2026-09-21T00:00:00.000Z"),
     acceptedAt: null,
     rejectedAt: null,
+    deliverySentAt: null,
+    deliveryRecipientEmail: null,
     customQuotation: { quotationNumber: "CQ-2026-000001" },
     lines: [
       { id: "version-line-a", displayOrder: 1, description: "Traslado congelado", quantity: "1.2500", commercialNote: "Hotel al aeropuerto" },

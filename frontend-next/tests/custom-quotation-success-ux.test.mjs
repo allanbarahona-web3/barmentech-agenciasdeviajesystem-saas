@@ -18,12 +18,15 @@ test('la aprobación pública aplica éxito a aceptar y destructive a rechazar',
   assert.match(publicApproval, /proposal\.status === 'REJECTED' \? 'destructive'/);
 });
 
-test('la emisión y la entrega muestran alertas de éxito accesibles sin afirmar envío persistido', () => {
+test('la emisión conserva su alerta inmediata y la entrega muestra estado persistido separado', () => {
   assert.match(proposalTab, /issueMessage && quotation\.status === 'ISSUED' \? <Alert variant="success" role="status"/);
   assert.match(proposalTab, /<AlertTitle>Cotización emitida<\/AlertTitle>/);
   assert.match(proposalTab, /quedó registrada como una versión inmutable/);
   assert.match(proposalTab, /<Alert variant="success" role="status"><CheckCircle2[\s\S]{0,160}<AlertTitle>Cotización enviada<\/AlertTitle>/);
-  assert.match(proposalTab, /version\.recipientEmail/);
+  assert.match(proposalTab, /hasConfirmedDelivery && version\.delivery \? <Alert className="mt-5" variant="success" role="status">/);
+  assert.match(proposalTab, /<AlertTitle>Enviada por correo<\/AlertTitle>/);
+  assert.match(proposalTab, /version\.delivery\.recipientEmail/);
+  assert.match(proposalTab, /formatTenantDateTime\(version\.delivery\.sentAt\)/);
   assert.match(proposalTab, /setDeliveryMessage\(null\)/);
 });
 

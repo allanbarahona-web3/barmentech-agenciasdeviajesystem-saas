@@ -77,7 +77,7 @@ describe("SalesOrderFiscalBillingService", () => {
     expect(fiscalCatalog.evaluateFiscalProfiles).not.toHaveBeenCalled();
   });
 
-  it("preserves five-decimal commercial, line, and calculated preparation totals", async () => {
+  it("keeps the Custom Quotation frozen description billing-eligible with exact totals", async () => {
     const { service, repository, fiscalCatalog } = setup({
       profiles: [],
       salesOrder: salesOrder({
@@ -88,7 +88,7 @@ describe("SalesOrderFiscalBillingService", () => {
         lines: [
           sourceLine({
             additionalServiceCatalogId: null,
-            fiscalDescription: "Paquete turístico personalizado",
+            fiscalDescription: "Servicios de viaje según cotización CQ-2026-000002",
             cabysCode: "1234567890123",
             unitOfMeasureCode: "Sp",
             taxCode: "01",
@@ -105,6 +105,7 @@ describe("SalesOrderFiscalBillingService", () => {
 
     const result = await service.prepare("tenant-a", "sales-a");
 
+    expect(result.eligible).toBe(true);
     expect(result.totals).toEqual({
       commercialSubtotal: "1450.12345",
       commercialVat: "188.51605",
@@ -114,6 +115,7 @@ describe("SalesOrderFiscalBillingService", () => {
       calculatedTotal: "1638.63950",
     });
     expect(result.lines[0]).toMatchObject({
+      description: "Servicios de viaje según cotización CQ-2026-000002",
       subtotal: "1450.12345",
       vatPercentage: "13.0000",
       vatAmount: "188.51605",

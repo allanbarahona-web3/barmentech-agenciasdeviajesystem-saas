@@ -62,7 +62,7 @@ export class CustomQuotationProposalService {
   }
 
   async getPersistedPreview(tenantId: string, quotationId: string, versionId: string) {
-    await this.requireIssuedVersion(tenantId, quotationId, versionId);
+    const { version } = await this.requireIssuedVersion(tenantId, quotationId, versionId);
     const document = await this.generatedDocuments.findLatest({
       tenantId,
       ownerType: GENERATED_DOCUMENT_OWNER_TYPES.CUSTOM_QUOTATION_VERSION,
@@ -83,6 +83,7 @@ export class CustomQuotationProposalService {
       updatedAt: document.updatedAt,
       url,
       expiresInSeconds,
+      delivery: deliverySummary(version),
     };
   }
 
@@ -120,6 +121,8 @@ export class CustomQuotationProposalService {
           recipientPhone: true,
           recipientCompanyName: true,
           createdAt: true,
+          deliverySentAt: true,
+          deliveryRecipientEmail: true,
           lines: { orderBy: [{ displayOrder: "asc" }, { id: "asc" }], select: { displayOrder: true, description: true, quantity: true, commercialNote: true } },
           customQuotation: { select: { quotationNumber: true } },
         },
@@ -141,4 +144,9 @@ export class CustomQuotationProposalService {
 
 function segment(value: string) {
   return String(value || "unknown").trim().replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "unknown";
+}
+
+function deliverySummary(version: any) {
+  if (!version.deliverySentAt || !version.deliveryRecipientEmail) return null;
+  return { sentAt: version.deliverySentAt, recipientEmail: version.deliveryRecipientEmail };
 }

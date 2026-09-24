@@ -19,16 +19,23 @@ describe("CustomQuotationSalesOrderService", () => {
       currency: "USD", paymentConditionType: "CREDIT", paymentTermValue: 30, paymentTermUnit: "DAYS",
       commercialObservations: "Incluye traslados",
     }));
+    expect(c.tx.customQuotationVersion.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      select: expect.objectContaining({
+        customQuotation: { select: expect.objectContaining({ quotationNumber: true }) },
+      }),
+    }));
     const command = c.salesOrders.materializeInTransaction.mock.calls[0][2];
     expect(command.total.toFixed(5)).toBe("1450.12345");
     expect(command.lines).toHaveLength(1);
     expect(command.lines[0]).toMatchObject({
-      serviceCode: "CUSTOM_QUOTATION", description: "Paquete turístico personalizado",
-      fiscalDescription: "Paquete turístico personalizado", fiscalItemCategory: "SERVICE",
+      serviceCode: "CUSTOM_QUOTATION", description: "Servicios de viaje según cotización CQ-2026-000002",
+      fiscalDescription: "Servicios de viaje según cotización CQ-2026-000002", fiscalItemCategory: "SERVICE",
       cabysCode: "1234567890123", unitOfMeasureCode: "Unid", taxCode: "01", taxRateCode: "08",
       fiscalTaxPercentage: expect.anything(), fiscalClassificationId: "fiscal-a", participants: [],
     });
     expect(command.lines[0].fiscalTaxPercentage.toFixed(4)).toBe("13.0000");
+    expect(command.lines[0].subtotal.toFixed(5)).toBe("1283.29509");
+    expect(command.lines[0].vatAmount.toFixed(5)).toBe("166.82836");
     expect(command.lines[0].total.toFixed(5)).toBe("1450.12345");
     expect(c.tx.customQuotationVersion.updateMany).toHaveBeenCalledWith({
       where: { id: "version-a", tenantId: "tenant-a", customQuotationId: "quotation-a", salesOrderId: null },
@@ -40,18 +47,19 @@ describe("CustomQuotationSalesOrderService", () => {
     expect(c.tx.accountReceivable).toBeUndefined();
   });
 
-  it("uses frozen version data even if mutable quotation configuration changes later", async () => {
+  it("uses the persisted quotation number and freezes the consolidated description", async () => {
     const c = context();
     const frozen = version();
     c.tx.customQuotationVersion.findFirst.mockResolvedValue(frozen);
     c.salesOrders.materializeInTransaction.mockResolvedValue({ salesOrderId: "sales-a", orderNumber: "SO-2026-000001", reusedExisting: false });
 
     await c.service.materialize("tenant-a", "quotation-a", "version-a", actor);
-    frozen.fiscalDescription = "Configuración modificada";
+    frozen.fiscalDescription = "Configuración fiscal modificada";
+    frozen.customQuotation.quotationNumber = "CQ-2026-999999";
     frozen.customQuotation.customer.fullName = "Cliente modificado";
 
     const command = c.salesOrders.materializeInTransaction.mock.calls[0][2];
-    expect(command.lines[0].fiscalDescription).toBe("Paquete turístico personalizado");
+    expect(command.lines[0].fiscalDescription).toBe("Servicios de viaje según cotización CQ-2026-000002");
     expect(command.customerName).toBe("Cliente A");
   });
 
@@ -116,7 +124,7 @@ function version(overrides: Record<string, unknown> = {}) {
     paymentTermUnit: "DAYS", commercialObservations: "Incluye traslados", fiscalClassificationId: "fiscal-a",
     fiscalDescription: "Paquete turístico personalizado", fiscalItemCategory: "SERVICE", cabysCode: "1234567890123",
     unitOfMeasureCode: "Unid", taxCode: "01", taxRateCode: "08", fiscalTaxPercentage: "13.0000", salesOrderId: null,
-    customQuotation: { id: "quotation-a", status: "ACCEPTED", customerId: "customer-a", customer: { fullName: "Cliente A", email: "cliente@example.test" } },
+    customQuotation: { id: "quotation-a", quotationNumber: "CQ-2026-000002", status: "ACCEPTED", customerId: "customer-a", customer: { fullName: "Cliente A", email: "cliente@example.test" } },
     ...overrides,
   };
 }

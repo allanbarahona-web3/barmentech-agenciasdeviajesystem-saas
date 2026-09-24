@@ -51,6 +51,48 @@ describe("CustomQuotationsService", () => {
     }));
   });
 
+  it("accepts CASH and CREDIT/DAYS commercial terms", async () => {
+    const cash = context();
+    cash.numbers.next.mockResolvedValue(10n);
+    cash.tx.client.findFirst.mockResolvedValue({ id: "customer-a" });
+    cash.tx.customQuotation.create.mockResolvedValue(quotation({ paymentConditionType: "CASH" }));
+
+    await cash.service.create(tenantId, { ...create(), paymentConditionType: "CASH" } as never, actor);
+    expect(cash.tx.customQuotation.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ paymentConditionType: "CASH", paymentTermValue: null, paymentTermUnit: null }),
+    }));
+
+    const credit = context();
+    credit.numbers.next.mockResolvedValue(11n);
+    credit.tx.client.findFirst.mockResolvedValue({ id: "customer-a" });
+    credit.tx.customQuotation.create.mockResolvedValue(quotation({ paymentConditionType: "CREDIT", paymentTermValue: 30, paymentTermUnit: "DAYS" }));
+
+    await credit.service.create(tenantId, { ...create(), paymentConditionType: "CREDIT", paymentTermValue: 30, paymentTermUnit: "DAYS" } as never, actor);
+    expect(credit.tx.customQuotation.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ paymentConditionType: "CREDIT", paymentTermValue: 30, paymentTermUnit: "DAYS" }),
+    }));
+  });
+
+  it("rejects CREDIT/MONTHS on create and DRAFT update before any quotation write", async () => {
+    const createAttempt = context();
+    await expect(createAttempt.service.create(
+      tenantId,
+      { ...create(), paymentConditionType: "CREDIT", paymentTermValue: 12, paymentTermUnit: "MONTHS" } as never,
+      actor,
+    )).rejects.toThrow("CUSTOM_QUOTATION_CREDIT_TERM_UNIT_INVALID");
+    expect(createAttempt.tx.customQuotation.create).not.toHaveBeenCalled();
+
+    const updateAttempt = context();
+    updateAttempt.tx.customQuotation.findFirst.mockResolvedValue(quotation());
+    await expect(updateAttempt.service.update(
+      tenantId,
+      "quotation-a",
+      { paymentConditionType: "CREDIT", paymentTermValue: 12, paymentTermUnit: "MONTHS" } as never,
+      actor,
+    )).rejects.toThrow("CUSTOM_QUOTATION_CREDIT_TERM_UNIT_INVALID");
+    expect(updateAttempt.tx.customQuotation.updateMany).not.toHaveBeenCalled();
+  });
+
   it("requires exactly one initial tenant-owned OPEN commercial target", async () => {
     const neither = context();
     await expect(neither.service.create(tenantId, { currency: "USD", title: "Viaje" } as never, actor))

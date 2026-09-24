@@ -40,9 +40,11 @@ export default function CustomQuotationDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<WorkspaceTab>('DETAIL');
+  const [quoteVisited, setQuoteVisited] = useState(false);
   const [costingProject, setCostingProject] = useState<CustomQuotationCostingProject | null>(null);
   const [costingLoading, setCostingLoading] = useState(false);
   const [costingError, setCostingError] = useState<string | null>(null);
+  const [quoteStateRevision, setQuoteStateRevision] = useState(0);
   const scopedCostApi = useMemo(() => id ? createCustomQuotationCostEngineApi(id) : null, [id]);
 
   const loadCommercialLines = useCallback(async () => {
@@ -59,24 +61,35 @@ export default function CustomQuotationDetailPage() {
     }
   }, [id]);
 
-  const load = useCallback(async () => {
+  const refreshQuotation = useCallback(async () => {
     if (!id) return;
     try {
-      setLoading(true);
       setError(null);
       const nextQuotation = await getCustomQuotation(id);
       setQuotation(nextQuotation);
-      await loadCommercialLines();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'No se pudo cargar la cotización.');
     } finally {
       setLoading(false);
     }
-  }, [id, loadCommercialLines]);
+  }, [id]);
 
-  const handleCompositionChanged = useCallback(() => { void loadCommercialLines(); }, [loadCommercialLines]);
+  const load = useCallback(async () => {
+    if (!id) return;
+    // These reads are independent. Commercial-line failures stay local to Detalle.
+    setLoading(true);
+    try {
+      void loadCommercialLines();
+      await refreshQuotation();
+    } finally {
+      setLoading(false);
+    }
+  }, [id, loadCommercialLines, refreshQuotation]);
+
+  const handleCompositionChanged = useCallback(() => { setQuoteStateRevision((revision) => revision + 1); void loadCommercialLines(); }, [loadCommercialLines]);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => { setQuoteVisited(false); setActiveTab('DETAIL'); }, [id]);
 
   async function openCosts() {
     if (!id) return;
@@ -115,7 +128,7 @@ export default function CustomQuotationDetailPage() {
     <nav className="flex flex-wrap gap-2" aria-label="Secciones de cotización">
       <Button type="button" size="sm" variant={activeTab === 'DETAIL' ? 'default' : 'outline'} aria-current={activeTab === 'DETAIL' ? 'page' : undefined} onClick={() => setActiveTab('DETAIL')}>Detalle</Button>
       <Button type="button" size="sm" variant={activeTab === 'COSTS' ? 'default' : 'outline'} aria-current={activeTab === 'COSTS' ? 'page' : undefined} onClick={() => void openCosts()}>Costos</Button>
-      <Button type="button" size="sm" variant={activeTab === 'QUOTE' ? 'default' : 'outline'} aria-current={activeTab === 'QUOTE' ? 'page' : undefined} onClick={() => setActiveTab('QUOTE')}>Cotización</Button>
+      <Button type="button" size="sm" variant={activeTab === 'QUOTE' ? 'default' : 'outline'} aria-current={activeTab === 'QUOTE' ? 'page' : undefined} onClick={() => { setQuoteVisited(true); setActiveTab('QUOTE'); }}>Cotización</Button>
     </nav>
 
     <div hidden={activeTab !== 'DETAIL'} className="space-y-6">
@@ -138,7 +151,7 @@ export default function CustomQuotationDetailPage() {
       </SectionCard>
       {draft && noCommercialLines ? <Alert variant="warning"><AlertDescription>Agrega al menos un servicio antes de emitir la cotización.</AlertDescription></Alert> : null}
 
-      <CustomQuotationEditorDialog isOpen={editorOpen} onClose={() => setEditorOpen(false)} quotation={quotation} onSubmit={async (input) => { await updateCustomQuotation(quotation.id, input); await load(); }} />
+      <CustomQuotationEditorDialog isOpen={editorOpen} onClose={() => setEditorOpen(false)} quotation={quotation} onSubmit={async (input) => { await updateCustomQuotation(quotation.id, input); await Promise.all([refreshQuotation(), loadCommercialLines()]); }} />
     </div>
 
     {activeTab === 'COSTS' ? <section aria-label="Costos de cotización">
@@ -147,7 +160,7 @@ export default function CustomQuotationDetailPage() {
       {costingProject && scopedCostApi ? <GenericCostComposition costingProjectId={costingProject.costingProjectId} baseCurrency={costingProject.baseCurrency} canEdit={quotation.status === 'DRAFT'} contextLabel={`Costos de la cotización ${quotation.quotationNumber}`} api={scopedCostApi} onCompositionChanged={handleCompositionChanged} /> : null}
     </section> : null}
 
-    {activeTab === 'QUOTE' ? <CustomQuotationProposalTab quotation={quotation} commercialLines={commercialLines} onIssued={load} onQuotationRefreshed={load} /> : null}
+    {quoteVisited ? <div hidden={activeTab !== 'QUOTE'}><CustomQuotationProposalTab quotation={quotation} commercialLines={commercialLines} stateRevision={quoteStateRevision} onIssued={refreshQuotation} onQuotationRefreshed={refreshQuotation} /></div> : null}
   </div></main>;
 }
 

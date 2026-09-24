@@ -38,12 +38,13 @@ export type LeadCustomQuotationSummary = {
   };
 };
 export type LeadCustomQuotationSummaryList = { items: LeadCustomQuotationSummary[]; total: number; page: number; pageSize: number; totalPages: number };
-export type CustomQuotationInput = { leadId?: string; customerId?: string; currency: 'USD' | 'CRC'; title: string; commercialObservations?: string | null; quotationValidUntil?: string | null; paymentConditionType?: 'CASH' | 'CREDIT' | null; paymentTermValue?: number | null; paymentTermUnit?: 'DAYS' | 'MONTHS' | null };
+export type CustomQuotationInput = { leadId?: string; customerId?: string; currency: 'USD' | 'CRC'; title: string; commercialObservations?: string | null; quotationValidUntil?: string | null; paymentConditionType?: 'CASH' | 'CREDIT' | null; paymentTermValue?: number | null; paymentTermUnit?: 'DAYS' | null };
 export type CustomQuotationCostingProject = { costingProjectId: string; baseCurrency: 'USD' | 'CRC'; authoritativeTotalCost?: string };
 export type CustomQuotationPricing = { hasCalculation: boolean; currency: 'USD' | 'CRC'; finalSellingPrice: string | null; status: string | null; stale: boolean };
 export type CustomQuotationVersionLine = { id: string; displayOrder: number; description: string; quantity: string; commercialNote: string | null };
-export type CustomQuotationVersion = { versionId: string; quotationId: string; quotationNumber: string; versionNumber: number; status: Exclude<CustomQuotationStatus, 'DRAFT'>; recipientFullName: string | null; recipientEmail: string | null; recipientPhone: string | null; recipientCompanyName: string | null; salesOrder: { id: string; orderNumber: string | null } | null; lines: CustomQuotationVersionLine[]; currency: 'USD' | 'CRC'; finalSellingPrice: string; quotationValidUntil: string | null; paymentConditionType: 'CASH' | 'CREDIT' | null; paymentTermValue: number | null; paymentTermUnit: 'DAYS' | 'MONTHS' | null; commercialObservations: string | null; createdAt: string; acceptedAt: string | null; rejectedAt: string | null };
-export type CustomQuotationProposalDocument = { id: string; fileName: string; mimeType: string; size: number; createdAt: string; updatedAt: string; url: string; expiresInSeconds: number };
+export type CustomQuotationDeliverySummary = { sentAt: string; recipientEmail: string };
+export type CustomQuotationVersion = { versionId: string; quotationId: string; quotationNumber: string; versionNumber: number; status: Exclude<CustomQuotationStatus, 'DRAFT'>; recipientFullName: string | null; recipientEmail: string | null; recipientPhone: string | null; recipientCompanyName: string | null; salesOrder: { id: string; orderNumber: string | null } | null; delivery: CustomQuotationDeliverySummary | null; lines: CustomQuotationVersionLine[]; currency: 'USD' | 'CRC'; finalSellingPrice: string; quotationValidUntil: string | null; paymentConditionType: 'CASH' | 'CREDIT' | null; paymentTermValue: number | null; paymentTermUnit: 'DAYS' | 'MONTHS' | null; commercialObservations: string | null; createdAt: string; acceptedAt: string | null; rejectedAt: string | null };
+export type CustomQuotationProposalDocument = { id: string; fileName: string; mimeType: string; size: number; createdAt: string; updatedAt: string; url: string; expiresInSeconds: number; delivery: CustomQuotationDeliverySummary | null };
 export type CustomQuotationDelivery = { documentId: string; sentTo: string };
 export type CustomQuotationSalesOrderMaterialization = { salesOrderId: string; orderNumber: string | null; reusedExisting: boolean };
 
@@ -54,8 +55,18 @@ const headers = () => ({ Authorization: `Bearer ${getStoredToken()}`, 'Content-T
 
 async function request<T>(path: string, init: RequestInit): Promise<T> {
   const response = await authenticatedFetch(`${base()}${path}`, { ...init, headers: { ...headers(), ...init.headers } });
-  if (!response.ok) throw new Error('No se pudo completar la operación de cotización. Intente nuevamente.');
+  if (!response.ok) {
+    const body = await response.json().catch(() => null) as { message?: unknown } | null;
+    throw new Error(customQuotationErrorMessage(body?.message));
+  }
   return response.json();
+}
+
+function customQuotationErrorMessage(message: unknown) {
+  if (message === 'CUSTOM_QUOTATION_CREDIT_TERM_UNIT_INVALID') {
+    return 'Para cotizaciones a crédito, el plazo debe definirse en días.';
+  }
+  return 'No se pudo completar la operación de cotización. Intente nuevamente.';
 }
 
 async function pricingRequest<T>(path: string, method: 'GET' | 'POST'): Promise<T> {

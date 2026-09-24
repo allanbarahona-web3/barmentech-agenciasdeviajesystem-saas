@@ -122,7 +122,8 @@ export class CustomQuotationDeliveryService {
         triggeredBy: { userId: actor.userId, email: actor.email, fullName: actor.name },
       });
       if (!result.success) throw new InternalServerErrorException(result.error || "CUSTOM_QUOTATION_DELIVERY_FAILED");
-      return { documentId: document.id, sentTo: recipientEmail, emailId: result.emailId ?? null };
+      await this.persistSuccessfulDelivery(tenantId, quotationId, version.id, recipientEmail);
+      return { documentId: document.id, sentTo: recipientEmail };
     } catch (error) {
       await this.access.revoke(approvalToken);
       throw error;
@@ -131,6 +132,16 @@ export class CustomQuotationDeliveryService {
 
   private withTenantTransaction<T>(tenantId: string, work: (tx: DeliveryTransaction) => Promise<T>) {
     return runTenantTransaction(this.database, tenantId, work);
+  }
+
+  private async persistSuccessfulDelivery(tenantId: string, quotationId: string, versionId: string, recipientEmail: string) {
+    const sentAt = new Date();
+    const updated = await this.withTenantTransaction(tenantId, async (tx) => tx.customQuotationVersion.updateMany({
+      where: { id: versionId, tenantId, customQuotationId: quotationId },
+      data: { deliverySentAt: sentAt, deliveryRecipientEmail: recipientEmail },
+    }));
+    if (updated.count !== 1) throw new ConflictException("CUSTOM_QUOTATION_DELIVERY_PERSIST_CONFLICT");
+    return { sentAt, recipientEmail };
   }
 }
 

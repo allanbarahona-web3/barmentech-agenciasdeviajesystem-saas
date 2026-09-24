@@ -34,7 +34,13 @@ describe("CustomQuotationDeliveryService", () => {
     for (const forbidden of ["authoritativeCostAmount", "supplier", "riskMarginPercent", "cabysCode", "commission"]) {
       expect(JSON.stringify(sent)).not.toContain(forbidden);
     }
-    expect(result).toEqual({ documentId: "document-a", sentTo: "ana@example.com", emailId: "email-a" });
+    expect(result).toEqual({ documentId: "document-a", sentTo: "ana@example.com" });
+    expect(result).not.toHaveProperty("emailId");
+    expect(c.tx.customQuotationVersion.updateMany).toHaveBeenCalledWith({
+      where: { id: "version-a", tenantId: "tenant-a", customQuotationId: "quotation-a" },
+      data: { deliverySentAt: expect.any(Date), deliveryRecipientEmail: "ana@example.com" },
+    });
+    expect(c.email.sendEmail.mock.invocationCallOrder[0]).toBeLessThan(c.tx.customQuotationVersion.updateMany.mock.invocationCallOrder[0]);
     expect(c.tx.customQuotationVersion.findFirst).toHaveBeenCalledTimes(1);
     noLifecycleOrDownstreamSideEffects(c);
   });
@@ -66,6 +72,7 @@ describe("CustomQuotationDeliveryService", () => {
     crossTenant.tx.customQuotationVersion.findFirst.mockResolvedValue(null);
     await expect(crossTenant.service.send("tenant-a", "quotation-b", "version-b", actor)).rejects.toBeInstanceOf(NotFoundException);
     expect(crossTenant.documents.findLatest).not.toHaveBeenCalled();
+    expect(crossTenant.tx.customQuotationVersion.updateMany).not.toHaveBeenCalled();
   });
 
   it("revokes the newly issued token if the generic email provider fails", async () => {
@@ -79,6 +86,7 @@ describe("CustomQuotationDeliveryService", () => {
     await expect(c.service.send("tenant-a", "quotation-a", "version-a", actor)).rejects.toThrow("provider unavailable");
 
     expect(c.access.revoke).toHaveBeenCalledWith("approval-token");
+    expect(c.tx.customQuotationVersion.updateMany).not.toHaveBeenCalled();
     noLifecycleOrDownstreamSideEffects(c);
   });
 
@@ -94,6 +102,11 @@ describe("CustomQuotationDeliveryService", () => {
     await c.service.send("tenant-a", "quotation-a", "version-a", actor);
 
     expect(c.email.sendEmail.mock.calls).toHaveLength(2);
+    expect(c.tx.customQuotationVersion.updateMany).toHaveBeenCalledTimes(2);
+    const writes = c.tx.customQuotationVersion.updateMany.mock.calls.map((call: any[]) => call[0].data);
+    expect(writes.map((write: any) => write.deliveryRecipientEmail)).toEqual(["ana@example.com", "ana@example.com"]);
+    expect(writes.every((write: any) => write.deliverySentAt instanceof Date)).toBe(true);
+    expect(writes[1].deliverySentAt.getTime()).toBeGreaterThanOrEqual(writes[0].deliverySentAt.getTime());
     expect(c.email.sendEmail.mock.calls.every(([input]) => /^custom-quotation-proposal:tenant-a:document-a:delivery:/.test(input.idempotencyKey))).toBe(true);
     expect(c.access.issue).toHaveBeenCalledTimes(2);
   });
@@ -119,7 +132,7 @@ describe("CustomQuotationDeliveryService", () => {
 function context() {
   const tx = {
     $executeRaw: jest.fn(), $queryRaw: jest.fn(),
-    customQuotation: {}, customQuotationVersion: { findFirst: jest.fn() },
+    customQuotation: {}, customQuotationVersion: { findFirst: jest.fn(), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
     tenantBillingConfiguration: { findUnique: jest.fn().mockResolvedValue({ fiscalTimezone: "America/Costa_Rica" }) },
   } as any;
   const prisma = { $transaction: jest.fn(async (work: (value: typeof tx) => Promise<unknown>) => work(tx)) };
@@ -146,7 +159,6 @@ function document() {
 }
 
 function noLifecycleOrDownstreamSideEffects(c: ReturnType<typeof context>) {
-  expect(c.tx.customQuotationVersion.updateMany).toBeUndefined();
   expect(c.tx.customQuotation.updateMany).toBeUndefined();
   expect(c.tx.salesOrder).toBeUndefined();
   expect(c.tx.billingDocument).toBeUndefined();

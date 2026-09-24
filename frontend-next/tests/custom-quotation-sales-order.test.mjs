@@ -10,10 +10,10 @@ const conversion = readFileSync(new URL('../src/features/custom-quotations/compo
 const publicApproval = readFileSync(new URL('../src/app/custom-quotation-approval/[token]/page.tsx', import.meta.url), 'utf8');
 
 test('una cotización aceptada con cliente materializa desde la versión inmutable sin autoridad del cliente', () => {
-  assert.match(detail, /CustomQuotationProposalTab quotation=\{quotation\} commercialLines=\{commercialLines\} onIssued=\{load\} onQuotationRefreshed=\{load\}/);
-  assert.match(proposalTab, /CustomQuotationSalesOrderCompletion quotation=\{quotation\} onQuotationRefreshed=\{onQuotationRefreshed\}/);
+  assert.match(detail, /CustomQuotationProposalTab quotation=\{quotation\} commercialLines=\{commercialLines\} stateRevision=\{quoteStateRevision\} onIssued=\{refreshQuotation\} onQuotationRefreshed=\{refreshQuotation\}/);
+  assert.match(proposalTab, /CustomQuotationSalesOrderCompletion quotation=\{quotation\} version=\{version\} onVersionRefreshed=\{refreshVersion\} onQuotationRefreshed=\{onQuotationRefreshed\}/);
   assert.match(completion, /const canMaterialize = isAccepted && quotation\.customerId !== null/);
-  assert.match(completion, /version && !version\.salesOrder/);
+  assert.match(completion, /!version\.salesOrder \? <Button/);
   assert.match(completion, /Crear orden de venta/);
   assert.match(api, /materializeCustomQuotationSalesOrder.*\/versions\/\$\{encodeURIComponent\(versionId\)\}\/sales-order.*'POST'/);
   assert.doesNotMatch(api, /materializeCustomQuotationSalesOrder[\s\S]{0,220}(finalSellingPrice|currency|fiscal|customerId|tenantId|line)/i);
@@ -37,7 +37,7 @@ test('una cotización aceptada de prospecto exige completar cliente y se refresc
   assert.match(completion, /Completa los datos del cliente antes de generar la orden de venta/);
   assert.match(completion, /CustomQuotationLeadCustomerConversion/);
   assert.match(completion, /onConversionCompleted=\{\(\) => \{ setConversionMessage\('El prospecto fue convertido correctamente en cliente\.'\); void onQuotationRefreshed\(\); \}\}/);
-  assert.match(completion, /getLatestCustomQuotationVersion\(quotation\.id\)/);
+  assert.match(completion, /onVersionRefreshed/);
 });
 
 test('la orden existente se toma de la versión persistida y no de estado optimista', () => {
@@ -45,8 +45,8 @@ test('la orden existente se toma de la versión persistida y no de estado optimi
   assert.match(completion, /version\.salesOrder\.orderNumber/);
   assert.match(completion, /Orden de venta creada/);
   assert.match(completion, /await materializeCustomQuotationSalesOrder\(quotation\.id, version\.versionId\)/);
-  assert.match(completion, /const persistedVersion = await getLatestCustomQuotationVersion\(quotation\.id\)/);
-  assert.match(completion, /if \(!persistedVersion\.salesOrder\)/);
+  assert.match(completion, /const persistedVersion = await onVersionRefreshed\(\)/);
+  assert.match(completion, /if \(!persistedVersion\?\.salesOrder\)/);
   assert.match(completion, /disabled=\{materializing\}/);
   assert.match(completion, /Creando orden de venta\.\.\./);
 });

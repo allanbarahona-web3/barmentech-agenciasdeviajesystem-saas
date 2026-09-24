@@ -171,12 +171,12 @@ describe("PrismaBillingDocumentRepository CR_V44_DECIMAL_V1 draft", () => {
     });
   });
 
-  it("uses a complete frozen fiscal snapshot without loading an Additional Services profile", async () => {
+  it("uses the Custom Quotation frozen description without loading an Additional Services profile", async () => {
     const order = salesOrder({
       lines: [
         sourceLine({
           additionalServiceCatalogId: null,
-          fiscalDescription: "Transporte privado congelado",
+          fiscalDescription: "Servicios de viaje según cotización CQ-2026-000002",
           cabysCode: "1234567890123",
           unitOfMeasureCode: "Sp",
           taxCode: "01",
@@ -185,7 +185,7 @@ describe("PrismaBillingDocumentRepository CR_V44_DECIMAL_V1 draft", () => {
         }),
       ],
     });
-    order.sourceType = "CUSTOM_QUOTATION";
+    order.sourceType = "CUSTOM_QUOTATION_VERSION";
     const context = setup({ order });
 
     await context.repository.createCrV44SalesOrderDraft(command());
@@ -193,7 +193,7 @@ describe("PrismaBillingDocumentRepository CR_V44_DECIMAL_V1 draft", () => {
     expect(context.tx.additionalServiceCatalog.findMany).not.toHaveBeenCalled();
     const persisted = firstLine(createdData(context));
     expect(persisted).toMatchObject({
-      description: "Transporte privado congelado",
+      description: "Servicios de viaje según cotización CQ-2026-000002",
       cabysCode: "1234567890123",
       unitOfMeasureCode: "Sp",
     });

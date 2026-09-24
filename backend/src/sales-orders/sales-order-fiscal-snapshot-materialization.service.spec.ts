@@ -39,6 +39,21 @@ describe("SalesOrderFiscalSnapshotMaterializationService", () => {
     ]));
   });
 
+  it("casts null service details and empty participants as jsonb", async () => {
+    const c = context();
+    c.tx.tenantFiscalClassification.findMany.mockResolvedValue([{ id: "classification-a" }]);
+
+    await c.service.materialize(tenantId, input());
+
+    const lineInsert = findSqlCall(c.tx.$executeRaw, 'INSERT INTO "sales_order_lines"');
+    expect(lineInsert).toBeDefined();
+    const values = lineInsert!.slice(1);
+    expect(values[14]).toBe("null");
+    expect(values[20]).toBe("[]");
+    expect(lineInsert![0][15]).toContain("::jsonb");
+    expect(lineInsert![0][21]).toContain("::jsonb");
+  });
+
   it("accepts an optional same-tenant fiscal classification as provenance only", async () => {
     const c = context();
     c.tx.tenantFiscalClassification.findMany.mockResolvedValue([{ id: "classification-a" }]);

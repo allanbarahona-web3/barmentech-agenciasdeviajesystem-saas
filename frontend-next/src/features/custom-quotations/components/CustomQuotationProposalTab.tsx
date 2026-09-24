@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { CheckCircle2, ExternalLink, FileText, LoaderCircle } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -32,11 +32,12 @@ import { useTenantDateTimeFormatter } from '@/shared/regional/tenant-regional-pr
 type CustomQuotationProposalTabProps = {
   quotation: CustomQuotationDetail;
   commercialLines: CustomQuotationCommercialLine[];
+  stateRevision: number;
   onIssued: () => Promise<void>;
   onQuotationRefreshed: () => Promise<void>;
 };
 
-export function CustomQuotationProposalTab({ quotation, commercialLines, onIssued, onQuotationRefreshed }: CustomQuotationProposalTabProps) {
+export function CustomQuotationProposalTab({ quotation, commercialLines, stateRevision, onIssued, onQuotationRefreshed }: CustomQuotationProposalTabProps) {
   const formatTenantDateTime = useTenantDateTimeFormatter();
   const draft = quotation.status === 'DRAFT';
   const [pricing, setPricing] = useState<CustomQuotationPricing | null>(null);
@@ -45,47 +46,98 @@ export function CustomQuotationProposalTab({ quotation, commercialLines, onIssue
   const [version, setVersion] = useState<CustomQuotationVersion | null>(null);
   const [versionLoading, setVersionLoading] = useState(!draft);
   const [proposal, setProposal] = useState<CustomQuotationProposalDocument | null>(null);
+  const [proposalLoading, setProposalLoading] = useState(false);
+  const [proposalError, setProposalError] = useState<string | null>(null);
   const [issuing, setIssuing] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [sending, setSending] = useState(false);
   const [issueMessage, setIssueMessage] = useState<string | null>(null);
   const [deliveryMessage, setDeliveryMessage] = useState<string | null>(null);
+  const [deliveryRefreshError, setDeliveryRefreshError] = useState<string | null>(null);
   const [manualDecision, setManualDecision] = useState<'ACCEPT' | 'REJECT' | null>(null);
   const [manualTransitionPending, setManualTransitionPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const latestLifecycleKeyRef = useRef<string | null>(null);
+  const latestRequestRef = useRef<Promise<CustomQuotationVersion> | null>(null);
+  const proposalCacheRef = useRef(new Map<string, CustomQuotationProposalDocument | null>());
+  const proposalRequestRef = useRef(new Map<string, Promise<CustomQuotationProposalDocument | null>>());
+
+  const lifecycleKey = (quotationId: string, status: string) => `${quotationId}:${status}`;
+
+  const loadProposal = useCallback(async (versionId: string, force = false) => {
+    if (force) proposalCacheRef.current.delete(versionId);
+    if (!force && proposalCacheRef.current.has(versionId)) {
+      const cached = proposalCacheRef.current.get(versionId) ?? null;
+      setProposal(cached);
+      return cached;
+    }
+
+    setProposalLoading(true);
+    setProposalError(null);
+    try {
+      let request = proposalRequestRef.current.get(versionId);
+      if (!request) {
+        request = getCustomQuotationProposal(quotation.id, versionId);
+        proposalRequestRef.current.set(versionId, request);
+      }
+      const document = await request;
+      proposalCacheRef.current.set(versionId, document);
+      setProposal(document);
+      return document;
+    } catch {
+      setProposalError('No se pudo cargar el documento de la propuesta.');
+      return null;
+    } finally {
+      proposalRequestRef.current.delete(versionId);
+      setProposalLoading(false);
+    }
+  }, [quotation.id]);
+
+  const refreshVersion = useCallback(async ({ loadDocument = false }: { loadDocument?: boolean } = {}) => {
+    setVersionLoading(true);
+    setError(null);
+    try {
+      let request = latestRequestRef.current;
+      if (!request) {
+        request = getLatestCustomQuotationVersion(quotation.id);
+        latestRequestRef.current = request;
+      }
+      const value = await request;
+      setVersion(value);
+      latestLifecycleKeyRef.current = lifecycleKey(value.quotationId, value.status);
+      setVersionLoading(false);
+      if (value.status === 'ISSUED' && loadDocument) await loadProposal(value.versionId);
+      if (value.status !== 'ISSUED') setProposal(null);
+      return value;
+    } catch {
+      setError('No se pudo cargar la versión emitida de la cotización.');
+      return null;
+    } finally {
+      latestRequestRef.current = null;
+      setVersionLoading(false);
+    }
+  }, [loadProposal, quotation.id]);
 
   useEffect(() => {
-    let cancelled = false;
     setError(null);
     if (quotation.status !== 'ISSUED') setIssueMessage(null);
     if (draft) {
+      latestLifecycleKeyRef.current = null;
       setVersion(null);
       setProposal(null);
+      setProposalError(null);
       setPricingLoading(true);
       void getCustomQuotationPricing(quotation.id)
-        .then((value) => { if (!cancelled) setPricing(value); })
-        .catch(() => { if (!cancelled) setError('No se pudo cargar el precio.'); })
-        .finally(() => { if (!cancelled) setPricingLoading(false); });
-      return () => { cancelled = true; };
+        .then(setPricing)
+        .catch(() => setError('No se pudo cargar el precio.'))
+        .finally(() => setPricingLoading(false));
+      return;
     }
 
     setPricing(null);
-    setVersionLoading(true);
-    void getLatestCustomQuotationVersion(quotation.id)
-      .then(async (value) => {
-        if (cancelled) return;
-        setVersion(value);
-        if (value.status === 'ISSUED') {
-          const document = await getCustomQuotationProposal(quotation.id, value.versionId);
-          if (!cancelled) setProposal(document);
-        } else if (!cancelled) {
-          setProposal(null);
-        }
-      })
-      .catch(() => { if (!cancelled) setError('No se pudo cargar la versión emitida de la cotización.'); })
-      .finally(() => { if (!cancelled) setVersionLoading(false); });
-    return () => { cancelled = true; };
-  }, [draft, quotation.id, quotation.status]);
+    if (latestLifecycleKeyRef.current === lifecycleKey(quotation.id, quotation.status)) return;
+    void refreshVersion({ loadDocument: true });
+  }, [draft, quotation.id, quotation.status, refreshVersion, stateRevision]);
 
   const missingPricing = !pricingLoading && (!pricing || !pricing.hasCalculation);
   const stalePricing = Boolean(pricing?.hasCalculation && pricing.stale);
@@ -116,10 +168,9 @@ export function CustomQuotationProposalTab({ quotation, commercialLines, onIssue
     setIssueMessage(null);
     try {
       await issueCustomQuotation(quotation.id);
+      const issued = await refreshVersion({ loadDocument: true });
       await onIssued();
-      const issued = await getLatestCustomQuotationVersion(quotation.id);
-      setVersion(issued);
-      setProposal(await getCustomQuotationProposal(quotation.id, issued.versionId));
+      if (!issued) throw new Error('CUSTOM_QUOTATION_VERSION_REQUEST_FAILED');
       setIssueMessage('La cotización fue emitida correctamente y quedó registrada como una versión inmutable.');
     } catch (requestError) {
       setError(issueErrorMessage(requestError));
@@ -134,7 +185,7 @@ export function CustomQuotationProposalTab({ quotation, commercialLines, onIssue
     setError(null);
     try {
       await generateCustomQuotationProposal(quotation.id, version.versionId);
-      setProposal(await getCustomQuotationProposal(quotation.id, version.versionId));
+      await loadProposal(version.versionId, true);
     } catch {
       setError('No se pudo generar el PDF de la propuesta. Intente nuevamente.');
     } finally {
@@ -147,9 +198,15 @@ export function CustomQuotationProposalTab({ quotation, commercialLines, onIssue
     setSending(true);
     setError(null);
     setDeliveryMessage(null);
+    setDeliveryRefreshError(null);
     try {
       await sendCustomQuotationProposal(quotation.id, version.versionId);
       setDeliveryMessage('Cotización enviada correctamente.');
+      const refreshed = await refreshVersion();
+      if (!refreshed) {
+        setError(null);
+        setDeliveryRefreshError('El correo se envió, pero no se pudo actualizar su estado. Actualiza la cotización para confirmarlo.');
+      }
     } catch (requestError) {
       setError(deliveryErrorMessage(requestError));
     } finally {
@@ -167,10 +224,12 @@ export function CustomQuotationProposalTab({ quotation, commercialLines, onIssue
       } else {
         await rejectCustomQuotationVersion(quotation.id, version.versionId);
       }
+      await refreshVersion();
       await onQuotationRefreshed();
       setManualDecision(null);
     } catch (requestError) {
       if (approvalStateChanged(requestError)) {
+        await refreshVersion();
         await onQuotationRefreshed();
         setManualDecision(null);
         return;
@@ -209,6 +268,7 @@ export function CustomQuotationProposalTab({ quotation, commercialLines, onIssue
   if (!version) return <section aria-label="Cotización">{error ? <ProposalError message={error} /> : null}</section>;
 
   const manualApprovalAvailable = quotation.status === 'ISSUED' && version.status === 'ISSUED';
+  const hasConfirmedDelivery = Boolean(version.delivery) && !deliveryRefreshError;
 
   return <section aria-label="Cotización" className="space-y-4">
     {error ? <ProposalError message={error} /> : null}
@@ -229,8 +289,9 @@ export function CustomQuotationProposalTab({ quotation, commercialLines, onIssue
         <ProposalField label="Emitida el" value={formatTenantDateTime(version.createdAt)} />
         <ProposalField label="Observaciones" value={version.commercialObservations || '—'} />
       </dl>
+      {hasConfirmedDelivery && version.delivery ? <Alert className="mt-5" variant="success" role="status"><CheckCircle2 aria-hidden="true" className="size-4" /><AlertTitle>Enviada por correo</AlertTitle><AlertDescription><span className="block">{version.delivery.recipientEmail}</span><span className="block">{formatTenantDateTime(version.delivery.sentAt)}</span></AlertDescription></Alert> : null}
       <div className="mt-5 border-t border-border pt-4"><p className="text-sm font-medium">Servicios cotizados</p><ol className="mt-3 grid gap-3">{version.lines.map((line) => <li key={line.id} className="rounded-lg border border-border p-4"><p className="font-medium">{line.description}</p><dl className="mt-3 grid gap-3 sm:grid-cols-2"><ProposalField label="Cantidad" value={line.quantity} />{line.commercialNote ? <ProposalField label="Detalle" value={line.commercialNote} /> : null}</dl></li>)}</ol></div>
-      {version.status === 'ISSUED' ? <div className="mt-5 space-y-3">{proposal ? <div className="flex flex-wrap gap-2"><Button asChild type="button"><a href={proposal.url} target="_blank" rel="noreferrer"><ExternalLink aria-hidden="true" />Ver propuesta</a></Button><Button type="button" onClick={() => void sendProposal()} disabled={sending}>{sending ? 'Enviando…' : 'Enviar por correo'}</Button></div> : <><Alert variant="warning"><AlertDescription>Genera la propuesta antes de enviarla.</AlertDescription></Alert><Button type="button" onClick={() => void generateProposal()} disabled={generating}>{generating ? 'Generando…' : <><FileText aria-hidden="true" />Generar PDF</>}</Button></>}{deliveryMessage ? <Alert variant="success" role="status"><CheckCircle2 aria-hidden="true" className="size-4" /><AlertTitle>Cotización enviada</AlertTitle><AlertDescription>La cotización fue enviada correctamente{version.recipientEmail ? ` a ${version.recipientEmail}` : ''}.</AlertDescription></Alert> : null}</div> : null}
+      {version.status === 'ISSUED' ? <div className="mt-5 space-y-3">{proposalLoading ? <Skeleton className="h-10 w-48" /> : null}{proposalError ? <Alert variant="destructive"><AlertTitle>No se pudo cargar la propuesta</AlertTitle><AlertDescription>{proposalError}</AlertDescription><Button className="mt-3" type="button" variant="outline" onClick={() => void loadProposal(version.versionId, true)}>Reintentar cargar propuesta</Button></Alert> : null}{!proposalLoading && !proposalError && proposal ? <div className="flex flex-wrap gap-2"><Button asChild type="button"><a href={proposal.url} target="_blank" rel="noreferrer"><ExternalLink aria-hidden="true" />Ver propuesta</a></Button><Button type="button" onClick={() => void sendProposal()} disabled={sending}>{sending ? 'Enviando…' : hasConfirmedDelivery ? 'Reenviar por correo' : 'Enviar por correo'}</Button></div> : null}{!proposalLoading && !proposalError && !proposal ? <><Alert variant="warning"><AlertDescription>Genera la propuesta antes de enviarla.</AlertDescription></Alert><Button type="button" onClick={() => void generateProposal()} disabled={generating}>{generating ? 'Generando…' : <><FileText aria-hidden="true" />Generar PDF</>}</Button></> : null}{deliveryMessage ? <Alert variant="success" role="status"><CheckCircle2 aria-hidden="true" className="size-4" /><AlertTitle>Cotización enviada</AlertTitle><AlertDescription>{deliveryMessage}</AlertDescription></Alert> : null}{deliveryRefreshError ? <Alert variant="warning"><AlertTitle>No se pudo actualizar el estado de envío</AlertTitle><AlertDescription>{deliveryRefreshError}</AlertDescription></Alert> : null}</div> : null}
     </SectionCard>
     {manualApprovalAvailable ? <SectionCard title="Aprobación" description="Registra aquí la decisión del cliente si la confirmación se recibió por otro medio.">
       <div className="flex flex-wrap gap-2">
@@ -238,7 +299,7 @@ export function CustomQuotationProposalTab({ quotation, commercialLines, onIssue
         <Button type="button" variant="destructive" onClick={() => setManualDecision('REJECT')} disabled={manualTransitionPending}>{manualTransitionPending && manualDecision === 'REJECT' ? <><LoaderCircle aria-hidden="true" className="animate-spin" />Registrando…</> : 'Rechazar manualmente'}</Button>
       </div>
     </SectionCard> : null}
-    {quotation.status === 'ACCEPTED' ? <CustomQuotationSalesOrderCompletion quotation={quotation} onQuotationRefreshed={onQuotationRefreshed} /> : null}
+    {quotation.status === 'ACCEPTED' ? <CustomQuotationSalesOrderCompletion quotation={quotation} version={version} onVersionRefreshed={refreshVersion} onQuotationRefreshed={onQuotationRefreshed} /> : null}
     <Dialog open={Boolean(manualDecision)} onOpenChange={(open) => { if (!open && !manualTransitionPending) setManualDecision(null); }}>
       <DialogContent showCloseButton={!manualTransitionPending}>
         <DialogHeader>
@@ -264,7 +325,7 @@ function ProposalField({ label, value }: { label: string; value: string }) { ret
 function ProposalError({ message }: { message: string }) { return <Alert variant="destructive"><AlertTitle>No se pudo procesar la cotización</AlertTitle><AlertDescription>{message}</AlertDescription></Alert>; }
 function pricingStatusLabel(status: string | null) { return status === 'DRAFT' ? 'Borrador' : status === 'APPROVED' ? 'Aprobado' : status ?? '—'; }
 function formatDateOnly(value: string | null) { return value ? value.slice(0, 10).split('-').reverse().join('/') : '—'; }
-function issueErrorMessage(error: unknown) { const code = error instanceof Error ? error.message : ''; if (code.includes('PRICING_CALCULATION_NOT_FOUND')) return 'Calcula el precio antes de emitir la cotización.'; if (code.includes('PRICING_CALCULATION_STALE')) return 'Los costos cambiaron. Recalcula el precio antes de emitir.'; if (code.includes('FISCAL_DEFAULT')) return 'No hay una configuración fiscal predeterminada para emitir la cotización.'; if (code.includes('STRUCTURED_COMPONENTS_REQUIRED') || code.includes('LINES_REQUIRED')) return 'Agrega al menos un servicio desde Costos antes de emitir la cotización.'; if (code.includes('PAYMENT_TERMS') || code.includes('VALID_UNTIL')) return 'Revisa la vigencia y las condiciones de pago antes de emitir.'; if (code.includes('RECIPIENT_SNAPSHOT') || code.includes('TARGET_SNAPSHOT')) return 'No se pudo obtener el destinatario de la cotización.'; return 'No se pudo emitir la cotización. Intente nuevamente.'; }
+function issueErrorMessage(error: unknown) { const code = error instanceof Error ? error.message : ''; if (code.includes('PRICING_CALCULATION_NOT_FOUND')) return 'Calcula el precio antes de emitir la cotización.'; if (code.includes('PRICING_CALCULATION_STALE')) return 'Los costos cambiaron. Recalcula el precio antes de emitir.'; if (code.includes('FISCAL_DEFAULT')) return 'No hay una configuración fiscal predeterminada para emitir la cotización.'; if (code.includes('STRUCTURED_COMPONENTS_REQUIRED') || code.includes('LINES_REQUIRED')) return 'Agrega al menos un servicio desde Costos antes de emitir la cotización.'; if (code.includes('CREDIT_TERM_UNIT')) return 'Para cotizaciones a crédito, el plazo debe definirse en días.'; if (code.includes('PAYMENT_TERMS') || code.includes('VALID_UNTIL')) return 'Revisa la vigencia y las condiciones de pago antes de emitir.'; if (code.includes('RECIPIENT_SNAPSHOT') || code.includes('TARGET_SNAPSHOT')) return 'No se pudo obtener el destinatario de la cotización.'; return 'No se pudo emitir la cotización. Intente nuevamente.'; }
 function deliveryErrorMessage(error: unknown) { const code = error instanceof Error ? error.message : ''; if (code.includes('PROPOSAL_NOT_FOUND')) return 'Genera la propuesta antes de enviarla.'; if (code.includes('RECIPIENT_EMAIL') || code.includes('RECIPIENT_SNAPSHOT')) return 'La cotización no tiene un correo de destinatario válido.'; if (code.includes('VERSION_NOT_DELIVERABLE')) return 'La cotización ya no está disponible para envío.'; if (code.includes('EXPIRED')) return 'La cotización venció y no puede enviarse.'; if (code.includes('DELIVERY_FAILED')) return 'No se pudo enviar el correo. Intente nuevamente.'; return 'No se pudo enviar el correo. Intente nuevamente.'; }
 function approvalStateChanged(error: unknown) { const code = error instanceof Error ? error.message : ''; return code.includes('INVALID_TRANSITION') || code.includes('TRANSITION_CONFLICT') || code.includes('VERSION_NOT_ISSUED') || code.includes('QUOTATION_NOT_ISSUED'); }
 function manualApprovalErrorMessage(error: unknown, decision: 'ACCEPT' | 'REJECT') { const code = error instanceof Error ? error.message : ''; if (code.includes('FORBIDDEN') || code.includes('UNAUTHORIZED')) return 'No tienes permiso para registrar esta decisión.'; if (code.includes('EXPIRED')) return 'La cotización venció y ya no puede actualizarse.'; return decision === 'ACCEPT' ? 'No se pudo registrar la aceptación. Intente nuevamente.' : 'No se pudo registrar el rechazo. Intente nuevamente.'; }
