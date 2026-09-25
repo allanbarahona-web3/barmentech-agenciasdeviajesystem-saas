@@ -7,6 +7,7 @@ export type AdditionalServiceFiscalReadiness =
   | 'INVALID';
 
 export interface SelectableAdditionalService {
+  id: string;
   code: string;
   name: string;
   fiscalReadiness: AdditionalServiceFiscalReadiness;

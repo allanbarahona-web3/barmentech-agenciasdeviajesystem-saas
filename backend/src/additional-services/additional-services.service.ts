@@ -88,6 +88,7 @@ export interface AdditionalServiceFiscalReadiness {
 }
 
 export interface SelectableAdditionalServiceItem {
+  id: string;
   code: string;
   name: string;
   fiscalReadiness: AdditionalServiceFiscalReadinessStatus;
@@ -175,6 +176,7 @@ export class AdditionalServicesService {
             }
           : { status: "ABSENT" as const, isReady: false, issues: [] };
         return {
+          id: item.id,
           code: item.code,
           name: item.name,
           fiscalReadiness: fiscalReadiness.status,

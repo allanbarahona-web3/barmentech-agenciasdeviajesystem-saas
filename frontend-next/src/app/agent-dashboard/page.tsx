@@ -113,6 +113,7 @@ export default function AgentDashboardPage() {
         isOpen={!showAirfareTasks}
         onSelectTrips={() => router.push("/trips?travelType=INTERNATIONAL")}
         onSelectMigration={() => router.push("/trips?travelType=MIGRATION")}
+        onSelectGroups={() => router.push("/groups")}
         onSelectInternalTrips={() => router.push("/internal-trips-available")}
         onSelectCustomers={() => router.push("/admin/customers")}
         onSelectAdditionalServices={() => router.push("/additional-services/orders")}

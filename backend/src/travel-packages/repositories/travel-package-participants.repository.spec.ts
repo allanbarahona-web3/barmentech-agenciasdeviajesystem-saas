@@ -4,11 +4,13 @@ describe('TravelPackageParticipantsRepository', () => {
   it('loads a tenant-scoped roster in one bounded query', async () => {
     const roster = [
       {
+        id: 'participant-holder-1',
         clientId: 'holder-1',
         role: 'HOLDER',
         client: { fullName: 'Holder One' },
       },
       {
+        id: 'participant-minor-1',
         clientId: 'minor-1',
         role: 'MINOR',
         client: { fullName: 'Minor One' },
@@ -29,6 +31,7 @@ describe('TravelPackageParticipantsRepository', () => {
         travelPackageId: 'travel-1',
       },
       select: {
+        id: true,
         clientId: true,
         role: true,
         client: {

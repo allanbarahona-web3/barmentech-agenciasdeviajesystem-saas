@@ -7,6 +7,7 @@ type ActionMenuModalProps = {
   isOpen: boolean;
   onSelectTrips: () => void;
   onSelectMigration: () => void;
+  onSelectGroups?: () => void;
   onSelectInternalTrips?: () => void;
   onSelectCustomers?: () => void;
   onSelectAdditionalServices: () => void;
@@ -22,6 +23,7 @@ export function ActionMenuModal({
   isOpen, 
   onSelectTrips, 
   onSelectMigration, 
+  onSelectGroups,
   onSelectInternalTrips,
   onSelectCustomers,
   onSelectAdditionalServices,
@@ -250,6 +252,36 @@ export function ActionMenuModal({
                 <div style={{ fontWeight: 700 }}>Viaje Interno</div>
                 <div style={{ fontSize: "0.85rem", opacity: 0.9, marginTop: 4 }}>
                   Gestionar viajes domésticos y reservas
+                </div>
+              </div>
+            </button>
+          )}
+
+          {onSelectGroups && (
+            <button
+              type="button"
+              onClick={onSelectGroups}
+              style={{
+                padding: "20px 24px",
+                background: "linear-gradient(135deg, #0f766e 0%, #0d9488 100%)",
+                color: "white",
+                border: "none",
+                borderRadius: 12,
+                fontSize: "1.05rem",
+                fontWeight: 600,
+                cursor: "pointer",
+                textAlign: "left",
+                display: "flex",
+                alignItems: "center",
+                gap: 16,
+                boxShadow: "0 4px 12px rgba(13, 148, 136, 0.3)",
+              }}
+            >
+              <span style={{ fontSize: "2rem" }}>👥</span>
+              <div>
+                <div style={{ fontWeight: 700 }}>Agrupaciones</div>
+                <div style={{ fontSize: "0.85rem", opacity: 0.9, marginTop: 4 }}>
+                  Organizar pasajeros por viaje
                 </div>
               </div>
             </button>

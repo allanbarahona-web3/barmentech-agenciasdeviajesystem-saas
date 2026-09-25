@@ -14,6 +14,7 @@ export interface TravelPackageParticipantWrite {
 }
 
 export interface TravelPackageParticipantRead {
+  id: string;
   clientId: string;
   role: TravelPackageParticipantRoleValue;
   client: {
@@ -47,6 +48,7 @@ export class TravelPackageParticipantsRepository {
         travelPackageId,
       },
       select: {
+        id: true,
         clientId: true,
         role: true,
         client: {

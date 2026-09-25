@@ -7,7 +7,8 @@ import { getPendingApprovalsCount, type PendingCounts } from "@/lib/billing-api"
 import { CURRENT_EXCHANGE_RATE_CHANGED_EVENT, getCurrentExchangeRate, type CurrentExchangeRate } from "@/lib/exchange-rate-api";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { Layers3 } from "lucide-react";
+import { type ReactNode, useEffect, useState } from "react";
 import { AttendanceWidget } from "./attendance-widget";
 import { CurrencyCalculator } from "./currency-calculator";
 import { LoadingModal } from "./loading-modal";
@@ -16,14 +17,14 @@ import { SupportModal } from "./support-modal";
 type NavItem = {
   href: string;
   label: string;
-  icon: string;
+  icon: ReactNode;
   badge?: number;
   adminOnly?: boolean;
 };
 
 type NavGroup = {
   label: string;
-  icon: string;
+  icon: ReactNode;
   items: NavItem[];
   adminOnly?: boolean;
 };
@@ -53,6 +54,8 @@ export function VerticalNav() {
   const [configuracionOperativaOpen, setConfiguracionOperativaOpen] = useState(false);
   const [comercialOpen, setComercialOpen] = useState(false);
   const [adicionalesOpen, setAdicionalesOpen] = useState(false);
+  const [ventasContratosOpen, setVentasContratosOpen] = useState(false);
+  const [agrupacionesOpen, setAgrupacionesOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
   const [logoutErrorModalOpen, setLogoutErrorModalOpen] = useState(false);
   const [logoutErrorMessage, setLogoutErrorMessage] = useState("");
@@ -144,6 +147,7 @@ export function VerticalNav() {
   
   // Business module access - separate from Attendance participation
   const hasOperationalAccess = ["AGENT", "OPERACIONES", "VENTAS"].includes(role);
+  const hasPassengerGroupsAccess = isAdmin || role === "AGENT" || role === "OPERACIONES";
 
   const isActive = (href: string) => {
     if (href === "/") return pathname === "/";
@@ -185,30 +189,55 @@ export function VerticalNav() {
         ]
       : []),
     
-    // Contratos de Migración - solo para roles operacionales (AGENT, OPERACIONES, VENTAS)
     ...(hasOperationalAccess
       ? [
           {
-            href: "/trips?travelType=MIGRATION",
-            label: "Contratos de Migración",
-            icon: "📄",
-          },
+            label: "Ventas / Contratos",
+            icon: "🧾",
+            items: [
+              {
+                href: "/trips?travelType=INTERNATIONAL",
+                label: "Internacionales",
+                icon: "✈️",
+              },
+              {
+                href: "/trips?travelType=MIGRATION",
+                label: "Migraciones",
+                icon: "📄",
+              },
+              {
+                href: "/internal-trips-available",
+                label: "Nacionales",
+                icon: "🚌",
+              },
+            ],
+          } as NavGroup,
         ]
       : []),
-    
-    // Viajes - solo para roles operacionales (AGENT, OPERACIONES, VENTAS)
-    ...(hasOperationalAccess
+
+    ...(hasPassengerGroupsAccess
       ? [
           {
-            href: "/trips?travelType=INTERNATIONAL",
-            label: "Viajes Internacionales",
-            icon: "✈️",
-          },
-          {
-            href: "/internal-trips-available",
-            label: "Viajes Internos",
-            icon: "🚌",
-          },
+            label: "Agrupaciones",
+            icon: <Layers3 aria-hidden="true" size={18} strokeWidth={2} />,
+            items: [
+              {
+                href: "/groups/international",
+                label: "Internacionales",
+                icon: "✈️",
+              },
+              {
+                href: "/groups/migration",
+                label: "Migraciones",
+                icon: "📄",
+              },
+              {
+                href: "/groups/national",
+                label: "Nacionales — Próximamente",
+                icon: "🚌",
+              },
+            ],
+          } as NavGroup,
         ]
       : []),
 
@@ -591,6 +620,10 @@ export function VerticalNav() {
                       ? comercialOpen
                       : group.label === "Adicionales"
                         ? adicionalesOpen
+                        : group.label === "Ventas / Contratos"
+                          ? ventasContratosOpen
+                        : group.label === "Agrupaciones"
+                          ? agrupacionesOpen
                     : empleadosOpen;
               
               const toggleOpen = group.label === "Finanzas" 
@@ -603,6 +636,10 @@ export function VerticalNav() {
                       ? () => setComercialOpen(!comercialOpen)
                       : group.label === "Adicionales"
                         ? () => setAdicionalesOpen(!adicionalesOpen)
+                        : group.label === "Ventas / Contratos"
+                          ? () => setVentasContratosOpen(!ventasContratosOpen)
+                        : group.label === "Agrupaciones"
+                          ? () => setAgrupacionesOpen(!agrupacionesOpen)
                     : () => setEmpleadosOpen(!empleadosOpen);
               
               return (

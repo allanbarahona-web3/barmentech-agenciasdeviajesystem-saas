@@ -10,6 +10,7 @@ describe('TravelPackagesService', () => {
   it('reuses the participant repository for roster reads', async () => {
     const roster = [
       {
+        id: 'participant-holder-1',
         clientId: 'holder-1',
         role: 'HOLDER' as const,
         client: { fullName: 'Holder One' },

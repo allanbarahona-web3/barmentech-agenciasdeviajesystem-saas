@@ -1011,6 +1011,7 @@ model TravelPackage {
   @@index([packageCode])
   @@index([tenantId])
   @@index([tenantId, travelType])
+  @@index([tenantId, travelType, departureDate, id], map: "travel_packages_tenant_type_departure_id_idx")
   @@index([tenantId, fiscalClassificationCatalogId], map: "travel_packages_tenant_fiscal_classification_idx")
 }
 
