@@ -72,6 +72,26 @@ test('cross-currency proposals use the Finance settlement preview, never browser
   assert.doesNotMatch(intakeSource, /parseFloat|Math\.round/);
 });
 
+test('FX warning state waits for complete current inputs and an explicit missing-rate response', () => {
+  assert.match(intakeSource, /type FxUiState = 'not_required' \| 'insufficient_input' \| 'loading' \| 'available' \| 'unavailable' \| 'error'/);
+  assert.match(intakeSource, /!fxLookupKey\n\s*\? 'insufficient_input'/);
+  assert.match(intakeSource, /settlementPreviewKey !== fxLookupKey \|\| previewLoading\n\s*\? 'loading'/);
+  assert.match(intakeSource, /settlementPreview\?\.status === 'MISSING'\n\s*\? 'unavailable'/);
+  assert.match(intakeSource, /state === 'not_required' \|\| state === 'insufficient_input'\) return null/);
+  assert.match(intakeSource, /if \(state === 'unavailable'\) return <Alert variant="warning"><AlertTitle>Tipo de cambio del día no disponible/);
+  assert.doesNotMatch(intakeSource, /if \(!preview \|\| preview\.status === 'MISSING' \|\| !preview\.settlementAmount\)/);
+});
+
+test('FX-driving edits invalidate a stale result while the existing Finance lookup resolves again', () => {
+  assert.match(intakeSource, /const fxLookupKey =[\s\S]{0,400}\$\{form\.amount\.trim\(\)\}:\$\{form\.paymentDate\}/);
+  assert.match(intakeSource, /\$\{form\.receivedCurrencyCode\}:\$\{applicationCurrencyCode\}:/);
+  assert.match(intakeSource, /setSettlementPreview\(null\); setSettlementPreviewKey\(null\); setPreviewLoading\(true\);/);
+  assert.match(intakeSource, /setSettlementPreviewKey\(fxLookupKey\)/);
+  assert.match(intakeSource, /settlementPreviewKey !== fxLookupKey/);
+  assert.match(intakeSource, /settlementPreview\?\.status === 'AVAILABLE' && settlementPreview\.settlementAmount\n\s*\? 'available'/);
+  assert.match(intakeSource, /!crossCurrency\n\s*\? 'not_required'/);
+});
+
 test('destination validation is safe, persisted with evidence, and overridden only after two confirmations', () => {
   assert.match(intakeSource, /destinationValidation/);
   assert.match(intakeSource, /Cuenta destino verificada/);

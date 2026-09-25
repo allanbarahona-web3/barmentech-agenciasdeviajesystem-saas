@@ -80,6 +80,8 @@ model Tenant {
   internalInvoices                        InternalTourInvoice[]
   internalTrips                           InternalTrip[]
   travelPackageParticipants               TravelPackageParticipant[]
+  passengerGroups                         PassengerGroup[]
+  passengerGroupMembers                   PassengerGroupMember[]
   payrollConfig                           PayrollConfig?
   payrollPeriods                          PayrollPeriod[]
   payrollAdjustments                      PayrollAdjustment[]
@@ -998,6 +1000,7 @@ model TravelPackage {
   fiscalClassificationCatalog   AdditionalServiceCatalog?         @relation("TravelPackageFiscalClassification", fields: [fiscalClassificationCatalogId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "travel_packages_fiscal_classification_tenant_fkey")
   additionalServiceOrders       AdditionalServiceOrder[]
   participants                  TravelPackageParticipant[]
+  passengerGroups               PassengerGroup[]
   costingProjectLinks           TravelPackageCostingProjectLink[]
   pricingPublications           TravelPackagePricingPublication[]
 
@@ -1012,23 +1015,76 @@ model TravelPackage {
 }
 
 model TravelPackageParticipant {
-  id              String                       @id @default(cuid())
-  tenantId        String
-  travelPackageId String
-  clientId        String
-  role            TravelPackageParticipantRole
-  createdAt       DateTime                     @default(now())
-  updatedAt       DateTime                     @updatedAt
-  tenant          Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  travelPackage   TravelPackage                @relation(fields: [travelPackageId], references: [id], onDelete: Cascade)
-  client          Client                       @relation(fields: [clientId], references: [id])
+  id                    String                       @id @default(cuid())
+  tenantId              String
+  travelPackageId       String
+  clientId              String
+  role                  TravelPackageParticipantRole
+  createdAt             DateTime                     @default(now())
+  updatedAt             DateTime                     @updatedAt
+  tenant                Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  travelPackage         TravelPackage                @relation(fields: [travelPackageId], references: [id], onDelete: Cascade)
+  client                Client                       @relation(fields: [clientId], references: [id])
+  passengerGroupMembers PassengerGroupMember[]
 
   @@unique([travelPackageId, clientId])
+  @@unique([id, tenantId, travelPackageId], map: "travel_package_participants_id_tenant_travel_package_key")
   @@index([tenantId])
   @@index([travelPackageId])
   @@index([clientId])
   @@index([role])
   @@map("travel_package_participants")
+}
+
+enum PassengerGroupStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+model PassengerGroup {
+  id                         String                   @id @default(cuid())
+  tenantId                   String
+  travelPackageId            String
+  additionalServiceCatalogId String
+  serviceCode                String
+  serviceName                String
+  name                       String
+  color                      String?
+  notes                      String?
+  status                     PassengerGroupStatus     @default(ACTIVE)
+  createdByUserId            String
+  createdByName              String
+  updatedByUserId            String?
+  updatedByName              String?
+  createdAt                  DateTime                 @default(now())
+  updatedAt                  DateTime                 @updatedAt
+  tenant                     Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  travelPackage              TravelPackage            @relation(fields: [travelPackageId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "passenger_groups_travel_package_tenant_fkey")
+  additionalServiceCatalog   AdditionalServiceCatalog @relation(fields: [additionalServiceCatalogId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "passenger_groups_catalog_tenant_fkey")
+  members                    PassengerGroupMember[]
+
+  @@unique([id, tenantId, travelPackageId], map: "passenger_groups_id_tenant_travel_package_key")
+  @@index([tenantId, travelPackageId, status, createdAt(sort: Desc), id(sort: Desc)], map: "passenger_groups_tenant_travel_status_created_idx")
+  @@index([tenantId, travelPackageId, additionalServiceCatalogId], map: "passenger_groups_tenant_travel_catalog_idx")
+  @@map("passenger_groups")
+}
+
+model PassengerGroupMember {
+  id                         String                   @id @default(cuid())
+  tenantId                   String
+  travelPackageId            String
+  passengerGroupId           String
+  travelPackageParticipantId String
+  createdByUserId            String
+  createdByName              String
+  createdAt                  DateTime                 @default(now())
+  tenant                     Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  passengerGroup             PassengerGroup           @relation(fields: [passengerGroupId, tenantId, travelPackageId], references: [id, tenantId, travelPackageId], onDelete: Cascade, map: "passenger_group_members_group_tenant_travel_fkey")
+  travelPackageParticipant   TravelPackageParticipant @relation(fields: [travelPackageParticipantId, tenantId, travelPackageId], references: [id, tenantId, travelPackageId], onDelete: Restrict, map: "passenger_group_members_participant_tenant_travel_fkey")
+
+  @@unique([tenantId, passengerGroupId, travelPackageParticipantId], map: "passenger_group_members_tenant_group_participant_key")
+  @@index([tenantId, travelPackageParticipantId, travelPackageId], map: "passenger_group_members_tenant_participant_travel_idx")
+  @@map("passenger_group_members")
 }
 
 enum CostingProjectStatus {
@@ -2084,6 +2140,7 @@ model AdditionalServiceCatalog {
   fiscalProfile                      AdditionalServiceFiscalProfile?
   orderLines                         AdditionalServiceOrderLine[]
   salesOrderLines                    SalesOrderLine[]
+  passengerGroups                    PassengerGroup[]
   usages                             AdditionalServiceCatalogUsage[]
   fiscalClassificationTravelPackages TravelPackage[]                         @relation("TravelPackageFiscalClassification")
   fiscalClassificationInternalTrips  InternalTrip[]                          @relation("InternalTripFiscalClassification")

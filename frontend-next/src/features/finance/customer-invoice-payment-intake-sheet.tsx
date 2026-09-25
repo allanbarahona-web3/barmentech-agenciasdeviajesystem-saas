@@ -46,6 +46,8 @@ type PendingDestinationOverride = {
   validation: PaymentDestinationValidation;
 };
 
+type FxUiState = 'not_required' | 'insufficient_input' | 'loading' | 'available' | 'unavailable' | 'error';
+
 type Props = {
   customerId: string;
   open: boolean;
@@ -73,6 +75,7 @@ export function CustomerInvoicePaymentIntakeSheet({ customerId, open, preselecte
   const [extractionError, setExtractionError] = useState<string | null>(null);
   const [extracting, setExtracting] = useState(false);
   const [settlementPreview, setSettlementPreview] = useState<CustomerPaymentSettlementPreview | null>(null);
+  const [settlementPreviewKey, setSettlementPreviewKey] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -92,7 +95,7 @@ export function CustomerInvoicePaymentIntakeSheet({ customerId, open, preselecte
     setForm(EMPTY_FORM);
     setApplicationCurrencyCode(contractTarget?.currencyCode ?? preselectedInvoice?.currencyCode ?? (currencies.length === 1 ? currencies[0]! : ''));
     setAllocations(contractTarget ? { [contractTarget.commercialObligationId]: '' } : {}); setEvidenceFile(null); setExtractionDetails(null); setDestinationValidation(null); setExtractionError(null);
-    setSettlementPreview(null); setPreviewError(null); setSubmitError(null); setPendingEvidencePaymentId(null);
+    setSettlementPreview(null); setSettlementPreviewKey(null); setPreviewError(null); setSubmitError(null); setPendingEvidencePaymentId(null);
     setPendingDestinationOverride(null); setOverrideDialogStage(null); setTargets([]); setTargetError(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   }, [contractTarget, currencies, open, preselectedInvoice?.billingDocumentId, preselectedInvoice?.currencyCode]);
@@ -117,29 +120,48 @@ export function CustomerInvoicePaymentIntakeSheet({ customerId, open, preselecte
   const selectedTargets = useMemo(() => targets.filter((target) => Object.prototype.hasOwnProperty.call(allocations, target.accountReceivableId)), [allocations, targets]);
   const totalUnits = decimalUnits(form.amount);
   const crossCurrency = Boolean(form.receivedCurrencyCode && applicationCurrencyCode && form.receivedCurrencyCode !== applicationCurrencyCode);
+  const fxLookupKey = crossCurrency && open && form.receivedCurrencyCode && applicationCurrencyCode && totalUnits !== null && totalUnits > ZERO
+    ? `${form.receivedCurrencyCode}:${applicationCurrencyCode}:${form.amount.trim()}:${form.paymentDate}`
+    : null;
 
   useEffect(() => {
-    if (!open || !form.receivedCurrencyCode || !applicationCurrencyCode || totalUnits === null || totalUnits <= ZERO || !crossCurrency) {
-      setSettlementPreview(null); setPreviewError(null); setPreviewLoading(false); return;
+    if (!fxLookupKey || !form.receivedCurrencyCode || !applicationCurrencyCode) {
+      setSettlementPreview(null); setSettlementPreviewKey(null); setPreviewError(null); setPreviewLoading(false); return;
     }
     const controller = new AbortController();
-    setPreviewLoading(true); setPreviewError(null);
+    setSettlementPreview(null); setSettlementPreviewKey(null); setPreviewLoading(true); setPreviewError(null);
     void getCustomerPaymentSettlementPreview(customerId, {
       receivedCurrencyCode: form.receivedCurrencyCode, settlementCurrencyCode: applicationCurrencyCode, receivedAmount: form.amount.trim(),
     }, controller.signal)
-      .then((preview) => { if (!controller.signal.aborted) setSettlementPreview(preview); })
+      .then((preview) => { if (!controller.signal.aborted) { setSettlementPreview(preview); setSettlementPreviewKey(fxLookupKey); } })
       .catch((error) => {
         if (!controller.signal.aborted) {
           setSettlementPreview(null);
+          setSettlementPreviewKey(fxLookupKey);
           setPreviewError(error instanceof Error ? error.message : 'No se pudo obtener el equivalente para aplicar.');
         }
       })
       .finally(() => { if (!controller.signal.aborted) setPreviewLoading(false); });
     return () => controller.abort();
-  }, [applicationCurrencyCode, crossCurrency, customerId, form.amount, form.receivedCurrencyCode, open, totalUnits]);
+  }, [applicationCurrencyCode, customerId, form.amount, form.receivedCurrencyCode, fxLookupKey]);
 
-  const previewAvailable = !crossCurrency || Boolean(settlementPreview?.status === 'AVAILABLE' && settlementPreview.settlementAmount);
-  const allocationBudgetUnits = crossCurrency ? decimalUnits(settlementPreview?.status === 'AVAILABLE' ? settlementPreview.settlementAmount ?? '' : '') : totalUnits;
+  const fxUiState: FxUiState = !crossCurrency
+    ? 'not_required'
+    : !fxLookupKey
+      ? 'insufficient_input'
+      : settlementPreviewKey !== fxLookupKey || previewLoading
+        ? 'loading'
+        : previewError
+          ? 'error'
+          : settlementPreview?.status === 'AVAILABLE' && settlementPreview.settlementAmount
+            ? 'available'
+            : settlementPreview?.status === 'MISSING'
+              ? 'unavailable'
+              : 'error';
+  const previewAvailable = fxUiState === 'not_required' || fxUiState === 'available';
+  const allocationBudgetUnits = crossCurrency
+    ? fxUiState === 'available' ? decimalUnits(settlementPreview?.settlementAmount ?? '') : null
+    : totalUnits;
   const invoiceAllocationUnits = selectedTargets.reduce<bigint | null>((total, target) => {
     const value = decimalUnits(allocations[target.accountReceivableId] ?? '');
     return total === null || value === null ? null : total + value;
@@ -274,7 +296,7 @@ export function CustomerInvoicePaymentIntakeSheet({ customerId, open, preselecte
         <FormField htmlFor="invoice-payment-payer" label="Nombre de quien paga"><Input id="invoice-payment-payer" value={form.payerName} onChange={(event) => updateForm('payerName', event.target.value)} disabled={paymentAlreadyCreated} /></FormField>
       </div>
       <FormField htmlFor="invoice-payment-notes" label="Notas"><Textarea id="invoice-payment-notes" rows={3} value={form.notes} onChange={(event) => updateForm('notes', event.target.value)} disabled={paymentAlreadyCreated} /></FormField>
-      {crossCurrency ? <SettlementPreviewPanel preview={settlementPreview} loading={previewLoading} error={previewError} /> : null}
+      {crossCurrency ? <SettlementPreviewPanel preview={settlementPreview} state={fxUiState} error={previewError} /> : null}
       <div className="rounded-lg border border-dashed border-border bg-muted/30 p-4">
         <FormField htmlFor="invoice-payment-evidence" label="Comprobante de pago"><Input ref={fileInputRef} id="invoice-payment-evidence" type="file" accept="image/jpeg,image/jpg,image/png,image/webp,application/pdf" onChange={(event) => void selectEvidence(event.target.files?.[0] ?? null)} disabled={paymentAlreadyCreated || extracting} /></FormField>
         {evidenceFile ? <p className="mt-2 text-xs text-muted-foreground">{evidenceFile.name} · se adjuntará al pago después de enviarlo.</p> : null}
@@ -304,10 +326,12 @@ export function CustomerContractPaymentIntakeSheet(props: Omit<Props, 'preselect
   return <CustomerInvoicePaymentIntakeSheet {...props} preselectedInvoice={null} contractTarget={props.contractTarget} currencies={[props.contractTarget.currencyCode]} />;
 }
 
-function SettlementPreviewPanel({ preview, loading, error }: { preview: CustomerPaymentSettlementPreview | null; loading: boolean; error: string | null }) {
-  if (loading) return <p className="rounded-lg border border-border bg-muted/30 p-4 text-sm text-muted-foreground">Consultando equivalente de aplicación…</p>;
-  if (error) return <Alert variant="warning"><AlertTitle>No se pudo consultar el tipo de cambio</AlertTitle><AlertDescription>{error}</AlertDescription></Alert>;
-  if (!preview || preview.status === 'MISSING' || !preview.settlementAmount) return <Alert variant="warning"><AlertTitle>Tipo de cambio del día no disponible</AlertTitle><AlertDescription>No es posible enviar este pago cruzado hasta que Finance tenga un tipo de cambio diario válido.</AlertDescription></Alert>;
+function SettlementPreviewPanel({ preview, state, error }: { preview: CustomerPaymentSettlementPreview | null; state: FxUiState; error: string | null }) {
+  if (state === 'not_required' || state === 'insufficient_input') return null;
+  if (state === 'loading') return <p className="rounded-lg border border-border bg-muted/30 p-4 text-sm text-muted-foreground">Consultando equivalente de aplicación…</p>;
+  if (state === 'error') return <Alert variant="warning"><AlertTitle>No se pudo consultar el tipo de cambio</AlertTitle><AlertDescription>{error ?? 'No se pudo obtener el equivalente para aplicar.'}</AlertDescription></Alert>;
+  if (state === 'unavailable') return <Alert variant="warning"><AlertTitle>Tipo de cambio del día no disponible</AlertTitle><AlertDescription>No es posible enviar este pago cruzado hasta que Finance tenga un tipo de cambio diario válido.</AlertDescription></Alert>;
+  if (!preview || !preview.settlementAmount) return null;
   return <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm"><p className="font-semibold text-foreground">Vista previa de aplicación</p><div className="mt-3 grid gap-2 sm:grid-cols-2"><span className="text-muted-foreground">Monto recibido: <strong className="text-foreground">{formatFinanceMoneyDisplay(preview.receivedAmount, preview.receivedCurrencyCode)}</strong></span><span className="text-muted-foreground">Moneda de aplicación: <strong className="text-foreground">{preview.settlementCurrencyCode}</strong></span><span className="text-muted-foreground">Tipo de cambio: <strong className="text-foreground">{preview.exchangeRate ?? '—'}</strong></span><span className="text-muted-foreground">Fuente: <strong className="text-foreground">{preview.exchangeRateSource ?? '—'}</strong></span><span className="text-muted-foreground">Fecha efectiva: <strong className="text-foreground">{preview.exchangeRateEffectiveDate ? new Date(`${preview.exchangeRateEffectiveDate}T00:00:00`).toLocaleDateString('es-CR') : '—'}</strong></span><span className="text-muted-foreground">Equivalente disponible para aplicar: <strong className="text-foreground">{formatFinanceMoneyDisplay(preview.settlementAmount, preview.settlementCurrencyCode)}</strong></span></div><p className="mt-3 text-xs text-muted-foreground">La conversión definitiva se confirma durante la verificación del pago.</p></div>;
 }
 
