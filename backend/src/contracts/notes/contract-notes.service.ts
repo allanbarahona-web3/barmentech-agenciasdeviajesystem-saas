@@ -1,52 +1,66 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { resolveContractParticipation } from '../contract-participation';
+import {
+  resolveContractParticipation,
+  resolveContractParticipationByTuple,
+} from '../contract-participation';
+import { runTenantTransaction } from '../../tenant/tenant-transaction';
 import {
   TravelContextDto,
   TravelContextType,
 } from '../../travel-context/dto/travel-context.dto';
 
+type Transaction = Prisma.TransactionClient;
+
+type NoteContract = {
+  id: string;
+  clientId: string;
+  travelPackageId: string | null;
+  payload: unknown;
+  client: { fullName: string };
+};
+
 @Injectable()
 export class ContractNotesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  /**
-   * Create a new note for a contract passenger
-   */
   async createContractNote(
     tenantId: string,
     contractId: string,
     passengerType: 'HOLDER' | 'COMPANION' | 'MINOR',
     passengerIndex: number | null,
-    passengerName: string,
+    _passengerName: string,
     note: string,
     createdByUserId: string,
     createdByName: string,
   ) {
-    // Verify contract exists and belongs to tenant
-    await this.validateContract(tenantId, contractId);
-
-    const contractNote = await this.prisma.contractNote.create({
-      data: {
-        contractId,
-        tenantId,
-        passengerType,
-        passengerIndex,
-        passengerName,
-        note,
-        status: 'ACTIVE',
-        createdByUserId,
-        createdByName,
-      },
+    return this.inTenantTransaction(tenantId, async (tx) => {
+      const contract = await this.loadNoteContract(tx, tenantId, contractId);
+      const passenger = this.resolveNotePassenger(contract, passengerType, passengerIndex);
+      return tx.contractNote.create({
+        data: {
+          contractId: contract.id,
+          tenantId,
+          clientId: passenger.clientId,
+          travelPackageId: contract.travelPackageId,
+          passengerType: passenger.role,
+          passengerIndex: passenger.passengerIndex,
+          passengerName: passenger.passengerName,
+          note,
+          status: 'ACTIVE',
+          createdByUserId,
+          createdByName,
+        },
+      });
     });
-
-    return contractNote;
   }
 
-  /**
-   * Create a note for a customer's participation in a contract
-   * Automatically resolves passenger identity from customer-contract participation
-   */
   async createContractNoteForCustomer(
     tenantId: string,
     contractId: string,
@@ -55,155 +69,89 @@ export class ContractNotesService {
     createdByUserId: string,
     createdByName: string,
   ) {
-    // Verify contract exists and belongs to tenant
-    await this.validateContract(tenantId, contractId);
-
-    // Fetch the contract to resolve participation
-    const contract = await this.prisma.contract.findFirst({
-      where: {
-        id: contractId,
-        tenantId,
-      },
-      select: {
-        clientId: true,
-        payload: true,
-        client: {
-          select: {
-            fullName: true,
-          },
-        },
-      },
-    });
-
-    if (!contract) {
-      throw new NotFoundException('Contrato no encontrado');
-    }
-
-    const participation = resolveContractParticipation(contract, customerId);
-    if (!participation) {
-      throw new ForbiddenException(
-        'El cliente no participa en este contrato. No se puede crear una nota operativa.',
-      );
-    }
-    const passenger = participation.passenger;
-    const passengerName =
-      participation.role === 'HOLDER'
-        ? contract.client.fullName
-        : String(
-            passenger?.fullName ??
-              passenger?.minorName ??
-              passenger?.name ??
-              '',
-          ).trim();
-
-    // Create the note with resolved passenger identity
-    const contractNote = await this.prisma.contractNote.create({
-      data: {
-        contractId,
-        tenantId,
-        passengerType: participation.role,
-        passengerIndex: participation.passengerIndex,
-        passengerName,
-        note,
-        status: 'ACTIVE',
-        createdByUserId,
-        createdByName,
-      },
-    });
-
-    return contractNote;
-  }
-
-  /**
-   * List all active notes for a contract
-   */
-  async listContractNotes(tenantId: string, contractId: string, includeArchived = false) {
-    // Verify contract exists and belongs to tenant
-    await this.validateContract(tenantId, contractId);
-
-    const where: any = {
-      tenantId,
-      contractId,
-    };
-
-    if (!includeArchived) {
-      where.status = 'ACTIVE';
-    }
-
-    return this.prisma.contractNote.findMany({
-      where,
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
-  }
-
-  /**
-   * List all active notes for a customer (across all their contracts)
-   * 
-   * Role-aware filtering:
-   * - Returns only notes that belong to this customer's participation
-   * - If customer is HOLDER: returns HOLDER notes only
-   * - Returns notes matching the resolved role and passenger index
-   */
-  async listCustomerOperationalNotes(tenantId: string, customerId: string) {
-    const contracts = await this.prisma.contract.findMany({
-      where: {
-        tenantId,
-      },
-      select: {
-        id: true,
-        clientId: true,
-        contractNumber: true,
-        destination: true,
-        startDate: true,
-        endDate: true,
-        payload: true,
-      },
-    });
-
-    const participations = contracts.flatMap((contract) => {
+    return this.inTenantTransaction(tenantId, async (tx) => {
+      const contract = await this.loadNoteContract(tx, tenantId, contractId);
       const participation = resolveContractParticipation(contract, customerId);
-      return participation
-        ? [
-            {
-              contractId: contract.id,
-              role: participation.role,
-              passengerIndex: participation.passengerIndex,
-            },
-          ]
-        : [];
+      if (!participation) {
+        throw new ForbiddenException(
+          'El cliente no participa en este contrato. No se puede crear una nota operativa.',
+        );
+      }
+      const passenger = this.resolveNotePassenger(
+        contract,
+        participation.role,
+        participation.passengerIndex,
+      );
+      return tx.contractNote.create({
+        data: {
+          contractId: contract.id,
+          tenantId,
+          clientId: passenger.clientId,
+          travelPackageId: contract.travelPackageId,
+          passengerType: passenger.role,
+          passengerIndex: passenger.passengerIndex,
+          passengerName: passenger.passengerName,
+          note,
+          status: 'ACTIVE',
+          createdByUserId,
+          createdByName,
+        },
+      });
     });
+  }
 
-    if (participations.length === 0) {
-      return [];
-    }
+  async listContractNotes(tenantId: string, contractId: string, includeArchived = false) {
+    return this.inTenantTransaction(tenantId, async (tx) => {
+      await this.validateContract(tx, tenantId, contractId);
+      const where: Prisma.ContractNoteWhereInput = { tenantId, contractId };
+      if (!includeArchived) where.status = 'ACTIVE';
+      return tx.contractNote.findMany({ where, orderBy: { createdAt: 'desc' } });
+    });
+  }
 
-    const noteFilters = participations.map((participation) => ({
-      contractId: participation.contractId,
-      passengerType: participation.role,
-      passengerIndex: participation.passengerIndex,
-    }));
-
-    return this.prisma.contractNote.findMany({
-      where: {
-        tenantId,
-        status: 'ACTIVE',
-        OR: noteFilters,
-      },
-      include: {
-        contract: {
-          select: {
-            contractNumber: true,
-            destination: true,
-            startDate: true,
-            endDate: true,
+  async listCustomerOperationalNotes(tenantId: string, customerId: string) {
+    return this.inTenantTransaction(tenantId, async (tx) => {
+      const contracts = await tx.contract.findMany({
+        where: { tenantId },
+        select: {
+          id: true,
+          clientId: true,
+          contractNumber: true,
+          destination: true,
+          startDate: true,
+          endDate: true,
+          payload: true,
+        },
+      });
+      const legacyFilters = contracts.flatMap((contract) => {
+        const participation = resolveContractParticipation(contract, customerId);
+        return participation
+          ? [{
+              contractId: contract.id,
+              passengerType: participation.role,
+              passengerIndex: participation.passengerIndex,
+              clientId: null,
+            }]
+          : [];
+      });
+      return tx.contractNote.findMany({
+        where: {
+          tenantId,
+          status: 'ACTIVE',
+          OR: [{ clientId: customerId }, ...legacyFilters],
+        },
+        include: {
+          contract: {
+            select: {
+              contractNumber: true,
+              destination: true,
+              startDate: true,
+              endDate: true,
+            },
           },
         },
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
+        orderBy: { createdAt: 'desc' },
+      });
     });
   }
 
@@ -212,281 +160,189 @@ export class ContractNotesService {
     context: TravelContextDto,
     selectedClientId?: string,
   ): Promise<TravelContextDto> {
-    let internalTripId: string | null = null;
-    if (context.travelType === TravelContextType.INTERNAL) {
-      const booking = await this.prisma.internalTourBooking.findFirst({
-        where: {
-          id: context.travelId,
-          tenantId,
-        },
+    return this.inTenantTransaction(tenantId, async (tx) => {
+      let internalTripId: string | null = null;
+      if (context.travelType === TravelContextType.INTERNAL) {
+        const booking = await tx.internalTourBooking.findFirst({
+          where: { id: context.travelId, tenantId },
+          select: { internalTripId: true },
+        });
+        internalTripId = booking?.internalTripId ?? null;
+      }
+      const contracts = await tx.contract.findMany({
+        where: { tenantId },
         select: {
+          id: true,
+          clientId: true,
+          contractNumber: true,
+          travelPackageId: true,
           internalTripId: true,
+          payload: true,
+          createdAt: true,
+          notes: {
+            where: { status: 'ACTIVE' },
+            select: {
+              clientId: true,
+              passengerType: true,
+              passengerIndex: true,
+              note: true,
+            },
+          },
         },
+        orderBy: { createdAt: 'desc' },
       });
-      internalTripId = booking?.internalTripId ?? null;
-    }
-
-    const contracts = await this.prisma.contract.findMany({
-      where: {
-        tenantId,
-      },
-      select: {
-        id: true,
-        clientId: true,
-        contractNumber: true,
-        travelPackageId: true,
-        internalTripId: true,
-        payload: true,
-        createdAt: true,
-        notes: {
-          where: {
-            status: 'ACTIVE',
-          },
-          select: {
-            passengerType: true,
-            passengerIndex: true,
-            note: true,
-          },
-        },
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
-
-    const travelContracts = contracts.filter((contract) =>
-      this.contractMatchesTravel(
-        contract,
-        context.travelType,
-        context.travelId,
-        internalTripId,
-      ),
-    );
-    const selectedContract = selectedClientId
-      ? travelContracts.find(
-          (contract) =>
-            resolveContractParticipation(contract, selectedClientId) !== null,
-        )
-      : undefined;
-
-    return {
-      ...context,
-      contractNumber: selectedContract?.contractNumber ?? null,
-      participants: context.participants.map((participant) => {
-        const participantContract = travelContracts.find(
-          (contract) =>
-            resolveContractParticipation(contract, participant.clientId) !==
-            null,
-        );
-        if (!participantContract) {
-          return {
-            ...participant,
-            operationalNotes: [],
-          };
-        }
-
-        const participation = resolveContractParticipation(
-          participantContract,
-          participant.clientId,
-        );
-        if (!participation) {
-          return {
-            ...participant,
-            operationalNotes: [],
-          };
-        }
-
-        return {
-          ...participant,
-          operationalNotes: participantContract.notes
-            .filter(
-              (note) =>
-                note.passengerType === participation.role &&
-                (note.passengerIndex ?? null) ===
-                  participation.passengerIndex,
-            )
-            .map((note) => note.note),
-        };
-      }),
-    };
-  }
-
-  private contractMatchesTravel(
-    contract: {
-      travelPackageId: string | null;
-      internalTripId: string | null;
-      payload: unknown;
-    },
-    travelType: TravelContextType,
-    travelId: string,
-    internalTripId: string | null,
-  ): boolean {
-    const payload =
-      contract.payload &&
-      typeof contract.payload === 'object' &&
-      !Array.isArray(contract.payload)
-        ? (contract.payload as Record<string, unknown>)
-        : {};
-
-    if (travelType === TravelContextType.INTERNATIONAL) {
-      return (
-        contract.travelPackageId === travelId ||
-        String(payload.travelPackageId ?? '').trim() === travelId
+      const travelContracts = contracts.filter((contract) =>
+        this.contractMatchesTravel(contract, context.travelType, context.travelId, internalTripId),
       );
-    }
-
-    if (!internalTripId) {
-      return false;
-    }
-
-    return (
-      contract.internalTripId === internalTripId ||
-      String(payload.internalTripId ?? '').trim() === internalTripId
-    );
-  }
-
-  /**
-   * Get a specific contract note by ID
-   */
-  async getContractNote(tenantId: string, contractId: string, noteId: string) {
-    const note = await this.prisma.contractNote.findFirst({
-      where: {
-        id: noteId,
-        tenantId,
-        contractId,
-      },
+      const selectedContract = selectedClientId
+        ? travelContracts.find((contract) => resolveContractParticipation(contract, selectedClientId) !== null)
+        : undefined;
+      return {
+        ...context,
+        contractNumber: selectedContract?.contractNumber ?? null,
+        participants: context.participants.map((participant) => {
+          const participantContract = travelContracts.find(
+            (contract) => resolveContractParticipation(contract, participant.clientId) !== null,
+          );
+          if (!participantContract) return { ...participant, operationalNotes: [] };
+          const participation = resolveContractParticipation(participantContract, participant.clientId);
+          if (!participation) return { ...participant, operationalNotes: [] };
+          return {
+            ...participant,
+            operationalNotes: participantContract.notes
+              .filter((note) =>
+                note.clientId === participant.clientId ||
+                (note.clientId === null &&
+                  note.passengerType === participation.role &&
+                  (note.passengerIndex ?? null) === participation.passengerIndex),
+              )
+              .map((note) => note.note),
+          };
+        }),
+      };
     });
-
-    if (!note) {
-      throw new NotFoundException('Nota no encontrada');
-    }
-
-    return note;
   }
 
-  /**
-   * Update a contract note (only if ACTIVE)
-   */
+  async getContractNote(tenantId: string, contractId: string, noteId: string) {
+    return this.inTenantTransaction(tenantId, async (tx) => {
+      const note = await tx.contractNote.findFirst({ where: { id: noteId, tenantId, contractId } });
+      if (!note) throw new NotFoundException('Nota no encontrada');
+      return note;
+    });
+  }
+
   async updateContractNote(
     tenantId: string,
     contractId: string,
     noteId: string,
     noteText: string,
   ) {
-    // Verify note exists and belongs to tenant and contract
-    const existingNote = await this.prisma.contractNote.findFirst({
-      where: {
-        id: noteId,
-        tenantId,
-        contractId,
-      },
+    return this.inTenantTransaction(tenantId, async (tx) => {
+      const existingNote = await tx.contractNote.findFirst({
+        where: { id: noteId, tenantId, contractId },
+      });
+      if (!existingNote) throw new NotFoundException('Nota no encontrada');
+      if (existingNote.status === 'ARCHIVED') {
+        throw new ForbiddenException('No se pueden editar notas archivadas');
+      }
+      return tx.contractNote.update({ where: { id: noteId }, data: { note: noteText } });
     });
-
-    if (!existingNote) {
-      throw new NotFoundException('Nota no encontrada');
-    }
-
-    if (existingNote.status === 'ARCHIVED') {
-      throw new ForbiddenException('No se pueden editar notas archivadas');
-    }
-
-    const updatedNote = await this.prisma.contractNote.update({
-      where: {
-        id: noteId,
-      },
-      data: {
-        note: noteText,
-      },
-    });
-
-    return updatedNote;
   }
 
-  /**
-   * Delete a contract note (admin only, can delete archived notes)
-   */
   async deleteContractNote(tenantId: string, contractId: string, noteId: string) {
-    // Verify note exists and belongs to tenant and contract
-    const note = await this.prisma.contractNote.findFirst({
-      where: {
-        id: noteId,
-        tenantId,
-        contractId,
-      },
+    return this.inTenantTransaction(tenantId, async (tx) => {
+      const note = await tx.contractNote.findFirst({ where: { id: noteId, tenantId, contractId } });
+      if (!note) throw new NotFoundException('Nota no encontrada');
+      await tx.contractNote.delete({ where: { id: noteId } });
+      return { message: 'Nota eliminada correctamente' };
     });
-
-    if (!note) {
-      throw new NotFoundException('Nota no encontrada');
-    }
-
-    await this.prisma.contractNote.delete({
-      where: {
-        id: noteId,
-      },
-    });
-
-    return { message: 'Nota eliminada correctamente' };
   }
 
-  /**
-   * Archive notes for contracts that ended more than 1 day ago
-   * This should be called by a scheduled job (cron)
-   */
-  async archiveExpiredNotes() {
-    const oneDayAgo = new Date();
-    oneDayAgo.setDate(oneDayAgo.getDate() - 1);
-    oneDayAgo.setHours(0, 0, 0, 0); // Start of day
+  async archiveExpiredNotes(tenantId: string) {
+    return this.inTenantTransaction(tenantId, async (tx) => {
+      const oneDayAgo = new Date();
+      oneDayAgo.setDate(oneDayAgo.getDate() - 1);
+      oneDayAgo.setHours(0, 0, 0, 0);
+      const expiredContracts = await tx.contract.findMany({
+        where: { tenantId, endDate: { lt: oneDayAgo } },
+        select: { id: true },
+      });
+      const contractIds = expiredContracts.map((contract) => contract.id);
+      if (contractIds.length === 0) return { archived: 0 };
+      const result = await tx.contractNote.updateMany({
+        where: { tenantId, contractId: { in: contractIds }, status: 'ACTIVE' },
+        data: { status: 'ARCHIVED', archivedAt: new Date() },
+      });
+      return { archived: result.count };
+    });
+  }
 
-    // Find contracts that ended before yesterday (more than 1 day ago)
-    const expiredContracts = await this.prisma.contract.findMany({
-      where: {
-        endDate: {
-          lt: oneDayAgo,
-        },
-      },
+  private async validateContract(tx: Transaction, tenantId: string, contractId: string) {
+    const contract = await tx.contract.findFirst({ where: { id: contractId, tenantId } });
+    if (!contract) throw new NotFoundException('Contrato no encontrado');
+    return contract;
+  }
+
+  private async loadNoteContract(tx: Transaction, tenantId: string, contractId: string): Promise<NoteContract> {
+    const contract = await tx.contract.findFirst({
+      where: { id: contractId, tenantId },
       select: {
         id: true,
+        clientId: true,
+        travelPackageId: true,
+        payload: true,
+        client: { select: { fullName: true } },
       },
     });
-
-    const contractIds = expiredContracts.map(c => c.id);
-
-    if (contractIds.length === 0) {
-      return { archived: 0 };
-    }
-
-    // Archive all active notes for these contracts
-    const result = await this.prisma.contractNote.updateMany({
-      where: {
-        contractId: { in: contractIds },
-        status: 'ACTIVE',
-      },
-      data: {
-        status: 'ARCHIVED',
-        archivedAt: new Date(),
-      },
-    });
-
-    return { archived: result.count };
+    if (!contract) throw new NotFoundException('Contrato no encontrado');
+    return contract;
   }
 
-  // ========== Private Helper Methods ==========
+  private resolveNotePassenger(
+    contract: NoteContract,
+    passengerType: unknown,
+    passengerIndex: unknown,
+  ): { clientId: string; role: string; passengerIndex: number | null; passengerName: string } {
+    const resolved = resolveContractParticipationByTuple(contract, passengerType, passengerIndex);
+    if (!resolved) throw new BadRequestException('CONTRACT_NOTE_PARTICIPANT_INVALID');
+    const passengerName = resolved.participation.role === 'HOLDER'
+      ? String(contract.client.fullName || '').trim()
+      : String(
+          resolved.participation.passenger?.fullName ??
+          resolved.participation.passenger?.minorName ??
+          resolved.participation.passenger?.name ??
+          '',
+        ).trim();
+    if (!passengerName) throw new BadRequestException('CONTRACT_NOTE_PARTICIPANT_INVALID');
+    return {
+      clientId: resolved.clientId,
+      role: resolved.participation.role,
+      passengerIndex: resolved.participation.passengerIndex,
+      passengerName,
+    };
+  }
 
-  /**
-   * Validate that contract exists and belongs to tenant
-   */
-  private async validateContract(tenantId: string, contractId: string) {
-    const contract = await this.prisma.contract.findFirst({
-      where: {
-        id: contractId,
-        tenantId,
-      },
-    });
-
-    if (!contract) {
-      throw new NotFoundException('Contrato no encontrado');
+  private contractMatchesTravel(
+    contract: { travelPackageId: string | null; internalTripId: string | null; payload: unknown },
+    travelType: TravelContextType,
+    travelId: string,
+    internalTripId: string | null,
+  ): boolean {
+    const payload = contract.payload && typeof contract.payload === 'object' && !Array.isArray(contract.payload)
+      ? contract.payload as Record<string, unknown>
+      : {};
+    if (travelType === TravelContextType.INTERNATIONAL) {
+      return contract.travelPackageId === travelId || String(payload.travelPackageId ?? '').trim() === travelId;
     }
+    return Boolean(internalTripId) && (
+      contract.internalTripId === internalTripId || String(payload.internalTripId ?? '').trim() === internalTripId
+    );
+  }
 
-    return contract;
+  private inTenantTransaction<TResult>(
+    tenantId: string,
+    work: (tx: Transaction) => Promise<TResult>,
+  ): Promise<TResult> {
+    return runTenantTransaction<any, TResult>(this.prisma as any, tenantId, work);
   }
 }

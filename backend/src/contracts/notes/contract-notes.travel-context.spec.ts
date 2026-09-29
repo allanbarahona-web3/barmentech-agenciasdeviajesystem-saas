@@ -58,6 +58,7 @@ describe('ContractNotesService travel-context enrichment', () => {
             createdAt: new Date('2026-04-01'),
             notes: [
               {
+                clientId: null,
                 passengerType: 'HOLDER',
                 passengerIndex: null,
                 note: 'Holder note',
@@ -92,11 +93,13 @@ describe('ContractNotesService travel-context enrichment', () => {
             createdAt: new Date('2026-03-01'),
             notes: [
               {
+                clientId: null,
                 passengerType: 'COMPANION',
                 passengerIndex: 0,
                 note: 'Companion note',
               },
               {
+                clientId: null,
                 passengerType: 'MINOR',
                 passengerIndex: 0,
                 note: 'Minor note',
@@ -113,6 +116,7 @@ describe('ContractNotesService travel-context enrichment', () => {
             createdAt: new Date('2026-05-01'),
             notes: [
               {
+                clientId: null,
                 passengerType: 'HOLDER',
                 passengerIndex: null,
                 note: 'Unrelated travel note',
@@ -122,6 +126,8 @@ describe('ContractNotesService travel-context enrichment', () => {
         ]),
       },
     };
+    (prisma as any).$executeRaw = jest.fn().mockResolvedValue(undefined);
+    (prisma as any).$transaction = jest.fn(async (work) => work(prisma));
     const service = new ContractNotesService(prisma as any);
 
     const result = await service.enrichTravelContext(
@@ -142,6 +148,7 @@ describe('ContractNotesService travel-context enrichment', () => {
         (participant) => participant.operationalNotes,
       ),
     ).not.toContain('Unrelated travel note');
+    expect((prisma as any).$executeRaw).toHaveBeenCalledTimes(1);
   });
 
   it('does not fall back to the first travel contract', async () => {
@@ -161,6 +168,8 @@ describe('ContractNotesService travel-context enrichment', () => {
         ]),
       },
     };
+    (prisma as any).$executeRaw = jest.fn().mockResolvedValue(undefined);
+    (prisma as any).$transaction = jest.fn(async (work) => work(prisma));
     const service = new ContractNotesService(prisma as any);
 
     const result = await service.enrichTravelContext(

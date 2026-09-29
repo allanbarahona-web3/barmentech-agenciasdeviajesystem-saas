@@ -10,6 +10,9 @@ import { ContractsEmailsService } from "./contracts-emails.service";
 import { PdfRenderService } from "./pdf-render.service";
 import { ContractSigningSessionBuilder } from "./contract-signing-session.builder";
 import { ContractNotesService } from "./notes/contract-notes.service";
+import { ContractTravelOperationsReadAdapter } from "./operations-read/contract-travel-operations-read.adapter";
+import { OPERATIONAL_PASSENGER_NOTE_READER } from "./operations-read/operational-passenger-note-reader.port";
+import { PARTICIPANT_SOURCE_READER } from "./operations-read/participant-source-reader.port";
 import {
   ArchiveProcessingWorker,
   PackageCompletedDispatcher,
@@ -25,10 +28,17 @@ import {
     PdfRenderService,
     ContractSigningSessionBuilder,
     ContractNotesService,
+    ContractTravelOperationsReadAdapter,
+    { provide: PARTICIPANT_SOURCE_READER, useExisting: ContractTravelOperationsReadAdapter },
+    { provide: OPERATIONAL_PASSENGER_NOTE_READER, useExisting: ContractTravelOperationsReadAdapter },
     ArchiveProcessingWorker,
     PackageCompletedDispatcher,
     PackageCompletedWorker,
   ],
-  exports: [ContractSigningSessionBuilder],
+  exports: [
+    ContractSigningSessionBuilder,
+    PARTICIPANT_SOURCE_READER,
+    OPERATIONAL_PASSENGER_NOTE_READER,
+  ],
 })
 export class ContractsModule {}
