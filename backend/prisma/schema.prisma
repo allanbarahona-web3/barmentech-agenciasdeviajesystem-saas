@@ -80,6 +80,7 @@ model Tenant {
   internalInvoices                        InternalTourInvoice[]
   internalTrips                           InternalTrip[]
   travelPackageParticipants               TravelPackageParticipant[]
+  travelPackageParticipantContractSources TravelPackageParticipantContractSource[]
   passengerGroups                         PassengerGroup[]
   passengerGroupMembers                   PassengerGroupMember[]
   payrollConfig                           PayrollConfig?
@@ -264,8 +265,8 @@ model ContractNumber {
 }
 
 model Contract {
-  id                     String                   @id @default(cuid())
-  contractNumber         String                   @unique
+  id                     String                                   @id @default(cuid())
+  contractNumber         String                                   @unique
   destination            String
   generatedByUserId      String
   generatedByEmail       String
@@ -278,10 +279,10 @@ model Contract {
   pdfFileName            String?
   pdfMimeType            String?
   pdfSize                Int?
-  createdAt              DateTime                 @default(now())
-  updatedAt              DateTime                 @updatedAt
+  createdAt              DateTime                                 @default(now())
+  updatedAt              DateTime                                 @updatedAt
   clientId               String
-  status                 String                   @default("PENDING_SIGNATURE")
+  status                 String                                   @default("PENDING_SIGNATURE")
   signedPdfObjectKey     String?
   signedPdfFileName      String?
   signedPdfMimeType      String?
@@ -294,15 +295,15 @@ model Contract {
   htmlObjectKey          String?
   signaturePngObjectKey  String?
   viewedAt               DateTime?
-  paymentReference       String                   @unique
-  contractType           String                   @default("CUSTOM")
+  paymentReference       String                                   @unique
+  contractType           String                                   @default("CUSTOM")
   travelPackageId        String?
-  participantCount       Int                      @default(1)
-  source                 ContractSource           @default(SCHEDULED_TRIP)
-  commercialTotal        Decimal?                 @db.Decimal(19, 5)
+  participantCount       Int                                      @default(1)
+  source                 ContractSource                           @default(SCHEDULED_TRIP)
+  commercialTotal        Decimal?                                 @db.Decimal(19, 5)
   commercialCurrency     Currency?
   paymentConditionType   PaymentConditionType?
-  paymentDueDate         DateTime?                @db.Date
+  paymentDueDate         DateTime?                                @db.Date
   commercialTaxTreatment PriceTaxTreatment?
   tenantId               String
   internalTripId         String?
@@ -310,19 +311,21 @@ model Contract {
   billingInvoice         BillingInvoice?
   billingPayments        BillingPayment[]
   billingReceipts        BillingReceipt[]
-  client                 Client                   @relation(fields: [clientId], references: [id])
-  internalTrip           InternalTrip?            @relation(fields: [internalTripId], references: [id])
-  tenant                 Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  travelPackage          TravelPackage?           @relation(fields: [travelPackageId], references: [id])
+  client                 Client                                   @relation(fields: [clientId], references: [id])
+  internalTrip           InternalTrip?                            @relation(fields: [internalTripId], references: [id])
+  tenant                 Tenant                                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  travelPackage          TravelPackage?                           @relation(fields: [travelPackageId], references: [id])
   documents              ContractDocument[]
   signatureEvents        ContractSignatureEvent[]
   usedTokens             ContractUsedToken[]
   signingSessions        DocumentSigningSession[]
   notes                  ContractNote[]
-  financePayments        Payment[]                @relation("ContractFinancePayments")
+  participantSources     TravelPackageParticipantContractSource[] @relation("ContractTravelPackageParticipantSource")
+  financePayments        Payment[]                                @relation("ContractFinancePayments")
   fiscalSnapshot         ContractFiscalSnapshot?
 
   @@unique([id, tenantId], map: "Contract_id_tenantId_key")
+  @@unique([id, tenantId, travelPackageId], map: "Contract_id_tenantId_travelPackageId_key")
   @@index([clientId])
   @@index([travelPackageId])
   @@index([internalTripId])
@@ -466,6 +469,7 @@ model Client {
   assignedTo                           User?                               @relation("CustomerAssignedTo", fields: [assignedToUserId], references: [id])
   additionalServiceOrderParticipations AdditionalServiceOrderParticipant[]
   additionalServiceQuoteOrders         AdditionalServiceOrder[]            @relation("AdditionalServiceQuoteCustomer")
+  contractNotes                        ContractNote[]                      @relation("ContractNoteClient")
   billingDocuments                     BillingDocument[]                   @relation("BillingDocumentCustomer")
   customerFundsAllocationCommands      CustomerFundsAllocationCommand[]
   commercialObligations                CommercialObligation[]
@@ -559,26 +563,31 @@ model CustomerNote {
 }
 
 model ContractNote {
-  id              String    @id @default(cuid())
+  id              String         @id @default(cuid())
   contractId      String
+  clientId        String?
+  travelPackageId String?
   passengerType   String // "HOLDER", "COMPANION", "MINOR"
   passengerIndex  Int? // Index in companions/minors array (null for holder)
   passengerName   String // Full name of passenger for display
   note            String // Note content
-  status          String    @default("ACTIVE") // "ACTIVE", "ARCHIVED"
+  status          String         @default("ACTIVE") // "ACTIVE", "ARCHIVED"
   archivedAt      DateTime?
   createdByUserId String
   createdByName   String
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
   tenantId        String
-  contract        Contract  @relation(fields: [contractId], references: [id], onDelete: Cascade)
-  tenant          Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contract        Contract       @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  tenant          Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  client          Client?        @relation("ContractNoteClient", fields: [clientId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "contract_notes_client_tenant_fkey")
+  travelPackage   TravelPackage? @relation("ContractNoteTravelPackage", fields: [travelPackageId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "contract_notes_travel_package_tenant_fkey")
 
   @@index([contractId])
   @@index([tenantId])
   @@index([status])
   @@index([createdAt])
+  @@index([tenantId, travelPackageId, clientId, status, createdAt(sort: Desc), id(sort: Desc)], map: "contract_notes_tenant_travel_client_status_created_id_idx")
   @@map("contract_notes")
 }
 
@@ -977,29 +986,31 @@ model PaymentReceiptImage {
 }
 
 model TravelPackage {
-  id                            String                            @id @default(cuid())
+  id                            String                                   @id @default(cuid())
   name                          String
   destination                   String
   departureDate                 DateTime
   returnDate                    DateTime
   capacity                      Int
-  occupiedSlots                 Int                               @default(0)
-  status                        String                            @default("OPEN")
-  travelType                    TravelPackageType                 @default(INTERNATIONAL)
-  packagePrice                  Decimal?                          @db.Decimal(19, 5)
-  priceCurrency                 String                            @default("USD")
+  occupiedSlots                 Int                                      @default(0)
+  status                        String                                   @default("OPEN")
+  travelType                    TravelPackageType                        @default(INTERNATIONAL)
+  packagePrice                  Decimal?                                 @db.Decimal(19, 5)
+  priceCurrency                 String                                   @default("USD")
   createdByUserId               String
-  createdAt                     DateTime                          @default(now())
-  updatedAt                     DateTime                          @updatedAt
-  packageCode                   String                            @unique
+  createdAt                     DateTime                                 @default(now())
+  updatedAt                     DateTime                                 @updatedAt
+  packageCode                   String                                   @unique
   tenantId                      String
-  minReservation                Decimal?                          @db.Decimal(14, 2)
+  minReservation                Decimal?                                 @db.Decimal(14, 2)
   fiscalClassificationCatalogId String?
   contracts                     Contract[]
-  tenant                        Tenant                            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  fiscalClassificationCatalog   AdditionalServiceCatalog?         @relation("TravelPackageFiscalClassification", fields: [fiscalClassificationCatalogId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "travel_packages_fiscal_classification_tenant_fkey")
+  tenant                        Tenant                                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  fiscalClassificationCatalog   AdditionalServiceCatalog?                @relation("TravelPackageFiscalClassification", fields: [fiscalClassificationCatalogId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "travel_packages_fiscal_classification_tenant_fkey")
   additionalServiceOrders       AdditionalServiceOrder[]
   participants                  TravelPackageParticipant[]
+  participantContractSources    TravelPackageParticipantContractSource[] @relation("TravelPackageParticipantContractSourceTravelPackage")
+  contractNotes                 ContractNote[]                           @relation("ContractNoteTravelPackage")
   passengerGroups               PassengerGroup[]
   costingProjectLinks           TravelPackageCostingProjectLink[]
   pricingPublications           TravelPackagePricingPublication[]
@@ -1016,17 +1027,18 @@ model TravelPackage {
 }
 
 model TravelPackageParticipant {
-  id                    String                       @id @default(cuid())
+  id                    String                                   @id @default(cuid())
   tenantId              String
   travelPackageId       String
   clientId              String
   role                  TravelPackageParticipantRole
-  createdAt             DateTime                     @default(now())
-  updatedAt             DateTime                     @updatedAt
-  tenant                Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  travelPackage         TravelPackage                @relation(fields: [travelPackageId], references: [id], onDelete: Cascade)
-  client                Client                       @relation(fields: [clientId], references: [id])
+  createdAt             DateTime                                 @default(now())
+  updatedAt             DateTime                                 @updatedAt
+  tenant                Tenant                                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  travelPackage         TravelPackage                            @relation(fields: [travelPackageId], references: [id], onDelete: Cascade)
+  client                Client                                   @relation(fields: [clientId], references: [id])
   passengerGroupMembers PassengerGroupMember[]
+  contractSources       TravelPackageParticipantContractSource[] @relation("TravelPackageParticipantContractSource")
 
   @@unique([travelPackageId, clientId])
   @@unique([id, tenantId, travelPackageId], map: "travel_package_participants_id_tenant_travel_package_key")
@@ -1035,6 +1047,26 @@ model TravelPackageParticipant {
   @@index([clientId])
   @@index([role])
   @@map("travel_package_participants")
+}
+
+/// Contract-to-roster provenance for international TravelPackage participants.
+/// This boundary model is intentionally independent from future Operations models.
+model TravelPackageParticipantContractSource {
+  id                         String                       @id @default(cuid())
+  tenantId                   String
+  travelPackageId            String
+  travelPackageParticipantId String
+  contractId                 String
+  sourceRole                 TravelPackageParticipantRole
+  createdAt                  DateTime                     @default(now())
+  tenant                     Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  travelPackage              TravelPackage                @relation("TravelPackageParticipantContractSourceTravelPackage", fields: [travelPackageId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "tp_participant_contract_sources_travel_tenant_fkey")
+  travelPackageParticipant   TravelPackageParticipant     @relation("TravelPackageParticipantContractSource", fields: [travelPackageParticipantId, tenantId, travelPackageId], references: [id, tenantId, travelPackageId], onDelete: Restrict, map: "tp_participant_contract_sources_participant_tenant_travel_fkey")
+  contract                   Contract                     @relation("ContractTravelPackageParticipantSource", fields: [contractId, tenantId, travelPackageId], references: [id, tenantId, travelPackageId], onDelete: Restrict, map: "tp_participant_contract_sources_contract_tenant_travel_fkey")
+
+  @@unique([tenantId, contractId, travelPackageParticipantId], map: "tp_participant_contract_sources_tenant_contract_participant_key")
+  @@index([tenantId, travelPackageId, travelPackageParticipantId], map: "tp_participant_contract_sources_tenant_travel_participant_idx")
+  @@map("travel_package_participant_contract_sources")
 }
 
 enum PassengerGroupStatus {
