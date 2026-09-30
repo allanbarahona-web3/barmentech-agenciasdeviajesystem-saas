@@ -83,6 +83,12 @@ model Tenant {
   travelPackageParticipantContractSources TravelPackageParticipantContractSource[]
   passengerGroups                         PassengerGroup[]
   passengerGroupMembers                   PassengerGroupMember[]
+  operationalRequirements                 OperationalRequirement[]
+  operationalRequirementPassengers        OperationalRequirementPassenger[]
+  operationalFulfillments                 OperationalFulfillment[]
+  operationalFulfillmentPassengers        OperationalFulfillmentPassenger[]
+  operationalPurchases                    OperationalPurchase[]
+  operationalEvidence                     OperationalEvidence[]
   payrollConfig                           PayrollConfig?
   payrollPeriods                          PayrollPeriod[]
   payrollAdjustments                      PayrollAdjustment[]
@@ -1012,6 +1018,10 @@ model TravelPackage {
   participantContractSources    TravelPackageParticipantContractSource[] @relation("TravelPackageParticipantContractSourceTravelPackage")
   contractNotes                 ContractNote[]                           @relation("ContractNoteTravelPackage")
   passengerGroups               PassengerGroup[]
+  operationalRequirements       OperationalRequirement[]
+  operationalFulfillments       OperationalFulfillment[]
+  operationalPurchases          OperationalPurchase[]
+  operationalEvidence           OperationalEvidence[]
   costingProjectLinks           TravelPackageCostingProjectLink[]
   pricingPublications           TravelPackagePricingPublication[]
 
@@ -1027,18 +1037,20 @@ model TravelPackage {
 }
 
 model TravelPackageParticipant {
-  id                    String                                   @id @default(cuid())
-  tenantId              String
-  travelPackageId       String
-  clientId              String
-  role                  TravelPackageParticipantRole
-  createdAt             DateTime                                 @default(now())
-  updatedAt             DateTime                                 @updatedAt
-  tenant                Tenant                                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  travelPackage         TravelPackage                            @relation(fields: [travelPackageId], references: [id], onDelete: Cascade)
-  client                Client                                   @relation(fields: [clientId], references: [id])
-  passengerGroupMembers PassengerGroupMember[]
-  contractSources       TravelPackageParticipantContractSource[] @relation("TravelPackageParticipantContractSource")
+  id                               String                                   @id @default(cuid())
+  tenantId                         String
+  travelPackageId                  String
+  clientId                         String
+  role                             TravelPackageParticipantRole
+  createdAt                        DateTime                                 @default(now())
+  updatedAt                        DateTime                                 @updatedAt
+  tenant                           Tenant                                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  travelPackage                    TravelPackage                            @relation(fields: [travelPackageId], references: [id], onDelete: Cascade)
+  client                           Client                                   @relation(fields: [clientId], references: [id])
+  passengerGroupMembers            PassengerGroupMember[]
+  contractSources                  TravelPackageParticipantContractSource[] @relation("TravelPackageParticipantContractSource")
+  operationalRequirementPassengers OperationalRequirementPassenger[]
+  operationalFulfillmentPassengers OperationalFulfillmentPassenger[]
 
   @@unique([travelPackageId, clientId])
   @@unique([id, tenantId, travelPackageId], map: "travel_package_participants_id_tenant_travel_package_key")
@@ -1118,6 +1130,219 @@ model PassengerGroupMember {
   @@unique([tenantId, passengerGroupId, travelPackageParticipantId], map: "passenger_group_members_tenant_group_participant_key")
   @@index([tenantId, travelPackageParticipantId, travelPackageId], map: "passenger_group_members_tenant_participant_travel_idx")
   @@map("passenger_group_members")
+}
+
+enum OperationalRequirementStatus {
+  PENDING
+  IN_PROGRESS
+  FULFILLED
+  CANCELLED
+  NOT_APPLICABLE
+}
+
+enum OperationalSoldValueScope {
+  EXACT_SERVICE_LINE
+  ORDER_TOTAL
+  QUOTATION_TOTAL
+  CONTRACT_TOTAL
+  PACKAGE_REFERENCE
+  NONE
+}
+
+enum OperationalFulfillmentStatus {
+  DRAFT
+  RESERVED
+  PURCHASED
+  CONFIRMED
+  CANCELLED
+}
+
+enum OperationalEvidenceType {
+  SUPPLIER_QUOTE
+  BOOKING_CONFIRMATION
+  TICKET
+  VOUCHER
+  SUPPLIER_INVOICE
+  RECEIPT
+  INSURANCE_CERTIFICATE
+  SCREENSHOT
+  OTHER
+}
+
+/// Operations-owned fulfillment work. Source references are intentionally
+/// neutral traceability fields rather than relations to commercial domains.
+model OperationalRequirement {
+  id                              String                            @id @default(cuid())
+  tenantId                        String
+  travelPackageId                 String
+  servicePurposeCode              String                            @db.VarChar(80)
+  servicePurposeName              String                            @db.VarChar(160)
+  description                     String
+  status                          OperationalRequirementStatus      @default(PENDING)
+  critical                        Boolean                           @default(false)
+  operationalDeadlineAt           DateTime?
+  assignedToUserId                String?
+  assignedToName                  String?
+  sourceType                      String                            @db.VarChar(80)
+  sourceId                        String?
+  sourceLineId                    String?
+  sourceVersionId                 String?
+  sourceReference                 String?
+  sourceAcceptedAt                DateTime?
+  sourcePassengerGroupId          String?
+  sourcePassengerGroupName        String?
+  sourcePassengerGroupServiceCode String?
+  soldAmount                      Decimal?                          @db.Decimal(19, 5)
+  soldCurrency                    String?                           @db.VarChar(3)
+  soldValueScope                  OperationalSoldValueScope         @default(NONE)
+  createdByUserId                 String
+  createdByName                   String
+  updatedByUserId                 String?
+  updatedByName                   String?
+  createdAt                       DateTime                          @default(now())
+  updatedAt                       DateTime                          @updatedAt
+  tenant                          Tenant                            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  travelPackage                   TravelPackage                     @relation(fields: [travelPackageId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "operational_requirements_travel_tenant_fkey")
+  passengers                      OperationalRequirementPassenger[]
+  fulfillments                    OperationalFulfillment[]
+
+  @@unique([id, tenantId, travelPackageId], map: "operational_requirements_id_tenant_travel_key")
+  @@index([tenantId, travelPackageId, status, operationalDeadlineAt, id], map: "operational_requirements_travel_status_deadline_idx")
+  @@index([tenantId, travelPackageId, servicePurposeCode, status, id], map: "operational_requirements_travel_purpose_status_idx")
+  @@index([tenantId, assignedToUserId, status, operationalDeadlineAt, id], map: "operational_requirements_assignee_status_deadline_idx")
+  @@map("operational_requirements")
+}
+
+/// The immutable-at-creation passenger scope for an Operations requirement.
+model OperationalRequirementPassenger {
+  id                         String                   @id @default(cuid())
+  tenantId                   String
+  travelPackageId            String
+  operationalRequirementId   String
+  travelPackageParticipantId String
+  createdByUserId            String
+  createdByName              String
+  createdAt                  DateTime                 @default(now())
+  tenant                     Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  operationalRequirement     OperationalRequirement   @relation(fields: [operationalRequirementId, tenantId, travelPackageId], references: [id, tenantId, travelPackageId], onDelete: Restrict, map: "orp_requirement_tenant_travel_fkey")
+  travelPackageParticipant   TravelPackageParticipant @relation(fields: [travelPackageParticipantId, tenantId, travelPackageId], references: [id, tenantId, travelPackageId], onDelete: Restrict, map: "orp_participant_tenant_travel_fkey")
+
+  @@unique([tenantId, operationalRequirementId, travelPackageParticipantId], map: "orp_tenant_requirement_participant_key")
+  @@index([tenantId, travelPackageId, travelPackageParticipantId, operationalRequirementId], map: "orp_tenant_travel_participant_requirement_idx")
+  @@map("operational_requirement_passengers")
+}
+
+model OperationalFulfillment {
+  id                       String                            @id @default(cuid())
+  tenantId                 String
+  travelPackageId          String
+  operationalRequirementId String
+  servicePurposeCode       String                            @db.VarChar(80)
+  servicePurposeName       String                            @db.VarChar(160)
+  providerName             String?
+  providerReference        String?
+  reservationCode          String?
+  confirmationReference    String?
+  voucherReference         String?
+  ticketReference          String?
+  serviceStartAt           DateTime?
+  serviceEndAt             DateTime?
+  detailPayload            Json?
+  detailVersion            Int?
+  status                   OperationalFulfillmentStatus      @default(DRAFT)
+  assignedToUserId         String?
+  assignedToName           String?
+  confirmationNotes        String?
+  createdByUserId          String
+  createdByName            String
+  updatedByUserId          String?
+  updatedByName            String?
+  createdAt                DateTime                          @default(now())
+  updatedAt                DateTime                          @updatedAt
+  tenant                   Tenant                            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  travelPackage            TravelPackage                     @relation(fields: [travelPackageId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "operational_fulfillments_travel_tenant_fkey")
+  operationalRequirement   OperationalRequirement            @relation(fields: [operationalRequirementId, tenantId, travelPackageId], references: [id, tenantId, travelPackageId], onDelete: Restrict, map: "operational_fulfillments_requirement_tenant_travel_fkey")
+  passengers               OperationalFulfillmentPassenger[]
+  purchases                OperationalPurchase[]
+  evidence                 OperationalEvidence[]             @relation("OperationalFulfillmentEvidence")
+
+  @@unique([id, tenantId, travelPackageId], map: "operational_fulfillments_id_tenant_travel_key")
+  @@index([tenantId, travelPackageId, operationalRequirementId, status, createdAt, id], map: "operational_fulfillments_travel_requirement_status_created_idx")
+  @@map("operational_fulfillments")
+}
+
+model OperationalFulfillmentPassenger {
+  id                         String                   @id @default(cuid())
+  tenantId                   String
+  travelPackageId            String
+  operationalFulfillmentId   String
+  travelPackageParticipantId String
+  createdByUserId            String
+  createdByName              String
+  createdAt                  DateTime                 @default(now())
+  tenant                     Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  operationalFulfillment     OperationalFulfillment   @relation(fields: [operationalFulfillmentId, tenantId, travelPackageId], references: [id, tenantId, travelPackageId], onDelete: Restrict, map: "ofp_fulfillment_tenant_travel_fkey")
+  travelPackageParticipant   TravelPackageParticipant @relation(fields: [travelPackageParticipantId, tenantId, travelPackageId], references: [id, tenantId, travelPackageId], onDelete: Restrict, map: "ofp_participant_tenant_travel_fkey")
+
+  @@unique([tenantId, operationalFulfillmentId, travelPackageParticipantId], map: "ofp_tenant_fulfillment_participant_key")
+  @@index([tenantId, travelPackageId, travelPackageParticipantId, operationalFulfillmentId], map: "ofp_tenant_travel_participant_fulfillment_idx")
+  @@map("operational_fulfillment_passengers")
+}
+
+model OperationalPurchase {
+  id                       String                 @id @default(cuid())
+  tenantId                 String
+  travelPackageId          String
+  operationalFulfillmentId String
+  providerName             String
+  supplierReference        String?
+  amount                   Decimal                @db.Decimal(19, 5)
+  currency                 String                 @db.VarChar(3)
+  taxAmount                Decimal?               @db.Decimal(19, 5)
+  purchasedAt              DateTime
+  supplierInvoiceNumber    String?
+  notes                    String?
+  createdByUserId          String
+  createdByName            String
+  updatedByUserId          String?
+  updatedByName            String?
+  createdAt                DateTime               @default(now())
+  updatedAt                DateTime               @updatedAt
+  tenant                   Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  travelPackage            TravelPackage          @relation(fields: [travelPackageId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "operational_purchases_travel_tenant_fkey")
+  operationalFulfillment   OperationalFulfillment @relation(fields: [operationalFulfillmentId, tenantId, travelPackageId], references: [id, tenantId, travelPackageId], onDelete: Restrict, map: "operational_purchases_fulfillment_tenant_travel_fkey")
+  evidence                 OperationalEvidence[]  @relation("OperationalPurchaseEvidence")
+
+  @@unique([id, tenantId, travelPackageId], map: "operational_purchases_id_tenant_travel_key")
+  @@unique([id, tenantId, travelPackageId, operationalFulfillmentId], map: "operational_purchases_id_tenant_travel_fulfillment_key")
+  @@index([tenantId, operationalFulfillmentId, purchasedAt, id], map: "operational_purchases_fulfillment_purchased_idx")
+  @@index([tenantId, travelPackageId, purchasedAt, id], map: "operational_purchases_travel_purchased_idx")
+  @@map("operational_purchases")
+}
+
+model OperationalEvidence {
+  id                       String                  @id @default(cuid())
+  tenantId                 String
+  travelPackageId          String
+  operationalFulfillmentId String?
+  operationalPurchaseId    String?
+  evidenceType             OperationalEvidenceType
+  objectKey                String                  @unique
+  originalFilename         String
+  mimeType                 String
+  byteSize                 Int
+  contentHash              String?
+  uploadedByUserId         String
+  uploadedByName           String
+  createdAt                DateTime                @default(now())
+  tenant                   Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  travelPackage            TravelPackage           @relation(fields: [travelPackageId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "operational_evidence_travel_tenant_fkey")
+  operationalFulfillment   OperationalFulfillment? @relation("OperationalFulfillmentEvidence", fields: [operationalFulfillmentId, tenantId, travelPackageId], references: [id, tenantId, travelPackageId], onDelete: Restrict, map: "operational_evidence_fulfillment_tenant_travel_fkey")
+  operationalPurchase      OperationalPurchase?    @relation("OperationalPurchaseEvidence", fields: [operationalPurchaseId, tenantId, travelPackageId, operationalFulfillmentId], references: [id, tenantId, travelPackageId, operationalFulfillmentId], onDelete: Restrict, map: "operational_evidence_purchase_fulfillment_tenant_travel_fkey")
+
+  @@index([tenantId, operationalFulfillmentId, createdAt, id], map: "operational_evidence_fulfillment_created_idx")
+  @@index([tenantId, operationalPurchaseId, createdAt, id], map: "operational_evidence_purchase_created_idx")
+  @@map("operational_evidence")
 }
 
 enum CostingProjectStatus {
