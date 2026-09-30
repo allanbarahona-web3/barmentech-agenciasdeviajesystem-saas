@@ -42,6 +42,7 @@ import { AirfarePricingModule } from "./airfare-pricing/airfare-pricing.module";
 import { CustomQuotationsModule } from "./custom-quotations/custom-quotations.module";
 import { LeadsModule } from "./leads/leads.module";
 import { PassengerGroupsModule } from "./passenger-groups/passenger-groups.module";
+import { OperationsModule } from "./operations/operations.module";
 
 @Module({
   controllers: [AppController],
@@ -93,6 +94,7 @@ import { PassengerGroupsModule } from "./passenger-groups/passenger-groups.modul
     CustomQuotationsModule,
     LeadsModule,
     PassengerGroupsModule,
+    OperationsModule,
   ],
   providers: [
     {
