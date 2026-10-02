@@ -9,10 +9,7 @@ describe("OperationalReadinessService", () => {
     const c = context();
     c.tx.travelPackage.findFirst.mockResolvedValue({ id: travelPackageId });
     c.tx.$queryRaw
-      .mockResolvedValueOnce([{ totalAssignments: 4, fulfilledAssignments: 2, participantCountWithRequirements: 3, completePassengerCount: 1, totalRosterPassengerCount: 5 }])
-      .mockResolvedValueOnce([{ servicePurposeCode: "LODGING", servicePurposeName: "Lodging", totalAssignments: 3, fulfilledAssignments: 2 }, { servicePurposeCode: "TOUR", servicePurposeName: "Tour", totalAssignments: 1, fulfilledAssignments: 0 }])
-      .mockResolvedValueOnce([{ criticalAssignmentCount: 2, criticalPending: 1, criticalOverdue: 1, criticalDueSoon: 1, nonCriticalPending: 1 }])
-      .mockResolvedValueOnce([{ inconsistentFulfilledRequirementCount: 1 }]);
+      .mockResolvedValueOnce([{ totalAssignments: 4, fulfilledAssignments: 2, participantCountWithRequirements: 3, completePassengerCount: 1, totalRosterPassengerCount: 5, criticalAssignmentCount: 2, criticalPending: 1, criticalOverdue: 1, criticalDueSoon: 1, nonCriticalPending: 1, inconsistentFulfilledRequirementCount: 1, services: [{ servicePurposeCode: "LODGING", servicePurposeName: "Lodging", totalAssignments: 3, fulfilledAssignments: 2 }, { servicePurposeCode: "TOUR", servicePurposeName: "Tour", totalAssignments: 1, fulfilledAssignments: 0 }] }]);
 
     await expect(c.service.readiness(tenantId, travelPackageId, new Date("2026-10-01T12:00:00.000Z"))).resolves.toMatchObject({
       overall: { totalAssignments: 4, fulfilledAssignments: 2, pendingAssignments: 2, progressPercent: 50, completePassengerCount: 1, participantCountWithRequirements: 3, totalRosterPassengerCount: 5 },
@@ -20,7 +17,8 @@ describe("OperationalReadinessService", () => {
       services: [{ servicePurposeCode: "LODGING", progressPercent: 66.67 }, { servicePurposeCode: "TOUR", pendingAssignments: 1 }],
       inconsistency: { fulfilledRequirementWithoutCoverageCount: 1 },
     });
-    expect(c.tx.$queryRaw).toHaveBeenCalledTimes(4);
+    expect(c.tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(String(c.tx.$queryRaw.mock.calls[0][0])).toContain("all_assignments AS MATERIALIZED");
     expect(String(c.tx.$queryRaw.mock.calls[0][0])).toContain("CONFIRMED");
   });
 
@@ -122,10 +120,7 @@ function readinessContext(risk: Record<string, number>) {
   const c = context();
   c.tx.travelPackage.findFirst.mockResolvedValue({ id: travelPackageId });
   c.tx.$queryRaw
-    .mockResolvedValueOnce([{ totalAssignments: 1, fulfilledAssignments: 0, participantCountWithRequirements: 1, completePassengerCount: 0, totalRosterPassengerCount: 1 }])
-    .mockResolvedValueOnce([])
-    .mockResolvedValueOnce([risk])
-    .mockResolvedValueOnce([{ inconsistentFulfilledRequirementCount: 0 }]);
+    .mockResolvedValueOnce([{ totalAssignments: 1, fulfilledAssignments: 0, participantCountWithRequirements: 1, completePassengerCount: 0, totalRosterPassengerCount: 1, ...risk, inconsistentFulfilledRequirementCount: 0, services: [] }]);
   return c;
 }
 

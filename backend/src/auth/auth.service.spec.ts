@@ -70,4 +70,19 @@ describe('AuthService.me', () => {
       tenant: { fiscalTimezone: 'America/Costa_Rica' },
     });
   });
+
+  it('keeps the shared assignable-user directory tenant scoped', async () => {
+    const findMany = jest.fn().mockResolvedValue([]);
+    const service = new AuthService(
+      { user: { findMany } } as any,
+      {} as any,
+      {} as any,
+      {} as any,
+    );
+    await service.adminListUsers('tenant-a');
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { tenantId: 'tenant-a' },
+      select: expect.objectContaining({ id: true, fullName: true, email: true, role: true, isActive: true }),
+    }));
+  });
 });

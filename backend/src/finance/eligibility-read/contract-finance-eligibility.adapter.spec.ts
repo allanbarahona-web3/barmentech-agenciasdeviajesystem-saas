@@ -4,6 +4,8 @@ import { CommercialObligationStatus, Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { FinanceModule } from "../finance.module";
 import { ContractFinanceEligibilityAdapter } from "./contract-finance-eligibility.adapter";
+import { AdditionalServiceFinanceEligibilityAdapter } from "./additional-service-finance-eligibility.adapter";
+import { FinanceEligibilityReaderAdapter } from "./finance-eligibility-reader.adapter";
 import { FINANCE_ELIGIBILITY_READER } from "./finance-eligibility-reader.port";
 
 const settledAt = new Date("2026-09-29T12:00:00.000Z");
@@ -160,7 +162,9 @@ describe("ContractFinanceEligibilityAdapter", () => {
     const providers = Reflect.getMetadata(MODULE_METADATA.PROVIDERS, FinanceModule);
     expect(providers).toEqual(expect.arrayContaining([
       ContractFinanceEligibilityAdapter,
-      { provide: FINANCE_ELIGIBILITY_READER, useExisting: ContractFinanceEligibilityAdapter },
+      AdditionalServiceFinanceEligibilityAdapter,
+      FinanceEligibilityReaderAdapter,
+      { provide: FINANCE_ELIGIBILITY_READER, useExisting: FinanceEligibilityReaderAdapter },
     ]));
 
     const c = context();
@@ -168,10 +172,12 @@ describe("ContractFinanceEligibilityAdapter", () => {
       providers: [
         { provide: PrismaService, useValue: c.prisma },
         ContractFinanceEligibilityAdapter,
-        { provide: FINANCE_ELIGIBILITY_READER, useExisting: ContractFinanceEligibilityAdapter },
+        AdditionalServiceFinanceEligibilityAdapter,
+        FinanceEligibilityReaderAdapter,
+        { provide: FINANCE_ELIGIBILITY_READER, useExisting: FinanceEligibilityReaderAdapter },
       ],
     }).compile();
-    expect(module.get(FINANCE_ELIGIBILITY_READER)).toBeInstanceOf(ContractFinanceEligibilityAdapter);
+    expect(module.get(FINANCE_ELIGIBILITY_READER)).toBeInstanceOf(FinanceEligibilityReaderAdapter);
   });
 });
 

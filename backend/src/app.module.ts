@@ -20,6 +20,7 @@ import { InternalTourismModule } from "./internal-tourism/internal-tourism.modul
 import { AttendanceModule } from "./attendance/attendance.module";
 import { TenantMiddleware } from "./tenant/tenant.middleware";
 import { RLSInterceptor } from "./common/interceptors/rls.interceptor";
+import { OperationsTimingInterceptor } from "./common/interceptors/operations-timing.interceptor";
 import { RedisModule } from "./infrastructure/redis";
 import { QueueModule } from "./infrastructure/queue";
 import { WorkerModule } from "./infrastructure/worker";
@@ -100,6 +101,10 @@ import { OperationsModule } from "./operations/operations.module";
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: OperationsTimingInterceptor,
     },
     {
       provide: APP_INTERCEPTOR,

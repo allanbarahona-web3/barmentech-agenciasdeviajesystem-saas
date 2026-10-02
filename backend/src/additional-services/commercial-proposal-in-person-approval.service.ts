@@ -16,6 +16,8 @@ import {
 import { CommercialProposalStatus } from "./enums";
 import type { AdditionalServiceOrderRecord } from "./repositories";
 import { approvalSalesOrderFailureCode } from "./approval-sales-order.logging";
+import { AdditionalServiceOperationsIntakeOutboxProducer } from "./additional-service-operations-intake-outbox.producer";
+import { runTenantTransaction } from "../tenant/tenant-transaction";
 
 export interface InPersonApprovalActor {
   id: string;
@@ -32,6 +34,7 @@ export class CommercialProposalInPersonApprovalService {
     private readonly prisma: PrismaService,
     private readonly generatedDocumentsService: GeneratedDocumentsService,
     private readonly salesOrderConversionService: SalesOrderConversionService,
+    private readonly operationsIntakeOutboxProducer: AdditionalServiceOperationsIntakeOutboxProducer,
   ) {}
 
   async approve(
@@ -72,7 +75,7 @@ export class CommercialProposalInPersonApprovalService {
     const approvedAt = new Date();
     let materialization;
     try {
-      materialization = await this.prisma.$transaction(async (transaction) => {
+      materialization = await runTenantTransaction<any, any>(this.prisma as any, tenantId, async (transaction) => {
         await this.salesOrderConversionService.lockAdditionalServiceOrder(
           transaction,
           tenantId,
@@ -100,6 +103,11 @@ export class CommercialProposalInPersonApprovalService {
             "La propuesta comercial ya fue procesada.",
           );
         }
+        await this.operationsIntakeOutboxProducer.persistApprovedOrder(
+          transaction,
+          tenantId,
+          order.id,
+        );
         return this.salesOrderConversionService.materializeAdditionalServiceOrder(
           transaction,
           tenantId,

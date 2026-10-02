@@ -17,6 +17,8 @@ import {
 } from "../generated-documents";
 import { CommercialProposalStatus } from "./enums";
 import { approvalSalesOrderFailureCode } from "./approval-sales-order.logging";
+import { AdditionalServiceOperationsIntakeOutboxProducer } from "./additional-service-operations-intake-outbox.producer";
+import { runTenantTransaction } from "../tenant/tenant-transaction";
 
 @Injectable()
 export class CommercialProposalApprovalService {
@@ -27,6 +29,7 @@ export class CommercialProposalApprovalService {
     private readonly documentAccessService: GeneratedDocumentAccessService,
     private readonly generatedDocumentsService: GeneratedDocumentsService,
     private readonly salesOrderConversionService: SalesOrderConversionService,
+    private readonly operationsIntakeOutboxProducer: AdditionalServiceOperationsIntakeOutboxProducer,
   ) {}
 
   async getPublicProposal(token: string) {
@@ -70,7 +73,7 @@ export class CommercialProposalApprovalService {
     const approvedAt = new Date();
     let materialization;
     try {
-      materialization = await this.prisma.$transaction(async (transaction) => {
+      materialization = await runTenantTransaction<any, any>(this.prisma as any, context.document.tenantId, async (transaction) => {
         const consumed = await transaction.generatedDocumentAccessToken.updateMany({
           where: {
             id: context.access.id,
@@ -115,6 +118,11 @@ export class CommercialProposalApprovalService {
             "This commercial proposal was already processed.",
           );
         }
+        await this.operationsIntakeOutboxProducer.persistApprovedOrder(
+          transaction,
+          context.document.tenantId,
+          context.order.id,
+        );
         return this.salesOrderConversionService.materializeAdditionalServiceOrder(
           transaction,
           context.document.tenantId,

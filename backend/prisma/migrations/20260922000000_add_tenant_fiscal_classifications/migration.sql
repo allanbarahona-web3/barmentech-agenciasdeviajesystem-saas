@@ -8,11 +8,7 @@ CREATE TABLE "tenant_fiscal_classifications" (
     "fiscalItemCategory" "FiscalItemCategory" NOT NULL,
     "cabysCode" VARCHAR(13) NOT NULL,
     "unitOfMeasureCode" VARCHAR(20) NOT NULL,
-    "taxCode" VARCHAR(4) NOT NULL,
-    "taxRateCode" VARCHAR(4) NOT NULL,
-    "taxPercentage" DECIMAL(7,4) NOT NULL,
-    "isActive" BOOLEAN NOT NULL DEFAULT true,
-    "createdByUserId" TEXT NOT NULL,
+    "taxCode" VARCHAR(4) NOT NULL,at
     "createdByName" TEXT NOT NULL,
     "updatedByUserId" TEXT,
     "updatedByName" TEXT,

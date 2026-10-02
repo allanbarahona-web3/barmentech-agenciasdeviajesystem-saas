@@ -57,6 +57,23 @@ describe("OperationalPurchasesService", () => {
     expect(blocked.tx.operationalPurchase.create).not.toHaveBeenCalled();
   });
 
+  it("passes the exact Additional Service source snapshot to Finance and preserves blocked/unavailable gates", async () => {
+    const eligible = context(requirement({ sourceType: "ADDITIONAL_SERVICE_ORDER_LINE", sourceId: "order-a", sourceLineId: "line-a" }), fulfillment());
+    eligible.finance.readMany.mockResolvedValue([{ eligibility: "ELIGIBLE", reason: "SETTLED" }]);
+    eligible.tx.operationalPurchase.create.mockResolvedValue(purchase());
+    eligible.tx.operationalFulfillment.updateMany.mockResolvedValue({ count: 1 });
+    await expect(eligible.service.create(tenantId, travelPackageId, requirementId, fulfillmentId, input(), actor)).resolves.toMatchObject({ id: purchaseId });
+    expect(eligible.finance.readMany).toHaveBeenCalledWith({ tenantId, sources: [{ sourceType: "ADDITIONAL_SERVICE_ORDER_LINE", sourceId: "order-a", sourceLineId: "line-a", travelPackageId }] });
+
+    const blocked = context(requirement({ sourceType: "ADDITIONAL_SERVICE_ORDER_LINE", sourceId: "order-a", sourceLineId: "line-a" }), fulfillment());
+    blocked.finance.readMany.mockResolvedValue([{ eligibility: "BLOCKED", reason: "OUTSTANDING_BALANCE" }]);
+    await expect(blocked.service.create(tenantId, travelPackageId, requirementId, fulfillmentId, input(), actor)).rejects.toMatchObject({ response: expect.objectContaining({ message: "OPERATIONAL_PURCHASE_FINANCIAL_ELIGIBILITY_BLOCKED" }) });
+
+    const unavailable = context(requirement({ sourceType: "ADDITIONAL_SERVICE_ORDER_LINE", sourceId: "order-a", sourceLineId: "line-a" }), fulfillment());
+    unavailable.finance.readMany.mockResolvedValue([{ eligibility: "BLOCKED", reason: "FINANCIAL_DATA_MISSING" }]);
+    await expect(unavailable.service.create(tenantId, travelPackageId, requirementId, fulfillmentId, input(), actor)).rejects.toMatchObject({ response: expect.objectContaining({ message: "OPERATIONAL_PURCHASE_FINANCIAL_ELIGIBILITY_UNAVAILABLE" }) });
+  });
+
   it.each([
     [input({ amount: "0" }), "OPERATIONAL_PURCHASE_AMOUNT_INVALID"],
     [input({ amount: "-1" }), "OPERATIONAL_PURCHASE_AMOUNT_INVALID"],
@@ -111,6 +128,6 @@ function context(req = requirement(), full = fulfillment(), reqs = [req, req], f
   return { tx, finance, service: new OperationalPurchasesService(prisma as never, finance) };
 }
 function input(overrides: Record<string, unknown> = {}) { return { providerName: "Provider A", amount: "100.25000", currency: "usd", taxAmount: "0", purchasedAt: "2026-10-01T12:00:00.000Z", ...overrides } as any; }
-function requirement(overrides: Record<string, unknown> = {}) { return { id: requirementId, status: "IN_PROGRESS", sourceType: "CONTRACT", sourceId: "contract-a", sourceLineId: null, sourceVersionId: null, ...overrides }; }
+function requirement(overrides: Record<string, unknown> = {}) { return { id: requirementId, travelPackageId, status: "IN_PROGRESS", sourceType: "CONTRACT", sourceId: "contract-a", sourceLineId: null, sourceVersionId: null, ...overrides }; }
 function fulfillment(overrides: Record<string, unknown> = {}) { return { id: fulfillmentId, status: "DRAFT", ...overrides }; }
 function purchase(overrides: Record<string, unknown> = {}) { return { id: purchaseId, travelPackageId, operationalFulfillmentId: fulfillmentId, providerName: "Provider A", supplierReference: null, amount: new Prisma.Decimal("100.25000"), currency: "USD", taxAmount: new Prisma.Decimal(0), purchasedAt: new Date("2026-10-01T12:00:00.000Z"), supplierInvoiceNumber: null, notes: null, createdByUserId: "operator-a", createdByName: "Operator A", createdAt: new Date("2026-10-01T12:01:00.000Z"), updatedAt: new Date("2026-10-01T12:01:00.000Z"), ...overrides }; }

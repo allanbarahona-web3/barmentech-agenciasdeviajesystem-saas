@@ -1,11 +1,11 @@
 import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import {
   FINANCE_ELIGIBILITY_READER,
-  type CommercialSourceRef,
   type FinanceEligibilityReader,
 } from "../../finance/eligibility-read/finance-eligibility-reader.port";
 import { PrismaService } from "../../prisma/prisma.service";
 import { runTenantTransaction } from "../../tenant/tenant-transaction";
+import { requirementToCommercialSourceRef } from "../requirement-finance-source";
 import {
   CreateOperationalFulfillmentDto,
   ListOperationalFulfillmentsDto,
@@ -32,6 +32,7 @@ type OperationsDatabase = {
 type FulfillmentStatus = (typeof OPERATIONAL_FULFILLMENT_STATUSES)[number];
 type RequirementState = {
   id: string;
+  travelPackageId: string;
   status: string;
   servicePurposeCode: string;
   servicePurposeName: string;
@@ -104,6 +105,7 @@ const DETAIL_SELECT = {
   operationalRequirement: {
     select: {
       id: true,
+      travelPackageId: true,
       status: true,
       servicePurposeCode: true,
       servicePurposeName: true,
@@ -149,6 +151,7 @@ const STATE_SELECT = {
   operationalRequirement: {
     select: {
       id: true,
+      travelPackageId: true,
       status: true,
       servicePurposeCode: true,
       servicePurposeName: true,
@@ -397,7 +400,7 @@ export class OperationalFulfillmentsService {
   private async requireRequirement(tx: OperationsTransaction, tenantId: string, travelPackageId: string, requirementId: string): Promise<RequirementState> {
     const requirement = await tx.operationalRequirement.findFirst({
       where: { id: requirementId, tenantId, travelPackageId },
-      select: { id: true, status: true, servicePurposeCode: true, servicePurposeName: true, sourceType: true, sourceId: true, sourceLineId: true, sourceVersionId: true },
+      select: { id: true, travelPackageId: true, status: true, servicePurposeCode: true, servicePurposeName: true, sourceType: true, sourceId: true, sourceLineId: true, sourceVersionId: true },
     }) as RequirementState | null;
     if (!requirement) throw new NotFoundException("OPERATIONAL_REQUIREMENT_NOT_FOUND");
     return requirement;
@@ -461,15 +464,10 @@ export class OperationalFulfillmentsService {
   }
 
   private async requireFinancialEligibility(tenantId: string, requirement: RequirementState) {
-    if (requirement.sourceType !== "CONTRACT" || !requirement.sourceId) {
+    const source = requirementToCommercialSourceRef(requirement);
+    if (!source) {
       throw new ConflictException("OPERATIONAL_FULFILLMENT_FINANCIAL_ELIGIBILITY_UNAVAILABLE");
     }
-    const source: CommercialSourceRef = {
-      sourceType: "CONTRACT",
-      sourceId: requirement.sourceId,
-      ...(requirement.sourceLineId ? { sourceLineId: requirement.sourceLineId } : {}),
-      ...(requirement.sourceVersionId ? { versionId: requirement.sourceVersionId } : {}),
-    };
     let result;
     try {
       [result] = await this.financeEligibility.readMany({ tenantId, sources: [source] });

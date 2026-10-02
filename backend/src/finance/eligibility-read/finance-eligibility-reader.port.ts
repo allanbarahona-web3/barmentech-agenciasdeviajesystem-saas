@@ -10,6 +10,8 @@ export type CommercialSourceRef = {
   sourceLineId?: string;
   versionId?: string;
   opaqueSourceKey?: string;
+  /** Optional neutral package scope for source types whose commercial authority is package-bound. */
+  travelPackageId?: string;
 };
 
 export type ReadFinanceEligibilityRequest = {
@@ -24,6 +26,7 @@ export type FinanceEligibilityReason =
   | "OUTSTANDING_BALANCE"
   | "CONTRACT_CANCELLED"
   | "CONTRACT_NOT_ACTIVE"
+  | "SOURCE_NOT_FINANCIALLY_ACTIVE"
   | "FINANCIAL_DATA_MISSING";
 
 /** Stable Finance-neutral summary; it deliberately does not mirror Prisma enums. */

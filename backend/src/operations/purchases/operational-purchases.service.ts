@@ -1,8 +1,9 @@
 import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
-import { FINANCE_ELIGIBILITY_READER, type CommercialSourceRef, type FinanceEligibilityReader } from "../../finance/eligibility-read/finance-eligibility-reader.port";
+import { FINANCE_ELIGIBILITY_READER, type FinanceEligibilityReader } from "../../finance/eligibility-read/finance-eligibility-reader.port";
 import { PrismaService } from "../../prisma/prisma.service";
 import { runTenantTransaction } from "../../tenant/tenant-transaction";
+import { requirementToCommercialSourceRef } from "../requirement-finance-source";
 import { CreateOperationalPurchaseDto, ListOperationalPurchasesDto, UpdateOperationalPurchaseDto } from "./dto/operational-purchases.dto";
 
 export type OperationalPurchasesActor = { userId: string; name: string };
@@ -13,7 +14,7 @@ type Tx = {
   operationalPurchase: Record<string, (...args: any[]) => Promise<any>>;
 };
 type Database = { $transaction<T>(work: (tx: Tx) => Promise<T>): Promise<T> };
-type Requirement = { id: string; status: string; sourceType: string; sourceId: string | null; sourceLineId: string | null; sourceVersionId: string | null };
+type Requirement = { id: string; travelPackageId: string; status: string; sourceType: string; sourceId: string | null; sourceLineId: string | null; sourceVersionId: string | null };
 type Fulfillment = { id: string; status: "DRAFT" | "RESERVED" | "PURCHASED" | "CONFIRMED" | "CANCELLED" };
 type Purchase = {
   id: string; travelPackageId: string; operationalFulfillmentId: string; providerName: string; supplierReference: string | null;
@@ -118,7 +119,7 @@ export class OperationalPurchasesService {
   }
 
   private async requireRequirement(tx: Tx, tenantId: string, travelPackageId: string, requirementId: string): Promise<Requirement> {
-    const requirement = await tx.operationalRequirement.findFirst({ where: { id: requirementId, tenantId, travelPackageId }, select: { id: true, status: true, sourceType: true, sourceId: true, sourceLineId: true, sourceVersionId: true } }) as Requirement | null;
+    const requirement = await tx.operationalRequirement.findFirst({ where: { id: requirementId, tenantId, travelPackageId }, select: { id: true, travelPackageId: true, status: true, sourceType: true, sourceId: true, sourceLineId: true, sourceVersionId: true } }) as Requirement | null;
     if (!requirement) throw new NotFoundException("OPERATIONAL_REQUIREMENT_NOT_FOUND");
     return requirement;
   }
@@ -137,8 +138,8 @@ export class OperationalPurchasesService {
   }
 
   private async requireFinancialEligibility(tenantId: string, requirement: Requirement) {
-    if (requirement.sourceType !== "CONTRACT" || !requirement.sourceId) throw new ConflictException("OPERATIONAL_PURCHASE_FINANCIAL_ELIGIBILITY_UNAVAILABLE");
-    const source: CommercialSourceRef = { sourceType: "CONTRACT", sourceId: requirement.sourceId, ...(requirement.sourceLineId ? { sourceLineId: requirement.sourceLineId } : {}), ...(requirement.sourceVersionId ? { versionId: requirement.sourceVersionId } : {}) };
+    const source = requirementToCommercialSourceRef(requirement);
+    if (!source) throw new ConflictException("OPERATIONAL_PURCHASE_FINANCIAL_ELIGIBILITY_UNAVAILABLE");
     let result;
     try { [result] = await this.financeEligibility.readMany({ tenantId, sources: [source] }); }
     catch { throw new ConflictException("OPERATIONAL_PURCHASE_FINANCIAL_ELIGIBILITY_UNAVAILABLE"); }

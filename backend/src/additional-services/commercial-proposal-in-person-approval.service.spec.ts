@@ -14,6 +14,7 @@ describe("CommercialProposalInPersonApprovalService", () => {
       executeRaw,
       lockSource,
       materialize,
+      persistApprovedOrder,
       transactionClient,
     } = setup(1);
 
@@ -30,8 +31,8 @@ describe("CommercialProposalInPersonApprovalService", () => {
       variant: "GENERATED",
       version: 1,
     });
-    expect(executeRaw).toHaveBeenCalledTimes(1);
-    expect(executeRaw.mock.calls[0].slice(1)).toEqual(
+    expect(executeRaw).toHaveBeenCalledTimes(2);
+    expect(executeRaw.mock.calls[1].slice(1)).toEqual(
       expect.arrayContaining([
         expect.any(Date),
         "agent-1",
@@ -58,7 +59,12 @@ describe("CommercialProposalInPersonApprovalService", () => {
       "order-1",
     );
     expect(lockSource.mock.invocationCallOrder[0]).toBeLessThan(
-      executeRaw.mock.invocationCallOrder[0],
+      executeRaw.mock.invocationCallOrder[1],
+    );
+    expect(persistApprovedOrder).toHaveBeenCalledWith(
+      transactionClient,
+      "tenant-1",
+      "order-1",
     );
   });
 
@@ -153,6 +159,7 @@ function setup(updateCount: number) {
     findLatest,
   } as unknown as GeneratedDocumentsService;
   const materialize = jest.fn().mockResolvedValue(materialization(false));
+  const persistApprovedOrder = jest.fn().mockResolvedValue(1);
   const lockSource = jest.fn().mockResolvedValue(1);
   const salesOrders = {
     lockAdditionalServiceOrder: lockSource,
@@ -163,10 +170,12 @@ function setup(updateCount: number) {
       prisma,
       documents,
       salesOrders,
+      { persistApprovedOrder } as never,
     ),
     findLatest,
     executeRaw,
     materialize,
+    persistApprovedOrder,
     lockSource,
     transactionClient,
     transactionCommitted: () => committed,

@@ -1,4 +1,5 @@
 import { AUTH_SESSION_KEY, AUTH_TOKEN_KEY, resolveApiBase } from "@/lib/runtime-config";
+import { recordOperationsFetchTiming } from "@/lib/operations-performance";
 
 /**
  * Obtiene la configuración pública del tenant (logo, colores) sin autenticación
@@ -312,10 +313,14 @@ export const authenticatedFetch = async (url: string, options: RequestInit): Pro
     }
   });
 
+  const startedAt = typeof window !== "undefined" ? performance.now() : 0;
   const response = await fetch(url, {
     ...options,
     headers: mergedHeaders,
   });
+  if (typeof window !== "undefined") {
+    recordOperationsFetchTiming({ url, method: options.method, startedAt, response });
+  }
   
   // If unauthorized, clear session and redirect to login
   if (response.status === 401) {
@@ -372,7 +377,7 @@ export const getAuthenticatedSessionProfile = async (
   return payload as AuthenticatedSessionProfile;
 };
 
-export const adminListUsers = async (): Promise<AdminUserListItem[]> => {
+export const listTenantUsers = async (): Promise<AdminUserListItem[]> => {
   const apiBase = resolveApiBase();
   if (!apiBase) {
     throw new Error("No hay API configurada.");
@@ -390,6 +395,9 @@ export const adminListUsers = async (): Promise<AdminUserListItem[]> => {
 
   return Array.isArray(payload) ? (payload as AdminUserListItem[]) : [];
 };
+
+/** Backwards-compatible name retained for the Admin users workspace. */
+export const adminListUsers = listTenantUsers;
 
 export const adminCreateUser = async (input: {
   email: string;

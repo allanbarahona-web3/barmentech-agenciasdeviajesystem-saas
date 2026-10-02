@@ -150,6 +150,22 @@ describe("OperationalFulfillmentsService", () => {
     expect(c.tx.operationalFulfillment.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ status: "DRAFT" }), data: expect.objectContaining({ status: "RESERVED" }) }));
   });
 
+  it.each(["RESERVED", "PURCHASED", "CONFIRMED"] as const)("uses the exact Additional Service source for %s transitions", async (targetStatus) => {
+    const c = context();
+    const initialStatus = targetStatus === "RESERVED" ? "DRAFT" : targetStatus === "PURCHASED" ? "RESERVED" : "PURCHASED";
+    const transitionContext = targetStatus === "CONFIRMED" ? { confirmationReference: "C-1" } : { reservationCode: "R-1" };
+    const source = requirement({ sourceType: "ADDITIONAL_SERVICE_ORDER_LINE", sourceId: "order-a", sourceLineId: "line-a" });
+    c.tx.operationalFulfillment.findFirst
+      .mockResolvedValueOnce(fulfillmentState({ status: initialStatus, ...transitionContext, operationalRequirement: source }))
+      .mockResolvedValueOnce(fulfillmentState({ status: initialStatus, ...transitionContext, operationalRequirement: source }))
+      .mockResolvedValueOnce(fulfillment({ status: targetStatus, ...transitionContext, operationalRequirement: source }));
+    c.finance.readMany.mockResolvedValue([{ eligibility: "ELIGIBLE", reason: "SETTLED" }]);
+    c.tx.operationalFulfillment.updateMany.mockResolvedValue({ count: 1 });
+
+    await expect(c.service.transitionStatus(tenantId, travelPackageId, requirementId, fulfillmentId, { targetStatus }, actor)).resolves.toMatchObject({ status: targetStatus });
+    expect(c.finance.readMany).toHaveBeenCalledWith({ tenantId, sources: [{ sourceType: "ADDITIONAL_SERVICE_ORDER_LINE", sourceId: "order-a", sourceLineId: "line-a", travelPackageId }] });
+  });
+
   it("blocks finance-ineligible transitions and enforces confirmation references and terminal states", async () => {
     const blocked = context();
     blocked.tx.operationalFulfillment.findFirst.mockResolvedValue(fulfillmentState({ reservationCode: "R-1", operationalRequirement: requirement({ sourceType: "CONTRACT", sourceId: "contract-a" }) }));
@@ -210,7 +226,7 @@ function createInput(overrides: Record<string, unknown> = {}) {
 }
 
 function requirement(overrides: Record<string, unknown> = {}) {
-  return { id: requirementId, status: "PENDING", servicePurposeCode: "LODGING", servicePurposeName: "Lodging", sourceType: "MANUAL", sourceId: null, sourceLineId: null, sourceVersionId: null, ...overrides };
+  return { id: requirementId, travelPackageId, status: "PENDING", servicePurposeCode: "LODGING", servicePurposeName: "Lodging", sourceType: "MANUAL", sourceId: null, sourceLineId: null, sourceVersionId: null, ...overrides };
 }
 
 function passenger(id = "participant-a") {

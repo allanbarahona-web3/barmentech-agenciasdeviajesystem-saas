@@ -1,12 +1,10 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from "@nestjs/common";
 import { UserRole } from "@prisma/client";
 import { JwtAuthGuard } from "../../auth/guards/jwt-auth.guard";
 import { Roles } from "../../auth/roles.decorator";
 import { RolesGuard } from "../../auth/roles.guard";
 import {
-  CreateOperationalRequirementDto,
   ListOperationalRequirementsDto,
-  OperationalRequirementPassengersDto,
   TransitionOperationalRequirementDto,
   UpdateOperationalRequirementDto,
 } from "./dto/operational-requirements.dto";
@@ -38,16 +36,6 @@ export class OperationalRequirementsController {
     return this.service.find(request.user.tenantId, travelPackageId, requirementId);
   }
 
-  @Post()
-  @Roles(UserRole.ADMIN, UserRole.OPERACIONES)
-  create(
-    @Req() request: OperationsRequest,
-    @Param("travelPackageId") travelPackageId: string,
-    @Body() body: CreateOperationalRequirementDto,
-  ) {
-    return this.service.create(request.user.tenantId, travelPackageId, body, actor(request));
-  }
-
   @Patch(":requirementId")
   @Roles(UserRole.ADMIN, UserRole.OPERACIONES)
   update(
@@ -57,28 +45,6 @@ export class OperationalRequirementsController {
     @Body() body: UpdateOperationalRequirementDto,
   ) {
     return this.service.update(request.user.tenantId, travelPackageId, requirementId, body, actor(request));
-  }
-
-  @Post(":requirementId/passengers")
-  @Roles(UserRole.ADMIN, UserRole.OPERACIONES)
-  addPassengers(
-    @Req() request: OperationsRequest,
-    @Param("travelPackageId") travelPackageId: string,
-    @Param("requirementId") requirementId: string,
-    @Body() body: OperationalRequirementPassengersDto,
-  ) {
-    return this.service.addPassengers(request.user.tenantId, travelPackageId, requirementId, body, actor(request));
-  }
-
-  @Delete(":requirementId/passengers")
-  @Roles(UserRole.ADMIN, UserRole.OPERACIONES)
-  removePassengers(
-    @Req() request: OperationsRequest,
-    @Param("travelPackageId") travelPackageId: string,
-    @Param("requirementId") requirementId: string,
-    @Body() body: OperationalRequirementPassengersDto,
-  ) {
-    return this.service.removePassengers(request.user.tenantId, travelPackageId, requirementId, body);
   }
 
   @Post(":requirementId/status")

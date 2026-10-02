@@ -22,6 +22,7 @@ type OperationsTransaction = {
   user: Record<string, (...args: any[]) => Promise<any>>;
   operationalRequirement: Record<string, (...args: any[]) => Promise<any>>;
   operationalRequirementPassenger: Record<string, (...args: any[]) => Promise<any>>;
+  operationalFulfillmentPassenger: Record<string, (...args: any[]) => Promise<any>>;
 };
 
 type OperationsDatabase = {
@@ -176,8 +177,44 @@ export class OperationalRequirementsService {
         }) as Promise<RequirementSummaryRecord[]>,
         tx.operationalRequirement.count({ where }) as Promise<number>,
       ]);
+      const requirementIds = rows.map((row) => row.id);
+      const confirmedCoverage = requirementIds.length === 0 ? [] : await tx.operationalFulfillmentPassenger.findMany({
+        where: {
+          tenantId,
+          travelPackageId,
+          operationalFulfillment: { operationalRequirementId: { in: requirementIds }, status: "CONFIRMED" },
+        },
+        select: {
+          travelPackageParticipantId: true,
+          operationalFulfillment: { select: { operationalRequirementId: true } },
+        },
+      }) as Array<{ travelPackageParticipantId: string; operationalFulfillment: { operationalRequirementId: string } }>;
+      const passengerPreviewRows = requirementIds.length === 0 ? [] : await tx.operationalRequirementPassenger.findMany({
+        where: { tenantId, travelPackageId, operationalRequirementId: { in: requirementIds } },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        select: { operationalRequirementId: true, travelPackageParticipant: { select: { client: { select: { fullName: true } } } } },
+      }) as Array<{ operationalRequirementId: string; travelPackageParticipant: { client: { fullName: string } } }>;
+      const coverageByRequirement = new Map<string, Set<string>>();
+      for (const coverage of confirmedCoverage) {
+        const covered = coverageByRequirement.get(coverage.operationalFulfillment.operationalRequirementId) ?? new Set<string>();
+        covered.add(coverage.travelPackageParticipantId);
+        coverageByRequirement.set(coverage.operationalFulfillment.operationalRequirementId, covered);
+      }
+      const passengerPreviewByRequirement = new Map<string, string[]>();
+      for (const passenger of passengerPreviewRows) {
+        const names = passengerPreviewByRequirement.get(passenger.operationalRequirementId) ?? [];
+        if (names.length < 2) names.push(passenger.travelPackageParticipant.client.fullName);
+        passengerPreviewByRequirement.set(passenger.operationalRequirementId, names);
+      }
       return {
-        items: rows.map(toSummary),
+        items: rows.map((row) => ({
+          ...toSummary(row),
+          coverage: {
+            fulfilledPassengerCount: coverageByRequirement.get(row.id)?.size ?? 0,
+            totalPassengerCount: row._count.passengers,
+          },
+          passengerPreview: passengerPreviewByRequirement.get(row.id) ?? [],
+        })),
         total,
         page,
         pageSize,
@@ -190,7 +227,11 @@ export class OperationalRequirementsService {
     return this.withTenantTransaction(tenantId, async (tx) => {
       const requirement = await this.findRequirement(tx, tenantId, travelPackageId, requirementId);
       if (!requirement) throw new NotFoundException("OPERATIONAL_REQUIREMENT_NOT_FOUND");
-      return toDetail(requirement);
+      const confirmed = await tx.operationalFulfillmentPassenger.findMany({
+        where: { tenantId, travelPackageId, operationalFulfillment: { operationalRequirementId: requirementId, status: "CONFIRMED" } },
+        select: { travelPackageParticipantId: true },
+      }) as Array<{ travelPackageParticipantId: string }>;
+      return { ...toDetail(requirement), coverage: { fulfilledPassengerCount: new Set(confirmed.map((row) => row.travelPackageParticipantId)).size, totalPassengerCount: requirement.passengers.length } };
     });
   }
 
@@ -250,34 +291,19 @@ export class OperationalRequirementsService {
     input: UpdateOperationalRequirementDto,
     actor: OperationalRequirementsActor,
   ) {
+    if (hasCommercialOrAssignmentUpdate(input)) {
+      throw new BadRequestException("OPERATIONAL_REQUIREMENT_COMMERCIAL_FIELDS_READ_ONLY");
+    }
     if (!hasUpdate(input)) throw new BadRequestException("OPERATIONAL_REQUIREMENT_UPDATE_EMPTY");
     return this.withTenantTransaction(tenantId, async (tx) => {
       await this.requireRequirementState(tx, tenantId, travelPackageId, requirementId);
-      const assignee = input.assignedToUserId === undefined
-        ? undefined
-        : await this.resolveAssignee(tx, tenantId, input.assignedToUserId);
       const updated = await tx.operationalRequirement.updateMany({
         where: { id: requirementId, tenantId, travelPackageId },
         data: {
-          ...(input.servicePurposeCode === undefined ? {} : {
-            servicePurposeCode: requiredText(input.servicePurposeCode, "OPERATIONAL_REQUIREMENT_SERVICE_PURPOSE_CODE_INVALID"),
-          }),
-          ...(input.servicePurposeName === undefined ? {} : {
-            servicePurposeName: requiredText(input.servicePurposeName, "OPERATIONAL_REQUIREMENT_SERVICE_PURPOSE_NAME_INVALID"),
-          }),
-          ...(input.description === undefined ? {} : {
-            description: requiredText(input.description, "OPERATIONAL_REQUIREMENT_DESCRIPTION_INVALID"),
-          }),
           ...(input.critical === undefined ? {} : { critical: input.critical }),
           ...(input.operationalDeadlineAt === undefined ? {} : {
             operationalDeadlineAt: optionalDate(input.operationalDeadlineAt, "OPERATIONAL_REQUIREMENT_DEADLINE_INVALID"),
           }),
-          ...(assignee === undefined ? {} : {
-            assignedToUserId: assignee?.id ?? null,
-            assignedToName: assignee?.fullName ?? null,
-          }),
-          ...(input.sourceReference === undefined ? {} : { sourceReference: optionalText(input.sourceReference) }),
-          ...sourceGroupSnapshotUpdates(input),
           updatedByUserId: actor.userId,
           updatedByName: actor.name,
         },
@@ -532,20 +558,14 @@ function requirementListWhere(tenantId: string, travelPackageId: string, input: 
   };
 }
 
-function sourceGroupSnapshotUpdates(input: UpdateOperationalRequirementDto) {
-  return {
-    ...(input.sourcePassengerGroupId === undefined ? {} : { sourcePassengerGroupId: optionalText(input.sourcePassengerGroupId) }),
-    ...(input.sourcePassengerGroupName === undefined ? {} : { sourcePassengerGroupName: optionalText(input.sourcePassengerGroupName) }),
-    ...(input.sourcePassengerGroupServiceCode === undefined ? {} : { sourcePassengerGroupServiceCode: optionalText(input.sourcePassengerGroupServiceCode) }),
-  };
+function hasUpdate(input: UpdateOperationalRequirementDto) {
+  return input.critical !== undefined || input.operationalDeadlineAt !== undefined;
 }
 
-function hasUpdate(input: UpdateOperationalRequirementDto) {
+function hasCommercialOrAssignmentUpdate(input: UpdateOperationalRequirementDto) {
   return input.servicePurposeCode !== undefined
     || input.servicePurposeName !== undefined
     || input.description !== undefined
-    || input.critical !== undefined
-    || input.operationalDeadlineAt !== undefined
     || input.assignedToUserId !== undefined
     || input.sourceReference !== undefined
     || input.sourcePassengerGroupId !== undefined

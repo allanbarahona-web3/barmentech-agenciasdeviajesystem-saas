@@ -1,7 +1,11 @@
-import { BadRequestException, Injectable } from "@nestjs/common";
+import { Injectable } from "@nestjs/common";
 import { CommercialObligationStatus, Prisma } from "@prisma/client";
 import { PrismaService } from "../../prisma/prisma.service";
 import { runTenantTransaction } from "../../tenant/tenant-transaction";
+import {
+  normalizeFinanceEligibilitySources,
+  requiredFinanceEligibilityTenantId,
+} from "./finance-eligibility-reader.utils";
 import type {
   CommercialSourceRef,
   EligibilityFinancialStatus,
@@ -10,7 +14,6 @@ import type {
   ReadFinanceEligibilityRequest,
 } from "./finance-eligibility-reader.port";
 
-const MAX_SOURCE_BATCH_SIZE = 50;
 const ACTIVE_CONTRACT_STATUSES = new Set([
   "PENDING_SIGNATURE",
   "SIGNING_SENT",
@@ -31,7 +34,7 @@ export class ContractFinanceEligibilityAdapter implements FinanceEligibilityRead
   async readMany(
     request: ReadFinanceEligibilityRequest,
   ): Promise<FinanceEligibilityResult[]> {
-    const sources = normalizeSources(request.sources);
+    const sources = normalizeFinanceEligibilitySources(request.sources);
     if (sources.length === 0) return [];
 
     const contractIds = [...new Set(
@@ -45,7 +48,7 @@ export class ContractFinanceEligibilityAdapter implements FinanceEligibilityRead
 
     return runTenantTransaction<any, FinanceEligibilityResult[]>(
       this.prisma as any,
-      requiredTenantId(request.tenantId),
+      requiredFinanceEligibilityTenantId(request.tenantId),
       async (tx: Prisma.TransactionClient) => {
         const [contracts, obligations] = await Promise.all([
           tx.contract.findMany({
@@ -122,45 +125,6 @@ export class ContractFinanceEligibilityAdapter implements FinanceEligibilityRead
       },
     );
   }
-}
-
-function normalizeSources(sources: readonly CommercialSourceRef[]): CommercialSourceRef[] {
-  if (!Array.isArray(sources)) {
-    throw new BadRequestException("FINANCE_ELIGIBILITY_SOURCE_BATCH_INVALID");
-  }
-  if (sources.length > MAX_SOURCE_BATCH_SIZE) {
-    throw new BadRequestException("FINANCE_ELIGIBILITY_SOURCE_BATCH_TOO_LARGE");
-  }
-  const normalized = sources.map((source) => ({
-    sourceType: requiredSourceValue(source?.sourceType),
-    sourceId: requiredSourceValue(source?.sourceId),
-    ...(source?.sourceLineId === undefined ? {} : { sourceLineId: requiredSourceValue(source.sourceLineId) }),
-    ...(source?.versionId === undefined ? {} : { versionId: requiredSourceValue(source.versionId) }),
-    ...(source?.opaqueSourceKey === undefined ? {} : { opaqueSourceKey: requiredSourceValue(source.opaqueSourceKey) }),
-  }));
-  const deduplicated = new Map<string, CommercialSourceRef>();
-  for (const source of normalized) {
-    const key = JSON.stringify([
-      source.sourceType,
-      source.sourceId,
-      source.sourceLineId ?? null,
-      source.versionId ?? null,
-      source.opaqueSourceKey ?? null,
-    ]);
-    if (!deduplicated.has(key)) deduplicated.set(key, source);
-  }
-  return [...deduplicated.values()];
-}
-
-function requiredTenantId(value: unknown): string {
-  return requiredSourceValue(value);
-}
-
-function requiredSourceValue(value: unknown): string {
-  if (typeof value !== "string" || !value.trim()) {
-    throw new BadRequestException("FINANCE_ELIGIBILITY_SOURCE_BATCH_INVALID");
-  }
-  return value.trim();
 }
 
 function validFinancialAmounts(obligation: {

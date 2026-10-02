@@ -89,6 +89,7 @@ model Tenant {
   operationalFulfillmentPassengers        OperationalFulfillmentPassenger[]
   operationalPurchases                    OperationalPurchase[]
   operationalEvidence                     OperationalEvidence[]
+  operationsIntakeOutboxEvents            OperationsIntakeOutboxEvent[]
   payrollConfig                           PayrollConfig?
   payrollPeriods                          PayrollPeriod[]
   payrollAdjustments                      PayrollAdjustment[]
@@ -1022,6 +1023,7 @@ model TravelPackage {
   operationalFulfillments       OperationalFulfillment[]
   operationalPurchases          OperationalPurchase[]
   operationalEvidence           OperationalEvidence[]
+  operationsIntakeOutboxEvents  OperationsIntakeOutboxEvent[]
   costingProjectLinks           TravelPackageCostingProjectLink[]
   pricingPublications           TravelPackagePricingPublication[]
 
@@ -1167,6 +1169,13 @@ enum OperationalEvidenceType {
   INSURANCE_CERTIFICATE
   SCREENSHOT
   OTHER
+}
+
+enum OperationsIntakeOutboxStatus {
+  PENDING
+  PROCESSING
+  PROCESSED
+  FAILED
 }
 
 /// Operations-owned fulfillment work. Source references are intentionally
@@ -1343,6 +1352,39 @@ model OperationalEvidence {
   @@index([tenantId, operationalFulfillmentId, createdAt, id], map: "operational_evidence_fulfillment_created_idx")
   @@index([tenantId, operationalPurchaseId, createdAt, id], map: "operational_evidence_purchase_created_idx")
   @@map("operational_evidence")
+}
+
+/// Durable, source-neutral request to materialize commercial work into
+/// Operations. It deliberately has no foreign key to a commercial source.
+model OperationsIntakeOutboxEvent {
+  id              String                       @id @default(cuid())
+  tenantId        String
+  travelPackageId String
+  eventType       String                       @db.VarChar(100)
+  eventVersion    Int                          @default(1)
+  sourceType      String                       @db.VarChar(80)
+  sourceId        String
+  sourceLineId    String
+  sourceVersionId String?
+  status          OperationsIntakeOutboxStatus @default(PENDING)
+  availableAt     DateTime                     @default(now())
+  attemptCount    Int                          @default(0)
+  maximumAttempts Int                          @default(5)
+  lockedAt        DateTime?
+  lockedBy        String?                      @db.VarChar(100)
+  processedAt     DateTime?
+  lastAttemptAt   DateTime?
+  lastError       String?                      @db.VarChar(1000)
+  createdAt       DateTime                     @default(now())
+  updatedAt       DateTime                     @updatedAt
+  tenant          Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  travelPackage   TravelPackage                @relation(fields: [travelPackageId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "operations_intake_outbox_events_travel_tenant_fkey")
+
+  @@unique([tenantId, eventType, sourceType, sourceId, sourceLineId], map: "operations_intake_outbox_source_event_key")
+  @@index([tenantId, status, availableAt, createdAt], map: "operations_intake_outbox_tenant_status_available_idx")
+  @@index([status, availableAt, createdAt], map: "operations_intake_outbox_status_available_idx")
+  @@index([tenantId, travelPackageId, sourceType, sourceId, sourceLineId], map: "operations_intake_outbox_source_lookup_idx")
+  @@map("operations_intake_outbox_events")
 }
 
 enum CostingProjectStatus {

@@ -160,17 +160,20 @@ describe("OperationalRequirementsService", () => {
       .rejects.toMatchObject({ response: expect.objectContaining({ message: "OPERATIONAL_REQUIREMENT_STATUS_TRANSITION_INVALID" }) });
   });
 
-  it("updates only common fields and resolves the assignee snapshot server-side", async () => {
+  it("updates execution metadata but rejects commercial and assignment changes", async () => {
     const c = context();
     c.tx.operationalRequirement.findFirst
       .mockResolvedValueOnce({ id: requirementId, status: "PENDING" })
-      .mockResolvedValueOnce(requirement({ assignedToUserId: "user-b", assignedToName: "Operator B" }));
-    c.tx.user.findFirst.mockResolvedValue({ id: "user-b", fullName: "Operator B" });
+      .mockResolvedValueOnce(requirement({ critical: true }));
     c.tx.operationalRequirement.updateMany.mockResolvedValue({ count: 1 });
-    await c.service.update(tenantId, travelPackageId, requirementId, { assignedToUserId: "user-b", critical: true }, actor);
+    await c.service.update(tenantId, travelPackageId, requirementId, { critical: true }, actor);
     expect(c.tx.operationalRequirement.updateMany).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ assignedToUserId: "user-b", assignedToName: "Operator B", updatedByUserId: actor.userId }),
+      data: expect.objectContaining({ critical: true, updatedByUserId: actor.userId }),
     }));
+    await expect(c.service.update(tenantId, travelPackageId, requirementId, { servicePurposeCode: "TOUR" }, actor))
+      .rejects.toMatchObject({ response: expect.objectContaining({ message: "OPERATIONAL_REQUIREMENT_COMMERCIAL_FIELDS_READ_ONLY" }) });
+    await expect(c.service.update(tenantId, travelPackageId, requirementId, { assignedToUserId: "user-b" }, actor))
+      .rejects.toMatchObject({ response: expect.objectContaining({ message: "OPERATIONAL_REQUIREMENT_COMMERCIAL_FIELDS_READ_ONLY" }) });
   });
 
   it("lists a bounded deterministic page with passenger counts and never loads passenger graphs", async () => {
@@ -178,22 +181,33 @@ describe("OperationalRequirementsService", () => {
     c.tx.travelPackage.findFirst.mockResolvedValue({ id: travelPackageId });
     c.tx.operationalRequirement.findMany.mockResolvedValue([{ ...requirement(), _count: { passengers: 2 } }]);
     c.tx.operationalRequirement.count.mockResolvedValue(26);
+    c.tx.operationalFulfillmentPassenger.findMany.mockResolvedValue([
+      { travelPackageParticipantId: "participant-a", operationalFulfillment: { operationalRequirementId: requirementId } },
+      { travelPackageParticipantId: "participant-a", operationalFulfillment: { operationalRequirementId: requirementId } },
+    ]);
+    c.tx.operationalRequirementPassenger.findMany.mockResolvedValue([
+      { operationalRequirementId: requirementId, travelPackageParticipant: { client: { fullName: "Ada Lovelace" } } },
+      { operationalRequirementId: requirementId, travelPackageParticipant: { client: { fullName: "Ben Turing" } } },
+    ]);
 
     await expect(c.service.list(tenantId, travelPackageId, { status: "PENDING", page: 2, pageSize: 20 }))
-      .resolves.toMatchObject({ total: 26, page: 2, totalPages: 2, items: [{ passengerCount: 2 }] });
+      .resolves.toMatchObject({ total: 26, page: 2, totalPages: 2, items: [{ passengerCount: 2, passengerPreview: ["Ada Lovelace", "Ben Turing"], coverage: { fulfilledPassengerCount: 1, totalPassengerCount: 2 } }] });
     expect(c.tx.operationalRequirement.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({ tenantId, travelPackageId, status: "PENDING" }),
       take: 20, skip: 20,
       orderBy: [{ operationalDeadlineAt: "asc" }, { createdAt: "asc" }, { id: "asc" }],
     }));
     expect(c.tx.operationalRequirement.findMany.mock.calls[0][0].select).not.toHaveProperty("passengers");
+    expect(c.tx.operationalFulfillmentPassenger.findMany).toHaveBeenCalledTimes(1);
+    expect(c.tx.operationalRequirementPassenger.findMany).toHaveBeenCalledTimes(1);
   });
 
   it("gets detail only through tenant and TravelPackage predicates with minimal participant display", async () => {
     const c = context();
     c.tx.operationalRequirement.findFirst.mockResolvedValue(requirement());
+    c.tx.operationalFulfillmentPassenger.findMany.mockResolvedValue([{ travelPackageParticipantId: "participant-a" }, { travelPackageParticipantId: "participant-a" }]);
     await expect(c.service.find(tenantId, travelPackageId, requirementId)).resolves.toMatchObject({
-      passengers: [{ travelPackageParticipantId: "participant-a", clientId: "client-a", fullName: "Ada Lovelace", role: "TRAVELER" }],
+      passengers: [{ travelPackageParticipantId: "participant-a", clientId: "client-a", fullName: "Ada Lovelace", role: "TRAVELER" }], coverage: { fulfilledPassengerCount: 1, totalPassengerCount: 1 },
     });
     expect(c.tx.operationalRequirement.findFirst).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: requirementId, tenantId, travelPackageId },
@@ -213,6 +227,7 @@ function context() {
     user: { findFirst: jest.fn() },
     operationalRequirement: { create: jest.fn(), findFirst: jest.fn(), findMany: jest.fn(), count: jest.fn(), updateMany: jest.fn() },
     operationalRequirementPassenger: { createMany: jest.fn(), findMany: jest.fn(), deleteMany: jest.fn() },
+    operationalFulfillmentPassenger: { findMany: jest.fn() },
   };
   const prisma = { $transaction: jest.fn(async (work: (transaction: typeof tx) => Promise<unknown>) => work(tx)) };
   return { tx, service: new OperationalRequirementsService(prisma as never) };
