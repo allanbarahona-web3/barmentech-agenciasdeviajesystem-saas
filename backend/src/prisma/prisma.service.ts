@@ -1,9 +1,30 @@
 import { INestApplication, Injectable, OnModuleInit, Logger } from "@nestjs/common";
 import { PrismaClient } from "@prisma/client";
+import { performance } from "node:perf_hooks";
+import {
+  operationsTimingEnabled,
+  recordOperationsPrismaQuery,
+} from "../common/performance/operations-timing";
 
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit {
   private readonly logger = new Logger(PrismaService.name);
+
+  constructor() {
+    super();
+
+    if (operationsTimingEnabled()) {
+      this.$use(async (params, next) => {
+        const startedAt = performance.now();
+        try {
+          return await next(params);
+        } finally {
+          // Deliberately record only duration; SQL and bind values may contain PII.
+          recordOperationsPrismaQuery(performance.now() - startedAt);
+        }
+      });
+    }
+  }
 
   async onModuleInit() {
     await this.$connect();

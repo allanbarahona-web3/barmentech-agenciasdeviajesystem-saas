@@ -43,6 +43,7 @@ describe("CommercialProposalApprovalService", () => {
       transactionOrderUpdate,
       lockSource,
       materialize,
+      persistApprovedOrder,
     } = setup();
 
     const result = await service.approve(
@@ -92,6 +93,11 @@ describe("CommercialProposalApprovalService", () => {
     expect(lockSource.mock.invocationCallOrder[0]).toBeLessThan(
       transactionOrderUpdate.mock.invocationCallOrder[0],
     );
+    expect(persistApprovedOrder).toHaveBeenCalledWith(
+      transactionClient,
+      "tenant-1",
+      "order-1",
+    );
     expect(result.commercialStatus).toBe(CommercialProposalStatus.APPROVED);
   });
 
@@ -105,6 +111,17 @@ describe("CommercialProposalApprovalService", () => {
       service.approve("token", "203.0.113.10", "Customer Browser"),
     ).rejects.toThrow("native database detail");
     expect(transactionCommitted()).toBe(false);
+  });
+
+  it("does not commit approval when durable Operations intake persistence fails", async () => {
+    const { service, persistApprovedOrder, transactionCommitted, materialize } = setup();
+    persistApprovedOrder.mockRejectedValueOnce(new Error("outbox write failed"));
+
+    await expect(
+      service.approve("token", "203.0.113.10", "Customer Browser"),
+    ).rejects.toThrow("outbox write failed");
+    expect(transactionCommitted()).toBe(false);
+    expect(materialize).not.toHaveBeenCalled();
   });
 
   it("reuses an existing SalesOrder winner without changing public approval audit", async () => {
@@ -174,6 +191,7 @@ function setup(
   const transactionTokenUpdate = jest.fn().mockResolvedValue({ count: 1 });
   const transactionOrderUpdate = jest.fn().mockResolvedValue({ count: 1 });
   const transactionClient = {
+    $executeRaw: jest.fn(),
     generatedDocumentAccessToken: { updateMany: transactionTokenUpdate },
     additionalServiceOrder: { updateMany: transactionOrderUpdate },
   };
@@ -184,6 +202,7 @@ function setup(
     return result;
   });
   const materialize = jest.fn().mockResolvedValue(materialization(false));
+  const persistApprovedOrder = jest.fn().mockResolvedValue(1);
   const lockSource = jest.fn().mockResolvedValue(1);
   const salesOrders = {
     lockAdditionalServiceOrder: lockSource,
@@ -217,9 +236,11 @@ function setup(
       documentAccess,
       documents,
       salesOrders,
+      { persistApprovedOrder } as never,
     ),
     transactionClient,
     materialize,
+    persistApprovedOrder,
     lockSource,
     transactionCommitted: () => committed,
   };

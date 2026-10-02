@@ -4,6 +4,7 @@
  */
 
 import { AUTH_TOKEN_KEY, resolveApiBase } from './runtime-config';
+import { recordOperationsFetchTiming } from './operations-performance';
 
 interface FetchOptions extends RequestInit {
   params?: Record<string, string | number | boolean>;
@@ -48,10 +49,14 @@ export async function fetchApi(
   }
 
   try {
+    const startedAt = typeof window !== 'undefined' ? performance.now() : 0;
     const response = await fetch(url, {
       ...fetchOptions,
       headers,
     });
+    if (typeof window !== 'undefined') {
+      recordOperationsFetchTiming({ url, method: fetchOptions.method, startedAt, response });
+    }
 
     // Si es 401, probablemente el token expiró
     if (response.status === 401) {

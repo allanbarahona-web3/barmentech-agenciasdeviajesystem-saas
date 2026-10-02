@@ -18,6 +18,9 @@ import {
 
 const APPROVABLE_CONTRACT_STATUSES = ["PENDING_PAYMENT_RESERVE", "RESERVE_IN_REVIEW"];
 const PARTICIPANT_ALREADY_ASSIGNED = "CONTRACT_RESERVATION_PARTICIPANT_ALREADY_ASSIGNED";
+const PROVENANCE_PARTICIPANT_MISSING = "CONTRACT_RESERVATION_PROVENANCE_PARTICIPANT_MISSING";
+const PROVENANCE_ROLE_MISMATCH = "CONTRACT_RESERVATION_PROVENANCE_ROLE_MISMATCH";
+const PROVENANCE_PARTIAL = "CONTRACT_RESERVATION_PROVENANCE_PARTIAL";
 
 @Injectable()
 export class ContractReservationApprovalService {
@@ -209,7 +212,7 @@ export class ContractReservationApprovalService {
 
   private async createInternationalTravelRoster(
     tx: Prisma.TransactionClient,
-    contract: { clientId: string; tenantId: string; travelPackageId: string; payload: unknown },
+    contract: { id: string; clientId: string; tenantId: string; travelPackageId: string; payload: unknown },
   ): Promise<void> {
     const payload = contract.payload && typeof contract.payload === "object" && !Array.isArray(contract.payload)
       ? contract.payload as Record<string, unknown>
@@ -255,6 +258,88 @@ export class ContractReservationApprovalService {
       }
       throw error;
     }
+
+    await this.createInternationalTravelParticipantSources(tx, contract, participants);
+  }
+
+  private async createInternationalTravelParticipantSources(
+    tx: Prisma.TransactionClient,
+    contract: { id: string; tenantId: string; travelPackageId: string },
+    participants: TravelPackageParticipantWrite[],
+  ): Promise<void> {
+    const clientIds = participants.map((participant) => participant.clientId);
+    const expectedRoleByClientId = new Map(
+      participants.map((participant) => [participant.clientId, participant.role]),
+    );
+    const rosterParticipants = await tx.travelPackageParticipant.findMany({
+      where: {
+        tenantId: contract.tenantId,
+        travelPackageId: contract.travelPackageId,
+        clientId: { in: clientIds },
+      },
+      select: {
+        id: true,
+        clientId: true,
+        role: true,
+      },
+    });
+
+    if (rosterParticipants.length !== participants.length) {
+      throw new BadRequestException(PROVENANCE_PARTICIPANT_MISSING);
+    }
+
+    const expectedRoleByParticipantId = new Map<string, TravelPackageParticipantWrite["role"]>();
+    for (const participant of rosterParticipants) {
+      const expectedRole = expectedRoleByClientId.get(participant.clientId);
+      if (!expectedRole) {
+        throw new BadRequestException(PROVENANCE_PARTICIPANT_MISSING);
+      }
+      if (participant.role !== expectedRole) {
+        throw new BadRequestException(PROVENANCE_ROLE_MISMATCH);
+      }
+      expectedRoleByParticipantId.set(participant.id, expectedRole);
+    }
+
+    if (expectedRoleByParticipantId.size !== participants.length) {
+      throw new BadRequestException(PROVENANCE_PARTICIPANT_MISSING);
+    }
+
+    const participantIds = [...expectedRoleByParticipantId.keys()];
+    const existingSources = await tx.travelPackageParticipantContractSource.findMany({
+      where: {
+        tenantId: contract.tenantId,
+        contractId: contract.id,
+        travelPackageParticipantId: { in: participantIds },
+      },
+      select: {
+        travelPackageParticipantId: true,
+        sourceRole: true,
+      },
+    });
+
+    if (existingSources.length > 0 && existingSources.length !== participantIds.length) {
+      throw new BadRequestException(PROVENANCE_PARTIAL);
+    }
+
+    for (const source of existingSources) {
+      if (expectedRoleByParticipantId.get(source.travelPackageParticipantId) !== source.sourceRole) {
+        throw new BadRequestException(PROVENANCE_ROLE_MISMATCH);
+      }
+    }
+
+    if (existingSources.length === participantIds.length) {
+      return;
+    }
+
+    await tx.travelPackageParticipantContractSource.createMany({
+      data: participantIds.map((travelPackageParticipantId) => ({
+        tenantId: contract.tenantId,
+        travelPackageId: contract.travelPackageId,
+        travelPackageParticipantId,
+        contractId: contract.id,
+        sourceRole: expectedRoleByParticipantId.get(travelPackageParticipantId)!,
+      })),
+    });
   }
 }
 

@@ -7,7 +7,7 @@ import { getPendingApprovalsCount, type PendingCounts } from "@/lib/billing-api"
 import { CURRENT_EXCHANGE_RATE_CHANGED_EVENT, getCurrentExchangeRate, type CurrentExchangeRate } from "@/lib/exchange-rate-api";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Layers3 } from "lucide-react";
+import { ClipboardCheck, Layers3 } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import { AttendanceWidget } from "./attendance-widget";
 import { CurrencyCalculator } from "./currency-calculator";
@@ -56,6 +56,7 @@ export function VerticalNav() {
   const [adicionalesOpen, setAdicionalesOpen] = useState(false);
   const [ventasContratosOpen, setVentasContratosOpen] = useState(false);
   const [agrupacionesOpen, setAgrupacionesOpen] = useState(false);
+  const [operacionesOpen, setOperacionesOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
   const [logoutErrorModalOpen, setLogoutErrorModalOpen] = useState(false);
   const [logoutErrorMessage, setLogoutErrorMessage] = useState("");
@@ -148,6 +149,7 @@ export function VerticalNav() {
   // Business module access - separate from Attendance participation
   const hasOperationalAccess = ["AGENT", "OPERACIONES", "VENTAS"].includes(role);
   const hasPassengerGroupsAccess = isAdmin || role === "AGENT" || role === "OPERACIONES";
+  const hasOperationsAccess = isAdmin || role === "OPERACIONES";
 
   const isActive = (href: string) => {
     if (href === "/") return pathname === "/";
@@ -236,6 +238,20 @@ export function VerticalNav() {
                 label: "Nacionales — Próximamente",
                 icon: "🚌",
               },
+            ],
+          } as NavGroup,
+        ]
+      : []),
+
+    ...(hasOperationsAccess
+      ? [
+          {
+            label: "Operaciones",
+            icon: <ClipboardCheck aria-hidden="true" size={18} strokeWidth={2} />,
+            items: [
+              { href: "/operations/international", label: "Internacionales", icon: "✈️" },
+              { href: "/operations/migration", label: "Migraciones", icon: "📄" },
+              { href: "/operations/national", label: "Nacionales — Próximamente", icon: "🚌" },
             ],
           } as NavGroup,
         ]
@@ -624,6 +640,8 @@ export function VerticalNav() {
                           ? ventasContratosOpen
                         : group.label === "Agrupaciones"
                           ? agrupacionesOpen
+                        : group.label === "Operaciones"
+                          ? operacionesOpen
                     : empleadosOpen;
               
               const toggleOpen = group.label === "Finanzas" 
@@ -640,6 +658,8 @@ export function VerticalNav() {
                           ? () => setVentasContratosOpen(!ventasContratosOpen)
                         : group.label === "Agrupaciones"
                           ? () => setAgrupacionesOpen(!agrupacionesOpen)
+                        : group.label === "Operaciones"
+                          ? () => setOperacionesOpen(!operacionesOpen)
                     : () => setEmpleadosOpen(!empleadosOpen);
               
               return (

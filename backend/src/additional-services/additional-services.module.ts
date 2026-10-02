@@ -24,6 +24,13 @@ import { SalesOrdersModule } from "../sales-orders/sales-orders.module";
 import { CommercialProposalInPersonApprovalService } from "./commercial-proposal-in-person-approval.service";
 import { FiscalCatalogModule } from "../fiscal-catalogs/fiscal-catalog.module";
 import { TravelFiscalClassificationModule } from "./travel-fiscal-classification.module";
+import { AdditionalServiceOperationalContextAdapter } from "./operations-read/additional-service-operational-context.adapter";
+import { OPERATIONAL_ADDITIONAL_SERVICE_READER } from "./operations-read/operational-additional-service-reader.port";
+import { AdditionalServiceOperationsIntakeOutboxProducer } from "./additional-service-operations-intake-outbox.producer";
+import { AdditionalServiceOperationalWorkSourceAdapter } from "./operations-read/additional-service-operational-work-source.adapter";
+import { OPERATIONAL_WORK_SOURCE_READER } from "../operations/intake/operational-work-source-reader.port";
+import { OPERATIONAL_WORK_SOURCE_RECONCILIATION_READER } from "../operations/intake/operational-work-source-reconciliation.port";
+import { AdditionalServiceOperationalWorkSourceReconciliationAdapter } from "./operations-read/additional-service-operational-work-source-reconciliation.adapter";
 
 @Module({
   imports: [
@@ -56,6 +63,13 @@ import { TravelFiscalClassificationModule } from "./travel-fiscal-classification
     CommercialProposalEmailService,
     CommercialProposalApprovalService,
     CommercialProposalInPersonApprovalService,
+    AdditionalServiceOperationsIntakeOutboxProducer,
+    AdditionalServiceOperationalContextAdapter,
+    AdditionalServiceOperationalWorkSourceAdapter,
+    AdditionalServiceOperationalWorkSourceReconciliationAdapter,
+    { provide: OPERATIONAL_ADDITIONAL_SERVICE_READER, useExisting: AdditionalServiceOperationalContextAdapter },
+    { provide: OPERATIONAL_WORK_SOURCE_READER, useExisting: AdditionalServiceOperationalWorkSourceAdapter },
+    { provide: OPERATIONAL_WORK_SOURCE_RECONCILIATION_READER, useExisting: AdditionalServiceOperationalWorkSourceReconciliationAdapter },
   ],
   exports: [
     AdditionalServicesPersistenceModule,
@@ -63,6 +77,9 @@ import { TravelFiscalClassificationModule } from "./travel-fiscal-classification
     AdditionalServicesService,
     CatalogBootstrapService,
     CommercialProposalPdfService,
+    OPERATIONAL_ADDITIONAL_SERVICE_READER,
+    OPERATIONAL_WORK_SOURCE_READER,
+    OPERATIONAL_WORK_SOURCE_RECONCILIATION_READER,
   ],
 })
 export class AdditionalServicesModule {}

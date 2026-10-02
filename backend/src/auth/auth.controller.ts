@@ -59,7 +59,7 @@ export class AuthController {
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles("ADMIN")
+  @Roles("ADMIN", "OPERACIONES")
   @Get("users")
   adminUsers(@Req() req: { user: { tenantId: string } }) {
     return this.authService.adminListUsers(req.user.tenantId);

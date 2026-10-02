@@ -31,6 +31,23 @@ describe("ContractReservationApprovalService", () => {
     expect(c.participants.findClients).toHaveBeenCalledWith(c.tx, "tenant-1", ["customer-1"]);
     expect(c.participants.findExistingClientIds).toHaveBeenCalledWith(c.tx, "tenant-1", "package-1", ["customer-1"]);
     expect(c.participants.createMany).toHaveBeenCalledWith(c.tx, [{ tenantId: "tenant-1", travelPackageId: "package-1", clientId: "customer-1", role: "HOLDER" }]);
+    expect(c.tx.travelPackageParticipant.findMany).toHaveBeenCalledWith({
+      where: {
+        tenantId: "tenant-1",
+        travelPackageId: "package-1",
+        clientId: { in: ["customer-1"] },
+      },
+      select: { id: true, clientId: true, role: true },
+    });
+    expect(c.tx.travelPackageParticipantContractSource.createMany).toHaveBeenCalledWith({
+      data: [{
+        tenantId: "tenant-1",
+        travelPackageId: "package-1",
+        travelPackageParticipantId: "participant-1",
+        contractId: "contract-1",
+        sourceRole: "HOLDER",
+      }],
+    });
     expect(c.tx.travelPackage.update).toHaveBeenCalledTimes(2);
     expect(c.tx.travelPackage.update).toHaveBeenNthCalledWith(1, expect.objectContaining({ data: { occupiedSlots: { increment: 1 } } }));
     expect(c.tx.travelPackage.update).toHaveBeenNthCalledWith(2, { where: { id: "package-1" }, data: { status: "CLOSED" } });
@@ -61,6 +78,7 @@ describe("ContractReservationApprovalService", () => {
     expect(c.tx.internalTrip.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "trip-1", tenantId: "tenant-1" } }));
     expect(c.tx.internalTrip.update).toHaveBeenCalledWith(expect.objectContaining({ data: { occupiedSlots: { increment: 2 } } }));
     expect(c.participants.createMany).not.toHaveBeenCalled();
+    expect(c.tx.travelPackageParticipantContractSource.createMany).not.toHaveBeenCalled();
   });
 
   it("runs the commercial allocation hook after obligation creation and before PENDING_SIGNATURE", async () => {
@@ -86,6 +104,7 @@ describe("ContractReservationApprovalService", () => {
     expect(c.tx.travelPackage.update).not.toHaveBeenCalled();
     expect(c.participants.findExistingClientIds).not.toHaveBeenCalled();
     expect(c.participants.createMany).not.toHaveBeenCalled();
+    expect(c.tx.travelPackageParticipantContractSource.createMany).not.toHaveBeenCalled();
     expect(c.commercialObligations.createInTransaction).not.toHaveBeenCalled();
   });
 
@@ -106,6 +125,7 @@ describe("ContractReservationApprovalService", () => {
       .rejects.toThrow("CONTRACT_RESERVATION_PARTICIPANT_ALREADY_ASSIGNED");
 
     expect(c.participants.createMany).not.toHaveBeenCalled();
+    expect(c.tx.travelPackageParticipantContractSource.createMany).not.toHaveBeenCalled();
     expect(c.tx.contract.updateMany).not.toHaveBeenCalled();
     expect(c.tx.travelPackage.update).not.toHaveBeenCalled();
   });
@@ -124,6 +144,77 @@ describe("ContractReservationApprovalService", () => {
     expect(c.participants.createMany).not.toHaveBeenCalled();
     expect(c.tx.contract.updateMany).not.toHaveBeenCalled();
     expect(c.tx.travelPackage.update).not.toHaveBeenCalled();
+    expect(c.tx.travelPackageParticipantContractSource.createMany).not.toHaveBeenCalled();
+  });
+
+  it("persists holder, companion, and minor provenance from one bounded roster lookup", async () => {
+    const c = context({
+      travelPackageId: "package-1",
+      participantCount: 3,
+      payload: {
+        companions: [{ fullName: "Companion", idNumber: "2", selectedCustomerId: "customer-2" }],
+        minors: [{ minorName: "Minor", minorId: "3", selectedCustomerId: "customer-3" }],
+      },
+    });
+    c.tx.travelPackage.findFirst.mockResolvedValue({ capacity: 3, occupiedSlots: 0, name: "Peru" });
+    c.tx.travelPackage.update.mockResolvedValue({ capacity: 3, occupiedSlots: 3, status: "CLOSED" });
+    c.participants.findClients.mockResolvedValue([{ id: "customer-1" }, { id: "customer-2" }, { id: "customer-3" }]);
+    c.tx.travelPackageParticipant.findMany.mockResolvedValue([
+      { id: "participant-holder", clientId: "customer-1", role: "HOLDER" },
+      { id: "participant-companion", clientId: "customer-2", role: "COMPANION" },
+      { id: "participant-minor", clientId: "customer-3", role: "MINOR" },
+    ]);
+
+    await c.service.approveInTransaction(c.tx as never, approvalInput);
+
+    expect(c.tx.travelPackageParticipant.findMany).toHaveBeenCalledTimes(1);
+    expect(c.tx.travelPackageParticipantContractSource.createMany).toHaveBeenCalledWith({
+      data: expect.arrayContaining([
+        expect.objectContaining({ travelPackageParticipantId: "participant-holder", sourceRole: "HOLDER" }),
+        expect.objectContaining({ travelPackageParticipantId: "participant-companion", sourceRole: "COMPANION" }),
+        expect.objectContaining({ travelPackageParticipantId: "participant-minor", sourceRole: "MINOR" }),
+      ]),
+    });
+  });
+
+  it("treats a complete matching provenance set as an idempotent retry", async () => {
+    const c = context({ travelPackageId: "package-1" });
+    c.tx.travelPackage.findFirst.mockResolvedValue({ capacity: 3, occupiedSlots: 0, name: "Peru" });
+    c.tx.travelPackage.update.mockResolvedValue({ capacity: 3, occupiedSlots: 1, status: "OPEN" });
+    c.tx.travelPackageParticipantContractSource.findMany.mockResolvedValue([
+      { travelPackageParticipantId: "participant-1", sourceRole: "HOLDER" },
+    ]);
+
+    await c.service.approveInTransaction(c.tx as never, approvalInput);
+
+    expect(c.tx.travelPackageParticipantContractSource.createMany).not.toHaveBeenCalled();
+  });
+
+  it("fails before Contract transition when a created roster participant cannot be resolved for provenance", async () => {
+    const c = context({ travelPackageId: "package-1" });
+    c.tx.travelPackage.findFirst.mockResolvedValue({ capacity: 3, occupiedSlots: 0, name: "Peru" });
+    c.tx.travelPackageParticipant.findMany.mockResolvedValue([]);
+
+    await expect(c.service.approveInTransaction(c.tx as never, approvalInput))
+      .rejects.toThrow("CONTRACT_RESERVATION_PROVENANCE_PARTICIPANT_MISSING");
+
+    expect(c.tx.travelPackageParticipantContractSource.createMany).not.toHaveBeenCalled();
+    expect(c.tx.contract.updateMany).not.toHaveBeenCalled();
+    expect(c.tx.travelPackage.update).not.toHaveBeenCalled();
+  });
+
+  it("propagates provenance persistence failures before Contract transition or capacity mutation", async () => {
+    const c = context({ travelPackageId: "package-1" });
+    c.tx.travelPackage.findFirst.mockResolvedValue({ capacity: 3, occupiedSlots: 0, name: "Peru" });
+    c.tx.travelPackageParticipantContractSource.createMany.mockRejectedValueOnce(
+      new Error("PROVENANCE_PERSISTENCE_FAILED"),
+    );
+
+    await expect(c.service.approveInTransaction(c.tx as never, approvalInput))
+      .rejects.toThrow("PROVENANCE_PERSISTENCE_FAILED");
+
+    expect(c.tx.contract.updateMany).not.toHaveBeenCalled();
+    expect(c.tx.travelPackage.update).not.toHaveBeenCalled();
   });
 
   it("translates the exact roster uniqueness race to the participant conflict before transition or capacity mutation", async () => {
@@ -134,6 +225,7 @@ describe("ContractReservationApprovalService", () => {
     await expect(c.service.approveInTransaction(c.tx as never, approvalInput))
       .rejects.toThrow("CONTRACT_RESERVATION_PARTICIPANT_ALREADY_ASSIGNED");
 
+    expect(c.tx.travelPackageParticipantContractSource.createMany).not.toHaveBeenCalled();
     expect(c.tx.contract.updateMany).not.toHaveBeenCalled();
     expect(c.tx.travelPackage.update).not.toHaveBeenCalled();
   });
@@ -218,6 +310,13 @@ function context(overrides: Record<string, unknown> = {}) {
     contract: { findFirst: jest.fn().mockResolvedValue(contract), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
     travelPackage: { findFirst: jest.fn(), update: jest.fn() },
     internalTrip: { findFirst: jest.fn(), update: jest.fn() },
+    travelPackageParticipant: {
+      findMany: jest.fn().mockResolvedValue([{ id: "participant-1", clientId: "customer-1", role: "HOLDER" }]),
+    },
+    travelPackageParticipantContractSource: {
+      findMany: jest.fn().mockResolvedValue([]),
+      createMany: jest.fn().mockResolvedValue({ count: 1 }),
+    },
   };
   const participants = {
     findClients: jest.fn().mockResolvedValue([{ id: "customer-1" }]),

@@ -55,6 +55,8 @@ import { PACKAGE_COMPLETED_EVENT_VERSION } from "./jobs/package-completed-job.co
 import { PackageCompletedDispatcher } from "./jobs/package-completed.dispatcher";
 import { normalizeFinancialPaymentMethod } from "../finance/finance-payment-method";
 import { resolveInitialContractPayment } from "../finance/contract-initial-payment";
+import { resolveContractParticipationByTuple } from "./contract-participation";
+import { runTenantTransaction } from "../tenant/tenant-transaction";
 
 const CONTRACT_STATUS_PENDING_PAYMENT_RESERVE = "PENDING_PAYMENT_RESERVE";
 const CONTRACT_STATUS_RESERVE_IN_REVIEW = "RESERVE_IN_REVIEW";
@@ -1853,39 +1855,19 @@ export class ContractsService {
       throw error;
     }
 
-    if (dto.notes?.trim()) {
-      try {
-        const notesArray = JSON.parse(dto.notes);
-        if (Array.isArray(notesArray) && notesArray.length > 0) {
-          this.logger.log(`📝 Creating ${notesArray.length} operational notes for contract ${archived.contractNumber}...`);
-
-          for (const noteDto of notesArray) {
-            if (!noteDto.passengerType || !noteDto.passengerName || !noteDto.note?.trim()) {
-              this.logger.warn(`Skipping invalid note: ${JSON.stringify(noteDto)}`);
-              continue;
-            }
-
-            await this.prisma.contractNote.create({
-              data: {
-                contractId: archived.id,
-                tenantId: user.tenantId,
-                passengerType: noteDto.passengerType,
-                passengerIndex: noteDto.passengerIndex ?? null,
-                passengerName: noteDto.passengerName,
-                note: noteDto.note.trim(),
-                status: 'ACTIVE',
-                createdByUserId: user.id,
-                createdByName: user.fullName,
-              },
-            });
-          }
-
-          this.logger.log(`✅ Successfully created ${notesArray.length} operational notes`);
-        }
-      } catch (error) {
-        this.logger.error('❌ Error parsing or creating operational notes:', error);
-      }
-    }
+    await this.persistArchiveContractNotes({
+      tenantId: user.tenantId,
+      contract: {
+        id: archived.id,
+        clientId: archived.clientId,
+        travelPackageId,
+        payload: enrichedPayload,
+      },
+      notesJson: dto.notes,
+      holderName: dto.clientFullName,
+      createdByUserId: user.id,
+      createdByName: user.fullName,
+    });
 
     try {
       await this.jobDispatcher.dispatch<ArchiveProcessingJobPayload>({
@@ -1904,9 +1886,9 @@ export class ContractsService {
       );
 
       try {
-        await (this.prisma as any).contract.delete({
-          where: { id: archived.id },
-        });
+        await runTenantTransaction<any, unknown>(this.prisma as any, user.tenantId, (tx) =>
+          tx.contract.delete({ where: { id: archived.id, tenantId: user.tenantId } }),
+        );
       } catch (rollbackError) {
         this.logger.error(
           `Failed to roll back Contract after archive dispatch failure contractId=${archived.id}: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`,
@@ -1956,44 +1938,19 @@ export class ContractsService {
       });
     }
 
-    // ========================================================================
-    // 📝 Persist Operational Notes
-    // ========================================================================
-    if (dto.notes?.trim()) {
-      try {
-        const notesArray = JSON.parse(dto.notes);
-        if (Array.isArray(notesArray) && notesArray.length > 0) {
-          this.logger.log(`📝 Creating ${notesArray.length} operational notes for contract ${archived.contractNumber}...`);
-          
-          for (const noteDto of notesArray) {
-            if (!noteDto.passengerType || !noteDto.passengerName || !noteDto.note?.trim()) {
-              this.logger.warn(`Skipping invalid note: ${JSON.stringify(noteDto)}`);
-              continue;
-            }
-
-            await this.prisma.contractNote.create({
-              data: {
-                contractId: archived.id,
-                tenantId: user.tenantId,
-                passengerType: noteDto.passengerType,
-                passengerIndex: noteDto.passengerIndex ?? null,
-                passengerName: noteDto.passengerName,
-                note: noteDto.note.trim(),
-                status: 'ACTIVE',
-                createdByUserId: user.id,
-                createdByName: user.fullName,
-              },
-            });
-          }
-          
-          this.logger.log(`✅ Successfully created ${notesArray.length} operational notes`);
-        }
-      } catch (error) {
-        this.logger.error('❌ Error parsing or creating operational notes:', error);
-        // Don't fail the entire contract creation if notes fail
-        // Notes can be added later via the CRUD endpoints
-      }
-    }
+    await this.persistArchiveContractNotes({
+      tenantId: user.tenantId,
+      contract: {
+        id: archived.id,
+        clientId: archived.clientId,
+        travelPackageId,
+        payload: enrichedPayload,
+      },
+      notesJson: dto.notes,
+      holderName: dto.clientFullName,
+      createdByUserId: user.id,
+      createdByName: user.fullName,
+    });
 
     return {
       id: archived.id,
@@ -2005,6 +1962,76 @@ export class ContractsService {
       createdAt: archived.createdAt,
       pdfUrl,
     };
+  }
+
+  private async persistArchiveContractNotes(input: {
+    tenantId: string;
+    contract: {
+      id: string;
+      clientId: string;
+      travelPackageId: string | null;
+      payload: unknown;
+    };
+    notesJson: string | undefined;
+    holderName: string;
+    createdByUserId: string;
+    createdByName: string;
+  }): Promise<void> {
+    if (!input.notesJson?.trim()) return;
+
+    try {
+      const notesArray = JSON.parse(input.notesJson);
+      if (!Array.isArray(notesArray) || notesArray.length === 0) return;
+
+      const noteData = notesArray.flatMap((noteDto) => {
+        if (!noteDto || typeof noteDto !== "object" || !String((noteDto as any).note || "").trim()) {
+          this.logger.warn(`Skipping invalid note: ${JSON.stringify(noteDto)}`);
+          return [];
+        }
+        const resolved = resolveContractParticipationByTuple(
+          input.contract,
+          (noteDto as any).passengerType,
+          (noteDto as any).passengerIndex ?? null,
+        );
+        if (!resolved) {
+          this.logger.warn(`Skipping note with invalid contract participant: ${JSON.stringify(noteDto)}`);
+          return [];
+        }
+        const passengerName = resolved.participation.role === "HOLDER"
+          ? String(input.holderName || "").trim()
+          : String(
+              resolved.participation.passenger?.fullName ??
+              resolved.participation.passenger?.minorName ??
+              resolved.participation.passenger?.name ??
+              "",
+            ).trim();
+        if (!passengerName) {
+          this.logger.warn(`Skipping note with incomplete contract participant display data: ${JSON.stringify(noteDto)}`);
+          return [];
+        }
+        return [{
+          contractId: input.contract.id,
+          tenantId: input.tenantId,
+          clientId: resolved.clientId,
+          travelPackageId: input.contract.travelPackageId,
+          passengerType: resolved.participation.role,
+          passengerIndex: resolved.participation.passengerIndex,
+          passengerName,
+          note: String((noteDto as any).note).trim(),
+          status: "ACTIVE",
+          createdByUserId: input.createdByUserId,
+          createdByName: input.createdByName,
+        }];
+      });
+      if (noteData.length === 0) return;
+
+      await runTenantTransaction<any, Prisma.BatchPayload>(this.prisma as any, input.tenantId, (tx) =>
+        tx.contractNote.createMany({ data: noteData }),
+      );
+      this.logger.log(`✅ Successfully created ${noteData.length} operational notes`);
+    } catch (error) {
+      this.logger.error("❌ Error parsing or creating operational notes:", error);
+    }
   }
 
   private async processContractArchiveArtifacts(

@@ -104,6 +104,7 @@ export class ContractReservationReviewService {
 
       const confirmed = await tx.payment.findFirst({ where: { id: payment.id, tenantId } });
       if (!confirmed) throw new Error("CONTRACT_RESERVATION_APPROVAL_PERSISTENCE_FAILED");
+      await tx.$executeRaw`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`;
       const approval = await this.contracts.approveInTransaction(tx, {
         tenantId,
         contractId,

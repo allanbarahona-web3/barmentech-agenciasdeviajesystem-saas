@@ -23,6 +23,9 @@ describe("ContractReservationReviewService", () => {
     expect(result.availableAmount.toFixed()).toBe("0");
     expect(c.prisma.$transaction).toHaveBeenCalledTimes(1);
     expect(c.prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), { timeout: 15000 });
+    expect(c.tx.$executeRaw).toHaveBeenCalledTimes(1);
+    expect(c.tx.$executeRaw.mock.invocationCallOrder[0])
+      .toBeLessThan(c.contracts.approveInTransaction.mock.invocationCallOrder[0]);
     expect((c.tx as Record<string, unknown>).billingPayment).toBeUndefined();
     expect((c.tx as Record<string, unknown>).billingReceipt).toBeUndefined();
     expect((c.tx as Record<string, unknown>).billingInvoice).toBeUndefined();
@@ -218,6 +221,7 @@ function allocatedPayment(
 function context(initial: any = pendingPayment(), final: any = allocatedPayment()) {
   const tx = {
     $queryRaw: jest.fn().mockResolvedValue([{ id: "payment-1" }]),
+    $executeRaw: jest.fn().mockResolvedValue(undefined),
     payment: {
       findFirst: jest.fn().mockResolvedValue(final).mockResolvedValueOnce(initial),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),

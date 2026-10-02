@@ -91,6 +91,13 @@ function createArchiveService(records: CustomerRecord[]) {
   const customerCreate = jest.fn();
   const customerUpdate = jest.fn();
   const commercialObligationCreateMany = jest.fn();
+  const contractNoteCreateMany = jest.fn().mockResolvedValue({ count: 0 });
+  const rollbackContractDelete = jest.fn().mockResolvedValue({ id: "contract-1" });
+  const noteTransaction = {
+    $executeRaw: jest.fn().mockResolvedValue(undefined),
+    contractNote: { createMany: contractNoteCreateMany },
+    contract: { delete: rollbackContractDelete },
+  };
   const contractCreate = jest.fn(({ data }: any) =>
     Promise.resolve({
       id: "contract-1",
@@ -162,6 +169,7 @@ function createArchiveService(records: CustomerRecord[]) {
     commercialObligation: {
       createMany: commercialObligationCreateMany,
     },
+    $transaction: jest.fn(async (work: (tx: typeof noteTransaction) => unknown) => work(noteTransaction)),
   };
   const billing = {
     validateTripCapacity: jest.fn().mockResolvedValue(undefined),
@@ -199,6 +207,10 @@ function createArchiveService(records: CustomerRecord[]) {
     internalTripFindFirst: prisma.internalTrip.findFirst,
     travelPackageFindFirst: prisma.travelPackage.findFirst,
     commercialObligationCreateMany,
+    contractNoteCreateMany,
+    rollbackContractDelete,
+    noteTransaction,
+    jobDispatcher,
   };
 }
 
@@ -602,6 +614,87 @@ describe("ContractsService archive customer identity resolution", () => {
         }),
       }),
     }));
+  });
+
+  it("imports archive notes with resolved stable identities in one tenant-scoped batch", async () => {
+    const { service, contractNoteCreateMany, noteTransaction } =
+      createArchiveService([holder, companionOne, minor]);
+
+    await service.archiveContract(
+      { id: "agent-1", email: "agent@example.com", fullName: "Agent", tenantId: "tenant-1" },
+      {
+        contractNumber: "CT-NOTES",
+        clientFullName: holder.fullName,
+        clientIdNumber: holder.idNumber,
+        clientEmail: "holder@example.com",
+        destination: "Destination",
+        contractHtml: "<html></html>",
+        paymentConditionType: "CASH",
+        paymentMethod: "BANK_TRANSFER",
+        payloadJson: JSON.stringify({
+          selectedCustomerId: holder.id,
+          clientIdType: holder.idType,
+          travelPackageId: "package-1",
+          totalAmount: "750.00",
+          reservationAmount: "0",
+          companions: [companionPayload(companionOne)],
+          minors: [{
+            selectedCustomerId: minor.id,
+            minorName: minor.fullName,
+            minorId: minor.idNumber,
+            minorIdType: minor.idType,
+          }],
+        }),
+        notes: JSON.stringify([
+          { passengerType: "HOLDER", passengerIndex: null, passengerName: "Ignored", note: "Holder note" },
+          { passengerType: "COMPANION", passengerIndex: 0, passengerName: "Ignored", note: "Companion note" },
+          { passengerType: "MINOR", passengerIndex: 0, passengerName: "Ignored", note: "Minor note" },
+        ]),
+      },
+      [],
+    );
+
+    expect(noteTransaction.$executeRaw).toHaveBeenCalledTimes(1);
+    expect(contractNoteCreateMany).toHaveBeenCalledTimes(1);
+    expect(contractNoteCreateMany).toHaveBeenCalledWith({
+      data: expect.arrayContaining([
+        expect.objectContaining({ clientId: holder.id, travelPackageId: "package-1", passengerType: "HOLDER", passengerName: holder.fullName }),
+        expect.objectContaining({ clientId: companionOne.id, travelPackageId: "package-1", passengerType: "COMPANION", passengerIndex: 0, passengerName: companionOne.fullName }),
+        expect.objectContaining({ clientId: minor.id, travelPackageId: "package-1", passengerType: "MINOR", passengerIndex: 0, passengerName: minor.fullName }),
+      ]),
+    });
+  });
+
+  it("uses a tenant transaction for archive rollback cascades", async () => {
+    const { service, jobDispatcher, noteTransaction, rollbackContractDelete } =
+      createArchiveService([holder]);
+    jobDispatcher.dispatch.mockRejectedValueOnce(new Error("QUEUE_UNAVAILABLE"));
+
+    await expect(service.archiveContract(
+      { id: "agent-1", email: "agent@example.com", fullName: "Agent", tenantId: "tenant-1" },
+      {
+        contractNumber: "CT-ROLLBACK",
+        clientFullName: holder.fullName,
+        clientIdNumber: holder.idNumber,
+        clientEmail: "holder@example.com",
+        destination: "Destination",
+        internalTripId: "internal-trip-1",
+        paymentConditionType: "CASH",
+        paymentMethod: "BANK_TRANSFER",
+        payloadJson: JSON.stringify({
+          selectedCustomerId: holder.id,
+          clientIdType: holder.idType,
+          totalAmount: "100.00",
+          reservationAmount: "0",
+        }),
+      },
+      [],
+    )).rejects.toThrow("No se pudo enviar el contrato para procesamiento.");
+
+    expect(noteTransaction.$executeRaw).toHaveBeenCalledTimes(1);
+    expect(rollbackContractDelete).toHaveBeenCalledWith({
+      where: { id: "contract-1", tenantId: "tenant-1" },
+    });
   });
 
   it("rejects a contract for a travel whose commercial price is still pending", async () => {
