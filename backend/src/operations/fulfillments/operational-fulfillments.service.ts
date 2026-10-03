@@ -74,11 +74,10 @@ type FulfillmentRecord = {
   updatedAt: Date;
   operationalRequirement: RequirementState;
   passengers: FulfillmentPassengerRecord[];
+  _count: { purchases: number };
 };
-type FulfillmentState = Omit<FulfillmentRecord, "passengers">;
-type FulfillmentSummaryRecord = Omit<FulfillmentRecord, "passengers" | "operationalRequirement"> & {
-  _count: { passengers: number };
-};
+type FulfillmentState = Omit<FulfillmentRecord, "passengers" | "_count">;
+type FulfillmentSummaryRecord = Omit<FulfillmentRecord, "operationalRequirement"> & { _count: { passengers: number; purchases: number } };
 
 const DETAIL_SELECT = {
   id: true,
@@ -124,6 +123,7 @@ const DETAIL_SELECT = {
       },
     },
   },
+  _count: { select: { purchases: true } },
 } as const;
 
 const STATE_SELECT = {
@@ -182,7 +182,17 @@ const SUMMARY_SELECT = {
   assignedToName: true,
   createdAt: true,
   updatedAt: true,
-  _count: { select: { passengers: true } },
+  passengers: {
+    take: 2,
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    select: {
+      travelPackageParticipantId: true,
+      travelPackageParticipant: {
+        select: { id: true, clientId: true, role: true, client: { select: { fullName: true } } },
+      },
+    },
+  },
+  _count: { select: { passengers: true, purchases: true } },
 } as const;
 
 const STATUS_TRANSITIONS: Readonly<Record<FulfillmentStatus, readonly FulfillmentStatus[]>> = {
@@ -246,6 +256,7 @@ export class OperationalFulfillmentsService {
     return this.withTenantTransaction(tenantId, async (tx) => {
       const requirement = await this.requireMutableRequirement(tx, tenantId, travelPackageId, requirementId);
       await this.requireRequirementParticipants(tx, tenantId, travelPackageId, requirementId, participantIds);
+      await this.requireUncoveredParticipants(tx, tenantId, travelPackageId, requirementId, participantIds);
       const assignee = await this.resolveAssignee(tx, tenantId, input.assignedToUserId);
       const created = await tx.operationalFulfillment.create({
         data: {
@@ -431,6 +442,14 @@ export class OperationalFulfillmentsService {
     }
   }
 
+  private async requireUncoveredParticipants(tx: OperationsTransaction, tenantId: string, travelPackageId: string, requirementId: string, participantIds: string[]) {
+    const covered = await tx.operationalFulfillmentPassenger.findMany({
+      where: { tenantId, travelPackageId, travelPackageParticipantId: { in: participantIds }, operationalFulfillment: { operationalRequirementId: requirementId, status: "CONFIRMED" } },
+      select: { travelPackageParticipantId: true },
+    }) as Array<{ travelPackageParticipantId: string }>;
+    if (covered.length > 0) throw new ConflictException("OPERATIONAL_FULFILLMENT_PARTICIPANT_ALREADY_CONFIRMED");
+  }
+
   private async resolveAssignee(tx: OperationsTransaction, tenantId: string, userId: string | null | undefined): Promise<{ id: string; fullName: string } | null | undefined> {
     if (userId === undefined) return undefined;
     if (userId === null) return null;
@@ -445,6 +464,9 @@ export class OperationalFulfillmentsService {
     const requirementStatus = fulfillment.operationalRequirement.status;
     if (requirementStatus === "CANCELLED" || requirementStatus === "NOT_APPLICABLE") {
       throw new ConflictException("OPERATIONAL_FULFILLMENT_PARENT_REQUIREMENT_TERMINAL");
+    }
+    if (fulfillment.status === "CONFIRMED" || fulfillment.status === "CANCELLED") {
+      throw new ConflictException("OPERATIONAL_FULFILLMENT_TERMINAL_STATUS");
     }
     return fulfillment;
   }
@@ -644,6 +666,8 @@ function toSummary(fulfillment: FulfillmentSummaryRecord) {
     serviceEndAt: fulfillment.serviceEndAt,
     assignedTo: fulfillment.assignedToUserId ? { userId: fulfillment.assignedToUserId, name: fulfillment.assignedToName } : null,
     passengerCount: fulfillment._count.passengers,
+    passengerPreview: fulfillment.passengers.map((passenger) => passenger.travelPackageParticipant.client.fullName),
+    purchaseCount: fulfillment._count.purchases,
     createdAt: fulfillment.createdAt,
     updatedAt: fulfillment.updatedAt,
   };
@@ -651,7 +675,7 @@ function toSummary(fulfillment: FulfillmentSummaryRecord) {
 
 function toDetail(fulfillment: FulfillmentRecord) {
   return {
-    ...toSummary({ ...fulfillment, _count: { passengers: fulfillment.passengers.length } }),
+    ...toSummary({ ...fulfillment, _count: { passengers: fulfillment.passengers.length, purchases: fulfillment._count.purchases } }),
     providerReference: fulfillment.providerReference,
     voucherReference: fulfillment.voucherReference,
     ticketReference: fulfillment.ticketReference,

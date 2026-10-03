@@ -16,11 +16,11 @@ const readinessPresentation = {
   NO_CRITICAL_REQUIREMENTS: { label: 'Sin críticos definidos', description: 'No hay requerimientos críticos definidos para este viaje.', icon: Info, variant: 'outline' as const },
 };
 const cellPresentation: Record<OperationalHeatmapStatus, { label: string; short: string; variant: 'success' | 'info' | 'warning' | 'secondary' | 'outline' }> = {
-  FULFILLED: { label: 'Cumplido', short: 'C', variant: 'success' }, IN_PROGRESS: { label: 'En gestión', short: 'G', variant: 'info' },
-  PENDING: { label: 'Pendiente', short: 'P', variant: 'warning' }, NOT_APPLICABLE: { label: 'No aplica', short: 'NA', variant: 'secondary' }, NONE: { label: 'Sin requerimiento', short: '—', variant: 'outline' },
+  FULFILLED: { label: 'Comprado', short: 'Comprado', variant: 'success' }, IN_PROGRESS: { label: 'En gestión', short: 'En gestión', variant: 'info' },
+  PENDING: { label: 'Pendiente', short: 'Pendiente', variant: 'warning' }, NOT_APPLICABLE: { label: 'No aplica', short: 'No aplica', variant: 'secondary' }, NONE: { label: 'Sin requerimiento', short: 'Sin requerimiento', variant: 'outline' },
 };
 
-export function OperationalReadinessDashboard({ travelPackageId, onViewPassengers }: { travelPackageId: string; onViewPassengers?: () => void }) {
+export function OperationalReadinessDashboard({ travelPackageId, refreshVersion, onViewPassengers }: { travelPackageId: string; refreshVersion?: number; onViewPassengers?: () => void }) {
   const [readiness, setReadiness] = useState<OperationalReadiness | null>(null);
   const [matrix, setMatrix] = useState<OperationalPassengerMatrix | null>(null);
   const [matrixPage, setMatrixPage] = useState(1);
@@ -28,8 +28,8 @@ export function OperationalReadinessDashboard({ travelPackageId, onViewPassenger
   const [readinessError, setReadinessError] = useState<string | null>(null), [matrixError, setMatrixError] = useState<string | null>(null);
   async function loadReadiness() { setLoadingReadiness(true); setReadinessError(null); try { setReadiness(await getOperationsReadiness(travelPackageId)); } catch (reason) { setReadinessError(errorMessage(reason, 'No se pudo cargar el resumen de preparación.')); } finally { setLoadingReadiness(false); } }
   async function loadMatrix() { setLoadingMatrix(true); setMatrixError(null); try { setMatrix(await getOperationsPassengerMatrix(travelPackageId, matrixPage)); } catch (reason) { setMatrixError(errorMessage(reason, 'No se pudo cargar la matriz de pasajeros.')); } finally { setLoadingMatrix(false); } }
-  useEffect(() => { void loadReadiness(); }, [travelPackageId]);
-  useEffect(() => { void loadMatrix(); }, [travelPackageId, matrixPage]);
+  useEffect(() => { void loadReadiness(); }, [travelPackageId, refreshVersion]);
+  useEffect(() => { void loadMatrix(); }, [travelPackageId, matrixPage, refreshVersion]);
   async function refresh() { await Promise.all([loadReadiness(), loadMatrix()]); }
 
   return <section className="space-y-5" aria-label="Resumen operativo"><div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"><div><h1 className="text-2xl font-semibold tracking-tight">Resumen operativo</h1><p className="text-sm text-muted-foreground">Cobertura confirmada, riesgos críticos y preparación por pasajero.</p></div><Button type="button" variant="outline" onClick={() => void refresh()} disabled={loadingReadiness || loadingMatrix}><RefreshCw aria-hidden="true" className={loadingReadiness || loadingMatrix ? 'animate-spin' : ''} />Actualizar</Button></div>

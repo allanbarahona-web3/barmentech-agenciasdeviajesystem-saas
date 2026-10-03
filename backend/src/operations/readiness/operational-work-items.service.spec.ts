@@ -48,6 +48,17 @@ describe("OperationalWorkItemsService", () => {
     expect(Object.keys(c.tx)).toEqual(["$executeRaw", "$queryRaw", "travelPackage"]);
   });
 
+  it("projects coverage-complete work as FULFILLED and filters it from active work before pagination", async () => {
+    const c = context();
+    c.tx.travelPackage.findFirst.mockResolvedValue({ id: travelPackageId });
+    c.tx.$queryRaw.mockResolvedValueOnce([pageRow({ status: "FULFILLED", total: 1, totalPassengers: 1 })]).mockResolvedValueOnce([enrichment("requirement-a", { fulfilledPassengerCount: 1 })]);
+    await expect(c.service.list(tenantId, travelPackageId, { page: 1, pageSize: 20, status: "FULFILLED" } as any)).resolves.toMatchObject({ items: [{ status: "FULFILLED", coverage: { fulfilledPassengerCount: 1, totalPassengerCount: 1 } }] });
+    const query = String(c.tx.$queryRaw.mock.calls[0][0]);
+    expect(query).toContain("requirement_coverage AS MATERIALIZED");
+    expect(query).toContain("WHEN COALESCE(coverage");
+    expect(query).toContain("filtered AS MATERIALIZED");
+  });
+
   it("keeps the tenant-scoped package validation before returning an empty page", async () => {
     const c = context();
     c.tx.travelPackage.findFirst.mockResolvedValue({ id: travelPackageId });

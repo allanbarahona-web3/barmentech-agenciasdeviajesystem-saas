@@ -6,6 +6,7 @@ import { tenantDateTimeInputToUtc } from '@/shared/regional';
 import { useTenantRegional } from '@/shared/regional/tenant-regional-provider';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { FormField } from '@/components/patterns/form-field';
 import { FormSheet } from '@/components/patterns/form-sheet';
@@ -14,10 +15,10 @@ const allowedMimeTypes = new Set(['application/pdf', 'image/jpeg', 'image/png', 
 const maxEvidenceBytes = 10 * 1024 * 1024;
 
 type PurchaseForm = { providerName: string; supplierReference: string; amount: string; currency: string; taxAmount: string; purchasedAt: string; supplierInvoiceNumber: string; notes: string };
-const emptyPurchase = (): PurchaseForm => ({ providerName: '', supplierReference: '', amount: '', currency: '', taxAmount: '', purchasedAt: '', supplierInvoiceNumber: '', notes: '' });
+const emptyPurchase = (currency = ''): PurchaseForm => ({ providerName: '', supplierReference: '', amount: '', currency, taxAmount: '', purchasedAt: '', supplierInvoiceNumber: '', notes: '' });
 
 export function OperationalPurchaseDrawer({ open, travelPackageId, requirementId, fulfillmentId, providerName, soldValue, onOpenChange, onCreated }: { open: boolean; travelPackageId: string; requirementId: string; fulfillmentId: string; providerName?: string | null; soldValue?: OperationalRequirementDetail['soldValue']; onOpenChange: (open: boolean) => void; onCreated: (result: { evidenceUploadFailed: boolean }) => Promise<void> | void }) {
-  const { timeZone } = useTenantRegional();
+  const { timeZone, preferredCurrency } = useTenantRegional();
   const [form, setForm] = useState<PurchaseForm>(emptyPurchase());
   const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
@@ -26,11 +27,11 @@ export function OperationalPurchaseDrawer({ open, travelPackageId, requirementId
 
   useEffect(() => {
     if (open) {
-      setForm({ ...emptyPurchase(), providerName: providerName ?? '' });
+      setForm({ ...emptyPurchase(preferredCurrency), providerName: providerName ?? '' });
       setEvidenceFile(null);
       setError(null);
     }
-  }, [open, fulfillmentId, providerName]);
+  }, [open, fulfillmentId, preferredCurrency, providerName]);
 
   async function savePurchase(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -63,7 +64,7 @@ export function OperationalPurchaseDrawer({ open, travelPackageId, requirementId
       {exactSoldValue ? <p className="text-sm"><span className="text-muted-foreground">Vendido:</span> {exactSoldValue}</p> : null}
       <FormField htmlFor="purchase-provider" label="Proveedor" required><Input id="purchase-provider" value={form.providerName} onChange={(event) => setForm((value) => ({ ...value, providerName: event.target.value }))} required maxLength={500} /></FormField>
       <FormField htmlFor="purchase-provider-reference" label="Referencia del proveedor"><Input id="purchase-provider-reference" value={form.supplierReference} onChange={(event) => setForm((value) => ({ ...value, supplierReference: event.target.value }))} maxLength={500} /></FormField>
-      <div className="grid gap-3 sm:grid-cols-3"><FormField htmlFor="purchase-amount" label="Monto" required><Input id="purchase-amount" inputMode="decimal" value={form.amount} onChange={(event) => setForm((value) => ({ ...value, amount: event.target.value }))} required /></FormField><FormField htmlFor="purchase-currency" label="Moneda" required><Input id="purchase-currency" value={form.currency} onChange={(event) => setForm((value) => ({ ...value, currency: event.target.value.toUpperCase() }))} maxLength={3} required /></FormField><FormField htmlFor="purchase-tax" label="Impuesto"><Input id="purchase-tax" inputMode="decimal" value={form.taxAmount} onChange={(event) => setForm((value) => ({ ...value, taxAmount: event.target.value }))} /></FormField></div>
+      <div className="grid gap-3 sm:grid-cols-3"><FormField htmlFor="purchase-amount" label="Monto" required><Input id="purchase-amount" inputMode="decimal" value={form.amount} onChange={(event) => setForm((value) => ({ ...value, amount: event.target.value }))} required /></FormField><FormField htmlFor="purchase-currency" label="Moneda" required><Select id="purchase-currency" value={form.currency} onChange={(event) => setForm((value) => ({ ...value, currency: event.target.value }))} required><option value={preferredCurrency}>{preferredCurrency}</option>{preferredCurrency !== 'USD' ? <option value="USD">USD</option> : null}</Select></FormField><FormField htmlFor="purchase-tax" label="Impuesto"><Input id="purchase-tax" inputMode="decimal" value={form.taxAmount} onChange={(event) => setForm((value) => ({ ...value, taxAmount: event.target.value }))} /></FormField></div>
       <FormField htmlFor="purchase-date" label="Fecha de compra" required><Input id="purchase-date" type="datetime-local" value={form.purchasedAt} onChange={(event) => setForm((value) => ({ ...value, purchasedAt: event.target.value }))} required /></FormField>
       <FormField htmlFor="purchase-invoice" label="Número de factura del proveedor"><Input id="purchase-invoice" value={form.supplierInvoiceNumber} onChange={(event) => setForm((value) => ({ ...value, supplierInvoiceNumber: event.target.value }))} maxLength={191} /></FormField>
       <FormField htmlFor="purchase-evidence" label="Documento de respaldo (opcional)"><Input id="purchase-evidence" type="file" accept="application/pdf,image/jpeg,image/png,image/webp" onChange={(event) => { const file = event.target.files?.[0] ?? null; const fileError = file ? validateFile(file) : null; if (fileError) { setEvidenceFile(null); setError(fileError); return; } setEvidenceFile(file); }} /></FormField>

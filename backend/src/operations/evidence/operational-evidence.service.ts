@@ -46,7 +46,7 @@ export class OperationalEvidenceService {
   async upload(tenantId: string, travelPackageId: string, requirementId: string, fulfillmentId: string, input: CreateOperationalEvidenceDto, file: OperationalEvidenceFile | undefined, actor: OperationalEvidenceActor) {
     validateFile(file);
     const prepared = await prepareFile(file);
-    await this.withTransaction(tenantId, (tx) => this.requireHierarchy(tx, tenantId, travelPackageId, requirementId, fulfillmentId, input.operationalPurchaseId));
+    await this.withTransaction(tenantId, async (tx) => { await this.requireMutableHierarchy(tx, tenantId, travelPackageId, requirementId, fulfillmentId, input.operationalPurchaseId); });
 
     const objectKey = evidenceObjectKey(tenantId, travelPackageId, fulfillmentId, prepared.fileName);
     try {
@@ -57,7 +57,7 @@ export class OperationalEvidenceService {
 
     try {
       return await this.withTransaction(tenantId, async (tx) => {
-        await this.requireHierarchy(tx, tenantId, travelPackageId, requirementId, fulfillmentId, input.operationalPurchaseId);
+        await this.requireMutableHierarchy(tx, tenantId, travelPackageId, requirementId, fulfillmentId, input.operationalPurchaseId);
         const evidence = await tx.operationalEvidence.create({
           data: {
             tenantId, travelPackageId, operationalFulfillmentId: fulfillmentId, operationalPurchaseId: input.operationalPurchaseId ?? null,
@@ -118,6 +118,7 @@ export class OperationalEvidenceService {
 
   async remove(tenantId: string, travelPackageId: string, requirementId: string, fulfillmentId: string, evidenceId: string) {
     const evidence = await this.withTransaction(tenantId, async (tx) => {
+      await this.requireMutableHierarchy(tx, tenantId, travelPackageId, requirementId, fulfillmentId);
       const found = await this.findEvidence(tx, tenantId, travelPackageId, requirementId, fulfillmentId, evidenceId);
       if (!found) throw new NotFoundException("OPERATIONAL_EVIDENCE_NOT_FOUND");
       const deleted = await tx.operationalEvidence.deleteMany({ where: { id: evidenceId, tenantId, travelPackageId, operationalFulfillmentId: fulfillmentId } });
@@ -136,11 +137,18 @@ export class OperationalEvidenceService {
   private async requireHierarchy(tx: Tx, tenantId: string, travelPackageId: string, requirementId: string, fulfillmentId: string, purchaseId?: string) {
     const requirement = await tx.operationalRequirement.findFirst({ where: { id: requirementId, tenantId, travelPackageId }, select: { id: true } });
     if (!requirement) throw new NotFoundException("OPERATIONAL_REQUIREMENT_NOT_FOUND");
-    const fulfillment = await tx.operationalFulfillment.findFirst({ where: { id: fulfillmentId, tenantId, travelPackageId, operationalRequirementId: requirementId }, select: { id: true } });
+    const fulfillment = await tx.operationalFulfillment.findFirst({ where: { id: fulfillmentId, tenantId, travelPackageId, operationalRequirementId: requirementId }, select: { id: true, status: true } }) as { id: string; status: string } | null;
     if (!fulfillment) throw new NotFoundException("OPERATIONAL_FULFILLMENT_NOT_FOUND");
-    if (!purchaseId) return;
+    if (!purchaseId) return fulfillment;
     const purchase = await tx.operationalPurchase.findFirst({ where: { id: purchaseId, tenantId, travelPackageId, operationalFulfillmentId: fulfillmentId }, select: { id: true } });
     if (!purchase) throw new NotFoundException("OPERATIONAL_PURCHASE_NOT_FOUND");
+    return fulfillment;
+  }
+
+  private async requireMutableHierarchy(tx: Tx, tenantId: string, travelPackageId: string, requirementId: string, fulfillmentId: string, purchaseId?: string) {
+    const fulfillment = await this.requireHierarchy(tx, tenantId, travelPackageId, requirementId, fulfillmentId, purchaseId);
+    if (fulfillment.status === "CONFIRMED" || fulfillment.status === "CANCELLED") throw new ConflictException("OPERATIONAL_EVIDENCE_FULFILLMENT_TERMINAL");
+    return fulfillment;
   }
 
   private async findEvidence(tx: Tx, tenantId: string, travelPackageId: string, requirementId: string, fulfillmentId: string, evidenceId: string): Promise<Evidence | null> {

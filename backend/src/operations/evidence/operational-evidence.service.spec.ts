@@ -1,4 +1,4 @@
-import { BadRequestException, InternalServerErrorException, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, InternalServerErrorException, NotFoundException } from "@nestjs/common";
 import { OperationalEvidenceService } from "./operational-evidence.service";
 
 const tenantId = "tenant-a";
@@ -96,6 +96,16 @@ describe("OperationalEvidenceService", () => {
     failed.storage.deleteObject.mockRejectedValue(new Error("storage failed"));
     await expect(failed.service.remove(tenantId, travelPackageId, requirementId, fulfillmentId, evidenceId)).rejects.toBeInstanceOf(InternalServerErrorException);
   });
+
+  it("keeps confirmed Fulfillment evidence viewable but rejects uploads and deletion", async () => {
+    const c = context();
+    hierarchy(c, { status: "CONFIRMED" });
+    c.tx.operationalEvidence.findFirst.mockResolvedValue(evidence());
+    await expect(c.service.find(tenantId, travelPackageId, requirementId, fulfillmentId, evidenceId)).resolves.toMatchObject({ id: evidenceId });
+    await expect(c.service.upload(tenantId, travelPackageId, requirementId, fulfillmentId, { evidenceType: "OTHER" }, file(), actor)).rejects.toBeInstanceOf(ConflictException);
+    await expect(c.service.remove(tenantId, travelPackageId, requirementId, fulfillmentId, evidenceId)).rejects.toBeInstanceOf(ConflictException);
+    expect(c.tx.operationalEvidence.deleteMany).not.toHaveBeenCalled();
+  });
 });
 
 function context() {
@@ -111,9 +121,9 @@ function context() {
   return { tx, storage, service: new OperationalEvidenceService(prisma as never, storage as never) };
 }
 
-function hierarchy(c: ReturnType<typeof context>, options: { purchase?: boolean } = {}) {
+function hierarchy(c: ReturnType<typeof context>, options: { purchase?: boolean; status?: string } = {}) {
   c.tx.operationalRequirement.findFirst.mockResolvedValue({ id: requirementId });
-  c.tx.operationalFulfillment.findFirst.mockResolvedValue({ id: fulfillmentId });
+  c.tx.operationalFulfillment.findFirst.mockResolvedValue({ id: fulfillmentId, status: options.status ?? "PURCHASED" });
   if (options.purchase) c.tx.operationalPurchase.findFirst.mockResolvedValue({ id: purchaseId });
 }
 function file() { return { buffer: Buffer.from("pdfdata"), mimetype: "application/pdf", originalname: "booking.pdf", size: 7 }; }

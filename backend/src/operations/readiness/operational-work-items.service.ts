@@ -101,16 +101,32 @@ export class OperationalWorkItemsService {
 
 function workItemPage(tx: Tx, tenantId: string, travelPackageId: string, input: ListOperationalWorkItemsDto, now: Date, dueSoon: Date) {
   const filters = workItemFilters(tenantId, travelPackageId, input, now, dueSoon);
+  const effectiveFilters = effectiveStatusFilters(input);
   return tx.$queryRaw<WorkItemPageRow[]>`
-    WITH filtered AS MATERIALIZED (
-      SELECT r.id, r."travelPackageId", r."servicePurposeCode", r."servicePurposeName", r.description, r.status::text AS status,
+    WITH requirement_coverage AS MATERIALIZED (
+      SELECT rp."operationalRequirementId" AS id, COUNT(*)::int AS "totalPassengers",
+        COUNT(DISTINCT fp."travelPackageParticipantId") FILTER (WHERE f.status = 'CONFIRMED')::int AS "fulfilledPassengerCount",
+        COUNT(DISTINCT f.id)::int AS "fulfillmentCount"
+      FROM "operational_requirement_passengers" rp
+      LEFT JOIN "operational_fulfillments" f ON f."tenantId" = rp."tenantId" AND f."travelPackageId" = rp."travelPackageId" AND f."operationalRequirementId" = rp."operationalRequirementId"
+      LEFT JOIN "operational_fulfillment_passengers" fp ON fp."operationalFulfillmentId" = f.id AND fp."tenantId" = f."tenantId" AND fp."travelPackageId" = f."travelPackageId" AND fp."travelPackageParticipantId" = rp."travelPackageParticipantId"
+      WHERE rp."tenantId" = ${tenantId} AND rp."travelPackageId" = ${travelPackageId}
+      GROUP BY rp."operationalRequirementId"
+    ), effective AS MATERIALIZED (
+      SELECT r.id, r."travelPackageId", r."servicePurposeCode", r."servicePurposeName", r.description,
+        CASE WHEN r.status IN ('CANCELLED', 'NOT_APPLICABLE') THEN r.status::text
+          WHEN COALESCE(coverage."totalPassengers", 0) > 0 AND COALESCE(coverage."fulfilledPassengerCount", 0) = coverage."totalPassengers" THEN 'FULFILLED'
+          WHEN r.status = 'IN_PROGRESS' OR COALESCE(coverage."fulfillmentCount", 0) > 0 THEN 'IN_PROGRESS'
+          ELSE 'PENDING' END AS status,
         r.critical, r."operationalDeadlineAt", r."assignedToUserId", r."assignedToName", r."sourceType", r."sourceId", r."sourceLineId",
         r."sourceVersionId", r."sourcePassengerGroupId", r."sourcePassengerGroupName", r."soldValueScope"::text AS "soldValueScope",
         r."soldAmount", r."soldCurrency", r."createdAt", r."updatedAt",
-        (SELECT COUNT(*)::int FROM "operational_requirement_passengers" rp
-          WHERE rp."tenantId" = ${tenantId} AND rp."travelPackageId" = ${travelPackageId} AND rp."operationalRequirementId" = r.id) AS "totalPassengers"
+        COALESCE(coverage."totalPassengers", 0)::int AS "totalPassengers"
       FROM "operational_requirements" r
+      LEFT JOIN requirement_coverage coverage ON coverage.id = r.id
       WHERE ${Prisma.join(filters, " AND ")}
+    ), filtered AS MATERIALIZED (
+      SELECT * FROM effective WHERE ${Prisma.join(effectiveFilters, " AND ")}
     ), page AS (
       SELECT * FROM filtered ORDER BY critical DESC, "operationalDeadlineAt" ASC, "createdAt" ASC, id ASC
       OFFSET ${(input.page - 1) * input.pageSize} LIMIT ${input.pageSize}
@@ -123,8 +139,6 @@ function workItemPage(tx: Tx, tenantId: string, travelPackageId: string, input: 
 
 function workItemFilters(tenantId: string, travelPackageId: string, input: ListOperationalWorkItemsDto, now: Date, dueSoon: Date): Prisma.Sql[] {
   const filters = [Prisma.sql`r."tenantId" = ${tenantId}`, Prisma.sql`r."travelPackageId" = ${travelPackageId}`];
-  if (input.active === "true") filters.push(Prisma.sql`r.status IN ('PENDING', 'IN_PROGRESS')`);
-  else if (input.status) filters.push(Prisma.sql`r.status = CAST(${input.status} AS "OperationalRequirementStatus")`);
   if (input.servicePurposeCode) filters.push(Prisma.sql`r."servicePurposeCode" = ${input.servicePurposeCode}`);
   if (input.participantId) filters.push(Prisma.sql`EXISTS (SELECT 1 FROM "operational_requirement_passengers" rp WHERE rp."tenantId" = ${tenantId} AND rp."travelPackageId" = ${travelPackageId} AND rp."operationalRequirementId" = r.id AND rp."travelPackageParticipantId" = ${input.participantId})`);
   if (input.passengerGroupId) filters.push(Prisma.sql`EXISTS (SELECT 1 FROM "operational_requirement_passengers" rp JOIN "passenger_group_members" pgm ON pgm."tenantId" = rp."tenantId" AND pgm."travelPackageId" = rp."travelPackageId" AND pgm."travelPackageParticipantId" = rp."travelPackageParticipantId" JOIN "passenger_groups" pg ON pg.id = pgm."passengerGroupId" AND pg."tenantId" = pgm."tenantId" AND pg."travelPackageId" = pgm."travelPackageId" WHERE rp."tenantId" = ${tenantId} AND rp."travelPackageId" = ${travelPackageId} AND rp."operationalRequirementId" = r.id AND pgm."passengerGroupId" = ${input.passengerGroupId} AND pg.status = 'ACTIVE')`);
@@ -141,6 +155,12 @@ function workItemFilters(tenantId: string, travelPackageId: string, input: ListO
   if (input.deadlineState === "FUTURE") filters.push(Prisma.sql`r."operationalDeadlineAt" > ${dueSoon}`);
   if (input.deadlineState === "NONE") filters.push(Prisma.sql`r."operationalDeadlineAt" IS NULL`);
   return filters;
+}
+
+function effectiveStatusFilters(input: ListOperationalWorkItemsDto): Prisma.Sql[] {
+  if (input.active === "true") return [Prisma.sql`status IN ('PENDING', 'IN_PROGRESS')`];
+  if (input.status) return [Prisma.sql`status = ${input.status}`];
+  return [Prisma.sql`true`];
 }
 
 function workItemEnrichment(tx: Tx, tenantId: string, travelPackageId: string, ids: string[]) {

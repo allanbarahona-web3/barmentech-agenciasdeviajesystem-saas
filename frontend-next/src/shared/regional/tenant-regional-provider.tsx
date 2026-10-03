@@ -21,17 +21,22 @@ import {
 
 type TenantRegionalState = {
   timeZone: string;
+  preferredCurrency: string;
   isConfigured: boolean;
 };
 
+const DEFAULT_TENANT_CURRENCY = "CRC";
+
 const TenantRegionalContext = createContext<TenantRegionalState>({
   timeZone: DEFAULT_TENANT_TIMEZONE,
+  preferredCurrency: DEFAULT_TENANT_CURRENCY,
   isConfigured: false,
 });
 
 export function TenantRegionalProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<TenantRegionalState>({
     timeZone: DEFAULT_TENANT_TIMEZONE,
+    preferredCurrency: DEFAULT_TENANT_CURRENCY,
     isConfigured: false,
   });
 
@@ -41,7 +46,7 @@ export function TenantRegionalProvider({ children }: { children: ReactNode }) {
     const load = () => {
       controller?.abort();
       if (!getStoredToken()) {
-        setState({ timeZone: DEFAULT_TENANT_TIMEZONE, isConfigured: false });
+        setState({ timeZone: DEFAULT_TENANT_TIMEZONE, preferredCurrency: DEFAULT_TENANT_CURRENCY, isConfigured: false });
         return;
       }
 
@@ -52,13 +57,14 @@ export function TenantRegionalProvider({ children }: { children: ReactNode }) {
           if (!request.signal.aborted) {
             setState({
               timeZone: normalizeTenantTimeZone(profile.tenant?.fiscalTimezone),
+              preferredCurrency: normalizeTenantCurrency(profile.tenant?.preferredCurrency),
               isConfigured: true,
             });
           }
         })
         .catch(() => {
           if (!request.signal.aborted) {
-            setState({ timeZone: DEFAULT_TENANT_TIMEZONE, isConfigured: false });
+            setState({ timeZone: DEFAULT_TENANT_TIMEZONE, preferredCurrency: DEFAULT_TENANT_CURRENCY, isConfigured: false });
           }
         });
     };
@@ -80,6 +86,11 @@ export function TenantRegionalProvider({ children }: { children: ReactNode }) {
 
 export function useTenantRegional(): TenantRegionalState {
   return useContext(TenantRegionalContext);
+}
+
+function normalizeTenantCurrency(value: string | null | undefined): string {
+  const currency = value?.trim().toUpperCase() ?? "";
+  return /^[A-Z]{3}$/.test(currency) ? currency : DEFAULT_TENANT_CURRENCY;
 }
 
 /** Returns the shared instant formatter bound to the current tenant timezone. */

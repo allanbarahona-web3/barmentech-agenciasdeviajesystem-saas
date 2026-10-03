@@ -17,7 +17,7 @@ describe("OperationalPurchasesService", () => {
     expect(c.finance.readMany).toHaveBeenCalledWith({ tenantId, sources: [{ sourceType: "CONTRACT", sourceId: "contract-a" }] });
   });
 
-  it("allows multiple purchases without an accidental uniqueness/idempotency rule and keeps PURCHASED or CONFIRMED state", async () => {
+  it("allows multiple purchases while PURCHASED but closes purchase creation after confirmation", async () => {
     const c = context(requirement(), fulfillment({ status: "PURCHASED" }));
     c.tx.operationalRequirement.findFirst.mockResolvedValue(requirement());
     c.tx.operationalFulfillment.findFirst.mockResolvedValue(fulfillment({ status: "PURCHASED" }));
@@ -30,17 +30,15 @@ describe("OperationalPurchasesService", () => {
     expect(c.tx.operationalFulfillment.updateMany.mock.calls[0][0].data.status).toBe("PURCHASED");
 
     const confirmed = context(requirement(), fulfillment({ status: "CONFIRMED" }));
-    confirmed.finance.readMany.mockResolvedValue([{ eligibility: "ELIGIBLE", reason: "SETTLED" }]);
-    confirmed.tx.operationalFulfillment.updateMany.mockResolvedValue({ count: 1 });
-    confirmed.tx.operationalPurchase.create.mockResolvedValue(purchase());
-    await expect(confirmed.service.create(tenantId, travelPackageId, requirementId, fulfillmentId, input(), actor)).resolves.toMatchObject({ id: purchaseId });
-    expect(confirmed.tx.operationalFulfillment.updateMany.mock.calls[0][0].data.status).toBe("CONFIRMED");
+    await expect(confirmed.service.create(tenantId, travelPackageId, requirementId, fulfillmentId, input(), actor)).rejects.toMatchObject({ response: expect.objectContaining({ message: "OPERATIONAL_PURCHASE_FULFILLMENT_CONFIRMED" }) });
+    expect(confirmed.tx.operationalPurchase.create).not.toHaveBeenCalled();
   });
 
   it.each([
     [requirement({ status: "CANCELLED" }), fulfillment(), "OPERATIONAL_PURCHASE_PARENT_REQUIREMENT_TERMINAL"],
     [requirement({ status: "NOT_APPLICABLE" }), fulfillment(), "OPERATIONAL_PURCHASE_PARENT_REQUIREMENT_TERMINAL"],
     [requirement(), fulfillment({ status: "CANCELLED" }), "OPERATIONAL_PURCHASE_FULFILLMENT_CANCELLED"],
+    [requirement(), fulfillment({ status: "CONFIRMED" }), "OPERATIONAL_PURCHASE_FULFILLMENT_CONFIRMED"],
   ])("rejects purchases beneath terminal parents", async (req, full, code) => {
     const c = context(req, full);
     await expect(c.service.create(tenantId, travelPackageId, requirementId, fulfillmentId, input(), actor)).rejects.toMatchObject({ response: expect.objectContaining({ message: code }) });
@@ -93,6 +91,12 @@ describe("OperationalPurchasesService", () => {
     expect(c.tx.operationalPurchase.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ supplierReference: "SUP-2", notes: "Corrected note" }) }));
     expect(c.tx.operationalPurchase.updateMany.mock.calls[0][0].data).not.toHaveProperty("amount");
     expect((c.service as any).delete).toBeUndefined();
+  });
+
+  it("rejects metadata edits beneath a confirmed Fulfillment", async () => {
+    const c = context(requirement(), fulfillment({ status: "CONFIRMED" }));
+    await expect(c.service.update(tenantId, travelPackageId, requirementId, fulfillmentId, purchaseId, { notes: "Late change" }, actor)).rejects.toMatchObject({ response: expect.objectContaining({ message: "OPERATIONAL_PURCHASE_FULFILLMENT_CONFIRMED" }) });
+    expect(c.tx.operationalPurchase.updateMany).not.toHaveBeenCalled();
   });
 
   it("lists deterministic bounded pages and scopes detail reads to the complete hierarchy", async () => {

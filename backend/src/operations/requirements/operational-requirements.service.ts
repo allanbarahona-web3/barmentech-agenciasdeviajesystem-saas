@@ -231,7 +231,8 @@ export class OperationalRequirementsService {
         where: { tenantId, travelPackageId, operationalFulfillment: { operationalRequirementId: requirementId, status: "CONFIRMED" } },
         select: { travelPackageParticipantId: true },
       }) as Array<{ travelPackageParticipantId: string }>;
-      return { ...toDetail(requirement), coverage: { fulfilledPassengerCount: new Set(confirmed.map((row) => row.travelPackageParticipantId)).size, totalPassengerCount: requirement.passengers.length } };
+      const confirmedPassengerIds = [...new Set(confirmed.map((row) => row.travelPackageParticipantId))];
+      return { ...toDetail(requirement), confirmedPassengerIds, coverage: { fulfilledPassengerCount: confirmedPassengerIds.length, totalPassengerCount: requirement.passengers.length } };
     });
   }
 

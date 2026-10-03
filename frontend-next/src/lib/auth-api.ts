@@ -78,6 +78,7 @@ export type AuthenticatedSessionProfile = {
     name: string;
     contractPrefix: string;
     fiscalTimezone: string;
+    preferredCurrency: string;
   } | null;
 };
 

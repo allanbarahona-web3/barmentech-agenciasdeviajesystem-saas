@@ -26,9 +26,11 @@ test('Overall progress, roster distinction, service progress, and inconsistency 
   assert.doesNotMatch(source, /\.reduce\(/);
 });
 
-test('Heatmap columns and all cell states are supplied by the package matrix response', () => {
+test('Heatmap cells render full readable backend-status labels from the package matrix response', () => {
   const source = dashboard();
-  for (const label of ['Cumplido', 'En gestión', 'Pendiente', 'No aplica', 'Sin requerimiento']) assert.match(source, new RegExp(label));
+  for (const label of ['Comprado', 'En gestión', 'Pendiente', 'No aplica', 'Sin requerimiento']) assert.match(source, new RegExp(label));
+  for (const shortLabel of ["short: 'C'", "short: 'G'", "short: 'P'", "short: 'NA'", "short: '—'"]) assert.doesNotMatch(source, new RegExp(shortLabel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.match(source, /aria-label=\{`\$\{participant\.fullName\}: \$\{column\.servicePurposeName\}, \$\{presentation\.label\}`\}/);
   assert.match(source, /matrix\.serviceColumns\.map/);
   assert.match(source, /cellsByService: new Map\(participant\.serviceCells\.map/);
   assert.match(source, /cellsByService\.get\(column\.servicePurposeCode\)/);
@@ -48,6 +50,16 @@ test('Dashboard uses one readiness read and one paginated matrix read with empty
   assert.match(source, /await Promise\.all\(\[loadReadiness\(\), loadMatrix\(\)\]\)/);
   assert.match(client, /pageSize: '20'/);
   assert.doesNotMatch(source, /getOperationalPassengerOverview|listOperationalRequirements|getOperationalFulfillment/);
+});
+
+test('Mounted summary reloads bounded readiness and matrix data after confirmed coverage changes', () => {
+  const source = dashboard(); const tripShell = shell();
+  assert.match(source, /refreshVersion\?: number/);
+  assert.match(source, /\[travelPackageId, refreshVersion\]/);
+  assert.match(source, /\[travelPackageId, matrixPage, refreshVersion\]/);
+  assert.match(tripShell, /const \[coverageVersion, setCoverageVersion\] = useState\(0\)/);
+  assert.match(tripShell, /refreshVersion=\{coverageVersion\}/);
+  assert.doesNotMatch(source + tripShell, /window\.location|location\.reload/);
 });
 
 test('Readiness client contracts remain centralized and the dashboard contains no Finance, purchase, or per-cell requests', () => {

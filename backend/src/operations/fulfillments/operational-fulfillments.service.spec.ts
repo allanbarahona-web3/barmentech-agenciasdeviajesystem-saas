@@ -31,6 +31,16 @@ describe("OperationalFulfillmentsService", () => {
     expect(c.finance.readMany).not.toHaveBeenCalled();
   });
 
+  it("does not create a new Fulfillment for passengers already covered by confirmation", async () => {
+    const c = context();
+    c.tx.operationalRequirement.findFirst.mockResolvedValue(requirement());
+    c.tx.travelPackageParticipant.findMany.mockResolvedValue([{ id: "participant-a" }]);
+    c.tx.operationalRequirementPassenger.findMany.mockResolvedValue([{ travelPackageParticipantId: "participant-a" }]);
+    c.tx.operationalFulfillmentPassenger.findMany.mockResolvedValue([{ travelPackageParticipantId: "participant-a" }]);
+    await expect(c.service.create(tenantId, travelPackageId, requirementId, createInput(), actor)).rejects.toMatchObject({ response: expect.objectContaining({ message: "OPERATIONAL_FULFILLMENT_PARTICIPANT_ALREADY_CONFIRMED" }) });
+    expect(c.tx.operationalFulfillment.create).not.toHaveBeenCalled();
+  });
+
   it("rejects package participants that are absent from the parent Requirement before creating", async () => {
     const c = context();
     c.tx.operationalRequirement.findFirst.mockResolvedValue(requirement());
@@ -186,15 +196,17 @@ describe("OperationalFulfillmentsService", () => {
   it("lists a bounded deterministic page and returns detail only under tenant/package/Requirement scope", async () => {
     const c = context();
     c.tx.operationalRequirement.findFirst.mockResolvedValue(requirement());
-    c.tx.operationalFulfillment.findMany.mockResolvedValue([{ ...fulfillment(), _count: { passengers: 1 } }]);
+    c.tx.operationalFulfillment.findMany.mockResolvedValue([{ ...fulfillment(), _count: { passengers: 1, purchases: 2 } }]);
     c.tx.operationalFulfillment.count.mockResolvedValue(21);
     await expect(c.service.list(tenantId, travelPackageId, requirementId, { page: 1, pageSize: 20, status: "DRAFT" }))
-      .resolves.toMatchObject({ total: 21, totalPages: 2, items: [{ passengerCount: 1 }] });
+      .resolves.toMatchObject({ total: 21, totalPages: 2, items: [{ passengerCount: 1, passengerPreview: ["Ada Lovelace"], purchaseCount: 2 }] });
     expect(c.tx.operationalFulfillment.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({ tenantId, travelPackageId, operationalRequirementId: requirementId, status: "DRAFT" }),
       orderBy: [{ createdAt: "asc" }, { id: "asc" }], take: 20,
     }));
-    expect(c.tx.operationalFulfillment.findMany.mock.calls[0][0].select).not.toHaveProperty("passengers");
+    expect(c.tx.operationalFulfillment.findMany.mock.calls[0][0].select).toMatchObject({
+      passengers: { take: 2 }, _count: { select: { passengers: true, purchases: true } },
+    });
 
     c.tx.operationalFulfillment.findFirst.mockResolvedValue(fulfillment());
     await expect(c.service.find(tenantId, travelPackageId, requirementId, fulfillmentId)).resolves.toMatchObject({ passengers: [{ clientId: "client-a", fullName: "Ada Lovelace" }] });
@@ -214,7 +226,7 @@ function context() {
     operationalRequirement: { findFirst: jest.fn(), updateMany: jest.fn() },
     operationalRequirementPassenger: { findMany: jest.fn() },
     operationalFulfillment: { create: jest.fn(), findFirst: jest.fn(), findMany: jest.fn(), count: jest.fn(), updateMany: jest.fn() },
-    operationalFulfillmentPassenger: { createMany: jest.fn(), findMany: jest.fn(), deleteMany: jest.fn() },
+    operationalFulfillmentPassenger: { createMany: jest.fn(), findMany: jest.fn().mockResolvedValue([]), deleteMany: jest.fn() },
   };
   const prisma = { $transaction: jest.fn(async (work: (transaction: typeof tx) => Promise<unknown>) => work(tx)) };
   const finance = { readMany: jest.fn() };
@@ -246,5 +258,5 @@ function fulfillmentState(overrides: Record<string, unknown> = {}) {
 }
 
 function fulfillment(overrides: Record<string, unknown> = {}) {
-  return { ...fulfillmentState(), passengers: [passenger()], ...overrides };
+  return { ...fulfillmentState(), passengers: [passenger()], _count: { purchases: 0 }, ...overrides };
 }

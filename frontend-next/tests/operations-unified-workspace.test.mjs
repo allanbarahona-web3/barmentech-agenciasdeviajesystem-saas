@@ -43,10 +43,18 @@ test('Group workspace uses active group context and one group-filtered work requ
 
 test('All-work reuses workspace-owned groups and bounded roster instead of making auxiliary readers', () => {
   const text = source();
-  assert.match(text, /<OperationalRequirementsWorkspace travelPackageId=\{travelPackageId\} groups=\{groups\} passengerOptions=\{roster\.map/);
+  assert.match(text, /<OperationalRequirementsWorkspace travelPackageId=\{travelPackageId\} refreshVersion=\{workVersion\} groups=\{groups\} passengerOptions=\{roster\.map/);
   assert.match(text, /const \[allVisited, setAllVisited\] = useState\(false\)/);
   assert.match(text, /allVisited \? <div hidden=\{mode !== 'all'\}>/);
   assert.match(text, /const selectMode = \(next: Mode\) => \{ if \(next === 'all'\) setAllVisited\(true\); if \(next !== 'passenger'\) ensureGroupDirectory\(\); setMode\(next\); \}/);
+});
+
+test('Coverage mutations refresh mounted passenger, group, and global work views without a page reload', () => {
+  const text = source();
+  assert.match(text, /const \[workVersion, setWorkVersion\] = useState\(0\)/);
+  assert.match(text, /\[mode, selectedPassengerId, selectedGroupId, travelPackageId, workVersion\]/);
+  assert.match(text, /onCoverageChanged=\{\(\) => \{ setWorkVersion\(\(version\) => version \+ 1\); onCoverageChanged\?\.\(\); \}\}/);
+  assert.doesNotMatch(text, /window\.location|location\.reload/);
 });
 
 test('Unified workspace retains semantic commercial context and no operational assignee UI', () => {

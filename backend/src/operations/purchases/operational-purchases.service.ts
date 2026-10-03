@@ -92,6 +92,7 @@ export class OperationalPurchasesService {
   async update(tenantId: string, travelPackageId: string, requirementId: string, fulfillmentId: string, purchaseId: string, input: UpdateOperationalPurchaseDto, actor: OperationalPurchasesActor) {
     if (input.supplierReference === undefined && input.supplierInvoiceNumber === undefined && input.notes === undefined) throw new BadRequestException("OPERATIONAL_PURCHASE_UPDATE_EMPTY");
     return this.withTransaction(tenantId, async (tx) => {
+      await this.requireMutableParent(tx, tenantId, travelPackageId, requirementId, fulfillmentId);
       const existing = await this.findPurchase(tx, tenantId, travelPackageId, requirementId, fulfillmentId, purchaseId);
       if (!existing) throw new NotFoundException("OPERATIONAL_PURCHASE_NOT_FOUND");
       const updated = await tx.operationalPurchase.updateMany({
@@ -115,6 +116,7 @@ export class OperationalPurchasesService {
     if (requirement.status === "CANCELLED" || requirement.status === "NOT_APPLICABLE") throw new ConflictException("OPERATIONAL_PURCHASE_PARENT_REQUIREMENT_TERMINAL");
     const fulfillment = await this.requireFulfillment(tx, tenantId, travelPackageId, requirementId, fulfillmentId);
     if (fulfillment.status === "CANCELLED") throw new ConflictException("OPERATIONAL_PURCHASE_FULFILLMENT_CANCELLED");
+    if (fulfillment.status === "CONFIRMED") throw new ConflictException("OPERATIONAL_PURCHASE_FULFILLMENT_CONFIRMED");
     return { requirement, fulfillment };
   }
 

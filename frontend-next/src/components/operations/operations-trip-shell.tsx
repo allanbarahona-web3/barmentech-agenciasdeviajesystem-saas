@@ -18,12 +18,13 @@ export function OperationsTripShell({ travelPackageId }: { travelPackageId: stri
   const router = useRouter();
   const [section, setSection] = useState<Section>('summary');
   const [operationVisited, setOperationVisited] = useState(false);
+  const [coverageVersion, setCoverageVersion] = useState(0);
   const [tripContext, setTripContext] = useState<TripContext | null>(null);
   useEffect(() => { let active = true; void getTravelPackageById(travelPackageId).then((trip) => { if (active) setTripContext(trip); }).catch(() => { if (active) setTripContext(null); }); return () => { active = false; }; }, [travelPackageId]);
   const selectSection = (next: Section) => { if (next === 'operation') setOperationVisited(true); setSection(next); };
   return <main className="app-shell p-5"><div className="mx-auto max-w-[1500px] space-y-5"><Button type="button" variant="link" className="px-0" onClick={() => router.push('/operations')}>Operaciones</Button><OperationsTimingProfiler id="operations-trip-header"><TripContextHeader trip={tripContext} /></OperationsTimingProfiler><WorkspaceNav section={section} onSelect={selectSection} />
-    <div hidden={section !== 'summary'}><OperationsTimingProfiler id="operations-readiness-dashboard"><OperationalReadinessDashboard travelPackageId={travelPackageId} onViewPassengers={() => selectSection('operation')} /></OperationsTimingProfiler></div>
-    {operationVisited ? <div hidden={section !== 'operation'}><OperationsTimingProfiler id="operations-unified-workspace"><OperationalUnifiedWorkspace travelPackageId={travelPackageId} /></OperationsTimingProfiler></div> : null}
+    <div hidden={section !== 'summary'}><OperationsTimingProfiler id="operations-readiness-dashboard"><OperationalReadinessDashboard travelPackageId={travelPackageId} refreshVersion={coverageVersion} onViewPassengers={() => selectSection('operation')} /></OperationsTimingProfiler></div>
+    {operationVisited ? <div hidden={section !== 'operation'}><OperationsTimingProfiler id="operations-unified-workspace"><OperationalUnifiedWorkspace travelPackageId={travelPackageId} onCoverageChanged={() => setCoverageVersion((version) => version + 1)} /></OperationsTimingProfiler></div> : null}
   </div></main>;
 }
 

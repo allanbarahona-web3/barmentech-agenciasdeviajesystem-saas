@@ -18,7 +18,7 @@ const statusLabels: Record<OperationalRequirementStatus, string> = { PENDING: 'P
 type RosterPassenger = { id: string; fullName: string };
 type QueueNeed = OperationalWorkItem;
 
-export function OperationalRequirementsWorkspace({ travelPackageId, groups, passengerOptions, onManageFulfillments, onViewPassengers }: { travelPackageId: string; groups: PassengerGroup[]; passengerOptions: RosterPassenger[]; onManageFulfillments?: (requirement: OperationalRequirementSummary) => void; onViewPassengers?: () => void }) {
+export function OperationalRequirementsWorkspace({ travelPackageId, refreshVersion, groups, passengerOptions, onManageFulfillments, onViewPassengers }: { travelPackageId: string; refreshVersion?: number; groups: PassengerGroup[]; passengerOptions: RosterPassenger[]; onManageFulfillments?: (requirement: OperationalRequirementSummary) => void; onViewPassengers?: () => void }) {
   const formatTenantDateTime = useTenantDateTimeFormatter();
   const [data, setData] = useState<{ items: QueueNeed[]; page: number; totalPages: number } | null>(null);
   const [page, setPage] = useState(1), [status, setStatus] = useState<OperationalRequirementStatus | ''>(''), [service, setService] = useState(''), [critical, setCritical] = useState(''), [searchDraft, setSearchDraft] = useState(''), [search, setSearch] = useState(''), [active, setActive] = useState(true), [deadlineState, setDeadlineState] = useState<'' | 'OVERDUE' | 'DUE_SOON' | 'FUTURE' | 'NONE'>(''), [groupId, setGroupId] = useState(''), [participantId, setParticipantId] = useState(''), [filterPassengerSearch, setFilterPassengerSearch] = useState('');
@@ -31,7 +31,7 @@ export function OperationalRequirementsWorkspace({ travelPackageId, groups, pass
       setData(result);
     } catch (reason) { setError(operationsErrorMessage(reason, 'No se pudo cargar el trabajo operativo.')); } finally { setLoading(false); }
   }
-  useEffect(() => { void load(); }, [page, status, service, critical, search, active, deadlineState, groupId, participantId, travelPackageId]);
+  useEffect(() => { void load(); }, [page, status, service, critical, search, active, deadlineState, groupId, participantId, travelPackageId, refreshVersion]);
   const filterRoster = passengerOptions.filter((passenger) => passenger.fullName.toLowerCase().includes(filterPassengerSearch.toLowerCase()));
   function applyFilters(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setPage(1); setSearch(searchDraft.trim()); }
   async function openDetail(item: OperationalRequirementSummary) { try { setDetailTarget(await getOperationalRequirement(travelPackageId, item.id)); } catch (reason) { setError(operationsErrorMessage(reason, 'No se pudo abrir el detalle de la necesidad.')); } }

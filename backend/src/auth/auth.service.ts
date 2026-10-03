@@ -181,6 +181,7 @@ export class AuthService {
           select: {
             name: true,
             contractPrefix: true,
+            preferredCurrency: true,
             billingConfiguration: {
               select: {
                 fiscalTimezone: true,

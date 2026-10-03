@@ -28,6 +28,11 @@ test('Purchases and Documents are both visible in the selected management flow',
 
 test('Purchase create keeps decimal strings, validates money and currency, and preserves tenant-local purchase time', () => {
   const source = drawer();
+  assert.match(source, /import \{ Select \} from '@\/components\/ui\/select';/);
+  assert.match(source, /preferredCurrency/);
+  assert.match(source, /<option value=\{preferredCurrency\}>\{preferredCurrency\}<\/option>/);
+  assert.match(source, /<option value="USD">USD<\/option>/);
+  assert.doesNotMatch(source, /<Input id="purchase-currency"/);
   assert.match(source, /amount: form\.amount\.trim\(\)/);
   assert.match(source, /\^\\d\+\(\?:\\\.\\d\{1,5\}\)\?\$/);
   assert.match(source, /isPositiveMoney/);
@@ -53,9 +58,20 @@ test('Purchase lifecycle, finance feedback, and immutability follow the backend 
   assert.match(workspace(), /Promise\.all\(\[loadContext\(\), loadPurchases\(\), loadEvidence\(\)\]\)/);
   assert.match(source, /FINANCIAL_ELIGIBILITY_BLOCKED/);
   assert.match(source, /FINANCIAL_ELIGIBILITY_UNAVAILABLE/);
-  assert.match(workspace(), /fulfillment\.status !== 'CANCELLED'/);
+  assert.match(workspace(), /const historyOnly = fulfillment\?\.status === 'CONFIRMED' \|\| fulfillment\?\.status === 'CANCELLED'/);
+  assert.match(workspace(), /!historyOnly/);
   assert.match(workspace(), /El proveedor, monto, moneda, impuesto y fecha de compra son inmutables/);
   assert.doesNotMatch(source, /deleteOperationalPurchase/);
+});
+
+test('Confirmed and cancelled management history is view-only while documents remain openable', () => {
+  const source = workspace();
+  assert.match(source, /historyOnly \? <p[^>]*>La gestión está cerrada; las compras se conservan como historial\.<\/p> : null/);
+  assert.match(source, /!historyOnly \? <TableHead>Acciones<\/TableHead> : null/);
+  assert.match(source, /canMutate=\{!historyOnly\}/);
+  assert.match(source, /onOpen=\{\(item\) => void openEvidence\(item\)\}/);
+  assert.match(source, /canMutate \? <Button[^>]*onClick=\{\(\) => onDelete\(item\)\}/);
+  assert.match(source, /canMutate \? <Button[^>]*onClick=\{onUpload\}/);
 });
 
 test('Evidence uses the Operations MIME and size limits, current fulfillment purchases, and no local fake row', () => {

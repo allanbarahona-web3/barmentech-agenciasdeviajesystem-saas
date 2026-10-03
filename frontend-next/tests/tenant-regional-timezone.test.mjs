@@ -27,6 +27,8 @@ const acceptedInvoiceSource = readFileSync(new URL('../src/app/fiscal-billing/in
 test('authenticated bootstrap exposes the current tenant fiscal timezone without using the admin configuration route', () => {
   assert.match(authServiceSource, /billingConfiguration:[\s\S]*fiscalTimezone: true/);
   assert.match(authServiceSource, /fiscalTimezone:[\s\S]*billingConfiguration\?\.fiscalTimezone/);
+  assert.match(authServiceSource, /preferredCurrency: true/);
+  assert.match(authApiSource, /preferredCurrency: string/);
   assert.match(authApiSource, /getAuthenticatedSessionProfile/);
   assert.match(authApiSource, /\/auth\/me/);
   assert.doesNotMatch(authApiSource, /admin\/fiscal-billing\/configuration/);
@@ -37,6 +39,7 @@ test('the root provider loads the authenticated tenant timezone and falls back s
   assert.match(providerSource, /getAuthenticatedSessionProfile/);
   assert.match(providerSource, /DEFAULT_TENANT_TIMEZONE/);
   assert.match(providerSource, /normalizeTenantTimeZone\(profile\.tenant\?\.fiscalTimezone\)/);
+  assert.match(providerSource, /normalizeTenantCurrency\(profile\.tenant\?\.preferredCurrency\)/);
   assert.match(providerSource, /AUTH_SESSION_CHANGED_EVENT/);
 });
 

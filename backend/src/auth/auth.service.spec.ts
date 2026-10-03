@@ -25,6 +25,7 @@ describe('AuthService.me', () => {
       tenant: {
         name: 'Tenant A',
         contractPrefix: 'TA',
+        preferredCurrency: 'CRC',
         billingConfiguration: { fiscalTimezone: 'America/Guatemala' },
       },
     });
@@ -35,6 +36,7 @@ describe('AuthService.me', () => {
       tenant: {
         name: 'Tenant A',
         contractPrefix: 'TA',
+        preferredCurrency: 'CRC',
         fiscalTimezone: 'America/Guatemala',
       },
     });
@@ -43,6 +45,7 @@ describe('AuthService.me', () => {
       select: expect.objectContaining({
         tenant: {
           select: expect.objectContaining({
+            preferredCurrency: true,
             billingConfiguration: { select: { fiscalTimezone: true } },
           }),
         },

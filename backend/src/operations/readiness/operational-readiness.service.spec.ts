@@ -22,6 +22,19 @@ describe("OperationalReadinessService", () => {
     expect(String(c.tx.$queryRaw.mock.calls[0][0])).toContain("CONFIRMED");
   });
 
+  it("reports the confirmed 1-of-2 coverage fixture without consulting persisted Requirement status", async () => {
+    const c = context();
+    c.tx.travelPackage.findFirst.mockResolvedValue({ id: travelPackageId });
+    c.tx.$queryRaw.mockResolvedValueOnce([{ totalAssignments: 2, fulfilledAssignments: 1, participantCountWithRequirements: 2, completePassengerCount: 1, totalRosterPassengerCount: 2, criticalAssignmentCount: 1, criticalPending: 0, criticalOverdue: 0, criticalDueSoon: 0, nonCriticalPending: 1, inconsistentFulfilledRequirementCount: 0, services: [
+      { servicePurposeCode: "INSURANCE", servicePurposeName: "Seguro", totalAssignments: 1, fulfilledAssignments: 1 },
+      { servicePurposeCode: "BAGGAGE", servicePurposeName: "Equipaje", totalAssignments: 1, fulfilledAssignments: 0 },
+    ] }]);
+    await expect(c.service.readiness(tenantId, travelPackageId)).resolves.toMatchObject({
+      overall: { totalAssignments: 2, fulfilledAssignments: 1, pendingAssignments: 1, progressPercent: 50, completePassengerCount: 1, participantCountWithRequirements: 2, totalRosterPassengerCount: 2 },
+      services: [{ servicePurposeCode: "INSURANCE", progressPercent: 100, pendingAssignments: 0 }, { servicePurposeCode: "BAGGAGE", progressPercent: 0, pendingAssignments: 1 }],
+    });
+  });
+
   it.each([
     [{ criticalAssignmentCount: 1, criticalPending: 0, criticalOverdue: 0, criticalDueSoon: 0, nonCriticalPending: 0 }, "READY"],
     [{ criticalAssignmentCount: 1, criticalPending: 1, criticalOverdue: 0, criticalDueSoon: 0, nonCriticalPending: 0 }, "NOT_READY"],
@@ -66,6 +79,17 @@ describe("OperationalReadinessService", () => {
     const result = await c.service.passengerMatrix(tenantId, travelPackageId, { page: 1, pageSize: 20 });
     expect(result.items[0]).toMatchObject({ isOperationallyComplete: true, progressPercent: 100, fulfilledRequirementCount: 2, serviceCells: [{ servicePurposeCode: "FLIGHT_TICKET", status: "FULFILLED" }, { servicePurposeCode: "TOUR", status: "FULFILLED" }] });
     expect(result.items[1]).toMatchObject({ isOperationallyComplete: false, progressPercent: 0 });
+  });
+
+  it("marks the confirmed passenger fulfilled while leaving the unrelated pending passenger incomplete", async () => {
+    const c = matrixContext({
+      participants: [participant("a"), participant("b")], columns: [{ servicePurposeCode: "INSURANCE", servicePurposeName: "Seguro" }, { servicePurposeCode: "BAGGAGE", servicePurposeName: "Equipaje" }],
+      assignments: [assignment("a", "insurance", "IN_PROGRESS", "INSURANCE"), assignment("b", "baggage", "IN_PROGRESS", "BAGGAGE")],
+      fulfillmentPassengers: [fulfillmentPassenger("a", "insurance", "CONFIRMED")],
+    });
+    const result = await c.service.passengerMatrix(tenantId, travelPackageId, {});
+    expect(result.items[0]).toMatchObject({ progressPercent: 100, isOperationallyComplete: true, serviceCells: [{ servicePurposeCode: "INSURANCE", status: "FULFILLED" }, { servicePurposeCode: "BAGGAGE", status: "NONE" }] });
+    expect(result.items[1]).toMatchObject({ progressPercent: 0, isOperationallyComplete: false, serviceCells: [{ servicePurposeCode: "INSURANCE", status: "NONE" }, { servicePurposeCode: "BAGGAGE", status: "IN_PROGRESS" }] });
   });
 
   it("uses one roster page, one assignment batch, and one fulfillment-passenger batch without per-cell queries", async () => {
