@@ -26,6 +26,15 @@ test('Overall progress, roster distinction, service progress, and inconsistency 
   assert.doesNotMatch(source, /\.reduce\(/);
 });
 
+test('Overall operational progress only uses the success presentation at exactly 100%', () => {
+  const source = dashboard();
+  assert.match(source, /const isComplete = overall\.progressPercent === 100/);
+  assert.match(source, /isComplete \? 'h-full rounded-full bg-success' : 'h-full rounded-full bg-primary'/);
+  assert.match(source, /isComplete \? ' · Completado' : ''/);
+  assert.match(source, /overall\.progressPercent === null \? <p className="mt-1 text-sm text-muted-foreground">Sin necesidades operativas<\/p>/);
+  assert.doesNotMatch(source, /fulfilledAssignments\s*\/\s*overall\.totalAssignments/);
+});
+
 test('Heatmap cells render full readable backend-status labels from the package matrix response', () => {
   const source = dashboard();
   for (const label of ['Comprado', 'En gestión', 'Pendiente', 'No aplica', 'Sin requerimiento']) assert.match(source, new RegExp(label));
