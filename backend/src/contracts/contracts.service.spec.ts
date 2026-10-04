@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { ContractsService } from "./contracts.service";
+import type { TravelPackageCommercialPrice } from "../travel-pricing/travel-package-published-pricing.reader";
 
 type CustomerRecord = {
   id: string;
@@ -38,6 +39,14 @@ const minor: CustomerRecord = {
   tenantId: "tenant-1",
   fullName: "Minor Example",
   idNumber: "P300",
+  idType: "Pasaporte",
+};
+
+const minorTwo: CustomerRecord = {
+  id: "minor-2",
+  tenantId: "tenant-1",
+  fullName: "Minor Two",
+  idNumber: "P400",
   idType: "Pasaporte",
 };
 
@@ -177,6 +186,19 @@ function createArchiveService(records: CustomerRecord[]) {
   const jobDispatcher = {
     dispatch: jest.fn().mockResolvedValue(undefined),
   };
+  const publishedTravelPackagePricing = {
+    read: jest.fn<Promise<TravelPackageCommercialPrice>, [string, string]>((tenantId: string, travelPackageId: string) => {
+      if (tenantId === "tenant-1" && travelPackageId === "package-1") {
+        return Promise.resolve({
+          kind: "LEGACY",
+          travelPackageId: "package-1",
+          packagePrice: "100",
+          currency: "USD",
+        });
+      }
+      return Promise.reject(new Error("El paquete de viaje no existe o no pertenece al tenant del contrato."));
+    }),
+  };
   const dependencies = [
     prisma,
     { get: jest.fn((_key: string, fallback: unknown) => fallback) },
@@ -196,6 +218,7 @@ function createArchiveService(records: CustomerRecord[]) {
     { uploadObject: jest.fn().mockResolvedValue(undefined) },
     jobDispatcher,
     {},
+    publishedTravelPackagePricing,
   ];
   const service = Reflect.construct(ContractsService, dependencies) as any;
 
@@ -206,6 +229,7 @@ function createArchiveService(records: CustomerRecord[]) {
     customerUpdate,
     internalTripFindFirst: prisma.internalTrip.findFirst,
     travelPackageFindFirst: prisma.travelPackage.findFirst,
+    publishedTravelPackagePricing,
     commercialObligationCreateMany,
     contractNoteCreateMany,
     rollbackContractDelete,
@@ -234,6 +258,53 @@ function companionPayload(
     idNumber: customer.idNumber,
     idType: customer.idType,
     ...overrides,
+  };
+}
+
+function minorPayload(
+  customer: CustomerRecord,
+  overrides: Record<string, unknown> = {},
+) {
+  return {
+    selectedCustomerId: customer.id,
+    minorName: customer.fullName,
+    minorId: customer.idNumber,
+    minorIdType: customer.idType,
+    ...overrides,
+  };
+}
+
+function publishedPrice(perPersonSellingPrice: string) {
+  return {
+    kind: "PRICING_PUBLISHED" as const,
+    travelPackageId: "package-1",
+    publicationId: "publication-1",
+    costingProjectId: "project-1",
+    pricingCalculationVersionId: "version-1",
+    perPersonSellingPrice,
+    currency: "USD",
+    unitScope: "PER_PERSON" as const,
+    commercialFloorPrice: "400.00000",
+  };
+}
+
+function packageArchiveDto(payload: Record<string, unknown>) {
+  return {
+    contractNumber: "CT-PACKAGE",
+    clientFullName: holder.fullName,
+    clientIdNumber: holder.idNumber,
+    clientEmail: "holder@example.com",
+    destination: "Destination",
+    contractHtml: "<html></html>",
+    paymentConditionType: "CASH",
+    paymentMethod: "BANK_TRANSFER",
+    payloadJson: JSON.stringify({
+      selectedCustomerId: holder.id,
+      clientIdType: holder.idType,
+      travelPackageId: "package-1",
+      reservationAmount: "0",
+      ...payload,
+    }),
   };
 }
 
@@ -573,7 +644,7 @@ describe("ContractsService archive customer identity resolution", () => {
   });
 
   it("archives a server-owned TravelPackage currency snapshot using a tenant-scoped source", async () => {
-    const { service, contractCreate, travelPackageFindFirst } =
+    const { service, contractCreate, publishedTravelPackagePricing } =
       createArchiveService([holder]);
 
     await service.archiveContract(
@@ -599,10 +670,7 @@ describe("ContractsService archive customer identity resolution", () => {
       [],
     );
 
-    expect(travelPackageFindFirst).toHaveBeenCalledWith({
-      where: { id: "package-1", tenantId: "tenant-1" },
-      select: { id: true, priceCurrency: true, packagePrice: true },
-    });
+    expect(publishedTravelPackagePricing.read).toHaveBeenCalledWith("tenant-1", "package-1");
     expect(contractCreate).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({
         tenantId: "tenant-1",
@@ -614,6 +682,86 @@ describe("ContractsService archive customer identity resolution", () => {
         }),
       }),
     }));
+  });
+
+  it("calculates a Pricing-managed TravelPackage total from the published PER_PERSON price and all billable roles", async () => {
+    const { service, contractCreate, publishedTravelPackagePricing } =
+      createArchiveService([holder, companionOne, companionTwo, minor, minorTwo]);
+    publishedTravelPackagePricing.read.mockResolvedValue({
+      kind: "PRICING_PUBLISHED",
+      travelPackageId: "package-1",
+      publicationId: "publication-1",
+      costingProjectId: "project-1",
+      pricingCalculationVersionId: "version-1",
+      perPersonSellingPrice: "500.12345",
+      currency: "USD",
+      unitScope: "PER_PERSON",
+      commercialFloorPrice: "400.00000",
+    });
+
+    await service.archiveContract(
+      { id: "agent-1", email: "agent@example.com", fullName: "Agent", tenantId: "tenant-1" },
+      packageArchiveDto({
+        contractNumber: "CT-PRICING-AUTHORITY",
+        totalAmount: "2500.61725",
+        companions: [companionPayload(companionOne), companionPayload(companionTwo)],
+        minors: [minorPayload(minor), minorPayload(minorTwo)],
+      }),
+      [],
+    );
+
+    expect(contractCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        participantCount: 5,
+        commercialTotal: new Prisma.Decimal("2500.61725"),
+        commercialCurrency: "USD",
+      }),
+    }));
+  });
+
+  it("accepts a Pricing-managed Contract without a submitted total because the server calculates it", async () => {
+    const { service, contractCreate, publishedTravelPackagePricing } = createArchiveService([holder]);
+    publishedTravelPackagePricing.read.mockResolvedValue(publishedPrice("500.00000"));
+
+    await service.archiveContract(
+      { id: "agent-1", email: "agent@example.com", fullName: "Agent", tenantId: "tenant-1" },
+      packageArchiveDto({ contractNumber: "CT-PRICING-NO-PAYLOAD", totalAmount: undefined }),
+      [],
+    );
+
+    expect(contractCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ commercialTotal: new Prisma.Decimal("500.00000") }),
+    }));
+  });
+
+  it("rejects a stale or client-edited total instead of persisting it", async () => {
+    const { service, contractCreate, publishedTravelPackagePricing } = createArchiveService([holder]);
+    publishedTravelPackagePricing.read.mockResolvedValue(publishedPrice("550.00000"));
+
+    await expect(service.archiveContract(
+      { id: "agent-1", email: "agent@example.com", fullName: "Agent", tenantId: "tenant-1" },
+      packageArchiveDto({ contractNumber: "CT-PRICING-STALE", totalAmount: "500.00000" }),
+      [],
+    )).rejects.toThrow("CONTRACT_COMMERCIAL_TOTAL_MISMATCH");
+
+    expect(contractCreate).not.toHaveBeenCalled();
+  });
+
+  it("rejects a client currency that differs from published Pricing currency", async () => {
+    const { service, contractCreate, publishedTravelPackagePricing } = createArchiveService([holder]);
+    publishedTravelPackagePricing.read.mockResolvedValue(publishedPrice("500.00000"));
+
+    await expect(service.archiveContract(
+      { id: "agent-1", email: "agent@example.com", fullName: "Agent", tenantId: "tenant-1" },
+      packageArchiveDto({
+        contractNumber: "CT-PRICING-CURRENCY",
+        totalAmount: "500.00000",
+        reservationCurrencyCode: "CRC",
+      }),
+      [],
+    )).rejects.toThrow("CONTRACT_COMMERCIAL_CURRENCY_MISMATCH");
+
+    expect(contractCreate).not.toHaveBeenCalled();
   });
 
   it("imports archive notes with resolved stable identities in one tenant-scoped batch", async () => {
@@ -698,8 +846,8 @@ describe("ContractsService archive customer identity resolution", () => {
   });
 
   it("rejects a contract for a travel whose commercial price is still pending", async () => {
-    const { service, contractCreate, travelPackageFindFirst } = createArchiveService([holder]);
-    travelPackageFindFirst.mockResolvedValue({ id: "package-1", priceCurrency: "USD", packagePrice: null } as any);
+    const { service, contractCreate, publishedTravelPackagePricing } = createArchiveService([holder]);
+    publishedTravelPackagePricing.read.mockRejectedValue(new Error("Este viaje aún no tiene un precio comercial publicado."));
 
     await expect(service.archiveContract(
       { id: "agent-1", email: "agent@example.com", fullName: "Agent", tenantId: "tenant-1" },

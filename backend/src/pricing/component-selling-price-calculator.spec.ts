@@ -12,6 +12,7 @@ describe("calculateComponentSellingPrices", () => {
 
     expect(result.rawFinalSellingPrice).toBe(expected.finalSellingPrice);
     expect(result.effectiveFinalSellingPrice).toBe(expected.finalSellingPrice);
+    expect(result.unitScope).toBe("PER_PERSON");
     expect(result.components).toEqual([expect.objectContaining({
       costComponentId: "airfare", baseCost: "100", weight: "1",
       allocatedOperationalExpense: "0", rawSellingValue: expected.finalSellingPrice,

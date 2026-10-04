@@ -6,14 +6,22 @@ import {
   type CostingProjectCurrentCost,
   type CostingProjectCurrentCostTransaction,
 } from "../cost-engine/costing-project-current-cost-reader";
-import type { PricingV1Calculation } from "./pricing-v1-calculator";
+import { calculateComponentSellingPrices } from "./component-selling-price-calculator";
+import { pricingAmountsEqual, type PricingV1Calculation } from "./pricing-v1-calculator";
 
 export type PricingActor = { userId: string; name: string };
+
+type CreateDraftCalculationOptions = {
+  commercialFloorPrice?: string | null;
+  persistWhen?: (calculation: PricingV1Calculation, currentCost: CostingProjectCurrentCost) => boolean;
+};
 
 export type PricingTransaction = CostingProjectCurrentCostTransaction & {
   $executeRaw<T = unknown>(query: TemplateStringsArray, ...values: unknown[]): Promise<T>;
   pricingConfiguration: Record<string, (...args: any[]) => Promise<any>>;
   pricingCalculationVersion: Record<string, (...args: any[]) => Promise<any>>;
+  pricingCalculationComponentLine: Record<string, (...args: any[]) => Promise<any>>;
+  costComponent: Record<string, (...args: any[]) => Promise<any>>;
 };
 
 type PricingDatabase = {
@@ -135,7 +143,7 @@ export class PricingRepository {
     costingProjectId: string,
     actor: PricingActor,
     calculate: (configuration: any, currentCost: CostingProjectCurrentCost) => PricingV1Calculation,
-    persistWhen?: (calculation: PricingV1Calculation, currentCost: CostingProjectCurrentCost) => boolean,
+    options: CreateDraftCalculationOptions = {},
   ) {
     return this.withTenantTransaction(tenantId, async (tx) => {
       const locked = await tx.$queryRaw<Array<{ id: string }>>`
@@ -151,7 +159,28 @@ export class PricingRepository {
 
       const currentCost = await this.currentCosts.read(tx, tenantId, costingProjectId);
       const calculation = calculate(configuration, currentCost);
-      if (persistWhen && !persistWhen(calculation, currentCost)) return null;
+      if (options.persistWhen && !options.persistWhen(calculation, currentCost)) return null;
+      const components = await this.readCurrentPricingComponents(tx, tenantId, costingProjectId, currentCost.baseCurrency);
+      const componentCalculation = calculateComponentSellingPrices({
+        components: components.map((component) => ({
+          costComponentId: component.id,
+          costSnapshotId: component.currentSnapshot.id,
+          costAmount: decimalString(component.currentSnapshot.amount),
+          currency: component.currentSnapshot.currency,
+        })),
+        ...configurationInput(configuration),
+        commercialFloorPrice: options.commercialFloorPrice,
+      });
+      if (!pricingAmountsEqual(componentCalculation.totalComponentCost, currentCost.authoritativeTotalCost)) {
+        throw new ConflictException("Current CostComponent snapshots do not reconcile to authoritative Pricing cost.");
+      }
+      if (!pricingAmountsEqual(componentCalculation.rawFinalSellingPrice, calculation.finalSellingPrice)) {
+        throw new ConflictException("Component Pricing decomposition does not reconcile to the Pricing calculation.");
+      }
+      const effectiveCalculation: PricingV1Calculation = {
+        ...calculation,
+        finalSellingPrice: componentCalculation.effectiveFinalSellingPrice,
+      };
       const latest = await tx.pricingCalculationVersion.findFirst({
         where: { tenantId, costingProjectId },
         orderBy: [{ versionNumber: "desc" }, { id: "desc" }],
@@ -164,32 +193,61 @@ export class PricingRepository {
           costingProjectId,
           versionNumber: (latest?.versionNumber ?? 0) + 1,
           status: "DRAFT",
-          policyVersion: calculation.policyVersion,
+          policyVersion: effectiveCalculation.policyVersion,
           currency: currentCost.baseCurrency,
-          authoritativeCostAmount: calculation.authoritativeCostAmount,
-          operationalCostsAmount: calculation.operationalCostsAmount,
-          riskMarginPercent: calculation.riskMarginPercent,
-          targetProfitMarginPercent: calculation.targetProfitMarginPercent,
-          salesCommissionPercent: calculation.salesCommissionPercent,
-          bankCommissionPercent: calculation.bankCommissionPercent,
-          applicableTaxPercent: calculation.applicableTaxPercent,
-          riskBasis: calculation.riskBasis,
-          targetProfitBasis: calculation.targetProfitBasis,
-          salesCommissionBasis: calculation.salesCommissionBasis,
-          bankCommissionBasis: calculation.bankCommissionBasis,
-          taxBasis: calculation.taxBasis,
-          baseCostAmount: calculation.baseCostAmount,
-          riskAmount: calculation.riskAmount,
-          adjustedEconomicCostAmount: calculation.adjustedEconomicCostAmount,
-          targetProfitAmount: calculation.targetProfitAmount,
-          salesCommissionAmount: calculation.salesCommissionAmount,
-          bankCommissionAmount: calculation.bankCommissionAmount,
-          preTaxSellingPrice: calculation.preTaxSellingPrice,
-          taxAmount: calculation.taxAmount,
-          finalSellingPrice: calculation.finalSellingPrice,
-          estimatedAgencyProfitBeforeIncomeTax: calculation.estimatedAgencyProfitBeforeIncomeTax,
+          authoritativeCostAmount: effectiveCalculation.authoritativeCostAmount,
+          operationalCostsAmount: effectiveCalculation.operationalCostsAmount,
+          riskMarginPercent: effectiveCalculation.riskMarginPercent,
+          targetProfitMarginPercent: effectiveCalculation.targetProfitMarginPercent,
+          salesCommissionPercent: effectiveCalculation.salesCommissionPercent,
+          bankCommissionPercent: effectiveCalculation.bankCommissionPercent,
+          applicableTaxPercent: effectiveCalculation.applicableTaxPercent,
+          riskBasis: effectiveCalculation.riskBasis,
+          targetProfitBasis: effectiveCalculation.targetProfitBasis,
+          salesCommissionBasis: effectiveCalculation.salesCommissionBasis,
+          bankCommissionBasis: effectiveCalculation.bankCommissionBasis,
+          taxBasis: effectiveCalculation.taxBasis,
+          baseCostAmount: effectiveCalculation.baseCostAmount,
+          riskAmount: effectiveCalculation.riskAmount,
+          adjustedEconomicCostAmount: effectiveCalculation.adjustedEconomicCostAmount,
+          targetProfitAmount: effectiveCalculation.targetProfitAmount,
+          salesCommissionAmount: effectiveCalculation.salesCommissionAmount,
+          bankCommissionAmount: effectiveCalculation.bankCommissionAmount,
+          preTaxSellingPrice: effectiveCalculation.preTaxSellingPrice,
+          taxAmount: effectiveCalculation.taxAmount,
+          finalSellingPrice: effectiveCalculation.finalSellingPrice,
+          estimatedAgencyProfitBeforeIncomeTax: effectiveCalculation.estimatedAgencyProfitBeforeIncomeTax,
           createdByUserId: actor.userId,
           createdByName: actor.name,
+          componentLines: {
+            create: componentCalculation.components.map((line) => {
+              const component = componentsById(components, line.costComponentId);
+              return {
+                tenantId,
+                costingProjectId,
+                costComponentId: line.costComponentId,
+                costSnapshotId: line.costSnapshotId,
+                costCategoryCode: component.costCategory.code,
+                costCategoryDisplayName: component.costCategory.displayName,
+                componentTitle: component.title,
+                currency: component.currentSnapshot.currency,
+                weight: line.weight,
+                baseCost: line.baseCost,
+                allocatedOperationalExpense: line.allocatedOperationalExpense,
+                risk: line.risk,
+                adjustedEconomicCost: line.adjustedEconomicCost,
+                preTaxSellingPrice: line.preTaxSellingPrice,
+                targetProfit: line.targetProfit,
+                salesCommission: line.salesCommission,
+                bankCommission: line.bankCommission,
+                tax: line.tax,
+                rawSellingValue: line.rawSellingValue,
+                allocatedPublishedPriceRetention: line.allocatedPublishedPriceRetention,
+                roundingAdjustment: line.roundingAdjustment,
+                effectiveSellingValue: line.effectiveSellingValue,
+              };
+            }),
+          },
         },
       });
     });
@@ -210,6 +268,20 @@ export class PricingRepository {
       if (!version) throw new NotFoundException("Pricing calculation version not found.");
       const currentCost = await this.currentCosts.read(tx, tenantId, version.costingProjectId);
       return { version, currentCost };
+    });
+  }
+
+  findCalculationComponentLines(tenantId: string, pricingCalculationVersionId: string) {
+    return this.withTenantTransaction(tenantId, async (tx) => {
+      const version = await tx.pricingCalculationVersion.findFirst({
+        where: { id: pricingCalculationVersionId, tenantId },
+        select: { id: true },
+      });
+      if (!version) throw new NotFoundException("Pricing calculation version not found.");
+      return tx.pricingCalculationComponentLine.findMany({
+        where: { tenantId, pricingCalculationVersionId },
+        orderBy: { costComponentId: "asc" },
+      });
     });
   }
 
@@ -291,6 +363,66 @@ export class PricingRepository {
   private withTenantTransaction<T>(tenantId: string, work: (tx: PricingTransaction) => Promise<T>) {
     return runTenantTransaction(this.database, tenantId, work);
   }
+
+  /**
+   * Cost Engine remains unit-neutral. Pricing interprets this active component
+   * composition as the cost basis for exactly one TravelPackage person/unit.
+   */
+  private async readCurrentPricingComponents(
+    tx: PricingTransaction,
+    tenantId: string,
+    costingProjectId: string,
+    baseCurrency: string,
+  ) {
+    const components = await tx.costComponent.findMany({
+      where: {
+        tenantId,
+        costingProjectId,
+        status: "ACTIVE",
+        currentSnapshotId: { not: null },
+      },
+      select: {
+        id: true,
+        title: true,
+        costCategory: { select: { code: true, displayName: true } },
+        currentSnapshot: { select: { id: true, amount: true, currency: true } },
+      },
+      orderBy: { id: "asc" },
+    });
+    const missingSnapshot = components.find((component: any) => !component.currentSnapshot);
+    if (missingSnapshot) throw new ConflictException("An active CostComponent current snapshot is unavailable.");
+    const wrongCurrency = components.find((component: any) => component.currentSnapshot.currency !== baseCurrency);
+    if (wrongCurrency) throw new ConflictException("Current CostComponent snapshot currency must match the CostingProject base currency.");
+    return components as Array<{
+      id: string;
+      title: string;
+      costCategory: { code: string; displayName: string };
+      currentSnapshot: { id: string; amount: unknown; currency: string };
+    }>;
+  }
+}
+
+function configurationInput(configuration: any) {
+  return {
+    operationalCostsAmount: decimalString(configuration.operationalCostsAmount),
+    riskMarginPercent: decimalString(configuration.riskMarginPercent),
+    targetProfitMarginPercent: decimalString(configuration.targetProfitMarginPercent),
+    salesCommissionPercent: decimalString(configuration.salesCommissionPercent),
+    bankCommissionPercent: decimalString(configuration.bankCommissionPercent),
+    applicableTaxPercent: decimalString(configuration.applicableTaxPercent),
+  };
+}
+
+function componentsById<T extends { id: string }>(components: T[], id: string): T {
+  const component = components.find((candidate) => candidate.id === id);
+  if (!component) throw new ConflictException("Component Pricing decomposition references an unknown CostComponent.");
+  return component;
+}
+
+function decimalString(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value && typeof value === "object" && "toString" in value) return String(value);
+  throw new ConflictException("Invalid persisted Pricing decimal.");
 }
 
 function isUniqueConstraint(error: unknown): boolean {

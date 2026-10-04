@@ -41,6 +41,7 @@ describe("TravelPricingService", () => {
       data: expect.objectContaining({ pricingCalculationVersionId: "version-a", publishedPrice: "2480.12500", commercialFloorPrice: "2480.12500", publishedByUserId: actor.userId }),
     }));
     expect(result.currentCommercialPrice).toBe("2480.12500");
+    expect(result.unitScope).toBe("PER_PERSON");
     expect(result.commercialPriceStatus).toBe("PRICING_PUBLISHED");
     expect(result.commercialFloorPrice).toBe("2480.12500");
   });
@@ -87,6 +88,41 @@ describe("TravelPricingService", () => {
     expect(result.commercialFloorPrice).toBe("2350.00000");
   });
 
+  it("publishes a later lower price above the original floor and advances the current publication version", async () => {
+    tx.travelPackagePricingPublication.findFirst.mockImplementation(({ where }: any) => {
+      if (where.pricingCalculationVersionId) return null;
+      return publication({ pricingCalculationVersionId: "version-high", publishedPrice: "1500.00000", commercialFloorPrice: "1000.00000" });
+    });
+    tx.travelPackageCostingProjectLink.findFirst.mockResolvedValue({
+      travelPackage: { id: "package-a", name: "Paquete A", packagePrice: "1500.00000", priceCurrency: "USD" },
+    });
+    tx.pricingCalculationVersion.findFirst.mockResolvedValue(version({ id: "version-lower", finalSellingPrice: "1200.00000" }));
+
+    await service.publish("tenant-a", "version-lower", actor, true);
+
+    expect(tx.travelPackage.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: { packagePrice: "1200.00000", priceCurrency: "USD" } }));
+    expect(tx.travelPackagePricingPublication.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ pricingCalculationVersionId: "version-lower", publishedPrice: "1200.00000", commercialFloorPrice: "1000.00000" }),
+    }));
+  });
+
+  it("appends a current publication for a new version even when its effective price equals the floor", async () => {
+    tx.travelPackagePricingPublication.findFirst.mockImplementation(({ where }: any) => {
+      if (where.pricingCalculationVersionId) return null;
+      return publication({ pricingCalculationVersionId: "version-floor-old", publishedPrice: "1000.00000", commercialFloorPrice: "1000.00000" });
+    });
+    tx.travelPackageCostingProjectLink.findFirst.mockResolvedValue({
+      travelPackage: { id: "package-a", name: "Paquete A", packagePrice: "1000.00000", priceCurrency: "USD" },
+    });
+    tx.pricingCalculationVersion.findFirst.mockResolvedValue(version({ id: "version-floor-new", finalSellingPrice: "1000.00000" }));
+
+    await service.publish("tenant-a", "version-floor-new", actor, true);
+
+    expect(tx.travelPackagePricingPublication.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ pricingCalculationVersionId: "version-floor-new", publishedPrice: "1000.00000", commercialFloorPrice: "1000.00000" }),
+    }));
+  });
+
   it("blocks a below-floor publication without substituting a client-selected price", async () => {
     tx.travelPackagePricingPublication.findFirst.mockImplementation(({ where }: any) => {
       if (where.pricingCalculationVersionId) return null;
@@ -117,6 +153,7 @@ describe("TravelPricingService", () => {
     expect(context.currentCommercialPrice).toBe("2200.00000");
     expect(context.commercialPriceStatus).toBe("PRICING_PUBLISHED");
     expect(context.commercialFloorPrice).toBe("2350.00000");
+    expect(context.unitScope).toBe("PER_PERSON");
     expect(currentCosts.read).toHaveBeenCalledWith(tx, "tenant-a", "project-a");
     expect(tx.$executeRaw).toHaveBeenCalledTimes(1);
   });

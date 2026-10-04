@@ -1,8 +1,8 @@
 import { BadRequestException, ConflictException, Injectable } from "@nestjs/common";
 import {
   calculatePricingV1,
-  comparePricingAmounts,
   pricingAmountsEqual,
+  pricingUnitScopeForPolicyVersion,
   validatePricingV1Configuration,
   type PricingV1ConfigurationInput,
 } from "./pricing-v1-calculator";
@@ -70,6 +70,11 @@ export class PricingService {
     return calculationResponse(result.version, result.currentCost.authoritativeTotalCost);
   }
 
+  /** Internal Pricing read boundary for later immutable commercial snapshots. */
+  getCalculationComponentLines(tenantId: string, pricingCalculationVersionId: string) {
+    return this.repository.findCalculationComponentLines(tenantId, pricingCalculationVersionId);
+  }
+
   async listCalculations(tenantId: string, costingProjectId: string, page = 1, pageSize = 20) {
     const safePage = positiveInteger(page, 1);
     const safePageSize = Math.min(25, positiveInteger(pageSize, 20));
@@ -121,12 +126,12 @@ export class PricingService {
     return version;
   }
 
-  /** Internal AIRFARE integration contract. It never creates a version for an equal/lower price. */
-  async createAutomaticDraftIfHigher(
+  /** Internal AIRFARE integration contract. It always captures the current cost composition above its immutable floor. */
+  async createAutomaticDraftWithCommercialFloor(
     tenantId: string,
     costingProjectId: string,
     expectedAuthoritativeCost: string,
-    currentPublishedPrice: string,
+    commercialFloorPrice: string,
     actor: PricingActor,
   ) {
     return this.repository.createDraftCalculation(
@@ -139,7 +144,7 @@ export class PricingService {
         }
         return calculatePricingV1({ authoritativeCostAmount: currentCost.authoritativeTotalCost, ...configurationInput(configuration) });
       },
-      (calculation) => comparePricingAmounts(calculation.finalSellingPrice, currentPublishedPrice) > 0,
+      { commercialFloorPrice },
     );
   }
 
@@ -150,6 +155,7 @@ export class PricingService {
     return {
       pricingCalculationVersionId: result.version.id,
       costingProjectId: result.version.costingProjectId,
+      unitScope: pricingUnitScopeForPolicyVersion(result.version.policyVersion),
       currency: result.version.currency,
       finalSellingPrice: decimalString(result.version.finalSellingPrice),
       status: result.version.status,
@@ -184,6 +190,7 @@ function calculationResponse(version: any, currentAuthoritativeCost: string) {
     versionNumber: version.versionNumber,
     status: version.status,
     policyVersion: version.policyVersion,
+    unitScope: pricingUnitScopeForPolicyVersion(version.policyVersion),
     currency: version.currency,
     stale: !pricingAmountsEqual(authoritativeCostAmount, currentAuthoritativeCost),
     authoritativeCostAmount,

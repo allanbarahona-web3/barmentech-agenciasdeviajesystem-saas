@@ -11,6 +11,8 @@ import {
   quantizePricingAmount,
   subtractPricingDecimals,
   type PricingDecimal,
+  type PricingUnitScope,
+  PRICING_UNIT_SCOPE,
   type PricingV1ConfigurationInput,
 } from "./pricing-v1-calculator";
 
@@ -66,6 +68,8 @@ export type ComponentSellingPriceComponentResult = {
 };
 
 export type ComponentSellingPriceCalculation = {
+  /** Every component contribution is for one TravelPackage passenger/unit. */
+  unitScope: PricingUnitScope;
   currency: string;
   totalComponentCost: string;
   operationalCostsAmount: string;
@@ -91,8 +95,9 @@ type Allocation = {
 const ZERO = parsePricingAmount("0");
 
 /**
- * Pure Pricing-domain decomposition of PRICING_V1. It deliberately has no
- * persistence, Cost Engine, Contract, TravelPackage, or Operations dependency.
+ * Pure PER_PERSON Pricing-domain decomposition of PRICING_V1. It deliberately
+ * has no persistence, Cost Engine, Contract, TravelPackage, or Operations
+ * dependency, and never accepts passenger quantity.
  */
 export function calculateComponentSellingPrices(
   input: ComponentSellingPriceCalculatorInput,
@@ -212,6 +217,7 @@ export function calculateComponentSellingPrices(
   );
 
   return {
+    unitScope: PRICING_UNIT_SCOPE,
     currency,
     totalComponentCost: formatPricingAmount(totalComponentCost),
     operationalCostsAmount: formatPricingAmount(operationalCosts),

@@ -1,4 +1,16 @@
 export const PRICING_V1 = "PRICING_V1" as const;
+/**
+ * PRICING_V1 prices exactly one TravelPackage passenger/unit. Passenger
+ * quantity multiplication belongs outside Pricing, at the Contract boundary.
+ */
+export const PRICING_UNIT_SCOPE = "PER_PERSON" as const;
+export type PricingUnitScope = typeof PRICING_UNIT_SCOPE;
+
+/** Resolves unit semantics from the immutable policyVersion stored on a PricingCalculationVersion. */
+export function pricingUnitScopeForPolicyVersion(policyVersion: string): PricingUnitScope {
+  if (policyVersion === PRICING_V1) return PRICING_UNIT_SCOPE;
+  throw new PricingCalculationError("PRICING_POLICY_VERSION_UNSUPPORTED");
+}
 
 export const PRICING_V1_BASES = Object.freeze({
   riskBasis: "BASE_COST",
@@ -27,6 +39,7 @@ export type PricingV1ConfigurationInput = Omit<PricingV1CalculatorInput, "author
 
 export type PricingV1Calculation = {
   policyVersion: typeof PRICING_V1;
+  unitScope: PricingUnitScope;
   riskBasis: PricingCalculationBasis;
   targetProfitBasis: PricingCalculationBasis;
   salesCommissionBasis: PricingCalculationBasis;
@@ -56,7 +69,8 @@ export type PricingCalculationErrorCode =
   | "PRICING_INPUT_NEGATIVE"
   | "PRICING_INPUT_SCALE_UNSUPPORTED"
   | "PRICING_PERCENTAGE_OUT_OF_RANGE"
-  | "PRICING_INVALID_DENOMINATOR";
+  | "PRICING_INVALID_DENOMINATOR"
+  | "PRICING_POLICY_VERSION_UNSUPPORTED";
 
 export class PricingCalculationError extends Error {
   constructor(readonly code: PricingCalculationErrorCode) {
@@ -75,9 +89,11 @@ const ONE = decimal(1n, 0);
 const ZERO = decimal(0n, 0);
 
 /**
- * Computes PRICING_V1 using fixed-decimal bigint arithmetic only. All monetary
- * outputs are quantized once, at the final boundary, to Decimal(19,5) using
- * round-half-up. Returned strings are canonical (without insignificant zeros).
+ * Computes one PER_PERSON PRICING_V1 price using fixed-decimal bigint arithmetic
+ * only. All monetary outputs are quantized once, at the final boundary, to
+ * Decimal(19,5) using round-half-up. Returned strings are canonical (without
+ * insignificant zeros). This calculator intentionally accepts no passenger
+ * quantity.
  */
 export function calculatePricingV1(input: PricingV1CalculatorInput): PricingV1Calculation {
   const authoritativeCost = parseNonNegative(input.authoritativeCostAmount, PRICING_AMOUNT_SCALE);
@@ -119,6 +135,7 @@ export function calculatePricingV1(input: PricingV1CalculatorInput): PricingV1Ca
 
   return {
     policyVersion: PRICING_V1,
+    unitScope: PRICING_UNIT_SCOPE,
     ...PRICING_V1_BASES,
     authoritativeCostAmount: outputAmount(authoritativeCost),
     operationalCostsAmount: outputAmount(operationalCosts),

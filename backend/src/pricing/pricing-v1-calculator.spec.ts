@@ -1,11 +1,18 @@
 import {
   calculatePricingV1,
+  PRICING_UNIT_SCOPE,
   PRICING_V1,
   PricingCalculationError,
   PRICING_V1_BASES,
+  pricingUnitScopeForPolicyVersion,
 } from "./pricing-v1-calculator";
 
 describe("calculatePricingV1", () => {
+  it("binds persisted PRICING_V1 versions to the per-person unit scope", () => {
+    expect(pricingUnitScopeForPolicyVersion(PRICING_V1)).toBe(PRICING_UNIT_SCOPE);
+    expect(() => pricingUnitScopeForPolicyVersion("UNSUPPORTED_POLICY")).toThrow("PRICING_POLICY_VERSION_UNSUPPORTED");
+  });
+
   it("solves a true target profit margin rather than a markup", () => {
     const result = calculatePricingV1(input({
       authoritativeCostAmount: "100",
@@ -14,6 +21,7 @@ describe("calculatePricingV1", () => {
 
     expect(result).toMatchObject({
       policyVersion: PRICING_V1,
+      unitScope: PRICING_UNIT_SCOPE,
       ...PRICING_V1_BASES,
       baseCostAmount: "100",
       adjustedEconomicCostAmount: "100",

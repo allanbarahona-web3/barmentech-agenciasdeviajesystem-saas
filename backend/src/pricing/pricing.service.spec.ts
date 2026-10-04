@@ -13,6 +13,7 @@ describe("PricingService", () => {
       updateConfiguration: jest.fn(),
       createDraftCalculation: jest.fn(),
       findCalculation: jest.fn(),
+      findCalculationComponentLines: jest.fn(),
       findLatestCalculation: jest.fn(),
       listCalculations: jest.fn(),
       approveCalculation: jest.fn(),
@@ -71,6 +72,7 @@ describe("PricingService", () => {
     expect(result.authoritativeCostAmount).toBe("1000");
     expect(result.currency).toBe("USD");
     expect(result.policyVersion).toBe("PRICING_V1");
+    expect(result.unitScope).toBe("PER_PERSON");
     expect(result.riskBasis).toBe("BASE_COST");
     expect(result.preTaxSellingPrice).toBe("1188.23529");
   });
@@ -104,6 +106,23 @@ describe("PricingService", () => {
 
     repository.findCalculation.mockResolvedValue({ version: version({ authoritativeCostAmount: "100" }), currentCost: currentCost({ authoritativeTotalCost: "101" }) });
     await expect(service.getCalculation("tenant-a", "version-a")).resolves.toMatchObject({ stale: true });
+  });
+
+  it("keeps component-line reads internal to the Pricing domain", async () => {
+    repository.findCalculationComponentLines.mockResolvedValue([{ costComponentId: "component-a" }]);
+
+    await expect(service.getCalculationComponentLines("tenant-a", "version-a")).resolves.toEqual([{ costComponentId: "component-a" }]);
+    expect(repository.findCalculationComponentLines).toHaveBeenCalledWith("tenant-a", "version-a");
+  });
+
+  it("creates an automatic draft at the immutable commercial floor without an upward-only gate", async () => {
+    repository.createDraftCalculation.mockResolvedValue(version({ id: "version-floor" }));
+
+    await service.createAutomaticDraftWithCommercialFloor("tenant-a", "project-a", "1000", "900", actor);
+
+    expect(repository.createDraftCalculation).toHaveBeenCalledWith(
+      "tenant-a", "project-a", actor, expect.any(Function), { commercialFloorPrice: "900" },
+    );
   });
 
   it("approves only a non-stale draft and records the returned approval metadata", async () => {
@@ -154,6 +173,7 @@ describe("PricingService", () => {
       costingProjectId: "project-a",
       currency: "USD",
       finalSellingPrice: "125",
+      unitScope: "PER_PERSON",
       status: "APPROVED",
     }));
     expect(result).not.toHaveProperty("authoritativeCostAmount");

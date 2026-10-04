@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { CostingProjectCurrentCostReader, type CostingProjectCurrentCostTransaction } from "../cost-engine/costing-project-current-cost-reader";
-import { pricingAmountsEqual } from "../pricing/pricing-v1-calculator";
+import { PRICING_UNIT_SCOPE, pricingAmountsEqual } from "../pricing/pricing-v1-calculator";
 import { runTenantTransaction } from "../tenant/tenant-transaction";
 
 type Actor = { userId: string; name: string };
@@ -27,6 +27,7 @@ type Source = {
   type: TravelSourceType;
   id: string;
   name: string;
+  /** For TravelPackage, packagePrice is the current PER_PERSON price. */
   currentCommercialPrice: string | null;
   currency: string;
 };
@@ -48,7 +49,7 @@ export class TravelPricingService {
     });
   }
 
-  publish(tenantId: string, pricingCalculationVersionId: string, actor: Actor, automaticUpwardOnly = false) {
+  publish(tenantId: string, pricingCalculationVersionId: string, actor: Actor, automaticReprice = false) {
     return this.withTenantTransaction(tenantId, async (tx) => {
       const locked = await tx.$queryRaw<Array<{ id: string }>>`
         SELECT "id" FROM "pricing_calculation_versions"
@@ -78,13 +79,8 @@ export class TravelPricingService {
 
       const latest = await this.findLatestPublication(tx, tenantId, source);
       const recommendedPrice = decimalString(version.finalSellingPrice);
-      if (automaticUpwardOnly) {
-        if (!latest || source.currentCommercialPrice === null || !pricingAmountsEqual(source.currentCommercialPrice, decimalString(latest.publishedPrice))) {
-          throw new ConflictException("AIRFARE_REPRICE_TRAVEL_PUBLICATION_INELIGIBLE");
-        }
-        if (decimalComparison(recommendedPrice, decimalString(latest.publishedPrice)) <= 0) {
-          throw new ConflictException("AIRFARE_REPRICE_NOT_AN_INCREASE");
-        }
+      if (automaticReprice && (!latest || source.currentCommercialPrice === null || !pricingAmountsEqual(source.currentCommercialPrice, decimalString(latest.publishedPrice)))) {
+        throw new ConflictException("AIRFARE_REPRICE_TRAVEL_PUBLICATION_INELIGIBLE");
       }
       const floor = latest ? decimalString(latest.commercialFloorPrice) : recommendedPrice;
       if (decimalComparison(recommendedPrice, floor) < 0) {
@@ -171,6 +167,7 @@ function publicationContext(source: Source, baseCurrency: string, latest: any) {
     sourceType: source.type,
     travelName: source.name,
     currency: source.currency,
+    unitScope: PRICING_UNIT_SCOPE,
     baseCurrency,
     currentCommercialPrice: source.currentCommercialPrice,
     commercialPriceStatus: latest
@@ -190,6 +187,7 @@ function publicationResponse(source: Source, publication: any, idempotent: boole
     currentCommercialPrice: decimalString(publication.publishedPrice),
     commercialPriceStatus: "PRICING_PUBLISHED",
     currency: publication.currency,
+    unitScope: PRICING_UNIT_SCOPE,
     commercialFloorPrice: decimalString(publication.commercialFloorPrice),
     publication: publicationSummary(publication),
     idempotent,
@@ -202,6 +200,7 @@ function publicationSummary(publication: any) {
     pricingCalculationVersionId: publication.pricingCalculationVersionId,
     publishedPrice: decimalString(publication.publishedPrice),
     currency: publication.currency,
+    unitScope: PRICING_UNIT_SCOPE,
     commercialFloorPrice: decimalString(publication.commercialFloorPrice),
     publishedAt: publication.publishedAt,
     publishedBy: { userId: publication.publishedByUserId, name: publication.publishedByName },

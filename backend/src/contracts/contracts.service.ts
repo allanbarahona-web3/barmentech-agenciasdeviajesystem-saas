@@ -56,7 +56,10 @@ import { PackageCompletedDispatcher } from "./jobs/package-completed.dispatcher"
 import { normalizeFinancialPaymentMethod } from "../finance/finance-payment-method";
 import { resolveInitialContractPayment } from "../finance/contract-initial-payment";
 import { resolveContractParticipationByTuple } from "./contract-participation";
+import { calculateContractBillablePassengerQuantity } from "./contract-billable-passenger-quantity";
 import { runTenantTransaction } from "../tenant/tenant-transaction";
+import { TravelPackagePublishedPricingReader } from "../travel-pricing/travel-package-published-pricing.reader";
+import { PRICING_UNIT_SCOPE } from "../pricing/pricing-v1-calculator";
 
 const CONTRACT_STATUS_PENDING_PAYMENT_RESERVE = "PENDING_PAYMENT_RESERVE";
 const CONTRACT_STATUS_RESERVE_IN_REVIEW = "RESERVE_IN_REVIEW";
@@ -114,6 +117,7 @@ export class ContractsService {
     private readonly storageService: StorageService,
     private readonly jobDispatcher: JobDispatcherService,
     private readonly packageCompletedDispatcher: PackageCompletedDispatcher,
+    private readonly publishedTravelPackagePricing: TravelPackagePublishedPricingReader,
   ) {}
 
   private pad(value: number, size = 2) {
@@ -1543,21 +1547,10 @@ export class ContractsService {
     if (!paymentMethod) {
       throw new BadRequestException("CONTRACT_RESERVATION_PAYMENT_METHOD_INVALID");
     }
-    const commercialTotal = requireCommercialTotal(payloadRecord.totalAmount);
+    const submittedCommercialTotal = optionalCommercialTotal(payloadRecord.totalAmount);
     const paymentConditionType = requirePaymentConditionType(
       dto.paymentConditionType,
     );
-    try {
-      resolveInitialContractPayment({
-        paymentConditionType,
-        commercialTotal,
-        reservationAmount: payloadRecord.reservationAmount,
-      });
-    } catch (error) {
-      throw new BadRequestException(
-        error instanceof Error ? error.message : "CONTRACT_INITIAL_PAYMENT_INVALID",
-      );
-    }
     const paymentDueDate = requireCommercialPaymentDueDate(
       paymentConditionType,
       payloadRecord.paymentDueDate,
@@ -1570,6 +1563,7 @@ export class ContractsService {
     let internalTripId: string | null = null;
     let travelPackageId: string | null = null;
     let authoritativeTravelCurrency: Currency | null = null;
+    let publishedPerPersonPrice: Prisma.Decimal | null = null;
 
     if (requestedInternalTripId) {
       const internalTrip = await this.prisma.internalTrip.findFirst({
@@ -1591,24 +1585,29 @@ export class ContractsService {
         internalTrip.currency,
       );
     } else if (requestedTravelPackageId) {
-      const travelPackage = await this.prisma.travelPackage.findFirst({
-        where: { id: requestedTravelPackageId, tenantId: user.tenantId },
-        select: { id: true, priceCurrency: true, packagePrice: true },
-      });
-      if (!travelPackage) {
-        throw new BadRequestException(
-          "El paquete de viaje no existe o no pertenece al tenant del contrato.",
-        );
-      }
-      if (travelPackage.packagePrice === null) {
-        throw new BadRequestException(
-          'Este viaje aún no tiene un precio comercial publicado.',
-        );
-      }
-      travelPackageId = travelPackage.id;
-      authoritativeTravelCurrency = this.normalizeReservationCurrency(
-        travelPackage.priceCurrency,
+      const commercialPrice = await this.publishedTravelPackagePricing.read(
+        user.tenantId,
+        requestedTravelPackageId,
       );
+      travelPackageId = commercialPrice.travelPackageId;
+      authoritativeTravelCurrency = this.normalizeReservationCurrency(
+        commercialPrice.currency,
+      );
+      if (commercialPrice.kind === "PRICING_PUBLISHED") {
+        if (commercialPrice.unitScope !== PRICING_UNIT_SCOPE) {
+          throw new BadRequestException("CONTRACT_PRICING_UNIT_SCOPE_INVALID");
+        }
+        const submittedCurrency = payloadRecord.reservationCurrencyCode;
+        if (
+          submittedCurrency !== undefined &&
+          this.normalizeReservationCurrency(submittedCurrency) !== authoritativeTravelCurrency
+        ) {
+          throw new BadRequestException("CONTRACT_COMMERCIAL_CURRENCY_MISMATCH");
+        }
+        publishedPerPersonPrice = requireCommercialTotal(
+          commercialPrice.perPersonSellingPrice,
+        );
+      }
     }
 
     if (!authoritativeTravelCurrency) {
@@ -1635,6 +1634,35 @@ export class ContractsService {
         companionsArray,
         minorsArray,
       );
+
+    const participantCount = calculateContractBillablePassengerQuantity({
+      companions: enrichedCompanions,
+      minors: enrichedMinors,
+    });
+    const commercialTotal = publishedPerPersonPrice
+      ? calculatePublishedTravelPackageCommercialTotal(
+          publishedPerPersonPrice,
+          participantCount,
+        )
+      : requireSubmittedCommercialTotal(submittedCommercialTotal);
+    if (
+      publishedPerPersonPrice &&
+      submittedCommercialTotal &&
+      !submittedCommercialTotal.equals(commercialTotal)
+    ) {
+      throw new BadRequestException("CONTRACT_COMMERCIAL_TOTAL_MISMATCH");
+    }
+    try {
+      resolveInitialContractPayment({
+        paymentConditionType,
+        commercialTotal,
+        reservationAmount: payloadRecord.reservationAmount,
+      });
+    } catch (error) {
+      throw new BadRequestException(
+        error instanceof Error ? error.message : "CONTRACT_INITIAL_PAYMENT_INVALID",
+      );
+    }
 
     // Obtener tenant para organizar archivos
     const tenant = await this.prisma.tenant.findUnique({
@@ -1683,37 +1711,6 @@ export class ContractsService {
       signatureAnchors,
       signatureAnchor: signatureAnchors?.["client"] ?? null,
     };
-
-    // Calcular participantCount: titular + acompañantes válidos + menores válidos
-    // Solo cuentan quienes tengan nombre/ID completo (no pueden viajar sin identificación)
-    const holderCount = 1; // Titular siempre cuenta
-
-    const companions = Array.isArray(payloadRecord.companions) 
-      ? payloadRecord.companions 
-      : [];
-    const companionsWithId = companions.filter(
-      (c: any) => 
-        c && 
-        String(c.fullName || "").trim() && 
-        String(c.idNumber || "").trim()
-    );
-
-    const minors = Array.isArray(payloadRecord.minors) 
-      ? payloadRecord.minors 
-      : [];
-    const minorsWithId = minors.filter(
-      (m: any) => 
-        m && 
-        String(m.minorId || "").trim()
-    );
-
-    const participantCount = holderCount + companionsWithId.length + minorsWithId.length;
-
-    console.log('🔢 [participantCount] Cálculo de participantes:');
-    console.log(`  Titular: ${holderCount}`);
-    console.log(`  Acompañantes válidos: ${companionsWithId.length} de ${companions.length}`);
-    console.log(`  Menores válidos: ${minorsWithId.length} de ${minors.length}`);
-    console.log(`  TOTAL: ${participantCount} personas`);
 
     // ✅ VALIDACIÓN DE CAPACIDAD (Capa 2 - Backend)
     // Valida ANTES de crear el contrato para evitar reservas imposibles
@@ -3453,6 +3450,34 @@ function requireCommercialTotal(value: unknown): Prisma.Decimal {
     if (error instanceof BadRequestException) throw error;
     throw new BadRequestException("CONTRACT_COMMERCIAL_TOTAL_INVALID");
   }
+}
+
+function optionalCommercialTotal(value: unknown): Prisma.Decimal | null {
+  if (value === undefined || value === null) return null;
+  return requireCommercialTotal(value);
+}
+
+function requireSubmittedCommercialTotal(value: Prisma.Decimal | null): Prisma.Decimal {
+  if (!value) throw new BadRequestException("CONTRACT_COMMERCIAL_TOTAL_INVALID");
+  return value;
+}
+
+function calculatePublishedTravelPackageCommercialTotal(
+  perPersonSellingPrice: Prisma.Decimal,
+  billablePassengerQuantity: number,
+): Prisma.Decimal {
+  const total = perPersonSellingPrice.mul(
+    new Prisma.Decimal(billablePassengerQuantity),
+  );
+  if (
+    !total.isFinite() ||
+    total.isNegative() ||
+    total.decimalPlaces() > 5 ||
+    total.greaterThan(MAX_DECIMAL_19_5)
+  ) {
+    throw new BadRequestException("CONTRACT_COMMERCIAL_TOTAL_INVALID");
+  }
+  return total;
 }
 
 function requirePaymentConditionType(value: unknown): PaymentConditionType {

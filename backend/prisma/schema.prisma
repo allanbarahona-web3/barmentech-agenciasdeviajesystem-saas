@@ -60,6 +60,7 @@ model Tenant {
   contracts                               Contract[]
   contractFiscalSnapshots                 ContractFiscalSnapshot[]
   contractFiscalSnapshotLines             ContractFiscalSnapshotLine[]
+  commercialSnapshots                     ContractCommercialSnapshot[]
   contractDrafts                          ContractDraft[]
   contractNumbers                         ContractNumber[]
   contractNotes                           ContractNote[]
@@ -331,6 +332,7 @@ model Contract {
   participantSources     TravelPackageParticipantContractSource[] @relation("ContractTravelPackageParticipantSource")
   financePayments        Payment[]                                @relation("ContractFinancePayments")
   fiscalSnapshot         ContractFiscalSnapshot?
+  commercialSnapshot     ContractCommercialSnapshot?
 
   @@unique([id, tenantId], map: "Contract_id_tenantId_key")
   @@unique([id, tenantId, travelPackageId], map: "Contract_id_tenantId_travelPackageId_key")
@@ -398,6 +400,93 @@ model ContractFiscalSnapshotLine {
   @@unique([tenantId, contractFiscalSnapshotId, lineNumber], map: "contract_fiscal_snapshot_lines_tenant_snapshot_line_key")
   @@unique([id, tenantId], map: "contract_fiscal_snapshot_lines_id_tenant_key")
   @@map("contract_fiscal_snapshot_lines")
+}
+
+/// Immutable commercial authority frozen when an international Contract reservation is approved.
+model ContractCommercialSnapshot {
+  id                                String                                    @id @default(cuid())
+  tenantId                          String
+  contractId                        String
+  travelPackageId                   String
+  costingProjectId                  String
+  pricingCalculationVersionId       String
+  travelPackagePricingPublicationId String
+  unitScope                         String                                    @db.VarChar(32)
+  perPersonSellingPrice             Decimal                                   @db.Decimal(19, 5)
+  billablePassengerQuantity         Int
+  commercialTotal                   Decimal                                   @db.Decimal(19, 5)
+  currency                          String                                    @db.VarChar(3)
+  frozenAt                          DateTime                                  @default(now())
+  frozenByUserId                    String
+  frozenByName                      String
+  tenant                            Tenant                                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contract                          Contract                                  @relation(fields: [contractId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "contract_commercial_snapshots_contract_tenant_fkey")
+  travelPackage                     TravelPackage                             @relation(fields: [travelPackageId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "contract_commercial_snapshots_travel_tenant_fkey")
+  pricingCalculationVersion         PricingCalculationVersion                 @relation(fields: [pricingCalculationVersionId, tenantId, costingProjectId], references: [id, tenantId, costingProjectId], onDelete: Restrict, map: "contract_commercial_snapshots_pricing_version_tenant_fkey")
+  passengers                        ContractCommercialSnapshotPassenger[]
+  componentLines                    ContractCommercialSnapshotComponentLine[]
+
+  @@unique([contractId, tenantId], map: "contract_commercial_snapshots_contract_tenant_key")
+  @@unique([id, tenantId], map: "contract_commercial_snapshots_id_tenant_key")
+  @@unique([id, tenantId, travelPackageId], map: "contract_commercial_snapshots_id_tenant_travel_key")
+  @@index([tenantId, travelPackageId, contractId], map: "contract_commercial_snapshots_tenant_travel_contract_idx")
+  @@index([tenantId, pricingCalculationVersionId], map: "contract_commercial_snapshots_tenant_pricing_version_idx")
+  @@map("contract_commercial_snapshots")
+}
+
+/// Immutable billable roster copied from the exact TravelPackage participants created at reservation approval.
+model ContractCommercialSnapshotPassenger {
+  id                           String                       @id @default(cuid())
+  tenantId                     String
+  contractCommercialSnapshotId String
+  travelPackageId              String
+  travelPackageParticipantId   String
+  clientId                     String
+  role                         TravelPackageParticipantRole
+  billable                     Boolean                      @default(true)
+  unitMultiplier               Int                          @default(1)
+  createdAt                    DateTime                     @default(now())
+  contractCommercialSnapshot   ContractCommercialSnapshot   @relation(fields: [contractCommercialSnapshotId, tenantId, travelPackageId], references: [id, tenantId, travelPackageId], onDelete: Cascade, map: "ccsp_snapshot_tenant_travel_fkey")
+  travelPackageParticipant     TravelPackageParticipant     @relation(fields: [travelPackageParticipantId, tenantId, travelPackageId], references: [id, tenantId, travelPackageId], onDelete: Restrict, map: "ccsp_participant_tenant_travel_fkey")
+
+  @@unique([tenantId, contractCommercialSnapshotId, travelPackageParticipantId], map: "ccsp_tenant_snapshot_participant_key")
+  @@unique([id, tenantId], map: "ccsp_id_tenant_key")
+  @@index([tenantId, travelPackageParticipantId, contractCommercialSnapshotId], map: "ccsp_tenant_participant_snapshot_idx")
+  @@map("contract_commercial_snapshot_passengers")
+}
+
+/// Contract-owned immutable copy of PricingCalculationComponentLine values. All amounts are per person.
+model ContractCommercialSnapshotComponentLine {
+  id                               String                     @id @default(cuid())
+  tenantId                         String
+  contractCommercialSnapshotId     String
+  costingProjectId                 String
+  costComponentId                  String
+  costSnapshotId                   String
+  costCategoryCode                 String                     @db.VarChar(80)
+  costCategoryDisplayName          String                     @db.VarChar(160)
+  componentTitle                   String                     @db.VarChar(500)
+  currency                         String                     @db.VarChar(3)
+  baseCost                         Decimal                    @db.Decimal(19, 5)
+  allocatedOperationalExpense      Decimal                    @db.Decimal(19, 5)
+  risk                             Decimal                    @db.Decimal(19, 5)
+  adjustedEconomicCost             Decimal                    @db.Decimal(19, 5)
+  preTaxSellingPrice               Decimal                    @db.Decimal(19, 5)
+  targetProfit                     Decimal                    @db.Decimal(19, 5)
+  salesCommission                  Decimal                    @db.Decimal(19, 5)
+  bankCommission                   Decimal                    @db.Decimal(19, 5)
+  tax                              Decimal                    @db.Decimal(19, 5)
+  rawSellingValue                  Decimal                    @db.Decimal(19, 5)
+  allocatedPublishedPriceRetention Decimal                    @db.Decimal(19, 5)
+  roundingAdjustment               Decimal                    @db.Decimal(19, 5)
+  effectiveSellingValue            Decimal                    @db.Decimal(19, 5)
+  createdAt                        DateTime                   @default(now())
+  contractCommercialSnapshot       ContractCommercialSnapshot @relation(fields: [contractCommercialSnapshotId, tenantId], references: [id, tenantId], onDelete: Cascade, map: "ccscl_snapshot_tenant_fkey")
+
+  @@unique([tenantId, contractCommercialSnapshotId, costComponentId], map: "ccscl_tenant_snapshot_component_key")
+  @@unique([id, tenantId], map: "ccscl_id_tenant_key")
+  @@index([tenantId, costSnapshotId], map: "ccscl_tenant_cost_snapshot_idx")
+  @@map("contract_commercial_snapshot_component_lines")
 }
 
 model ContractDraft {
@@ -1027,6 +1116,7 @@ model TravelPackage {
   operationsIntakeOutboxEvents  OperationsIntakeOutboxEvent[]
   costingProjectLinks           TravelPackageCostingProjectLink[]
   pricingPublications           TravelPackagePricingPublication[]
+  commercialSnapshots           ContractCommercialSnapshot[]
 
   @@unique([id, tenantId], map: "TravelPackage_id_tenantId_key")
   @@index([departureDate])
@@ -1052,6 +1142,7 @@ model TravelPackageParticipant {
   client                           Client                                   @relation(fields: [clientId], references: [id])
   passengerGroupMembers            PassengerGroupMember[]
   contractSources                  TravelPackageParticipantContractSource[] @relation("TravelPackageParticipantContractSource")
+  commercialSnapshotPassengers     ContractCommercialSnapshotPassenger[]
   operationalRequirementPassengers OperationalRequirementPassenger[]
   operationalFulfillmentPassengers OperationalFulfillmentPassenger[]
 
@@ -1555,6 +1646,7 @@ model PricingCalculationVersion {
   airfareRepriceResults                AirfarePricingRepriceRequest[]
   customQuotationVersions              CustomQuotationVersion[]
   componentLines                       PricingCalculationComponentLine[]
+  commercialSnapshots                  ContractCommercialSnapshot[]
 
   @@unique([id, tenantId], map: "pricing_calculation_versions_id_tenant_key")
   @@unique([id, tenantId, costingProjectId], map: "pricing_calculation_versions_id_tenant_project_key")

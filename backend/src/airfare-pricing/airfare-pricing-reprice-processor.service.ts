@@ -54,14 +54,13 @@ export class AirfarePricingRepriceProcessorService {
       if (!pricingAmountsEqual(publication.currentCommercialPrice, publication.latestPublication.publishedPrice)) {
         return this.complete(request, "MANUAL_REVIEW_REQUIRED");
       }
-      if (publication.currency !== request.currency || publication.baseCurrency !== request.currency) return this.complete(request, "INELIGIBLE");
+      if (publication.currency !== request.currency || publication.baseCurrency !== request.currency || publication.commercialFloorPrice === null) return this.complete(request, "INELIGIBLE");
 
       let versionId = request.pricingCalculationVersionId;
       if (!versionId) {
-        const draft = await this.pricing.createAutomaticDraftIfHigher(
-          tenantId, request.costingProjectId, String(request.authoritativeTotalAmount), publication.latestPublication.publishedPrice, SYSTEM_ACTOR,
+        const draft = await this.pricing.createAutomaticDraftWithCommercialFloor(
+          tenantId, request.costingProjectId, String(request.authoritativeTotalAmount), publication.commercialFloorPrice, SYSTEM_ACTOR,
         );
-        if (!draft) return this.complete(request, "NO_INCREASE");
         versionId = draft.id;
         await this.attachVersion(request, versionId);
       }

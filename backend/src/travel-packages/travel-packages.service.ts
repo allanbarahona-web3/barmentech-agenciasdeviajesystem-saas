@@ -418,6 +418,8 @@ export class TravelPackagesService {
         ...(dto.departureDate && { departureDate: new Date(dto.departureDate) }),
         ...(dto.returnDate && { returnDate: new Date(dto.returnDate) }),
         ...(dto.capacity !== undefined && { capacity: dto.capacity }),
+        // Before Pricing adoption this remains a legacy manual value; after
+        // publication, packagePrice is Pricing's current PER_PERSON value.
         ...(dto.packagePrice !== undefined && { packagePrice: dto.packagePrice }),
         ...(dto.priceCurrency && { priceCurrency: dto.priceCurrency }),
         ...(dto.minReservation !== undefined && { minReservation: dto.minReservation ? new Decimal(String(dto.minReservation)) : null }),

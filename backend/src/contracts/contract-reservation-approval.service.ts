@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { PaymentConditionType, PriceTaxTreatment, Prisma } from "@prisma/client";
+import { PaymentConditionType, PriceTaxTreatment, Prisma, TravelPackageParticipantRole } from "@prisma/client";
 import {
   COMMERCIAL_OBLIGATION_ERRORS,
   CommercialObligationError,
@@ -15,6 +15,11 @@ import {
   TravelPackageParticipantsRepository,
   type TravelPackageParticipantWrite,
 } from "../travel-packages/repositories/travel-package-participants.repository";
+import { calculateContractBillablePassengerQuantity } from "./contract-billable-passenger-quantity";
+import {
+  ContractCommercialSnapshotService,
+  type ContractCommercialSnapshotPassengerInput,
+} from "./contract-commercial-snapshot.service";
 
 const APPROVABLE_CONTRACT_STATUSES = ["PENDING_PAYMENT_RESERVE", "RESERVE_IN_REVIEW"];
 const PARTICIPANT_ALREADY_ASSIGNED = "CONTRACT_RESERVATION_PARTICIPANT_ALREADY_ASSIGNED";
@@ -27,6 +32,7 @@ export class ContractReservationApprovalService {
   constructor(
     private readonly participantsRepository: TravelPackageParticipantsRepository,
     private readonly commercialObligations: CommercialObligationService,
+    private readonly commercialSnapshots: ContractCommercialSnapshotService,
   ) {}
 
   async approveInTransaction(
@@ -38,6 +44,7 @@ export class ContractReservationApprovalService {
       afterCommercialObligation?: (input: { commercialObligationId: string }) => Promise<void>;
     },
   ): Promise<{ applied: boolean; commercialObligationId: string | null }> {
+    await tx.$executeRaw`SELECT set_config('app.current_tenant_id', ${input.tenantId}, true)`;
     await tx.$queryRaw`
       SELECT "id" FROM "Contract"
       WHERE "id" = ${input.contractId} AND "tenantId" = ${input.tenantId}
@@ -97,7 +104,13 @@ export class ContractReservationApprovalService {
         commercialObligationId: commercialObligation.obligation.id,
       });
 
-      return this.completeApproval(tx, contract, participantCount, commercialObligation.obligation.id);
+      return this.completeApproval(
+        tx,
+        contract,
+        participantCount,
+        commercialObligation.obligation.id,
+        input.actor,
+      );
     } catch (error) {
       if (error instanceof CommercialObligationError) {
         if (error.code === COMMERCIAL_OBLIGATION_ERRORS.CONFLICT) {
@@ -120,14 +133,32 @@ export class ContractReservationApprovalService {
     contract: {
       id: string; tenantId: string; clientId: string; contractNumber: string; participantCount: number;
       travelPackageId: string | null; internalTripId: string | null; payload: unknown;
+      commercialTotal: Prisma.Decimal | null; commercialCurrency: string | null;
+      paymentConditionType: PaymentConditionType | null; paymentDueDate: Date | null;
+      commercialTaxTreatment: PriceTaxTreatment | null;
     },
     participantCount: number,
     commercialObligationId: string,
+    actor: FinanceActor,
   ): Promise<{ applied: boolean; commercialObligationId: string }> {
+    let rosterPassengers: ContractCommercialSnapshotPassengerInput[] = [];
     if (contract.travelPackageId) {
-      await this.createInternationalTravelRoster(tx, {
+      rosterPassengers = await this.createInternationalTravelRoster(tx, {
         ...contract,
         travelPackageId: contract.travelPackageId,
+      });
+      const commercialTerms = requireCommercialTerms(contract);
+      await this.commercialSnapshots.freezeInTransaction(tx, {
+        tenantId: contract.tenantId,
+        contract: {
+          id: contract.id,
+          travelPackageId: contract.travelPackageId,
+          participantCount,
+          commercialTotal: commercialTerms.total,
+          commercialCurrency: commercialTerms.currencyCode,
+        },
+        passengers: rosterPassengers,
+        actor,
       });
     }
 
@@ -212,8 +243,8 @@ export class ContractReservationApprovalService {
 
   private async createInternationalTravelRoster(
     tx: Prisma.TransactionClient,
-    contract: { id: string; clientId: string; tenantId: string; travelPackageId: string; payload: unknown },
-  ): Promise<void> {
+    contract: { id: string; clientId: string; tenantId: string; travelPackageId: string; participantCount: number; payload: unknown },
+  ): Promise<ContractCommercialSnapshotPassengerInput[]> {
     const payload = contract.payload && typeof contract.payload === "object" && !Array.isArray(contract.payload)
       ? contract.payload as Record<string, unknown>
       : {};
@@ -235,6 +266,12 @@ export class ContractReservationApprovalService {
     const clients = await this.participantsRepository.findClients(tx, contract.tenantId, clientIds);
     if (clients.length !== clientIds.length) {
       throw new BadRequestException("CONTRACT_RESERVATION_PARTICIPANT_TENANT_INVALID");
+    }
+    if (
+      calculateContractBillablePassengerQuantity({ companions, minors }) !==
+      contract.participantCount
+    ) {
+      throw new BadRequestException("CONTRACT_RESERVATION_PARTICIPANT_COUNT_MISMATCH");
     }
     const existingClientIds = await this.participantsRepository.findExistingClientIds(
       tx,
@@ -259,14 +296,14 @@ export class ContractReservationApprovalService {
       throw error;
     }
 
-    await this.createInternationalTravelParticipantSources(tx, contract, participants);
+    return this.createInternationalTravelParticipantSources(tx, contract, participants);
   }
 
   private async createInternationalTravelParticipantSources(
     tx: Prisma.TransactionClient,
     contract: { id: string; tenantId: string; travelPackageId: string },
     participants: TravelPackageParticipantWrite[],
-  ): Promise<void> {
+  ): Promise<ContractCommercialSnapshotPassengerInput[]> {
     const clientIds = participants.map((participant) => participant.clientId);
     const expectedRoleByClientId = new Map(
       participants.map((participant) => [participant.clientId, participant.role]),
@@ -327,19 +364,22 @@ export class ContractReservationApprovalService {
       }
     }
 
-    if (existingSources.length === participantIds.length) {
-      return;
+    if (existingSources.length !== participantIds.length) {
+      await tx.travelPackageParticipantContractSource.createMany({
+        data: participantIds.map((travelPackageParticipantId) => ({
+          tenantId: contract.tenantId,
+          travelPackageId: contract.travelPackageId,
+          travelPackageParticipantId,
+          contractId: contract.id,
+          sourceRole: expectedRoleByParticipantId.get(travelPackageParticipantId)!,
+        })),
+      });
     }
-
-    await tx.travelPackageParticipantContractSource.createMany({
-      data: participantIds.map((travelPackageParticipantId) => ({
-        tenantId: contract.tenantId,
-        travelPackageId: contract.travelPackageId,
-        travelPackageParticipantId,
-        contractId: contract.id,
-        sourceRole: expectedRoleByParticipantId.get(travelPackageParticipantId)!,
-      })),
-    });
+    return rosterParticipants.map((participant) => ({
+      travelPackageParticipantId: participant.id,
+      clientId: participant.clientId,
+      role: participant.role as TravelPackageParticipantRole,
+    }));
   }
 }
 

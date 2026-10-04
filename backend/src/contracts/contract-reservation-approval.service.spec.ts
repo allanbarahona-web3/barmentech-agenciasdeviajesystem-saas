@@ -3,6 +3,7 @@ import {
   PriceTaxTreatment,
   Prisma,
 } from "@prisma/client";
+import { ConflictException } from "@nestjs/common";
 import {
   COMMERCIAL_OBLIGATION_ERRORS,
   CommercialObligationError,
@@ -66,6 +67,14 @@ describe("ContractReservationApprovalService", () => {
       .toBeLessThan(c.tx.contract.updateMany.mock.invocationCallOrder[0]);
     expect(c.participants.createMany.mock.invocationCallOrder[0])
       .toBeLessThan(c.tx.contract.updateMany.mock.invocationCallOrder[0]);
+    expect(c.commercialSnapshots.freezeInTransaction).toHaveBeenCalledWith(c.tx, expect.objectContaining({
+      tenantId: "tenant-1",
+      contract: expect.objectContaining({ id: "contract-1", participantCount: 1 }),
+      passengers: [{ travelPackageParticipantId: "participant-1", clientId: "customer-1", role: "HOLDER" }],
+      actor,
+    }));
+    expect(c.commercialSnapshots.freezeInTransaction.mock.invocationCallOrder[0])
+      .toBeLessThan(c.tx.contract.updateMany.mock.invocationCallOrder[0]);
   });
 
   it("preserves internal-trip capacity effects without creating an international roster", async () => {
@@ -95,6 +104,20 @@ describe("ContractReservationApprovalService", () => {
       .toBeLessThan(afterCommercialObligation.mock.invocationCallOrder[0]);
     expect(afterCommercialObligation.mock.invocationCallOrder[0])
       .toBeLessThan(c.tx.contract.updateMany.mock.invocationCallOrder[0]);
+  });
+
+  it("fails before transition or capacity mutation when the commercial snapshot cannot reconcile", async () => {
+    const c = context({ travelPackageId: "package-1" });
+    c.tx.travelPackage.findFirst.mockResolvedValue({ capacity: 3, occupiedSlots: 0, name: "Peru" });
+    c.commercialSnapshots.freezeInTransaction.mockRejectedValueOnce(
+      new ConflictException("CONTRACT_COMMERCIAL_PRICE_STALE"),
+    );
+
+    await expect(c.service.approveInTransaction(c.tx as never, approvalInput))
+      .rejects.toThrow("CONTRACT_COMMERCIAL_PRICE_STALE");
+
+    expect(c.tx.contract.updateMany).not.toHaveBeenCalled();
+    expect(c.tx.travelPackage.update).not.toHaveBeenCalled();
   });
 
   it("is idempotent after the Contract has reached PENDING_SIGNATURE", async () => {
@@ -175,6 +198,25 @@ describe("ContractReservationApprovalService", () => {
         expect.objectContaining({ travelPackageParticipantId: "participant-minor", sourceRole: "MINOR" }),
       ]),
     });
+  });
+
+  it("rejects approval when persisted billable quantity no longer matches roster participants", async () => {
+    const c = context({
+      travelPackageId: "package-1",
+      participantCount: 1,
+      payload: {
+        companions: [{ fullName: "Companion", idNumber: "2", selectedCustomerId: "customer-2" }],
+      },
+    });
+    c.tx.travelPackage.findFirst.mockResolvedValue({ capacity: 3, occupiedSlots: 0, name: "Peru" });
+    c.participants.findClients.mockResolvedValue([{ id: "customer-1" }, { id: "customer-2" }]);
+
+    await expect(c.service.approveInTransaction(c.tx as never, approvalInput))
+      .rejects.toThrow("CONTRACT_RESERVATION_PARTICIPANT_COUNT_MISMATCH");
+
+    expect(c.participants.createMany).not.toHaveBeenCalled();
+    expect(c.tx.contract.updateMany).not.toHaveBeenCalled();
+    expect(c.tx.travelPackage.update).not.toHaveBeenCalled();
   });
 
   it("treats a complete matching provenance set as an idempotent retry", async () => {
@@ -307,6 +349,7 @@ function context(overrides: Record<string, unknown> = {}) {
   };
   const tx = {
     $queryRaw: jest.fn().mockResolvedValue([{ id: "locked" }]),
+    $executeRaw: jest.fn().mockResolvedValue(undefined),
     contract: { findFirst: jest.fn().mockResolvedValue(contract), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
     travelPackage: { findFirst: jest.fn(), update: jest.fn() },
     internalTrip: { findFirst: jest.fn(), update: jest.fn() },
@@ -329,11 +372,15 @@ function context(overrides: Record<string, unknown> = {}) {
       created: true,
     }),
   };
+  const commercialSnapshots = {
+    freezeInTransaction: jest.fn().mockResolvedValue(null),
+  };
   return {
-    service: Reflect.construct(ContractReservationApprovalService, [participants, commercialObligations]),
+    service: Reflect.construct(ContractReservationApprovalService, [participants, commercialObligations, commercialSnapshots]),
     tx,
     participants,
     commercialObligations,
+    commercialSnapshots,
   };
 }
 

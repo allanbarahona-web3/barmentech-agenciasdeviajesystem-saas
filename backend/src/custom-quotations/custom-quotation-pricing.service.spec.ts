@@ -70,7 +70,7 @@ describe("CustomQuotationPricingService", () => {
     c.pricing.resolveConfigurationFromSnapshot.mockResolvedValue({ configuration: { id: "configuration-a" } });
     c.pricing.calculate.mockResolvedValue(calculation());
     await c.service.calculate("tenant-a", "quotation-a", actor);
-    expect((c.pricing as Record<string, unknown>).createAutomaticDraftIfHigher).toBeUndefined();
+    expect((c.pricing as Record<string, unknown>).createAutomaticDraftWithCommercialFloor).toBeUndefined();
     expect((c.pricing as Record<string, unknown>).approveCalculation).toBeUndefined();
     expect(c.tx.salesOrder).toBeUndefined();
     expect(c.tx.billingDocument).toBeUndefined();
