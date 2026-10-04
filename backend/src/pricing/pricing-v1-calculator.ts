@@ -65,11 +65,11 @@ export class PricingCalculationError extends Error {
   }
 }
 
-type Decimal = { coefficient: bigint; scale: number };
+export type PricingDecimal = { coefficient: bigint; scale: number };
 
-const AMOUNT_SCALE = 5;
+export const PRICING_AMOUNT_SCALE = 5;
 const PERCENT_SCALE = 6;
-const INTERNAL_SCALE = 24;
+export const PRICING_INTERNAL_SCALE = 24;
 const HUNDRED = decimal(100n, 0);
 const ONE = decimal(1n, 0);
 const ZERO = decimal(0n, 0);
@@ -80,8 +80,8 @@ const ZERO = decimal(0n, 0);
  * round-half-up. Returned strings are canonical (without insignificant zeros).
  */
 export function calculatePricingV1(input: PricingV1CalculatorInput): PricingV1Calculation {
-  const authoritativeCost = parseNonNegative(input.authoritativeCostAmount, AMOUNT_SCALE);
-  const operationalCosts = parseNonNegative(input.operationalCostsAmount, AMOUNT_SCALE);
+  const authoritativeCost = parseNonNegative(input.authoritativeCostAmount, PRICING_AMOUNT_SCALE);
+  const operationalCosts = parseNonNegative(input.operationalCostsAmount, PRICING_AMOUNT_SCALE);
   const riskPercent = parsePercentage(input.riskMarginPercent);
   const targetProfitPercent = parsePercentage(input.targetProfitMarginPercent);
   const salesCommissionPercent = parsePercentage(input.salesCommissionPercent);
@@ -106,7 +106,7 @@ export function calculatePricingV1(input: PricingV1CalculatorInput): PricingV1Ca
     throw new PricingCalculationError("PRICING_INVALID_DENOMINATOR");
   }
 
-  const preTaxSellingPrice = divide(adjustedEconomicCost, denominator, INTERNAL_SCALE);
+  const preTaxSellingPrice = divide(adjustedEconomicCost, denominator, PRICING_INTERNAL_SCALE);
   const targetProfitAmount = multiply(preTaxSellingPrice, targetProfitRate);
   const salesCommissionAmount = multiply(preTaxSellingPrice, salesCommissionRate);
   const taxAmount = multiply(preTaxSellingPrice, taxRate);
@@ -142,7 +142,7 @@ export function calculatePricingV1(input: PricingV1CalculatorInput): PricingV1Ca
 
 /** Validates mutable configuration inputs without attempting a price calculation. */
 export function validatePricingV1Configuration(input: PricingV1ConfigurationInput): void {
-  parseNonNegative(input.operationalCostsAmount, AMOUNT_SCALE);
+  parseNonNegative(input.operationalCostsAmount, PRICING_AMOUNT_SCALE);
   parsePercentage(input.riskMarginPercent);
   parsePercentage(input.targetProfitMarginPercent);
   parsePercentage(input.salesCommissionPercent);
@@ -152,21 +152,62 @@ export function validatePricingV1Configuration(input: PricingV1ConfigurationInpu
 
 /** Compares persisted Decimal(19,5)-compatible strings without Number coercion. */
 export function pricingAmountsEqual(left: string, right: string): boolean {
-  return compare(parseNonNegative(left, AMOUNT_SCALE), parseNonNegative(right, AMOUNT_SCALE)) === 0;
+  return compare(parseNonNegative(left, PRICING_AMOUNT_SCALE), parseNonNegative(right, PRICING_AMOUNT_SCALE)) === 0;
 }
 
 /** Exact Decimal(19,5)-compatible comparison for pricing orchestration. */
 export function comparePricingAmounts(left: string, right: string): number {
-  return compare(parseNonNegative(left, AMOUNT_SCALE), parseNonNegative(right, AMOUNT_SCALE));
+  return compare(parseNonNegative(left, PRICING_AMOUNT_SCALE), parseNonNegative(right, PRICING_AMOUNT_SCALE));
 }
 
-function parseNonNegative(value: string, maximumScale: number): Decimal {
+/** Shared fixed-decimal primitives for Pricing-only pure calculators. */
+export function parsePricingAmount(value: string): PricingDecimal {
+  return parseNonNegative(value, PRICING_AMOUNT_SCALE);
+}
+
+export function addPricingDecimals(left: PricingDecimal, right: PricingDecimal): PricingDecimal {
+  return add(left, right);
+}
+
+export function subtractPricingDecimals(left: PricingDecimal, right: PricingDecimal): PricingDecimal {
+  return subtract(left, right);
+}
+
+export function multiplyPricingDecimals(left: PricingDecimal, right: PricingDecimal): PricingDecimal {
+  return multiply(left, right);
+}
+
+export function dividePricingDecimals(
+  dividend: PricingDecimal,
+  divisor: PricingDecimal,
+  targetScale = PRICING_INTERNAL_SCALE,
+): PricingDecimal {
+  return divide(dividend, divisor, targetScale);
+}
+
+export function quantizePricingAmount(value: PricingDecimal): PricingDecimal {
+  return quantize(value, PRICING_AMOUNT_SCALE);
+}
+
+export function comparePricingDecimals(left: PricingDecimal, right: PricingDecimal): -1 | 0 | 1 {
+  return compare(left, right);
+}
+
+export function formatPricingDecimal(value: PricingDecimal): string {
+  return format(value);
+}
+
+export function formatPricingAmount(value: PricingDecimal): string {
+  return outputAmount(value);
+}
+
+function parseNonNegative(value: string, maximumScale: number): PricingDecimal {
   const parsed = parse(value, maximumScale);
   if (parsed.coefficient < 0n) throw new PricingCalculationError("PRICING_INPUT_NEGATIVE");
   return parsed;
 }
 
-function parsePercentage(value: string): Decimal {
+function parsePercentage(value: string): PricingDecimal {
   const parsed = parseNonNegative(value, PERCENT_SCALE);
   if (compare(parsed, HUNDRED) > 0) {
     throw new PricingCalculationError("PRICING_PERCENTAGE_OUT_OF_RANGE");
@@ -174,7 +215,7 @@ function parsePercentage(value: string): Decimal {
   return parsed;
 }
 
-function parse(value: string, maximumScale: number): Decimal {
+function parse(value: string, maximumScale: number): PricingDecimal {
   const match = /^(-?)(0|[1-9]\d*)(?:\.(\d+))?$/.exec(value);
   if (!match) throw new PricingCalculationError("PRICING_DECIMAL_INVALID");
   const fraction = match[3] ?? "";
@@ -185,15 +226,15 @@ function parse(value: string, maximumScale: number): Decimal {
   return decimal(sign * BigInt(`${match[2]}${fraction}`), fraction.length);
 }
 
-function percentagePointsToRate(value: Decimal): Decimal {
+function percentagePointsToRate(value: PricingDecimal): PricingDecimal {
   return decimal(value.coefficient, value.scale + 2);
 }
 
-function outputAmount(value: Decimal): string {
-  return format(quantize(value, AMOUNT_SCALE));
+function outputAmount(value: PricingDecimal): string {
+  return format(quantize(value, PRICING_AMOUNT_SCALE));
 }
 
-function add(left: Decimal, right: Decimal): Decimal {
+function add(left: PricingDecimal, right: PricingDecimal): PricingDecimal {
   const scale = Math.max(left.scale, right.scale);
   return decimal(
     left.coefficient * powerOfTen(scale - left.scale) + right.coefficient * powerOfTen(scale - right.scale),
@@ -201,15 +242,15 @@ function add(left: Decimal, right: Decimal): Decimal {
   );
 }
 
-function subtract(left: Decimal, right: Decimal): Decimal {
+function subtract(left: PricingDecimal, right: PricingDecimal): PricingDecimal {
   return add(left, decimal(-right.coefficient, right.scale));
 }
 
-function multiply(left: Decimal, right: Decimal): Decimal {
+function multiply(left: PricingDecimal, right: PricingDecimal): PricingDecimal {
   return decimal(left.coefficient * right.coefficient, left.scale + right.scale);
 }
 
-function divide(dividend: Decimal, divisor: Decimal, targetScale: number): Decimal {
+function divide(dividend: PricingDecimal, divisor: PricingDecimal, targetScale: number): PricingDecimal {
   const divisorMagnitude = absolute(divisor.coefficient);
   if (divisorMagnitude === 0n) throw new PricingCalculationError("PRICING_INVALID_DENOMINATOR");
 
@@ -222,7 +263,7 @@ function divide(dividend: Decimal, divisor: Decimal, targetScale: number): Decim
   return decimal(sign * quotient, targetScale);
 }
 
-function quantize(value: Decimal, targetScale: number): Decimal {
+function quantize(value: PricingDecimal, targetScale: number): PricingDecimal {
   if (value.scale <= targetScale) return value;
   const factor = powerOfTen(value.scale - targetScale);
   let quotient = absolute(value.coefficient) / factor;
@@ -231,14 +272,14 @@ function quantize(value: Decimal, targetScale: number): Decimal {
   return decimal(value.coefficient < 0n ? -quotient : quotient, targetScale);
 }
 
-function compare(left: Decimal, right: Decimal): -1 | 0 | 1 {
+function compare(left: PricingDecimal, right: PricingDecimal): -1 | 0 | 1 {
   const scale = Math.max(left.scale, right.scale);
   const a = left.coefficient * powerOfTen(scale - left.scale);
   const b = right.coefficient * powerOfTen(scale - right.scale);
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
-function decimal(coefficient: bigint, scale: number): Decimal {
+function decimal(coefficient: bigint, scale: number): PricingDecimal {
   let normalizedCoefficient = coefficient;
   let normalizedScale = scale;
   while (normalizedScale > 0 && normalizedCoefficient % 10n === 0n) {
@@ -248,7 +289,7 @@ function decimal(coefficient: bigint, scale: number): Decimal {
   return { coefficient: normalizedCoefficient, scale: normalizedScale };
 }
 
-function format(value: Decimal): string {
+function format(value: PricingDecimal): string {
   const negative = value.coefficient < 0n;
   const digits = absolute(value.coefficient).toString().padStart(value.scale + 1, "0");
   if (value.scale === 0) return `${negative ? "-" : ""}${digits}`;

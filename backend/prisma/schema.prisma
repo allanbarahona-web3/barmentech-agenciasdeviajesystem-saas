@@ -144,6 +144,7 @@ model Tenant {
   pricingConfigurations                   PricingConfiguration[]
   tenantPricingPolicies                   TenantPricingPolicy[]
   pricingCalculationVersions              PricingCalculationVersion[]
+  pricingCalculationComponentLines        PricingCalculationComponentLine[]
   customQuotations                        CustomQuotation[]
   customQuotationCostingProjectLinks      CustomQuotationCostingProjectLink[]
   customQuotationVersions                 CustomQuotationVersion[]
@@ -1553,6 +1554,7 @@ model PricingCalculationVersion {
   internalTripPublications             InternalTripPricingPublication[]
   airfareRepriceResults                AirfarePricingRepriceRequest[]
   customQuotationVersions              CustomQuotationVersion[]
+  componentLines                       PricingCalculationComponentLine[]
 
   @@unique([id, tenantId], map: "pricing_calculation_versions_id_tenant_key")
   @@unique([id, tenantId, costingProjectId], map: "pricing_calculation_versions_id_tenant_project_key")
@@ -1560,6 +1562,46 @@ model PricingCalculationVersion {
   @@index([tenantId, costingProjectId, createdAt(sort: Desc), id(sort: Desc)], map: "pricing_calculation_versions_project_history_idx")
   @@index([tenantId, costingProjectId, status, createdAt(sort: Desc), id(sort: Desc)], map: "pricing_calculation_versions_project_status_history_idx")
   @@map("pricing_calculation_versions")
+}
+
+/// Immutable per-component commercial decomposition for one Pricing calculation version.
+/// This is Pricing-owned historical evidence, not a mutable Cost Engine component.
+model PricingCalculationComponentLine {
+  id                               String                    @id @default(cuid())
+  tenantId                         String
+  pricingCalculationVersionId      String
+  costingProjectId                 String
+  costComponentId                  String
+  costSnapshotId                   String
+  costCategoryCode                 String                    @db.VarChar(80)
+  costCategoryDisplayName          String                    @db.VarChar(160)
+  componentTitle                   String                    @db.VarChar(500)
+  currency                         String                    @db.VarChar(3)
+  weight                           Decimal                   @db.Decimal(30, 24)
+  baseCost                         Decimal                   @db.Decimal(19, 5)
+  allocatedOperationalExpense      Decimal                   @db.Decimal(19, 5)
+  risk                             Decimal                   @db.Decimal(19, 5)
+  adjustedEconomicCost             Decimal                   @db.Decimal(19, 5)
+  preTaxSellingPrice               Decimal                   @db.Decimal(19, 5)
+  targetProfit                     Decimal                   @db.Decimal(19, 5)
+  salesCommission                  Decimal                   @db.Decimal(19, 5)
+  bankCommission                   Decimal                   @db.Decimal(19, 5)
+  tax                              Decimal                   @db.Decimal(19, 5)
+  rawSellingValue                  Decimal                   @db.Decimal(19, 5)
+  allocatedPublishedPriceRetention Decimal                   @db.Decimal(19, 5)
+  roundingAdjustment               Decimal                   @db.Decimal(19, 5)
+  effectiveSellingValue            Decimal                   @db.Decimal(19, 5)
+  createdAt                        DateTime                  @default(now())
+  tenant                           Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  pricingCalculationVersion        PricingCalculationVersion @relation(fields: [pricingCalculationVersionId, tenantId, costingProjectId], references: [id, tenantId, costingProjectId], onDelete: Restrict, map: "pricing_calc_component_lines_version_project_fkey")
+  costComponent                    CostComponent             @relation(fields: [costComponentId, tenantId, costingProjectId], references: [id, tenantId, costingProjectId], onDelete: Restrict, map: "pricing_calc_component_lines_component_project_fkey")
+  costSnapshot                     CostSnapshot              @relation(fields: [costSnapshotId, tenantId, costComponentId, costingProjectId], references: [id, tenantId, costComponentId, costingProjectId], onDelete: Restrict, map: "pricing_calc_component_lines_snapshot_project_fkey")
+
+  @@unique([id, tenantId], map: "pricing_calc_component_lines_id_tenant_key")
+  @@unique([tenantId, pricingCalculationVersionId, costComponentId], map: "pricing_calc_component_lines_tenant_version_component_key")
+  @@index([tenantId, costComponentId], map: "pricing_calc_component_lines_tenant_component_idx")
+  @@index([tenantId, costSnapshotId], map: "pricing_calc_component_lines_tenant_snapshot_idx")
+  @@map("pricing_calculation_component_lines")
 }
 
 model TravelPackageCostingProjectLink {
@@ -1641,7 +1683,7 @@ model CostSupplier {
 }
 
 model CostComponent {
-  id                            String                         @id @default(cuid())
+  id                            String                            @id @default(cuid())
   tenantId                      String
   costingProjectId              String
   costCategoryId                String
@@ -1650,27 +1692,28 @@ model CostComponent {
   description                   String?
   detailPayload                 Json?
   detailSchemaVersion           Int?
-  quantity                      Decimal?                       @db.Decimal(19, 5)
+  quantity                      Decimal?                          @db.Decimal(19, 5)
   unit                          String?
-  status                        CostComponentStatus            @default(ACTIVE)
-  sortPosition                  Int                            @default(0)
+  status                        CostComponentStatus               @default(ACTIVE)
+  sortPosition                  Int                               @default(0)
   createdByUserId               String
   createdByName                 String
   updatedByUserId               String?
   updatedByName                 String?
   currentSnapshotId             String?
-  createdAt                     DateTime                       @default(now())
-  updatedAt                     DateTime                       @updatedAt
-  tenant                        Tenant                         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  costingProject                CostingProject                 @relation(fields: [costingProjectId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "cost_components_project_tenant_fkey")
-  costCategory                  CostCategory                   @relation(fields: [costCategoryId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "cost_components_category_tenant_fkey")
-  costSupplier                  CostSupplier?                  @relation(fields: [costSupplierId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "cost_components_supplier_tenant_fkey")
-  snapshots                     CostSnapshot[]                 @relation("CostComponentSnapshots")
-  currentSnapshot               CostSnapshot?                  @relation("CostComponentCurrentSnapshot", fields: [currentSnapshotId, tenantId, id], references: [id, tenantId, costComponentId], onDelete: Restrict, map: "cost_components_current_snapshot_tenant_fkey")
+  createdAt                     DateTime                          @default(now())
+  updatedAt                     DateTime                          @updatedAt
+  tenant                        Tenant                            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  costingProject                CostingProject                    @relation(fields: [costingProjectId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "cost_components_project_tenant_fkey")
+  costCategory                  CostCategory                      @relation(fields: [costCategoryId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "cost_components_category_tenant_fkey")
+  costSupplier                  CostSupplier?                     @relation(fields: [costSupplierId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "cost_components_supplier_tenant_fkey")
+  snapshots                     CostSnapshot[]                    @relation("CostComponentSnapshots")
+  currentSnapshot               CostSnapshot?                     @relation("CostComponentCurrentSnapshot", fields: [currentSnapshotId, tenantId, id], references: [id, tenantId, costComponentId], onDelete: Restrict, map: "cost_components_current_snapshot_tenant_fkey")
   applicabilities               CostApplicability[]
   auditEvents                   CostAuditEvent[]
   airfareDailyAuthorities       AirfareDailyAuthority[]
   airfarePricingRepriceRequests AirfarePricingRepriceRequest[]
+  pricingComponentLines         PricingCalculationComponentLine[]
 
   @@unique([id, tenantId], map: "cost_components_id_tenant_key")
   @@unique([id, tenantId, costingProjectId], map: "cost_components_id_tenant_project_key")
@@ -1681,26 +1724,27 @@ model CostComponent {
 }
 
 model CostSnapshot {
-  id                             String                          @id @default(cuid())
+  id                             String                            @id @default(cuid())
   tenantId                       String
   costingProjectId               String
   costComponentId                String
-  amount                         Decimal                         @db.Decimal(19, 5)
-  currency                       String                          @db.VarChar(3)
+  amount                         Decimal                           @db.Decimal(19, 5)
+  currency                       String                            @db.VarChar(3)
   sequence                       Int
-  capturedAt                     DateTime                        @default(now())
+  capturedAt                     DateTime                          @default(now())
   capturedByUserId               String
   capturedByName                 String
   sourceReference                String?
   sourceUrl                      String?
   reason                         String?
-  tenant                         Tenant                          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  costingProject                 CostingProject                  @relation(fields: [costingProjectId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "cost_snapshots_project_tenant_fkey")
-  costComponent                  CostComponent                   @relation("CostComponentSnapshots", fields: [costComponentId, tenantId, costingProjectId], references: [id, tenantId, costingProjectId], onDelete: Restrict, map: "cost_snapshots_component_project_tenant_fkey")
-  currentFor                     CostComponent?                  @relation("CostComponentCurrentSnapshot")
+  tenant                         Tenant                            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  costingProject                 CostingProject                    @relation(fields: [costingProjectId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "cost_snapshots_project_tenant_fkey")
+  costComponent                  CostComponent                     @relation("CostComponentSnapshots", fields: [costComponentId, tenantId, costingProjectId], references: [id, tenantId, costingProjectId], onDelete: Restrict, map: "cost_snapshots_component_project_tenant_fkey")
+  currentFor                     CostComponent?                    @relation("CostComponentCurrentSnapshot")
   evidence                       CostEvidence[]
   airfareDailyAuthorityRevisions AirfareDailyAuthorityRevision[]
   airfarePricingRepriceRequests  AirfarePricingRepriceRequest[]
+  pricingComponentLines          PricingCalculationComponentLine[]
 
   @@unique([id, tenantId], map: "cost_snapshots_id_tenant_key")
   @@unique([id, tenantId, costComponentId], map: "cost_snapshots_id_tenant_component_key")
