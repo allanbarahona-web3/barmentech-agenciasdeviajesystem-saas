@@ -18,3 +18,16 @@ export function sourceTypesForOperationalWorkCategory(category?: OperationalWork
     case undefined: return undefined;
   }
 }
+
+/**
+ * Projects persisted source identity into the existing public category model.
+ * Historical identities intentionally remain uncategorized.
+ */
+export function sourceCategoryForOperationalWorkSourceType(
+  sourceType: string | null | undefined,
+): Exclude<OperationalWorkSourceCategory, "ALL"> | undefined {
+  if (!sourceType) return undefined;
+  return (OPERATIONAL_WORK_SOURCE_CATEGORIES as readonly OperationalWorkSourceCategory[])
+    .filter((category): category is Exclude<OperationalWorkSourceCategory, "ALL"> => category !== "ALL")
+    .find((category) => sourceTypesForOperationalWorkCategory(category)?.includes(sourceType));
+}

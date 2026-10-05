@@ -24,9 +24,9 @@ describe("OperationalWorkItemsService", () => {
 
     await expect(c.service.list(tenantId, travelPackageId, { page: 1, pageSize: 20, active: "true", participantId: "participant-a" } as any)).resolves.toMatchObject({
       items: [
-        { id: "r-contract", participantCoverageStatus: "FULFILLED", coverage: { fulfilledPassengerCount: 1, totalPassengerCount: 2 }, management: { fulfillmentCount: 2, confirmedFulfillmentCount: 1, purchaseCount: 2, evidenceCount: 3 }, finance: { state: "ELIGIBLE" } },
-        { id: "r-service", participantCoverageStatus: "PENDING", finance: { state: "BLOCKED", reason: "OUTSTANDING_BALANCE" } },
-        { id: "r-manual", finance: { state: "UNAVAILABLE" } },
+        { id: "r-contract", sourceType: "CONTRACT", sourceCategory: null, participantCoverageStatus: "FULFILLED", coverage: { fulfilledPassengerCount: 1, totalPassengerCount: 2 }, management: { fulfillmentCount: 2, confirmedFulfillmentCount: 1, purchaseCount: 2, evidenceCount: 3 }, finance: { state: "ELIGIBLE" } },
+        { id: "r-service", sourceType: "ADDITIONAL_SERVICE_ORDER_LINE", sourceCategory: "ADDITIONAL_SERVICES", participantCoverageStatus: "PENDING", finance: { state: "BLOCKED", reason: "OUTSTANDING_BALANCE" } },
+        { id: "r-manual", sourceType: "MANUAL", sourceCategory: null, finance: { state: "UNAVAILABLE" } },
       ],
       total: 3,
     });
@@ -54,7 +54,7 @@ describe("OperationalWorkItemsService", () => {
     c.tx.$queryRaw.mockResolvedValueOnce([pageRow({ sourceType: "TRAVEL_PACKAGE_COST_COMPONENT", sourceId: "project-a", sourceLineId: "component-a", sourceVersionId: "snapshot-a", total: 1 })]).mockResolvedValueOnce([enrichment("requirement-a")]);
 
     await expect(c.service.list(tenantId, travelPackageId, { page: 2, pageSize: 20, sourceCategory: "BASE_TRIP", status: "PENDING", search: "Hotel", participantId: "participant-a", passengerGroupId: "group-a" } as any)).resolves.toMatchObject({
-      items: [{ finance: { state: "AUTHORIZED_BY_SOURCE_POLICY", reason: "TRAVEL_PACKAGE_BASE_COMPONENT" } }],
+      items: [{ sourceType: "TRAVEL_PACKAGE_COST_COMPONENT", sourceCategory: "BASE_TRIP", finance: { state: "AUTHORIZED_BY_SOURCE_POLICY", reason: "TRAVEL_PACKAGE_BASE_COMPONENT" } }],
     });
 
     const baseCall = c.tx.$queryRaw.mock.calls[0];
@@ -66,7 +66,7 @@ describe("OperationalWorkItemsService", () => {
     c.tx.$queryRaw.mockResolvedValueOnce([pageRow({ sourceType: "ADDITIONAL_SERVICE_ORDER_LINE", sourceId: "order-a", sourceLineId: "line-a", total: 1 })]).mockResolvedValueOnce([enrichment("requirement-a")]);
     c.finance.readMany.mockResolvedValueOnce([{ source: { sourceType: "ADDITIONAL_SERVICE_ORDER_LINE", sourceId: "order-a", sourceLineId: "line-a", travelPackageId }, eligibility: "BLOCKED", reason: "OUTSTANDING_BALANCE" }]);
     await expect(c.service.list(tenantId, travelPackageId, { page: 1, pageSize: 20, sourceCategory: "ADDITIONAL_SERVICES", active: "true" } as any)).resolves.toMatchObject({
-      items: [{ finance: { state: "BLOCKED", reason: "OUTSTANDING_BALANCE" } }],
+      items: [{ sourceType: "ADDITIONAL_SERVICE_ORDER_LINE", sourceCategory: "ADDITIONAL_SERVICES", finance: { state: "BLOCKED", reason: "OUTSTANDING_BALANCE" } }],
     });
     expect(nestedSqlValues(c.tx.$queryRaw.mock.calls[0])).toContain("ADDITIONAL_SERVICE_ORDER_LINE");
     expect(c.finance.readMany).toHaveBeenCalledWith({ tenantId, sources: [{ sourceType: "ADDITIONAL_SERVICE_ORDER_LINE", sourceId: "order-a", sourceLineId: "line-a", travelPackageId }] });
@@ -77,7 +77,12 @@ describe("OperationalWorkItemsService", () => {
     c.tx.travelPackage.findFirst.mockResolvedValue({ id: travelPackageId });
     c.tx.$queryRaw.mockResolvedValueOnce([pageRow({ id: "contract", sourceType: "CONTRACT" }), pageRow({ id: "manual", sourceType: "MANUAL" })]).mockResolvedValueOnce([enrichment("contract"), enrichment("manual")]);
 
-    await expect(c.service.list(tenantId, travelPackageId, { page: 1, pageSize: 20, sourceCategory: "ALL" } as any)).resolves.toMatchObject({ items: [{ id: "contract" }, { id: "manual" }] });
+    await expect(c.service.list(tenantId, travelPackageId, { page: 1, pageSize: 20, sourceCategory: "ALL" } as any)).resolves.toMatchObject({
+      items: [
+        { id: "contract", sourceType: "CONTRACT", sourceCategory: null },
+        { id: "manual", sourceType: "MANUAL", sourceCategory: null },
+      ],
+    });
   });
 
   it("reports base work as source-authorized without a Finance read", async () => {

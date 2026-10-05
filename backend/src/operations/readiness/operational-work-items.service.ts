@@ -14,7 +14,10 @@ import {
   procurementAuthorizationReadState,
   type OperationalProcurementAuthorization,
 } from "../operational-procurement-authorization";
-import { sourceTypesForOperationalWorkCategory } from "./operational-work-source-filter";
+import {
+  sourceCategoryForOperationalWorkSourceType,
+  sourceTypesForOperationalWorkCategory,
+} from "./operational-work-source-filter";
 import { ListOperationalWorkItemsDto } from "./dto/list-operational-work-items.dto";
 
 type Tx = any;
@@ -89,6 +92,8 @@ export class OperationalWorkItemsService {
             id: row.id, travelPackageId: row.travelPackageId, servicePurposeCode: row.servicePurposeCode, servicePurposeName: row.servicePurposeName,
             description: row.description, status: row.status, critical: row.critical, operationalDeadlineAt: row.operationalDeadlineAt,
             assignedTo: row.assignedToUserId ? { userId: row.assignedToUserId, name: row.assignedToName } : null,
+            sourceType: row.sourceType,
+            sourceCategory: sourceCategoryForOperationalWorkSourceType(row.sourceType) ?? null,
             passengers: { total: numberValue(row.totalPassengers), preview: passengerPreview(enrichment.passengerPreview) },
             sourceGroup: row.sourcePassengerGroupName ? { id: row.sourcePassengerGroupId, name: row.sourcePassengerGroupName } : null,
             coverage: { fulfilledPassengerCount: numberValue(enrichment.fulfilledPassengerCount), totalPassengerCount: numberValue(row.totalPassengers) },
