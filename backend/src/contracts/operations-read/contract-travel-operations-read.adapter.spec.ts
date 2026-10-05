@@ -4,6 +4,7 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { ContractsModule } from "../contracts.module";
 import { ContractTravelOperationsReadAdapter } from "./contract-travel-operations-read.adapter";
 import { OPERATIONAL_PASSENGER_NOTE_READER } from "./operational-passenger-note-reader.port";
+import { OPERATIONAL_PASSENGER_CONTRACT_CONTEXT_READER } from "./operational-passenger-contract-context-reader.port";
 import { PARTICIPANT_SOURCE_READER } from "./participant-source-reader.port";
 
 describe("ContractTravelOperationsReadAdapter", () => {
@@ -51,6 +52,33 @@ describe("ContractTravelOperationsReadAdapter", () => {
     expect(c.prisma.$transaction).not.toHaveBeenCalled();
   });
 
+  it("reads bounded Contract participant context with frozen and legacy commercial context", async () => {
+    const c = context();
+    c.tx.travelPackageParticipantContractSource.findMany.mockResolvedValue([
+      contractContextSource({ travelPackageParticipantId: "participant-holder", sourceRole: "HOLDER" }),
+      contractContextSource({ travelPackageParticipantId: "participant-companion", sourceRole: "COMPANION", travelPackageParticipant: { clientId: "client-companion" } }),
+      contractContextSource({ travelPackageParticipantId: "participant-minor", sourceRole: "MINOR", travelPackageParticipant: { clientId: "client-minor" }, contract: { id: "contract-legacy", contractNumber: "CT-LEGACY", commercialTotal: { toString: () => "750.00000" }, commercialCurrency: "USD", commercialSnapshot: null } }),
+    ]);
+    const result = await c.adapter.readContractContextsForParticipants({
+      tenantId: "tenant-1", travelPackageId: "package-1", participantIds: ["participant-holder", "participant-companion", "participant-minor"],
+    });
+    expect(result.get("participant-holder")).toEqual([expect.objectContaining({
+      clientId: "client-holder", contractId: "contract-1", contractNumber: "CT-1", sourceRole: "HOLDER",
+      commercial: { snapshotAvailable: true, perPersonSellingPrice: "250.00000", commercialTotal: "500.00000", currency: "USD", frozenAt: first },
+      responsibleAdult: null,
+    })]);
+    expect(result.get("participant-companion")).toEqual([expect.objectContaining({ sourceRole: "COMPANION", contractNumber: "CT-1" })]);
+    expect(result.get("participant-minor")).toEqual([expect.objectContaining({
+      sourceRole: "MINOR", commercial: { snapshotAvailable: false, perPersonSellingPrice: null, commercialTotal: "750.00000", currency: "USD", frozenAt: null }, responsibleAdult: null,
+    })]);
+    expect(c.tx.travelPackageParticipantContractSource.findMany).toHaveBeenCalledTimes(1);
+    expect(c.tx.travelPackageParticipantContractSource.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { tenantId: "tenant-1", travelPackageId: "package-1", travelPackageParticipantId: { in: ["participant-holder", "participant-companion", "participant-minor"] } },
+      select: expect.objectContaining({ contract: { select: expect.not.objectContaining({ payload: true }) } }),
+    }));
+    expect((c.tx as Record<string, unknown>).contract).toBeUndefined();
+  });
+
   it("reads only ACTIVE normalized notes through the bounded participant/client map", async () => {
     const c = context();
     c.tx.travelPackageParticipant.findMany.mockResolvedValue([
@@ -58,9 +86,10 @@ describe("ContractTravelOperationsReadAdapter", () => {
       { id: "participant-2", clientId: "client-2" },
     ]);
     c.tx.contractNote.findMany.mockResolvedValue([
-      { id: "note-2", clientId: "client-1", contractId: "contract-2", note: "Second", status: "ACTIVE", createdAt: second, archivedAt: null },
-      { id: "note-1", clientId: "client-1", contractId: "contract-1", note: "First", status: "ACTIVE", createdAt: first, archivedAt: null },
-      { id: "legacy", clientId: null, contractId: "legacy-contract", note: "Do not guess", status: "ACTIVE", createdAt: first, archivedAt: null },
+      { id: "note-2", clientId: "client-1", contractId: "contract-2", note: "Second", status: "ACTIVE", createdAt: second, archivedAt: null, createdByName: "Agent" },
+      { id: "note-1", clientId: "client-1", contractId: "contract-1", note: "First", status: "ACTIVE", createdAt: first, archivedAt: null, createdByName: "Agent" },
+      { id: "archived", clientId: "client-1", contractId: "contract-1", note: "Archived", status: "ARCHIVED", createdAt: first, archivedAt: first, createdByName: "Agent" },
+      { id: "legacy", clientId: null, contractId: "legacy-contract", note: "Do not guess", status: "ACTIVE", createdAt: first, archivedAt: null, createdByName: "Agent" },
     ]);
 
     const result = await c.adapter.readNotesForParticipants({
@@ -70,8 +99,8 @@ describe("ContractTravelOperationsReadAdapter", () => {
     });
 
     expect(result.get("participant-1")).toEqual([
-      { id: "note-2", travelPackageParticipantId: "participant-1", text: "Second", status: "ACTIVE", createdAt: second, archivedAt: null, source: { type: "CONTRACT_NOTE", sourceId: "contract-2" } },
-      { id: "note-1", travelPackageParticipantId: "participant-1", text: "First", status: "ACTIVE", createdAt: first, archivedAt: null, source: { type: "CONTRACT_NOTE", sourceId: "contract-1" } },
+      { id: "note-2", travelPackageParticipantId: "participant-1", text: "Second", status: "ACTIVE", createdAt: second, archivedAt: null, sourceType: "CONTRACT", authorName: "Agent", source: { type: "CONTRACT_NOTE", sourceId: "contract-2" } },
+      { id: "note-1", travelPackageParticipantId: "participant-1", text: "First", status: "ACTIVE", createdAt: first, archivedAt: null, sourceType: "CONTRACT", authorName: "Agent", source: { type: "CONTRACT_NOTE", sourceId: "contract-1" } },
     ]);
     expect(result.get("participant-2")).toEqual([]);
     expect(c.tx.travelPackageParticipant.findMany).toHaveBeenCalledTimes(1);
@@ -99,9 +128,11 @@ describe("ContractTravelOperationsReadAdapter", () => {
         status: true,
         createdAt: true,
         archivedAt: true,
+        createdByName: true,
       },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     });
+    expect((c.tx as Record<string, unknown>).customerNote).toBeUndefined();
   });
 
   it("does not query notes for an empty participant batch", async () => {
@@ -118,22 +149,25 @@ describe("ContractTravelOperationsReadAdapter", () => {
       ContractTravelOperationsReadAdapter,
       { provide: PARTICIPANT_SOURCE_READER, useExisting: ContractTravelOperationsReadAdapter },
       { provide: OPERATIONAL_PASSENGER_NOTE_READER, useExisting: ContractTravelOperationsReadAdapter },
+      { provide: OPERATIONAL_PASSENGER_CONTRACT_CONTEXT_READER, useExisting: ContractTravelOperationsReadAdapter },
     ]));
   });
 
-  it("resolves both ports without a ContractNotesService dependency", async () => {
+  it("resolves Contract read ports without a ContractNotesService dependency", async () => {
     const module = await Test.createTestingModule({
       providers: [
         { provide: PrismaService, useValue: context().prisma },
         ContractTravelOperationsReadAdapter,
         { provide: PARTICIPANT_SOURCE_READER, useExisting: ContractTravelOperationsReadAdapter },
         { provide: OPERATIONAL_PASSENGER_NOTE_READER, useExisting: ContractTravelOperationsReadAdapter },
+        { provide: OPERATIONAL_PASSENGER_CONTRACT_CONTEXT_READER, useExisting: ContractTravelOperationsReadAdapter },
       ],
     }).compile();
 
     const adapter = module.get(ContractTravelOperationsReadAdapter);
     expect(module.get(PARTICIPANT_SOURCE_READER)).toBe(adapter);
     expect(module.get(OPERATIONAL_PASSENGER_NOTE_READER)).toBe(adapter);
+    expect(module.get(OPERATIONAL_PASSENGER_CONTRACT_CONTEXT_READER)).toBe(adapter);
   });
 });
 
@@ -154,5 +188,17 @@ function context() {
     adapter: new ContractTravelOperationsReadAdapter(prisma as any),
     prisma,
     tx,
+  };
+}
+
+function contractContextSource(overrides: Record<string, unknown> = {}) {
+  return {
+    travelPackageParticipantId: "participant-holder", sourceRole: "HOLDER",
+    travelPackageParticipant: { clientId: "client-holder" },
+    contract: {
+      id: "contract-1", contractNumber: "CT-1", commercialTotal: { toString: () => "500.00000" }, commercialCurrency: "USD",
+      commercialSnapshot: { perPersonSellingPrice: { toString: () => "250.00000" }, commercialTotal: { toString: () => "500.00000" }, currency: "USD", frozenAt: first },
+    },
+    ...overrides,
   };
 }

@@ -44,6 +44,7 @@ describe("Cost Engine foundation", () => {
     expect(context.tx.costAuditEvent.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ action: "COMPONENT_CREATED", costComponentId: "component-a" }),
     }));
+    expect(context.operationsIntakeProducer.persistEligibleComponent).toHaveBeenCalledWith(context.tx, "tenant-a", "component-a");
   });
 
   it("accepts a BAGGAGE relation only after finding an active AIRFARE component in the same tenant project", async () => {
@@ -99,6 +100,20 @@ describe("Cost Engine foundation", () => {
     context.tx.costAuditEvent.create.mockRejectedValue(new Error("audit failed"));
 
     await expect(context.repository.createComponent("tenant-a", "project-a", componentInput(), snapshotInput(), actor)).rejects.toThrow("audit failed");
+    expect(context.root.rollback).toHaveBeenCalledTimes(1);
+  });
+
+  it("rolls back component creation when the durable Operations handoff cannot be persisted", async () => {
+    const context = repositoryContext({ rollbackOnError: true });
+    context.tx.costingProject.findFirst.mockResolvedValue(project());
+    context.tx.costCategory.findFirst.mockResolvedValue({ id: "category-a" });
+    context.tx.costComponent.create.mockResolvedValue({ id: "component-a" });
+    context.tx.costSnapshot.create.mockResolvedValue({ id: "snapshot-1" });
+    context.tx.costComponent.updateMany.mockResolvedValue({ count: 1 });
+    context.tx.costAuditEvent.create.mockResolvedValue({ id: "audit-1" });
+    context.operationsIntakeProducer.persistEligibleComponent.mockRejectedValue(new Error("outbox unavailable"));
+
+    await expect(context.repository.createComponent("tenant-a", "project-a", componentInput(), snapshotInput(), actor)).rejects.toThrow("outbox unavailable");
     expect(context.root.rollback).toHaveBeenCalledTimes(1);
   });
 
@@ -546,6 +561,7 @@ describe("Cost Engine foundation", () => {
     expect(context.tx.costAuditEvent.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ action: "COMPONENT_REACTIVATED", costComponentId: "component-a" }),
     }));
+    expect(context.operationsIntakeProducer.persistEligibleComponent).toHaveBeenCalledWith(context.tx, "tenant-a", "component-a");
     expect(context.tx.costSnapshot.create).not.toHaveBeenCalled();
     expect(context.tx.costComponent.updateMany).not.toHaveBeenCalledWith(expect.objectContaining({ data: { currentSnapshotId: expect.anything() } }));
   });
@@ -603,7 +619,8 @@ function repositoryContext(options: { rollbackOnError?: boolean } = {}) {
       try { return await work(tx); } catch (error) { if (options.rollbackOnError) root.rollback(); throw error; }
     }),
   };
-  return { tx, root, repository: new CostEngineRepository(root as PrismaService) };
+  const operationsIntakeProducer = { persistEligibleComponent: jest.fn().mockResolvedValue(0) };
+  return { tx, root, operationsIntakeProducer, repository: new CostEngineRepository(root as PrismaService, operationsIntakeProducer as never) };
 }
 
 function delegate() {

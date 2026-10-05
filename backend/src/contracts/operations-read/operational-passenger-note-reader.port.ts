@@ -9,6 +9,8 @@ export type OperationalPassengerNote = {
   status: "ACTIVE";
   createdAt: Date;
   archivedAt: Date | null;
+  sourceType: "CONTRACT" | "CLIENT_PROFILE";
+  authorName: string | null;
   source: {
     type: "CONTRACT_NOTE";
     sourceId: string;

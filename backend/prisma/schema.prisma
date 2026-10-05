@@ -1288,6 +1288,8 @@ model OperationalRequirement {
   sourceId                        String?
   sourceLineId                    String?
   sourceVersionId                 String?
+  /// Immutable, source-neutral intake context. Legacy rows intentionally remain null.
+  sourceSnapshot                  Json?
   sourceReference                 String?
   sourceAcceptedAt                DateTime?
   sourcePassengerGroupId          String?

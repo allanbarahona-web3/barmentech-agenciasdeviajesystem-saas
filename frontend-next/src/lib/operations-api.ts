@@ -59,9 +59,36 @@ export interface OperationalPassengerOverviewPage {
 export type OperationalAdditionalServiceContext = { sourceRef: { type: 'ADDITIONAL_SERVICE_ORDER_LINE'; id: string; lineId: string; version: number | null }; serviceCode: string; serviceName: string; commercialStatus: 'APPROVED'; soldValue: { amount: string; currency: string; scope: 'EXACT_SERVICE_LINE' }; presentation: { title: string | null; subtitle: string | null; fields: Array<{ key: string; label: string; value: string; valueType: 'TEXT' | 'DATE' }> } };
 export interface OperationalPassengerRosterRow { travelPackageParticipantId: string; clientId: string; fullName: string; role: string; groups: Array<{ id: string; name: string; servicePurposeCode: string; servicePurposeName: string; color: string | null }>; progress: { fulfilled: number; total: number; percent: number | null; isOperationallyComplete: boolean }; }
 export interface OperationalPassengerRosterPage { items: OperationalPassengerRosterRow[]; total: number; page: number; pageSize: number; totalPages: number; }
-export interface OperationalPassengerCommercialContext { travelPackageParticipantId: string; additionalServices: OperationalAdditionalServiceContext[]; }
+export type OperationalPassengerContractRole = 'HOLDER' | 'COMPANION' | 'MINOR';
+export interface OperationalPassengerContractContext {
+  travelPackageParticipantId: string;
+  clientId: string;
+  contractId: string;
+  contractNumber: string;
+  sourceRole: OperationalPassengerContractRole;
+  commercial: { snapshotAvailable: boolean; perPersonSellingPrice: string | null; commercialTotal: string | null; currency: string | null; frozenAt: string | null };
+  responsibleAdult: { responsibleParticipantId: string; responsibleClientId: string; responsibleName: string | null } | null;
+}
+export interface OperationalPassengerOperationalNote {
+  id: string;
+  travelPackageParticipantId: string;
+  text: string;
+  status: 'ACTIVE';
+  createdAt: string;
+  archivedAt: string | null;
+  sourceType: 'CONTRACT' | 'CLIENT_PROFILE';
+  authorName: string | null;
+  source: { type: 'CONTRACT_NOTE'; sourceId: string };
+}
+export interface OperationalPassengerCommercialContext {
+  travelPackageParticipantId: string;
+  additionalServices: OperationalAdditionalServiceContext[];
+  contractContexts: OperationalPassengerContractContext[];
+  operationalNotes: OperationalPassengerOperationalNote[];
+}
 
 export type OperationalRequirementStatus = 'PENDING' | 'IN_PROGRESS' | 'FULFILLED' | 'CANCELLED' | 'NOT_APPLICABLE';
+export type OperationalWorkSourceCategory = 'ALL' | 'BASE_TRIP' | 'ADDITIONAL_SERVICES';
 export type OperationalRequirementSourceType = 'MANUAL' | 'CONTRACT' | 'CUSTOM_QUOTATION';
 export type OperationalSoldValueScope = 'EXACT_SERVICE_LINE' | 'ORDER_TOTAL' | 'QUOTATION_TOTAL' | 'CONTRACT_TOTAL' | 'PACKAGE_REFERENCE' | 'NONE';
 export interface OperationalRequirementCoverage { fulfilledPassengerCount: number; totalPassengerCount: number; }
@@ -78,7 +105,7 @@ export interface OperationalRequirementDetail extends OperationalRequirementSumm
   confirmedPassengerIds: string[];
   passengers: Array<{ travelPackageParticipantId: string; clientId: string; fullName: string; role: string }>;
 }
-export interface OperationalWorkItemsInput { page?: number; active?: boolean; status?: OperationalRequirementStatus; servicePurposeCode?: string; participantId?: string; passengerGroupId?: string; critical?: boolean; deadlineState?: 'OVERDUE' | 'DUE_SOON' | 'FUTURE' | 'NONE'; search?: string; }
+export interface OperationalWorkItemsInput { page?: number; active?: boolean; status?: OperationalRequirementStatus; servicePurposeCode?: string; participantId?: string; passengerGroupId?: string; critical?: boolean; deadlineState?: 'OVERDUE' | 'DUE_SOON' | 'FUTURE' | 'NONE'; sourceCategory?: OperationalWorkSourceCategory; search?: string; }
 export interface OperationalWorkItem { id: string; travelPackageId: string; servicePurposeCode: string; servicePurposeName: string; description: string; status: OperationalRequirementStatus; critical: boolean; operationalDeadlineAt: string | null; assignedTo: { userId: string; name: string | null } | null; passengers: { total: number; preview: Array<{ travelPackageParticipantId: string; clientId: string; fullName: string; role: string }> }; sourceGroup: { id: string | null; name: string } | null; coverage: OperationalRequirementCoverage; participantCoverageStatus: 'FULFILLED' | 'PENDING' | null; soldContext: { scope: OperationalSoldValueScope; amount: string | null; currency: string | null }; finance: { state: 'ELIGIBLE' | 'BLOCKED' | 'UNAVAILABLE'; reason: string | null }; management: { fulfillmentCount: number; confirmedFulfillmentCount: number; purchaseCount: number; evidenceCount: number }; createdAt: string; updatedAt: string; }
 export interface OperationalWorkItemsPage { items: OperationalWorkItem[]; total: number; page: number; pageSize: number; totalPages: number; }
 export type OperationalFulfillmentStatus = 'DRAFT' | 'RESERVED' | 'PURCHASED' | 'CONFIRMED' | 'CANCELLED';
@@ -156,7 +183,7 @@ async function operationsFormRequest<T>(path: string, formData: FormData): Promi
   return response.json() as Promise<T>;
 }
 function requirementsPath(travelPackageId: string, suffix = '') { return `/operations/travel-packages/${encodeURIComponent(travelPackageId)}/requirements${suffix}`; }
-export function listOperationalWorkItems(travelPackageId: string, input: OperationalWorkItemsInput = {}): Promise<OperationalWorkItemsPage> { const params = new URLSearchParams({ page: String(input.page ?? 1), pageSize: '20' }); if (input.active) params.set('active', 'true'); if (input.status) params.set('status', input.status); if (input.servicePurposeCode) params.set('servicePurposeCode', input.servicePurposeCode); if (input.participantId) params.set('participantId', input.participantId); if (input.passengerGroupId) params.set('passengerGroupId', input.passengerGroupId); if (input.critical !== undefined) params.set('critical', String(input.critical)); if (input.deadlineState) params.set('deadlineState', input.deadlineState); if (input.search?.trim()) params.set('search', input.search.trim()); return operationsRequest(`/operations/travel-packages/${encodeURIComponent(travelPackageId)}/work-items?${params}`, 'GET'); }
+export function listOperationalWorkItems(travelPackageId: string, input: OperationalWorkItemsInput = {}): Promise<OperationalWorkItemsPage> { const params = new URLSearchParams({ page: String(input.page ?? 1), pageSize: '20' }); if (input.active) params.set('active', 'true'); if (input.status) params.set('status', input.status); if (input.servicePurposeCode) params.set('servicePurposeCode', input.servicePurposeCode); if (input.participantId) params.set('participantId', input.participantId); if (input.passengerGroupId) params.set('passengerGroupId', input.passengerGroupId); if (input.critical !== undefined) params.set('critical', String(input.critical)); if (input.deadlineState) params.set('deadlineState', input.deadlineState); if (input.sourceCategory) params.set('sourceCategory', input.sourceCategory); if (input.search?.trim()) params.set('search', input.search.trim()); return operationsRequest(`/operations/travel-packages/${encodeURIComponent(travelPackageId)}/work-items?${params}`, 'GET'); }
 export function getOperationalRequirement(travelPackageId: string, requirementId: string): Promise<OperationalRequirementDetail> { return operationsRequest(requirementsPath(travelPackageId, `/${encodeURIComponent(requirementId)}`), 'GET'); }
 function fulfillmentsPath(travelPackageId: string, requirementId: string, suffix = '') { return `${requirementsPath(travelPackageId, `/${encodeURIComponent(requirementId)}/fulfillments`)}${suffix}`; }
 export function listOperationalFulfillments(travelPackageId: string, requirementId: string, page = 1): Promise<OperationalFulfillmentsPage> { return operationsRequest(`${fulfillmentsPath(travelPackageId, requirementId)}?${new URLSearchParams({ page: String(page), pageSize: '20' })}`, 'GET'); }

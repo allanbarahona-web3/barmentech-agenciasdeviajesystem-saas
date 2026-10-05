@@ -10,11 +10,12 @@ import { AirfareDailyAuthorityService } from "./airfare-daily-authority.service"
 import { TenantBusinessDateResolver } from "./tenant-business-date.resolver";
 import { CostingProjectCurrentCostReader } from "./costing-project-current-cost-reader";
 import { JobDispatcherModule } from "../infrastructure/job-dispatcher";
+import { TravelPackageCostComponentOperationsIntakeProducer } from "./travel-package-cost-component-operations-intake.producer";
 
 @Module({
   imports: [StorageModule, JobDispatcherModule],
   controllers: [CostEngineController, AirfareDailyAuthorityController],
-  providers: [CostEngineRepository, CostEngineService, CostEvidenceService, TravelCostingProjectResolverService, AirfareDailyAuthorityService, TenantBusinessDateResolver, CostingProjectCurrentCostReader],
+  providers: [CostEngineRepository, CostEngineService, CostEvidenceService, TravelCostingProjectResolverService, AirfareDailyAuthorityService, TenantBusinessDateResolver, CostingProjectCurrentCostReader, TravelPackageCostComponentOperationsIntakeProducer],
   exports: [CostEngineService, CostEvidenceService, CostingProjectCurrentCostReader],
 })
 export class CostEngineModule {}

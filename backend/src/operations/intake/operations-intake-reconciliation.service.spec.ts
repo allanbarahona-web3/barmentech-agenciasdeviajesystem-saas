@@ -123,7 +123,9 @@ function context(input: { sourceItems?: OperationalWorkSourceItem[]; inspections
     inspectSourceItems: jest.fn().mockResolvedValue(input.inspections ?? new Map()),
   };
   const sourceReader = { readSourceItem: jest.fn() };
-  return { tx, sourceReader, reconciliationReader, service: new OperationsIntakeReconciliationService(prisma as never, reconciliationReader, sourceReader) };
+  const baseSourceReconciliationReader = { scanSources: jest.fn() };
+  const contractedRosterReader = { readContractedRoster: jest.fn(), readContractedRosters: jest.fn().mockResolvedValue(new Map()) };
+  return { tx, sourceReader, reconciliationReader, baseSourceReconciliationReader, contractedRosterReader, service: new OperationsIntakeReconciliationService(prisma as never, reconciliationReader, sourceReader, baseSourceReconciliationReader as never, contractedRosterReader) };
 }
 
 function sourceItem(): OperationalWorkSourceItem {
@@ -131,7 +133,7 @@ function sourceItem(): OperationalWorkSourceItem {
     tenantId: "tenant-a", travelPackageId: "travel-a", sourceType: "ADDITIONAL_SERVICE_ORDER_LINE", sourceId: "order-a", sourceLineId: "line-a",
     sourceVersionId: "1", sourceReference: null, sourceAcceptedAt: new Date("2026-10-01T12:00:00.000Z"),
     servicePurposeCode: "LODGING", servicePurposeName: "Hospedaje", description: "Hotel con desayuno",
-    participantClientIds: ["client-a"], soldValue: { scope: "EXACT_SERVICE_LINE", amount: "850.0000", currency: "USD" },
+    participantClientIds: ["client-a"], sourceSnapshot: null, soldValueScope: "EXACT_SERVICE_LINE", soldValue: { scope: "EXACT_SERVICE_LINE", amount: "850.0000", currency: "USD" },
   };
 }
 

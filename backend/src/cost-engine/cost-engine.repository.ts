@@ -3,6 +3,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { CostComponentDetails, normalizeCostComponentDetails } from "./cost-component-detail-contracts";
 import { runCostEngineTenantTransaction } from "./cost-engine-transaction";
 import { STANDARD_COST_CATEGORIES } from "./standard-cost-categories";
+import { TravelPackageCostComponentOperationsIntakeProducer } from "./travel-package-cost-component-operations-intake.producer";
 
 export type CostActor = { userId: string; name: string };
 
@@ -98,7 +99,10 @@ export class CostEngineRepository {
   private readonly database: CostEngineDatabase;
   private readonly logger = new Logger(CostEngineRepository.name);
 
-  constructor(prisma: PrismaService) {
+  constructor(
+    prisma: PrismaService,
+    private readonly operationsIntakeProducer: TravelPackageCostComponentOperationsIntakeProducer,
+  ) {
     // The client is generated manually after the user applies Cost DB migrations.
     this.database = prisma as unknown as CostEngineDatabase;
   }
@@ -407,6 +411,7 @@ export class CostEngineRepository {
       const createdSnapshot = await this.createSnapshot(tx, tenantId, costingProjectId, component.id, 1, snapshot, actor);
       await this.setCurrentSnapshot(tx, tenantId, component.id, createdSnapshot.id);
       await this.recordAudit(tx, tenantId, costingProjectId, component.id, "COMPONENT_CREATED", actor, null, { createdWithInitialSnapshot: true });
+      await this.operationsIntakeProducer.persistEligibleComponent(tx as never, tenantId, component.id);
       return component.id;
     });
   }
@@ -467,6 +472,7 @@ export class CostEngineRepository {
       });
       if (updated.count !== 1) throw new ConflictException("Cost component reactivation conflict.");
       await this.recordAudit(tx, tenantId, component.costingProjectId, costComponentId, "COMPONENT_REACTIVATED", actor);
+      await this.operationsIntakeProducer.persistEligibleComponent(tx as never, tenantId, costComponentId);
     });
   }
 
@@ -493,6 +499,7 @@ export class CostEngineRepository {
       }, actor);
       await this.setCurrentSnapshot(tx, tenantId, component.id, snapshot.id);
       await this.recordAudit(tx, tenantId, source.costingProjectId, component.id, "COMPONENT_DUPLICATED", actor, null, { sourceComponentId: source.id });
+      await this.operationsIntakeProducer.persistEligibleComponent(tx as never, tenantId, component.id);
       return component.id;
     });
   }

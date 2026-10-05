@@ -15,6 +15,7 @@ import { ContractTravelOperationsReadAdapter } from "./operations-read/contract-
 import { ContractCommercialSnapshotReader } from "./contract-commercial-snapshot.reader";
 import { OPERATIONAL_PASSENGER_NOTE_READER } from "./operations-read/operational-passenger-note-reader.port";
 import { PARTICIPANT_SOURCE_READER } from "./operations-read/participant-source-reader.port";
+import { OPERATIONAL_PASSENGER_CONTRACT_CONTEXT_READER } from "./operations-read/operational-passenger-contract-context-reader.port";
 import {
   ArchiveProcessingWorker,
   PackageCompletedDispatcher,
@@ -34,6 +35,7 @@ import {
     ContractTravelOperationsReadAdapter,
     { provide: PARTICIPANT_SOURCE_READER, useExisting: ContractTravelOperationsReadAdapter },
     { provide: OPERATIONAL_PASSENGER_NOTE_READER, useExisting: ContractTravelOperationsReadAdapter },
+    { provide: OPERATIONAL_PASSENGER_CONTRACT_CONTEXT_READER, useExisting: ContractTravelOperationsReadAdapter },
     ArchiveProcessingWorker,
     PackageCompletedDispatcher,
     PackageCompletedWorker,
@@ -43,6 +45,7 @@ import {
     ContractCommercialSnapshotReader,
     PARTICIPANT_SOURCE_READER,
     OPERATIONAL_PASSENGER_NOTE_READER,
+    OPERATIONAL_PASSENGER_CONTRACT_CONTEXT_READER,
   ],
 })
 export class ContractsModule {}

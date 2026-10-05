@@ -8,7 +8,13 @@ import {
 import { measureOperationsTimingStage } from "../../common/performance/operations-timing";
 import { PrismaService } from "../../prisma/prisma.service";
 import { runTenantTransaction } from "../../tenant/tenant-transaction";
-import { commercialSourceRefKey, requirementToCommercialSourceRef } from "../requirement-finance-source";
+import { commercialSourceRefKey } from "../requirement-finance-source";
+import {
+  procurementAuthorizationForRequirement,
+  procurementAuthorizationReadState,
+  type OperationalProcurementAuthorization,
+} from "../operational-procurement-authorization";
+import { sourceTypesForOperationalWorkCategory } from "./operational-work-source-filter";
 import { ListOperationalWorkItemsDto } from "./dto/list-operational-work-items.dto";
 
 type Tx = any;
@@ -58,10 +64,12 @@ export class OperationalWorkItemsService {
         enrichmentRows.map((row) => [row.id, row]),
       );
 
+      const authorizationByRequirementId = new Map<string, OperationalProcurementAuthorization>();
       const sourceByRequirementId = new Map<string, CommercialSourceRef>();
       for (const row of rows) {
-        const source = requirementToCommercialSourceRef(row);
-        if (source) sourceByRequirementId.set(row.id, source);
+        const authorization = procurementAuthorizationForRequirement(row);
+        authorizationByRequirementId.set(row.id, authorization);
+        if (authorization.kind === "FINANCE_ELIGIBILITY_REQUIRED") sourceByRequirementId.set(row.id, authorization.source);
       }
       const uniqueSources = new Map<string, CommercialSourceRef>();
       for (const source of sourceByRequirementId.values()) uniqueSources.set(commercialSourceRefKey(source), source);
@@ -74,7 +82,8 @@ export class OperationalWorkItemsService {
       return {
         items: rows.map((row) => {
           const enrichment = enrichmentByRequirementId.get(row.id) ?? zeroEnrichment(row.id);
-          const source = sourceByRequirementId.get(row.id);
+          const authorization = authorizationByRequirementId.get(row.id) ?? { kind: "UNAVAILABLE" as const };
+          const source = authorization.kind === "FINANCE_ELIGIBILITY_REQUIRED" ? authorization.source : null;
           const finance = source ? financeBySourceKey.get(commercialSourceRefKey(source)) : null;
           return {
             id: row.id, travelPackageId: row.travelPackageId, servicePurposeCode: row.servicePurposeCode, servicePurposeName: row.servicePurposeName,
@@ -85,7 +94,7 @@ export class OperationalWorkItemsService {
             coverage: { fulfilledPassengerCount: numberValue(enrichment.fulfilledPassengerCount), totalPassengerCount: numberValue(row.totalPassengers) },
             participantCoverageStatus: input.participantId ? (coveredParticipantIds(enrichment.coveredParticipantIds).includes(input.participantId) ? "FULFILLED" : "PENDING") : null,
             soldContext: { scope: row.soldValueScope, amount: row.soldAmount?.toFixed() ?? null, currency: row.soldCurrency },
-            finance: financeState(finance),
+            finance: procurementAuthorizationReadState(authorization, finance),
             management: {
               fulfillmentCount: numberValue(enrichment.fulfillmentCount), confirmedFulfillmentCount: numberValue(enrichment.confirmedFulfillmentCount),
               purchaseCount: numberValue(enrichment.purchaseCount), evidenceCount: numberValue(enrichment.evidenceCount),
@@ -145,6 +154,8 @@ function workItemFilters(tenantId: string, travelPackageId: string, input: ListO
   if (input.assignedToUserId) filters.push(Prisma.sql`r."assignedToUserId" = ${input.assignedToUserId}`);
   if (input.unassigned === "true") filters.push(Prisma.sql`r."assignedToUserId" IS NULL`);
   if (input.critical !== undefined) filters.push(Prisma.sql`r.critical = ${input.critical === "true"}`);
+  const sourceTypes = sourceTypesForOperationalWorkCategory(input.sourceCategory);
+  if (sourceTypes?.length) filters.push(Prisma.sql`r."sourceType" IN (${Prisma.join(sourceTypes)})`);
   const search = input.search?.trim();
   if (search) {
     const pattern = `%${search}%`;
@@ -179,12 +190,6 @@ function workItemEnrichment(tx: Tx, tenantId: string, travelPackageId: string, i
   `;
 }
 
-function financeState(result: any) {
-  if (!result) return { state: "UNAVAILABLE", reason: null };
-  if (result.eligibility === "BLOCKED") return { state: "BLOCKED", reason: result.reason ?? null };
-  if (result.eligibility === "ELIGIBLE") return { state: "ELIGIBLE", reason: result.reason ?? null };
-  return { state: "UNAVAILABLE", reason: result.reason ?? null };
-}
 function zeroEnrichment(id: string): WorkItemEnrichmentRow { return { id, fulfilledPassengerCount: 0, fulfillmentCount: 0, confirmedFulfillmentCount: 0, purchaseCount: 0, evidenceCount: 0, passengerPreview: [], coveredParticipantIds: [] }; }
 function numberValue(value: number | bigint | null | undefined): number { return typeof value === "bigint" ? Number(value) : Number(value ?? 0); }
 function passengerPreview(value: unknown) { const parsed = typeof value === "string" ? JSON.parse(value) : value; return Array.isArray(parsed) ? parsed : []; }

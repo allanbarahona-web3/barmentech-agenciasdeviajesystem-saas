@@ -67,9 +67,28 @@ describe("OperationalPurchasesService", () => {
     blocked.finance.readMany.mockResolvedValue([{ eligibility: "BLOCKED", reason: "OUTSTANDING_BALANCE" }]);
     await expect(blocked.service.create(tenantId, travelPackageId, requirementId, fulfillmentId, input(), actor)).rejects.toMatchObject({ response: expect.objectContaining({ message: "OPERATIONAL_PURCHASE_FINANCIAL_ELIGIBILITY_BLOCKED" }) });
 
+    const partiallyPaid = context(requirement({ sourceType: "ADDITIONAL_SERVICE_ORDER_LINE", sourceId: "order-a", sourceLineId: "line-a" }), fulfillment());
+    partiallyPaid.finance.readMany.mockResolvedValue([{ eligibility: "BLOCKED", reason: "PARTIALLY_PAID" }]);
+    await expect(partiallyPaid.service.create(tenantId, travelPackageId, requirementId, fulfillmentId, input(), actor)).rejects.toMatchObject({ response: expect.objectContaining({ message: "OPERATIONAL_PURCHASE_FINANCIAL_ELIGIBILITY_BLOCKED" }) });
+
     const unavailable = context(requirement({ sourceType: "ADDITIONAL_SERVICE_ORDER_LINE", sourceId: "order-a", sourceLineId: "line-a" }), fulfillment());
     unavailable.finance.readMany.mockResolvedValue([{ eligibility: "BLOCKED", reason: "FINANCIAL_DATA_MISSING" }]);
     await expect(unavailable.service.create(tenantId, travelPackageId, requirementId, fulfillmentId, input(), actor)).rejects.toMatchObject({ response: expect.objectContaining({ message: "OPERATIONAL_PURCHASE_FINANCIAL_ELIGIBILITY_UNAVAILABLE" }) });
+  });
+
+  it.each(["OUTSTANDING_BALANCE", "PARTIALLY_PAID", "COMMERCIAL_OBLIGATION_NOT_SETTLED"])("authorizes a base component despite %s without calling Finance", async (reason) => {
+    const c = context(requirement({ sourceType: "TRAVEL_PACKAGE_COST_COMPONENT", sourceId: "project-a", sourceLineId: "component-a", sourceVersionId: "snapshot-a" }), fulfillment());
+    c.finance.readMany.mockResolvedValue([{ eligibility: "BLOCKED", reason }]);
+    c.tx.operationalPurchase.create.mockResolvedValue(purchase());
+    c.tx.operationalFulfillment.updateMany.mockResolvedValue({ count: 1 });
+    await expect(c.service.create(tenantId, travelPackageId, requirementId, fulfillmentId, input(), actor)).resolves.toMatchObject({ id: purchaseId });
+    expect(c.finance.readMany).not.toHaveBeenCalled();
+  });
+
+  it.each(["CANCELLED", "CONFIRMED"] as const)("keeps %s base Fulfillments history-only", async (status) => {
+    const c = context(requirement({ sourceType: "TRAVEL_PACKAGE_COST_COMPONENT", sourceId: "project-a", sourceLineId: "component-a" }), fulfillment({ status }));
+    await expect(c.service.create(tenantId, travelPackageId, requirementId, fulfillmentId, input(), actor)).rejects.toBeInstanceOf(ConflictException);
+    expect(c.finance.readMany).not.toHaveBeenCalled();
   });
 
   it.each([

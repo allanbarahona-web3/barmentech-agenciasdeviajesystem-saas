@@ -4,7 +4,8 @@ import { FINANCE_ELIGIBILITY_READER, type CommercialSourceRef, type FinanceEligi
 import { OPERATIONAL_PASSENGER_NOTE_READER, type OperationalPassengerNoteReader } from "../../contracts/operations-read/operational-passenger-note-reader.port";
 import { PrismaService } from "../../prisma/prisma.service";
 import { runTenantTransaction } from "../../tenant/tenant-transaction";
-import { commercialSourceRefKey, requirementToCommercialSourceRef } from "../requirement-finance-source";
+import { commercialSourceRefKey } from "../requirement-finance-source";
+import { procurementAuthorizationForRequirement, type OperationalProcurementAuthorization } from "../operational-procurement-authorization";
 import { ListOperationalPassengerOverviewDto } from "./dto/list-operational-passenger-overview.dto";
 
 type Tx = { $executeRaw<T = unknown>(q: TemplateStringsArray, ...v: unknown[]): Promise<T>; travelPackage: Record<string, (...a: any[]) => Promise<any>>; travelPackageParticipant: Record<string, (...a: any[]) => Promise<any>>; passengerGroupMember: Record<string, (...a: any[]) => Promise<any>>; operationalRequirementPassenger: Record<string, (...a: any[]) => Promise<any>>; operationalFulfillmentPassenger: Record<string, (...a: any[]) => Promise<any>>; };
@@ -54,10 +55,12 @@ export class OperationalPassengerOverviewService {
       safeMap(() => this.notes.readNotesForParticipants({ tenantId, travelPackageId, participantIds })),
       safeMap(() => this.additional.readForClients({ tenantId, travelPackageId, clientIds })),
     ]);
+    const authorizationByRequirementId = new Map<string, OperationalProcurementAuthorization>();
     const sourceByRequirementId = new Map<string, CommercialSourceRef>();
     for (const assignment of core.assignments) {
-      const source = requirementToCommercialSourceRef(assignment.operationalRequirement);
-      if (source) sourceByRequirementId.set(assignment.operationalRequirementId, source);
+      const authorization = procurementAuthorizationForRequirement(assignment.operationalRequirement);
+      authorizationByRequirementId.set(assignment.operationalRequirementId, authorization);
+      if (authorization.kind === "FINANCE_ELIGIBILITY_REQUIRED") sourceByRequirementId.set(assignment.operationalRequirementId, authorization.source);
     }
     const uniqueSources = new Map<string, CommercialSourceRef>();
     for (const source of sourceByRequirementId.values()) uniqueSources.set(commercialSourceRefKey(source), source);
@@ -68,7 +71,7 @@ export class OperationalPassengerOverviewService {
     const covered = new Set(core.fulfillments.filter((fulfillment) => fulfillment.operationalFulfillment.status === "CONFIRMED").map((fulfillment) => key(fulfillment.operationalFulfillment.operationalRequirementId, fulfillment.travelPackageParticipantId)));
     return {
       trip: core.trip,
-      items: core.participants.map((participant) => row(participant, assignmentsByParticipant.get(participant.id) ?? [], groupsByParticipant.get(participant.id) ?? [], notes.get(participant.id) ?? [], additional.get(participant.clientId) ?? [], sourceByRequirementId, financeBySource, covered)),
+      items: core.participants.map((participant) => row(participant, assignmentsByParticipant.get(participant.id) ?? [], groupsByParticipant.get(participant.id) ?? [], notes.get(participant.id) ?? [], additional.get(participant.clientId) ?? [], authorizationByRequirementId, sourceByRequirementId, financeBySource, covered)),
       total: core.total,
       page: input.page,
       pageSize: input.pageSize,
@@ -79,21 +82,32 @@ export class OperationalPassengerOverviewService {
   private tx<T>(tenantId: string, work: (tx: Tx) => Promise<T>) { return runTenantTransaction(this.db, tenantId, work); }
 }
 
-function row(p: Participant, assignments: Assignment[], groups: any[], notes: any[], additionalServices: any[], sourceByRequirementId: Map<string, CommercialSourceRef>, finance: Map<string, any>, covered: Set<string>) {
+function row(p: Participant, assignments: Assignment[], groups: any[], notes: any[], additionalServices: any[], authorizations: Map<string, OperationalProcurementAuthorization>, sourceByRequirementId: Map<string, CommercialSourceRef>, finance: Map<string, any>, covered: Set<string>) {
   const applicable = assignments.filter((assignment) => assignment.operationalRequirement.status !== "CANCELLED" && assignment.operationalRequirement.status !== "NOT_APPLICABLE");
   const fulfilled = applicable.filter((assignment) => covered.has(key(assignment.operationalRequirementId, p.id)));
   const requirements = assignments.map((assignment) => ({ id: assignment.operationalRequirementId, servicePurposeCode: assignment.operationalRequirement.servicePurposeCode, servicePurposeName: assignment.operationalRequirement.servicePurposeName, status: assignment.operationalRequirement.status, critical: assignment.operationalRequirement.critical, deadline: assignment.operationalRequirement.operationalDeadlineAt, coverageStatus: covered.has(key(assignment.operationalRequirementId, p.id)) ? "FULFILLED" : "PENDING" }));
   const missingItems = applicable.filter((assignment) => !covered.has(key(assignment.operationalRequirementId, p.id))).map((assignment) => ({ servicePurposeCode: assignment.operationalRequirement.servicePurposeCode, servicePurposeName: assignment.operationalRequirement.servicePurposeName })).filter((value, index, values) => values.findIndex((other) => other.servicePurposeCode === value.servicePurposeCode) === index);
-  const sources = new Map<string, CommercialSourceRef>();
+  const sourceDetails = new Map<string, { sourceId: string; eligibility: string; reason: string | null; outstandingAmount: string | null; currency: string | null }>();
   for (const assignment of assignments) {
+    const authorization = authorizations.get(assignment.operationalRequirementId);
+    if (authorization?.kind === "AUTHORIZED_BY_SOURCE_POLICY") {
+      sourceDetails.set(assignment.operationalRequirementId, {
+        sourceId: assignment.operationalRequirement.sourceId ?? assignment.operationalRequirementId,
+        eligibility: "AUTHORIZED_BY_SOURCE_POLICY", reason: authorization.reason, outstandingAmount: null, currency: null,
+      });
+      continue;
+    }
     const source = sourceByRequirementId.get(assignment.operationalRequirementId);
-    if (source) sources.set(commercialSourceRefKey(source), source);
+    if (!source) continue;
+    const item = finance.get(commercialSourceRefKey(source));
+    if (item) sourceDetails.set(commercialSourceRefKey(source), { sourceId: item.source.sourceId, eligibility: item.eligibility, reason: item.reason, outstandingAmount: item.financial?.outstandingAmount ?? null, currency: item.financial?.currency ?? null });
   }
-  const sourceDetails = [...sources.values()].map((source) => finance.get(commercialSourceRefKey(source))).filter(Boolean).map((item) => ({ sourceId: item.source.sourceId, eligibility: item.eligibility, reason: item.reason, outstandingAmount: item.financial?.outstandingAmount ?? null, currency: item.financial?.currency ?? null }));
-  const blocked = sourceDetails.find((item) => item.eligibility === "BLOCKED");
-  const eligible = sourceDetails.find((item) => item.eligibility === "ELIGIBLE");
-  const financial = blocked ?? eligible;
-  return { travelPackageParticipantId: p.id, clientId: p.clientId, fullName: p.client.fullName, role: p.role, groups: groups.map((membership) => ({ id: membership.passengerGroup.id, name: membership.passengerGroup.name, servicePurposeCode: membership.passengerGroup.serviceCode, servicePurposeName: membership.passengerGroup.serviceName, color: membership.passengerGroup.color })), operationalNotes: notes.map((note) => ({ id: note.id, text: note.text, sourceReference: note.source.sourceId, createdAt: note.createdAt })), additionalServices, requirements, progress: { fulfilled: fulfilled.length, total: applicable.length, percent: applicable.length ? Number(((fulfilled.length / applicable.length) * 100).toFixed(2)) : null, isOperationallyComplete: applicable.length > 0 && fulfilled.length === applicable.length }, financeEligibility: { eligibility: blocked ? "BLOCKED" : eligible ? "ELIGIBLE" : "UNKNOWN", reason: financial?.reason ?? null, outstandingAmount: financial?.outstandingAmount ?? null, currency: financial?.currency ?? null, sources: sourceDetails }, missingItems };
+  const details = [...sourceDetails.values()];
+  const blocked = details.find((item) => item.eligibility === "BLOCKED");
+  const policyAuthorized = details.find((item) => item.eligibility === "AUTHORIZED_BY_SOURCE_POLICY");
+  const eligible = details.find((item) => item.eligibility === "ELIGIBLE");
+  const financial = blocked ?? policyAuthorized ?? eligible;
+  return { travelPackageParticipantId: p.id, clientId: p.clientId, fullName: p.client.fullName, role: p.role, groups: groups.map((membership) => ({ id: membership.passengerGroup.id, name: membership.passengerGroup.name, servicePurposeCode: membership.passengerGroup.serviceCode, servicePurposeName: membership.passengerGroup.serviceName, color: membership.passengerGroup.color })), operationalNotes: notes.map((note) => ({ id: note.id, text: note.text, sourceReference: note.source.sourceId, createdAt: note.createdAt })), additionalServices, requirements, progress: { fulfilled: fulfilled.length, total: applicable.length, percent: applicable.length ? Number(((fulfilled.length / applicable.length) * 100).toFixed(2)) : null, isOperationallyComplete: applicable.length > 0 && fulfilled.length === applicable.length }, financeEligibility: { eligibility: blocked ? "BLOCKED" : policyAuthorized ? "AUTHORIZED_BY_SOURCE_POLICY" : eligible ? "ELIGIBLE" : "UNKNOWN", reason: financial?.reason ?? null, outstandingAmount: financial?.outstandingAmount ?? null, currency: financial?.currency ?? null, sources: details }, missingItems };
 }
 function key(requirementId: string, participantId: string) { return `${requirementId}\u0000${participantId}`; }
 function group<T>(items: T[], get: (item: T) => string) { const result = new Map<string, T[]>(); for (const item of items) result.set(get(item), [...(result.get(get(item)) ?? []), item]); return result; }

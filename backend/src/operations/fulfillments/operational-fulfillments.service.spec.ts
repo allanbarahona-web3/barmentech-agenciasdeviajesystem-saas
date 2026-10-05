@@ -176,6 +176,21 @@ describe("OperationalFulfillmentsService", () => {
     expect(c.finance.readMany).toHaveBeenCalledWith({ tenantId, sources: [{ sourceType: "ADDITIONAL_SERVICE_ORDER_LINE", sourceId: "order-a", sourceLineId: "line-a", travelPackageId }] });
   });
 
+  it.each(["RESERVED", "PURCHASED", "CONFIRMED"] as const)("progresses base work to %s without Finance", async (targetStatus) => {
+    const c = context();
+    const source = requirement({ sourceType: "TRAVEL_PACKAGE_COST_COMPONENT", sourceId: "project-a", sourceLineId: "component-a", sourceVersionId: "snapshot-a" });
+    const initialStatus = targetStatus === "RESERVED" ? "DRAFT" : targetStatus === "PURCHASED" ? "RESERVED" : "PURCHASED";
+    const transitionContext = targetStatus === "CONFIRMED" ? { confirmationReference: "C-1" } : { reservationCode: "R-1" };
+    c.tx.operationalFulfillment.findFirst
+      .mockResolvedValueOnce(fulfillmentState({ status: initialStatus, ...transitionContext, operationalRequirement: source }))
+      .mockResolvedValueOnce(fulfillmentState({ status: initialStatus, ...transitionContext, operationalRequirement: source }))
+      .mockResolvedValueOnce(fulfillment({ status: targetStatus, ...transitionContext, operationalRequirement: source }));
+    c.tx.operationalFulfillment.updateMany.mockResolvedValue({ count: 1 });
+    await expect(c.service.transitionStatus(tenantId, travelPackageId, requirementId, fulfillmentId, { targetStatus }, actor))
+      .resolves.toMatchObject({ status: targetStatus });
+    expect(c.finance.readMany).not.toHaveBeenCalled();
+  });
+
   it("blocks finance-ineligible transitions and enforces confirmation references and terminal states", async () => {
     const blocked = context();
     blocked.tx.operationalFulfillment.findFirst.mockResolvedValue(fulfillmentState({ reservationCode: "R-1", operationalRequirement: requirement({ sourceType: "CONTRACT", sourceId: "contract-a" }) }));

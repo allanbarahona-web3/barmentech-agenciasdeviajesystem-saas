@@ -6,8 +6,8 @@ test('Passenger navigation uses the lightweight roster without manual-demand con
   const source = read('../src/components/operations/operational-unified-workspace.tsx');
   for (const text of ['Pasajeros', 'Grupo:', 'Trabajo operativo', 'Avance', 'Contexto comercial']) assert.match(source, new RegExp(text));
   assert.doesNotMatch(source, /Agregar necesidad|Selecciona uno o más pasajeros|selectedPassengerIds|checkbox/);
-  assert.doesNotMatch(source, /<TableHead>Finanzas<\/TableHead>|Notas operativas/);
-  assert.doesNotMatch(source, /getOperationalPassengerOverview|operationalNotes|missingItems|financeEligibility|passenger\.requirements/);
+  assert.doesNotMatch(source, /<TableHead>Finanzas<\/TableHead>/);
+  assert.doesNotMatch(source, /getOperationalPassengerOverview|missingItems|financeEligibility|passenger\.requirements/);
 });
 test('Passenger group filtering remains server-paginated and participant identity stays available', () => {
   const source = read('../src/components/operations/operational-unified-workspace.tsx');

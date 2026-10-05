@@ -5,7 +5,7 @@ import {
 } from "../../finance/eligibility-read/finance-eligibility-reader.port";
 import { PrismaService } from "../../prisma/prisma.service";
 import { runTenantTransaction } from "../../tenant/tenant-transaction";
-import { requirementToCommercialSourceRef } from "../requirement-finance-source";
+import { procurementAuthorizationForRequirement } from "../operational-procurement-authorization";
 import {
   CreateOperationalFulfillmentDto,
   ListOperationalFulfillmentsDto,
@@ -392,7 +392,7 @@ export class OperationalFulfillmentsService {
       this.requireMutableFulfillment(tx, tenantId, travelPackageId, requirementId, fulfillmentId),
     );
     assertTransition(initial, target);
-    if (SPEND_COMMITTING_STATUSES.has(target)) await this.requireFinancialEligibility(tenantId, initial.operationalRequirement);
+    if (SPEND_COMMITTING_STATUSES.has(target)) await this.requireProcurementAuthorization(tenantId, initial.operationalRequirement);
 
     return this.withTenantTransaction(tenantId, async (tx) => {
       const current = await this.requireMutableFulfillment(tx, tenantId, travelPackageId, requirementId, fulfillmentId);
@@ -485,14 +485,15 @@ export class OperationalFulfillmentsService {
     }) as Promise<FulfillmentState | null>;
   }
 
-  private async requireFinancialEligibility(tenantId: string, requirement: RequirementState) {
-    const source = requirementToCommercialSourceRef(requirement);
-    if (!source) {
+  private async requireProcurementAuthorization(tenantId: string, requirement: RequirementState) {
+    const authorization = procurementAuthorizationForRequirement(requirement);
+    if (authorization.kind === "AUTHORIZED_BY_SOURCE_POLICY") return;
+    if (authorization.kind === "UNAVAILABLE") {
       throw new ConflictException("OPERATIONAL_FULFILLMENT_FINANCIAL_ELIGIBILITY_UNAVAILABLE");
     }
     let result;
     try {
-      [result] = await this.financeEligibility.readMany({ tenantId, sources: [source] });
+      [result] = await this.financeEligibility.readMany({ tenantId, sources: [authorization.source] });
     } catch {
       throw new ConflictException("OPERATIONAL_FULFILLMENT_FINANCIAL_ELIGIBILITY_UNAVAILABLE");
     }

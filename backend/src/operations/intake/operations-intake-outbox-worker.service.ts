@@ -12,6 +12,7 @@ import {
   OPERATIONS_INTAKE_OUTBOX_RETRY_MAX_MS,
   OPERATIONS_INTAKE_OUTBOX_TENANT_BATCH_SIZE,
   OPERATIONS_SOURCE_ITEM_APPROVED_EVENT,
+  TRAVEL_PACKAGE_COST_COMPONENT_SOURCE,
 } from "./operations-intake-outbox.constants";
 import { OperationalWorkMaterializer } from "./operational-work-materializer.service";
 import {
@@ -135,6 +136,10 @@ export class OperationsIntakeOutboxWorkerService implements OnModuleInit, OnModu
             "lastError" = ${MAX_ATTEMPTS_ERROR}, "updatedAt" = ${claimedAt}
         WHERE "tenantId" = ${tenantId}
           AND "attemptCount" >= "maximumAttempts"
+          AND NOT (
+            "sourceType" = ${TRAVEL_PACKAGE_COST_COMPONENT_SOURCE}
+            AND "lastError" LIKE 'PARTICIPANT_NOT_FOUND%'
+          )
           AND (
             ("status" = 'PENDING' AND "availableAt" <= ${claimedAt})
             OR ("status" = 'PROCESSING' AND "lockedAt" < ${leaseCutoff})
@@ -144,7 +149,13 @@ export class OperationsIntakeOutboxWorkerService implements OnModuleInit, OnModu
         SELECT "id", "status" AS "previousStatus"
         FROM "operations_intake_outbox_events"
         WHERE "tenantId" = ${tenantId}
-          AND "attemptCount" < "maximumAttempts"
+          AND (
+            "attemptCount" < "maximumAttempts"
+            OR (
+              "sourceType" = ${TRAVEL_PACKAGE_COST_COMPONENT_SOURCE}
+              AND "lastError" LIKE 'PARTICIPANT_NOT_FOUND%'
+            )
+          )
           AND (
             ("status" = 'PENDING' AND "availableAt" <= ${claimedAt})
             OR ("status" = 'PROCESSING' AND "lockedAt" < ${leaseCutoff})
@@ -187,7 +198,7 @@ export class OperationsIntakeOutboxWorkerService implements OnModuleInit, OnModu
       });
     } catch (error) {
       const failure = classifyFailure(error);
-      if (!failure.retryable || event.attemptCount >= event.maximumAttempts) {
+      if (!failure.retryable || (event.attemptCount >= event.maximumAttempts && !isBaseRosterRetry(event, error))) {
         await this.finishClaim(event, { status: "FAILED", lastError: failure.lastError });
         this.logger.warn({ event: "operations-intake-outbox-terminal-failure", eventId: event.id, tenantId: event.tenantId, sourceId: event.sourceId, sourceLineId: event.sourceLineId, reason: failure.lastError, attemptCount: event.attemptCount });
         return "failed";
@@ -257,7 +268,8 @@ export class OperationsIntakeOutboxWorkerService implements OnModuleInit, OnModu
 function isSupported(event: ClaimedEvent) {
   return event.eventType === OPERATIONS_SOURCE_ITEM_APPROVED_EVENT
     && event.eventVersion === 1
-    && event.sourceType === ADDITIONAL_SERVICE_ORDER_LINE_SOURCE;
+    && (event.sourceType === ADDITIONAL_SERVICE_ORDER_LINE_SOURCE
+      || event.sourceType === TRAVEL_PACKAGE_COST_COMPONENT_SOURCE);
 }
 
 function classifyFailure(error: unknown): { retryable: boolean; lastError: string } {
@@ -273,6 +285,12 @@ function safeError(error: OperationalWorkMaterializationError) {
   const missing = error.diagnostics.missingParticipantCount ?? error.diagnostics.participantCount;
   const detail = typeof missing === "number" && missing >= 0 ? `: ${missing} participant(s) missing` : "";
   return `${error.code}${detail}`.slice(0, 1000);
+}
+
+function isBaseRosterRetry(event: ClaimedEvent, error: unknown) {
+  return event.sourceType === TRAVEL_PACKAGE_COST_COMPONENT_SOURCE
+    && error instanceof OperationalWorkMaterializationError
+    && error.code === "PARTICIPANT_NOT_FOUND";
 }
 
 function retryDelay(attemptCount: number) {

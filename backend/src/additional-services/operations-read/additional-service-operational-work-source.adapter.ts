@@ -95,6 +95,8 @@ export class AdditionalServiceOperationalWorkSourceAdapter implements Operationa
         servicePurposeName: line.serviceName,
         description: descriptionFromPresentation(line.serviceName, presentation),
         participantClientIds: clientIds,
+        sourceSnapshot: null,
+        soldValueScope: "EXACT_SERVICE_LINE",
         soldValue: {
           scope: "EXACT_SERVICE_LINE",
           amount: String(line.finalSellingPrice),

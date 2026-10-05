@@ -1,5 +1,6 @@
 import { Transform } from "class-transformer";
 import { IsBooleanString, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min } from "class-validator";
+import { OPERATIONAL_WORK_SOURCE_CATEGORIES, type OperationalWorkSourceCategory } from "../operational-work-source-filter";
 
 const states = ["PENDING", "IN_PROGRESS", "FULFILLED", "CANCELLED", "NOT_APPLICABLE"] as const;
 const deadlines = ["OVERDUE", "DUE_SOON", "FUTURE", "NONE"] as const;
@@ -15,5 +16,6 @@ export class ListOperationalWorkItemsDto {
   @IsOptional() @IsBooleanString() unassigned?: string;
   @IsOptional() @IsBooleanString() critical?: string;
   @IsOptional() @IsIn(deadlines) deadlineState?: typeof deadlines[number];
+  @IsOptional() @IsIn(OPERATIONAL_WORK_SOURCE_CATEGORIES) sourceCategory?: OperationalWorkSourceCategory;
   @IsOptional() @Transform(({ value }) => typeof value === "string" ? value.trim() : value) @IsString() @MaxLength(100) search?: string;
 }

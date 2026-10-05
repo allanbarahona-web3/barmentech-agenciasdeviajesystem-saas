@@ -48,6 +48,48 @@ describe("OperationalWorkItemsService", () => {
     expect(Object.keys(c.tx)).toEqual(["$executeRaw", "$queryRaw", "travelPackage"]);
   });
 
+  it("pushes BASE_TRIP and ADDITIONAL_SERVICES source categories into the shared query before effective status pagination", async () => {
+    const c = context();
+    c.tx.travelPackage.findFirst.mockResolvedValue({ id: travelPackageId });
+    c.tx.$queryRaw.mockResolvedValueOnce([pageRow({ sourceType: "TRAVEL_PACKAGE_COST_COMPONENT", sourceId: "project-a", sourceLineId: "component-a", sourceVersionId: "snapshot-a", total: 1 })]).mockResolvedValueOnce([enrichment("requirement-a")]);
+
+    await expect(c.service.list(tenantId, travelPackageId, { page: 2, pageSize: 20, sourceCategory: "BASE_TRIP", status: "PENDING", search: "Hotel", participantId: "participant-a", passengerGroupId: "group-a" } as any)).resolves.toMatchObject({
+      items: [{ finance: { state: "AUTHORIZED_BY_SOURCE_POLICY", reason: "TRAVEL_PACKAGE_BASE_COMPONENT" } }],
+    });
+
+    const baseCall = c.tx.$queryRaw.mock.calls[0];
+    expect(nestedSqlValues(baseCall)).toContain("TRAVEL_PACKAGE_COST_COMPONENT");
+    expect(String(baseCall[0])).toContain("filtered AS MATERIALIZED");
+    expect(String(baseCall[0])).toContain("OFFSET");
+
+    c.tx.$queryRaw.mockClear();
+    c.tx.$queryRaw.mockResolvedValueOnce([pageRow({ sourceType: "ADDITIONAL_SERVICE_ORDER_LINE", sourceId: "order-a", sourceLineId: "line-a", total: 1 })]).mockResolvedValueOnce([enrichment("requirement-a")]);
+    c.finance.readMany.mockResolvedValueOnce([{ source: { sourceType: "ADDITIONAL_SERVICE_ORDER_LINE", sourceId: "order-a", sourceLineId: "line-a", travelPackageId }, eligibility: "BLOCKED", reason: "OUTSTANDING_BALANCE" }]);
+    await expect(c.service.list(tenantId, travelPackageId, { page: 1, pageSize: 20, sourceCategory: "ADDITIONAL_SERVICES", active: "true" } as any)).resolves.toMatchObject({
+      items: [{ finance: { state: "BLOCKED", reason: "OUTSTANDING_BALANCE" } }],
+    });
+    expect(nestedSqlValues(c.tx.$queryRaw.mock.calls[0])).toContain("ADDITIONAL_SERVICE_ORDER_LINE");
+    expect(c.finance.readMany).toHaveBeenCalledWith({ tenantId, sources: [{ sourceType: "ADDITIONAL_SERVICE_ORDER_LINE", sourceId: "order-a", sourceLineId: "line-a", travelPackageId }] });
+  });
+
+  it("keeps ALL and omitted filters compatible with historical CONTRACT and MANUAL work", async () => {
+    const c = context();
+    c.tx.travelPackage.findFirst.mockResolvedValue({ id: travelPackageId });
+    c.tx.$queryRaw.mockResolvedValueOnce([pageRow({ id: "contract", sourceType: "CONTRACT" }), pageRow({ id: "manual", sourceType: "MANUAL" })]).mockResolvedValueOnce([enrichment("contract"), enrichment("manual")]);
+
+    await expect(c.service.list(tenantId, travelPackageId, { page: 1, pageSize: 20, sourceCategory: "ALL" } as any)).resolves.toMatchObject({ items: [{ id: "contract" }, { id: "manual" }] });
+  });
+
+  it("reports base work as source-authorized without a Finance read", async () => {
+    const c = context();
+    c.tx.travelPackage.findFirst.mockResolvedValue({ id: travelPackageId });
+    c.tx.$queryRaw.mockResolvedValueOnce([pageRow({ sourceType: "TRAVEL_PACKAGE_COST_COMPONENT", sourceId: "project-a", sourceLineId: "component-a", sourceVersionId: "snapshot-a", total: 1 })]).mockResolvedValueOnce([enrichment("requirement-a")]);
+    await expect(c.service.list(tenantId, travelPackageId, { page: 1, pageSize: 20 } as any)).resolves.toMatchObject({
+      items: [{ finance: { state: "AUTHORIZED_BY_SOURCE_POLICY", reason: "TRAVEL_PACKAGE_BASE_COMPONENT" } }],
+    });
+    expect(c.finance.readMany).not.toHaveBeenCalled();
+  });
+
   it("projects coverage-complete work as FULFILLED and filters it from active work before pagination", async () => {
     const c = context();
     c.tx.travelPackage.findFirst.mockResolvedValue({ id: travelPackageId });
@@ -88,4 +130,14 @@ function pageRow(overrides: Record<string, unknown>) {
 
 function enrichment(id: string, overrides: Record<string, unknown> = {}) {
   return { id, fulfilledPassengerCount: 0, fulfillmentCount: 0, confirmedFulfillmentCount: 0, purchaseCount: 0, evidenceCount: 0, passengerPreview: [], coveredParticipantIds: [], ...overrides };
+}
+
+function nestedSqlValues(value: unknown): unknown[] {
+  if (Array.isArray(value)) return value.flatMap(nestedSqlValues);
+  if (value && typeof value === "object") {
+    const values = (value as { values?: unknown }).values;
+    if (Array.isArray(values)) return values.flatMap(nestedSqlValues);
+    return [];
+  }
+  return [value];
 }

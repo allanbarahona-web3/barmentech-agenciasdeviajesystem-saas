@@ -47,6 +47,22 @@ describe("OperationalPassengerOverviewService", () => {
     expect(c.finance.readMany).not.toHaveBeenCalled();
   });
 
+  it("reports base work as source-authorized without asking Finance for payment data", async () => {
+    const c = context();
+    setupTrip(c);
+    c.tx.travelPackageParticipant.findMany.mockResolvedValue([{ id: "p-a", clientId: "c-a", role: "HOLDER", client: { fullName: "Ada" } }]);
+    c.tx.travelPackageParticipant.count.mockResolvedValue(1);
+    c.tx.passengerGroupMember.findMany.mockResolvedValue([]);
+    c.tx.operationalRequirementPassenger.findMany.mockResolvedValue([assignment("p-a", "r-base", sourceRequirement("TRAVEL_PACKAGE_COST_COMPONENT", "project-a", "component-a"))]);
+    c.tx.operationalFulfillmentPassenger.findMany.mockResolvedValue([]);
+    c.notes.readNotesForParticipants.mockResolvedValue(new Map());
+    c.additional.readForClients.mockResolvedValue(new Map());
+    await expect(c.service.list(tenantId, travelPackageId, { page: 1, pageSize: 20 })).resolves.toMatchObject({ items: [
+      { financeEligibility: { eligibility: "AUTHORIZED_BY_SOURCE_POLICY", reason: "TRAVEL_PACKAGE_BASE_COMPONENT" } },
+    ] });
+    expect(c.finance.readMany).not.toHaveBeenCalled();
+  });
+
   it("keeps the roster usable when optional readers are unavailable", async () => {
     const c = context();
     setupTrip(c);

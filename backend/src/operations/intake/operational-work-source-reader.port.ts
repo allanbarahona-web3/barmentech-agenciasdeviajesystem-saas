@@ -1,5 +1,21 @@
 export const OPERATIONAL_WORK_SOURCE_READER = Symbol("OPERATIONAL_WORK_SOURCE_READER");
 
+export type OperationalWorkSourceSnapshot = {
+  travelPackageId: string;
+  costingProjectId: string;
+  costComponentId: string;
+  category: { code: string; displayName: string };
+  title: string;
+  description: string | null;
+  structuredDetails: unknown;
+  detailSchemaVersion: number | null;
+  quantity: string | null;
+  unit: string | null;
+  supplier: { id: string; name: string } | null;
+  currentCostSnapshotId: string;
+  currentInternalCost: { amount: string; currency: string };
+};
+
 export type OperationalWorkSourceReference = {
   tenantId: string;
   travelPackageId: string;
@@ -15,7 +31,16 @@ export type OperationalWorkSourceItem = OperationalWorkSourceReference & {
   servicePurposeCode: string;
   servicePurposeName: string;
   description: string;
+  /**
+   * Additional Services supplies explicit client identities. Base package work
+   * is instead expanded later from the tenant/package scoped contracted roster.
+   */
   participantClientIds: string[];
+  participantScope?: "ALL_CONTRACTED_TRAVEL_PACKAGE_PARTICIPANTS";
+  /** Context only; Cost Engine remains authoritative for cost history. */
+  sourceSnapshot: OperationalWorkSourceSnapshot | null;
+  /** Explicit even when soldValue is null, so NONE is not inferred by consumers. */
+  soldValueScope: "EXACT_SERVICE_LINE" | "NONE";
   soldValue: {
     scope: "EXACT_SERVICE_LINE";
     amount: string;

@@ -3,7 +3,7 @@ import { Prisma } from "@prisma/client";
 import { FINANCE_ELIGIBILITY_READER, type FinanceEligibilityReader } from "../../finance/eligibility-read/finance-eligibility-reader.port";
 import { PrismaService } from "../../prisma/prisma.service";
 import { runTenantTransaction } from "../../tenant/tenant-transaction";
-import { requirementToCommercialSourceRef } from "../requirement-finance-source";
+import { procurementAuthorizationForRequirement } from "../operational-procurement-authorization";
 import { CreateOperationalPurchaseDto, ListOperationalPurchasesDto, UpdateOperationalPurchaseDto } from "./dto/operational-purchases.dto";
 
 export type OperationalPurchasesActor = { userId: string; name: string };
@@ -59,7 +59,7 @@ export class OperationalPurchasesService {
   async create(tenantId: string, travelPackageId: string, requirementId: string, fulfillmentId: string, input: CreateOperationalPurchaseDto, actor: OperationalPurchasesActor) {
     const fields = createFields(input);
     const initial = await this.withTransaction(tenantId, (tx) => this.requireMutableParent(tx, tenantId, travelPackageId, requirementId, fulfillmentId));
-    await this.requireFinancialEligibility(tenantId, initial.requirement);
+    await this.requireProcurementAuthorization(tenantId, initial.requirement);
     return this.withTransaction(tenantId, async (tx) => {
       const parent = await this.requireMutableParent(tx, tenantId, travelPackageId, requirementId, fulfillmentId);
       const requirementLocked = await tx.operationalRequirement.updateMany({
@@ -139,11 +139,12 @@ export class OperationalPurchasesService {
     }) as Promise<Purchase | null>;
   }
 
-  private async requireFinancialEligibility(tenantId: string, requirement: Requirement) {
-    const source = requirementToCommercialSourceRef(requirement);
-    if (!source) throw new ConflictException("OPERATIONAL_PURCHASE_FINANCIAL_ELIGIBILITY_UNAVAILABLE");
+  private async requireProcurementAuthorization(tenantId: string, requirement: Requirement) {
+    const authorization = procurementAuthorizationForRequirement(requirement);
+    if (authorization.kind === "AUTHORIZED_BY_SOURCE_POLICY") return;
+    if (authorization.kind === "UNAVAILABLE") throw new ConflictException("OPERATIONAL_PURCHASE_FINANCIAL_ELIGIBILITY_UNAVAILABLE");
     let result;
-    try { [result] = await this.financeEligibility.readMany({ tenantId, sources: [source] }); }
+    try { [result] = await this.financeEligibility.readMany({ tenantId, sources: [authorization.source] }); }
     catch { throw new ConflictException("OPERATIONAL_PURCHASE_FINANCIAL_ELIGIBILITY_UNAVAILABLE"); }
     if (!result || result.eligibility !== "ELIGIBLE") {
       if (!result || result.reason === "FINANCIAL_DATA_MISSING") throw new ConflictException("OPERATIONAL_PURCHASE_FINANCIAL_ELIGIBILITY_UNAVAILABLE");

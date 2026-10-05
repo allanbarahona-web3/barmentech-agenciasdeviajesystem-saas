@@ -43,6 +43,15 @@ describe("OperationsIntakeOutboxWorkerService", () => {
     }
   });
 
+  it("accepts a TravelPackage CostComponent event and routes it through the existing materializer", async () => {
+    const c = context([event({ sourceType: "TRAVEL_PACKAGE_COST_COMPONENT", sourceId: "project-a", sourceLineId: "component-a" })]);
+    c.materialize.mockResolvedValue({ status: "CREATED", operationalRequirementId: "requirement-base" });
+    await expect(c.worker.processAvailableBatch("tenant-a")).resolves.toMatchObject({ processed: 1, failed: 0 });
+    expect(c.materialize).toHaveBeenCalledWith({
+      tenantId: "tenant-a", travelPackageId: "travel-a", sourceType: "TRAVEL_PACKAGE_COST_COMPONENT", sourceId: "project-a", sourceLineId: "component-a",
+    });
+  });
+
   it("schedules a bounded retry for a missing participant without creating partial work", async () => {
     jest.useFakeTimers().setSystemTime(new Date("2026-10-01T12:00:00.000Z"));
     const c = context([event({ attemptCount: 1, maximumAttempts: 5 })]);
@@ -83,6 +92,24 @@ describe("OperationsIntakeOutboxWorkerService", () => {
     await c.worker.processAvailableBatch("tenant-a");
     expect(c.tx.operationsIntakeOutboxEvent.updateMany).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ status: "FAILED", lastError: "PARTICIPANT_NOT_FOUND" }),
+    }));
+  });
+
+  it("keeps a base component pending after the normal limit while the contracted roster is absent", async () => {
+    const c = context([event({ sourceType: "TRAVEL_PACKAGE_COST_COMPONENT", sourceId: "project-a", sourceLineId: "component-a", attemptCount: 5, maximumAttempts: 5 })]);
+    c.materialize.mockRejectedValue(new OperationalWorkMaterializationError("PARTICIPANT_NOT_FOUND", true, { participantCount: 0 }));
+    await expect(c.worker.processAvailableBatch("tenant-a")).resolves.toMatchObject({ retried: 1, failed: 0 });
+    expect(c.tx.operationsIntakeOutboxEvent.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: "PENDING", lastError: "PARTICIPANT_NOT_FOUND: 0 participant(s) missing" }),
+    }));
+  });
+
+  it("marks an archived base component source terminal without materializing work", async () => {
+    const c = context([event({ sourceType: "TRAVEL_PACKAGE_COST_COMPONENT", sourceId: "project-a", sourceLineId: "component-a" })]);
+    c.materialize.mockRejectedValue(new OperationalWorkMaterializationError("SOURCE_NOT_ELIGIBLE", false));
+    await expect(c.worker.processAvailableBatch("tenant-a")).resolves.toMatchObject({ failed: 1, retried: 0 });
+    expect(c.tx.operationsIntakeOutboxEvent.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: "FAILED", lastError: "SOURCE_NOT_ELIGIBLE" }),
     }));
   });
 

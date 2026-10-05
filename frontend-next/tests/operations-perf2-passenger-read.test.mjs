@@ -9,7 +9,7 @@ const api = () => read('../src/lib/operations-api.ts');
 test('passenger mode uses the dedicated bounded roster endpoint with no legacy overview request', () => {
   const source = workspace();
   assert.match(source, /getOperationalPassengerRoster\(travelPackageId, 1, search \|\| undefined\)/);
-  assert.doesNotMatch(source, /getOperationalPassengerOverview|operationalNotes|financeEligibility|missingItems|passenger\.requirements/);
+  assert.doesNotMatch(source, /getOperationalPassengerOverview|financeEligibility|missingItems|passenger\.requirements/);
   assert.match(api(), /passenger-roster\?\$\{params\.toString\(\)\}/);
   assert.match(api(), /pageSize: '20'/);
 });

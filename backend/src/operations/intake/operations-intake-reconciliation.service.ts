@@ -5,6 +5,7 @@ import { runTenantTransaction } from "../../tenant/tenant-transaction";
 import {
   ADDITIONAL_SERVICE_ORDER_LINE_SOURCE,
   OPERATIONS_SOURCE_ITEM_APPROVED_EVENT,
+  TRAVEL_PACKAGE_COST_COMPONENT_SOURCE,
 } from "./operations-intake-outbox.constants";
 import { persistOperationsIntakeOutboxEvents } from "./operations-intake-outbox-writer";
 import {
@@ -18,6 +19,14 @@ import {
   type OperationalWorkSourceReader,
   type OperationalWorkSourceReference,
 } from "./operational-work-source-reader.port";
+import {
+  OPERATIONAL_CONTRACTED_TRAVEL_PACKAGE_ROSTER_READER,
+  type ContractedTravelPackageRosterReader,
+} from "./contracted-travel-package-roster-reader.port";
+import {
+  TRAVEL_PACKAGE_COST_COMPONENT_RECONCILIATION_READER,
+  type TravelPackageCostComponentOperationalWorkSourceReconciliationAdapter,
+} from "./travel-package-cost-component-operational-work-source-reconciliation.adapter";
 
 type ReconciliationState =
   | "VALID"
@@ -71,6 +80,47 @@ export type ReconciliationSummary = {
   cancelledWithActivity: number;
 };
 
+export type TravelPackageBaseReconciliationState =
+  | "HEALTHY"
+  | "MISSING_INTAKE"
+  | "IN_FLIGHT"
+  | "FAILED"
+  | "INCONSISTENT"
+  | "PASSENGER_EXPANSION"
+  | "PASSENGER_CONTRACTION"
+  | "SOURCE_DRIFT"
+  | "SOURCE_INACTIVE"
+  | "SNAPSHOT_UNAVAILABLE";
+
+export type TravelPackageBaseReconciliationResult = {
+  items: Array<{
+    sourceType: typeof TRAVEL_PACKAGE_COST_COMPONENT_SOURCE;
+    sourceId: string;
+    sourceLineId: string;
+    state: TravelPackageBaseReconciliationState;
+    operationalRequirementId?: string;
+    outboxEventId?: string;
+    issueCode?: string;
+    changedFields?: string[];
+  }>;
+  nextCursor: string | null;
+  summary: {
+    scanned: number;
+    healthy: number;
+    missingIntake: number;
+    inFlight: number;
+    failed: number;
+    inconsistent: number;
+    passengerExpansion: number;
+    passengerContraction: number;
+    sourceDrift: number;
+    sourceInactive: number;
+    snapshotUnavailable: number;
+    eventsCreated: number;
+    eventsReplayed: number;
+  };
+};
+
 const DEFAULT_PAGE_SIZE = 25;
 const MAX_PAGE_SIZE = 25;
 
@@ -84,6 +134,10 @@ export class OperationsIntakeReconciliationService {
     private readonly sourceReconciliationReader: OperationalWorkSourceReconciliationReader,
     @Inject(OPERATIONAL_WORK_SOURCE_READER)
     private readonly sourceReader: OperationalWorkSourceReader,
+    @Inject(TRAVEL_PACKAGE_COST_COMPONENT_RECONCILIATION_READER)
+    private readonly baseSourceReconciliationReader: TravelPackageCostComponentOperationalWorkSourceReconciliationAdapter,
+    @Inject(OPERATIONAL_CONTRACTED_TRAVEL_PACKAGE_ROSTER_READER)
+    private readonly contractedRosterReader: ContractedTravelPackageRosterReader,
   ) {}
 
   /** Explicit bounded repair for commercially approved source lines. Defaults to dry-run. */
@@ -220,6 +274,138 @@ export class OperationsIntakeReconciliationService {
     return result;
   }
 
+  /**
+   * Bounded, source-aware audit and safe repair for Cost Engine base work.
+   * Requirement snapshots and execution remain strictly read-only here.
+   */
+  async reconcileTravelPackageBaseComponents(
+    input: OperationsIntakeReconciliationInput,
+  ): Promise<TravelPackageBaseReconciliationResult> {
+    const limit = normalizeLimit(input.limit);
+    const dryRun = input.dryRun ?? true;
+    const sourcePage = await this.baseSourceReconciliationReader.scanSources({
+      tenantId: input.tenantId,
+      travelPackageId: input.travelPackageId,
+      cursor: input.cursor,
+      limit,
+    });
+    const references = sourcePage.sources.map((source) => source.reference);
+    const pairs = references.map(identityWhere);
+    const snapshot = await runTenantTransaction<any, BaseReconciliationSnapshot>(this.prisma as any, input.tenantId, async (tx) => {
+      if (pairs.length === 0) return { requirements: [], outboxEvents: [], passengers: [] };
+      const requirementWhere = {
+        tenantId: input.tenantId,
+        sourceType: TRAVEL_PACKAGE_COST_COMPONENT_SOURCE,
+        OR: pairs,
+      };
+      const [requirements, outboxEvents] = await Promise.all([
+        tx.operationalRequirement.findMany({
+          where: requirementWhere,
+          select: { id: true, travelPackageId: true, sourceId: true, sourceLineId: true, sourceSnapshot: true },
+        }),
+        tx.operationsIntakeOutboxEvent.findMany({
+          where: {
+            tenantId: input.tenantId,
+            eventType: OPERATIONS_SOURCE_ITEM_APPROVED_EVENT,
+            sourceType: TRAVEL_PACKAGE_COST_COMPONENT_SOURCE,
+            OR: pairs,
+          },
+          select: { id: true, travelPackageId: true, sourceId: true, sourceLineId: true, status: true },
+        }),
+      ]);
+      const requirementIds = requirements.map((requirement: any) => requirement.id);
+      const passengers = requirementIds.length === 0 ? [] : await tx.operationalRequirementPassenger.findMany({
+        where: { tenantId: input.tenantId, operationalRequirementId: { in: requirementIds } },
+        select: { operationalRequirementId: true, travelPackageParticipantId: true },
+      });
+      return { requirements, outboxEvents, passengers };
+    });
+    const requirementsBySource = mapBySource(snapshot.requirements);
+    const eventsBySource = mapBySource(snapshot.outboxEvents);
+    const requirementPassengerIds = groupRequirementPassengerIds(snapshot.passengers);
+    const rosterPackageIds = [...new Set(snapshot.requirements.map((requirement) => requirement.travelPackageId))];
+    const rosters = await this.contractedRosterReader.readContractedRosters({ tenantId: input.tenantId, travelPackageIds: rosterPackageIds });
+    const result: TravelPackageBaseReconciliationResult = {
+      items: [], nextCursor: sourcePage.nextCursor, summary: emptyBaseSummary(sourcePage.sources.length),
+    };
+    const eventsToCreate: Array<ReturnType<typeof intakeEventFromSource>> = [];
+    const processedEventIdsToReplay: string[] = [];
+
+    for (const source of sourcePage.sources) {
+      const reference = source.reference;
+      const key = operationalWorkSourceIdentityKey(reference);
+      const requirement = requirementsBySource.get(key);
+      const event = eventsBySource.get(key);
+      let classified: Omit<TravelPackageBaseReconciliationResult["items"][number], "sourceType" | "sourceId" | "sourceLineId">;
+
+      if (source.state === "SOURCE_INACTIVE") {
+        classified = { state: "SOURCE_INACTIVE", operationalRequirementId: requirement?.id, outboxEventId: event?.id, issueCode: "ARCHIVED_SOURCE" };
+      } else if (source.state !== "VALID" || !source.item) {
+        classified = { state: "INCONSISTENT", operationalRequirementId: requirement?.id, outboxEventId: event?.id, issueCode: "SOURCE_NOT_ELIGIBLE" };
+      } else if (!requirement) {
+        if (!event) {
+          classified = { state: "MISSING_INTAKE" };
+          if (!dryRun) eventsToCreate.push(intakeEventFromSource(source.item));
+        } else if (event.status === "PENDING" || event.status === "PROCESSING") {
+          classified = { state: "IN_FLIGHT", outboxEventId: event.id };
+        } else if (event.status === "FAILED") {
+          classified = { state: "FAILED", outboxEventId: event.id, issueCode: "FAILED_INTAKE" };
+        } else {
+          classified = { state: "INCONSISTENT", outboxEventId: event.id, issueCode: "PROCESSED_WITHOUT_WORK" };
+        }
+      } else if (event?.status === "FAILED") {
+        classified = { state: "FAILED", operationalRequirementId: requirement.id, outboxEventId: event.id, issueCode: "FAILED_INTAKE" };
+      } else if (event?.status === "PENDING" || event?.status === "PROCESSING") {
+        classified = { state: "IN_FLIGHT", operationalRequirementId: requirement.id, outboxEventId: event.id };
+      } else if (requirement.sourceSnapshot === null) {
+        classified = { state: "SNAPSHOT_UNAVAILABLE", operationalRequirementId: requirement.id, outboxEventId: event?.id, issueCode: "SNAPSHOT_UNAVAILABLE" };
+      } else {
+        const changedFields = changedSourceSnapshotFields(requirement.sourceSnapshot, source.item.sourceSnapshot);
+        if (changedFields.length > 0) {
+          classified = { state: "SOURCE_DRIFT", operationalRequirementId: requirement.id, outboxEventId: event?.id, issueCode: "SOURCE_SNAPSHOT_DRIFT", changedFields };
+        } else {
+          const currentPassengerIds = new Set((rosters.get(requirement.travelPackageId) ?? []).map((participant) => participant.id));
+          const storedPassengerIds = requirementPassengerIds.get(requirement.id) ?? new Set<string>();
+          const hasExpansion = [...currentPassengerIds].some((participantId) => !storedPassengerIds.has(participantId));
+          const hasContraction = [...storedPassengerIds].some((participantId) => !currentPassengerIds.has(participantId));
+          if (hasExpansion) {
+            classified = { state: "PASSENGER_EXPANSION", operationalRequirementId: requirement.id, outboxEventId: event?.id };
+            if (!dryRun) {
+              if (!event) eventsToCreate.push(intakeEventFromSource(source.item));
+              else if (event.status === "PROCESSED") processedEventIdsToReplay.push(event.id);
+            }
+          } else if (hasContraction) {
+            classified = { state: "PASSENGER_CONTRACTION", operationalRequirementId: requirement.id, outboxEventId: event?.id, issueCode: "PASSENGER_SCOPE_CONTRACTION" };
+          } else {
+            classified = { state: "HEALTHY", operationalRequirementId: requirement.id, outboxEventId: event?.id };
+          }
+        }
+      }
+      result.items.push({ sourceType: TRAVEL_PACKAGE_COST_COMPONENT_SOURCE, sourceId: reference.sourceId, sourceLineId: reference.sourceLineId, ...classified });
+      addBaseSummary(result.summary, classified.state);
+    }
+
+    if (!dryRun && (eventsToCreate.length > 0 || processedEventIdsToReplay.length > 0)) {
+      const repaired = await runTenantTransaction<any, { created: number; replayed: number }>(this.prisma as any, input.tenantId, async (tx) => {
+        const created = eventsToCreate.length === 0 ? { count: 0 } : await persistOperationsIntakeOutboxEvents(tx, eventsToCreate);
+        const replayed = processedEventIdsToReplay.length === 0 ? { count: 0 } : await tx.operationsIntakeOutboxEvent.updateMany({
+          where: {
+            id: { in: processedEventIdsToReplay }, tenantId: input.tenantId,
+            eventType: OPERATIONS_SOURCE_ITEM_APPROVED_EVENT,
+            sourceType: TRAVEL_PACKAGE_COST_COMPONENT_SOURCE,
+            status: "PROCESSED",
+          },
+          data: { status: "PENDING", attemptCount: 0, availableAt: new Date(), lockedAt: null, lockedBy: null, processedAt: null, lastAttemptAt: null, lastError: null },
+        });
+        return { created: created.count, replayed: replayed.count };
+      });
+      result.summary.eventsCreated = repaired.created;
+      result.summary.eventsReplayed = repaired.replayed;
+    }
+    this.logger.log({ event: "travel-package-base-operations-reconciliation-completed", tenantId: input.tenantId, dryRun, ...result.summary });
+    return result;
+  }
+
   /** Explicit retry only for a currently valid source (or temporary participant absence). */
   async retryFailedAdditionalServiceEvent(tenantId: string, eventId: string): Promise<{ status: "REQUEUED" | "NOT_RETRYABLE" | "NOT_FOUND" }> {
     const event = await runTenantTransaction<any, any>(this.prisma as any, tenantId, (tx) => tx.operationsIntakeOutboxEvent.findFirst({
@@ -246,7 +432,85 @@ export class OperationsIntakeReconciliationService {
 }
 
 type ReconciliationSnapshot = { requirements: Array<{ id: string; travelPackageId: string; sourceId: string | null; sourceLineId: string | null }>; outboxEvents: Array<{ id: string; travelPackageId: string; sourceId: string; sourceLineId: string; status: string }> };
+type BaseReconciliationSnapshot = {
+  requirements: Array<{ id: string; travelPackageId: string; sourceId: string | null; sourceLineId: string | null; sourceSnapshot: Prisma.JsonValue | null }>;
+  outboxEvents: Array<{ id: string; travelPackageId: string; sourceId: string; sourceLineId: string; status: string }>;
+  passengers: Array<{ operationalRequirementId: string; travelPackageParticipantId: string }>;
+};
 type RequirementAuditPage = { items: any[]; passengers: any[]; fulfillments: any[]; nextCursor: string | null };
+
+function intakeEventFromSource(item: { tenantId: string; travelPackageId: string; sourceType: string; sourceId: string; sourceLineId: string; sourceVersionId: string | null }) {
+  return {
+    tenantId: item.tenantId,
+    travelPackageId: item.travelPackageId,
+    eventType: OPERATIONS_SOURCE_ITEM_APPROVED_EVENT,
+    eventVersion: 1,
+    sourceType: item.sourceType,
+    sourceId: item.sourceId,
+    sourceLineId: item.sourceLineId,
+    sourceVersionId: item.sourceVersionId,
+    availableAt: new Date(),
+  };
+}
+
+function emptyBaseSummary(scanned: number): TravelPackageBaseReconciliationResult["summary"] {
+  return {
+    scanned, healthy: 0, missingIntake: 0, inFlight: 0, failed: 0,
+    inconsistent: 0, passengerExpansion: 0, passengerContraction: 0,
+    sourceDrift: 0, sourceInactive: 0, snapshotUnavailable: 0,
+    eventsCreated: 0, eventsReplayed: 0,
+  };
+}
+
+function addBaseSummary(
+  summary: TravelPackageBaseReconciliationResult["summary"],
+  state: TravelPackageBaseReconciliationState,
+) {
+  if (state === "HEALTHY") summary.healthy += 1;
+  else if (state === "MISSING_INTAKE") summary.missingIntake += 1;
+  else if (state === "IN_FLIGHT") summary.inFlight += 1;
+  else if (state === "FAILED") summary.failed += 1;
+  else if (state === "INCONSISTENT") summary.inconsistent += 1;
+  else if (state === "PASSENGER_EXPANSION") summary.passengerExpansion += 1;
+  else if (state === "PASSENGER_CONTRACTION") summary.passengerContraction += 1;
+  else if (state === "SOURCE_DRIFT") summary.sourceDrift += 1;
+  else if (state === "SOURCE_INACTIVE") summary.sourceInactive += 1;
+  else summary.snapshotUnavailable += 1;
+}
+
+function groupRequirementPassengerIds(rows: BaseReconciliationSnapshot["passengers"]) {
+  const result = new Map<string, Set<string>>();
+  for (const row of rows) {
+    const participantIds = result.get(row.operationalRequirementId) ?? new Set<string>();
+    participantIds.add(row.travelPackageParticipantId);
+    result.set(row.operationalRequirementId, participantIds);
+  }
+  return result;
+}
+
+const SOURCE_SNAPSHOT_FIELDS = [
+  "travelPackageId", "costingProjectId", "costComponentId", "category", "title",
+  "description", "structuredDetails", "detailSchemaVersion", "quantity", "unit",
+  "supplier", "currentCostSnapshotId", "currentInternalCost",
+] as const;
+
+function changedSourceSnapshotFields(
+  persisted: unknown,
+  current: unknown,
+): string[] {
+  if (!isRecord(persisted) || !isRecord(current)) return ["sourceSnapshot"];
+  return SOURCE_SNAPSHOT_FIELDS.filter((field) => canonicalJson(persisted[field]) !== canonicalJson(current[field]));
+}
+
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (isRecord(value)) return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(",")}}`;
+  return JSON.stringify(value === undefined ? null : value);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
 function identityWhere(item: Pick<OperationalWorkSourceReference, "travelPackageId" | "sourceId" | "sourceLineId">) {
   return { travelPackageId: item.travelPackageId, sourceId: item.sourceId, sourceLineId: item.sourceLineId };
