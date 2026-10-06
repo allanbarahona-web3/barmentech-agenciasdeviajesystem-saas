@@ -23,7 +23,9 @@ export class CustomQuotationCommercialLinesService {
   }
 
   async list(tenantId: string, quotationId: string) {
-    return this.withTenantTransaction(tenantId, async (tx) => ({ lines: await this.listInTransaction(tx, tenantId, quotationId) }));
+    return this.withTenantTransaction(tenantId, async (tx) => ({
+      lines: (await this.listInTransaction(tx, tenantId, quotationId)).map(({ costComponentId: _costComponentId, ...line }) => line),
+    }));
   }
 
   async listInTransaction(tx: CommercialLinesTransaction, tenantId: string, quotationId: string): Promise<DerivedCommercialLine[]> {

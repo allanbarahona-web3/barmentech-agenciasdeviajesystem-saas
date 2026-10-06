@@ -10,6 +10,7 @@ export type CommercialCostComponent = {
 };
 
 export type DerivedCommercialLine = {
+  costComponentId: string;
   displayOrder: number;
   description: string;
   quantity: string;
@@ -24,12 +25,12 @@ export function mapCostComponentsToCommercialLines(components: CommercialCostCom
   const lines: DerivedCommercialLine[] = [];
   for (const component of components) {
     const line = mapComponent(component);
-    if (line) lines.push({ ...line, displayOrder: lines.length + 1 });
+    if (line) lines.push({ costComponentId: component.id, ...line, displayOrder: lines.length + 1 });
   }
   return lines;
 }
 
-function mapComponent(component: CommercialCostComponent): Omit<DerivedCommercialLine, "displayOrder"> | null {
+function mapComponent(component: CommercialCostComponent): Omit<DerivedCommercialLine, "costComponentId" | "displayOrder"> | null {
   const code = component.costCategory.code;
   const details = component.detailSchemaVersion === 1 && isObject(component.detailPayload) ? component.detailPayload : null;
   const title = text(component.title);
@@ -80,7 +81,11 @@ function mapComponent(component: CommercialCostComponent): Omit<DerivedCommercia
   }
 }
 
-function line(description: string, quantity: string, commercialNote: string | null): Omit<DerivedCommercialLine, "displayOrder"> {
+function line(
+  description: string,
+  quantity: string,
+  commercialNote: string | null,
+): Omit<DerivedCommercialLine, "costComponentId" | "displayOrder"> {
   return { description, quantity, commercialNote };
 }
 
