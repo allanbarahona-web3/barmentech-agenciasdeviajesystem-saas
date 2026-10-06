@@ -11,6 +11,7 @@ import type { CustomQuotationActor } from "./custom-quotations.service";
 const SOURCE_TYPE = "CUSTOM_QUOTATION_VERSION";
 const SERVICE_CODE = "CUSTOM_QUOTATION";
 const HUNDRED = new Prisma.Decimal("100");
+const MAX_SALES_ORDER_LINES = 25;
 
 type CustomQuotationSalesOrderTransaction = SalesOrderMaterializationTransaction & {
   customQuotation: Record<string, (...args: any[]) => Promise<any>>;
@@ -63,10 +64,18 @@ export class CustomQuotationSalesOrderService {
           taxRateCode: true,
           fiscalTaxPercentage: true,
           salesOrderId: true,
+          lines: {
+            orderBy: [{ displayOrder: "asc" }, { id: "asc" }],
+            select: {
+              id: true,
+              soldAmount: true,
+              description: true,
+              commercialNote: true,
+            },
+          },
           customQuotation: {
             select: {
               id: true,
-              quotationNumber: true,
               status: true,
               customerId: true,
               customer: { select: { fullName: true, email: true } },
@@ -95,39 +104,26 @@ export class CustomQuotationSalesOrderService {
       }
 
       const fiscalTaxPercentage = asPercentage(version.fiscalTaxPercentage, "CUSTOM_QUOTATION_VERSION_FISCAL_TAX_INVALID");
-      const amounts = inclusiveAmounts(version.finalSellingPrice, fiscalTaxPercentage);
-      const consolidatedFiscalDescription = quotationFiscalDescription(version.customQuotation.quotationNumber);
+      const lines = materializedLines(version, fiscalTaxPercentage);
+      const totals = sumMaterializedAmounts(lines);
+      if (!totals.total.equals(asAmount(version.finalSellingPrice, "CUSTOM_QUOTATION_VERSION_PRICE_INVALID"))) {
+        throw new ConflictException("CUSTOM_QUOTATION_VERSION_SOLD_AMOUNT_MISMATCH");
+      }
       const result = await this.salesOrders.materializeInTransaction(tx, { tenantId }, {
         source: { tenantId, sourceType: SOURCE_TYPE, sourceId: version.id },
         customerId: version.customQuotation.customerId,
         customerName: version.customQuotation.customer.fullName,
         customerEmail: version.customQuotation.customer.email,
         currency: version.currency,
-        commercialSubtotal: amounts.subtotal,
-        totalVat: amounts.vatAmount,
-        total: amounts.total,
+        commercialSubtotal: totals.subtotal,
+        totalVat: totals.vatAmount,
+        total: totals.total,
         paymentConditionType: version.paymentConditionType,
         paymentTermValue: version.paymentTermValue,
         paymentTermUnit: version.paymentTermUnit,
         commercialObservations: version.commercialObservations,
         actor,
-        lines: [{
-          serviceCode: SERVICE_CODE,
-          description: consolidatedFiscalDescription,
-          fiscalItemCategory: version.fiscalItemCategory,
-          fiscalDescription: consolidatedFiscalDescription,
-          cabysCode: version.cabysCode,
-          unitOfMeasureCode: version.unitOfMeasureCode,
-          taxCode: version.taxCode,
-          taxRateCode: version.taxRateCode,
-          fiscalTaxPercentage,
-          fiscalClassificationId: version.fiscalClassificationId,
-          subtotal: amounts.subtotal,
-          vatPercentage: fiscalTaxPercentage,
-          vatAmount: amounts.vatAmount,
-          total: amounts.total,
-          participants: [],
-        }],
+        lines,
       });
 
       const linked = await tx.customQuotationVersion.updateMany({
@@ -185,19 +181,76 @@ function validateVersionSnapshot(version: any) {
   if (!validTerms) throw new ConflictException("CUSTOM_QUOTATION_VERSION_PAYMENT_TERMS_INVALID");
 }
 
-function quotationFiscalDescription(quotationNumber: unknown) {
-  if (typeof quotationNumber !== "string" || !quotationNumber.trim()) {
-    throw new ConflictException("CUSTOM_QUOTATION_VERSION_SNAPSHOT_INVALID");
+function materializedLines(version: any, fiscalTaxPercentage: Prisma.Decimal) {
+  if (!Array.isArray(version.lines) || version.lines.length === 0) {
+    throw new ConflictException("CUSTOM_QUOTATION_VERSION_LINES_EMPTY");
   }
-  return `Servicios de viaje según cotización ${quotationNumber}`;
+  if (version.lines.length > MAX_SALES_ORDER_LINES) {
+    throw new ConflictException("CUSTOM_QUOTATION_VERSION_LINES_LIMIT_EXCEEDED");
+  }
+  return version.lines.map((versionLine: any) => {
+    if (versionLine.soldAmount === null || versionLine.soldAmount === undefined) {
+      throw new ConflictException("CUSTOM_QUOTATION_VERSION_LINE_SOLD_AMOUNT_MISSING");
+    }
+    const amounts = inclusiveAmounts(versionLine.soldAmount, fiscalTaxPercentage);
+    return {
+      customQuotationVersionLineId: requiredIdentifier(versionLine.id, "CUSTOM_QUOTATION_VERSION_LINE_INVALID"),
+      serviceCode: SERVICE_CODE,
+      description: requiredDescription(versionLine.description),
+      fiscalItemCategory: version.fiscalItemCategory,
+      fiscalDescription: requiredDescription(versionLine.description),
+      cabysCode: version.cabysCode,
+      unitOfMeasureCode: version.unitOfMeasureCode,
+      taxCode: version.taxCode,
+      taxRateCode: version.taxRateCode,
+      fiscalTaxPercentage,
+      fiscalClassificationId: version.fiscalClassificationId,
+      commercialNotes: optionalCommercialNote(versionLine.commercialNote),
+      subtotal: amounts.subtotal,
+      vatPercentage: fiscalTaxPercentage,
+      vatAmount: amounts.vatAmount,
+      total: amounts.total,
+      participants: [],
+    };
+  });
 }
 
-function inclusiveAmounts(finalSellingPrice: unknown, fiscalTaxPercentage: unknown) {
-  const total = asAmount(finalSellingPrice, "CUSTOM_QUOTATION_VERSION_PRICE_INVALID");
+function sumMaterializedAmounts(lines: ReadonlyArray<{ subtotal: Prisma.Decimal; vatAmount: Prisma.Decimal; total: Prisma.Decimal }>) {
+  return lines.reduce((sums, line) => ({
+    subtotal: sums.subtotal.plus(line.subtotal),
+    vatAmount: sums.vatAmount.plus(line.vatAmount),
+    total: sums.total.plus(line.total),
+  }), { subtotal: new Prisma.Decimal(0), vatAmount: new Prisma.Decimal(0), total: new Prisma.Decimal(0) });
+}
+
+function inclusiveAmounts(soldAmount: unknown, fiscalTaxPercentage: unknown) {
+  const total = asAmount(soldAmount, "CUSTOM_QUOTATION_VERSION_LINE_SOLD_AMOUNT_INVALID");
   const taxPercent = asPercentage(fiscalTaxPercentage, "CUSTOM_QUOTATION_VERSION_FISCAL_TAX_INVALID");
   const subtotal = total.dividedBy(HUNDRED.plus(taxPercent)).times(HUNDRED)
     .toDecimalPlaces(5, Prisma.Decimal.ROUND_HALF_UP);
   return { subtotal, vatAmount: total.minus(subtotal), total };
+}
+
+function requiredIdentifier(value: unknown, code: string) {
+  if (typeof value !== "string" || !value.trim() || value.length > 191) {
+    throw new ConflictException(code);
+  }
+  return value.trim();
+}
+
+function requiredDescription(value: unknown) {
+  if (typeof value !== "string" || !value.trim() || value.trim().length > 500) {
+    throw new ConflictException("CUSTOM_QUOTATION_VERSION_LINE_INVALID");
+  }
+  return value.trim();
+}
+
+function optionalCommercialNote(value: unknown) {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "string" || !value.trim() || value.trim().length > 2000) {
+    throw new ConflictException("CUSTOM_QUOTATION_VERSION_LINE_INVALID");
+  }
+  return value.trim();
 }
 
 function asAmount(value: unknown, code: string) {

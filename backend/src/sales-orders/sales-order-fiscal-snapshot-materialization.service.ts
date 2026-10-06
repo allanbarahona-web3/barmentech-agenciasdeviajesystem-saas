@@ -18,6 +18,7 @@ const MAX_AMOUNT = new Prisma.Decimal("99999999999999.99999");
  * already used by this bounded context: subtotal, VAT amount, and total.
  */
 export interface FrozenFiscalSalesOrderLineInput {
+  customQuotationVersionLineId?: string | null;
   serviceCode: string;
   description: string;
   fiscalItemCategory: FiscalItemCategory;
@@ -149,12 +150,12 @@ export class SalesOrderFiscalSnapshotMaterializationService {
 
     for (const line of normalized.lines) {
       await tx.$executeRaw`INSERT INTO "sales_order_lines" (
-            "id", "tenantId", "salesOrderId", "fiscalClassificationId", "fiscalItemCategory",
+            "id", "tenantId", "salesOrderId", "customQuotationVersionLineId", "fiscalClassificationId", "fiscalItemCategory",
             "fiscalDescription", "cabysCode", "unitOfMeasureCode", "taxCode", "taxRateCode", "fiscalTaxPercentage",
             "serviceCode", "serviceName", "serviceDetailsVersion", "serviceDetails", "commercialNotes",
             "subtotal", "vatPercentage", "vatAmount", "total", "participants", "updatedAt"
           ) VALUES (
-            ${randomUUID()}, ${tenantId}, ${salesOrderId}, ${line.fiscalClassificationId}, ${line.fiscalItemCategory}::"FiscalItemCategory",
+            ${randomUUID()}, ${tenantId}, ${salesOrderId}, ${line.customQuotationVersionLineId}, ${line.fiscalClassificationId}, ${line.fiscalItemCategory}::"FiscalItemCategory",
             ${line.fiscalDescription}, ${line.cabysCode}, ${line.unitOfMeasureCode}, ${line.taxCode}, ${line.taxRateCode}, ${line.fiscalTaxPercentage},
             ${line.serviceCode}, ${line.description}, ${line.serviceDetailsVersion}, ${json(line.serviceDetails)}::jsonb, ${line.commercialNotes},
             ${line.subtotal}, ${line.vatPercentage}, ${line.vatAmount}, ${line.total}, ${json(line.participants)}::jsonb, CURRENT_TIMESTAMP
@@ -317,6 +318,7 @@ function normalizeLine(line: FrozenFiscalSalesOrderLineInput): NormalizedLine {
     invalid("SALES_ORDER_FISCAL_CATEGORY_INVALID");
   }
   return {
+    customQuotationVersionLineId: nullableText(line.customQuotationVersionLineId, 191, "SALES_ORDER_LINE_CUSTOM_QUOTATION_VERSION_LINE_INVALID"),
     serviceCode: requiredText(line.serviceCode, 50, "SALES_ORDER_LINE_DESCRIPTION_INVALID"),
     description: requiredText(line.description, 500, "SALES_ORDER_LINE_DESCRIPTION_INVALID"),
     fiscalItemCategory: line.fiscalItemCategory,
