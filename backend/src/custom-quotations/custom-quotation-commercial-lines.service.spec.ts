@@ -6,9 +6,11 @@ describe("CustomQuotationCommercialLinesService", () => {
     const c = context();
     c.tx.costComponent.findMany.mockResolvedValue([component()]);
 
-    await expect(c.service.list("tenant-a", "quotation-a")).resolves.toEqual({
+    const result = await c.service.list("tenant-a", "quotation-a");
+    expect(result).toEqual({
       lines: [expect.objectContaining({ displayOrder: 1, description: "Vuelo: SJO → MAD", quantity: "1" })],
     });
+    expect(result.lines[0]).not.toHaveProperty("costComponentId");
     expect(c.tx.costComponent.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: { tenantId: "tenant-a", costingProjectId: "project-a", status: "ACTIVE" },
       orderBy: [{ sortPosition: "asc" }, { id: "asc" }],

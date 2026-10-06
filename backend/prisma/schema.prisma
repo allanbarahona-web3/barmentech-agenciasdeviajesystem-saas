@@ -1661,35 +1661,36 @@ model PricingCalculationVersion {
 /// Immutable per-component commercial decomposition for one Pricing calculation version.
 /// This is Pricing-owned historical evidence, not a mutable Cost Engine component.
 model PricingCalculationComponentLine {
-  id                               String                    @id @default(cuid())
+  id                               String                       @id @default(cuid())
   tenantId                         String
   pricingCalculationVersionId      String
   costingProjectId                 String
   costComponentId                  String
   costSnapshotId                   String
-  costCategoryCode                 String                    @db.VarChar(80)
-  costCategoryDisplayName          String                    @db.VarChar(160)
-  componentTitle                   String                    @db.VarChar(500)
-  currency                         String                    @db.VarChar(3)
-  weight                           Decimal                   @db.Decimal(30, 24)
-  baseCost                         Decimal                   @db.Decimal(19, 5)
-  allocatedOperationalExpense      Decimal                   @db.Decimal(19, 5)
-  risk                             Decimal                   @db.Decimal(19, 5)
-  adjustedEconomicCost             Decimal                   @db.Decimal(19, 5)
-  preTaxSellingPrice               Decimal                   @db.Decimal(19, 5)
-  targetProfit                     Decimal                   @db.Decimal(19, 5)
-  salesCommission                  Decimal                   @db.Decimal(19, 5)
-  bankCommission                   Decimal                   @db.Decimal(19, 5)
-  tax                              Decimal                   @db.Decimal(19, 5)
-  rawSellingValue                  Decimal                   @db.Decimal(19, 5)
-  allocatedPublishedPriceRetention Decimal                   @db.Decimal(19, 5)
-  roundingAdjustment               Decimal                   @db.Decimal(19, 5)
-  effectiveSellingValue            Decimal                   @db.Decimal(19, 5)
-  createdAt                        DateTime                  @default(now())
-  tenant                           Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  pricingCalculationVersion        PricingCalculationVersion @relation(fields: [pricingCalculationVersionId, tenantId, costingProjectId], references: [id, tenantId, costingProjectId], onDelete: Restrict, map: "pricing_calc_component_lines_version_project_fkey")
-  costComponent                    CostComponent             @relation(fields: [costComponentId, tenantId, costingProjectId], references: [id, tenantId, costingProjectId], onDelete: Restrict, map: "pricing_calc_component_lines_component_project_fkey")
-  costSnapshot                     CostSnapshot              @relation(fields: [costSnapshotId, tenantId, costComponentId, costingProjectId], references: [id, tenantId, costComponentId, costingProjectId], onDelete: Restrict, map: "pricing_calc_component_lines_snapshot_project_fkey")
+  costCategoryCode                 String                       @db.VarChar(80)
+  costCategoryDisplayName          String                       @db.VarChar(160)
+  componentTitle                   String                       @db.VarChar(500)
+  currency                         String                       @db.VarChar(3)
+  weight                           Decimal                      @db.Decimal(30, 24)
+  baseCost                         Decimal                      @db.Decimal(19, 5)
+  allocatedOperationalExpense      Decimal                      @db.Decimal(19, 5)
+  risk                             Decimal                      @db.Decimal(19, 5)
+  adjustedEconomicCost             Decimal                      @db.Decimal(19, 5)
+  preTaxSellingPrice               Decimal                      @db.Decimal(19, 5)
+  targetProfit                     Decimal                      @db.Decimal(19, 5)
+  salesCommission                  Decimal                      @db.Decimal(19, 5)
+  bankCommission                   Decimal                      @db.Decimal(19, 5)
+  tax                              Decimal                      @db.Decimal(19, 5)
+  rawSellingValue                  Decimal                      @db.Decimal(19, 5)
+  allocatedPublishedPriceRetention Decimal                      @db.Decimal(19, 5)
+  roundingAdjustment               Decimal                      @db.Decimal(19, 5)
+  effectiveSellingValue            Decimal                      @db.Decimal(19, 5)
+  createdAt                        DateTime                     @default(now())
+  tenant                           Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  pricingCalculationVersion        PricingCalculationVersion    @relation(fields: [pricingCalculationVersionId, tenantId, costingProjectId], references: [id, tenantId, costingProjectId], onDelete: Restrict, map: "pricing_calc_component_lines_version_project_fkey")
+  costComponent                    CostComponent                @relation(fields: [costComponentId, tenantId, costingProjectId], references: [id, tenantId, costingProjectId], onDelete: Restrict, map: "pricing_calc_component_lines_component_project_fkey")
+  costSnapshot                     CostSnapshot                 @relation(fields: [costSnapshotId, tenantId, costComponentId, costingProjectId], references: [id, tenantId, costComponentId, costingProjectId], onDelete: Restrict, map: "pricing_calc_component_lines_snapshot_project_fkey")
+  customQuotationVersionLines      CustomQuotationVersionLine[]
 
   @@unique([id, tenantId], map: "pricing_calc_component_lines_id_tenant_key")
   @@unique([tenantId, pricingCalculationVersionId, costComponentId], map: "pricing_calc_component_lines_tenant_version_component_key")
@@ -3138,19 +3139,25 @@ model CustomQuotationVersion {
 
 /// Append-only customer-facing line snapshot for an issued quotation version.
 model CustomQuotationVersionLine {
-  id                       String                 @id @default(cuid())
-  tenantId                 String
-  customQuotationVersionId String
-  displayOrder             Int
-  description              String                 @db.VarChar(500)
-  quantity                 Decimal                @default(1) @db.Decimal(18, 4)
-  commercialNote           String?                @db.VarChar(2000)
-  createdAt                DateTime               @default(now())
-  tenant                   Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  customQuotationVersion   CustomQuotationVersion @relation(fields: [customQuotationVersionId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "custom_quotation_version_lines_version_tenant_fkey")
+  id                                String                           @id @default(cuid())
+  tenantId                          String
+  customQuotationVersionId          String
+  /// Immutable Pricing-owned decomposition source. Historical rows may be null.
+  pricingCalculationComponentLineId String?
+  /// Exact per-component commercial amount from PricingCalculationComponentLine.effectiveSellingValue.
+  soldAmount                        Decimal?                         @db.Decimal(19, 5)
+  displayOrder                      Int
+  description                       String                           @db.VarChar(500)
+  quantity                          Decimal                          @default(1) @db.Decimal(18, 4)
+  commercialNote                    String?                          @db.VarChar(2000)
+  createdAt                         DateTime                         @default(now())
+  tenant                            Tenant                           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customQuotationVersion            CustomQuotationVersion           @relation(fields: [customQuotationVersionId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "custom_quotation_version_lines_version_tenant_fkey")
+  pricingCalculationComponentLine   PricingCalculationComponentLine? @relation(fields: [pricingCalculationComponentLineId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "custom_quotation_version_lines_pricing_component_tenant_fkey")
 
   @@unique([id, tenantId], map: "custom_quotation_version_lines_id_tenant_key")
   @@unique([tenantId, customQuotationVersionId, displayOrder], map: "custom_quotation_version_lines_tenant_version_display_key")
+  @@index([tenantId, pricingCalculationComponentLineId], map: "custom_quotation_version_lines_tenant_pricing_component_idx")
   @@map("custom_quotation_version_lines")
 }
 

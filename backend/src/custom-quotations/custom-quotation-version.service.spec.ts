@@ -23,8 +23,8 @@ describe("CustomQuotationVersionService", () => {
       }),
     }));
     expect(c.tx.customQuotationVersionLine.createMany).toHaveBeenCalledWith({ data: [
-      { tenantId: "tenant-a", customQuotationVersionId: "issued-a", displayOrder: 1, description: "Traslado privado", quantity: "1.2500", commercialNote: "Hotel al aeropuerto" },
-      { tenantId: "tenant-a", customQuotationVersionId: "issued-a", displayOrder: 2, description: "Servicio adicional", quantity: "2.0000", commercialNote: null },
+      { tenantId: "tenant-a", customQuotationVersionId: "issued-a", pricingCalculationComponentLineId: "pricing-line-a", soldAmount: "700.00000", displayOrder: 1, description: "Traslado privado", quantity: "1.2500", commercialNote: "Hotel al aeropuerto" },
+      { tenantId: "tenant-a", customQuotationVersionId: "issued-a", pricingCalculationComponentLineId: "pricing-line-b", soldAmount: "750.12345", displayOrder: 2, description: "Servicio adicional", quantity: "2.0000", commercialNote: null },
     ] });
     expect(c.commercialLines.listInTransaction).toHaveBeenCalledWith(c.tx, "tenant-a", "quotation-a");
     expect(c.tx.customQuotationLine).toBeUndefined();
@@ -53,9 +53,79 @@ describe("CustomQuotationVersionService", () => {
     const versionInput = c.tx.customQuotationVersion.create.mock.calls[0][0].data;
     const lineInput = c.tx.customQuotationVersionLine.createMany.mock.calls[0][0].data;
     expect(versionInput).toMatchObject({ fiscalDescription: "Transporte privado", cabysCode: "1234567890123" });
-    expect(lineInput[0]).toMatchObject({ description: "Traslado privado", quantity: "1.2500" });
+    expect(lineInput[0]).toMatchObject({
+      description: "Traslado privado", quantity: "1.2500",
+      pricingCalculationComponentLineId: "pricing-line-a", soldAmount: "700.00000",
+    });
     expect(versionInput).not.toHaveProperty("tenantFiscalClassification");
     expect(lineInput[0]).not.toHaveProperty("customQuotationLineId");
+  });
+
+  it("persists every Pricing component line exactly once by stable CostComponent identity without description matching", async () => {
+    const c = context();
+    const commercialLines = [
+      { costComponentId: "component-a", displayOrder: 1, description: "Servicio repetido", quantity: "1.0000", commercialNote: null },
+      { costComponentId: "component-b", displayOrder: 2, description: "Servicio repetido", quantity: "2.0000", commercialNote: null },
+      { costComponentId: "component-c", displayOrder: 3, description: "Tercer servicio", quantity: "3.0000", commercialNote: "Detalle" },
+    ];
+    const componentLines = [
+      { id: "pricing-line-b", tenantId: "tenant-a", pricingCalculationVersionId: "pricing-a", costingProjectId: "project-a", costComponentId: "component-b", costSnapshotId: "snapshot-b", currency: "USD", effectiveSellingValue: "200.00000" },
+      { id: "pricing-line-a", tenantId: "tenant-a", pricingCalculationVersionId: "pricing-a", costingProjectId: "project-a", costComponentId: "component-a", costSnapshotId: "snapshot-a", currency: "USD", effectiveSellingValue: "100.00000" },
+      { id: "pricing-line-c", tenantId: "tenant-a", pricingCalculationVersionId: "pricing-a", costingProjectId: "project-a", costComponentId: "component-c", costSnapshotId: "snapshot-c", currency: "USD", effectiveSellingValue: "700.00000" },
+    ];
+    prepareIssuableQuotation(c, { pricing: pricingCalculation({ status: "APPROVED", finalSellingPrice: "1000.00000" }) });
+    c.commercialLines.listInTransaction.mockResolvedValue(commercialLines);
+    c.tx.pricingCalculationComponentLine.findMany.mockResolvedValue(componentLines);
+    c.tx.customQuotationVersionLine.createMany.mockResolvedValue({ count: 3 });
+
+    await c.service.issue("tenant-a", "quotation-a", actor);
+
+    const created = c.tx.customQuotationVersionLine.createMany.mock.calls[0][0].data;
+    expect(created).toEqual(expect.arrayContaining([
+      expect.objectContaining({ displayOrder: 1, description: "Servicio repetido", pricingCalculationComponentLineId: "pricing-line-a", soldAmount: "100.00000" }),
+      expect.objectContaining({ displayOrder: 2, description: "Servicio repetido", pricingCalculationComponentLineId: "pricing-line-b", soldAmount: "200.00000" }),
+      expect.objectContaining({ displayOrder: 3, description: "Tercer servicio", pricingCalculationComponentLineId: "pricing-line-c", soldAmount: "700.00000" }),
+    ]));
+    expect(c.tx.pricingCalculationComponentLine.findMany).toHaveBeenCalledTimes(1);
+    expect(c.tx.pricingCalculationComponentLine.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { tenantId: "tenant-a", pricingCalculationVersionId: "pricing-a", costingProjectId: "project-a" },
+      orderBy: [{ costComponentId: "asc" }, { id: "asc" }],
+    }));
+  });
+
+  it("fails before persisting a version when Pricing component amounts do not reconcile to finalSellingPrice", async () => {
+    const c = context();
+    prepareIssuableQuotation(c, { pricing: pricingCalculation({ status: "APPROVED", finalSellingPrice: "1450.12344" }) });
+
+    await expect(c.service.issue("tenant-a", "quotation-a", actor))
+      .rejects.toThrow("CUSTOM_QUOTATION_PRICING_COMPONENT_TOTAL_MISMATCH");
+
+    expect(c.tx.customQuotationVersion.create).not.toHaveBeenCalled();
+  });
+
+  it("fails safely when a commercial CostComponent has no Pricing component line", async () => {
+    const c = context();
+    prepareIssuableQuotation(c, { pricing: pricingCalculation({ status: "APPROVED" }) });
+    c.tx.pricingCalculationComponentLine.findMany.mockResolvedValue([pricingComponentLines()[0]]);
+
+    await expect(c.service.issue("tenant-a", "quotation-a", actor))
+      .rejects.toThrow("CUSTOM_QUOTATION_PRICING_COMPONENT_LINE_MISMATCH");
+
+    expect(c.tx.customQuotationVersion.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects a Pricing component line outside the quotation tenant", async () => {
+    const c = context();
+    prepareIssuableQuotation(c, { pricing: pricingCalculation({ status: "APPROVED" }) });
+    c.tx.pricingCalculationComponentLine.findMany.mockResolvedValue([
+      { ...pricingComponentLines()[0], tenantId: "tenant-b" },
+      pricingComponentLines()[1],
+    ]);
+
+    await expect(c.service.issue("tenant-a", "quotation-a", actor))
+      .rejects.toThrow("CUSTOM_QUOTATION_PRICING_COMPONENT_LINE_MISMATCH");
+
+    expect(c.tx.customQuotationVersion.create).not.toHaveBeenCalled();
   });
 
   it("rejects stale or missing pricing, missing structured components, missing defaults, non-DRAFT and cross-tenant quotations", async () => {
@@ -202,6 +272,18 @@ describe("CustomQuotationVersionService", () => {
     expect(c.tx.pricingCalculationVersion.findFirst).not.toHaveBeenCalled();
   });
 
+  it("keeps historical version lines without commercial-authority fields readable", async () => {
+    const c = context();
+    c.tx.customQuotationVersion.findFirst.mockResolvedValue(versionSnapshot({
+      lines: [{ id: "legacy-line", displayOrder: 1, description: "Histórica", quantity: "1.0000", commercialNote: null }],
+    }));
+
+    await expect(c.service.find("tenant-a", "quotation-a", "version-a"))
+      .resolves.toEqual(expect.objectContaining({
+        lines: [{ id: "legacy-line", displayOrder: 1, description: "Histórica", quantity: "1.0000", commercialNote: null }],
+      }));
+  });
+
   it("does not derive an immutable read from later live Lead, Customer, root-title, or draft-line changes", async () => {
     const c = context();
     const persisted = versionSnapshot();
@@ -319,6 +401,7 @@ function context() {
     $queryRaw: jest.fn().mockResolvedValue([{ id: "quotation-a" }]),
     customQuotation: { findFirst: jest.fn(), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
     pricingCalculationVersion: { findFirst: jest.fn() },
+    pricingCalculationComponentLine: { findMany: jest.fn().mockResolvedValue(pricingComponentLines()) },
     pricingConfiguration: {},
     customQuotationVersion: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue(issuedVersion()) },
     customQuotationVersionLine: { createMany: jest.fn().mockResolvedValue({ count: 2 }) },
@@ -358,8 +441,21 @@ function classification(overrides: Record<string, unknown> = {}) {
 
 function lines() {
   return [
-    { id: "line-a", displayOrder: 1, description: "Traslado privado", quantity: "1.2500", commercialNote: "Hotel al aeropuerto" },
-    { id: "line-b", displayOrder: 2, description: "Servicio adicional", quantity: "2.0000", commercialNote: null },
+    { costComponentId: "component-a", displayOrder: 1, description: "Traslado privado", quantity: "1.2500", commercialNote: "Hotel al aeropuerto" },
+    { costComponentId: "component-b", displayOrder: 2, description: "Servicio adicional", quantity: "2.0000", commercialNote: null },
+  ];
+}
+
+function pricingComponentLines() {
+  return [
+    {
+      id: "pricing-line-a", tenantId: "tenant-a", pricingCalculationVersionId: "pricing-a", costingProjectId: "project-a",
+      costComponentId: "component-a", costSnapshotId: "snapshot-a", currency: "USD", effectiveSellingValue: "700.00000",
+    },
+    {
+      id: "pricing-line-b", tenantId: "tenant-a", pricingCalculationVersionId: "pricing-a", costingProjectId: "project-a",
+      costComponentId: "component-b", costSnapshotId: "snapshot-b", currency: "USD", effectiveSellingValue: "750.12345",
+    },
   ];
 }
 

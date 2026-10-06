@@ -1,7 +1,13 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { CostingProjectCurrentCostReader } from "../cost-engine/costing-project-current-cost-reader";
 import { FiscalClassificationService, type TenantFiscalClassificationReader } from "../fiscal-classifications/fiscal-classification.service";
-import { pricingAmountsEqual } from "../pricing/pricing-v1-calculator";
+import {
+  addPricingDecimals,
+  formatPricingAmount,
+  parsePricingAmount,
+  pricingAmountsEqual,
+  type PricingDecimal,
+} from "../pricing/pricing-v1-calculator";
 import { PricingService } from "../pricing/pricing.service";
 import type { PricingTransaction } from "../pricing/pricing.repository";
 import { PrismaService } from "../prisma/prisma.service";
@@ -100,6 +106,33 @@ export class CustomQuotationVersionService {
       const approvedCalculation = pricingCalculation.status === "DRAFT"
         ? await this.pricing.approveCalculationInTransaction(tx, tenantId, pricingCalculation.id, actor)
         : pricingCalculation;
+      const pricingComponentLines = await tx.pricingCalculationComponentLine.findMany({
+        where: {
+          tenantId,
+          pricingCalculationVersionId: approvedCalculation.id,
+          costingProjectId: costingProject.id,
+        },
+        select: {
+          id: true,
+          tenantId: true,
+          pricingCalculationVersionId: true,
+          costingProjectId: true,
+          costComponentId: true,
+          costSnapshotId: true,
+          currency: true,
+          effectiveSellingValue: true,
+        },
+        orderBy: [{ costComponentId: "asc" }, { id: "asc" }],
+      });
+      const issuedLines = reconcileIssuedLines({
+        tenantId,
+        costingProjectId: costingProject.id,
+        pricingCalculationVersionId: approvedCalculation.id,
+        currency: quotation.currency,
+        finalSellingPrice: decimalString(approvedCalculation.finalSellingPrice),
+        commercialLines: lines,
+        pricingComponentLines,
+      });
 
       const latest = await tx.customQuotationVersion.findFirst({
         where: { tenantId, customQuotationId: quotation.id },
@@ -139,16 +172,18 @@ export class CustomQuotationVersionService {
         },
       });
       const copiedLines = await tx.customQuotationVersionLine.createMany({
-        data: lines.map((line) => ({
+        data: issuedLines.map(({ line, pricingComponentLine }) => ({
           tenantId,
           customQuotationVersionId: version.id,
+          pricingCalculationComponentLineId: pricingComponentLine.id,
+          soldAmount: pricingComponentLine.effectiveSellingValue,
           displayOrder: line.displayOrder,
           description: line.description,
           quantity: line.quantity,
           commercialNote: line.commercialNote,
         })),
       });
-      if (copiedLines.count !== lines.length) throw new ConflictException("CUSTOM_QUOTATION_VERSION_LINES_COPY_CONFLICT");
+      if (copiedLines.count !== issuedLines.length) throw new ConflictException("CUSTOM_QUOTATION_VERSION_LINES_COPY_CONFLICT");
 
       const transitioned = await tx.customQuotation.updateMany({
         where: { id: quotation.id, tenantId, status: "DRAFT" },
@@ -186,6 +221,100 @@ export class CustomQuotationVersionService {
   private withTenantTransaction<T>(tenantId: string, work: (tx: CustomQuotationIssueTransaction) => Promise<T>) {
     return runTenantTransaction(this.database, tenantId, work);
   }
+}
+
+type CommercialLineForIssue = {
+  costComponentId: string;
+  displayOrder: number;
+  description: string;
+  quantity: string;
+  commercialNote: string | null;
+};
+
+type PricingComponentLineForIssue = {
+  id: string;
+  tenantId: string;
+  pricingCalculationVersionId: string;
+  costingProjectId: string;
+  costComponentId: string;
+  costSnapshotId: string;
+  currency: string;
+  effectiveSellingValue: unknown;
+};
+
+/**
+ * Matches immutable Pricing component decomposition to presentation lines by
+ * CostComponent identity only. Descriptions are intentionally never used as
+ * commercial identity because duplicate customer-facing descriptions are valid.
+ */
+function reconcileIssuedLines(input: {
+  tenantId: string;
+  costingProjectId: string;
+  pricingCalculationVersionId: string;
+  currency: string;
+  finalSellingPrice: string;
+  commercialLines: readonly CommercialLineForIssue[];
+  pricingComponentLines: readonly PricingComponentLineForIssue[];
+}) {
+  const commercialByComponentId = new Map<string, CommercialLineForIssue>();
+  for (const line of input.commercialLines) {
+    if (!requiredIdentifier(line.costComponentId) || commercialByComponentId.has(line.costComponentId)) {
+      throw new ConflictException("CUSTOM_QUOTATION_PRICING_COMPONENT_LINE_MISMATCH");
+    }
+    commercialByComponentId.set(line.costComponentId, line);
+  }
+
+  const pricingByComponentId = new Map<string, PricingComponentLineForIssue>();
+  for (const line of input.pricingComponentLines) {
+    if (!validPricingComponentLine(line, input) || pricingByComponentId.has(line.costComponentId)) {
+      throw new ConflictException("CUSTOM_QUOTATION_PRICING_COMPONENT_LINE_MISMATCH");
+    }
+    pricingByComponentId.set(line.costComponentId, line);
+  }
+  if (commercialByComponentId.size !== pricingByComponentId.size) {
+    throw new ConflictException("CUSTOM_QUOTATION_PRICING_COMPONENT_LINE_MISMATCH");
+  }
+
+  const issued = input.commercialLines.map((line) => {
+    const pricingComponentLine = pricingByComponentId.get(line.costComponentId);
+    if (!pricingComponentLine) throw new ConflictException("CUSTOM_QUOTATION_PRICING_COMPONENT_LINE_MISMATCH");
+    return { line, pricingComponentLine };
+  });
+
+  const authoritativeSoldTotal = sumPricingAmounts(issued.map(({ pricingComponentLine }) => pricingComponentLine.effectiveSellingValue));
+  if (!pricingAmountsEqual(authoritativeSoldTotal, input.finalSellingPrice)) {
+    throw new ConflictException("CUSTOM_QUOTATION_PRICING_COMPONENT_TOTAL_MISMATCH");
+  }
+  return issued;
+}
+
+function validPricingComponentLine(
+  line: PricingComponentLineForIssue,
+  input: Pick<Parameters<typeof reconcileIssuedLines>[0], "tenantId" | "costingProjectId" | "pricingCalculationVersionId" | "currency">,
+) {
+  return requiredIdentifier(line.id)
+    && line.tenantId === input.tenantId
+    && line.costingProjectId === input.costingProjectId
+    && line.pricingCalculationVersionId === input.pricingCalculationVersionId
+    && requiredIdentifier(line.costComponentId)
+    && requiredIdentifier(line.costSnapshotId)
+    && line.currency === input.currency;
+}
+
+function sumPricingAmounts(values: readonly unknown[]) {
+  try {
+    const total = values.reduce<PricingDecimal>(
+      (sum, value) => addPricingDecimals(sum, parsePricingAmount(decimalString(value))),
+      parsePricingAmount("0"),
+    );
+    return formatPricingAmount(total);
+  } catch {
+    throw new ConflictException("CUSTOM_QUOTATION_PRICING_COMPONENT_LINE_MISMATCH");
+  }
+}
+
+function requiredIdentifier(value: unknown): value is string {
+  return typeof value === "string" && Boolean(value.trim());
 }
 
 function validatePaymentTerms(quotation: {
