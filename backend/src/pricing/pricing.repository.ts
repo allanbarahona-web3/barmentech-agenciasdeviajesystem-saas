@@ -223,8 +223,6 @@ export class PricingRepository {
             create: componentCalculation.components.map((line) => {
               const component = componentsById(components, line.costComponentId);
               return {
-                tenantId,
-                costingProjectId,
                 costComponentId: line.costComponentId,
                 costSnapshotId: line.costSnapshotId,
                 costCategoryCode: component.costCategory.code,
