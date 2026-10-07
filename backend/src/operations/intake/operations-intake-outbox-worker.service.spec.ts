@@ -48,7 +48,7 @@ describe("OperationsIntakeOutboxWorkerService", () => {
     c.materialize.mockResolvedValue({ status: "CREATED", operationalRequirementId: "requirement-base" });
     await expect(c.worker.processAvailableBatch("tenant-a")).resolves.toMatchObject({ processed: 1, failed: 0 });
     expect(c.materialize).toHaveBeenCalledWith({
-      tenantId: "tenant-a", travelPackageId: "travel-a", sourceType: "TRAVEL_PACKAGE_COST_COMPONENT", sourceId: "project-a", sourceLineId: "component-a",
+      tenantId: "tenant-a", scopeType: "TRAVEL_PACKAGE", travelPackageId: "travel-a", sourceType: "TRAVEL_PACKAGE_COST_COMPONENT", sourceId: "project-a", sourceLineId: "component-a",
     });
   });
 

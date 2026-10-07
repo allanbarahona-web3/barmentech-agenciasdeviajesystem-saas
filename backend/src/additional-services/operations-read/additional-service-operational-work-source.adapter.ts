@@ -20,6 +20,9 @@ export class AdditionalServiceOperationalWorkSourceAdapter implements Operationa
     if (reference.sourceType !== ADDITIONAL_SERVICE_ORDER_LINE_SOURCE_TYPE) {
       throw new OperationalWorkMaterializationError("SOURCE_NOT_FOUND", false, { sourceType: reference.sourceType });
     }
+    if (reference.scopeType !== "TRAVEL_PACKAGE") {
+      throw new OperationalWorkMaterializationError("SOURCE_NOT_ELIGIBLE", false, { sourceType: reference.sourceType });
+    }
 
     return runTenantTransaction<any, OperationalWorkSourceItem>(this.prisma as any, reference.tenantId, async (tx) => {
       const order = await tx.additionalServiceOrder.findFirst({

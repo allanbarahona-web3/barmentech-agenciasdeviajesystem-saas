@@ -17,7 +17,7 @@ import {
   OPERATIONAL_WORK_SOURCE_READER,
   OperationalWorkMaterializationError,
   type OperationalWorkSourceReader,
-  type OperationalWorkSourceReference,
+  type TravelPackageOperationalWorkSourceReference,
 } from "./operational-work-source-reader.port";
 import {
   OPERATIONAL_CONTRACTED_TRAVEL_PACKAGE_ROSTER_READER,
@@ -512,7 +512,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function identityWhere(item: Pick<OperationalWorkSourceReference, "travelPackageId" | "sourceId" | "sourceLineId">) {
+function identityWhere(item: Pick<TravelPackageOperationalWorkSourceReference, "travelPackageId" | "sourceId" | "sourceLineId">) {
   return { travelPackageId: item.travelPackageId, sourceId: item.sourceId, sourceLineId: item.sourceLineId };
 }
 
@@ -522,7 +522,7 @@ function mapBySource<T extends { sourceId: string | null; sourceLineId: string |
   return result;
 }
 
-function itemResult(item: OperationalWorkSourceReference, state: ReconciliationState, extra: Partial<OperationsIntakeReconciliationResult["items"][number]> = {}) {
+function itemResult(item: TravelPackageOperationalWorkSourceReference, state: ReconciliationState, extra: Partial<OperationsIntakeReconciliationResult["items"][number]> = {}) {
   return { sourceType: item.sourceType, sourceId: item.sourceId, sourceLineId: item.sourceLineId, state, ...extra };
 }
 
@@ -543,12 +543,12 @@ function requirementAuditSelect() {
   } as const;
 }
 
-function referenceFromRequirement(requirement: any): OperationalWorkSourceReference {
-  return { tenantId: requirement.tenantId, travelPackageId: requirement.travelPackageId, sourceType: requirement.sourceType, sourceId: requirement.sourceId, sourceLineId: requirement.sourceLineId };
+function referenceFromRequirement(requirement: any): TravelPackageOperationalWorkSourceReference {
+  return { tenantId: requirement.tenantId, scopeType: "TRAVEL_PACKAGE", travelPackageId: requirement.travelPackageId, sourceType: requirement.sourceType, sourceId: requirement.sourceId, sourceLineId: requirement.sourceLineId };
 }
 
-function referenceFromEvent(event: any): OperationalWorkSourceReference {
-  return { tenantId: event.tenantId, travelPackageId: event.travelPackageId, sourceType: event.sourceType, sourceId: event.sourceId, sourceLineId: event.sourceLineId };
+function referenceFromEvent(event: any): TravelPackageOperationalWorkSourceReference {
+  return { tenantId: event.tenantId, scopeType: "TRAVEL_PACKAGE", travelPackageId: event.travelPackageId, sourceType: event.sourceType, sourceId: event.sourceId, sourceLineId: event.sourceLineId };
 }
 
 function groupPassengerClients(rows: any[]) {

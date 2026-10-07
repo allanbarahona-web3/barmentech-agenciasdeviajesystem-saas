@@ -12,7 +12,7 @@ describe("OperationalPurchasesService", () => {
     c.tx.operationalFulfillment.updateMany.mockResolvedValue({ count: 1 });
     c.finance.readMany.mockResolvedValue([{ eligibility: "ELIGIBLE", reason: "SETTLED" }]);
     await expect(c.service.create(tenantId, travelPackageId, requirementId, fulfillmentId, input(), actor)).resolves.toMatchObject({ amount: "100.25", currency: "USD", providerName: "Provider A" });
-    expect(c.tx.operationalPurchase.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ amount: expect.any(Prisma.Decimal), currency: "USD", providerName: "Provider A" }) }));
+    expect(c.tx.operationalPurchase.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ travelPackageId, operationalFulfillmentId: fulfillmentId, amount: expect.any(Prisma.Decimal), currency: "USD", providerName: "Provider A" }) }));
     expect(c.tx.operationalFulfillment.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "PURCHASED" }) }));
     expect(c.finance.readMany).toHaveBeenCalledWith({ tenantId, sources: [{ sourceType: "CONTRACT", sourceId: "contract-a" }] });
   });

@@ -571,6 +571,7 @@ model Client {
   customerFundsAllocationCommands      CustomerFundsAllocationCommand[]
   commercialObligations                CommercialObligation[]
   customQuotations                     CustomQuotation[]
+  operationalRequirements              OperationalRequirement[]
   convertedLeads                       Lead[]                              @relation("LeadConvertedCustomer")
 
   @@unique([tenantId, idType, idNumber])
@@ -1234,6 +1235,11 @@ enum OperationalRequirementStatus {
   NOT_APPLICABLE
 }
 
+enum OperationalScopeType {
+  TRAVEL_PACKAGE
+  STANDALONE_CUSTOMER
+}
+
 enum OperationalSoldValueScope {
   EXACT_SERVICE_LINE
   ORDER_TOTAL
@@ -1275,7 +1281,9 @@ enum OperationsIntakeOutboxStatus {
 model OperationalRequirement {
   id                              String                            @id @default(cuid())
   tenantId                        String
-  travelPackageId                 String
+  scopeType                       OperationalScopeType              @default(TRAVEL_PACKAGE)
+  travelPackageId                 String?
+  customerId                      String?
   servicePurposeCode              String                            @db.VarChar(80)
   servicePurposeName              String                            @db.VarChar(160)
   description                     String
@@ -1305,10 +1313,12 @@ model OperationalRequirement {
   createdAt                       DateTime                          @default(now())
   updatedAt                       DateTime                          @updatedAt
   tenant                          Tenant                            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  travelPackage                   TravelPackage                     @relation(fields: [travelPackageId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "operational_requirements_travel_tenant_fkey")
+  travelPackage                   TravelPackage?                    @relation(fields: [travelPackageId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "operational_requirements_travel_tenant_fkey")
+  customer                        Client?                           @relation(fields: [customerId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "operational_requirements_customer_tenant_fkey")
   passengers                      OperationalRequirementPassenger[]
   fulfillments                    OperationalFulfillment[]
 
+  @@unique([id, tenantId], map: "operational_requirements_id_tenant_key")
   @@unique([id, tenantId, travelPackageId], map: "operational_requirements_id_tenant_travel_key")
   @@index([tenantId, travelPackageId, status, operationalDeadlineAt, id], map: "operational_requirements_travel_status_deadline_idx")
   @@index([tenantId, travelPackageId, servicePurposeCode, status, id], map: "operational_requirements_travel_purpose_status_idx")
@@ -1338,7 +1348,7 @@ model OperationalRequirementPassenger {
 model OperationalFulfillment {
   id                       String                            @id @default(cuid())
   tenantId                 String
-  travelPackageId          String
+  travelPackageId          String?
   operationalRequirementId String
   servicePurposeCode       String                            @db.VarChar(80)
   servicePurposeName       String                            @db.VarChar(160)
@@ -1363,12 +1373,13 @@ model OperationalFulfillment {
   createdAt                DateTime                          @default(now())
   updatedAt                DateTime                          @updatedAt
   tenant                   Tenant                            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  travelPackage            TravelPackage                     @relation(fields: [travelPackageId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "operational_fulfillments_travel_tenant_fkey")
-  operationalRequirement   OperationalRequirement            @relation(fields: [operationalRequirementId, tenantId, travelPackageId], references: [id, tenantId, travelPackageId], onDelete: Restrict, map: "operational_fulfillments_requirement_tenant_travel_fkey")
+  travelPackage            TravelPackage?                    @relation(fields: [travelPackageId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "operational_fulfillments_travel_tenant_fkey")
+  operationalRequirement   OperationalRequirement            @relation(fields: [operationalRequirementId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "operational_fulfillments_requirement_tenant_fkey")
   passengers               OperationalFulfillmentPassenger[]
   purchases                OperationalPurchase[]
   evidence                 OperationalEvidence[]             @relation("OperationalFulfillmentEvidence")
 
+  @@unique([id, tenantId], map: "operational_fulfillments_id_tenant_key")
   @@unique([id, tenantId, travelPackageId], map: "operational_fulfillments_id_tenant_travel_key")
   @@index([tenantId, travelPackageId, operationalRequirementId, status, createdAt, id], map: "operational_fulfillments_travel_requirement_status_created_idx")
   @@map("operational_fulfillments")
@@ -1395,7 +1406,7 @@ model OperationalFulfillmentPassenger {
 model OperationalPurchase {
   id                       String                 @id @default(cuid())
   tenantId                 String
-  travelPackageId          String
+  travelPackageId          String?
   operationalFulfillmentId String
   providerName             String
   supplierReference        String?
@@ -1412,10 +1423,12 @@ model OperationalPurchase {
   createdAt                DateTime               @default(now())
   updatedAt                DateTime               @updatedAt
   tenant                   Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  travelPackage            TravelPackage          @relation(fields: [travelPackageId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "operational_purchases_travel_tenant_fkey")
-  operationalFulfillment   OperationalFulfillment @relation(fields: [operationalFulfillmentId, tenantId, travelPackageId], references: [id, tenantId, travelPackageId], onDelete: Restrict, map: "operational_purchases_fulfillment_tenant_travel_fkey")
+  travelPackage            TravelPackage?         @relation(fields: [travelPackageId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "operational_purchases_travel_tenant_fkey")
+  operationalFulfillment   OperationalFulfillment @relation(fields: [operationalFulfillmentId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "operational_purchases_fulfillment_tenant_fkey")
   evidence                 OperationalEvidence[]  @relation("OperationalPurchaseEvidence")
 
+  @@unique([id, tenantId], map: "operational_purchases_id_tenant_key")
+  @@unique([id, tenantId, operationalFulfillmentId], map: "operational_purchases_id_tenant_fulfillment_key")
   @@unique([id, tenantId, travelPackageId], map: "operational_purchases_id_tenant_travel_key")
   @@unique([id, tenantId, travelPackageId, operationalFulfillmentId], map: "operational_purchases_id_tenant_travel_fulfillment_key")
   @@index([tenantId, operationalFulfillmentId, purchasedAt, id], map: "operational_purchases_fulfillment_purchased_idx")
@@ -1426,7 +1439,7 @@ model OperationalPurchase {
 model OperationalEvidence {
   id                       String                  @id @default(cuid())
   tenantId                 String
-  travelPackageId          String
+  travelPackageId          String?
   operationalFulfillmentId String?
   operationalPurchaseId    String?
   evidenceType             OperationalEvidenceType
@@ -1439,9 +1452,9 @@ model OperationalEvidence {
   uploadedByName           String
   createdAt                DateTime                @default(now())
   tenant                   Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  travelPackage            TravelPackage           @relation(fields: [travelPackageId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "operational_evidence_travel_tenant_fkey")
-  operationalFulfillment   OperationalFulfillment? @relation("OperationalFulfillmentEvidence", fields: [operationalFulfillmentId, tenantId, travelPackageId], references: [id, tenantId, travelPackageId], onDelete: Restrict, map: "operational_evidence_fulfillment_tenant_travel_fkey")
-  operationalPurchase      OperationalPurchase?    @relation("OperationalPurchaseEvidence", fields: [operationalPurchaseId, tenantId, travelPackageId, operationalFulfillmentId], references: [id, tenantId, travelPackageId, operationalFulfillmentId], onDelete: Restrict, map: "operational_evidence_purchase_fulfillment_tenant_travel_fkey")
+  travelPackage            TravelPackage?          @relation(fields: [travelPackageId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "operational_evidence_travel_tenant_fkey")
+  operationalFulfillment   OperationalFulfillment? @relation("OperationalFulfillmentEvidence", fields: [operationalFulfillmentId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "operational_evidence_fulfillment_tenant_fkey")
+  operationalPurchase      OperationalPurchase?    @relation("OperationalPurchaseEvidence", fields: [operationalPurchaseId, tenantId, operationalFulfillmentId], references: [id, tenantId, operationalFulfillmentId], onDelete: Restrict, map: "operational_evidence_purchase_fulfillment_tenant_fkey")
 
   @@index([tenantId, operationalFulfillmentId, createdAt, id], map: "operational_evidence_fulfillment_created_idx")
   @@index([tenantId, operationalPurchaseId, createdAt, id], map: "operational_evidence_purchase_created_idx")

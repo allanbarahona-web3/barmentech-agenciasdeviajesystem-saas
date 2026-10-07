@@ -31,6 +31,7 @@ describe("OperationalRequirementsService", () => {
     expect(c.tx.operationalRequirement.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({
         tenantId, travelPackageId, status: "PENDING", description: "Hotel rooms",
+        scopeType: "TRAVEL_PACKAGE", customerId: null,
         assignedToUserId: "operator-b", assignedToName: "Operator B", sourceType: "MANUAL",
       }),
     }));

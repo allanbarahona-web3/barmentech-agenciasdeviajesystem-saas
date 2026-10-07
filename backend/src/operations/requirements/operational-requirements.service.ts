@@ -253,7 +253,9 @@ export class OperationalRequirementsService {
       const created = await tx.operationalRequirement.create({
         data: {
           tenantId,
+          scopeType: "TRAVEL_PACKAGE",
           travelPackageId,
+          customerId: null,
           servicePurposeCode: requiredText(input.servicePurposeCode, "OPERATIONAL_REQUIREMENT_SERVICE_PURPOSE_CODE_INVALID"),
           servicePurposeName: requiredText(input.servicePurposeName, "OPERATIONAL_REQUIREMENT_SERVICE_PURPOSE_NAME_INVALID"),
           description: requiredText(input.description, "OPERATIONAL_REQUIREMENT_DESCRIPTION_INVALID"),

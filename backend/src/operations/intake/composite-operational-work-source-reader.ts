@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { AdditionalServiceOperationalWorkSourceAdapter } from "../../additional-services/operations-read/additional-service-operational-work-source.adapter";
+import { CustomQuotationOperationalWorkSourceAdapter, CUSTOM_QUOTATION_LINE_SOURCE } from "../../custom-quotations/operations-read/custom-quotation-operational-work-source.adapter";
 import { ADDITIONAL_SERVICE_ORDER_LINE_SOURCE } from "./operations-intake-outbox.constants";
 import {
   OperationalWorkMaterializationError,
@@ -17,6 +18,7 @@ export class CompositeOperationalWorkSourceReader implements OperationalWorkSour
   constructor(
     private readonly additionalServices: AdditionalServiceOperationalWorkSourceAdapter,
     private readonly travelPackageCostComponents: TravelPackageCostComponentOperationalWorkSourceAdapter,
+    private readonly customQuotationLines: CustomQuotationOperationalWorkSourceAdapter,
   ) {}
 
   readSourceItem(reference: OperationalWorkSourceReference): Promise<OperationalWorkSourceItem> {
@@ -25,6 +27,8 @@ export class CompositeOperationalWorkSourceReader implements OperationalWorkSour
         return this.additionalServices.readSourceItem(reference);
       case TRAVEL_PACKAGE_COST_COMPONENT_SOURCE_TYPE:
         return this.travelPackageCostComponents.readSourceItem(reference);
+      case CUSTOM_QUOTATION_LINE_SOURCE:
+        return this.customQuotationLines.readSourceItem(reference);
       default:
         throw new OperationalWorkMaterializationError("SOURCE_NOT_FOUND", false, {
           sourceType: reference.sourceType,

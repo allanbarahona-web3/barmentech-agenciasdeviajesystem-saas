@@ -131,6 +131,23 @@ describe("CustomQuotationSalesOrderService", () => {
     expect(c.tx.customQuotationVersion.updateMany).not.toHaveBeenCalled();
   });
 
+  it("materializes an accepted version after its offer-acceptance deadline has passed", async () => {
+    const c = context();
+    c.tx.customQuotationVersion.findFirst.mockResolvedValue(version({
+      quotationValidUntil: new Date("2020-01-01T12:00:00.000Z"),
+    }));
+    c.salesOrders.materializeInTransaction.mockResolvedValue({ salesOrderId: "sales-a", orderNumber: "SO-2026-000001", reusedExisting: false });
+
+    await expect(c.service.materialize("tenant-a", "quotation-a", "version-a", actor)).resolves.toEqual({
+      salesOrderId: "sales-a", orderNumber: "SO-2026-000001", reusedExisting: false,
+    });
+
+    expect(c.salesOrders.materializeInTransaction).toHaveBeenCalledTimes(1);
+    expect(c.tx.customQuotationVersion.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      select: expect.not.objectContaining({ quotationValidUntil: true }),
+    }));
+  });
+
   it("blocks an accepted Lead-only quotation until a Customer is resolved", async () => {
     const c = context();
     c.tx.customQuotationVersion.findFirst.mockResolvedValue(version({
@@ -143,11 +160,25 @@ describe("CustomQuotationSalesOrderService", () => {
     expect(c.tx.client).toBeUndefined();
   });
 
-  it("rejects non-accepted, malformed, and cross-tenant versions before materialization", async () => {
-    const issued = context();
-    issued.tx.customQuotationVersion.findFirst.mockResolvedValue(version({ status: "ISSUED" }));
-    await expect(issued.service.materialize("tenant-a", "quotation-a", "version-a", actor)).rejects.toBeInstanceOf(ConflictException);
-    expect(issued.salesOrders.materializeInTransaction).not.toHaveBeenCalled();
+  it.each(["ISSUED", "REJECTED", "EXPIRED", "CANCELLED"])("rejects a %s version before materialization", async (status) => {
+    const c = context();
+    c.tx.customQuotationVersion.findFirst.mockResolvedValue(version({ status }));
+
+    await expect(c.service.materialize("tenant-a", "quotation-a", "version-a", actor)).rejects.toThrow("CUSTOM_QUOTATION_VERSION_NOT_ACCEPTED");
+    expect(c.salesOrders.materializeInTransaction).not.toHaveBeenCalled();
+  });
+
+  it("rejects a non-accepted parent before materialization", async () => {
+    const c = context();
+    c.tx.customQuotationVersion.findFirst.mockResolvedValue(version({
+      customQuotation: { id: "quotation-a", status: "REJECTED", customerId: "customer-a", customer: { fullName: "Cliente A", email: "cliente@example.test" } },
+    }));
+
+    await expect(c.service.materialize("tenant-a", "quotation-a", "version-a", actor)).rejects.toThrow("CUSTOM_QUOTATION_VERSION_NOT_ACCEPTED");
+    expect(c.salesOrders.materializeInTransaction).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed and cross-tenant versions before materialization", async () => {
 
     const incomplete = context();
     incomplete.tx.customQuotationVersion.findFirst.mockResolvedValue(version({ cabysCode: null }));

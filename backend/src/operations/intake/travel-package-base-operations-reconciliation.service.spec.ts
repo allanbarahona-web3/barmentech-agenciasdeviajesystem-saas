@@ -1,5 +1,5 @@
 import { OperationsIntakeReconciliationService } from "./operations-intake-reconciliation.service";
-import type { OperationalWorkSourceItem } from "./operational-work-source-reader.port";
+import type { TravelPackageOperationalWorkSourceItem } from "./operational-work-source-reader.port";
 
 describe("TravelPackage base Operations reconciliation", () => {
   it("reports missing intake in dry-run without writes and repairs through one normal pending event", async () => {
@@ -127,7 +127,7 @@ describe("TravelPackage base Operations reconciliation", () => {
   });
 });
 
-function context(input: { source?: OperationalWorkSourceItem; state?: "VALID" | "SOURCE_INACTIVE"; roster?: Array<{ id: string; clientId: string }> } = {}) {
+function context(input: { source?: TravelPackageOperationalWorkSourceItem; state?: "VALID" | "SOURCE_INACTIVE"; roster?: Array<{ id: string; clientId: string }> } = {}) {
   const source = input.source ?? baseSource();
   const tx = {
     $executeRaw: jest.fn(),
@@ -148,9 +148,9 @@ function context(input: { source?: OperationalWorkSourceItem; state?: "VALID" | 
   };
 }
 
-function baseSource(overrides: Partial<OperationalWorkSourceItem> = {}): OperationalWorkSourceItem {
+function baseSource(overrides: Partial<TravelPackageOperationalWorkSourceItem> = {}): TravelPackageOperationalWorkSourceItem {
   return {
-    tenantId: "tenant-a", travelPackageId: "travel-a", sourceType: "TRAVEL_PACKAGE_COST_COMPONENT", sourceId: "project-a", sourceLineId: "component-a",
+    tenantId: "tenant-a", scopeType: "TRAVEL_PACKAGE", travelPackageId: "travel-a", sourceType: "TRAVEL_PACKAGE_COST_COMPONENT", sourceId: "project-a", sourceLineId: "component-a",
     sourceVersionId: "snapshot-a", sourceReference: null, sourceAcceptedAt: null,
     servicePurposeCode: "LODGING", servicePurposeName: "Lodging", description: "Hotel Central · Four nights",
     participantClientIds: [], participantScope: "ALL_CONTRACTED_TRAVEL_PACKAGE_PARTICIPANTS", sourceSnapshot: snapshot(), soldValueScope: "NONE", soldValue: null,

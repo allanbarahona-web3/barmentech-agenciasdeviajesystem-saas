@@ -154,14 +154,21 @@ describe("CustomQuotationVersionService", () => {
     await expect(noDefault.service.issue("tenant-a", "quotation-a", actor))
       .rejects.toThrow("CUSTOM_QUOTATION_FISCAL_DEFAULT_NOT_CONFIGURED");
 
-    const nonDraft = context();
-    prepareIssuableQuotation(nonDraft);
-    nonDraft.tx.customQuotation.findFirst.mockResolvedValue(quotation({ status: "ISSUED" }));
-    await expect(nonDraft.service.issue("tenant-a", "quotation-a", actor)).rejects.toBeInstanceOf(ConflictException);
-
     const crossTenant = context();
     crossTenant.tx.$queryRaw.mockResolvedValue([]);
     await expect(crossTenant.service.issue("tenant-a", "quotation-b", actor)).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it.each(["ISSUED", "ACCEPTED", "REJECTED", "EXPIRED", "CANCELLED"])("rejects re-issuing a %s quotation", async (status) => {
+    const c = context();
+    prepareIssuableQuotation(c);
+    c.tx.customQuotation.findFirst.mockResolvedValue(quotation({ status }));
+
+    await expect(c.service.issue("tenant-a", "quotation-a", actor)).rejects.toThrow("CUSTOM_QUOTATION_NOT_DRAFT");
+
+    expect(c.tx.customQuotationVersion.create).not.toHaveBeenCalled();
+    expect(c.tx.customQuotationVersionLine.createMany).not.toHaveBeenCalled();
+    expect(c.tx.customQuotation.updateMany).not.toHaveBeenCalled();
   });
 
   it("rejects a legacy DRAFT with CREDIT/MONTHS before creating an immutable version", async () => {

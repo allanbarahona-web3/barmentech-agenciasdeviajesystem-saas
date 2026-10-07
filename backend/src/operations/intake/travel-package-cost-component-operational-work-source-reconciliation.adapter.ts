@@ -2,16 +2,19 @@ import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import { runTenantTransaction } from "../../tenant/tenant-transaction";
 import { TRAVEL_PACKAGE_COST_COMPONENT_SOURCE } from "./operations-intake-outbox.constants";
-import type { OperationalWorkSourceItem, OperationalWorkSourceReference } from "./operational-work-source-reader.port";
+import type {
+  TravelPackageOperationalWorkSourceItem,
+  TravelPackageOperationalWorkSourceReference,
+} from "./operational-work-source-reader.port";
 import { travelPackageCostComponentSourceItem } from "./travel-package-cost-component-operational-work-source.adapter";
 
 export const TRAVEL_PACKAGE_COST_COMPONENT_RECONCILIATION_READER = Symbol("TRAVEL_PACKAGE_COST_COMPONENT_RECONCILIATION_READER");
 
 export type TravelPackageCostComponentReconciliationState = "VALID" | "SOURCE_INACTIVE" | "SOURCE_NOT_ELIGIBLE";
 export type TravelPackageCostComponentReconciliationSource = {
-  reference: OperationalWorkSourceReference;
+  reference: TravelPackageOperationalWorkSourceReference;
   state: TravelPackageCostComponentReconciliationState;
-  item: OperationalWorkSourceItem | null;
+  item: TravelPackageOperationalWorkSourceItem | null;
 };
 
 @Injectable()
@@ -85,6 +88,7 @@ function sourceFromRow(tenantId: string, row: any): TravelPackageCostComponentRe
   const travelPackageId = row.costingProject.travelPackageLinks[0]?.travelPackageId;
   const reference = {
     tenantId,
+    scopeType: "TRAVEL_PACKAGE" as const,
     travelPackageId: travelPackageId ?? "",
     sourceType: TRAVEL_PACKAGE_COST_COMPONENT_SOURCE,
     sourceId: row.costingProjectId,

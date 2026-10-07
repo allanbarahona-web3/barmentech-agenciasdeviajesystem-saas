@@ -3,6 +3,7 @@ import { TravelPackageCostComponentOperationalWorkSourceAdapter } from "./travel
 describe("TravelPackageCostComponentOperationalWorkSourceAdapter", () => {
   const reference = {
     tenantId: "tenant-a",
+    scopeType: "TRAVEL_PACKAGE" as const,
     travelPackageId: "travel-a",
     sourceType: "TRAVEL_PACKAGE_COST_COMPONENT",
     sourceId: "project-a",

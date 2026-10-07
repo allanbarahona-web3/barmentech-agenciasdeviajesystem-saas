@@ -8,7 +8,7 @@ import {
   type OperationalWorkSourceReconciliationReader,
   type OperationalWorkSourceScanRequest,
 } from "../../operations/intake/operational-work-source-reconciliation.port";
-import type { OperationalWorkSourceItem, OperationalWorkSourceReference } from "../../operations/intake/operational-work-source-reader.port";
+import type { TravelPackageOperationalWorkSourceItem, TravelPackageOperationalWorkSourceReference } from "../../operations/intake/operational-work-source-reader.port";
 import { operationalAdditionalServicePresentation } from "./additional-service-operational-presentation";
 
 @Injectable()
@@ -16,7 +16,7 @@ export class AdditionalServiceOperationalWorkSourceReconciliationAdapter impleme
   constructor(private readonly prisma: PrismaService) {}
 
   async scanApprovedSourceItems(request: OperationalWorkSourceScanRequest) {
-    return runTenantTransaction<any, { items: OperationalWorkSourceItem[]; nextCursor: string | null }>(this.prisma as any, request.tenantId, async (tx) => {
+    return runTenantTransaction<any, { items: TravelPackageOperationalWorkSourceItem[]; nextCursor: string | null }>(this.prisma as any, request.tenantId, async (tx) => {
       const rows = await tx.additionalServiceOrderLine.findMany({
         where: {
           tenantId: request.tenantId,
@@ -41,7 +41,7 @@ export class AdditionalServiceOperationalWorkSourceReconciliationAdapter impleme
     });
   }
 
-  async inspectSourceItems(request: { tenantId: string; references: readonly OperationalWorkSourceReference[] }) {
+  async inspectSourceItems(request: { tenantId: string; references: readonly TravelPackageOperationalWorkSourceReference[] }) {
     const references = request.references.filter((reference) => reference.sourceType === ADDITIONAL_SERVICE_ORDER_LINE_SOURCE);
     if (references.length === 0) return new Map<string, OperationalWorkSourceInspection>();
     return runTenantTransaction<any, Map<string, OperationalWorkSourceInspection>>(this.prisma as any, request.tenantId, async (tx) => {
@@ -88,7 +88,7 @@ function lineSelect() {
   } as const;
 }
 
-function sourceItem(line: any): OperationalWorkSourceItem {
+function sourceItem(line: any): TravelPackageOperationalWorkSourceItem {
   const presentation = operationalAdditionalServicePresentation(line.serviceCode, line.serviceName, line.serviceDetails);
   const participantClientIds = [...new Set(
     line.participants
@@ -97,6 +97,7 @@ function sourceItem(line: any): OperationalWorkSourceItem {
   )] as string[];
   return {
     tenantId: line.tenantId,
+    scopeType: "TRAVEL_PACKAGE",
     travelPackageId: line.order.travelPackageId,
     sourceType: ADDITIONAL_SERVICE_ORDER_LINE_SOURCE,
     sourceId: line.order.id,

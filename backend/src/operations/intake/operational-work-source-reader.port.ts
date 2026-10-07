@@ -16,27 +16,34 @@ export type OperationalWorkSourceSnapshot = {
   currentInternalCost: { amount: string; currency: string };
 };
 
-export type OperationalWorkSourceReference = {
+type OperationalWorkSourceIdentity = {
   tenantId: string;
-  travelPackageId: string;
   sourceType: string;
   sourceId: string;
   sourceLineId: string;
 };
 
-export type OperationalWorkSourceItem = OperationalWorkSourceReference & {
+export type TravelPackageOperationalWorkSourceReference = OperationalWorkSourceIdentity & {
+  scopeType: "TRAVEL_PACKAGE";
+  travelPackageId: string;
+};
+
+export type StandaloneCustomerOperationalWorkSourceReference = OperationalWorkSourceIdentity & {
+  scopeType: "STANDALONE_CUSTOMER";
+  customerId: string;
+};
+
+export type OperationalWorkSourceReference =
+  | TravelPackageOperationalWorkSourceReference
+  | StandaloneCustomerOperationalWorkSourceReference;
+
+type OperationalWorkSourceItemFields = {
   sourceVersionId: string | null;
   sourceReference: string | null;
   sourceAcceptedAt: Date | null;
   servicePurposeCode: string;
   servicePurposeName: string;
   description: string;
-  /**
-   * Additional Services supplies explicit client identities. Base package work
-   * is instead expanded later from the tenant/package scoped contracted roster.
-   */
-  participantClientIds: string[];
-  participantScope?: "ALL_CONTRACTED_TRAVEL_PACKAGE_PARTICIPANTS";
   /** Context only; Cost Engine remains authoritative for cost history. */
   sourceSnapshot: OperationalWorkSourceSnapshot | null;
   /** Explicit even when soldValue is null, so NONE is not inferred by consumers. */
@@ -48,6 +55,26 @@ export type OperationalWorkSourceItem = OperationalWorkSourceReference & {
   } | null;
 };
 
+export type TravelPackageOperationalWorkSourceItem =
+  & TravelPackageOperationalWorkSourceReference
+  & OperationalWorkSourceItemFields
+  & {
+  /**
+   * Additional Services supplies explicit client identities. Base package work
+   * is instead expanded later from the tenant/package scoped contracted roster.
+   */
+  participantClientIds: string[];
+  participantScope?: "ALL_CONTRACTED_TRAVEL_PACKAGE_PARTICIPANTS";
+};
+
+export type StandaloneCustomerOperationalWorkSourceItem =
+  & StandaloneCustomerOperationalWorkSourceReference
+  & OperationalWorkSourceItemFields;
+
+export type OperationalWorkSourceItem =
+  | TravelPackageOperationalWorkSourceItem
+  | StandaloneCustomerOperationalWorkSourceItem;
+
 export interface OperationalWorkSourceReader {
   readSourceItem(reference: OperationalWorkSourceReference): Promise<OperationalWorkSourceItem>;
 }
@@ -56,6 +83,7 @@ export type OperationalWorkMaterializationErrorCode =
   | "SOURCE_NOT_FOUND"
   | "SOURCE_NOT_ELIGIBLE"
   | "PARTICIPANT_NOT_FOUND"
+  | "CUSTOMER_NOT_FOUND"
   | "PACKAGE_MISMATCH"
   | "SOURCE_CONFLICT"
   | "MATERIALIZATION_FAILED";

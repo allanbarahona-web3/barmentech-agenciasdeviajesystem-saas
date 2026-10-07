@@ -191,6 +191,7 @@ export class OperationsIntakeOutboxWorkerService implements OnModuleInit, OnModu
     try {
       materialized = await this.materializer.materialize({
         tenantId: event.tenantId,
+        scopeType: "TRAVEL_PACKAGE",
         travelPackageId: event.travelPackageId,
         sourceType: event.sourceType,
         sourceId: event.sourceId,

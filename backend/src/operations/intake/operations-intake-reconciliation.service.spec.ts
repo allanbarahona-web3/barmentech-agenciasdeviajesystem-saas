@@ -130,7 +130,7 @@ function context(input: { sourceItems?: OperationalWorkSourceItem[]; inspections
 
 function sourceItem(): OperationalWorkSourceItem {
   return {
-    tenantId: "tenant-a", travelPackageId: "travel-a", sourceType: "ADDITIONAL_SERVICE_ORDER_LINE", sourceId: "order-a", sourceLineId: "line-a",
+    tenantId: "tenant-a", scopeType: "TRAVEL_PACKAGE", travelPackageId: "travel-a", sourceType: "ADDITIONAL_SERVICE_ORDER_LINE", sourceId: "order-a", sourceLineId: "line-a",
     sourceVersionId: "1", sourceReference: null, sourceAcceptedAt: new Date("2026-10-01T12:00:00.000Z"),
     servicePurposeCode: "LODGING", servicePurposeName: "Hospedaje", description: "Hotel con desayuno",
     participantClientIds: ["client-a"], sourceSnapshot: null, soldValueScope: "EXACT_SERVICE_LINE", soldValue: { scope: "EXACT_SERVICE_LINE", amount: "850.0000", currency: "USD" },

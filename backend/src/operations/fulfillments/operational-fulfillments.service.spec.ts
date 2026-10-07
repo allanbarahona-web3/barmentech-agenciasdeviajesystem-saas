@@ -21,7 +21,7 @@ describe("OperationalFulfillmentsService", () => {
     await expect(c.service.create(tenantId, travelPackageId, requirementId, createInput({ participantIds: ["participant-a", "participant-a", "participant-b"] }), actor))
       .resolves.toMatchObject({ status: "DRAFT", servicePurposeCode: "LODGING", passengers: [{ travelPackageParticipantId: "participant-a" }] });
     expect(c.tx.operationalFulfillment.create).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ status: "DRAFT", servicePurposeCode: "LODGING", servicePurposeName: "Lodging", operationalRequirementId: requirementId }),
+      data: expect.objectContaining({ travelPackageId, status: "DRAFT", servicePurposeCode: "LODGING", servicePurposeName: "Lodging", operationalRequirementId: requirementId }),
     }));
     expect(c.tx.operationalFulfillmentPassenger.createMany.mock.calls[0][0].data).toHaveLength(2);
     expect(c.tx.operationalRequirement.updateMany).toHaveBeenCalledWith(expect.objectContaining({
