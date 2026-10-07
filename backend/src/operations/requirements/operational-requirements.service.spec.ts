@@ -229,6 +229,22 @@ describe("OperationalRequirementsService", () => {
     expect(c.tx.travelPackageParticipant.findMany).not.toHaveBeenCalled();
   });
 
+  it("filters the standalone queue by tenant-safe customer and generic source identity", async () => {
+    const c = context();
+    c.tx.operationalRequirement.findMany.mockResolvedValue([]);
+    c.tx.operationalRequirement.count.mockResolvedValue(0);
+    await expect(c.service.listStandalone(tenantId, { sourceType: "CUSTOM_QUOTATION_LINE", search: "Ada" })).resolves.toMatchObject({ items: [], total: 0 });
+    expect(c.tx.operationalRequirement.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        tenantId,
+        scopeType: "STANDALONE_CUSTOMER",
+        travelPackageId: null,
+        sourceType: "CUSTOM_QUOTATION_LINE",
+        OR: expect.arrayContaining([{ customer: { is: { fullName: { contains: "Ada", mode: "insensitive" } } } }]),
+      }),
+    }));
+  });
+
   it("rejects standalone passenger assignment explicitly", async () => {
     const c = context();
     c.tx.operationalRequirement.findFirst.mockResolvedValue({ id: requirementId, status: "PENDING" });

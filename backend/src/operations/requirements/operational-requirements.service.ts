@@ -668,10 +668,11 @@ function requirementListWhere(tenantId: string, travelPackageId: string | null, 
     ...(input.servicePurposeCode === undefined ? {} : { servicePurposeCode: requiredText(input.servicePurposeCode, "OPERATIONAL_REQUIREMENT_SERVICE_PURPOSE_CODE_INVALID") }),
     ...(input.critical === undefined ? {} : { critical: input.critical === "true" }),
     ...(input.assignedToUserId === undefined ? {} : { assignedToUserId: requiredText(input.assignedToUserId, "OPERATIONAL_REQUIREMENT_ASSIGNEE_INVALID") }),
+    ...(input.sourceType === undefined ? {} : { sourceType: requiredText(input.sourceType, "OPERATIONAL_REQUIREMENT_SOURCE_TYPE_INVALID") }),
     ...(deadlineFrom === undefined && deadlineTo === undefined ? {} : {
       operationalDeadlineAt: { ...(deadlineFrom === undefined ? {} : { gte: deadlineFrom }), ...(deadlineTo === undefined ? {} : { lte: deadlineTo }) },
     }),
-    ...(search ? { OR: [{ description: { contains: search, mode: "insensitive" } }, { sourceReference: { contains: search, mode: "insensitive" } }] } : {}),
+    ...(search ? { OR: [{ description: { contains: search, mode: "insensitive" } }, { sourceReference: { contains: search, mode: "insensitive" } }, { customer: { is: { fullName: { contains: search, mode: "insensitive" } } } }] } : {}),
   };
 }
 
