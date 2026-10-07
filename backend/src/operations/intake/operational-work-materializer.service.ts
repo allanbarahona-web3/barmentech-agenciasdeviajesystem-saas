@@ -18,6 +18,7 @@ type OperationsTransaction = {
   $executeRaw<T = unknown>(query: TemplateStringsArray, ...values: unknown[]): Promise<T>;
   travelPackage: { findFirst(args: unknown): Promise<{ id: string } | null> };
   travelPackageParticipant: { findMany(args: unknown): Promise<Array<{ id: string; clientId: string }>> };
+  client: { findFirst(args: unknown): Promise<{ id: string } | null> };
   operationalRequirement: {
     findFirst(args: unknown): Promise<{ id: string } | null>;
     create(args: unknown): Promise<{ id: string }>;
@@ -52,10 +53,11 @@ export class OperationalWorkMaterializer {
 
   async materialize(reference: OperationalWorkSourceReference): Promise<OperationalWorkMaterializationResult> {
     const source = await this.sourceReader.readSourceItem(reference);
-    if (source.tenantId !== reference.tenantId || source.travelPackageId !== reference.travelPackageId
-      || source.sourceType !== reference.sourceType || source.sourceId !== reference.sourceId || source.sourceLineId !== reference.sourceLineId) {
+    if (!sameSourceReference(source, reference)) {
       throw new OperationalWorkMaterializationError("SOURCE_CONFLICT", false, { sourceId: reference.sourceId, sourceLineId: reference.sourceLineId });
     }
+    if (source.scopeType === "STANDALONE_CUSTOMER") return this.materializeStandalone(source);
+
     const baseParticipantIds = source.participantScope === "ALL_CONTRACTED_TRAVEL_PACKAGE_PARTICIPANTS"
       ? await this.readAllContractedParticipantIds(source)
       : null;
@@ -165,7 +167,57 @@ export class OperationalWorkMaterializer {
     }
   }
 
-  private async readAllContractedParticipantIds(source: OperationalWorkSourceItem): Promise<string[]> {
+  private async materializeStandalone(source: Extract<OperationalWorkSourceItem, { scopeType: "STANDALONE_CUSTOMER" }>): Promise<OperationalWorkMaterializationResult> {
+    try {
+      const result = await runTenantTransaction(this.database, source.tenantId, async (tx) => {
+        const existing = await findExisting(tx, source);
+        if (existing) return { status: "ALREADY_MATERIALIZED" as const, operationalRequirementId: existing.id };
+        const customer = await tx.client.findFirst({
+          where: { id: source.customerId, tenantId: source.tenantId },
+          select: { id: true },
+        });
+        if (!customer) {
+          throw new OperationalWorkMaterializationError("CUSTOMER_NOT_FOUND", false, {
+            customerId: source.customerId,
+          });
+        }
+        try {
+          const requirement = await tx.operationalRequirement.create({
+            data: requirementCreateData(source),
+            select: { id: true },
+          });
+          return { status: "CREATED" as const, operationalRequirementId: requirement.id };
+        } catch (error) {
+          if (isSourceIdentityConflict(error)) {
+            throw new OperationalWorkMaterializationError("SOURCE_CONFLICT", false, {
+              sourceId: source.sourceId,
+              sourceLineId: source.sourceLineId,
+            });
+          }
+          throw error;
+        }
+      });
+      if (result.status === "CREATED") {
+        this.logger.log({ message: "Operational work materialized", tenantId: source.tenantId, scopeType: source.scopeType, customerId: source.customerId, sourceId: source.sourceId, sourceLineId: source.sourceLineId });
+      }
+      return result;
+    } catch (error) {
+      if (error instanceof OperationalWorkMaterializationError && error.code === "SOURCE_CONFLICT") {
+        return runTenantTransaction(this.database, source.tenantId, async (tx) => {
+          const concurrent = await findExisting(tx, source);
+          if (concurrent) return { status: "ALREADY_MATERIALIZED", operationalRequirementId: concurrent.id };
+          throw error;
+        });
+      }
+      if (error instanceof OperationalWorkMaterializationError) throw error;
+      throw new OperationalWorkMaterializationError("MATERIALIZATION_FAILED", true, {
+        sourceId: source.sourceId,
+        sourceLineId: source.sourceLineId,
+      });
+    }
+  }
+
+  private async readAllContractedParticipantIds(source: Extract<OperationalWorkSourceItem, { scopeType: "TRAVEL_PACKAGE" }>): Promise<string[]> {
     const participantIds: string[] = [];
     let cursor: string | undefined;
     do {
@@ -188,11 +240,20 @@ export class OperationalWorkMaterializer {
   }
 }
 
-function findExisting(tx: OperationsTransaction, source: { tenantId: string; travelPackageId: string; sourceType: string; sourceId: string; sourceLineId: string }) {
+function sameSourceReference(source: OperationalWorkSourceItem, reference: OperationalWorkSourceReference) {
+  if (source.tenantId !== reference.tenantId || source.scopeType !== reference.scopeType
+    || source.sourceType !== reference.sourceType || source.sourceId !== reference.sourceId || source.sourceLineId !== reference.sourceLineId) return false;
+  return source.scopeType === "TRAVEL_PACKAGE"
+    ? reference.scopeType === "TRAVEL_PACKAGE" && source.travelPackageId === reference.travelPackageId
+    : reference.scopeType === "STANDALONE_CUSTOMER" && source.customerId === reference.customerId;
+}
+
+function findExisting(tx: OperationsTransaction, source: OperationalWorkSourceItem) {
   return tx.operationalRequirement.findFirst({
     where: {
       tenantId: source.tenantId,
-      travelPackageId: source.travelPackageId,
+      scopeType: source.scopeType,
+      ...(source.scopeType === "TRAVEL_PACKAGE" ? { travelPackageId: source.travelPackageId } : {}),
       sourceType: source.sourceType,
       sourceId: source.sourceId,
       sourceLineId: source.sourceLineId,
@@ -204,7 +265,9 @@ function findExisting(tx: OperationsTransaction, source: { tenantId: string; tra
 function requirementCreateData(source: OperationalWorkSourceItem) {
   return {
     tenantId: source.tenantId,
-    travelPackageId: source.travelPackageId,
+    scopeType: source.scopeType,
+    travelPackageId: source.scopeType === "TRAVEL_PACKAGE" ? source.travelPackageId : null,
+    customerId: source.scopeType === "STANDALONE_CUSTOMER" ? source.customerId : null,
     servicePurposeCode: source.servicePurposeCode,
     servicePurposeName: source.servicePurposeName,
     description: source.description,
@@ -261,7 +324,7 @@ function isDecimalLike(value: object): value is { toString(): string } {
 }
 
 function requirementPassengerData(
-  source: OperationalWorkSourceItem,
+  source: Extract<OperationalWorkSourceItem, { scopeType: "TRAVEL_PACKAGE" }>,
   operationalRequirementId: string,
   participants: Array<{ id: string }>,
 ) {
@@ -277,7 +340,7 @@ function requirementPassengerData(
 
 async function findBaseParticipantsInBatches(
   tx: OperationsTransaction,
-  source: OperationalWorkSourceItem,
+  source: Extract<OperationalWorkSourceItem, { scopeType: "TRAVEL_PACKAGE" }>,
   participantIds: readonly string[],
 ) {
   const participants: Array<{ id: string; clientId: string }> = [];
@@ -292,7 +355,7 @@ async function findBaseParticipantsInBatches(
 
 function createBasePassengerAssignments(
   tx: OperationsTransaction,
-  source: OperationalWorkSourceItem,
+  source: Extract<OperationalWorkSourceItem, { scopeType: "TRAVEL_PACKAGE" }>,
   operationalRequirementId: string,
   participants: Array<{ id: string }>,
 ) {
@@ -301,7 +364,7 @@ function createBasePassengerAssignments(
 
 async function createPassengerAssignments(
   tx: OperationsTransaction,
-  source: OperationalWorkSourceItem,
+  source: Extract<OperationalWorkSourceItem, { scopeType: "TRAVEL_PACKAGE" }>,
   operationalRequirementId: string,
   participants: Array<{ id: string }>,
   skipDuplicates: boolean,

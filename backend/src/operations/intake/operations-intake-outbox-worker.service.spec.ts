@@ -48,8 +48,22 @@ describe("OperationsIntakeOutboxWorkerService", () => {
     c.materialize.mockResolvedValue({ status: "CREATED", operationalRequirementId: "requirement-base" });
     await expect(c.worker.processAvailableBatch("tenant-a")).resolves.toMatchObject({ processed: 1, failed: 0 });
     expect(c.materialize).toHaveBeenCalledWith({
-      tenantId: "tenant-a", travelPackageId: "travel-a", sourceType: "TRAVEL_PACKAGE_COST_COMPONENT", sourceId: "project-a", sourceLineId: "component-a",
+      tenantId: "tenant-a", scopeType: "TRAVEL_PACKAGE", travelPackageId: "travel-a", sourceType: "TRAVEL_PACKAGE_COST_COMPONENT", sourceId: "project-a", sourceLineId: "component-a",
     });
+  });
+
+  it("routes a standalone Custom Quotation line through the same materializer", async () => {
+    const c = context([event({ sourceType: "CUSTOM_QUOTATION_LINE", sourceId: "version-a", sourceLineId: "line-a", scopeType: "STANDALONE_CUSTOMER", travelPackageId: null, customerId: "customer-a" })]);
+    c.materialize.mockResolvedValue({ status: "CREATED", operationalRequirementId: "requirement-standalone" });
+    await expect(c.worker.processAvailableBatch("tenant-a")).resolves.toMatchObject({ processed: 1, failed: 0 });
+    expect(c.materialize).toHaveBeenCalledWith({ tenantId: "tenant-a", scopeType: "STANDALONE_CUSTOMER", customerId: "customer-a", sourceType: "CUSTOM_QUOTATION_LINE", sourceId: "version-a", sourceLineId: "line-a" });
+  });
+
+  it("records an ineligible standalone Custom Quotation source as a terminal intake finding", async () => {
+    const c = context([event({ sourceType: "CUSTOM_QUOTATION_LINE", sourceId: "version-a", sourceLineId: "line-a", scopeType: "STANDALONE_CUSTOMER", travelPackageId: null, customerId: "customer-a" })]);
+    c.materialize.mockRejectedValue(new OperationalWorkMaterializationError("SOURCE_NOT_ELIGIBLE", false));
+    await expect(c.worker.processAvailableBatch("tenant-a")).resolves.toMatchObject({ failed: 1, retried: 0 });
+    expect(c.tx.operationsIntakeOutboxEvent.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "FAILED", lastError: "SOURCE_NOT_ELIGIBLE" }) }));
   });
 
   it("schedules a bounded retry for a missing participant without creating partial work", async () => {
@@ -167,7 +181,9 @@ function event(overrides: Record<string, unknown> = {}) {
   return {
     id: "event-a",
     tenantId: "tenant-a",
+    scopeType: "TRAVEL_PACKAGE",
     travelPackageId: "travel-a",
+    customerId: null,
     eventType: "SOURCE_ITEM_APPROVED",
     eventVersion: 1,
     sourceType: "ADDITIONAL_SERVICE_ORDER_LINE",

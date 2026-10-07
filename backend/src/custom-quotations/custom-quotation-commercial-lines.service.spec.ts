@@ -10,7 +10,7 @@ describe("CustomQuotationCommercialLinesService", () => {
     expect(result).toEqual({
       lines: [expect.objectContaining({ displayOrder: 1, description: "Vuelo: SJO → MAD", quantity: "1" })],
     });
-    expect(result.lines[0]).not.toHaveProperty("costComponentId");
+    expect(result.lines[0]).toHaveProperty("costComponentId", "component-a");
     expect(c.tx.costComponent.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: { tenantId: "tenant-a", costingProjectId: "project-a", status: "ACTIVE" },
       orderBy: [{ sortPosition: "asc" }, { id: "asc" }],

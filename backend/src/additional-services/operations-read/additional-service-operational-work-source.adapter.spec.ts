@@ -4,6 +4,7 @@ import { OperationalWorkMaterializationError } from "../../operations/intake/ope
 describe("AdditionalServiceOperationalWorkSourceAdapter", () => {
   const reference = {
     tenantId: "tenant-a",
+    scopeType: "TRAVEL_PACKAGE" as const,
     travelPackageId: "travel-a",
     sourceType: "ADDITIONAL_SERVICE_ORDER_LINE",
     sourceId: "order-a",

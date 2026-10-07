@@ -1,4 +1,7 @@
-import type { OperationalWorkSourceItem, OperationalWorkSourceReference } from "./operational-work-source-reader.port";
+import type {
+  TravelPackageOperationalWorkSourceItem,
+  TravelPackageOperationalWorkSourceReference,
+} from "./operational-work-source-reader.port";
 
 export const OPERATIONAL_WORK_SOURCE_RECONCILIATION_READER = Symbol("OPERATIONAL_WORK_SOURCE_RECONCILIATION_READER");
 
@@ -18,22 +21,22 @@ export type OperationalWorkSourceInspectionState =
   | "SOURCE_IDENTITY_CONFLICT";
 
 export type OperationalWorkSourceInspection = {
-  reference: OperationalWorkSourceReference;
+  reference: TravelPackageOperationalWorkSourceReference;
   state: OperationalWorkSourceInspectionState;
-  item: OperationalWorkSourceItem | null;
+  item: TravelPackageOperationalWorkSourceItem | null;
 };
 
 export interface OperationalWorkSourceReconciliationReader {
   scanApprovedSourceItems(request: OperationalWorkSourceScanRequest): Promise<{
-    items: OperationalWorkSourceItem[];
+    items: TravelPackageOperationalWorkSourceItem[];
     nextCursor: string | null;
   }>;
   inspectSourceItems(request: {
     tenantId: string;
-    references: readonly OperationalWorkSourceReference[];
+    references: readonly TravelPackageOperationalWorkSourceReference[];
   }): Promise<Map<string, OperationalWorkSourceInspection>>;
 }
 
-export function operationalWorkSourceIdentityKey(reference: Pick<OperationalWorkSourceReference, "sourceId" | "sourceLineId">) {
+export function operationalWorkSourceIdentityKey(reference: Pick<TravelPackageOperationalWorkSourceReference, "sourceId" | "sourceLineId">) {
   return `${reference.sourceId}\u0000${reference.sourceLineId}`;
 }

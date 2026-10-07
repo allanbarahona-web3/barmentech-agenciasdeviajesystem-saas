@@ -48,10 +48,49 @@ describe("SalesOrderFiscalSnapshotMaterializationService", () => {
     const lineInsert = findSqlCall(c.tx.$executeRaw, 'INSERT INTO "sales_order_lines"');
     expect(lineInsert).toBeDefined();
     const values = lineInsert!.slice(1);
-    expect(values[14]).toBe("null");
-    expect(values[20]).toBe("[]");
-    expect(lineInsert![0][15]).toContain("::jsonb");
-    expect(lineInsert![0][21]).toContain("::jsonb");
+    expect(values[15]).toBe("null");
+    expect(values[21]).toBe("[]");
+    expect(lineInsert![0][16]).toContain("::jsonb");
+    expect(lineInsert![0][22]).toContain("::jsonb");
+  });
+
+  it("persists one optional Custom Quotation version-line identity for each normalized line", async () => {
+    const c = context();
+    c.tx.tenantFiscalClassification.findMany.mockResolvedValue([{ id: "classification-a" }]);
+    const command = input({ customQuotationVersionLineId: "quotation-version-line-a" });
+    command.commercialSubtotal = decimal("300.00000");
+    command.totalVat = decimal("39.00000");
+    command.total = decimal("339.00000");
+    const secondLine = {
+      ...(command.lines[0] as any),
+      customQuotationVersionLineId: "quotation-version-line-b",
+      description: "Segundo detalle fiscal",
+      fiscalDescription: "Segundo detalle fiscal",
+      subtotal: decimal("200.00000"),
+      vatAmount: decimal("26.00000"),
+      total: decimal("226.00000"),
+    };
+    command.lines = [command.lines[0], secondLine];
+
+    await c.service.materialize(tenantId, command);
+
+    const inserts = findSqlCalls(c.tx.$executeRaw, 'INSERT INTO "sales_order_lines"');
+    expect(inserts).toHaveLength(2);
+    expect(inserts[0][0].join("")).toContain('"customQuotationVersionLineId"');
+    expect(inserts.map((insert) => insert.slice(1)[3])).toEqual([
+      "quotation-version-line-a",
+      "quotation-version-line-b",
+    ]);
+  });
+
+  it("keeps null Custom Quotation version-line identity valid for other Sales Order sources", async () => {
+    const c = context();
+    c.tx.tenantFiscalClassification.findMany.mockResolvedValue([{ id: "classification-a" }]);
+
+    await c.service.materialize(tenantId, input({ customQuotationVersionLineId: null }));
+
+    const lineInsert = findSqlCall(c.tx.$executeRaw, 'INSERT INTO "sales_order_lines"');
+    expect(lineInsert?.slice(1)[3]).toBeNull();
   });
 
   it("accepts an optional same-tenant fiscal classification as provenance only", async () => {
@@ -203,5 +242,9 @@ function fiscalIdentity() {
 }
 
 function findSqlCall(mock: jest.Mock, fragment: string) {
-  return mock.mock.calls.find((call) => Array.isArray(call[0]) && call[0].join("").includes(fragment));
+  return findSqlCalls(mock, fragment)[0];
+}
+
+function findSqlCalls(mock: jest.Mock, fragment: string) {
+  return mock.mock.calls.filter((call) => Array.isArray(call[0]) && call[0].join("").includes(fragment));
 }

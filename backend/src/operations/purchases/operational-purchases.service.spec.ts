@@ -12,7 +12,7 @@ describe("OperationalPurchasesService", () => {
     c.tx.operationalFulfillment.updateMany.mockResolvedValue({ count: 1 });
     c.finance.readMany.mockResolvedValue([{ eligibility: "ELIGIBLE", reason: "SETTLED" }]);
     await expect(c.service.create(tenantId, travelPackageId, requirementId, fulfillmentId, input(), actor)).resolves.toMatchObject({ amount: "100.25", currency: "USD", providerName: "Provider A" });
-    expect(c.tx.operationalPurchase.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ amount: expect.any(Prisma.Decimal), currency: "USD", providerName: "Provider A" }) }));
+    expect(c.tx.operationalPurchase.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ travelPackageId, operationalFulfillmentId: fulfillmentId, amount: expect.any(Prisma.Decimal), currency: "USD", providerName: "Provider A" }) }));
     expect(c.tx.operationalFulfillment.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "PURCHASED" }) }));
     expect(c.finance.readMany).toHaveBeenCalledWith({ tenantId, sources: [{ sourceType: "CONTRACT", sourceId: "contract-a" }] });
   });
@@ -139,6 +139,36 @@ describe("OperationalPurchasesService", () => {
     await expect(c.service.create(tenantId, travelPackageId, requirementId, fulfillmentId, input(), actor)).rejects.toBeInstanceOf(ConflictException);
     expect(c.tx.operationalPurchase.create).not.toHaveBeenCalled();
     expect(c.tx.$executeRaw).toHaveBeenCalledTimes(2);
+  });
+
+  it("allows standalone Custom Quotation procurement only after Finance reports its exact immutable line eligible", async () => {
+    const standalone = requirement({ travelPackageId: null, sourceType: "CUSTOM_QUOTATION_LINE", sourceId: "version-a", sourceLineId: "line-a" });
+    const c = context(standalone, fulfillment(), [standalone, standalone], [fulfillment(), fulfillment()]);
+    c.finance.readMany.mockResolvedValue([{ eligibility: "ELIGIBLE", reason: "SETTLED" }]);
+    c.tx.operationalPurchase.create.mockResolvedValue(purchase({ travelPackageId: null }));
+    c.tx.operationalFulfillment.updateMany.mockResolvedValue({ count: 1 });
+    await expect(c.service.createStandalone(tenantId, requirementId, fulfillmentId, input(), actor)).resolves.toMatchObject({ id: purchaseId, travelPackageId: null });
+    expect(c.finance.readMany).toHaveBeenCalledWith({
+      tenantId,
+      sources: [{ sourceType: "CUSTOM_QUOTATION_LINE", sourceId: "version-a", sourceLineId: "line-a" }],
+    });
+    expect(c.tx.operationalPurchase.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ travelPackageId: null, operationalFulfillmentId: fulfillmentId }),
+    }));
+
+    const blocked = context(standalone, fulfillment(), [standalone], [fulfillment()]);
+    blocked.finance.readMany.mockResolvedValue([{ eligibility: "BLOCKED", reason: "OUTSTANDING_BALANCE" }]);
+    await expect(blocked.service.createStandalone(tenantId, requirementId, fulfillmentId, input(), actor)).rejects.toMatchObject({ response: expect.objectContaining({ message: "OPERATIONAL_PURCHASE_FINANCIAL_ELIGIBILITY_BLOCKED" }) });
+    expect(blocked.tx.operationalPurchase.create).not.toHaveBeenCalled();
+  });
+
+  it("lists standalone purchases through generic fulfillment identity", async () => {
+    const standalone = requirement({ travelPackageId: null, sourceType: "CUSTOM_QUOTATION_LINE", sourceId: "version-a", sourceLineId: "line-a" });
+    const c = context(standalone, fulfillment(), [standalone], [fulfillment()]);
+    c.tx.operationalPurchase.findMany.mockResolvedValue([purchase({ travelPackageId: null })]);
+    c.tx.operationalPurchase.count.mockResolvedValue(1);
+    await expect(c.service.listStandalone(tenantId, requirementId, fulfillmentId, {})).resolves.toMatchObject({ total: 1, items: [{ travelPackageId: null }] });
+    expect(c.tx.operationalPurchase.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ tenantId, travelPackageId: null, operationalFulfillmentId: fulfillmentId }) }));
   });
 });
 

@@ -1,8 +1,9 @@
+import { Prisma } from "@prisma/client";
 import { OperationalWorkMaterializer } from "./operational-work-materializer.service";
-import { OperationalWorkMaterializationError, type OperationalWorkSourceItem } from "./operational-work-source-reader.port";
+import { OperationalWorkMaterializationError, type OperationalWorkSourceItem, type TravelPackageOperationalWorkSourceItem } from "./operational-work-source-reader.port";
 
 describe("OperationalWorkMaterializer", () => {
-  const reference = { tenantId: "tenant-a", travelPackageId: "travel-a", sourceType: "ADDITIONAL_SERVICE_ORDER_LINE", sourceId: "order-a", sourceLineId: "line-a" };
+  const reference = { tenantId: "tenant-a", scopeType: "TRAVEL_PACKAGE" as const, travelPackageId: "travel-a", sourceType: "ADDITIONAL_SERVICE_ORDER_LINE", sourceId: "order-a", sourceLineId: "line-a" };
 
   it("creates one PENDING requirement and a bounded batch of exact passenger assignments", async () => {
     const c = context();
@@ -14,6 +15,7 @@ describe("OperationalWorkMaterializer", () => {
     await expect(c.materializer.materialize(reference)).resolves.toEqual({ status: "CREATED", operationalRequirementId: "requirement-a" });
     expect(c.tx.operationalRequirement.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
       tenantId: "tenant-a", travelPackageId: "travel-a", sourceType: "ADDITIONAL_SERVICE_ORDER_LINE", sourceId: "order-a", sourceLineId: "line-a",
+      scopeType: "TRAVEL_PACKAGE", customerId: null,
       sourceVersionId: "3", status: "PENDING", critical: false, operationalDeadlineAt: null, assignedToUserId: null,
       soldValueScope: "EXACT_SERVICE_LINE", soldCurrency: "USD", createdByUserId: "SYSTEM",
     }) }));
@@ -63,6 +65,59 @@ describe("OperationalWorkMaterializer", () => {
     expect(c.tx.operationalRequirement.create).not.toHaveBeenCalled();
   });
 
+  it("materializes a standalone customer source without package or passenger reads", async () => {
+    const c = context(standaloneSource());
+    c.tx.operationalRequirement.findFirst.mockResolvedValue(null);
+    c.tx.client.findFirst.mockResolvedValue({ id: "customer-a" });
+    c.tx.operationalRequirement.create.mockResolvedValue({ id: "requirement-standalone" });
+
+    await expect(c.materializer.materialize(standaloneReference())).resolves.toEqual({ status: "CREATED", operationalRequirementId: "requirement-standalone" });
+    expect(c.tx.client.findFirst).toHaveBeenCalledWith({ where: { id: "customer-a", tenantId: "tenant-a" }, select: { id: true } });
+    expect(c.tx.operationalRequirement.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
+      scopeType: "STANDALONE_CUSTOMER", customerId: "customer-a", travelPackageId: null,
+      sourceType: "CUSTOM_QUOTATION_LINE", sourceId: "version-a", sourceLineId: "version-line-a",
+      status: "PENDING", soldValueScope: "EXACT_SERVICE_LINE", soldAmount: expect.any(Prisma.Decimal), soldCurrency: "USD",
+    }) }));
+    expect(c.tx.travelPackage.findFirst).not.toHaveBeenCalled();
+    expect(c.tx.travelPackageParticipant.findMany).not.toHaveBeenCalled();
+    expect(c.tx.operationalRequirementPassenger.createMany).not.toHaveBeenCalled();
+  });
+
+  it("reuses the standalone source identity without creating passengers or a duplicate requirement", async () => {
+    const c = context(standaloneSource());
+    c.tx.operationalRequirement.findFirst.mockResolvedValue({ id: "requirement-standalone" });
+
+    await expect(c.materializer.materialize(standaloneReference())).resolves.toEqual({ status: "ALREADY_MATERIALIZED", operationalRequirementId: "requirement-standalone" });
+    expect(c.tx.operationalRequirement.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({
+      tenantId: "tenant-a", scopeType: "STANDALONE_CUSTOMER", sourceType: "CUSTOM_QUOTATION_LINE", sourceId: "version-a", sourceLineId: "version-line-a",
+    }) }));
+    expect(c.tx.client.findFirst).not.toHaveBeenCalled();
+    expect(c.tx.operationalRequirement.create).not.toHaveBeenCalled();
+    expect(c.tx.operationalRequirementPassenger.createMany).not.toHaveBeenCalled();
+  });
+
+  it("recovers a standalone source-identity race by returning the concurrent requirement", async () => {
+    const c = context(standaloneSource());
+    c.tx.operationalRequirement.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: "requirement-concurrent" });
+    c.tx.client.findFirst.mockResolvedValue({ id: "customer-a" });
+    c.tx.operationalRequirement.create.mockRejectedValue({ code: "P2002" });
+
+    await expect(c.materializer.materialize(standaloneReference())).resolves.toEqual({ status: "ALREADY_MATERIALIZED", operationalRequirementId: "requirement-concurrent" });
+    expect(c.tx.operationalRequirementPassenger.createMany).not.toHaveBeenCalled();
+  });
+
+  it("rejects a standalone source whose authoritative customer is outside the tenant", async () => {
+    const c = context(standaloneSource());
+    c.tx.operationalRequirement.findFirst.mockResolvedValue(null);
+    c.tx.client.findFirst.mockResolvedValue(null);
+
+    await expect(c.materializer.materialize(standaloneReference())).rejects.toMatchObject({ code: "CUSTOMER_NOT_FOUND", retryable: false });
+    expect(c.tx.operationalRequirement.create).not.toHaveBeenCalled();
+    expect(c.tx.travelPackage.findFirst).not.toHaveBeenCalled();
+  });
+
   it("creates one shared base requirement with every contracted participant and no sold value", async () => {
     const c = context(baseSource());
     c.rosterReader.readContractedRoster.mockResolvedValue({
@@ -85,6 +140,7 @@ describe("OperationalWorkMaterializer", () => {
     await expect(c.materializer.materialize(baseReference())).resolves.toEqual({ status: "CREATED", operationalRequirementId: "requirement-base" });
     expect(c.tx.operationalRequirement.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
       tenantId: "tenant-a", travelPackageId: "travel-a", sourceType: "TRAVEL_PACKAGE_COST_COMPONENT",
+      scopeType: "TRAVEL_PACKAGE", customerId: null,
       sourceId: "project-a", sourceLineId: "component-a", sourceVersionId: "snapshot-a",
       servicePurposeCode: "LODGING", servicePurposeName: "Lodging", soldValueScope: "NONE",
       soldAmount: null, soldCurrency: null, assignedToUserId: null, assignedToName: null,
@@ -229,6 +285,7 @@ function context(item: OperationalWorkSourceItem = source()) {
     $executeRaw: jest.fn(),
     travelPackage: { findFirst: jest.fn() },
     travelPackageParticipant: { findMany: jest.fn() },
+    client: { findFirst: jest.fn() },
     operationalRequirement: { findFirst: jest.fn(), create: jest.fn() },
     operationalRequirementPassenger: { createMany: jest.fn() },
   };
@@ -239,10 +296,29 @@ function context(item: OperationalWorkSourceItem = source()) {
 }
 
 function baseReference() {
-  return { tenantId: "tenant-a", travelPackageId: "travel-a", sourceType: "TRAVEL_PACKAGE_COST_COMPONENT", sourceId: "project-a", sourceLineId: "component-a" };
+  return { tenantId: "tenant-a", scopeType: "TRAVEL_PACKAGE" as const, travelPackageId: "travel-a", sourceType: "TRAVEL_PACKAGE_COST_COMPONENT", sourceId: "project-a", sourceLineId: "component-a" };
 }
 
-function baseSource(): OperationalWorkSourceItem {
+function standaloneReference() {
+  return { tenantId: "tenant-a", scopeType: "STANDALONE_CUSTOMER" as const, customerId: "customer-a", sourceType: "CUSTOM_QUOTATION_LINE", sourceId: "version-a", sourceLineId: "version-line-a" };
+}
+
+function standaloneSource(): OperationalWorkSourceItem {
+  return {
+    ...standaloneReference(),
+    sourceVersionId: "version-a",
+    sourceReference: null,
+    sourceAcceptedAt: new Date("2026-10-01T12:00:00.000Z"),
+    servicePurposeCode: "CUSTOM_QUOTATION",
+    servicePurposeName: "Cotización personalizada",
+    description: "Traslado privado",
+    sourceSnapshot: null,
+    soldValueScope: "EXACT_SERVICE_LINE",
+    soldValue: { scope: "EXACT_SERVICE_LINE", amount: "700.00000", currency: "USD" },
+  };
+}
+
+function baseSource(): TravelPackageOperationalWorkSourceItem {
   return {
     ...baseReference(),
     sourceVersionId: "snapshot-a", sourceReference: null, sourceAcceptedAt: null,
@@ -258,9 +334,9 @@ function baseSource(): OperationalWorkSourceItem {
   };
 }
 
-function source(): OperationalWorkSourceItem {
+function source(): TravelPackageOperationalWorkSourceItem {
   return {
-    tenantId: "tenant-a", travelPackageId: "travel-a", sourceType: "ADDITIONAL_SERVICE_ORDER_LINE", sourceId: "order-a", sourceLineId: "line-a",
+    tenantId: "tenant-a", scopeType: "TRAVEL_PACKAGE", travelPackageId: "travel-a", sourceType: "ADDITIONAL_SERVICE_ORDER_LINE", sourceId: "order-a", sourceLineId: "line-a",
     sourceVersionId: "3", sourceReference: null, sourceAcceptedAt: new Date("2026-09-30T12:00:00.000Z"),
     servicePurposeCode: "LODGING", servicePurposeName: "Hospedaje", description: "Hotel con desayuno · Entrada: 2026-10-18",
     participantClientIds: ["client-a", "client-b"], sourceSnapshot: null, soldValueScope: "EXACT_SERVICE_LINE", soldValue: { scope: "EXACT_SERVICE_LINE", amount: "850.0000", currency: "USD" },

@@ -24,7 +24,7 @@ export class CustomQuotationCommercialLinesService {
 
   async list(tenantId: string, quotationId: string) {
     return this.withTenantTransaction(tenantId, async (tx) => ({
-      lines: (await this.listInTransaction(tx, tenantId, quotationId)).map(({ costComponentId: _costComponentId, ...line }) => line),
+      lines: await this.listInTransaction(tx, tenantId, quotationId),
     }));
   }
 

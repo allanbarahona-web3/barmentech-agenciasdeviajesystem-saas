@@ -1,10 +1,11 @@
 import { ConflictException, NotFoundException } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { CustomQuotationSalesOrderService } from "./custom-quotation-sales-order.service";
 
 const actor = { userId: "agent-a", name: "Agent A" };
 
 describe("CustomQuotationSalesOrderService", () => {
-  it("materializes one source-neutral Sales Order from the accepted immutable version", async () => {
+  it("materializes one Sales Order line per immutable version line with exact commercial totals", async () => {
     const c = context();
     c.tx.customQuotationVersion.findFirst.mockResolvedValue(version());
     c.salesOrders.materializeInTransaction.mockResolvedValue({ salesOrderId: "sales-a", orderNumber: "SO-2026-000001", reusedExisting: false });
@@ -21,46 +22,125 @@ describe("CustomQuotationSalesOrderService", () => {
     }));
     expect(c.tx.customQuotationVersion.findFirst).toHaveBeenCalledWith(expect.objectContaining({
       select: expect.objectContaining({
-        customQuotation: { select: expect.objectContaining({ quotationNumber: true }) },
+        lines: {
+          orderBy: [{ displayOrder: "asc" }, { id: "asc" }],
+          select: expect.objectContaining({ id: true, soldAmount: true, description: true, commercialNote: true }),
+        },
       }),
     }));
     const command = c.salesOrders.materializeInTransaction.mock.calls[0][2];
     expect(command.total.toFixed(5)).toBe("1450.12345");
-    expect(command.lines).toHaveLength(1);
-    expect(command.lines[0]).toMatchObject({
-      serviceCode: "CUSTOM_QUOTATION", description: "Servicios de viaje según cotización CQ-2026-000002",
-      fiscalDescription: "Servicios de viaje según cotización CQ-2026-000002", fiscalItemCategory: "SERVICE",
-      cabysCode: "1234567890123", unitOfMeasureCode: "Unid", taxCode: "01", taxRateCode: "08",
-      fiscalTaxPercentage: expect.anything(), fiscalClassificationId: "fiscal-a", participants: [],
-    });
+    expect(command.commercialSubtotal.toFixed(5)).toBe("1283.29509");
+    expect(command.totalVat.toFixed(5)).toBe("166.82836");
+    expect(command.lines).toHaveLength(2);
+    expect(command.lines).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        customQuotationVersionLineId: "version-line-a", serviceCode: "CUSTOM_QUOTATION",
+        description: "Traslado privado", fiscalDescription: "Traslado privado",
+        commercialNotes: "Hotel al aeropuerto", fiscalItemCategory: "SERVICE",
+        cabysCode: "1234567890123", unitOfMeasureCode: "Unid", taxCode: "01", taxRateCode: "08",
+        fiscalClassificationId: "fiscal-a", participants: [],
+      }),
+      expect.objectContaining({
+        customQuotationVersionLineId: "version-line-b", serviceCode: "CUSTOM_QUOTATION",
+        description: "Servicio adicional", fiscalDescription: "Servicio adicional",
+        commercialNotes: null, participants: [],
+      }),
+    ]));
+    expect(command.lines.map((line: any) => line.customQuotationVersionLineId)).toEqual(["version-line-a", "version-line-b"]);
     expect(command.lines[0].fiscalTaxPercentage.toFixed(4)).toBe("13.0000");
-    expect(command.lines[0].subtotal.toFixed(5)).toBe("1283.29509");
-    expect(command.lines[0].vatAmount.toFixed(5)).toBe("166.82836");
-    expect(command.lines[0].total.toFixed(5)).toBe("1450.12345");
+    expect(command.lines[0].subtotal.toFixed(5)).toBe("619.46903");
+    expect(command.lines[0].vatAmount.toFixed(5)).toBe("80.53097");
+    expect(command.lines[0].total.toFixed(5)).toBe("700.00000");
+    expect(command.lines[1].subtotal.toFixed(5)).toBe("663.82606");
+    expect(command.lines[1].vatAmount.toFixed(5)).toBe("86.29739");
+    expect(command.lines[1].total.toFixed(5)).toBe("750.12345");
+    expect(command.lines.reduce((sum: Prisma.Decimal, line: any) => sum.plus(line.total), new Prisma.Decimal(0)).toFixed(5)).toBe("1450.12345");
     expect(c.tx.customQuotationVersion.updateMany).toHaveBeenCalledWith({
       where: { id: "version-a", tenantId: "tenant-a", customQuotationId: "quotation-a", salesOrderId: null },
       data: { salesOrderId: "sales-a" },
     });
+    expect(c.operationsIntake.persistMaterializedVersion).toHaveBeenCalledWith(c.tx, "tenant-a", "version-a");
     expect(c.tx.tenantFiscalClassification).toBeUndefined();
     expect(c.tx.additionalServiceCatalog).toBeUndefined();
     expect(c.tx.billingDocument).toBeUndefined();
     expect(c.tx.accountReceivable).toBeUndefined();
   });
 
-  it("uses the persisted quotation number and freezes the consolidated description", async () => {
+  it("uses immutable version-line values even if the loaded objects later change", async () => {
     const c = context();
     const frozen = version();
     c.tx.customQuotationVersion.findFirst.mockResolvedValue(frozen);
     c.salesOrders.materializeInTransaction.mockResolvedValue({ salesOrderId: "sales-a", orderNumber: "SO-2026-000001", reusedExisting: false });
 
     await c.service.materialize("tenant-a", "quotation-a", "version-a", actor);
-    frozen.fiscalDescription = "Configuración fiscal modificada";
-    frozen.customQuotation.quotationNumber = "CQ-2026-999999";
+    frozen.lines[0].description = "Configuración fiscal modificada";
+    frozen.lines[0].commercialNote = "Nota modificada";
     frozen.customQuotation.customer.fullName = "Cliente modificado";
 
     const command = c.salesOrders.materializeInTransaction.mock.calls[0][2];
-    expect(command.lines[0].fiscalDescription).toBe("Servicios de viaje según cotización CQ-2026-000002");
+    expect(command.lines[0].fiscalDescription).toBe("Traslado privado");
+    expect(command.lines[0].commercialNotes).toBe("Hotel al aeropuerto");
     expect(command.customerName).toBe("Cliente A");
+  });
+
+  it("does not multiply soldAmount by the customer-facing version-line quantity", async () => {
+    const c = context();
+    c.tx.customQuotationVersion.findFirst.mockResolvedValue(version({
+      lines: [{ id: "version-line-a", soldAmount: "100.00000", description: "Dos servicios", commercialNote: null, quantity: "2.0000" }],
+      finalSellingPrice: "100.00000",
+    }));
+    c.salesOrders.materializeInTransaction.mockResolvedValue({ salesOrderId: "sales-a", orderNumber: "SO-2026-000001", reusedExisting: false });
+
+    await c.service.materialize("tenant-a", "quotation-a", "version-a", actor);
+
+    const command = c.salesOrders.materializeInTransaction.mock.calls[0][2];
+    expect(command.total.toFixed(5)).toBe("100.00000");
+    expect(command.lines[0].total.toFixed(5)).toBe("100.00000");
+  });
+
+  it("preserves each immutable version-line fiscal tuple for heterogeneous fiscal invoice lines", async () => {
+    const c = context();
+    c.tx.customQuotationVersion.findFirst.mockResolvedValue(version({
+      lines: [
+        { id: "version-line-a", soldAmount: "100.00000", description: "Vuelo", commercialNote: null, fiscalClassificationId: "fiscal-air", fiscalDescription: "Vuelo", fiscalItemCategory: "SERVICE", cabysCode: "6311100000000", unitOfMeasureCode: "Sp", taxCode: "01", taxRateCode: "08", fiscalTaxPercentage: "13.0000" },
+        { id: "version-line-b", soldAmount: "50.00000", description: "Visa", commercialNote: null, fiscalClassificationId: "fiscal-visa", fiscalDescription: "Visa", fiscalItemCategory: "SERVICE", cabysCode: "8299000000000", unitOfMeasureCode: "Unid", taxCode: "01", taxRateCode: "01", fiscalTaxPercentage: "0.0000" },
+      ],
+      finalSellingPrice: "150.00000",
+    }));
+    c.salesOrders.materializeInTransaction.mockResolvedValue({ salesOrderId: "sales-a", orderNumber: "SO-2026-000001", reusedExisting: false });
+
+    await c.service.materialize("tenant-a", "quotation-a", "version-a", actor);
+
+    const lines = c.salesOrders.materializeInTransaction.mock.calls[0][2].lines;
+    expect(lines).toEqual(expect.arrayContaining([
+      expect.objectContaining({ customQuotationVersionLineId: "version-line-a", fiscalClassificationId: "fiscal-air", cabysCode: "6311100000000", fiscalTaxPercentage: expect.any(Prisma.Decimal) }),
+      expect.objectContaining({ customQuotationVersionLineId: "version-line-b", fiscalClassificationId: "fiscal-visa", cabysCode: "8299000000000" }),
+    ]));
+    expect(lines[0].fiscalTaxPercentage.toFixed(4)).toBe("13.0000");
+    expect(lines[1].fiscalTaxPercentage.toFixed(4)).toBe("0.0000");
+    expect(lines.map((line: any) => line.total.toFixed(5))).toEqual(["100.00000", "50.00000"]);
+  });
+
+  it("sums independently rounded line tax amounts instead of calculating tax once from the version total", async () => {
+    const c = context();
+    c.tx.customQuotationVersion.findFirst.mockResolvedValue(version({
+      finalSellingPrice: "0.00005",
+      lines: [
+        { id: "version-line-a", soldAmount: "0.00001", description: "Primer ajuste", commercialNote: null },
+        { id: "version-line-b", soldAmount: "0.00004", description: "Segundo ajuste", commercialNote: null },
+      ],
+    }));
+    c.salesOrders.materializeInTransaction.mockResolvedValue({ salesOrderId: "sales-a", orderNumber: "SO-2026-000001", reusedExisting: false });
+
+    await c.service.materialize("tenant-a", "quotation-a", "version-a", actor);
+
+    const command = c.salesOrders.materializeInTransaction.mock.calls[0][2];
+    expect(command.lines.map((line: any) => line.subtotal.toFixed(5))).toEqual(["0.00001", "0.00004"]);
+    expect(command.lines.map((line: any) => line.vatAmount.toFixed(5))).toEqual(["0.00000", "0.00000"]);
+    expect(command.commercialSubtotal.toFixed(5)).toBe("0.00005");
+    expect(command.totalVat.toFixed(5)).toBe("0.00000");
+    expect(command.total.toFixed(5)).toBe("0.00005");
   });
 
   it("reuses the existing linked Sales Order without another materialization", async () => {
@@ -73,6 +153,24 @@ describe("CustomQuotationSalesOrderService", () => {
     });
     expect(c.salesOrders.materializeInTransaction).not.toHaveBeenCalled();
     expect(c.tx.customQuotationVersion.updateMany).not.toHaveBeenCalled();
+    expect(c.operationsIntake.persistMaterializedVersion).toHaveBeenCalledWith(c.tx, "tenant-a", "version-a");
+  });
+
+  it("materializes an accepted version after its offer-acceptance deadline has passed", async () => {
+    const c = context();
+    c.tx.customQuotationVersion.findFirst.mockResolvedValue(version({
+      quotationValidUntil: new Date("2020-01-01T12:00:00.000Z"),
+    }));
+    c.salesOrders.materializeInTransaction.mockResolvedValue({ salesOrderId: "sales-a", orderNumber: "SO-2026-000001", reusedExisting: false });
+
+    await expect(c.service.materialize("tenant-a", "quotation-a", "version-a", actor)).resolves.toEqual({
+      salesOrderId: "sales-a", orderNumber: "SO-2026-000001", reusedExisting: false,
+    });
+
+    expect(c.salesOrders.materializeInTransaction).toHaveBeenCalledTimes(1);
+    expect(c.tx.customQuotationVersion.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      select: expect.not.objectContaining({ quotationValidUntil: true }),
+    }));
   });
 
   it("blocks an accepted Lead-only quotation until a Customer is resolved", async () => {
@@ -87,11 +185,26 @@ describe("CustomQuotationSalesOrderService", () => {
     expect(c.tx.client).toBeUndefined();
   });
 
-  it("rejects non-accepted, malformed, and cross-tenant versions before materialization", async () => {
-    const issued = context();
-    issued.tx.customQuotationVersion.findFirst.mockResolvedValue(version({ status: "ISSUED" }));
-    await expect(issued.service.materialize("tenant-a", "quotation-a", "version-a", actor)).rejects.toBeInstanceOf(ConflictException);
-    expect(issued.salesOrders.materializeInTransaction).not.toHaveBeenCalled();
+  it.each(["ISSUED", "REJECTED", "EXPIRED", "CANCELLED"])("rejects a %s version before materialization", async (status) => {
+    const c = context();
+    c.tx.customQuotationVersion.findFirst.mockResolvedValue(version({ status }));
+
+    await expect(c.service.materialize("tenant-a", "quotation-a", "version-a", actor)).rejects.toThrow("CUSTOM_QUOTATION_VERSION_NOT_ACCEPTED");
+    expect(c.salesOrders.materializeInTransaction).not.toHaveBeenCalled();
+    expect(c.operationsIntake.persistMaterializedVersion).not.toHaveBeenCalled();
+  });
+
+  it("rejects a non-accepted parent before materialization", async () => {
+    const c = context();
+    c.tx.customQuotationVersion.findFirst.mockResolvedValue(version({
+      customQuotation: { id: "quotation-a", status: "REJECTED", customerId: "customer-a", customer: { fullName: "Cliente A", email: "cliente@example.test" } },
+    }));
+
+    await expect(c.service.materialize("tenant-a", "quotation-a", "version-a", actor)).rejects.toThrow("CUSTOM_QUOTATION_VERSION_NOT_ACCEPTED");
+    expect(c.salesOrders.materializeInTransaction).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed and cross-tenant versions before materialization", async () => {
 
     const incomplete = context();
     incomplete.tx.customQuotationVersion.findFirst.mockResolvedValue(version({ cabysCode: null }));
@@ -102,6 +215,19 @@ describe("CustomQuotationSalesOrderService", () => {
     crossTenant.tx.$queryRaw.mockResolvedValue([]);
     await expect(crossTenant.service.materialize("tenant-a", "quotation-b", "version-b", actor)).rejects.toBeInstanceOf(NotFoundException);
     expect(crossTenant.tx.customQuotationVersion.findFirst).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["has no immutable version lines", { lines: [] }, "CUSTOM_QUOTATION_VERSION_LINES_EMPTY"],
+    ["has more than 25 immutable version lines", { lines: Array.from({ length: 26 }, (_, index) => ({ id: `line-${index}`, soldAmount: "1.00000", description: `Servicio ${index}`, commercialNote: null })) }, "CUSTOM_QUOTATION_VERSION_LINES_LIMIT_EXCEEDED"],
+    ["has a version line without soldAmount", { lines: [{ id: "version-line-a", soldAmount: null, description: "Servicio", commercialNote: null }] }, "CUSTOM_QUOTATION_VERSION_LINE_SOLD_AMOUNT_MISSING"],
+    ["does not reconcile sold amounts to the immutable final selling price", { finalSellingPrice: "999.00000" }, "CUSTOM_QUOTATION_VERSION_SOLD_AMOUNT_MISMATCH"],
+  ])("rejects materialization when it %s", async (_label, overrides, code) => {
+    const c = context();
+    c.tx.customQuotationVersion.findFirst.mockResolvedValue(version(overrides));
+
+    await expect(c.service.materialize("tenant-a", "quotation-a", "version-a", actor)).rejects.toThrow(code);
+    expect(c.salesOrders.materializeInTransaction).not.toHaveBeenCalled();
   });
 });
 
@@ -114,7 +240,8 @@ function context() {
   } as any;
   const prisma = { $transaction: jest.fn(async (work: (value: typeof tx) => Promise<unknown>) => work(tx)) };
   const salesOrders = { materializeInTransaction: jest.fn() };
-  return { tx, salesOrders, service: new CustomQuotationSalesOrderService(prisma as never, salesOrders as never) };
+  const operationsIntake = { persistMaterializedVersion: jest.fn().mockResolvedValue(2) };
+  return { tx, salesOrders, operationsIntake, service: new CustomQuotationSalesOrderService(prisma as never, salesOrders as never, operationsIntake as never) };
 }
 
 function version(overrides: Record<string, unknown> = {}) {
@@ -124,7 +251,11 @@ function version(overrides: Record<string, unknown> = {}) {
     paymentTermUnit: "DAYS", commercialObservations: "Incluye traslados", fiscalClassificationId: "fiscal-a",
     fiscalDescription: "Paquete turístico personalizado", fiscalItemCategory: "SERVICE", cabysCode: "1234567890123",
     unitOfMeasureCode: "Unid", taxCode: "01", taxRateCode: "08", fiscalTaxPercentage: "13.0000", salesOrderId: null,
-    customQuotation: { id: "quotation-a", quotationNumber: "CQ-2026-000002", status: "ACCEPTED", customerId: "customer-a", customer: { fullName: "Cliente A", email: "cliente@example.test" } },
+    lines: [
+      { id: "version-line-a", soldAmount: "700.00000", description: "Traslado privado", commercialNote: "Hotel al aeropuerto", quantity: "1.2500" },
+      { id: "version-line-b", soldAmount: "750.12345", description: "Servicio adicional", commercialNote: null, quantity: "2.0000" },
+    ],
+    customQuotation: { id: "quotation-a", status: "ACCEPTED", customerId: "customer-a", customer: { fullName: "Cliente A", email: "cliente@example.test" } },
     ...overrides,
   };
 }

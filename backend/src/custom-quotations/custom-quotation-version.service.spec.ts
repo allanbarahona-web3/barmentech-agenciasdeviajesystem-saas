@@ -23,8 +23,8 @@ describe("CustomQuotationVersionService", () => {
       }),
     }));
     expect(c.tx.customQuotationVersionLine.createMany).toHaveBeenCalledWith({ data: [
-      { tenantId: "tenant-a", customQuotationVersionId: "issued-a", pricingCalculationComponentLineId: "pricing-line-a", soldAmount: "700.00000", displayOrder: 1, description: "Traslado privado", quantity: "1.2500", commercialNote: "Hotel al aeropuerto" },
-      { tenantId: "tenant-a", customQuotationVersionId: "issued-a", pricingCalculationComponentLineId: "pricing-line-b", soldAmount: "750.12345", displayOrder: 2, description: "Servicio adicional", quantity: "2.0000", commercialNote: null },
+      expect.objectContaining({ tenantId: "tenant-a", customQuotationVersionId: "issued-a", pricingCalculationComponentLineId: "pricing-line-a", soldAmount: "700.00000", fiscalClassificationId: "fiscal-a", fiscalDescription: "Traslado privado", cabysCode: "1234567890123", displayOrder: 1, description: "Traslado privado", quantity: "1.2500", commercialNote: "Hotel al aeropuerto" }),
+      expect.objectContaining({ tenantId: "tenant-a", customQuotationVersionId: "issued-a", pricingCalculationComponentLineId: "pricing-line-b", soldAmount: "750.12345", fiscalClassificationId: "fiscal-a", fiscalDescription: "Servicio adicional", cabysCode: "1234567890123", displayOrder: 2, description: "Servicio adicional", quantity: "2.0000", commercialNote: null }),
     ] });
     expect(c.commercialLines.listInTransaction).toHaveBeenCalledWith(c.tx, "tenant-a", "quotation-a");
     expect(c.tx.customQuotationLine).toBeUndefined();
@@ -59,6 +59,22 @@ describe("CustomQuotationVersionService", () => {
     });
     expect(versionInput).not.toHaveProperty("tenantFiscalClassification");
     expect(lineInput[0]).not.toHaveProperty("customQuotationLineId");
+  });
+
+  it("freezes distinct active fiscal classifications on distinct immutable version lines", async () => {
+    const c = context();
+    prepareIssuableQuotation(c);
+    c.tx.customQuotationComponentFiscalClassification.findMany.mockResolvedValue([
+      { tenantId: "tenant-a", costComponentId: "component-a", fiscalClassification: classification({ id: "fiscal-air", cabysCode: "6311100000000", unitOfMeasureCode: "Sp", taxRateCode: "08", taxPercentage: "13.0000" }) },
+      { tenantId: "tenant-a", costComponentId: "component-b", fiscalClassification: classification({ id: "fiscal-visa", cabysCode: "8299000000000", unitOfMeasureCode: "Unid", taxRateCode: "01", taxPercentage: "0.0000" }) },
+    ]);
+
+    await c.service.issue("tenant-a", "quotation-a", actor);
+
+    expect(c.tx.customQuotationVersionLine.createMany.mock.calls[0][0].data).toEqual(expect.arrayContaining([
+      expect.objectContaining({ pricingCalculationComponentLineId: "pricing-line-a", fiscalClassificationId: "fiscal-air", cabysCode: "6311100000000", fiscalTaxPercentage: "13.0000" }),
+      expect.objectContaining({ pricingCalculationComponentLineId: "pricing-line-b", fiscalClassificationId: "fiscal-visa", cabysCode: "8299000000000", fiscalTaxPercentage: "0.0000" }),
+    ]));
   });
 
   it("persists every Pricing component line exactly once by stable CostComponent identity without description matching", async () => {
@@ -154,14 +170,21 @@ describe("CustomQuotationVersionService", () => {
     await expect(noDefault.service.issue("tenant-a", "quotation-a", actor))
       .rejects.toThrow("CUSTOM_QUOTATION_FISCAL_DEFAULT_NOT_CONFIGURED");
 
-    const nonDraft = context();
-    prepareIssuableQuotation(nonDraft);
-    nonDraft.tx.customQuotation.findFirst.mockResolvedValue(quotation({ status: "ISSUED" }));
-    await expect(nonDraft.service.issue("tenant-a", "quotation-a", actor)).rejects.toBeInstanceOf(ConflictException);
-
     const crossTenant = context();
     crossTenant.tx.$queryRaw.mockResolvedValue([]);
     await expect(crossTenant.service.issue("tenant-a", "quotation-b", actor)).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it.each(["ISSUED", "ACCEPTED", "REJECTED", "EXPIRED", "CANCELLED"])("rejects re-issuing a %s quotation", async (status) => {
+    const c = context();
+    prepareIssuableQuotation(c);
+    c.tx.customQuotation.findFirst.mockResolvedValue(quotation({ status }));
+
+    await expect(c.service.issue("tenant-a", "quotation-a", actor)).rejects.toThrow("CUSTOM_QUOTATION_NOT_DRAFT");
+
+    expect(c.tx.customQuotationVersion.create).not.toHaveBeenCalled();
+    expect(c.tx.customQuotationVersionLine.createMany).not.toHaveBeenCalled();
+    expect(c.tx.customQuotation.updateMany).not.toHaveBeenCalled();
   });
 
   it("rejects a legacy DRAFT with CREDIT/MONTHS before creating an immutable version", async () => {
@@ -405,6 +428,7 @@ function context() {
     pricingConfiguration: {},
     customQuotationVersion: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue(issuedVersion()) },
     customQuotationVersionLine: { createMany: jest.fn().mockResolvedValue({ count: 2 }) },
+    customQuotationComponentFiscalClassification: { findMany: jest.fn().mockResolvedValue([]) },
   } as any;
   const prisma = { $transaction: jest.fn(async (work: (value: typeof tx) => Promise<unknown>) => work(tx)) };
   const currentCosts = { read: jest.fn().mockResolvedValue({ costingProjectId: "project-a", baseCurrency: "USD", authoritativeTotalCost: "1000.00000" }) };
@@ -436,7 +460,7 @@ function pricingCalculation(overrides: Record<string, unknown> = {}) {
 }
 
 function classification(overrides: Record<string, unknown> = {}) {
-  return { id: "fiscal-a", isActive: true, displayName: "Transporte privado", description: null, fiscalItemCategory: "SERVICE", cabysCode: "1234567890123", unitOfMeasureCode: "Unid", taxCode: "01", taxRateCode: "08", taxPercentage: "13.0000", ...overrides };
+  return { id: "fiscal-a", tenantId: "tenant-a", isActive: true, displayName: "Transporte privado", description: null, fiscalItemCategory: "SERVICE", cabysCode: "1234567890123", unitOfMeasureCode: "Unid", taxCode: "01", taxRateCode: "08", taxPercentage: "13.0000", ...overrides };
 }
 
 function lines() {

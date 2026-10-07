@@ -106,6 +106,32 @@ describe("OperationalEvidenceService", () => {
     await expect(c.service.remove(tenantId, travelPackageId, requirementId, fulfillmentId, evidenceId)).rejects.toBeInstanceOf(ConflictException);
     expect(c.tx.operationalEvidence.deleteMany).not.toHaveBeenCalled();
   });
+
+  it("stores standalone evidence under a tenant-safe requirement path without a TravelPackage", async () => {
+    const c = context();
+    standaloneHierarchy(c);
+    c.tx.operationalEvidence.create.mockResolvedValue(evidence({ travelPackageId: null }));
+    await expect(c.service.uploadStandalone(tenantId, requirementId, fulfillmentId, { evidenceType: "OTHER" }, file(), actor)).resolves.toMatchObject({ travelPackageId: null });
+    expect(c.storage.uploadObject).toHaveBeenCalledWith(expect.objectContaining({ objectKey: expect.stringMatching(/^operations\/tenant-a\/standalone\/requirement-a\/fulfillment-a\//) }));
+    expect(c.tx.operationalEvidence.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ tenantId, travelPackageId: null, operationalFulfillmentId: fulfillmentId }) }));
+  });
+
+  it("attaches standalone evidence to a purchase through the generic hierarchy", async () => {
+    const c = context();
+    standaloneHierarchy(c);
+    c.tx.operationalPurchase.findFirst.mockResolvedValue({ id: purchaseId });
+    c.tx.operationalEvidence.create.mockResolvedValue(evidence({ travelPackageId: null, operationalPurchaseId: purchaseId }));
+    await c.service.uploadStandalone(tenantId, requirementId, fulfillmentId, { evidenceType: "SUPPLIER_INVOICE", operationalPurchaseId: purchaseId }, file(), actor);
+    expect(c.tx.operationalPurchase.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { id: purchaseId, tenantId, travelPackageId: null, operationalFulfillmentId: fulfillmentId } }));
+    expect(c.tx.operationalEvidence.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ operationalPurchaseId: purchaseId }) }));
+  });
+
+  it("isolates standalone evidence hierarchy by tenant and scope", async () => {
+    const c = context();
+    c.tx.operationalRequirement.findFirst.mockResolvedValue(null);
+    await expect(c.service.listStandalone("tenant-b", requirementId, fulfillmentId, {})).rejects.toBeInstanceOf(NotFoundException);
+    expect(c.tx.operationalFulfillment.findFirst).not.toHaveBeenCalled();
+  });
 });
 
 function context() {
@@ -125,6 +151,10 @@ function hierarchy(c: ReturnType<typeof context>, options: { purchase?: boolean;
   c.tx.operationalRequirement.findFirst.mockResolvedValue({ id: requirementId });
   c.tx.operationalFulfillment.findFirst.mockResolvedValue({ id: fulfillmentId, status: options.status ?? "PURCHASED" });
   if (options.purchase) c.tx.operationalPurchase.findFirst.mockResolvedValue({ id: purchaseId });
+}
+function standaloneHierarchy(c: ReturnType<typeof context>) {
+  c.tx.operationalRequirement.findFirst.mockResolvedValue({ id: requirementId });
+  c.tx.operationalFulfillment.findFirst.mockResolvedValue({ id: fulfillmentId, status: "PURCHASED" });
 }
 function file() { return { buffer: Buffer.from("pdfdata"), mimetype: "application/pdf", originalname: "booking.pdf", size: 7 }; }
 function evidence(overrides: Record<string, unknown> = {}) {

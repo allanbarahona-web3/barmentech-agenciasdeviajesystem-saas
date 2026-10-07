@@ -8,6 +8,7 @@ import { runTenantTransaction } from "../../tenant/tenant-transaction";
 import { procurementAuthorizationForRequirement } from "../operational-procurement-authorization";
 import {
   CreateOperationalFulfillmentDto,
+  CreateStandaloneOperationalFulfillmentDto,
   ListOperationalFulfillmentsDto,
   OperationalFulfillmentPassengersDto,
   OPERATIONAL_FULFILLMENT_STATUSES,
@@ -32,7 +33,9 @@ type OperationsDatabase = {
 type FulfillmentStatus = (typeof OPERATIONAL_FULFILLMENT_STATUSES)[number];
 type RequirementState = {
   id: string;
-  travelPackageId: string;
+  scopeType?: "TRAVEL_PACKAGE" | "STANDALONE_CUSTOMER";
+  travelPackageId: string | null;
+  customerId?: string | null;
   status: string;
   servicePurposeCode: string;
   servicePurposeName: string;
@@ -52,7 +55,7 @@ type FulfillmentPassengerRecord = {
 };
 type FulfillmentRecord = {
   id: string;
-  travelPackageId: string;
+  travelPackageId: string | null;
   operationalRequirementId: string;
   servicePurposeCode: string;
   servicePurposeName: string;
@@ -408,12 +411,117 @@ export class OperationalFulfillmentsService {
     });
   }
 
+  async listStandalone(tenantId: string, requirementId: string, input: ListOperationalFulfillmentsDto) {
+    const page = pageNumber(input.page);
+    const pageSize = pageSizeNumber(input.pageSize);
+    const where = { ...listWhere(tenantId, null, requirementId, input), travelPackageId: null };
+    return this.withTenantTransaction(tenantId, async (tx) => {
+      await this.requireStandaloneRequirement(tx, tenantId, requirementId);
+      const [rows, total] = await Promise.all([
+        tx.operationalFulfillment.findMany({ where, select: SUMMARY_SELECT, orderBy: [{ createdAt: "asc" }, { id: "asc" }], skip: (page - 1) * pageSize, take: pageSize }) as Promise<FulfillmentSummaryRecord[]>,
+        tx.operationalFulfillment.count({ where }) as Promise<number>,
+      ]);
+      return { items: rows.map(toSummary), total, page, pageSize, totalPages: total === 0 ? 0 : Math.ceil(total / pageSize) };
+    });
+  }
+
+  async findStandalone(tenantId: string, requirementId: string, fulfillmentId: string) {
+    return this.withTenantTransaction(tenantId, async (tx) => {
+      const fulfillment = await this.findStandaloneFulfillment(tx, tenantId, requirementId, fulfillmentId);
+      if (!fulfillment) throw new NotFoundException("OPERATIONAL_STANDALONE_FULFILLMENT_NOT_FOUND");
+      return toDetail(fulfillment);
+    });
+  }
+
+  async createStandalone(tenantId: string, requirementId: string, input: CreateStandaloneOperationalFulfillmentDto, actor: OperationalFulfillmentsActor) {
+    const fields = createFields(input);
+    return this.withTenantTransaction(tenantId, async (tx) => {
+      const requirement = await this.requireMutableStandaloneRequirement(tx, tenantId, requirementId);
+      const assignee = await this.resolveAssignee(tx, tenantId, input.assignedToUserId);
+      const created = await tx.operationalFulfillment.create({
+        data: {
+          tenantId, travelPackageId: null, operationalRequirementId: requirementId,
+          servicePurposeCode: requirement.servicePurposeCode, servicePurposeName: requirement.servicePurposeName,
+          status: "DRAFT", ...fields, assignedToUserId: assignee?.id ?? null, assignedToName: assignee?.fullName ?? null,
+          createdByUserId: actor.userId, createdByName: actor.name,
+        }, select: { id: true },
+      }) as { id: string };
+      if (requirement.status === "PENDING") {
+        await tx.operationalRequirement.updateMany({
+          where: { id: requirementId, tenantId, scopeType: "STANDALONE_CUSTOMER", travelPackageId: null, status: "PENDING" },
+          data: { status: "IN_PROGRESS", updatedByUserId: actor.userId, updatedByName: actor.name },
+        });
+      }
+      const fulfillment = await this.findStandaloneFulfillment(tx, tenantId, requirementId, created.id);
+      if (!fulfillment) throw new NotFoundException("OPERATIONAL_STANDALONE_FULFILLMENT_NOT_FOUND");
+      return toDetail(fulfillment);
+    });
+  }
+
+  async updateStandalone(tenantId: string, requirementId: string, fulfillmentId: string, input: UpdateOperationalFulfillmentDto, actor: OperationalFulfillmentsActor) {
+    if (!hasUpdate(input)) throw new BadRequestException("OPERATIONAL_FULFILLMENT_UPDATE_EMPTY");
+    return this.withTenantTransaction(tenantId, async (tx) => {
+      const fulfillment = await this.requireMutableStandaloneFulfillment(tx, tenantId, requirementId, fulfillmentId);
+      const fields = updateFields(input, fulfillment);
+      const assignee = input.assignedToUserId === undefined ? undefined : await this.resolveAssignee(tx, tenantId, input.assignedToUserId);
+      const updated = await tx.operationalFulfillment.updateMany({
+        where: { id: fulfillmentId, tenantId, travelPackageId: null, operationalRequirementId: requirementId },
+        data: { ...fields, ...(assignee === undefined ? {} : { assignedToUserId: assignee?.id ?? null, assignedToName: assignee?.fullName ?? null }), updatedByUserId: actor.userId, updatedByName: actor.name },
+      });
+      if (updated.count !== 1) throw new NotFoundException("OPERATIONAL_STANDALONE_FULFILLMENT_NOT_FOUND");
+      const refreshed = await this.findStandaloneFulfillment(tx, tenantId, requirementId, fulfillmentId);
+      if (!refreshed) throw new NotFoundException("OPERATIONAL_STANDALONE_FULFILLMENT_NOT_FOUND");
+      return toDetail(refreshed);
+    });
+  }
+
+  async transitionStandaloneStatus(tenantId: string, requirementId: string, fulfillmentId: string, input: TransitionOperationalFulfillmentDto, actor: OperationalFulfillmentsActor) {
+    const target = input.targetStatus as FulfillmentStatus;
+    const initial = await this.withTenantTransaction(tenantId, (tx) => this.requireMutableStandaloneFulfillment(tx, tenantId, requirementId, fulfillmentId));
+    assertTransition(initial, target);
+    if (SPEND_COMMITTING_STATUSES.has(target)) await this.requireProcurementAuthorization(tenantId, initial.operationalRequirement);
+    return this.withTenantTransaction(tenantId, async (tx) => {
+      const current = await this.requireMutableStandaloneFulfillment(tx, tenantId, requirementId, fulfillmentId);
+      assertTransition(current, target);
+      const updated = await tx.operationalFulfillment.updateMany({
+        where: { id: fulfillmentId, tenantId, travelPackageId: null, operationalRequirementId: requirementId, status: current.status },
+        data: { status: target, updatedByUserId: actor.userId, updatedByName: actor.name },
+      });
+      if (updated.count !== 1) throw new ConflictException("OPERATIONAL_FULFILLMENT_STATUS_TRANSITION_CONFLICT");
+      const fulfillment = await this.findStandaloneFulfillment(tx, tenantId, requirementId, fulfillmentId);
+      if (!fulfillment) throw new NotFoundException("OPERATIONAL_STANDALONE_FULFILLMENT_NOT_FOUND");
+      return toDetail(fulfillment);
+    });
+  }
+
+  async rejectStandalonePassengerAssignment(tenantId: string, requirementId: string, fulfillmentId: string) {
+    return this.withTenantTransaction(tenantId, async (tx) => {
+      await this.requireMutableStandaloneFulfillment(tx, tenantId, requirementId, fulfillmentId);
+      throw new BadRequestException("OPERATIONAL_STANDALONE_PASSENGERS_UNSUPPORTED");
+    });
+  }
+
   private async requireRequirement(tx: OperationsTransaction, tenantId: string, travelPackageId: string, requirementId: string): Promise<RequirementState> {
     const requirement = await tx.operationalRequirement.findFirst({
       where: { id: requirementId, tenantId, travelPackageId },
       select: { id: true, travelPackageId: true, status: true, servicePurposeCode: true, servicePurposeName: true, sourceType: true, sourceId: true, sourceLineId: true, sourceVersionId: true },
     }) as RequirementState | null;
     if (!requirement) throw new NotFoundException("OPERATIONAL_REQUIREMENT_NOT_FOUND");
+    return requirement;
+  }
+
+  private async requireStandaloneRequirement(tx: OperationsTransaction, tenantId: string, requirementId: string): Promise<RequirementState> {
+    const requirement = await tx.operationalRequirement.findFirst({
+      where: { id: requirementId, tenantId, scopeType: "STANDALONE_CUSTOMER", travelPackageId: null, customerId: { not: null } },
+      select: { id: true, scopeType: true, customerId: true, travelPackageId: true, status: true, servicePurposeCode: true, servicePurposeName: true, sourceType: true, sourceId: true, sourceLineId: true, sourceVersionId: true },
+    }) as RequirementState | null;
+    if (!requirement) throw new NotFoundException("OPERATIONAL_STANDALONE_REQUIREMENT_NOT_FOUND");
+    return requirement;
+  }
+
+  private async requireMutableStandaloneRequirement(tx: OperationsTransaction, tenantId: string, requirementId: string) {
+    const requirement = await this.requireStandaloneRequirement(tx, tenantId, requirementId);
+    if (requirement.status === "CANCELLED" || requirement.status === "NOT_APPLICABLE") throw new ConflictException("OPERATIONAL_FULFILLMENT_PARENT_REQUIREMENT_TERMINAL");
     return requirement;
   }
 
@@ -485,6 +593,24 @@ export class OperationalFulfillmentsService {
     }) as Promise<FulfillmentState | null>;
   }
 
+  private findStandaloneFulfillment(tx: OperationsTransaction, tenantId: string, requirementId: string, fulfillmentId: string): Promise<FulfillmentRecord | null> {
+    return tx.operationalFulfillment.findFirst({
+      where: { id: fulfillmentId, tenantId, travelPackageId: null, operationalRequirementId: requirementId, operationalRequirement: { scopeType: "STANDALONE_CUSTOMER", customerId: { not: null } } },
+      select: DETAIL_SELECT,
+    }) as Promise<FulfillmentRecord | null>;
+  }
+
+  private async requireMutableStandaloneFulfillment(tx: OperationsTransaction, tenantId: string, requirementId: string, fulfillmentId: string): Promise<FulfillmentState> {
+    const fulfillment = await tx.operationalFulfillment.findFirst({
+      where: { id: fulfillmentId, tenantId, travelPackageId: null, operationalRequirementId: requirementId, operationalRequirement: { scopeType: "STANDALONE_CUSTOMER", customerId: { not: null } } },
+      select: STATE_SELECT,
+    }) as FulfillmentState | null;
+    if (!fulfillment) throw new NotFoundException("OPERATIONAL_STANDALONE_FULFILLMENT_NOT_FOUND");
+    if (fulfillment.operationalRequirement.status === "CANCELLED" || fulfillment.operationalRequirement.status === "NOT_APPLICABLE") throw new ConflictException("OPERATIONAL_FULFILLMENT_PARENT_REQUIREMENT_TERMINAL");
+    if (fulfillment.status === "CONFIRMED" || fulfillment.status === "CANCELLED") throw new ConflictException("OPERATIONAL_FULFILLMENT_TERMINAL_STATUS");
+    return fulfillment;
+  }
+
   private async requireProcurementAuthorization(tenantId: string, requirement: RequirementState) {
     const authorization = procurementAuthorizationForRequirement(requirement);
     if (authorization.kind === "AUTHORIZED_BY_SOURCE_POLICY") return;
@@ -516,7 +642,7 @@ export class OperationalFulfillmentsService {
   }
 }
 
-function createFields(input: CreateOperationalFulfillmentDto) {
+function createFields(input: CreateOperationalFulfillmentDto | CreateStandaloneOperationalFulfillmentDto) {
   const fields = commonFields(input);
   validateDateRange(fields.serviceStartAt, fields.serviceEndAt);
   validateDetail(fields.detailPayload, fields.detailVersion);
@@ -530,7 +656,7 @@ function updateFields(input: UpdateOperationalFulfillmentDto, current: Fulfillme
   return omitUndefined(fields);
 }
 
-function commonFields(input: CreateOperationalFulfillmentDto | UpdateOperationalFulfillmentDto, current?: FulfillmentState) {
+function commonFields(input: CreateOperationalFulfillmentDto | CreateStandaloneOperationalFulfillmentDto | UpdateOperationalFulfillmentDto, current?: FulfillmentState) {
   const field = <T>(key: keyof CreateOperationalFulfillmentDto, fallback: T | null = null): T | null | undefined => {
     const value = (input as unknown as Record<string, unknown>)[key];
     if (value === undefined && current) return (current as unknown as Record<string, unknown>)[key] as T | null;
@@ -631,7 +757,7 @@ function hasConfirmationReference(fulfillment: FulfillmentState) {
   return Boolean(fulfillment.confirmationReference || fulfillment.reservationCode || fulfillment.ticketReference || fulfillment.voucherReference);
 }
 
-function listWhere(tenantId: string, travelPackageId: string, requirementId: string, input: ListOperationalFulfillmentsDto) {
+function listWhere(tenantId: string, travelPackageId: string | null, requirementId: string, input: ListOperationalFulfillmentsDto) {
   const from = input.serviceStartFrom === undefined ? undefined : parsedDate(input.serviceStartFrom, "OPERATIONAL_FULFILLMENT_SERVICE_DATE_INVALID");
   const to = input.serviceStartTo === undefined ? undefined : parsedDate(input.serviceStartTo, "OPERATIONAL_FULFILLMENT_SERVICE_DATE_INVALID");
   return {

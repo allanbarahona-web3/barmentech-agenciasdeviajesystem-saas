@@ -206,3 +206,55 @@ export function getOperationalEvidenceAccess(travelPackageId: string, requiremen
 export function deleteOperationalEvidence(travelPackageId: string, requirementId: string, fulfillmentId: string, evidenceId: string): Promise<{ id: string; deleted: boolean }> { return operationsRequest(evidencePath(travelPackageId, requirementId, fulfillmentId, `/${encodeURIComponent(evidenceId)}`), 'DELETE'); }
 export function getOperationsReadiness(travelPackageId: string): Promise<OperationalReadiness> { return operationsRequest(`/operations/travel-packages/${encodeURIComponent(travelPackageId)}/readiness`, 'GET'); }
 export function getOperationsPassengerMatrix(travelPackageId: string, page = 1): Promise<OperationalPassengerMatrix> { return operationsRequest(`/operations/travel-packages/${encodeURIComponent(travelPackageId)}/passenger-matrix?${new URLSearchParams({ page: String(page), pageSize: '20' })}`, 'GET'); }
+
+// Standalone work deliberately uses its own contract and routes.  The travel
+// package contracts above remain strict so trip work cannot accidentally be
+// rendered as customer-scoped work.
+export type StandaloneOperationalRequirement = Omit<OperationalRequirementSummary, 'travelPackageId' | 'source' | 'passengerCount' | 'passengerPreview' | 'coverage'> & {
+  scopeType: 'STANDALONE_CUSTOMER';
+  travelPackageId: null;
+  customer: { id: string; fullName: string };
+  source: { type: string | null; id: string | null; lineId: string | null; versionId: string | null; reference: string | null; acceptedAt: string | null; passengerGroup: { id: null; name: null; serviceCode: null } };
+  passengerCount: 0;
+  passengerPreview: [];
+  coverage: { fulfilledPassengerCount: 0; totalPassengerCount: 0 };
+};
+export interface StandaloneOperationalRequirementDetail extends StandaloneOperationalRequirement {
+  sourceLineId: string | null;
+  sourceVersionId: string | null;
+  sourceAcceptedAt: string | null;
+  confirmedPassengerIds: [];
+  passengers: [];
+  workflow: { fulfillmentCount: number; purchaseCount: number; fulfillmentStatuses: Array<{ id: string; status: OperationalFulfillmentStatus }> };
+}
+export interface StandaloneOperationalRequirementsPage { items: StandaloneOperationalRequirement[]; total: number; page: number; pageSize: number; totalPages: number; }
+export type StandaloneOperationalFulfillmentSummary = Omit<OperationalFulfillmentSummary, 'travelPackageId' | 'passengerCount' | 'passengerPreview'> & { travelPackageId: null; passengerCount: 0; passengerPreview: []; };
+export type StandaloneOperationalFulfillmentDetail = Omit<OperationalFulfillmentDetail, 'travelPackageId' | 'passengerCount' | 'passengerPreview' | 'passengers'> & { travelPackageId: null; passengerCount: 0; passengerPreview: []; passengers: []; };
+export interface StandaloneOperationalFulfillmentsPage { items: StandaloneOperationalFulfillmentSummary[]; total: number; page: number; pageSize: number; totalPages: number; }
+export type StandaloneOperationalPurchase = Omit<OperationalPurchase, 'travelPackageId'> & { travelPackageId: null };
+export interface StandaloneOperationalPurchasesPage { items: StandaloneOperationalPurchase[]; total: number; page: number; pageSize: number; totalPages: number; }
+export type StandaloneOperationalEvidence = Omit<OperationalEvidence, 'travelPackageId'> & { travelPackageId: null };
+export interface StandaloneOperationalEvidencePage { items: StandaloneOperationalEvidence[]; total: number; page: number; pageSize: number; totalPages: number; }
+
+function standaloneRequirementsPath(suffix = '') { return `/operations/standalone/requirements${suffix}`; }
+function standaloneFulfillmentsPath(requirementId: string, suffix = '') { return `${standaloneRequirementsPath(`/${encodeURIComponent(requirementId)}/fulfillments`)}${suffix}`; }
+function standalonePurchasesPath(requirementId: string, fulfillmentId: string, suffix = '') { return `${standaloneFulfillmentsPath(requirementId, `/${encodeURIComponent(fulfillmentId)}/purchases`)}${suffix}`; }
+function standaloneEvidencePath(requirementId: string, fulfillmentId: string, suffix = '') { return `${standaloneFulfillmentsPath(requirementId, `/${encodeURIComponent(fulfillmentId)}/evidence`)}${suffix}`; }
+
+export function listStandaloneOperationalRequirements(input: { page?: number; status?: OperationalRequirementStatus; search?: string; sourceType?: string } = {}): Promise<StandaloneOperationalRequirementsPage> {
+  const params = new URLSearchParams({ page: String(input.page ?? 1), pageSize: '20' });
+  if (input.status) params.set('status', input.status);
+  if (input.search?.trim()) params.set('search', input.search.trim());
+  if (input.sourceType?.trim()) params.set('sourceType', input.sourceType.trim());
+  return operationsRequest(`${standaloneRequirementsPath()}?${params}`, 'GET');
+}
+export function getStandaloneOperationalRequirement(requirementId: string): Promise<StandaloneOperationalRequirementDetail> { return operationsRequest(standaloneRequirementsPath(`/${encodeURIComponent(requirementId)}`), 'GET'); }
+export function listStandaloneOperationalFulfillments(requirementId: string, page = 1): Promise<StandaloneOperationalFulfillmentsPage> { return operationsRequest(`${standaloneFulfillmentsPath(requirementId)}?${new URLSearchParams({ page: String(page), pageSize: '20' })}`, 'GET'); }
+export function createStandaloneOperationalFulfillment(requirementId: string, input: Omit<FulfillmentInput, 'participantIds'>): Promise<StandaloneOperationalFulfillmentDetail> { return operationsRequest(standaloneFulfillmentsPath(requirementId), 'POST', input); }
+export function updateStandaloneOperationalFulfillment(requirementId: string, fulfillmentId: string, input: Omit<FulfillmentInput, 'participantIds'>): Promise<StandaloneOperationalFulfillmentDetail> { return operationsRequest(standaloneFulfillmentsPath(requirementId, `/${encodeURIComponent(fulfillmentId)}`), 'PATCH', input); }
+export function transitionStandaloneOperationalFulfillment(requirementId: string, fulfillmentId: string, targetStatus: OperationalFulfillmentStatus): Promise<StandaloneOperationalFulfillmentDetail> { return operationsRequest(standaloneFulfillmentsPath(requirementId, `/${encodeURIComponent(fulfillmentId)}/status`), 'POST', { targetStatus }); }
+export function listStandaloneOperationalPurchases(requirementId: string, fulfillmentId: string, page = 1): Promise<StandaloneOperationalPurchasesPage> { return operationsRequest(`${standalonePurchasesPath(requirementId, fulfillmentId)}?${new URLSearchParams({ page: String(page), pageSize: '20' })}`, 'GET'); }
+export function createStandaloneOperationalPurchase(requirementId: string, fulfillmentId: string, input: CreateOperationalPurchaseInput): Promise<StandaloneOperationalPurchase> { return operationsRequest(standalonePurchasesPath(requirementId, fulfillmentId), 'POST', input); }
+export function listStandaloneOperationalEvidence(requirementId: string, fulfillmentId: string, page = 1): Promise<StandaloneOperationalEvidencePage> { return operationsRequest(`${standaloneEvidencePath(requirementId, fulfillmentId)}?${new URLSearchParams({ page: String(page), pageSize: '20' })}`, 'GET'); }
+export function uploadStandaloneOperationalEvidence(requirementId: string, fulfillmentId: string, input: { evidenceType: OperationalEvidenceType; operationalPurchaseId?: string; file: File }): Promise<StandaloneOperationalEvidence> { const formData = new FormData(); formData.append('evidenceType', input.evidenceType); if (input.operationalPurchaseId) formData.append('operationalPurchaseId', input.operationalPurchaseId); formData.append('file', input.file, input.file.name); return operationsFormRequest(standaloneEvidencePath(requirementId, fulfillmentId), formData); }
+export function getStandaloneOperationalEvidenceAccess(requirementId: string, fulfillmentId: string, evidenceId: string): Promise<OperationalEvidenceAccess> { return operationsRequest(standaloneEvidencePath(requirementId, fulfillmentId, `/${encodeURIComponent(evidenceId)}/access`), 'GET'); }

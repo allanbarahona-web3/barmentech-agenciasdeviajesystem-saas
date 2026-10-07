@@ -260,6 +260,14 @@ export class ListOperationalRequirementsDto {
   @Matches(/\S/)
   search?: string;
 
+  /** Generic source filter used by customer-scoped Operations queues. */
+  @IsOptional()
+  @Transform(trim)
+  @IsString()
+  @MaxLength(80)
+  @Matches(/\S/)
+  sourceType?: string;
+
   @IsOptional()
   @Type(() => Number)
   @IsInt()

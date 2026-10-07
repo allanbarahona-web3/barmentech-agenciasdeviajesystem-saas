@@ -21,7 +21,7 @@ describe("OperationalFulfillmentsService", () => {
     await expect(c.service.create(tenantId, travelPackageId, requirementId, createInput({ participantIds: ["participant-a", "participant-a", "participant-b"] }), actor))
       .resolves.toMatchObject({ status: "DRAFT", servicePurposeCode: "LODGING", passengers: [{ travelPackageParticipantId: "participant-a" }] });
     expect(c.tx.operationalFulfillment.create).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ status: "DRAFT", servicePurposeCode: "LODGING", servicePurposeName: "Lodging", operationalRequirementId: requirementId }),
+      data: expect.objectContaining({ travelPackageId, status: "DRAFT", servicePurposeCode: "LODGING", servicePurposeName: "Lodging", operationalRequirementId: requirementId }),
     }));
     expect(c.tx.operationalFulfillmentPassenger.createMany.mock.calls[0][0].data).toHaveLength(2);
     expect(c.tx.operationalRequirement.updateMany).toHaveBeenCalledWith(expect.objectContaining({
@@ -230,6 +230,67 @@ describe("OperationalFulfillmentsService", () => {
     const hidden = context();
     hidden.tx.operationalFulfillment.findFirst.mockResolvedValue(null);
     await expect(hidden.service.find("tenant-b", travelPackageId, requirementId, fulfillmentId)).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it("creates standalone fulfillment without package or passenger reads", async () => {
+    const c = context();
+    const standaloneRequirement = requirement({ scopeType: "STANDALONE_CUSTOMER", travelPackageId: null, customerId: "customer-a" });
+    c.tx.operationalRequirement.findFirst.mockResolvedValue(standaloneRequirement);
+    c.tx.operationalFulfillment.create.mockResolvedValue({ id: fulfillmentId });
+    c.tx.operationalRequirement.updateMany.mockResolvedValue({ count: 1 });
+    c.tx.operationalFulfillment.findFirst.mockResolvedValue(fulfillment({ travelPackageId: null, operationalRequirement: standaloneRequirement, passengers: [] }));
+    await expect(c.service.createStandalone(tenantId, requirementId, { providerName: "Standalone supplier" }, actor)).resolves.toMatchObject({ travelPackageId: null, passengers: [] });
+    expect(c.tx.operationalFulfillment.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ tenantId, travelPackageId: null, operationalRequirementId: requirementId }) }));
+    expect(c.tx.travelPackageParticipant.findMany).not.toHaveBeenCalled();
+    expect(c.tx.operationalRequirementPassenger.findMany).not.toHaveBeenCalled();
+    expect(c.tx.operationalFulfillmentPassenger.createMany).not.toHaveBeenCalled();
+  });
+
+  it("rejects standalone passenger operations clearly", async () => {
+    const c = context();
+    c.tx.operationalFulfillment.findFirst.mockResolvedValue(fulfillmentState({ travelPackageId: null, operationalRequirement: requirement({ scopeType: "STANDALONE_CUSTOMER", travelPackageId: null }) }));
+    await expect(c.service.rejectStandalonePassengerAssignment(tenantId, requirementId, fulfillmentId)).rejects.toMatchObject({ response: expect.objectContaining({ message: "OPERATIONAL_STANDALONE_PASSENGERS_UNSUPPORTED" }) });
+  });
+
+  it("uses Finance eligibility for spend-committing standalone Custom Quotation fulfillment transitions", async () => {
+    const c = context();
+    const source = requirement({
+      scopeType: "STANDALONE_CUSTOMER",
+      customerId: "customer-a",
+      travelPackageId: null,
+      sourceType: "CUSTOM_QUOTATION_LINE",
+      sourceId: "version-a",
+      sourceLineId: "line-a",
+    });
+    const initial = fulfillmentState({
+      travelPackageId: null,
+      reservationCode: "R-1",
+      operationalRequirement: source,
+    });
+    c.tx.operationalFulfillment.findFirst
+      .mockResolvedValueOnce(initial)
+      .mockResolvedValueOnce(initial)
+      .mockResolvedValueOnce(fulfillment({
+        travelPackageId: null,
+        status: "RESERVED",
+        reservationCode: "R-1",
+        operationalRequirement: source,
+        passengers: [],
+      }));
+    c.finance.readMany.mockResolvedValue([{ eligibility: "ELIGIBLE", reason: "SETTLED" }]);
+    c.tx.operationalFulfillment.updateMany.mockResolvedValue({ count: 1 });
+
+    await expect(c.service.transitionStandaloneStatus(
+      tenantId,
+      requirementId,
+      fulfillmentId,
+      { targetStatus: "RESERVED" },
+      actor,
+    )).resolves.toMatchObject({ status: "RESERVED", travelPackageId: null });
+    expect(c.finance.readMany).toHaveBeenCalledWith({
+      tenantId,
+      sources: [{ sourceType: "CUSTOM_QUOTATION_LINE", sourceId: "version-a", sourceLineId: "line-a" }],
+    });
   });
 });
 

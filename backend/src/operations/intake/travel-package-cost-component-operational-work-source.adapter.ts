@@ -4,9 +4,9 @@ import { runTenantTransaction } from "../../tenant/tenant-transaction";
 import { TRAVEL_PACKAGE_COST_COMPONENT_SOURCE } from "./operations-intake-outbox.constants";
 import {
   OperationalWorkMaterializationError,
-  type OperationalWorkSourceItem,
   type OperationalWorkSourceReader,
   type OperationalWorkSourceReference,
+  type TravelPackageOperationalWorkSourceItem,
 } from "./operational-work-source-reader.port";
 
 export const TRAVEL_PACKAGE_COST_COMPONENT_SOURCE_TYPE = TRAVEL_PACKAGE_COST_COMPONENT_SOURCE;
@@ -23,14 +23,19 @@ export class TravelPackageCostComponentOperationalWorkSourceAdapter
 
   async readSourceItem(
     reference: OperationalWorkSourceReference,
-  ): Promise<OperationalWorkSourceItem> {
+  ): Promise<TravelPackageOperationalWorkSourceItem> {
     if (reference.sourceType !== TRAVEL_PACKAGE_COST_COMPONENT_SOURCE_TYPE) {
       throw new OperationalWorkMaterializationError("SOURCE_NOT_FOUND", false, {
         sourceType: reference.sourceType,
       });
     }
+    if (reference.scopeType !== "TRAVEL_PACKAGE") {
+      throw new OperationalWorkMaterializationError("SOURCE_NOT_ELIGIBLE", false, {
+        sourceType: reference.sourceType,
+      });
+    }
 
-    return runTenantTransaction<any, OperationalWorkSourceItem>(
+    return runTenantTransaction<any, TravelPackageOperationalWorkSourceItem>(
       this.prisma as any,
       reference.tenantId,
       async (tx) => {
@@ -125,9 +130,9 @@ export class TravelPackageCostComponentOperationalWorkSourceAdapter
 
 /** Shared by bounded reconciliation reads; adapters remain the snapshot-shape owner. */
 export function travelPackageCostComponentSourceItem(
-  reference: OperationalWorkSourceReference,
+  reference: Extract<OperationalWorkSourceReference, { scopeType: "TRAVEL_PACKAGE" }>,
   component: any,
-): OperationalWorkSourceItem {
+): TravelPackageOperationalWorkSourceItem {
   return {
     ...reference,
     sourceVersionId: component.currentSnapshot.id,

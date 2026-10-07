@@ -21,6 +21,7 @@ type CustomQuotationIssueTransaction = PricingTransaction & {
   costComponent: Record<string, (...args: any[]) => Promise<any>>;
   customQuotationVersion: Record<string, (...args: any[]) => Promise<any>>;
   customQuotationVersionLine: Record<string, (...args: any[]) => Promise<any>>;
+  customQuotationComponentFiscalClassification: Record<string, (...args: any[]) => Promise<any>>;
 } & TenantFiscalClassificationReader;
 
 type CustomQuotationIssueDatabase = {
@@ -133,6 +134,19 @@ export class CustomQuotationVersionService {
         commercialLines: lines,
         pricingComponentLines,
       });
+      const selectedFiscalClassifications = await tx.customQuotationComponentFiscalClassification.findMany({
+        where: {
+          tenantId,
+          customQuotationId: quotation.id,
+          costComponentId: { in: issuedLines.map(({ line }) => line.costComponentId) },
+        },
+        include: { fiscalClassification: true },
+      });
+      const fiscalByComponentId = fiscalSelectionsForIssuedLines(
+        issuedLines,
+        selectedFiscalClassifications,
+        fiscalClassification,
+      );
 
       const latest = await tx.customQuotationVersion.findFirst({
         where: { tenantId, customQuotationId: quotation.id },
@@ -172,16 +186,27 @@ export class CustomQuotationVersionService {
         },
       });
       const copiedLines = await tx.customQuotationVersionLine.createMany({
-        data: issuedLines.map(({ line, pricingComponentLine }) => ({
+        data: issuedLines.map(({ line, pricingComponentLine }) => {
+          const lineFiscal = fiscalByComponentId.get(line.costComponentId)!;
+          return {
           tenantId,
           customQuotationVersionId: version.id,
           pricingCalculationComponentLineId: pricingComponentLine.id,
           soldAmount: pricingComponentLine.effectiveSellingValue,
+          fiscalClassificationId: lineFiscal.id,
+          fiscalDescription: line.description,
+          fiscalItemCategory: lineFiscal.fiscalItemCategory,
+          cabysCode: lineFiscal.cabysCode,
+          unitOfMeasureCode: lineFiscal.unitOfMeasureCode,
+          taxCode: lineFiscal.taxCode,
+          taxRateCode: lineFiscal.taxRateCode,
+          fiscalTaxPercentage: lineFiscal.taxPercentage,
           displayOrder: line.displayOrder,
           description: line.description,
           quantity: line.quantity,
           commercialNote: line.commercialNote,
-        })),
+          };
+        }),
       });
       if (copiedLines.count !== issuedLines.length) throw new ConflictException("CUSTOM_QUOTATION_VERSION_LINES_COPY_CONFLICT");
 
@@ -221,6 +246,31 @@ export class CustomQuotationVersionService {
   private withTenantTransaction<T>(tenantId: string, work: (tx: CustomQuotationIssueTransaction) => Promise<T>) {
     return runTenantTransaction(this.database, tenantId, work);
   }
+}
+
+function fiscalSelectionsForIssuedLines(
+  issuedLines: ReadonlyArray<{ line: CommercialLineForIssue }> ,
+  selections: readonly any[],
+  fallback: any,
+) {
+  const selectedByComponentId = new Map<string, any>();
+  for (const selection of selections) {
+    const classification = selection?.fiscalClassification;
+    if (
+      !requiredIdentifier(selection?.costComponentId) ||
+      selectedByComponentId.has(selection.costComponentId) ||
+      !classification || classification.tenantId !== selection.tenantId ||
+      !classification.isActive
+    ) {
+      throw new ConflictException("CUSTOM_QUOTATION_LINE_FISCAL_CLASSIFICATION_INVALID");
+    }
+    selectedByComponentId.set(selection.costComponentId, classification);
+  }
+  const result = new Map<string, any>();
+  for (const { line } of issuedLines) {
+    result.set(line.costComponentId, selectedByComponentId.get(line.costComponentId) ?? fallback);
+  }
+  return result;
 }
 
 type CommercialLineForIssue = {

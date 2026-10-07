@@ -6,6 +6,17 @@ import type { CustomQuotationActor } from "./custom-quotations.service";
 
 export type CustomQuotationApprovalActor = { userId: string | null; name: string | null };
 
+type ApprovalStatus = "ISSUED" | "ACCEPTED" | "REJECTED" | "EXPIRED" | "CANCELLED";
+type ApprovalTargetStatus = "ACCEPTED" | "REJECTED";
+
+const APPROVAL_TRANSITIONS: Readonly<Record<ApprovalStatus, readonly ApprovalTargetStatus[]>> = {
+  ISSUED: ["ACCEPTED", "REJECTED"],
+  ACCEPTED: [],
+  REJECTED: [],
+  EXPIRED: [],
+  CANCELLED: [],
+};
+
 export type CustomQuotationApprovalTransaction = {
   $executeRaw<T = unknown>(query: TemplateStringsArray, ...values: unknown[]): Promise<T>;
   $queryRaw<T = unknown>(query: TemplateStringsArray, ...values: unknown[]): Promise<T>;
@@ -38,7 +49,7 @@ export class CustomQuotationApprovalService {
     tenantId: string,
     quotationId: string,
     versionId: string,
-    targetStatus: "ACCEPTED" | "REJECTED",
+    targetStatus: ApprovalTargetStatus,
     actor: CustomQuotationApprovalActor,
   ) {
     return this.withTenantTransaction(tenantId, (tx) => this.transitionInTransaction(tx, tenantId, quotationId, versionId, targetStatus, actor));
@@ -96,8 +107,8 @@ export class CustomQuotationApprovalService {
       });
       if (!version) throw new NotFoundException("CUSTOM_QUOTATION_VERSION_NOT_FOUND");
 
+      assertApprovalTransition(version.status, targetStatus);
       if (version.status === targetStatus) return transitionResponse(version);
-      if (version.status !== "ISSUED") throw new ConflictException("CUSTOM_QUOTATION_VERSION_INVALID_TRANSITION");
       validateImmutableCommercialSnapshot(version);
       if (targetStatus === "ACCEPTED") await assertCustomQuotationVersionNotExpired(tx, tenantId, version.quotationValidUntil);
 
@@ -124,6 +135,13 @@ export class CustomQuotationApprovalService {
 
   private withTenantTransaction<T>(tenantId: string, work: (tx: CustomQuotationApprovalTransaction) => Promise<T>) {
     return runTenantTransaction(this.database, tenantId, work);
+  }
+}
+
+function assertApprovalTransition(currentStatus: unknown, targetStatus: ApprovalTargetStatus) {
+  if (currentStatus === targetStatus) return;
+  if (typeof currentStatus !== "string" || !APPROVAL_TRANSITIONS[currentStatus as ApprovalStatus]?.includes(targetStatus)) {
+    throw new ConflictException("CUSTOM_QUOTATION_VERSION_INVALID_TRANSITION");
   }
 }
 

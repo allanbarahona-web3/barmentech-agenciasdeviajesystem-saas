@@ -53,12 +53,16 @@ describe("CustomQuotationApprovalService", () => {
     expect(c.tx.customQuotation.updateMany).not.toHaveBeenCalled();
   });
 
-  it("is idempotent for the same terminal request and rejects opposite or invalid transitions", async () => {
+  it("keeps ACCEPTED and REJECTED terminal while preserving same-state idempotency", async () => {
     const accepted = context();
-    accepted.tx.customQuotationVersion.findFirst.mockResolvedValue(version({ status: "ACCEPTED", acceptedAt: new Date("2026-09-21T12:00:00.000Z"), acceptedByUserId: "agent-a", acceptedByName: "Agent A" }));
+    accepted.tx.customQuotationVersion.findFirst.mockResolvedValue(version({
+      status: "ACCEPTED", quotationValidUntil: new Date("2020-01-01T12:00:00.000Z"),
+      acceptedAt: new Date("2026-09-21T12:00:00.000Z"), acceptedByUserId: "agent-a", acceptedByName: "Agent A",
+    }));
     await expect(accepted.service.accept("tenant-a", "quotation-a", "version-a", actor)).resolves.toMatchObject({ status: "ACCEPTED" });
     expect(accepted.tx.customQuotationVersion.updateMany).not.toHaveBeenCalled();
     expect(accepted.tx.customQuotation.updateMany).not.toHaveBeenCalled();
+    expect(accepted.tx.tenantBillingConfiguration.findUnique).not.toHaveBeenCalled();
     await expect(accepted.service.reject("tenant-a", "quotation-a", "version-a", actor)).rejects.toBeInstanceOf(ConflictException);
 
     const rejected = context();
@@ -70,6 +74,24 @@ describe("CustomQuotationApprovalService", () => {
     const cancelled = context();
     cancelled.tx.customQuotationVersion.findFirst.mockResolvedValue(version({ status: "CANCELLED" }));
     await expect(cancelled.service.accept("tenant-a", "quotation-a", "version-a", actor)).rejects.toBeInstanceOf(ConflictException);
+
+    const expired = context();
+    expired.tx.customQuotationVersion.findFirst.mockResolvedValue(version({ status: "EXPIRED" }));
+    await expect(expired.service.reject("tenant-a", "quotation-a", "version-a", actor)).rejects.toThrow("CUSTOM_QUOTATION_VERSION_INVALID_TRANSITION");
+    expect(expired.tx.customQuotationVersion.updateMany).not.toHaveBeenCalled();
+    expect(expired.tx.customQuotation.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("does not change an existing Sales Order during an approval transition", async () => {
+    const c = context();
+    c.tx.salesOrder = { updateMany: jest.fn() };
+    c.tx.customQuotationVersion.findFirst.mockResolvedValue(version({ salesOrderId: "sales-a" }));
+
+    await c.service.accept("tenant-a", "quotation-a", "version-a", actor);
+
+    expect(c.tx.salesOrder.updateMany).not.toHaveBeenCalled();
+    const versionWrite = c.tx.customQuotationVersion.updateMany.mock.calls[0][0];
+    expect(versionWrite.data).not.toHaveProperty("salesOrderId");
   });
 
   it("rejects cross-tenant versions before any lifecycle side effect", async () => {

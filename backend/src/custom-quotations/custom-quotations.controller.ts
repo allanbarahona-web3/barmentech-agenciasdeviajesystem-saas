@@ -12,8 +12,10 @@ import {
   ReorderCustomQuotationLinesDto,
   UpdateCustomQuotationDto,
   UpdateCustomQuotationLineDto,
+  AssignCustomQuotationCommercialLineFiscalClassificationDto,
 } from "./dto/custom-quotation.dto";
 import { CustomQuotationsService } from "./custom-quotations.service";
+import { CustomQuotationLineFiscalClassificationService } from "./custom-quotation-line-fiscal-classification.service";
 import { CustomQuotationCostingService } from "./custom-quotation-costing.service";
 import { CustomQuotationPricingService } from "./custom-quotation-pricing.service";
 import { CustomQuotationVersionService } from "./custom-quotation-version.service";
@@ -43,6 +45,7 @@ type CommercialRequest = { user: { id: string; fullName: string; email: string; 
 export class CustomQuotationsController {
   constructor(
     private readonly service: CustomQuotationsService,
+    private readonly lineFiscalClassifications: CustomQuotationLineFiscalClassificationService,
     private readonly costing: CustomQuotationCostingService,
     private readonly pricing: CustomQuotationPricingService,
     private readonly versions: CustomQuotationVersionService,
@@ -92,6 +95,21 @@ export class CustomQuotationsController {
   @Get(":quotationId/commercial-lines")
   getCommercialLines(@Req() request: CommercialRequest, @Param("quotationId") quotationId: string) {
     return this.commercialLines.list(request.user.tenantId, quotationId);
+  }
+
+  @Get(":quotationId/commercial-lines/fiscal-classifications")
+  fiscalClassificationContext(@Req() request: CommercialRequest, @Param("quotationId") quotationId: string) {
+    return this.lineFiscalClassifications.context(request.user.tenantId, quotationId);
+  }
+
+  @Patch(":quotationId/commercial-lines/:costComponentId/fiscal-classification")
+  assignCommercialLineFiscalClassification(
+    @Req() request: CommercialRequest,
+    @Param("quotationId") quotationId: string,
+    @Param("costComponentId") costComponentId: string,
+    @Body() body: AssignCustomQuotationCommercialLineFiscalClassificationDto,
+  ) {
+    return this.lineFiscalClassifications.assign(request.user.tenantId, quotationId, costComponentId, body.fiscalClassificationId);
   }
 
   @Get(":quotationId/cost-engine/composition")

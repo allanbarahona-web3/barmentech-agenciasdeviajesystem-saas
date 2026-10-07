@@ -23,6 +23,7 @@ type OperationsTransaction = {
   operationalRequirement: Record<string, (...args: any[]) => Promise<any>>;
   operationalRequirementPassenger: Record<string, (...args: any[]) => Promise<any>>;
   operationalFulfillmentPassenger: Record<string, (...args: any[]) => Promise<any>>;
+  operationalFulfillment: Record<string, (...args: any[]) => Promise<any>>;
 };
 
 type OperationsDatabase = {
@@ -42,7 +43,9 @@ type RequirementParticipantRecord = {
 };
 type RequirementRecord = {
   id: string;
-  travelPackageId: string;
+  scopeType: "TRAVEL_PACKAGE" | "STANDALONE_CUSTOMER";
+  travelPackageId: string | null;
+  customerId: string | null;
   servicePurposeCode: string;
   servicePurposeName: string;
   description: string;
@@ -66,6 +69,7 @@ type RequirementRecord = {
   createdAt: Date;
   updatedAt: Date;
   passengers: RequirementParticipantRecord[];
+  customer?: { id: string; fullName: string } | null;
 };
 type RequirementSummaryRecord = Omit<RequirementRecord, "passengers"> & {
   _count: { passengers: number };
@@ -73,7 +77,9 @@ type RequirementSummaryRecord = Omit<RequirementRecord, "passengers"> & {
 
 const REQUIREMENT_DETAIL_SELECT = {
   id: true,
+  scopeType: true,
   travelPackageId: true,
+  customerId: true,
   servicePurposeCode: true,
   servicePurposeName: true,
   description: true,
@@ -96,6 +102,7 @@ const REQUIREMENT_DETAIL_SELECT = {
   soldValueScope: true,
   createdAt: true,
   updatedAt: true,
+  customer: { select: { id: true, fullName: true } },
   passengers: {
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     select: {
@@ -114,7 +121,9 @@ const REQUIREMENT_DETAIL_SELECT = {
 
 const REQUIREMENT_SUMMARY_SELECT = {
   id: true,
+  scopeType: true,
   travelPackageId: true,
+  customerId: true,
   servicePurposeCode: true,
   servicePurposeName: true,
   description: true,
@@ -137,6 +146,7 @@ const REQUIREMENT_SUMMARY_SELECT = {
   soldValueScope: true,
   createdAt: true,
   updatedAt: true,
+  customer: { select: { id: true, fullName: true } },
   _count: { select: { passengers: true } },
 } as const;
 
@@ -253,7 +263,9 @@ export class OperationalRequirementsService {
       const created = await tx.operationalRequirement.create({
         data: {
           tenantId,
+          scopeType: "TRAVEL_PACKAGE",
           travelPackageId,
+          customerId: null,
           servicePurposeCode: requiredText(input.servicePurposeCode, "OPERATIONAL_REQUIREMENT_SERVICE_PURPOSE_CODE_INVALID"),
           servicePurposeName: requiredText(input.servicePurposeName, "OPERATIONAL_REQUIREMENT_SERVICE_PURPOSE_NAME_INVALID"),
           description: requiredText(input.description, "OPERATIONAL_REQUIREMENT_DESCRIPTION_INVALID"),
@@ -410,6 +422,94 @@ export class OperationalRequirementsService {
     });
   }
 
+  async listStandalone(tenantId: string, input: ListOperationalRequirementsDto) {
+    const page = normalizePage(input.page);
+    const pageSize = normalizePageSize(input.pageSize);
+    const where = {
+      ...requirementListWhere(tenantId, null, input),
+      scopeType: "STANDALONE_CUSTOMER" as const,
+      travelPackageId: null,
+      customerId: { not: null },
+    };
+    return this.withTenantTransaction(tenantId, async (tx) => {
+      const [rows, total] = await Promise.all([
+        tx.operationalRequirement.findMany({
+          where,
+          select: REQUIREMENT_SUMMARY_SELECT,
+          orderBy: [{ operationalDeadlineAt: "asc" }, { createdAt: "asc" }, { id: "asc" }],
+          skip: (page - 1) * pageSize,
+          take: pageSize,
+        }) as Promise<RequirementSummaryRecord[]>,
+        tx.operationalRequirement.count({ where }) as Promise<number>,
+      ]);
+      return {
+        items: rows.map((row) => ({ ...toSummary(row), coverage: { fulfilledPassengerCount: 0, totalPassengerCount: 0 }, passengerPreview: [] })),
+        total, page, pageSize, totalPages: total === 0 ? 0 : Math.ceil(total / pageSize),
+      };
+    });
+  }
+
+  async findStandalone(tenantId: string, requirementId: string) {
+    return this.withTenantTransaction(tenantId, async (tx) => {
+      const requirement = await this.findStandaloneRequirement(tx, tenantId, requirementId);
+      if (!requirement) throw new NotFoundException("OPERATIONAL_STANDALONE_REQUIREMENT_NOT_FOUND");
+      const fulfillments = await tx.operationalFulfillment.findMany({
+        where: { tenantId, travelPackageId: null, operationalRequirementId: requirementId },
+        select: { id: true, status: true, _count: { select: { purchases: true } } },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      }) as Array<{ id: string; status: string; _count: { purchases: number } }>;
+      return {
+        ...toDetail(requirement),
+        confirmedPassengerIds: [], coverage: { fulfilledPassengerCount: 0, totalPassengerCount: 0 },
+        workflow: { fulfillmentCount: fulfillments.length, purchaseCount: fulfillments.reduce((total, fulfillment) => total + fulfillment._count.purchases, 0), fulfillmentStatuses: fulfillments.map((fulfillment) => ({ id: fulfillment.id, status: fulfillment.status })) },
+      };
+    });
+  }
+
+  async updateStandalone(tenantId: string, requirementId: string, input: UpdateOperationalRequirementDto, actor: OperationalRequirementsActor) {
+    if (hasCommercialOrAssignmentUpdate(input)) throw new BadRequestException("OPERATIONAL_REQUIREMENT_COMMERCIAL_FIELDS_READ_ONLY");
+    if (!hasUpdate(input)) throw new BadRequestException("OPERATIONAL_REQUIREMENT_UPDATE_EMPTY");
+    return this.withTenantTransaction(tenantId, async (tx) => {
+      await this.requireStandaloneRequirementState(tx, tenantId, requirementId);
+      const updated = await tx.operationalRequirement.updateMany({
+        where: { id: requirementId, tenantId, scopeType: "STANDALONE_CUSTOMER", travelPackageId: null, customerId: { not: null } },
+        data: {
+          ...(input.critical === undefined ? {} : { critical: input.critical }),
+          ...(input.operationalDeadlineAt === undefined ? {} : { operationalDeadlineAt: optionalDate(input.operationalDeadlineAt, "OPERATIONAL_REQUIREMENT_DEADLINE_INVALID") }),
+          updatedByUserId: actor.userId, updatedByName: actor.name,
+        },
+      });
+      if (updated.count !== 1) throw new NotFoundException("OPERATIONAL_STANDALONE_REQUIREMENT_NOT_FOUND");
+      const requirement = await this.findStandaloneRequirement(tx, tenantId, requirementId);
+      if (!requirement) throw new NotFoundException("OPERATIONAL_STANDALONE_REQUIREMENT_NOT_FOUND");
+      return toDetail(requirement);
+    });
+  }
+
+  async transitionStandaloneStatus(tenantId: string, requirementId: string, input: TransitionOperationalRequirementDto, actor: OperationalRequirementsActor) {
+    const target = input.status as RequirementStatus;
+    if (target === "FULFILLED") throw new BadRequestException("OPERATIONAL_REQUIREMENT_FULFILLED_PROTECTED");
+    return this.withTenantTransaction(tenantId, async (tx) => {
+      const current = await this.requireStandaloneRequirementState(tx, tenantId, requirementId);
+      if (!STATUS_TRANSITIONS[current.status].includes(target)) throw new ConflictException("OPERATIONAL_REQUIREMENT_STATUS_TRANSITION_INVALID");
+      const updated = await tx.operationalRequirement.updateMany({
+        where: { id: requirementId, tenantId, scopeType: "STANDALONE_CUSTOMER", travelPackageId: null, customerId: { not: null }, status: current.status },
+        data: { status: target, updatedByUserId: actor.userId, updatedByName: actor.name },
+      });
+      if (updated.count !== 1) throw new ConflictException("OPERATIONAL_REQUIREMENT_STATUS_TRANSITION_CONFLICT");
+      const requirement = await this.findStandaloneRequirement(tx, tenantId, requirementId);
+      if (!requirement) throw new NotFoundException("OPERATIONAL_STANDALONE_REQUIREMENT_NOT_FOUND");
+      return toDetail(requirement);
+    });
+  }
+
+  async rejectStandalonePassengerAssignment(tenantId: string, requirementId: string) {
+    return this.withTenantTransaction(tenantId, async (tx) => {
+      await this.requireStandaloneRequirementState(tx, tenantId, requirementId);
+      throw new BadRequestException("OPERATIONAL_STANDALONE_PASSENGERS_UNSUPPORTED");
+    });
+  }
+
   private async requireTravelPackage(tx: OperationsTransaction, tenantId: string, travelPackageId: string) {
     const travelPackage = await tx.travelPackage.findFirst({
       where: { id: travelPackageId, tenantId },
@@ -472,6 +572,22 @@ export class OperationalRequirementsService {
       where: { id: requirementId, tenantId, travelPackageId },
       select: REQUIREMENT_DETAIL_SELECT,
     }) as Promise<RequirementRecord | null>;
+  }
+
+  private findStandaloneRequirement(tx: OperationsTransaction, tenantId: string, requirementId: string): Promise<RequirementRecord | null> {
+    return tx.operationalRequirement.findFirst({
+      where: { id: requirementId, tenantId, scopeType: "STANDALONE_CUSTOMER", travelPackageId: null, customerId: { not: null } },
+      select: REQUIREMENT_DETAIL_SELECT,
+    }) as Promise<RequirementRecord | null>;
+  }
+
+  private async requireStandaloneRequirementState(tx: OperationsTransaction, tenantId: string, requirementId: string): Promise<{ id: string; status: RequirementStatus }> {
+    const requirement = await tx.operationalRequirement.findFirst({
+      where: { id: requirementId, tenantId, scopeType: "STANDALONE_CUSTOMER", travelPackageId: null, customerId: { not: null } },
+      select: { id: true, status: true },
+    }) as { id: string; status: RequirementStatus } | null;
+    if (!requirement) throw new NotFoundException("OPERATIONAL_STANDALONE_REQUIREMENT_NOT_FOUND");
+    return requirement;
   }
 
   private async throwLatestTransitionState(
@@ -541,7 +657,7 @@ function normalizeSoldContext(input: CreateOperationalRequirementDto) {
   return { soldAmount, soldCurrency: currency, soldValueScope: scope };
 }
 
-function requirementListWhere(tenantId: string, travelPackageId: string, input: ListOperationalRequirementsDto) {
+function requirementListWhere(tenantId: string, travelPackageId: string | null, input: ListOperationalRequirementsDto) {
   const deadlineFrom = input.deadlineFrom === undefined ? undefined : optionalDate(input.deadlineFrom, "OPERATIONAL_REQUIREMENT_DEADLINE_INVALID");
   const deadlineTo = input.deadlineTo === undefined ? undefined : optionalDate(input.deadlineTo, "OPERATIONAL_REQUIREMENT_DEADLINE_INVALID");
   const search = optionalText(input.search);
@@ -552,10 +668,11 @@ function requirementListWhere(tenantId: string, travelPackageId: string, input: 
     ...(input.servicePurposeCode === undefined ? {} : { servicePurposeCode: requiredText(input.servicePurposeCode, "OPERATIONAL_REQUIREMENT_SERVICE_PURPOSE_CODE_INVALID") }),
     ...(input.critical === undefined ? {} : { critical: input.critical === "true" }),
     ...(input.assignedToUserId === undefined ? {} : { assignedToUserId: requiredText(input.assignedToUserId, "OPERATIONAL_REQUIREMENT_ASSIGNEE_INVALID") }),
+    ...(input.sourceType === undefined ? {} : { sourceType: requiredText(input.sourceType, "OPERATIONAL_REQUIREMENT_SOURCE_TYPE_INVALID") }),
     ...(deadlineFrom === undefined && deadlineTo === undefined ? {} : {
       operationalDeadlineAt: { ...(deadlineFrom === undefined ? {} : { gte: deadlineFrom }), ...(deadlineTo === undefined ? {} : { lte: deadlineTo }) },
     }),
-    ...(search ? { OR: [{ description: { contains: search, mode: "insensitive" } }, { sourceReference: { contains: search, mode: "insensitive" } }] } : {}),
+    ...(search ? { OR: [{ description: { contains: search, mode: "insensitive" } }, { sourceReference: { contains: search, mode: "insensitive" } }, { customer: { is: { fullName: { contains: search, mode: "insensitive" } } } }] } : {}),
   };
 }
 
@@ -650,7 +767,9 @@ function toDetail(requirement: RequirementRecord) {
 function commonResponse(requirement: Omit<RequirementRecord, "passengers">) {
   return {
     id: requirement.id,
+    scopeType: requirement.scopeType,
     travelPackageId: requirement.travelPackageId,
+    customer: requirement.customer ? { id: requirement.customer.id, fullName: requirement.customer.fullName } : null,
     servicePurposeCode: requirement.servicePurposeCode,
     servicePurposeName: requirement.servicePurposeName,
     description: requirement.description,

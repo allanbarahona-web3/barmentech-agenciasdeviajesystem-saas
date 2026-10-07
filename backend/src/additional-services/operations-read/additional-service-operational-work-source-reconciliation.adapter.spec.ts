@@ -1,7 +1,7 @@
 import { AdditionalServiceOperationalWorkSourceReconciliationAdapter } from "./additional-service-operational-work-source-reconciliation.adapter";
 
 describe("AdditionalServiceOperationalWorkSourceReconciliationAdapter", () => {
-  const reference = { tenantId: "tenant-a", travelPackageId: "travel-a", sourceType: "ADDITIONAL_SERVICE_ORDER_LINE", sourceId: "order-a", sourceLineId: "line-a" };
+  const reference = { tenantId: "tenant-a", scopeType: "TRAVEL_PACKAGE" as const, travelPackageId: "travel-a", sourceType: "ADDITIONAL_SERVICE_ORDER_LINE", sourceId: "order-a", sourceLineId: "line-a" };
 
   it("scans approved, non-cancelled source lines in a bounded deterministic page", async () => {
     const c = context();

@@ -2,7 +2,9 @@ import { Prisma } from "@prisma/client";
 
 export type OperationsIntakeOutboxEventInput = {
   tenantId: string;
-  travelPackageId: string;
+  scopeType?: "TRAVEL_PACKAGE" | "STANDALONE_CUSTOMER";
+  travelPackageId: string | null;
+  customerId?: string | null;
   eventType: string;
   eventVersion: number;
   sourceType: string;
@@ -18,5 +20,7 @@ export function persistOperationsIntakeOutboxEvents(
   events: readonly OperationsIntakeOutboxEventInput[],
 ): Promise<{ count: number }> {
   if (events.length === 0) return Promise.resolve({ count: 0 });
-  return tx.operationsIntakeOutboxEvent.createMany({ data: [...events], skipDuplicates: true });
+  // Prisma Client generation follows the manual migration application; keep the
+  // source-neutral input at this boundary until the generated client is refreshed.
+  return tx.operationsIntakeOutboxEvent.createMany({ data: [...events] as any, skipDuplicates: true });
 }

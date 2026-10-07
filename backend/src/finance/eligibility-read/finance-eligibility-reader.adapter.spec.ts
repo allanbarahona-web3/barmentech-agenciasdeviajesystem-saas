@@ -1,7 +1,7 @@
 import { FinanceEligibilityReaderAdapter } from "./finance-eligibility-reader.adapter";
 
 describe("FinanceEligibilityReaderAdapter", () => {
-  it("dispatches Contract and Additional Service refs through their Finance-owned resolvers while preserving input order", async () => {
+  it("dispatches Contract, Additional Service, and Custom Quotation refs through Finance-owned resolvers while preserving input order", async () => {
     const contracts = {
       readMany: jest.fn().mockResolvedValue([
         { source: { sourceType: "CONTRACT", sourceId: "contract-a" }, eligibility: "ELIGIBLE", reason: "SETTLED" },
@@ -12,9 +12,15 @@ describe("FinanceEligibilityReaderAdapter", () => {
         { source: { sourceType: "ADDITIONAL_SERVICE_ORDER_LINE", sourceId: "order-a", sourceLineId: "line-a", travelPackageId: "trip-a" }, eligibility: "BLOCKED", reason: "OUTSTANDING_BALANCE" },
       ]),
     };
+    const customQuotations = {
+      readMany: jest.fn().mockResolvedValue([
+        { source: { sourceType: "CUSTOM_QUOTATION_LINE", sourceId: "version-a", sourceLineId: "line-a" }, eligibility: "ELIGIBLE", reason: "SETTLED" },
+      ]),
+    };
     const adapter = new FinanceEligibilityReaderAdapter(
       contracts as never,
       additionalServices as never,
+      customQuotations as never,
     );
 
     await expect(adapter.readMany({
@@ -22,11 +28,13 @@ describe("FinanceEligibilityReaderAdapter", () => {
       sources: [
         { sourceType: "ADDITIONAL_SERVICE_ORDER_LINE", sourceId: "order-a", sourceLineId: "line-a", travelPackageId: "trip-a" },
         { sourceType: "CONTRACT", sourceId: "contract-a" },
+        { sourceType: "CUSTOM_QUOTATION_LINE", sourceId: "version-a", sourceLineId: "line-a" },
         { sourceType: "CUSTOM_QUOTATION", sourceId: "quote-a" },
       ],
     })).resolves.toEqual([
       expect.objectContaining({ source: expect.objectContaining({ sourceType: "ADDITIONAL_SERVICE_ORDER_LINE" }), reason: "OUTSTANDING_BALANCE" }),
       expect.objectContaining({ source: expect.objectContaining({ sourceType: "CONTRACT" }), reason: "SETTLED" }),
+      expect.objectContaining({ source: expect.objectContaining({ sourceType: "CUSTOM_QUOTATION_LINE" }), reason: "SETTLED" }),
       expect.objectContaining({ source: expect.objectContaining({ sourceType: "CUSTOM_QUOTATION" }), eligibility: "BLOCKED", reason: "FINANCIAL_DATA_MISSING" }),
     ]);
     expect(contracts.readMany).toHaveBeenCalledWith({
@@ -36,6 +44,10 @@ describe("FinanceEligibilityReaderAdapter", () => {
     expect(additionalServices.readMany).toHaveBeenCalledWith({
       tenantId: "tenant-a",
       sources: [{ sourceType: "ADDITIONAL_SERVICE_ORDER_LINE", sourceId: "order-a", sourceLineId: "line-a", travelPackageId: "trip-a" }],
+    });
+    expect(customQuotations.readMany).toHaveBeenCalledWith({
+      tenantId: "tenant-a",
+      sources: [{ sourceType: "CUSTOM_QUOTATION_LINE", sourceId: "version-a", sourceLineId: "line-a" }],
     });
   });
 });

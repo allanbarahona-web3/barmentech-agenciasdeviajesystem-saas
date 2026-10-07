@@ -18,6 +18,20 @@ describe("requirementToCommercialSourceRef", () => {
       .toEqual({ sourceType: "ADDITIONAL_SERVICE_ORDER_LINE", sourceId: "order-a", sourceLineId: "line-a", versionId: "3", travelPackageId: "trip-a" });
   });
 
+  it("preserves a standalone Custom Quotation version-line identity without package scope", () => {
+    expect(requirementToCommercialSourceRef({
+      ...base,
+      travelPackageId: null,
+      sourceType: "CUSTOM_QUOTATION_LINE",
+      sourceId: "version-a",
+      sourceLineId: "version-line-a",
+    })).toEqual({
+      sourceType: "CUSTOM_QUOTATION_LINE",
+      sourceId: "version-a",
+      sourceLineId: "version-line-a",
+    });
+  });
+
   it.each([
     { ...base, sourceType: "MANUAL", sourceId: null },
     { ...base, sourceType: "ADDITIONAL_SERVICE_ORDER_LINE", sourceId: "order-a", sourceLineId: null },
