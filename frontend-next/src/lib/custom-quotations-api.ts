@@ -14,7 +14,8 @@ import type {
 export type CustomQuotationStatus = 'DRAFT' | 'ISSUED' | 'ACCEPTED' | 'REJECTED' | 'EXPIRED' | 'CANCELLED';
 export type CustomQuotationTarget = { type: 'LEAD' | 'CUSTOMER'; id: string; displayName: string; email: string | null; phone: string | null; companyName: string | null };
 export type CustomQuotation = { id: string; quotationNumber: string; leadId: string | null; customerId: string | null; target: CustomQuotationTarget | null; currency: 'USD' | 'CRC'; title: string; commercialObservations: string | null; quotationValidUntil: string | null; paymentConditionType: 'CASH' | 'CREDIT' | null; paymentTermValue: number | null; paymentTermUnit: 'DAYS' | 'MONTHS' | null; status: CustomQuotationStatus; createdAt: string; updatedAt: string };
-export type CustomQuotationCommercialLine = { displayOrder: number; description: string; quantity: string; commercialNote: string | null };
+export type CustomQuotationCommercialLine = { costComponentId: string; displayOrder: number; description: string; quantity: string; commercialNote: string | null };
+export type CustomQuotationFiscalClassification = { id: string; displayName: string; description: string | null; fiscalItemCategory: 'SERVICE' | 'MERCHANDISE'; cabysCode: string; unitOfMeasureCode: string; taxCode: string; taxRateCode: string; taxPercentage: string };
 export type CustomQuotationDetail = CustomQuotation;
 export type CustomQuotationList = { items: CustomQuotation[]; total: number; page: number; pageSize: number; totalPages: number };
 export type LeadCustomQuotationSummary = {
@@ -103,6 +104,8 @@ export async function getLeadCustomQuotationSummaries(leadId: string, params: { 
 }
 export const getCustomQuotation = (id: string) => request<CustomQuotationDetail>(`/custom-quotations/${encodeURIComponent(id)}`, { method: 'GET' });
 export const getCustomQuotationCommercialLines = (id: string) => request<{ lines: CustomQuotationCommercialLine[] }>(`/custom-quotations/${encodeURIComponent(id)}/commercial-lines`, { method: 'GET' });
+export const getCustomQuotationCommercialLineFiscalContext = (id: string) => request<{ classifications: CustomQuotationFiscalClassification[]; selections: Array<{ costComponentId: string; fiscalClassificationId: string }> }>(`/custom-quotations/${encodeURIComponent(id)}/commercial-lines/fiscal-classifications`, { method: 'GET' });
+export const assignCustomQuotationCommercialLineFiscalClassification = (id: string, costComponentId: string, fiscalClassificationId: string) => request<{ costComponentId: string; fiscalClassificationId: string }>(`/custom-quotations/${encodeURIComponent(id)}/commercial-lines/${encodeURIComponent(costComponentId)}/fiscal-classification`, { method: 'PATCH', body: JSON.stringify({ fiscalClassificationId }) });
 export const createCustomQuotation = (input: CustomQuotationInput) => request<CustomQuotation>('/custom-quotations', { method: 'POST', body: JSON.stringify(input) });
 export const updateCustomQuotation = (id: string, input: Partial<CustomQuotationInput>) => request<CustomQuotation>(`/custom-quotations/${encodeURIComponent(id)}`, { method: 'PATCH', body: JSON.stringify(input) });
 export const resolveCustomQuotationCostingProject = (id: string) => request<CustomQuotationCostingProject>(`/custom-quotations/${encodeURIComponent(id)}/costing-project`, { method: 'POST' });

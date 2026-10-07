@@ -28,7 +28,8 @@ describe("CustomQuotationsController", () => {
       listEvidence: jest.fn(), evidenceAccess: jest.fn(), uploadEvidence: jest.fn(),
     };
     const commercialLines = { list: jest.fn().mockResolvedValue({ lines: [] }) };
-    const controller = new CustomQuotationsController(service as never, costing as never, pricing as never, versions as never, proposals as never, approvals as never, delivery as never, salesOrders as never, leadConversion as never, scopedCosts as never, commercialLines as never);
+    const lineFiscalClassifications = { context: jest.fn(), assign: jest.fn() };
+    const controller = new CustomQuotationsController(service as never, lineFiscalClassifications as never, costing as never, pricing as never, versions as never, proposals as never, approvals as never, delivery as never, salesOrders as never, leadConversion as never, scopedCosts as never, commercialLines as never);
     const request = { user: { id: "agent-a", fullName: "Agent A", email: "agent@example.com", tenantId: "tenant-a" } };
     const body = { customerId: "customer-a" } as never;
     await controller.create(request, body);

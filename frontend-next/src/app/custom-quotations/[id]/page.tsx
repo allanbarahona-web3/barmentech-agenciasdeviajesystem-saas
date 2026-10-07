@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/patterns/page-header';
 import { SectionCard } from '@/components/patterns/section-card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Select } from '@/components/ui/select';
 import { GenericCostComposition } from '@/features/cost-engine/generic-cost-composition';
 import { CustomQuotationEditorDialog } from '@/features/custom-quotations/components/CustomQuotationEditorDialog';
 import { CustomQuotationProposalTab } from '@/features/custom-quotations/components/CustomQuotationProposalTab';
@@ -19,11 +20,14 @@ import {
   createCustomQuotationCostEngineApi,
   getCustomQuotation,
   getCustomQuotationCommercialLines,
+  getCustomQuotationCommercialLineFiscalContext,
+  assignCustomQuotationCommercialLineFiscalClassification,
   resolveCustomQuotationCostingProject,
   updateCustomQuotation,
   type CustomQuotationCommercialLine,
   type CustomQuotationCostingProject,
   type CustomQuotationDetail,
+  type CustomQuotationFiscalClassification,
 } from '@/lib/custom-quotations-api';
 
 type WorkspaceTab = 'DETAIL' | 'COSTS' | 'QUOTE';
@@ -36,6 +40,8 @@ export default function CustomQuotationDetailPage() {
   const [commercialLines, setCommercialLines] = useState<CustomQuotationCommercialLine[]>([]);
   const [commercialLinesLoading, setCommercialLinesLoading] = useState(true);
   const [commercialLinesError, setCommercialLinesError] = useState<string | null>(null);
+  const [fiscalClassifications, setFiscalClassifications] = useState<CustomQuotationFiscalClassification[]>([]);
+  const [lineFiscalSelections, setLineFiscalSelections] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -54,6 +60,9 @@ export default function CustomQuotationDetailPage() {
     try {
       const response = await getCustomQuotationCommercialLines(id);
       setCommercialLines(response.lines);
+      const fiscal = await getCustomQuotationCommercialLineFiscalContext(id);
+      setFiscalClassifications(fiscal.classifications);
+      setLineFiscalSelections(Object.fromEntries(fiscal.selections.map((selection) => [selection.costComponentId, selection.fiscalClassificationId])));
     } catch {
       setCommercialLinesError('No se pudieron cargar los servicios de la cotización.');
     } finally {
@@ -116,6 +125,16 @@ export default function CustomQuotationDetailPage() {
   const draft = quotation.status === 'DRAFT';
   const noCommercialLines = !commercialLinesLoading && commercialLines.length === 0;
 
+  async function assignFiscalClassification(costComponentId: string, fiscalClassificationId: string) {
+    if (!id || !fiscalClassificationId) return;
+    try {
+      await assignCustomQuotationCommercialLineFiscalClassification(id, costComponentId, fiscalClassificationId);
+      setLineFiscalSelections((current) => ({ ...current, [costComponentId]: fiscalClassificationId }));
+    } catch {
+      setCommercialLinesError('No se pudo actualizar la clasificación fiscal del servicio.');
+    }
+  }
+
   return <main className="app-shell"><div className="mx-auto max-w-5xl space-y-6">
     <PageHeader
       eyebrow={<Button type="button" variant="ghost" size="sm" onClick={() => router.push('/custom-quotations')}><ArrowLeft aria-hidden="true" />Volver a cotizaciones</Button>}
@@ -147,7 +166,7 @@ export default function CustomQuotationDetailPage() {
         {commercialLinesError ? <Alert variant="destructive"><AlertTitle>No se pudieron cargar los servicios</AlertTitle><AlertDescription>{commercialLinesError}</AlertDescription></Alert> : null}
         {commercialLinesLoading ? <Skeleton className="h-24 w-full" /> : null}
         {noCommercialLines ? <div className="space-y-3"><p className="text-sm text-muted-foreground">No hay servicios agregados a esta cotización.</p><p className="text-sm text-muted-foreground">Agrega los servicios desde la sección de Costos.</p>{draft ? <Button type="button" onClick={() => void openCosts()}>Ir a Costos</Button> : null}</div> : null}
-        {!commercialLinesLoading && commercialLines.length > 0 ? <ol className="grid gap-3">{commercialLines.map((line) => <li key={`${line.displayOrder}-${line.description}`} className="rounded-lg border border-border p-4"><p className="font-medium">{line.description}</p><dl className="mt-3 grid gap-3 sm:grid-cols-2"><Field label="Cantidad" value={line.quantity} />{line.commercialNote ? <Field label="Detalle" value={line.commercialNote} /> : null}</dl></li>)}</ol> : null}
+        {!commercialLinesLoading && commercialLines.length > 0 ? <ol className="grid gap-3">{commercialLines.map((line) => <li key={line.costComponentId} className="rounded-lg border border-border p-4"><p className="font-medium">{line.description}</p><dl className="mt-3 grid gap-3 sm:grid-cols-2"><Field label="Cantidad" value={line.quantity} />{line.commercialNote ? <Field label="Detalle" value={line.commercialNote} /> : null}</dl>{draft ? <div className="mt-3 max-w-md"><label className="text-xs font-medium text-muted-foreground" htmlFor={`fiscal-${line.costComponentId}`}>Clasificación fiscal</label><Select id={`fiscal-${line.costComponentId}`} value={lineFiscalSelections[line.costComponentId] ?? ''} onChange={(event) => void assignFiscalClassification(line.costComponentId, event.target.value)}><option value="">Usar clasificación predeterminada</option>{fiscalClassifications.map((classification) => <option key={classification.id} value={classification.id}>{classification.displayName} · {classification.cabysCode} · {classification.taxPercentage}%</option>)}</Select></div> : null}</li>)}</ol> : null}
       </SectionCard>
       {draft && noCommercialLines ? <Alert variant="warning"><AlertDescription>Agrega al menos un servicio antes de emitir la cotización.</AlertDescription></Alert> : null}
 

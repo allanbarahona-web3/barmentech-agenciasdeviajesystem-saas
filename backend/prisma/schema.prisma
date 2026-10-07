@@ -8,151 +8,152 @@ datasource db {
 }
 
 model Tenant {
-  id                                      String                                   @id @default(cuid())
-  name                                    String                                   @unique
-  subdomain                               String?                                  @unique
-  contractPrefix                          String                                   @unique
-  isActive                                Boolean                                  @default(true)
-  createdAt                               DateTime                                 @default(now())
-  updatedAt                               DateTime                                 @updatedAt
-  customDomain                            String?                                  @unique
-  emailLogoUrl                            String?
-  logoUrl                                 String?
-  primaryColor                            String?
-  secondaryColor                          String?
-  signatureUrl                            String?
-  legalId                                 String?
-  legalName                               String?
-  representativeAddress                   String?
-  representativeId                        String?
-  representativeMaritalStatus             String?
-  representativeName                      String?
-  representativePowers                    String?
-  representativeTitle                     String?
-  planExpiresAt                           DateTime?
-  planType                                String?                                  @default("FREE")
-  suspendReason                           String?
-  suspendedAt                             DateTime?
-  businessAddress                         String?                                  @map("business_address")
-  contactEmail                            String?                                  @map("contact_email")
-  contactPhone                            String?                                  @map("contact_phone")
-  contactWhatsApp                         String?                                  @map("contact_whatsapp")
-  emailVerified                           Boolean                                  @default(false)
-  emailQuotaDaily                         Int                                      @default(1000) @map("email_quota_daily")
-  emailQuotaMonthly                       Int                                      @default(30000) @map("email_quota_monthly")
-  emailsSentMonth                         Int                                      @default(0) @map("emails_sent_month")
-  emailsSentToday                         Int                                      @default(0) @map("emails_sent_today")
-  fromEmail                               String?
-  lastEmailResetDate                      DateTime?                                @map("last_email_reset_date")
-  preferredCurrency                       String                                   @default("CRC") @map("preferred_currency")
-  replyToEmail                            String?
-  websiteUrl                              String?                                  @map("website_url")
-  billingAuditLogs                        BillingAuditLog[]
-  billingClientBalances                   BillingClientBalance[]
-  billingCreditNotes                      BillingCreditNote[]
-  billingInvoices                         BillingInvoice[]
-  billingPayments                         BillingPayment[]
-  billingReceipts                         BillingReceipt[]
-  clients                                 Client[]
-  leads                                   Lead[]
-  clientPortalUsers                       ClientPortalUser[]
-  companyBankAccounts                     CompanyBankAccount[]
-  contracts                               Contract[]
-  contractFiscalSnapshots                 ContractFiscalSnapshot[]
-  contractFiscalSnapshotLines             ContractFiscalSnapshotLine[]
-  commercialSnapshots                     ContractCommercialSnapshot[]
-  contractDrafts                          ContractDraft[]
-  contractNumbers                         ContractNumber[]
-  contractNotes                           ContractNote[]
-  customerDocuments                       CustomerDocument[]
-  documentSigningSessions                 DocumentSigningSession[]
-  customerNotes                           CustomerNote[]
-  exchangeRates                           ExchangeRate[]
-  travelPackages                          TravelPackage[]
-  users                                   User[]
-  attendance_config                       AttendanceConfig?
-  attendance_corrections                  AttendanceCorrection[]
-  attendance_daily_summaries              AttendanceDailySummary[]
-  attendance_entries                      AttendanceEntry[]
-  employeeDocuments                       EmployeeDocument[]
-  employees                               Employee[]
-  internalBookings                        InternalTourBooking[]
-  internalBookingParticipants             InternalTourBookingParticipant[]
-  internalInvoices                        InternalTourInvoice[]
-  internalTrips                           InternalTrip[]
-  travelPackageParticipants               TravelPackageParticipant[]
-  travelPackageParticipantContractSources TravelPackageParticipantContractSource[]
-  passengerGroups                         PassengerGroup[]
-  passengerGroupMembers                   PassengerGroupMember[]
-  operationalRequirements                 OperationalRequirement[]
-  operationalRequirementPassengers        OperationalRequirementPassenger[]
-  operationalFulfillments                 OperationalFulfillment[]
-  operationalFulfillmentPassengers        OperationalFulfillmentPassenger[]
-  operationalPurchases                    OperationalPurchase[]
-  operationalEvidence                     OperationalEvidence[]
-  operationsIntakeOutboxEvents            OperationsIntakeOutboxEvent[]
-  payrollConfig                           PayrollConfig?
-  payrollPeriods                          PayrollPeriod[]
-  payrollAdjustments                      PayrollAdjustment[]
-  payrollRuns                             PayrollRun[]
-  additionalServiceOrders                 AdditionalServiceOrder[]
-  additionalServiceOrderLines             AdditionalServiceOrderLine[]
-  additionalServiceOrderParticipants      AdditionalServiceOrderParticipant[]
-  additionalServiceCatalogItems           AdditionalServiceCatalog[]
-  additionalServiceCatalogUsages          AdditionalServiceCatalogUsage[]
-  additionalServicePricingConfigs         AdditionalServicePricingConfiguration[]
-  additionalServiceFiscalProfiles         AdditionalServiceFiscalProfile[]
-  suppliers                               Supplier[]
-  generatedDocuments                      GeneratedDocument[]
-  salesOrders                             SalesOrder[]
-  salesOrderLines                         SalesOrderLine[]
-  billingDocuments                        BillingDocument[]
-  billingDocumentArtifacts                BillingDocumentArtifact[]
-  billingDocumentLines                    BillingDocumentLine[]
-  billingLineTaxes                        BillingLineTax[]
-  billingLineTaxExemptions                BillingLineTaxExemption[]
-  billingDocumentReferences               BillingDocumentReference[]
-  billingDocumentPaymentMethods           BillingDocumentPaymentMethod[]
-  billingConfiguration                    TenantBillingConfiguration?
-  fiscalIssuers                           FiscalIssuer[]
-  fiscalIssuerEconomicActivities          FiscalIssuerEconomicActivity[]
-  billingDocumentNumberSequences          BillingDocumentNumberSequence[]
-  billingOutboxEvents                     BillingOutboxEvent[]
-  accountReceivables                      AccountReceivable[]
-  commercialObligations                   CommercialObligation[]
-  commercialObligationAllocations         CommercialObligationAllocation[]
-  commercialObligationAllocationReversals CommercialObligationAllocationReversal[]
-  payments                                Payment[]
-  paymentAllocations                      PaymentAllocation[]
-  paymentAllocationReversals              PaymentAllocationReversal[]
-  paymentEvidence                         PaymentEvidence[]
-  businessNumberSequences                 BusinessNumberSequence[]
-  customerFundsAllocationCommands         CustomerFundsAllocationCommand[]
-  costingProjects                         CostingProject[]
-  costCategories                          CostCategory[]
-  costSuppliers                           CostSupplier[]
-  costComponents                          CostComponent[]
-  costSnapshots                           CostSnapshot[]
-  costApplicabilities                     CostApplicability[]
-  costEvidence                            CostEvidence[]
-  costAuditEvents                         CostAuditEvent[]
-  airfareDailyAuthorities                 AirfareDailyAuthority[]
-  airfareDailyAuthorityRevisions          AirfareDailyAuthorityRevision[]
-  airfarePricingRepriceRequests           AirfarePricingRepriceRequest[]
-  fiscalClassifications                   TenantFiscalClassification[]
-  travelPackageCostingProjectLinks        TravelPackageCostingProjectLink[]
-  internalTripCostingProjectLinks         InternalTripCostingProjectLink[]
-  pricingConfigurations                   PricingConfiguration[]
-  tenantPricingPolicies                   TenantPricingPolicy[]
-  pricingCalculationVersions              PricingCalculationVersion[]
-  pricingCalculationComponentLines        PricingCalculationComponentLine[]
-  customQuotations                        CustomQuotation[]
-  customQuotationCostingProjectLinks      CustomQuotationCostingProjectLink[]
-  customQuotationVersions                 CustomQuotationVersion[]
-  customQuotationVersionLines             CustomQuotationVersionLine[]
-  TravelPackagePricingPublication         TravelPackagePricingPublication[]
-  InternalTripPricingPublication          InternalTripPricingPublication[]
-  customQuotationLines                    CustomQuotationLine[]
+  id                                            String                                         @id @default(cuid())
+  name                                          String                                         @unique
+  subdomain                                     String?                                        @unique
+  contractPrefix                                String                                         @unique
+  isActive                                      Boolean                                        @default(true)
+  createdAt                                     DateTime                                       @default(now())
+  updatedAt                                     DateTime                                       @updatedAt
+  customDomain                                  String?                                        @unique
+  emailLogoUrl                                  String?
+  logoUrl                                       String?
+  primaryColor                                  String?
+  secondaryColor                                String?
+  signatureUrl                                  String?
+  legalId                                       String?
+  legalName                                     String?
+  representativeAddress                         String?
+  representativeId                              String?
+  representativeMaritalStatus                   String?
+  representativeName                            String?
+  representativePowers                          String?
+  representativeTitle                           String?
+  planExpiresAt                                 DateTime?
+  planType                                      String?                                        @default("FREE")
+  suspendReason                                 String?
+  suspendedAt                                   DateTime?
+  businessAddress                               String?                                        @map("business_address")
+  contactEmail                                  String?                                        @map("contact_email")
+  contactPhone                                  String?                                        @map("contact_phone")
+  contactWhatsApp                               String?                                        @map("contact_whatsapp")
+  emailVerified                                 Boolean                                        @default(false)
+  emailQuotaDaily                               Int                                            @default(1000) @map("email_quota_daily")
+  emailQuotaMonthly                             Int                                            @default(30000) @map("email_quota_monthly")
+  emailsSentMonth                               Int                                            @default(0) @map("emails_sent_month")
+  emailsSentToday                               Int                                            @default(0) @map("emails_sent_today")
+  fromEmail                                     String?
+  lastEmailResetDate                            DateTime?                                      @map("last_email_reset_date")
+  preferredCurrency                             String                                         @default("CRC") @map("preferred_currency")
+  replyToEmail                                  String?
+  websiteUrl                                    String?                                        @map("website_url")
+  billingAuditLogs                              BillingAuditLog[]
+  billingClientBalances                         BillingClientBalance[]
+  billingCreditNotes                            BillingCreditNote[]
+  billingInvoices                               BillingInvoice[]
+  billingPayments                               BillingPayment[]
+  billingReceipts                               BillingReceipt[]
+  clients                                       Client[]
+  leads                                         Lead[]
+  clientPortalUsers                             ClientPortalUser[]
+  companyBankAccounts                           CompanyBankAccount[]
+  contracts                                     Contract[]
+  contractFiscalSnapshots                       ContractFiscalSnapshot[]
+  contractFiscalSnapshotLines                   ContractFiscalSnapshotLine[]
+  commercialSnapshots                           ContractCommercialSnapshot[]
+  contractDrafts                                ContractDraft[]
+  contractNumbers                               ContractNumber[]
+  contractNotes                                 ContractNote[]
+  customerDocuments                             CustomerDocument[]
+  documentSigningSessions                       DocumentSigningSession[]
+  customerNotes                                 CustomerNote[]
+  exchangeRates                                 ExchangeRate[]
+  travelPackages                                TravelPackage[]
+  users                                         User[]
+  attendance_config                             AttendanceConfig?
+  attendance_corrections                        AttendanceCorrection[]
+  attendance_daily_summaries                    AttendanceDailySummary[]
+  attendance_entries                            AttendanceEntry[]
+  employeeDocuments                             EmployeeDocument[]
+  employees                                     Employee[]
+  internalBookings                              InternalTourBooking[]
+  internalBookingParticipants                   InternalTourBookingParticipant[]
+  internalInvoices                              InternalTourInvoice[]
+  internalTrips                                 InternalTrip[]
+  travelPackageParticipants                     TravelPackageParticipant[]
+  travelPackageParticipantContractSources       TravelPackageParticipantContractSource[]
+  passengerGroups                               PassengerGroup[]
+  passengerGroupMembers                         PassengerGroupMember[]
+  operationalRequirements                       OperationalRequirement[]
+  operationalRequirementPassengers              OperationalRequirementPassenger[]
+  operationalFulfillments                       OperationalFulfillment[]
+  operationalFulfillmentPassengers              OperationalFulfillmentPassenger[]
+  operationalPurchases                          OperationalPurchase[]
+  operationalEvidence                           OperationalEvidence[]
+  operationsIntakeOutboxEvents                  OperationsIntakeOutboxEvent[]
+  payrollConfig                                 PayrollConfig?
+  payrollPeriods                                PayrollPeriod[]
+  payrollAdjustments                            PayrollAdjustment[]
+  payrollRuns                                   PayrollRun[]
+  additionalServiceOrders                       AdditionalServiceOrder[]
+  additionalServiceOrderLines                   AdditionalServiceOrderLine[]
+  additionalServiceOrderParticipants            AdditionalServiceOrderParticipant[]
+  additionalServiceCatalogItems                 AdditionalServiceCatalog[]
+  additionalServiceCatalogUsages                AdditionalServiceCatalogUsage[]
+  additionalServicePricingConfigs               AdditionalServicePricingConfiguration[]
+  additionalServiceFiscalProfiles               AdditionalServiceFiscalProfile[]
+  suppliers                                     Supplier[]
+  generatedDocuments                            GeneratedDocument[]
+  salesOrders                                   SalesOrder[]
+  salesOrderLines                               SalesOrderLine[]
+  billingDocuments                              BillingDocument[]
+  billingDocumentArtifacts                      BillingDocumentArtifact[]
+  billingDocumentLines                          BillingDocumentLine[]
+  billingLineTaxes                              BillingLineTax[]
+  billingLineTaxExemptions                      BillingLineTaxExemption[]
+  billingDocumentReferences                     BillingDocumentReference[]
+  billingDocumentPaymentMethods                 BillingDocumentPaymentMethod[]
+  billingConfiguration                          TenantBillingConfiguration?
+  fiscalIssuers                                 FiscalIssuer[]
+  fiscalIssuerEconomicActivities                FiscalIssuerEconomicActivity[]
+  billingDocumentNumberSequences                BillingDocumentNumberSequence[]
+  billingOutboxEvents                           BillingOutboxEvent[]
+  accountReceivables                            AccountReceivable[]
+  commercialObligations                         CommercialObligation[]
+  commercialObligationAllocations               CommercialObligationAllocation[]
+  commercialObligationAllocationReversals       CommercialObligationAllocationReversal[]
+  payments                                      Payment[]
+  paymentAllocations                            PaymentAllocation[]
+  paymentAllocationReversals                    PaymentAllocationReversal[]
+  paymentEvidence                               PaymentEvidence[]
+  businessNumberSequences                       BusinessNumberSequence[]
+  customerFundsAllocationCommands               CustomerFundsAllocationCommand[]
+  costingProjects                               CostingProject[]
+  costCategories                                CostCategory[]
+  costSuppliers                                 CostSupplier[]
+  costComponents                                CostComponent[]
+  costSnapshots                                 CostSnapshot[]
+  costApplicabilities                           CostApplicability[]
+  costEvidence                                  CostEvidence[]
+  costAuditEvents                               CostAuditEvent[]
+  airfareDailyAuthorities                       AirfareDailyAuthority[]
+  airfareDailyAuthorityRevisions                AirfareDailyAuthorityRevision[]
+  airfarePricingRepriceRequests                 AirfarePricingRepriceRequest[]
+  fiscalClassifications                         TenantFiscalClassification[]
+  travelPackageCostingProjectLinks              TravelPackageCostingProjectLink[]
+  internalTripCostingProjectLinks               InternalTripCostingProjectLink[]
+  pricingConfigurations                         PricingConfiguration[]
+  tenantPricingPolicies                         TenantPricingPolicy[]
+  pricingCalculationVersions                    PricingCalculationVersion[]
+  pricingCalculationComponentLines              PricingCalculationComponentLine[]
+  customQuotations                              CustomQuotation[]
+  customQuotationCostingProjectLinks            CustomQuotationCostingProjectLink[]
+  customQuotationVersions                       CustomQuotationVersion[]
+  customQuotationVersionLines                   CustomQuotationVersionLine[]
+  customQuotationComponentFiscalClassifications CustomQuotationComponentFiscalClassification[]
+  TravelPackagePricingPublication               TravelPackagePricingPublication[]
+  InternalTripPricingPublication                InternalTripPricingPublication[]
+  customQuotationLines                          CustomQuotationLine[]
 
   @@map("tenants")
 }
@@ -1489,7 +1490,7 @@ model OperationsIntakeOutboxEvent {
   updatedAt       DateTime                     @updatedAt
   tenant          Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   travelPackage   TravelPackage?               @relation(fields: [travelPackageId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "operations_intake_outbox_events_travel_tenant_fkey")
-  customer        Client?                       @relation(fields: [customerId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "operations_intake_outbox_events_customer_tenant_fkey")
+  customer        Client?                      @relation(fields: [customerId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "operations_intake_outbox_events_customer_tenant_fkey")
 
   @@unique([tenantId, eventType, sourceType, sourceId, sourceLineId], map: "operations_intake_outbox_source_event_key")
   @@index([tenantId, status, availableAt, createdAt], map: "operations_intake_outbox_tenant_status_available_idx")
@@ -1795,37 +1796,38 @@ model CostSupplier {
 }
 
 model CostComponent {
-  id                            String                            @id @default(cuid())
-  tenantId                      String
-  costingProjectId              String
-  costCategoryId                String
-  costSupplierId                String?
-  title                         String
-  description                   String?
-  detailPayload                 Json?
-  detailSchemaVersion           Int?
-  quantity                      Decimal?                          @db.Decimal(19, 5)
-  unit                          String?
-  status                        CostComponentStatus               @default(ACTIVE)
-  sortPosition                  Int                               @default(0)
-  createdByUserId               String
-  createdByName                 String
-  updatedByUserId               String?
-  updatedByName                 String?
-  currentSnapshotId             String?
-  createdAt                     DateTime                          @default(now())
-  updatedAt                     DateTime                          @updatedAt
-  tenant                        Tenant                            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  costingProject                CostingProject                    @relation(fields: [costingProjectId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "cost_components_project_tenant_fkey")
-  costCategory                  CostCategory                      @relation(fields: [costCategoryId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "cost_components_category_tenant_fkey")
-  costSupplier                  CostSupplier?                     @relation(fields: [costSupplierId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "cost_components_supplier_tenant_fkey")
-  snapshots                     CostSnapshot[]                    @relation("CostComponentSnapshots")
-  currentSnapshot               CostSnapshot?                     @relation("CostComponentCurrentSnapshot", fields: [currentSnapshotId, tenantId, id], references: [id, tenantId, costComponentId], onDelete: Restrict, map: "cost_components_current_snapshot_tenant_fkey")
-  applicabilities               CostApplicability[]
-  auditEvents                   CostAuditEvent[]
-  airfareDailyAuthorities       AirfareDailyAuthority[]
-  airfarePricingRepriceRequests AirfarePricingRepriceRequest[]
-  pricingComponentLines         PricingCalculationComponentLine[]
+  id                              String                                         @id @default(cuid())
+  tenantId                        String
+  costingProjectId                String
+  costCategoryId                  String
+  costSupplierId                  String?
+  title                           String
+  description                     String?
+  detailPayload                   Json?
+  detailSchemaVersion             Int?
+  quantity                        Decimal?                                       @db.Decimal(19, 5)
+  unit                            String?
+  status                          CostComponentStatus                            @default(ACTIVE)
+  sortPosition                    Int                                            @default(0)
+  createdByUserId                 String
+  createdByName                   String
+  updatedByUserId                 String?
+  updatedByName                   String?
+  currentSnapshotId               String?
+  createdAt                       DateTime                                       @default(now())
+  updatedAt                       DateTime                                       @updatedAt
+  tenant                          Tenant                                         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  costingProject                  CostingProject                                 @relation(fields: [costingProjectId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "cost_components_project_tenant_fkey")
+  costCategory                    CostCategory                                   @relation(fields: [costCategoryId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "cost_components_category_tenant_fkey")
+  costSupplier                    CostSupplier?                                  @relation(fields: [costSupplierId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "cost_components_supplier_tenant_fkey")
+  snapshots                       CostSnapshot[]                                 @relation("CostComponentSnapshots")
+  currentSnapshot                 CostSnapshot?                                  @relation("CostComponentCurrentSnapshot", fields: [currentSnapshotId, tenantId, id], references: [id, tenantId, costComponentId], onDelete: Restrict, map: "cost_components_current_snapshot_tenant_fkey")
+  applicabilities                 CostApplicability[]
+  auditEvents                     CostAuditEvent[]
+  airfareDailyAuthorities         AirfareDailyAuthority[]
+  airfarePricingRepriceRequests   AirfarePricingRepriceRequest[]
+  pricingComponentLines           PricingCalculationComponentLine[]
+  customQuotationFiscalSelections CustomQuotationComponentFiscalClassification[]
 
   @@unique([id, tenantId], map: "cost_components_id_tenant_key")
   @@unique([id, tenantId, costingProjectId], map: "cost_components_id_tenant_project_key")
@@ -2530,28 +2532,30 @@ enum FiscalItemCategory {
 /// Neutral, tenant-owned fiscal business concept. It deliberately has no
 /// relation to Additional Services or a commercial source domain.
 model TenantFiscalClassification {
-  id                           String                   @id @default(cuid())
-  tenantId                     String
-  displayName                  String                   @db.VarChar(160)
-  description                  String?                  @db.VarChar(500)
-  fiscalItemCategory           FiscalItemCategory
-  cabysCode                    String                   @db.VarChar(13)
-  unitOfMeasureCode            String                   @db.VarChar(20)
-  taxCode                      String                   @db.VarChar(4)
-  taxRateCode                  String                   @db.VarChar(4)
-  taxPercentage                Decimal                  @db.Decimal(7, 4)
-  isActive                     Boolean                  @default(true)
-  isDefaultForCustomQuotations Boolean                  @default(false)
-  createdByUserId              String
-  createdByName                String
-  updatedByUserId              String?
-  updatedByName                String?
-  createdAt                    DateTime                 @default(now())
-  updatedAt                    DateTime                 @updatedAt
-  tenant                       Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  salesOrderLines              SalesOrderLine[]
-  customQuotations             CustomQuotation[]
-  customQuotationVersions      CustomQuotationVersion[]
+  id                                            String                                         @id @default(cuid())
+  tenantId                                      String
+  displayName                                   String                                         @db.VarChar(160)
+  description                                   String?                                        @db.VarChar(500)
+  fiscalItemCategory                            FiscalItemCategory
+  cabysCode                                     String                                         @db.VarChar(13)
+  unitOfMeasureCode                             String                                         @db.VarChar(20)
+  taxCode                                       String                                         @db.VarChar(4)
+  taxRateCode                                   String                                         @db.VarChar(4)
+  taxPercentage                                 Decimal                                        @db.Decimal(7, 4)
+  isActive                                      Boolean                                        @default(true)
+  isDefaultForCustomQuotations                  Boolean                                        @default(false)
+  createdByUserId                               String
+  createdByName                                 String
+  updatedByUserId                               String?
+  updatedByName                                 String?
+  createdAt                                     DateTime                                       @default(now())
+  updatedAt                                     DateTime                                       @updatedAt
+  tenant                                        Tenant                                         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  salesOrderLines                               SalesOrderLine[]
+  customQuotations                              CustomQuotation[]
+  customQuotationVersions                       CustomQuotationVersion[]
+  customQuotationVersionLines                   CustomQuotationVersionLine[]
+  customQuotationComponentFiscalClassifications CustomQuotationComponentFiscalClassification[]
 
   @@unique([id, tenantId], map: "tenant_fiscal_classifications_id_tenant_key")
   @@unique([tenantId, displayName], map: "tenant_fiscal_classifications_tenant_display_name_key")
@@ -3025,33 +3029,34 @@ enum CustomQuotationVersionStatus {
 /// Independent commercial quotation aggregate. It has no Additional Services
 /// or travel-domain relation; Cost Engine and Pricing connect through adapters.
 model CustomQuotation {
-  id                     String                             @id @default(cuid())
-  tenantId               String
-  quotationNumber        String                             @db.VarChar(50)
-  leadId                 String?
-  customerId             String?
-  currency               Currency
-  title                  String                             @db.VarChar(200)
-  commercialObservations String?                            @db.VarChar(2000)
-  quotationValidUntil    DateTime?
-  paymentConditionType   PaymentConditionType?
-  paymentTermValue       Int?
-  paymentTermUnit        PaymentTermUnit?
-  fiscalClassificationId String?
-  status                 CustomQuotationStatus              @default(DRAFT)
-  createdByUserId        String
-  createdByName          String
-  updatedByUserId        String?
-  updatedByName          String?
-  createdAt              DateTime                           @default(now())
-  updatedAt              DateTime                           @updatedAt
-  tenant                 Tenant                             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  lead                   Lead?                              @relation(fields: [leadId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "custom_quotations_lead_tenant_fkey")
-  customer               Client?                            @relation(fields: [customerId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "custom_quotations_customer_tenant_fkey")
-  fiscalClassification   TenantFiscalClassification?        @relation(fields: [fiscalClassificationId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "custom_quotations_fiscal_classification_tenant_fkey")
-  lines                  CustomQuotationLine[]
-  costingProjectLink     CustomQuotationCostingProjectLink?
-  versions               CustomQuotationVersion[]
+  id                             String                                         @id @default(cuid())
+  tenantId                       String
+  quotationNumber                String                                         @db.VarChar(50)
+  leadId                         String?
+  customerId                     String?
+  currency                       Currency
+  title                          String                                         @db.VarChar(200)
+  commercialObservations         String?                                        @db.VarChar(2000)
+  quotationValidUntil            DateTime?
+  paymentConditionType           PaymentConditionType?
+  paymentTermValue               Int?
+  paymentTermUnit                PaymentTermUnit?
+  fiscalClassificationId         String?
+  status                         CustomQuotationStatus                          @default(DRAFT)
+  createdByUserId                String
+  createdByName                  String
+  updatedByUserId                String?
+  updatedByName                  String?
+  createdAt                      DateTime                                       @default(now())
+  updatedAt                      DateTime                                       @updatedAt
+  tenant                         Tenant                                         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  lead                           Lead?                                          @relation(fields: [leadId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "custom_quotations_lead_tenant_fkey")
+  customer                       Client?                                        @relation(fields: [customerId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "custom_quotations_customer_tenant_fkey")
+  fiscalClassification           TenantFiscalClassification?                    @relation(fields: [fiscalClassificationId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "custom_quotations_fiscal_classification_tenant_fkey")
+  lines                          CustomQuotationLine[]
+  costingProjectLink             CustomQuotationCostingProjectLink?
+  versions                       CustomQuotationVersion[]
+  componentFiscalClassifications CustomQuotationComponentFiscalClassification[]
 
   @@unique([id, tenantId], map: "custom_quotations_id_tenant_key")
   @@unique([tenantId, quotationNumber], map: "custom_quotations_tenant_number_key")
@@ -3059,6 +3064,27 @@ model CustomQuotation {
   @@index([tenantId, customerId, createdAt(sort: Desc), id(sort: Desc)], map: "custom_quotations_tenant_customer_created_idx")
   @@index([tenantId, status, createdAt(sort: Desc), id(sort: Desc)], map: "custom_quotations_tenant_status_created_idx")
   @@map("custom_quotations")
+}
+
+/// Draft-only fiscal selection for a derived Cost Engine commercial line.
+/// The selected tuple is copied to CustomQuotationVersionLine on issuance.
+model CustomQuotationComponentFiscalClassification {
+  id                     String                     @id @default(cuid())
+  tenantId               String
+  customQuotationId      String
+  costComponentId        String
+  fiscalClassificationId String
+  createdAt              DateTime                   @default(now())
+  updatedAt              DateTime                   @updatedAt
+  tenant                 Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customQuotation        CustomQuotation            @relation(fields: [customQuotationId, tenantId], references: [id, tenantId], onDelete: Cascade, map: "custom_quotation_component_fiscal_quotation_tenant_fkey")
+  costComponent          CostComponent              @relation(fields: [costComponentId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "custom_quotation_component_fiscal_component_tenant_fkey")
+  fiscalClassification   TenantFiscalClassification @relation(fields: [fiscalClassificationId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "custom_quotation_component_fiscal_classification_tenant_fkey")
+
+  @@unique([tenantId, customQuotationId, costComponentId], map: "custom_quotation_component_fiscal_identity_key")
+  @@unique([id, tenantId], map: "custom_quotation_component_fiscal_id_tenant_key")
+  @@index([tenantId, customQuotationId], map: "custom_quotation_component_fiscal_quotation_idx")
+  @@map("custom_quotation_component_fiscal_classifications")
 }
 
 /// Customer-facing descriptive lines. They intentionally hold no selling-price
@@ -3163,6 +3189,14 @@ model CustomQuotationVersionLine {
   pricingCalculationComponentLineId String?
   /// Exact per-component commercial amount from PricingCalculationComponentLine.effectiveSellingValue.
   soldAmount                        Decimal?                         @db.Decimal(19, 5)
+  fiscalClassificationId            String?
+  fiscalDescription                 String?                          @db.VarChar(500)
+  fiscalItemCategory                FiscalItemCategory?
+  cabysCode                         String?                          @db.VarChar(13)
+  unitOfMeasureCode                 String?                          @db.VarChar(20)
+  taxCode                           String?                          @db.VarChar(4)
+  taxRateCode                       String?                          @db.VarChar(4)
+  fiscalTaxPercentage               Decimal?                         @db.Decimal(7, 4)
   displayOrder                      Int
   description                       String                           @db.VarChar(500)
   quantity                          Decimal                          @default(1) @db.Decimal(18, 4)
@@ -3171,6 +3205,7 @@ model CustomQuotationVersionLine {
   tenant                            Tenant                           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   customQuotationVersion            CustomQuotationVersion           @relation(fields: [customQuotationVersionId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "custom_quotation_version_lines_version_tenant_fkey")
   pricingCalculationComponentLine   PricingCalculationComponentLine? @relation(fields: [pricingCalculationComponentLineId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "custom_quotation_version_lines_pricing_component_tenant_fkey")
+  fiscalClassification              TenantFiscalClassification?      @relation(fields: [fiscalClassificationId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "cq_version_lines_fiscal_class_tenant_fkey")
   salesOrderLines                   SalesOrderLine[]
 
   @@unique([id, tenantId], map: "custom_quotation_version_lines_id_tenant_key")

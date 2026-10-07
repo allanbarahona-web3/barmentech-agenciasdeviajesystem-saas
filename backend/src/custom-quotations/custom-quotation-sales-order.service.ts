@@ -73,6 +73,14 @@ export class CustomQuotationSalesOrderService {
               soldAmount: true,
               description: true,
               commercialNote: true,
+              fiscalClassificationId: true,
+              fiscalDescription: true,
+              fiscalItemCategory: true,
+              cabysCode: true,
+              unitOfMeasureCode: true,
+              taxCode: true,
+              taxRateCode: true,
+              fiscalTaxPercentage: true,
             },
           },
           customQuotation: {
@@ -106,8 +114,7 @@ export class CustomQuotationSalesOrderService {
         return salesOrderResponse(existing, true);
       }
 
-      const fiscalTaxPercentage = asPercentage(version.fiscalTaxPercentage, "CUSTOM_QUOTATION_VERSION_FISCAL_TAX_INVALID");
-      const lines = materializedLines(version, fiscalTaxPercentage);
+      const lines = materializedLines(version);
       const totals = sumMaterializedAmounts(lines);
       if (!totals.total.equals(asAmount(version.finalSellingPrice, "CUSTOM_QUOTATION_VERSION_PRICE_INVALID"))) {
         throw new ConflictException("CUSTOM_QUOTATION_VERSION_SOLD_AMOUNT_MISMATCH");
@@ -185,7 +192,7 @@ function validateVersionSnapshot(version: any) {
   if (!validTerms) throw new ConflictException("CUSTOM_QUOTATION_VERSION_PAYMENT_TERMS_INVALID");
 }
 
-function materializedLines(version: any, fiscalTaxPercentage: Prisma.Decimal) {
+function materializedLines(version: any) {
   if (!Array.isArray(version.lines) || version.lines.length === 0) {
     throw new ConflictException("CUSTOM_QUOTATION_VERSION_LINES_EMPTY");
   }
@@ -196,27 +203,56 @@ function materializedLines(version: any, fiscalTaxPercentage: Prisma.Decimal) {
     if (versionLine.soldAmount === null || versionLine.soldAmount === undefined) {
       throw new ConflictException("CUSTOM_QUOTATION_VERSION_LINE_SOLD_AMOUNT_MISSING");
     }
-    const amounts = inclusiveAmounts(versionLine.soldAmount, fiscalTaxPercentage);
+    const fiscal = lineFiscalSnapshot(version, versionLine);
+    const amounts = inclusiveAmounts(versionLine.soldAmount, fiscal.fiscalTaxPercentage);
     return {
       customQuotationVersionLineId: requiredIdentifier(versionLine.id, "CUSTOM_QUOTATION_VERSION_LINE_INVALID"),
       serviceCode: SERVICE_CODE,
       description: requiredDescription(versionLine.description),
-      fiscalItemCategory: version.fiscalItemCategory,
-      fiscalDescription: requiredDescription(versionLine.description),
-      cabysCode: version.cabysCode,
-      unitOfMeasureCode: version.unitOfMeasureCode,
-      taxCode: version.taxCode,
-      taxRateCode: version.taxRateCode,
-      fiscalTaxPercentage,
-      fiscalClassificationId: version.fiscalClassificationId,
+      fiscalItemCategory: fiscal.fiscalItemCategory,
+      fiscalDescription: requiredDescription(fiscal.fiscalDescription),
+      cabysCode: fiscal.cabysCode,
+      unitOfMeasureCode: fiscal.unitOfMeasureCode,
+      taxCode: fiscal.taxCode,
+      taxRateCode: fiscal.taxRateCode,
+      fiscalTaxPercentage: fiscal.fiscalTaxPercentage,
+      fiscalClassificationId: fiscal.fiscalClassificationId,
       commercialNotes: optionalCommercialNote(versionLine.commercialNote),
       subtotal: amounts.subtotal,
-      vatPercentage: fiscalTaxPercentage,
+      vatPercentage: fiscal.fiscalTaxPercentage,
       vatAmount: amounts.vatAmount,
       total: amounts.total,
       participants: [],
     };
   });
+}
+
+function lineFiscalSnapshot(version: any, line: any) {
+  const hasLineSnapshot = [
+    line.fiscalClassificationId,
+    line.fiscalDescription,
+    line.fiscalItemCategory,
+    line.cabysCode,
+    line.unitOfMeasureCode,
+    line.taxCode,
+    line.taxRateCode,
+    line.fiscalTaxPercentage,
+  ].some((value) => value !== null && value !== undefined);
+  const source = hasLineSnapshot ? line : version;
+  if (!source.fiscalDescription || !source.cabysCode || !source.unitOfMeasureCode || !source.taxCode || !source.taxRateCode ||
+    (source.fiscalItemCategory !== "SERVICE" && source.fiscalItemCategory !== "MERCHANDISE")) {
+    throw new ConflictException("CUSTOM_QUOTATION_VERSION_LINE_FISCAL_SNAPSHOT_INVALID");
+  }
+  return {
+    fiscalClassificationId: source.fiscalClassificationId ?? null,
+    fiscalDescription: hasLineSnapshot ? source.fiscalDescription : line.description,
+    fiscalItemCategory: source.fiscalItemCategory,
+    cabysCode: source.cabysCode,
+    unitOfMeasureCode: source.unitOfMeasureCode,
+    taxCode: source.taxCode,
+    taxRateCode: source.taxRateCode,
+    fiscalTaxPercentage: asPercentage(source.fiscalTaxPercentage, "CUSTOM_QUOTATION_VERSION_LINE_FISCAL_TAX_INVALID"),
+  };
 }
 
 function sumMaterializedAmounts(lines: ReadonlyArray<{ subtotal: Prisma.Decimal; vatAmount: Prisma.Decimal; total: Prisma.Decimal }>) {

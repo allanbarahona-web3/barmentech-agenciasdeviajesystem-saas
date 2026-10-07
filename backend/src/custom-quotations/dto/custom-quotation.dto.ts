@@ -133,3 +133,8 @@ export class ReorderCustomQuotationLinesDto {
   @IsArray() @Matches(/\S/, { each: true }) @IsString({ each: true })
   lineIds!: string[];
 }
+
+export class AssignCustomQuotationCommercialLineFiscalClassificationDto {
+  @Transform(trim) @IsString() @Matches(/\S/)
+  fiscalClassificationId!: string;
+}

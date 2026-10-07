@@ -99,6 +99,29 @@ describe("CustomQuotationSalesOrderService", () => {
     expect(command.lines[0].total.toFixed(5)).toBe("100.00000");
   });
 
+  it("preserves each immutable version-line fiscal tuple for heterogeneous fiscal invoice lines", async () => {
+    const c = context();
+    c.tx.customQuotationVersion.findFirst.mockResolvedValue(version({
+      lines: [
+        { id: "version-line-a", soldAmount: "100.00000", description: "Vuelo", commercialNote: null, fiscalClassificationId: "fiscal-air", fiscalDescription: "Vuelo", fiscalItemCategory: "SERVICE", cabysCode: "6311100000000", unitOfMeasureCode: "Sp", taxCode: "01", taxRateCode: "08", fiscalTaxPercentage: "13.0000" },
+        { id: "version-line-b", soldAmount: "50.00000", description: "Visa", commercialNote: null, fiscalClassificationId: "fiscal-visa", fiscalDescription: "Visa", fiscalItemCategory: "SERVICE", cabysCode: "8299000000000", unitOfMeasureCode: "Unid", taxCode: "01", taxRateCode: "01", fiscalTaxPercentage: "0.0000" },
+      ],
+      finalSellingPrice: "150.00000",
+    }));
+    c.salesOrders.materializeInTransaction.mockResolvedValue({ salesOrderId: "sales-a", orderNumber: "SO-2026-000001", reusedExisting: false });
+
+    await c.service.materialize("tenant-a", "quotation-a", "version-a", actor);
+
+    const lines = c.salesOrders.materializeInTransaction.mock.calls[0][2].lines;
+    expect(lines).toEqual(expect.arrayContaining([
+      expect.objectContaining({ customQuotationVersionLineId: "version-line-a", fiscalClassificationId: "fiscal-air", cabysCode: "6311100000000", fiscalTaxPercentage: expect.any(Prisma.Decimal) }),
+      expect.objectContaining({ customQuotationVersionLineId: "version-line-b", fiscalClassificationId: "fiscal-visa", cabysCode: "8299000000000" }),
+    ]));
+    expect(lines[0].fiscalTaxPercentage.toFixed(4)).toBe("13.0000");
+    expect(lines[1].fiscalTaxPercentage.toFixed(4)).toBe("0.0000");
+    expect(lines.map((line: any) => line.total.toFixed(5))).toEqual(["100.00000", "50.00000"]);
+  });
+
   it("sums independently rounded line tax amounts instead of calculating tax once from the version total", async () => {
     const c = context();
     c.tx.customQuotationVersion.findFirst.mockResolvedValue(version({
