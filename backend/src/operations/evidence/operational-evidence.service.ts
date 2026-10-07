@@ -23,7 +23,7 @@ type Tx = {
 };
 type Database = { $transaction<T>(work: (tx: Tx) => Promise<T>): Promise<T> };
 type Evidence = {
-  id: string; travelPackageId: string; operationalFulfillmentId: string | null; operationalPurchaseId: string | null;
+  id: string; travelPackageId: string | null; operationalFulfillmentId: string | null; operationalPurchaseId: string | null;
   evidenceType: OperationalEvidenceType; objectKey: string; originalFilename: string; mimeType: string; byteSize: number;
   contentHash: string | null; uploadedByUserId: string; uploadedByName: string; createdAt: Date;
 };
@@ -134,6 +134,73 @@ export class OperationalEvidenceService {
     return { id: evidence.id, deleted: true };
   }
 
+  async uploadStandalone(tenantId: string, requirementId: string, fulfillmentId: string, input: CreateOperationalEvidenceDto, file: OperationalEvidenceFile | undefined, actor: OperationalEvidenceActor) {
+    validateFile(file);
+    const prepared = await prepareFile(file);
+    await this.withTransaction(tenantId, (tx) => this.requireMutableStandaloneHierarchy(tx, tenantId, requirementId, fulfillmentId, input.operationalPurchaseId));
+    const objectKey = standaloneEvidenceObjectKey(tenantId, requirementId, fulfillmentId, prepared.fileName);
+    try { await this.storage.uploadObject({ objectKey, contentType: prepared.mimeType, body: prepared.bytes }); }
+    catch { throw new InternalServerErrorException("OPERATIONAL_EVIDENCE_STORAGE_UPLOAD_FAILED"); }
+    try {
+      return await this.withTransaction(tenantId, async (tx) => {
+        await this.requireMutableStandaloneHierarchy(tx, tenantId, requirementId, fulfillmentId, input.operationalPurchaseId);
+        const evidence = await tx.operationalEvidence.create({
+          data: { tenantId, travelPackageId: null, operationalFulfillmentId: fulfillmentId, operationalPurchaseId: input.operationalPurchaseId ?? null, evidenceType: input.evidenceType, objectKey, originalFilename: prepared.fileName, mimeType: prepared.mimeType, byteSize: prepared.bytes.length, contentHash: createHash("sha256").update(prepared.bytes).digest("hex"), uploadedByUserId: actor.userId, uploadedByName: actor.name },
+          select: EVIDENCE_SELECT,
+        }) as Evidence;
+        return toResponse(evidence);
+      });
+    } catch {
+      await this.storage.deleteObject(objectKey).catch(() => undefined);
+      throw new InternalServerErrorException("OPERATIONAL_EVIDENCE_METADATA_PERSISTENCE_FAILED");
+    }
+  }
+
+  async listStandalone(tenantId: string, requirementId: string, fulfillmentId: string, input: ListOperationalEvidenceDto) {
+    const page = integer(input.page, 1), pageSize = pageSizeValue(input.pageSize);
+    const where = { tenantId, travelPackageId: null, operationalFulfillmentId: fulfillmentId, ...(input.evidenceType === undefined ? {} : { evidenceType: input.evidenceType }), ...(input.operationalPurchaseId === undefined ? {} : { operationalPurchaseId: input.operationalPurchaseId }) };
+    return this.withTransaction(tenantId, async (tx) => {
+      await this.requireStandaloneHierarchy(tx, tenantId, requirementId, fulfillmentId);
+      const [items, total] = await Promise.all([
+        tx.operationalEvidence.findMany({ where, select: EVIDENCE_SELECT, orderBy: [{ createdAt: "desc" }, { id: "asc" }], skip: (page - 1) * pageSize, take: pageSize }) as Promise<Evidence[]>,
+        tx.operationalEvidence.count({ where }) as Promise<number>,
+      ]);
+      return { items: items.map(toResponse), total, page, pageSize, totalPages: total === 0 ? 0 : Math.ceil(total / pageSize) };
+    });
+  }
+
+  async findStandalone(tenantId: string, requirementId: string, fulfillmentId: string, evidenceId: string) {
+    return this.withTransaction(tenantId, async (tx) => {
+      const evidence = await this.findStandaloneEvidence(tx, tenantId, requirementId, fulfillmentId, evidenceId);
+      if (!evidence) throw new NotFoundException("OPERATIONAL_STANDALONE_EVIDENCE_NOT_FOUND");
+      return toResponse(evidence);
+    });
+  }
+
+  async getStandaloneAccess(tenantId: string, requirementId: string, fulfillmentId: string, evidenceId: string) {
+    const evidence = await this.withTransaction(tenantId, async (tx) => {
+      const found = await this.findStandaloneEvidence(tx, tenantId, requirementId, fulfillmentId, evidenceId);
+      if (!found) throw new NotFoundException("OPERATIONAL_STANDALONE_EVIDENCE_NOT_FOUND");
+      return found;
+    });
+    try { return { id: evidence.id, originalFilename: evidence.originalFilename, mimeType: evidence.mimeType, byteSize: evidence.byteSize, url: await this.storage.generateSignedUrl(evidence.objectKey, SIGNED_ACCESS_SECONDS), expiresInSeconds: SIGNED_ACCESS_SECONDS }; }
+    catch { throw new InternalServerErrorException("OPERATIONAL_EVIDENCE_SIGNED_ACCESS_FAILED"); }
+  }
+
+  async removeStandalone(tenantId: string, requirementId: string, fulfillmentId: string, evidenceId: string) {
+    const evidence = await this.withTransaction(tenantId, async (tx) => {
+      await this.requireMutableStandaloneHierarchy(tx, tenantId, requirementId, fulfillmentId);
+      const found = await this.findStandaloneEvidence(tx, tenantId, requirementId, fulfillmentId, evidenceId);
+      if (!found) throw new NotFoundException("OPERATIONAL_STANDALONE_EVIDENCE_NOT_FOUND");
+      const deleted = await tx.operationalEvidence.deleteMany({ where: { id: evidenceId, tenantId, travelPackageId: null, operationalFulfillmentId: fulfillmentId } });
+      if (deleted.count !== 1) throw new NotFoundException("OPERATIONAL_STANDALONE_EVIDENCE_NOT_FOUND");
+      return found;
+    });
+    try { await this.storage.deleteObject(evidence.objectKey); }
+    catch (error) { this.logger.error("Operational evidence object cleanup failed after metadata deletion", error instanceof Error ? error.stack : undefined); throw new InternalServerErrorException("OPERATIONAL_EVIDENCE_STORAGE_DELETE_FAILED"); }
+    return { id: evidence.id, deleted: true };
+  }
+
   private async requireHierarchy(tx: Tx, tenantId: string, travelPackageId: string, requirementId: string, fulfillmentId: string, purchaseId?: string) {
     const requirement = await tx.operationalRequirement.findFirst({ where: { id: requirementId, tenantId, travelPackageId }, select: { id: true } });
     if (!requirement) throw new NotFoundException("OPERATIONAL_REQUIREMENT_NOT_FOUND");
@@ -151,9 +218,31 @@ export class OperationalEvidenceService {
     return fulfillment;
   }
 
+  private async requireStandaloneHierarchy(tx: Tx, tenantId: string, requirementId: string, fulfillmentId: string, purchaseId?: string) {
+    const requirement = await tx.operationalRequirement.findFirst({ where: { id: requirementId, tenantId, scopeType: "STANDALONE_CUSTOMER", travelPackageId: null, customerId: { not: null } }, select: { id: true } });
+    if (!requirement) throw new NotFoundException("OPERATIONAL_STANDALONE_REQUIREMENT_NOT_FOUND");
+    const fulfillment = await tx.operationalFulfillment.findFirst({ where: { id: fulfillmentId, tenantId, travelPackageId: null, operationalRequirementId: requirementId }, select: { id: true, status: true } }) as { id: string; status: string } | null;
+    if (!fulfillment) throw new NotFoundException("OPERATIONAL_STANDALONE_FULFILLMENT_NOT_FOUND");
+    if (!purchaseId) return fulfillment;
+    const purchase = await tx.operationalPurchase.findFirst({ where: { id: purchaseId, tenantId, travelPackageId: null, operationalFulfillmentId: fulfillmentId }, select: { id: true } });
+    if (!purchase) throw new NotFoundException("OPERATIONAL_STANDALONE_PURCHASE_NOT_FOUND");
+    return fulfillment;
+  }
+
+  private async requireMutableStandaloneHierarchy(tx: Tx, tenantId: string, requirementId: string, fulfillmentId: string, purchaseId?: string) {
+    const fulfillment = await this.requireStandaloneHierarchy(tx, tenantId, requirementId, fulfillmentId, purchaseId);
+    if (fulfillment.status === "CONFIRMED" || fulfillment.status === "CANCELLED") throw new ConflictException("OPERATIONAL_EVIDENCE_FULFILLMENT_TERMINAL");
+    return fulfillment;
+  }
+
   private async findEvidence(tx: Tx, tenantId: string, travelPackageId: string, requirementId: string, fulfillmentId: string, evidenceId: string): Promise<Evidence | null> {
     await this.requireHierarchy(tx, tenantId, travelPackageId, requirementId, fulfillmentId);
     return tx.operationalEvidence.findFirst({ where: { id: evidenceId, tenantId, travelPackageId, operationalFulfillmentId: fulfillmentId }, select: EVIDENCE_SELECT }) as Promise<Evidence | null>;
+  }
+
+  private async findStandaloneEvidence(tx: Tx, tenantId: string, requirementId: string, fulfillmentId: string, evidenceId: string): Promise<Evidence | null> {
+    await this.requireStandaloneHierarchy(tx, tenantId, requirementId, fulfillmentId);
+    return tx.operationalEvidence.findFirst({ where: { id: evidenceId, tenantId, travelPackageId: null, operationalFulfillmentId: fulfillmentId }, select: EVIDENCE_SELECT }) as Promise<Evidence | null>;
   }
 
   private withTransaction<T>(tenantId: string, work: (tx: Tx) => Promise<T>) { return runTenantTransaction(this.database, tenantId, work); }
@@ -177,6 +266,9 @@ async function prepareFile(file: OperationalEvidenceFile) {
 
 function evidenceObjectKey(tenantId: string, travelPackageId: string, fulfillmentId: string, fileName: string) {
   return ["operations", safeSegment(tenantId), safeSegment(travelPackageId), safeSegment(fulfillmentId), `${randomUUID()}-${safeFileName(fileName)}`].join("/");
+}
+function standaloneEvidenceObjectKey(tenantId: string, requirementId: string, fulfillmentId: string, fileName: string) {
+  return ["operations", safeSegment(tenantId), "standalone", safeSegment(requirementId), safeSegment(fulfillmentId), `${randomUUID()}-${safeFileName(fileName)}`].join("/");
 }
 function safeSegment(value: string) { return String(value).replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 191) || "unknown"; }
 function safeFileName(value: string) { const fileName = String(value).split(/[\\/]/).pop() ?? "evidence"; return fileName.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 180) || "evidence"; }

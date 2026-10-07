@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { AdditionalServicesModule } from "../../additional-services/additional-services.module";
 import { CustomQuotationsModule } from "../../custom-quotations/custom-quotations.module";
 import { OperationalRequirementsController } from "./operational-requirements.controller";
+import { OperationalStandaloneRequirementsController } from "./operational-standalone-requirements.controller";
 import { OperationalRequirementsService } from "./operational-requirements.service";
 import { OperationalWorkMaterializer } from "../intake/operational-work-materializer.service";
 import { OperationsIntakeOutboxWorkerService } from "../intake/operations-intake-outbox-worker.service";
@@ -18,7 +19,7 @@ import {
 
 @Module({
   imports: [AdditionalServicesModule, CustomQuotationsModule],
-  controllers: [OperationalRequirementsController],
+  controllers: [OperationalRequirementsController, OperationalStandaloneRequirementsController],
   providers: [
     OperationalRequirementsService,
     OperationalWorkMaterializer,

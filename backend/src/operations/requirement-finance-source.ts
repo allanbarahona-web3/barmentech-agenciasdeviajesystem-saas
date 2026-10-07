@@ -9,7 +9,7 @@ const CONTRACT = "CONTRACT";
  * reconstructing provenance from passengers, SalesOrders, or package data.
  */
 export type RequirementFinanceSource = {
-  travelPackageId: string;
+  travelPackageId: string | null;
   sourceType: string | null;
   sourceId: string | null;
   sourceLineId: string | null;

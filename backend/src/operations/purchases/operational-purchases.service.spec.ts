@@ -140,6 +140,23 @@ describe("OperationalPurchasesService", () => {
     expect(c.tx.operationalPurchase.create).not.toHaveBeenCalled();
     expect(c.tx.$executeRaw).toHaveBeenCalledTimes(2);
   });
+
+  it("keeps standalone Custom Quotation procurement closed until Finance eligibility exists", async () => {
+    const standalone = requirement({ travelPackageId: null, sourceType: "CUSTOM_QUOTATION_LINE", sourceId: "version-a", sourceLineId: "line-a" });
+    const c = context(standalone, fulfillment(), [standalone], [fulfillment()]);
+    await expect(c.service.createStandalone(tenantId, requirementId, fulfillmentId, input(), actor)).rejects.toMatchObject({ response: expect.objectContaining({ message: "OPERATIONAL_PURCHASE_FINANCIAL_ELIGIBILITY_UNAVAILABLE" }) });
+    expect(c.finance.readMany).not.toHaveBeenCalled();
+    expect(c.tx.operationalPurchase.create).not.toHaveBeenCalled();
+  });
+
+  it("lists standalone purchases through generic fulfillment identity", async () => {
+    const standalone = requirement({ travelPackageId: null, sourceType: "CUSTOM_QUOTATION_LINE", sourceId: "version-a", sourceLineId: "line-a" });
+    const c = context(standalone, fulfillment(), [standalone], [fulfillment()]);
+    c.tx.operationalPurchase.findMany.mockResolvedValue([purchase({ travelPackageId: null })]);
+    c.tx.operationalPurchase.count.mockResolvedValue(1);
+    await expect(c.service.listStandalone(tenantId, requirementId, fulfillmentId, {})).resolves.toMatchObject({ total: 1, items: [{ travelPackageId: null }] });
+    expect(c.tx.operationalPurchase.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ tenantId, travelPackageId: null, operationalFulfillmentId: fulfillmentId }) }));
+  });
 });
 
 function context(req = requirement(), full = fulfillment(), reqs = [req, req], fulls = [full, full]) {

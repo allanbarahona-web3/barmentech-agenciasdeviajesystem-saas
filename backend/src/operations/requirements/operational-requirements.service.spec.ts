@@ -218,6 +218,32 @@ describe("OperationalRequirementsService", () => {
     hidden.tx.operationalRequirement.findFirst.mockResolvedValue(null);
     await expect(hidden.service.find("tenant-b", travelPackageId, requirementId)).rejects.toBeInstanceOf(NotFoundException);
   });
+
+  it("reads standalone requirements by generic tenant identity without package or participant queries", async () => {
+    const c = context();
+    c.tx.operationalRequirement.findFirst.mockResolvedValue(requirement({ scopeType: "STANDALONE_CUSTOMER", travelPackageId: null, customerId: "customer-a", customer: { id: "customer-a", fullName: "Ada Customer" }, passengers: [] }));
+    c.tx.operationalFulfillment.findMany.mockResolvedValue([{ id: "fulfillment-a", status: "DRAFT", _count: { purchases: 1 } }]);
+    await expect(c.service.findStandalone(tenantId, requirementId)).resolves.toMatchObject({ scopeType: "STANDALONE_CUSTOMER", travelPackageId: null, customer: { id: "customer-a" }, passengers: [], coverage: { totalPassengerCount: 0 }, workflow: { fulfillmentCount: 1, purchaseCount: 1 } });
+    expect(c.tx.operationalRequirement.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ tenantId, id: requirementId, scopeType: "STANDALONE_CUSTOMER", travelPackageId: null }) }));
+    expect(c.tx.travelPackage.findFirst).not.toHaveBeenCalled();
+    expect(c.tx.travelPackageParticipant.findMany).not.toHaveBeenCalled();
+  });
+
+  it("rejects standalone passenger assignment explicitly", async () => {
+    const c = context();
+    c.tx.operationalRequirement.findFirst.mockResolvedValue({ id: requirementId, status: "PENDING" });
+    await expect(c.service.rejectStandalonePassengerAssignment(tenantId, requirementId)).rejects.toMatchObject({ response: expect.objectContaining({ message: "OPERATIONAL_STANDALONE_PASSENGERS_UNSUPPORTED" }) });
+  });
+
+  it("uses the normal status transition rules for standalone requirements", async () => {
+    const c = context();
+    c.tx.operationalRequirement.findFirst
+      .mockResolvedValueOnce({ id: requirementId, status: "PENDING" })
+      .mockResolvedValueOnce(requirement({ scopeType: "STANDALONE_CUSTOMER", travelPackageId: null, customerId: "customer-a", status: "IN_PROGRESS", passengers: [] }));
+    c.tx.operationalRequirement.updateMany.mockResolvedValue({ count: 1 });
+    await expect(c.service.transitionStandaloneStatus(tenantId, requirementId, { status: "IN_PROGRESS" }, actor)).resolves.toMatchObject({ status: "IN_PROGRESS" });
+    expect(c.tx.operationalRequirement.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ scopeType: "STANDALONE_CUSTOMER", travelPackageId: null, status: "PENDING" }), data: expect.objectContaining({ status: "IN_PROGRESS" }) }));
+  });
 });
 
 function context() {
@@ -229,6 +255,7 @@ function context() {
     operationalRequirement: { create: jest.fn(), findFirst: jest.fn(), findMany: jest.fn(), count: jest.fn(), updateMany: jest.fn() },
     operationalRequirementPassenger: { createMany: jest.fn(), findMany: jest.fn(), deleteMany: jest.fn() },
     operationalFulfillmentPassenger: { findMany: jest.fn() },
+    operationalFulfillment: { findMany: jest.fn() },
   };
   const prisma = { $transaction: jest.fn(async (work: (transaction: typeof tx) => Promise<unknown>) => work(tx)) };
   return { tx, service: new OperationalRequirementsService(prisma as never) };

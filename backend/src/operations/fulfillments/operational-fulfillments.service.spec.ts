@@ -231,6 +231,26 @@ describe("OperationalFulfillmentsService", () => {
     hidden.tx.operationalFulfillment.findFirst.mockResolvedValue(null);
     await expect(hidden.service.find("tenant-b", travelPackageId, requirementId, fulfillmentId)).rejects.toBeInstanceOf(NotFoundException);
   });
+
+  it("creates standalone fulfillment without package or passenger reads", async () => {
+    const c = context();
+    const standaloneRequirement = requirement({ scopeType: "STANDALONE_CUSTOMER", travelPackageId: null, customerId: "customer-a" });
+    c.tx.operationalRequirement.findFirst.mockResolvedValue(standaloneRequirement);
+    c.tx.operationalFulfillment.create.mockResolvedValue({ id: fulfillmentId });
+    c.tx.operationalRequirement.updateMany.mockResolvedValue({ count: 1 });
+    c.tx.operationalFulfillment.findFirst.mockResolvedValue(fulfillment({ travelPackageId: null, operationalRequirement: standaloneRequirement, passengers: [] }));
+    await expect(c.service.createStandalone(tenantId, requirementId, { providerName: "Standalone supplier" }, actor)).resolves.toMatchObject({ travelPackageId: null, passengers: [] });
+    expect(c.tx.operationalFulfillment.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ tenantId, travelPackageId: null, operationalRequirementId: requirementId }) }));
+    expect(c.tx.travelPackageParticipant.findMany).not.toHaveBeenCalled();
+    expect(c.tx.operationalRequirementPassenger.findMany).not.toHaveBeenCalled();
+    expect(c.tx.operationalFulfillmentPassenger.createMany).not.toHaveBeenCalled();
+  });
+
+  it("rejects standalone passenger operations clearly", async () => {
+    const c = context();
+    c.tx.operationalFulfillment.findFirst.mockResolvedValue(fulfillmentState({ travelPackageId: null, operationalRequirement: requirement({ scopeType: "STANDALONE_CUSTOMER", travelPackageId: null }) }));
+    await expect(c.service.rejectStandalonePassengerAssignment(tenantId, requirementId, fulfillmentId)).rejects.toMatchObject({ response: expect.objectContaining({ message: "OPERATIONAL_STANDALONE_PASSENGERS_UNSUPPORTED" }) });
+  });
 });
 
 function context() {

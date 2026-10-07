@@ -32,7 +32,7 @@ export const OPERATIONAL_FULFILLMENT_STATUSES = [
   "CANCELLED",
 ] as const;
 
-class OperationalFulfillmentFieldsDto {
+export class OperationalFulfillmentFieldsDto {
   @IsOptional()
   @Transform(trim)
   @IsString()
@@ -118,6 +118,9 @@ export class CreateOperationalFulfillmentDto extends OperationalFulfillmentField
   @Matches(/\S/, { each: true })
   participantIds!: string[];
 }
+
+/** Customer-scoped work has no TravelPackage participant assignments. */
+export class CreateStandaloneOperationalFulfillmentDto extends OperationalFulfillmentFieldsDto {}
 
 export class UpdateOperationalFulfillmentDto extends OperationalFulfillmentFieldsDto {
   @ValidateIf(supplied)

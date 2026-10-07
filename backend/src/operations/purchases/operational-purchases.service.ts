@@ -14,10 +14,10 @@ type Tx = {
   operationalPurchase: Record<string, (...args: any[]) => Promise<any>>;
 };
 type Database = { $transaction<T>(work: (tx: Tx) => Promise<T>): Promise<T> };
-type Requirement = { id: string; travelPackageId: string; status: string; sourceType: string; sourceId: string | null; sourceLineId: string | null; sourceVersionId: string | null };
+type Requirement = { id: string; travelPackageId: string | null; status: string; sourceType: string; sourceId: string | null; sourceLineId: string | null; sourceVersionId: string | null };
 type Fulfillment = { id: string; status: "DRAFT" | "RESERVED" | "PURCHASED" | "CONFIRMED" | "CANCELLED" };
 type Purchase = {
-  id: string; travelPackageId: string; operationalFulfillmentId: string; providerName: string; supplierReference: string | null;
+  id: string; travelPackageId: string | null; operationalFulfillmentId: string; providerName: string; supplierReference: string | null;
   amount: Prisma.Decimal; currency: string; taxAmount: Prisma.Decimal | null; purchasedAt: Date; supplierInvoiceNumber: string | null;
   notes: string | null; createdByUserId: string; createdByName: string; createdAt: Date; updatedAt: Date;
 };
@@ -111,10 +111,90 @@ export class OperationalPurchasesService {
     });
   }
 
+  async listStandalone(tenantId: string, requirementId: string, fulfillmentId: string, input: ListOperationalPurchasesDto) {
+    const page = integer(input.page, 1), pageSize = pageSizeValue(input.pageSize);
+    const where = {
+      tenantId, travelPackageId: null, operationalFulfillmentId: fulfillmentId,
+      ...(input.currency === undefined ? {} : { currency: input.currency.trim().toUpperCase() }),
+      ...(input.providerSearch === undefined ? {} : { providerName: { contains: input.providerSearch.trim(), mode: "insensitive" } }),
+    };
+    return this.withTransaction(tenantId, async (tx) => {
+      await this.requireStandaloneFulfillment(tx, tenantId, requirementId, fulfillmentId);
+      const [items, total] = await Promise.all([
+        tx.operationalPurchase.findMany({ where, select: PURCHASE_SELECT, orderBy: [{ purchasedAt: "desc" }, { id: "asc" }], skip: (page - 1) * pageSize, take: pageSize }) as Promise<Purchase[]>,
+        tx.operationalPurchase.count({ where }) as Promise<number>,
+      ]);
+      return { items: items.map(toResponse), total, page, pageSize, totalPages: total === 0 ? 0 : Math.ceil(total / pageSize) };
+    });
+  }
+
+  async findStandalone(tenantId: string, requirementId: string, fulfillmentId: string, purchaseId: string) {
+    return this.withTransaction(tenantId, async (tx) => {
+      const purchase = await this.findStandalonePurchase(tx, tenantId, requirementId, fulfillmentId, purchaseId);
+      if (!purchase) throw new NotFoundException("OPERATIONAL_STANDALONE_PURCHASE_NOT_FOUND");
+      return toResponse(purchase);
+    });
+  }
+
+  async createStandalone(tenantId: string, requirementId: string, fulfillmentId: string, input: CreateOperationalPurchaseDto, actor: OperationalPurchasesActor) {
+    const fields = createFields(input);
+    const initial = await this.withTransaction(tenantId, (tx) => this.requireMutableStandaloneParent(tx, tenantId, requirementId, fulfillmentId));
+    await this.requireProcurementAuthorization(tenantId, initial.requirement);
+    return this.withTransaction(tenantId, async (tx) => {
+      const parent = await this.requireMutableStandaloneParent(tx, tenantId, requirementId, fulfillmentId);
+      const requirementLocked = await tx.operationalRequirement.updateMany({
+        where: { id: requirementId, tenantId, scopeType: "STANDALONE_CUSTOMER", travelPackageId: null, status: parent.requirement.status },
+        data: { status: parent.requirement.status, updatedByUserId: actor.userId, updatedByName: actor.name },
+      });
+      if (requirementLocked.count !== 1) throw new ConflictException("OPERATIONAL_PURCHASE_REQUIREMENT_STATE_CONFLICT");
+      const nextFulfillmentStatus = parent.fulfillment.status === "DRAFT" || parent.fulfillment.status === "RESERVED" ? "PURCHASED" : parent.fulfillment.status;
+      const locked = await tx.operationalFulfillment.updateMany({
+        where: { id: fulfillmentId, tenantId, travelPackageId: null, operationalRequirementId: requirementId, status: parent.fulfillment.status },
+        data: { status: nextFulfillmentStatus, updatedByUserId: actor.userId, updatedByName: actor.name },
+      });
+      if (locked.count !== 1) throw new ConflictException("OPERATIONAL_PURCHASE_FULFILLMENT_STATE_CONFLICT");
+      const created = await tx.operationalPurchase.create({
+        data: { tenantId, travelPackageId: null, operationalFulfillmentId: fulfillmentId, ...fields, createdByUserId: actor.userId, createdByName: actor.name }, select: PURCHASE_SELECT,
+      }) as Purchase;
+      return toResponse(created);
+    });
+  }
+
+  async updateStandalone(tenantId: string, requirementId: string, fulfillmentId: string, purchaseId: string, input: UpdateOperationalPurchaseDto, actor: OperationalPurchasesActor) {
+    if (input.supplierReference === undefined && input.supplierInvoiceNumber === undefined && input.notes === undefined) throw new BadRequestException("OPERATIONAL_PURCHASE_UPDATE_EMPTY");
+    return this.withTransaction(tenantId, async (tx) => {
+      await this.requireMutableStandaloneParent(tx, tenantId, requirementId, fulfillmentId);
+      const existing = await this.findStandalonePurchase(tx, tenantId, requirementId, fulfillmentId, purchaseId);
+      if (!existing) throw new NotFoundException("OPERATIONAL_STANDALONE_PURCHASE_NOT_FOUND");
+      const updated = await tx.operationalPurchase.updateMany({
+        where: { id: purchaseId, tenantId, travelPackageId: null, operationalFulfillmentId: fulfillmentId },
+        data: {
+          ...(input.supplierReference === undefined ? {} : { supplierReference: textOrNull(input.supplierReference, "OPERATIONAL_PURCHASE_SUPPLIER_REFERENCE_INVALID") }),
+          ...(input.supplierInvoiceNumber === undefined ? {} : { supplierInvoiceNumber: textOrNull(input.supplierInvoiceNumber, "OPERATIONAL_PURCHASE_INVOICE_INVALID") }),
+          ...(input.notes === undefined ? {} : { notes: textOrNull(input.notes, "OPERATIONAL_PURCHASE_NOTES_INVALID") }),
+          updatedByUserId: actor.userId, updatedByName: actor.name,
+        },
+      });
+      if (updated.count !== 1) throw new NotFoundException("OPERATIONAL_STANDALONE_PURCHASE_NOT_FOUND");
+      const purchase = await this.findStandalonePurchase(tx, tenantId, requirementId, fulfillmentId, purchaseId);
+      if (!purchase) throw new NotFoundException("OPERATIONAL_STANDALONE_PURCHASE_NOT_FOUND");
+      return toResponse(purchase);
+    });
+  }
+
   private async requireMutableParent(tx: Tx, tenantId: string, travelPackageId: string, requirementId: string, fulfillmentId: string) {
     const requirement = await this.requireRequirement(tx, tenantId, travelPackageId, requirementId);
     if (requirement.status === "CANCELLED" || requirement.status === "NOT_APPLICABLE") throw new ConflictException("OPERATIONAL_PURCHASE_PARENT_REQUIREMENT_TERMINAL");
     const fulfillment = await this.requireFulfillment(tx, tenantId, travelPackageId, requirementId, fulfillmentId);
+    if (fulfillment.status === "CANCELLED") throw new ConflictException("OPERATIONAL_PURCHASE_FULFILLMENT_CANCELLED");
+    if (fulfillment.status === "CONFIRMED") throw new ConflictException("OPERATIONAL_PURCHASE_FULFILLMENT_CONFIRMED");
+    return { requirement, fulfillment };
+  }
+
+  private async requireMutableStandaloneParent(tx: Tx, tenantId: string, requirementId: string, fulfillmentId: string) {
+    const requirement = await this.requireStandaloneRequirement(tx, tenantId, requirementId);
+    if (requirement.status === "CANCELLED" || requirement.status === "NOT_APPLICABLE") throw new ConflictException("OPERATIONAL_PURCHASE_PARENT_REQUIREMENT_TERMINAL");
+    const fulfillment = await this.requireStandaloneFulfillment(tx, tenantId, requirementId, fulfillmentId);
     if (fulfillment.status === "CANCELLED") throw new ConflictException("OPERATIONAL_PURCHASE_FULFILLMENT_CANCELLED");
     if (fulfillment.status === "CONFIRMED") throw new ConflictException("OPERATIONAL_PURCHASE_FULFILLMENT_CONFIRMED");
     return { requirement, fulfillment };
@@ -126,15 +206,34 @@ export class OperationalPurchasesService {
     return requirement;
   }
 
+  private async requireStandaloneRequirement(tx: Tx, tenantId: string, requirementId: string): Promise<Requirement> {
+    const requirement = await tx.operationalRequirement.findFirst({ where: { id: requirementId, tenantId, scopeType: "STANDALONE_CUSTOMER", travelPackageId: null, customerId: { not: null } }, select: { id: true, travelPackageId: true, status: true, sourceType: true, sourceId: true, sourceLineId: true, sourceVersionId: true } }) as Requirement | null;
+    if (!requirement) throw new NotFoundException("OPERATIONAL_STANDALONE_REQUIREMENT_NOT_FOUND");
+    return requirement;
+  }
+
   private async requireFulfillment(tx: Tx, tenantId: string, travelPackageId: string, requirementId: string, fulfillmentId: string): Promise<Fulfillment> {
     const fulfillment = await tx.operationalFulfillment.findFirst({ where: { id: fulfillmentId, tenantId, travelPackageId, operationalRequirementId: requirementId }, select: { id: true, status: true } }) as Fulfillment | null;
     if (!fulfillment) throw new NotFoundException("OPERATIONAL_FULFILLMENT_NOT_FOUND");
     return fulfillment;
   }
 
+  private async requireStandaloneFulfillment(tx: Tx, tenantId: string, requirementId: string, fulfillmentId: string): Promise<Fulfillment> {
+    const fulfillment = await tx.operationalFulfillment.findFirst({ where: { id: fulfillmentId, tenantId, travelPackageId: null, operationalRequirementId: requirementId, operationalRequirement: { scopeType: "STANDALONE_CUSTOMER", customerId: { not: null } } }, select: { id: true, status: true } }) as Fulfillment | null;
+    if (!fulfillment) throw new NotFoundException("OPERATIONAL_STANDALONE_FULFILLMENT_NOT_FOUND");
+    return fulfillment;
+  }
+
   private findPurchase(tx: Tx, tenantId: string, travelPackageId: string, requirementId: string, fulfillmentId: string, purchaseId: string): Promise<Purchase | null> {
     return tx.operationalPurchase.findFirst({
       where: { id: purchaseId, tenantId, travelPackageId, operationalFulfillmentId: fulfillmentId, operationalFulfillment: { operationalRequirementId: requirementId } },
+      select: PURCHASE_SELECT,
+    }) as Promise<Purchase | null>;
+  }
+
+  private findStandalonePurchase(tx: Tx, tenantId: string, requirementId: string, fulfillmentId: string, purchaseId: string): Promise<Purchase | null> {
+    return tx.operationalPurchase.findFirst({
+      where: { id: purchaseId, tenantId, travelPackageId: null, operationalFulfillmentId: fulfillmentId, operationalFulfillment: { operationalRequirementId: requirementId, operationalRequirement: { scopeType: "STANDALONE_CUSTOMER", customerId: { not: null } } } },
       select: PURCHASE_SELECT,
     }) as Promise<Purchase | null>;
   }
