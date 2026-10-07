@@ -363,7 +363,7 @@ export function ActionMenuModal({
             </div>
           </button>
 
-          {/* Opción 6: Cotización */}
+          {/* Opción 6: Cotizaciones personalizadas */}
           <button
             type="button"
             onClick={onSelectQuote}
@@ -385,34 +385,8 @@ export function ActionMenuModal({
           >
             <span style={{ fontSize: "2rem" }}>📋</span>
             <div>
-              <div style={{ fontWeight: 700 }}>Solicitud de Cotización</div>
+              <div style={{ fontWeight: 700 }}>Cotizaciones personalizadas</div>
               <div style={{ fontSize: "0.85rem", marginTop: 4, opacity: 0.9 }}>Crear y gestionar cotizaciones personalizadas</div>
-            </div>
-          </button>
-
-          {/* Opción 7: Viaje Personalizado - DISABLED */}
-          <button
-            disabled
-            style={{
-              padding: "20px 24px",
-              background: "#f3f4f6",
-              color: "#9ca3af",
-              border: "1px solid #e5e7eb",
-              borderRadius: 12,
-              fontSize: "1.05rem",
-              fontWeight: 600,
-              cursor: "not-allowed",
-              textAlign: "left",
-              display: "flex",
-              alignItems: "center",
-              gap: 16,
-              opacity: 0.6,
-            }}
-          >
-            <span style={{ fontSize: "2rem" }}>🎒</span>
-            <div>
-              <div style={{ fontWeight: 700 }}>Viaje Personalizado</div>
-              <div style={{ fontSize: "0.85rem", marginTop: 4 }}>Próximamente disponible</div>
             </div>
           </button>
         </div>

@@ -18,10 +18,12 @@ const detail = readFileSync(new URL('../src/app/custom-quotations/[id]/page.tsx'
 const proposalTab = readFileSync(new URL('../src/features/custom-quotations/components/CustomQuotationProposalTab.tsx', import.meta.url), 'utf8');
 const salesOrderCompletion = readFileSync(new URL('../src/features/custom-quotations/components/CustomQuotationSalesOrderCompletion.tsx', import.meta.url), 'utf8');
 
-test('la Solicitud de Cotización está habilitada y lleva al workspace', () => {
-  const quotationAction = actionMenu.split('Opción 6:')[1].split('Opción 7:')[0];
+test('Cotizaciones personalizadas está habilitada y lleva al workspace', () => {
+  const quotationAction = actionMenu.split('Opción 6:')[1];
   assert.match(actionMenu, /onClick=\{onSelectQuote\}/);
+  assert.match(quotationAction, /Cotizaciones personalizadas/);
   assert.doesNotMatch(quotationAction, /disabled/);
+  assert.doesNotMatch(actionMenu, /Viaje Personalizado|Próximamente disponible/);
   assert.match(dashboard, /router\.push\('\/custom-quotations'\)/);
 });
 
@@ -98,9 +100,14 @@ test('Cotización consume solo el contrato comercial de precios', () => {
   assert.doesNotMatch(`${detail}\n${proposalTab}`, /Precio comercial|PricingWorkspace|pricing-api|travel-pricing|riskMarginPercent|salesCommissionPercent|bankCommissionPercent|agency profit/i);
 });
 
-test('la UI comercial no expone fiscalidad ni valores internos de pricing', () => {
+test('la UI comercial clasifica fiscalmente cada servicio sin exponer valores internos de pricing', () => {
   const source = `${api}\n${editor}\n${list}\n${detail}\n${proposalTab}`;
-  assert.doesNotMatch(source, /fiscalClassificationId|CABYS|UoM|taxCode|taxRate|TenantPricingPolicy|PricingConfiguration|authoritativeCostAmount|operationalCostsAmount|riskMarginPercent|targetProfitMarginPercent|salesCommissionPercent|bankCommissionPercent|applicableTaxPercent|targetProfitAmount|commissionAmount|agencyProfit|pricing-api/i);
+  assert.match(api, /getCustomQuotationCommercialLineFiscalContext/);
+  assert.match(api, /assignCustomQuotationCommercialLineFiscalClassification/);
+  assert.match(detail, /Clasificación fiscal/);
+  assert.match(detail, /classification\.cabysCode/);
+  assert.match(detail, /line\.costComponentId/);
+  assert.doesNotMatch(source, /TenantPricingPolicy|PricingConfiguration|authoritativeCostAmount|operationalCostsAmount|riskMarginPercent|targetProfitMarginPercent|salesCommissionPercent|bankCommissionPercent|applicableTaxPercent|targetProfitAmount|commissionAmount|agencyProfit|pricing-api/i);
   assert.equal(paymentConditionLabel('CREDIT', 30, 'DAYS'), 'Crédito · 30 días');
 });
 

@@ -10,8 +10,8 @@ test('standalone Operations navigation and route remain separate from travel wor
   const nav = read('../src/components/vertical-nav.tsx');
   const landing = read('../src/components/operations/operations-landing.tsx');
   const route = read('../src/app/operations/standalone/page.tsx');
-  assert.match(nav, /href: "\/operations\/standalone", label: "Solicitudes independientes"/);
-  assert.match(landing, /Solicitudes independientes/);
+  assert.match(nav, /href: "\/operations\/standalone", label: "Cotizaciones personalizadas"/);
+  assert.match(landing, /Cotizaciones personalizadas/);
   assert.match(landing, /\/operations\/standalone/);
   assert.match(route, /OperationsAccessGate/);
   assert.match(route, /StandaloneOperationalRequirementsWorkspace/);

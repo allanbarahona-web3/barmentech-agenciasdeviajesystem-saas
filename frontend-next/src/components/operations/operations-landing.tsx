@@ -17,7 +17,7 @@ export function OperationsLanding() {
     <div className="mt-6 grid gap-5 md:grid-cols-2">
       <OperationsOption title="Internacionales" description="Seleccionar viaje para operación" icon={<Globe2 aria-hidden="true" size={22} />} onClick={() => router.push('/operations/international')} />
       <OperationsOption title="Migraciones" description="Seleccionar viaje para operación" icon={<FileText aria-hidden="true" size={22} />} onClick={() => router.push('/operations/migration')} />
-      <OperationsOption title="Solicitudes independientes" description="Gestionar trabajo operativo sin viaje asociado" actionLabel="Ver solicitudes" icon={<ListTodo aria-hidden="true" size={22} />} onClick={() => router.push('/operations/standalone')} />
+      <OperationsOption title="Cotizaciones personalizadas" description="Gestionar trabajo operativo sin viaje asociado" actionLabel="Ver cotizaciones" icon={<ListTodo aria-hidden="true" size={22} />} onClick={() => router.push('/operations/standalone')} />
       <Card className="border-dashed bg-muted/40"><CardHeader><div className="flex items-start justify-between gap-3"><span className="flex size-10 items-center justify-center rounded-lg bg-muted text-muted-foreground"><Bus aria-hidden="true" size={21} /></span><Badge variant="outline">Próximamente</Badge></div><CardTitle className="mt-4">Nacionales</CardTitle></CardHeader><CardContent><p className="text-sm leading-6 text-muted-foreground">La operación de viajes nacionales estará disponible en una historia posterior.</p></CardContent></Card>
     </div>
   </div></main>;

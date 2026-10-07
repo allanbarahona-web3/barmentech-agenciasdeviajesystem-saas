@@ -251,7 +251,7 @@ export function VerticalNav() {
             items: [
               { href: "/operations/international", label: "Internacionales", icon: "✈️" },
               { href: "/operations/migration", label: "Migraciones", icon: "📄" },
-              { href: "/operations/standalone", label: "Solicitudes independientes", icon: "📋" },
+              { href: "/operations/standalone", label: "Cotizaciones personalizadas", icon: "📋" },
               { href: "/operations/national", label: "Nacionales — Próximamente", icon: "🚌" },
             ],
           } as NavGroup,
