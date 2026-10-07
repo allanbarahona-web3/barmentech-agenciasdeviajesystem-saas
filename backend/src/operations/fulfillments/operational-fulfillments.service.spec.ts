@@ -251,6 +251,47 @@ describe("OperationalFulfillmentsService", () => {
     c.tx.operationalFulfillment.findFirst.mockResolvedValue(fulfillmentState({ travelPackageId: null, operationalRequirement: requirement({ scopeType: "STANDALONE_CUSTOMER", travelPackageId: null }) }));
     await expect(c.service.rejectStandalonePassengerAssignment(tenantId, requirementId, fulfillmentId)).rejects.toMatchObject({ response: expect.objectContaining({ message: "OPERATIONAL_STANDALONE_PASSENGERS_UNSUPPORTED" }) });
   });
+
+  it("uses Finance eligibility for spend-committing standalone Custom Quotation fulfillment transitions", async () => {
+    const c = context();
+    const source = requirement({
+      scopeType: "STANDALONE_CUSTOMER",
+      customerId: "customer-a",
+      travelPackageId: null,
+      sourceType: "CUSTOM_QUOTATION_LINE",
+      sourceId: "version-a",
+      sourceLineId: "line-a",
+    });
+    const initial = fulfillmentState({
+      travelPackageId: null,
+      reservationCode: "R-1",
+      operationalRequirement: source,
+    });
+    c.tx.operationalFulfillment.findFirst
+      .mockResolvedValueOnce(initial)
+      .mockResolvedValueOnce(initial)
+      .mockResolvedValueOnce(fulfillment({
+        travelPackageId: null,
+        status: "RESERVED",
+        reservationCode: "R-1",
+        operationalRequirement: source,
+        passengers: [],
+      }));
+    c.finance.readMany.mockResolvedValue([{ eligibility: "ELIGIBLE", reason: "SETTLED" }]);
+    c.tx.operationalFulfillment.updateMany.mockResolvedValue({ count: 1 });
+
+    await expect(c.service.transitionStandaloneStatus(
+      tenantId,
+      requirementId,
+      fulfillmentId,
+      { targetStatus: "RESERVED" },
+      actor,
+    )).resolves.toMatchObject({ status: "RESERVED", travelPackageId: null });
+    expect(c.finance.readMany).toHaveBeenCalledWith({
+      tenantId,
+      sources: [{ sourceType: "CUSTOM_QUOTATION_LINE", sourceId: "version-a", sourceLineId: "line-a" }],
+    });
+  });
 });
 
 function context() {

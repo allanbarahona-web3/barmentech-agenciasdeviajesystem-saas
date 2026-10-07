@@ -7,6 +7,10 @@ import {
   ContractFinanceEligibilityAdapter,
 } from "./contract-finance-eligibility.adapter";
 import {
+  CustomQuotationFinanceEligibilityAdapter,
+  CUSTOM_QUOTATION_LINE_SOURCE_TYPE,
+} from "./custom-quotation-finance-eligibility.adapter";
+import {
   financeEligibilitySourceKey,
   normalizeFinanceEligibilitySources,
 } from "./finance-eligibility-reader.utils";
@@ -23,6 +27,7 @@ export class FinanceEligibilityReaderAdapter implements FinanceEligibilityReader
   constructor(
     private readonly contracts: ContractFinanceEligibilityAdapter,
     private readonly additionalServices: AdditionalServiceFinanceEligibilityAdapter,
+    private readonly customQuotations: CustomQuotationFinanceEligibilityAdapter,
   ) {}
 
   async readMany(
@@ -38,7 +43,10 @@ export class FinanceEligibilityReaderAdapter implements FinanceEligibilityReader
       (source) =>
         source.sourceType === ADDITIONAL_SERVICE_ORDER_LINE_SOURCE_TYPE,
     );
-    const [contractResults, additionalServiceResults] = await Promise.all([
+    const customQuotationSources = sources.filter(
+      (source) => source.sourceType === CUSTOM_QUOTATION_LINE_SOURCE_TYPE,
+    );
+    const [contractResults, additionalServiceResults, customQuotationResults] = await Promise.all([
       contractSources.length
         ? this.contracts.readMany({ ...request, sources: contractSources })
         : Promise.resolve([]),
@@ -48,9 +56,19 @@ export class FinanceEligibilityReaderAdapter implements FinanceEligibilityReader
             sources: additionalServiceSources,
           })
         : Promise.resolve([]),
+      customQuotationSources.length
+        ? this.customQuotations.readMany({
+            ...request,
+            sources: customQuotationSources,
+          })
+        : Promise.resolve([]),
     ]);
     const results = new Map<string, FinanceEligibilityResult>();
-    for (const result of [...contractResults, ...additionalServiceResults]) {
+    for (const result of [
+      ...contractResults,
+      ...additionalServiceResults,
+      ...customQuotationResults,
+    ]) {
       results.set(financeEligibilitySourceKey(result.source), result);
     }
     return sources.map(

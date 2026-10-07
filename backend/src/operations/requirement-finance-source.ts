@@ -2,6 +2,7 @@ import type { CommercialSourceRef } from "../finance/eligibility-read/finance-el
 
 const ADDITIONAL_SERVICE_ORDER_LINE = "ADDITIONAL_SERVICE_ORDER_LINE";
 const CONTRACT = "CONTRACT";
+const CUSTOM_QUOTATION_LINE = "CUSTOM_QUOTATION_LINE";
 
 /**
  * The Requirement source snapshot is the only commercial identity Operations
@@ -40,6 +41,19 @@ export function requirementToCommercialSourceRef(
       sourceLineId: requirement.sourceLineId,
       ...(requirement.sourceVersionId ? { versionId: requirement.sourceVersionId } : {}),
       travelPackageId: requirement.travelPackageId,
+    };
+  }
+
+  if (
+    requirement.sourceType === CUSTOM_QUOTATION_LINE
+    && requirement.sourceId
+    && requirement.sourceLineId
+    && !requirement.travelPackageId
+  ) {
+    return {
+      sourceType: CUSTOM_QUOTATION_LINE,
+      sourceId: requirement.sourceId,
+      sourceLineId: requirement.sourceLineId,
     };
   }
 

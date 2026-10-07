@@ -13,4 +13,21 @@ describe("procurementAuthorizationForRequirement", () => {
     expect(procurementAuthorizationForRequirement({ travelPackageId: "travel-a", sourceType: "MANUAL", sourceId: null, sourceLineId: null, sourceVersionId: null }))
       .toEqual({ kind: "UNAVAILABLE" });
   });
+
+  it("uses Finance eligibility for a standalone Custom Quotation line", () => {
+    expect(procurementAuthorizationForRequirement({
+      travelPackageId: null,
+      sourceType: "CUSTOM_QUOTATION_LINE",
+      sourceId: "version-a",
+      sourceLineId: "line-a",
+      sourceVersionId: "version-a",
+    })).toEqual({
+      kind: "FINANCE_ELIGIBILITY_REQUIRED",
+      source: {
+        sourceType: "CUSTOM_QUOTATION_LINE",
+        sourceId: "version-a",
+        sourceLineId: "line-a",
+      },
+    });
+  });
 });

@@ -141,12 +141,25 @@ describe("OperationalPurchasesService", () => {
     expect(c.tx.$executeRaw).toHaveBeenCalledTimes(2);
   });
 
-  it("keeps standalone Custom Quotation procurement closed until Finance eligibility exists", async () => {
+  it("allows standalone Custom Quotation procurement only after Finance reports its exact immutable line eligible", async () => {
     const standalone = requirement({ travelPackageId: null, sourceType: "CUSTOM_QUOTATION_LINE", sourceId: "version-a", sourceLineId: "line-a" });
-    const c = context(standalone, fulfillment(), [standalone], [fulfillment()]);
-    await expect(c.service.createStandalone(tenantId, requirementId, fulfillmentId, input(), actor)).rejects.toMatchObject({ response: expect.objectContaining({ message: "OPERATIONAL_PURCHASE_FINANCIAL_ELIGIBILITY_UNAVAILABLE" }) });
-    expect(c.finance.readMany).not.toHaveBeenCalled();
-    expect(c.tx.operationalPurchase.create).not.toHaveBeenCalled();
+    const c = context(standalone, fulfillment(), [standalone, standalone], [fulfillment(), fulfillment()]);
+    c.finance.readMany.mockResolvedValue([{ eligibility: "ELIGIBLE", reason: "SETTLED" }]);
+    c.tx.operationalPurchase.create.mockResolvedValue(purchase({ travelPackageId: null }));
+    c.tx.operationalFulfillment.updateMany.mockResolvedValue({ count: 1 });
+    await expect(c.service.createStandalone(tenantId, requirementId, fulfillmentId, input(), actor)).resolves.toMatchObject({ id: purchaseId, travelPackageId: null });
+    expect(c.finance.readMany).toHaveBeenCalledWith({
+      tenantId,
+      sources: [{ sourceType: "CUSTOM_QUOTATION_LINE", sourceId: "version-a", sourceLineId: "line-a" }],
+    });
+    expect(c.tx.operationalPurchase.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ travelPackageId: null, operationalFulfillmentId: fulfillmentId }),
+    }));
+
+    const blocked = context(standalone, fulfillment(), [standalone], [fulfillment()]);
+    blocked.finance.readMany.mockResolvedValue([{ eligibility: "BLOCKED", reason: "OUTSTANDING_BALANCE" }]);
+    await expect(blocked.service.createStandalone(tenantId, requirementId, fulfillmentId, input(), actor)).rejects.toMatchObject({ response: expect.objectContaining({ message: "OPERATIONAL_PURCHASE_FINANCIAL_ELIGIBILITY_BLOCKED" }) });
+    expect(blocked.tx.operationalPurchase.create).not.toHaveBeenCalled();
   });
 
   it("lists standalone purchases through generic fulfillment identity", async () => {

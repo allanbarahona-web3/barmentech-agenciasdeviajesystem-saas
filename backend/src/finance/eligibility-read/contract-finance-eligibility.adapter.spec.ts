@@ -5,6 +5,7 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { FinanceModule } from "../finance.module";
 import { ContractFinanceEligibilityAdapter } from "./contract-finance-eligibility.adapter";
 import { AdditionalServiceFinanceEligibilityAdapter } from "./additional-service-finance-eligibility.adapter";
+import { CustomQuotationFinanceEligibilityAdapter } from "./custom-quotation-finance-eligibility.adapter";
 import { FinanceEligibilityReaderAdapter } from "./finance-eligibility-reader.adapter";
 import { FINANCE_ELIGIBILITY_READER } from "./finance-eligibility-reader.port";
 
@@ -163,6 +164,7 @@ describe("ContractFinanceEligibilityAdapter", () => {
     expect(providers).toEqual(expect.arrayContaining([
       ContractFinanceEligibilityAdapter,
       AdditionalServiceFinanceEligibilityAdapter,
+      CustomQuotationFinanceEligibilityAdapter,
       FinanceEligibilityReaderAdapter,
       { provide: FINANCE_ELIGIBILITY_READER, useExisting: FinanceEligibilityReaderAdapter },
     ]));
@@ -173,6 +175,7 @@ describe("ContractFinanceEligibilityAdapter", () => {
         { provide: PrismaService, useValue: c.prisma },
         ContractFinanceEligibilityAdapter,
         AdditionalServiceFinanceEligibilityAdapter,
+        CustomQuotationFinanceEligibilityAdapter,
         FinanceEligibilityReaderAdapter,
         { provide: FINANCE_ELIGIBILITY_READER, useExisting: FinanceEligibilityReaderAdapter },
       ],
