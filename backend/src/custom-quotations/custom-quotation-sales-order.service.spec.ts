@@ -60,6 +60,7 @@ describe("CustomQuotationSalesOrderService", () => {
       where: { id: "version-a", tenantId: "tenant-a", customQuotationId: "quotation-a", salesOrderId: null },
       data: { salesOrderId: "sales-a" },
     });
+    expect(c.operationsIntake.persistMaterializedVersion).toHaveBeenCalledWith(c.tx, "tenant-a", "version-a");
     expect(c.tx.tenantFiscalClassification).toBeUndefined();
     expect(c.tx.additionalServiceCatalog).toBeUndefined();
     expect(c.tx.billingDocument).toBeUndefined();
@@ -129,6 +130,7 @@ describe("CustomQuotationSalesOrderService", () => {
     });
     expect(c.salesOrders.materializeInTransaction).not.toHaveBeenCalled();
     expect(c.tx.customQuotationVersion.updateMany).not.toHaveBeenCalled();
+    expect(c.operationsIntake.persistMaterializedVersion).toHaveBeenCalledWith(c.tx, "tenant-a", "version-a");
   });
 
   it("materializes an accepted version after its offer-acceptance deadline has passed", async () => {
@@ -166,6 +168,7 @@ describe("CustomQuotationSalesOrderService", () => {
 
     await expect(c.service.materialize("tenant-a", "quotation-a", "version-a", actor)).rejects.toThrow("CUSTOM_QUOTATION_VERSION_NOT_ACCEPTED");
     expect(c.salesOrders.materializeInTransaction).not.toHaveBeenCalled();
+    expect(c.operationsIntake.persistMaterializedVersion).not.toHaveBeenCalled();
   });
 
   it("rejects a non-accepted parent before materialization", async () => {
@@ -214,7 +217,8 @@ function context() {
   } as any;
   const prisma = { $transaction: jest.fn(async (work: (value: typeof tx) => Promise<unknown>) => work(tx)) };
   const salesOrders = { materializeInTransaction: jest.fn() };
-  return { tx, salesOrders, service: new CustomQuotationSalesOrderService(prisma as never, salesOrders as never) };
+  const operationsIntake = { persistMaterializedVersion: jest.fn().mockResolvedValue(2) };
+  return { tx, salesOrders, operationsIntake, service: new CustomQuotationSalesOrderService(prisma as never, salesOrders as never, operationsIntake as never) };
 }
 
 function version(overrides: Record<string, unknown> = {}) {

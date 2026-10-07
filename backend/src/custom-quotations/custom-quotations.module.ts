@@ -22,6 +22,7 @@ import { CustomQuotationCustomerApprovalPublicController } from "./custom-quotat
 import { CustomQuotationDeliveryEmailMapper } from "./custom-quotation-delivery-email.mapper";
 import { CustomQuotationDeliveryService } from "./custom-quotation-delivery.service";
 import { CustomQuotationSalesOrderService } from "./custom-quotation-sales-order.service";
+import { CustomQuotationOperationsIntakeOutboxProducer } from "./custom-quotation-operations-intake-outbox.producer";
 import { CustomQuotationLeadCustomerConversionService } from "./custom-quotation-lead-customer-conversion.service";
 import { CustomQuotationOperationalWorkSourceAdapter } from "./operations-read/custom-quotation-operational-work-source.adapter";
 import { CustomQuotationsController } from "./custom-quotations.controller";
@@ -30,7 +31,7 @@ import { CustomQuotationsService } from "./custom-quotations.service";
 @Module({
   imports: [BusinessNumberingModule, CostEngineModule, PricingModule, DocumentsModule, GeneratedDocumentsModule, StorageModule, EmailModule, SalesOrdersModule, FiscalClassificationModule, CustomersModule],
   controllers: [CustomQuotationsController, CustomQuotationCustomerApprovalPublicController],
-  providers: [CustomQuotationsService, CustomQuotationCostingService, CustomQuotationCostEngineService, CustomQuotationCommercialLinesService, CustomQuotationPricingService, CustomQuotationVersionService, CustomQuotationProposalMapper, CustomQuotationProposalService, CustomQuotationApprovalService, CustomQuotationCustomerApprovalService, CustomQuotationDeliveryEmailMapper, CustomQuotationDeliveryService, CustomQuotationSalesOrderService, CustomQuotationLeadCustomerConversionService, CustomQuotationOperationalWorkSourceAdapter],
+  providers: [CustomQuotationsService, CustomQuotationCostingService, CustomQuotationCostEngineService, CustomQuotationCommercialLinesService, CustomQuotationPricingService, CustomQuotationVersionService, CustomQuotationProposalMapper, CustomQuotationProposalService, CustomQuotationApprovalService, CustomQuotationCustomerApprovalService, CustomQuotationDeliveryEmailMapper, CustomQuotationDeliveryService, CustomQuotationSalesOrderService, CustomQuotationOperationsIntakeOutboxProducer, CustomQuotationLeadCustomerConversionService, CustomQuotationOperationalWorkSourceAdapter],
   exports: [CustomQuotationsService, CustomQuotationCostingService, CustomQuotationPricingService, CustomQuotationVersionService, CustomQuotationProposalService, CustomQuotationApprovalService, CustomQuotationOperationalWorkSourceAdapter],
 })
 export class CustomQuotationsModule {}

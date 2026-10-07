@@ -1,20 +1,7 @@
 export const OPERATIONAL_WORK_SOURCE_READER = Symbol("OPERATIONAL_WORK_SOURCE_READER");
 
-export type OperationalWorkSourceSnapshot = {
-  travelPackageId: string;
-  costingProjectId: string;
-  costComponentId: string;
-  category: { code: string; displayName: string };
-  title: string;
-  description: string | null;
-  structuredDetails: unknown;
-  detailSchemaVersion: number | null;
-  quantity: string | null;
-  unit: string | null;
-  supplier: { id: string; name: string } | null;
-  currentCostSnapshotId: string;
-  currentInternalCost: { amount: string; currency: string };
-};
+/** Immutable source-owned context. Its shape is owned by each adapter. */
+export type OperationalWorkSourceSnapshot = Record<string, unknown>;
 
 type OperationalWorkSourceIdentity = {
   tenantId: string;

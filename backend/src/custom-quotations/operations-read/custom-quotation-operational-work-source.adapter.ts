@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import { runTenantTransaction } from "../../tenant/tenant-transaction";
+import { CUSTOM_QUOTATION_LINE_SOURCE } from "../../operations/intake/operations-intake-outbox.constants";
 import {
   OperationalWorkMaterializationError,
   type OperationalWorkSourceItem,
@@ -8,7 +9,7 @@ import {
   type OperationalWorkSourceReference,
 } from "../../operations/intake/operational-work-source-reader.port";
 
-export const CUSTOM_QUOTATION_LINE_SOURCE = "CUSTOM_QUOTATION_LINE";
+export { CUSTOM_QUOTATION_LINE_SOURCE };
 
 const SERVICE_PURPOSE_CODE = "CUSTOM_QUOTATION";
 const SERVICE_PURPOSE_NAME = "Cotización personalizada";
@@ -89,7 +90,13 @@ export class CustomQuotationOperationalWorkSourceAdapter implements OperationalW
         servicePurposeCode: SERVICE_PURPOSE_CODE,
         servicePurposeName: SERVICE_PURPOSE_NAME,
         description: line.description.trim(),
-        sourceSnapshot: null,
+        sourceSnapshot: {
+          customQuotationVersionId: version.id,
+          customQuotationVersionLineId: line.id,
+          description: line.description.trim(),
+          soldAmount: String(line.soldAmount),
+          currency: String(version.currency),
+        },
         soldValueScope: "EXACT_SERVICE_LINE",
         soldValue: {
           scope: "EXACT_SERVICE_LINE",

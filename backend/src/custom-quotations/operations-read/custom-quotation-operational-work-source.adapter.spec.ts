@@ -23,7 +23,13 @@ describe("CustomQuotationOperationalWorkSourceAdapter", () => {
       servicePurposeCode: "CUSTOM_QUOTATION",
       servicePurposeName: "Cotización personalizada",
       description: "Traslado privado",
-      sourceSnapshot: null,
+      sourceSnapshot: {
+        customQuotationVersionId: "version-a",
+        customQuotationVersionLineId: "version-line-a",
+        description: "Traslado privado",
+        soldAmount: "700.00000",
+        currency: "USD",
+      },
       soldValueScope: "EXACT_SERVICE_LINE",
       soldValue: { scope: "EXACT_SERVICE_LINE", amount: "700.00000", currency: "USD" },
     });

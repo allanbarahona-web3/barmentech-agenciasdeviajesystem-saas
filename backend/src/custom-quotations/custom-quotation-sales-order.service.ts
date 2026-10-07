@@ -6,6 +6,7 @@ import {
 import type { SalesOrderMaterializationTransaction } from "../sales-orders/sales-order-fiscal-snapshot-materialization.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { runTenantTransaction } from "../tenant/tenant-transaction";
+import { CustomQuotationOperationsIntakeOutboxProducer } from "./custom-quotation-operations-intake-outbox.producer";
 import type { CustomQuotationActor } from "./custom-quotations.service";
 
 const SOURCE_TYPE = "CUSTOM_QUOTATION_VERSION";
@@ -29,6 +30,7 @@ export class CustomQuotationSalesOrderService {
   constructor(
     prisma: PrismaService,
     private readonly salesOrders: SalesOrderSourceMaterializationService,
+    private readonly operationsIntakeOutboxProducer: CustomQuotationOperationsIntakeOutboxProducer,
   ) {
     this.database = prisma as unknown as CustomQuotationSalesOrderDatabase;
   }
@@ -100,6 +102,7 @@ export class CustomQuotationSalesOrderService {
         if (!existing || existing.sourceType !== SOURCE_TYPE || existing.sourceId !== version.id) {
           throw new ConflictException("CUSTOM_QUOTATION_VERSION_SALES_ORDER_CONFLICT");
         }
+        await this.operationsIntakeOutboxProducer.persistMaterializedVersion(tx as unknown as Prisma.TransactionClient, tenantId, version.id);
         return salesOrderResponse(existing, true);
       }
 
@@ -131,6 +134,7 @@ export class CustomQuotationSalesOrderService {
         data: { salesOrderId: result.salesOrderId },
       });
       if (linked.count !== 1) throw new ConflictException("CUSTOM_QUOTATION_VERSION_SALES_ORDER_LINK_CONFLICT");
+      await this.operationsIntakeOutboxProducer.persistMaterializedVersion(tx as unknown as Prisma.TransactionClient, tenantId, version.id);
       return salesOrderResponse(result, result.reusedExisting);
     });
   }

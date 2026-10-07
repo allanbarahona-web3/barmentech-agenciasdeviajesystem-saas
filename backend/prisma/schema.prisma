@@ -572,6 +572,7 @@ model Client {
   commercialObligations                CommercialObligation[]
   customQuotations                     CustomQuotation[]
   operationalRequirements              OperationalRequirement[]
+  operationsIntakeOutboxEvents         OperationsIntakeOutboxEvent[]
   convertedLeads                       Lead[]                              @relation("LeadConvertedCustomer")
 
   @@unique([tenantId, idType, idNumber])
@@ -1466,7 +1467,9 @@ model OperationalEvidence {
 model OperationsIntakeOutboxEvent {
   id              String                       @id @default(cuid())
   tenantId        String
-  travelPackageId String
+  scopeType       OperationalScopeType         @default(TRAVEL_PACKAGE)
+  travelPackageId String?
+  customerId      String?
   eventType       String                       @db.VarChar(100)
   eventVersion    Int                          @default(1)
   sourceType      String                       @db.VarChar(80)
@@ -1485,7 +1488,8 @@ model OperationsIntakeOutboxEvent {
   createdAt       DateTime                     @default(now())
   updatedAt       DateTime                     @updatedAt
   tenant          Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  travelPackage   TravelPackage                @relation(fields: [travelPackageId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "operations_intake_outbox_events_travel_tenant_fkey")
+  travelPackage   TravelPackage?               @relation(fields: [travelPackageId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "operations_intake_outbox_events_travel_tenant_fkey")
+  customer        Client?                       @relation(fields: [customerId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "operations_intake_outbox_events_customer_tenant_fkey")
 
   @@unique([tenantId, eventType, sourceType, sourceId, sourceLineId], map: "operations_intake_outbox_source_event_key")
   @@index([tenantId, status, availableAt, createdAt], map: "operations_intake_outbox_tenant_status_available_idx")

@@ -5,6 +5,7 @@ import { PrismaService } from "../../prisma/prisma.service";
 import { runTenantTransaction } from "../../tenant/tenant-transaction";
 import {
   ADDITIONAL_SERVICE_ORDER_LINE_SOURCE,
+  CUSTOM_QUOTATION_LINE_SOURCE,
   OPERATIONS_INTAKE_OUTBOX_BATCH_SIZE,
   OPERATIONS_INTAKE_OUTBOX_POLL_INTERVAL_MS,
   OPERATIONS_INTAKE_OUTBOX_PROCESSING_LEASE_MS,
@@ -23,7 +24,9 @@ import {
 type ClaimedEvent = {
   id: string;
   tenantId: string;
-  travelPackageId: string;
+  scopeType: "TRAVEL_PACKAGE" | "STANDALONE_CUSTOMER";
+  travelPackageId: string | null;
+  customerId: string | null;
   eventType: string;
   eventVersion: number;
   sourceType: string;
@@ -173,7 +176,7 @@ export class OperationsIntakeOutboxWorkerService implements OnModuleInit, OnModu
           "updatedAt" = ${claimedAt}
       FROM eligible
       WHERE event."id" = eligible."id"
-      RETURNING event."id", event."tenantId", event."travelPackageId",
+      RETURNING event."id", event."tenantId", event."scopeType", event."travelPackageId", event."customerId",
         event."eventType", event."eventVersion", event."sourceType",
         event."sourceId", event."sourceLineId", event."sourceVersionId",
         event."attemptCount", event."maximumAttempts",
@@ -187,16 +190,14 @@ export class OperationsIntakeOutboxWorkerService implements OnModuleInit, OnModu
       this.logger.warn({ event: "operations-intake-outbox-terminal-failure", eventId: event.id, tenantId: event.tenantId, sourceId: event.sourceId, sourceLineId: event.sourceLineId, reason: UNSUPPORTED_EVENT_ERROR });
       return "failed";
     }
+    const reference = sourceReference(event);
+    if (!reference) {
+      await this.finishClaim(event, { status: "FAILED", lastError: UNSUPPORTED_EVENT_ERROR });
+      return "failed";
+    }
     let materialized: { status: "CREATED" | "ALREADY_MATERIALIZED"; operationalRequirementId: string };
     try {
-      materialized = await this.materializer.materialize({
-        tenantId: event.tenantId,
-        scopeType: "TRAVEL_PACKAGE",
-        travelPackageId: event.travelPackageId,
-        sourceType: event.sourceType,
-        sourceId: event.sourceId,
-        sourceLineId: event.sourceLineId,
-      });
+      materialized = await this.materializer.materialize(reference);
     } catch (error) {
       const failure = classifyFailure(error);
       if (!failure.retryable || (event.attemptCount >= event.maximumAttempts && !isBaseRosterRetry(event, error))) {
@@ -212,7 +213,7 @@ export class OperationsIntakeOutboxWorkerService implements OnModuleInit, OnModu
     // Do not catch this persistence write as a materializer error. If it fails,
     // the leased event is recovered later and materialization is idempotent.
     await this.finishClaim(event, { status: "PROCESSED", processedAt: new Date(), lastError: null });
-    this.logger.log({ event: "operations-intake-outbox-processed", eventId: event.id, tenantId: event.tenantId, travelPackageId: event.travelPackageId, sourceId: event.sourceId, sourceLineId: event.sourceLineId, materialization: materialized.status, attemptCount: event.attemptCount });
+    this.logger.log({ event: "operations-intake-outbox-processed", eventId: event.id, tenantId: event.tenantId, scopeType: event.scopeType, travelPackageId: event.travelPackageId, customerId: event.customerId, sourceId: event.sourceId, sourceLineId: event.sourceLineId, materialization: materialized.status, attemptCount: event.attemptCount });
     return "processed";
   }
 
@@ -270,7 +271,19 @@ function isSupported(event: ClaimedEvent) {
   return event.eventType === OPERATIONS_SOURCE_ITEM_APPROVED_EVENT
     && event.eventVersion === 1
     && (event.sourceType === ADDITIONAL_SERVICE_ORDER_LINE_SOURCE
-      || event.sourceType === TRAVEL_PACKAGE_COST_COMPONENT_SOURCE);
+      || event.sourceType === TRAVEL_PACKAGE_COST_COMPONENT_SOURCE
+      || event.sourceType === CUSTOM_QUOTATION_LINE_SOURCE);
+}
+
+function sourceReference(event: ClaimedEvent) {
+  const identity = { tenantId: event.tenantId, sourceType: event.sourceType, sourceId: event.sourceId, sourceLineId: event.sourceLineId };
+  if (event.scopeType === "TRAVEL_PACKAGE" && event.travelPackageId && !event.customerId) {
+    return { ...identity, scopeType: "TRAVEL_PACKAGE" as const, travelPackageId: event.travelPackageId };
+  }
+  if (event.scopeType === "STANDALONE_CUSTOMER" && !event.travelPackageId && event.customerId) {
+    return { ...identity, scopeType: "STANDALONE_CUSTOMER" as const, customerId: event.customerId };
+  }
+  return null;
 }
 
 function classifyFailure(error: unknown): { retryable: boolean; lastError: string } {
