@@ -8,6 +8,8 @@ const contract = {
   participantCount: 3,
   commercialTotal: new Prisma.Decimal("1500.00000"),
   commercialCurrency: "USD",
+  commercialPricingPublicationId: null,
+  commercialPublishedPricePerPerson: null,
 };
 const passengers = [
   { travelPackageParticipantId: "participant-holder", clientId: "client-1", role: "HOLDER" as const },
@@ -57,12 +59,107 @@ describe("ContractCommercialSnapshotService", () => {
     ]));
   });
 
-  it("rejects a stale Contract commercial total before creating a snapshot", async () => {
+  it("uses retained Contract Pricing authority after a later publication changes the current price", async () => {
+    const c = context({ perPersonSellingPrice: "550.00000", versionFinalSellingPrice: "500.00000" });
+    const frozenContract = {
+      ...contract,
+      commercialPricingPublicationId: "publication-1",
+      commercialPublishedPricePerPerson: new Prisma.Decimal("500.00000"),
+    };
+
+    await expect(c.service.freezeInTransaction(c.tx as never, {
+      tenantId: "tenant-1", contract: frozenContract, passengers, actor,
+    })).resolves.toEqual({ snapshotId: "snapshot-1" });
+
+    expect(c.publishedPricing.readInTransaction).not.toHaveBeenCalled();
+    expect(c.tx.travelPackagePricingPublication.findFirst).toHaveBeenCalledWith({
+      where: { id: "publication-1", tenantId: "tenant-1", travelPackageId: "package-1" },
+      select: {
+        id: true,
+        costingProjectId: true,
+        pricingCalculationVersionId: true,
+        publishedPrice: true,
+        currency: true,
+      },
+    });
+    expect(c.tx.contractCommercialSnapshot.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        travelPackagePricingPublicationId: "publication-1",
+        perPersonSellingPrice: new Prisma.Decimal("500.00000"),
+        commercialTotal: new Prisma.Decimal("1500.00000"),
+      }),
+    }));
+  });
+
+  it("rejects a retained per-person price that does not match its retained publication", async () => {
+    const c = context({ versionFinalSellingPrice: "500.00000" });
+    const frozenContract = {
+      ...contract,
+      commercialPricingPublicationId: "publication-1",
+      commercialPublishedPricePerPerson: new Prisma.Decimal("550.00000"),
+    };
+
+    await expect(c.service.freezeInTransaction(c.tx as never, {
+      tenantId: "tenant-1", contract: frozenContract, passengers, actor,
+    })).rejects.toThrow("CONTRACT_COMMERCIAL_PRICE_STALE");
+    expect(c.publishedPricing.readInTransaction).not.toHaveBeenCalled();
+    expect(c.tx.contractCommercialSnapshot.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects a missing retained publication without falling back to current Pricing", async () => {
+    const c = context({ retainedPublicationMissing: true });
+    const frozenContract = {
+      ...contract,
+      commercialPricingPublicationId: "publication-missing",
+      commercialPublishedPricePerPerson: new Prisma.Decimal("500.00000"),
+    };
+
+    await expect(c.service.freezeInTransaction(c.tx as never, {
+      tenantId: "tenant-1", contract: frozenContract, passengers, actor,
+    })).rejects.toThrow("CONTRACT_COMMERCIAL_SNAPSHOT_PRICING_INVALID");
+    expect(c.publishedPricing.readInTransaction).not.toHaveBeenCalled();
+    expect(c.tx.contractCommercialSnapshot.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects an inconsistent retained Contract total without reading current Pricing", async () => {
+    const c = context();
+    const frozenContract = {
+      ...contract,
+      commercialTotal: new Prisma.Decimal("1499.99999"),
+      commercialPricingPublicationId: "publication-1",
+      commercialPublishedPricePerPerson: new Prisma.Decimal("500.00000"),
+    };
+
+    await expect(c.service.freezeInTransaction(c.tx as never, {
+      tenantId: "tenant-1", contract: frozenContract, passengers, actor,
+    })).rejects.toThrow("CONTRACT_COMMERCIAL_PRICE_STALE");
+    expect(c.publishedPricing.readInTransaction).not.toHaveBeenCalled();
+    expect(c.tx.contractCommercialSnapshot.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects an inconsistent retained Contract currency without reading current Pricing", async () => {
+    const c = context();
+    const frozenContract = {
+      ...contract,
+      commercialCurrency: "CRC",
+      commercialPricingPublicationId: "publication-1",
+      commercialPublishedPricePerPerson: new Prisma.Decimal("500.00000"),
+    };
+
+    await expect(c.service.freezeInTransaction(c.tx as never, {
+      tenantId: "tenant-1", contract: frozenContract, passengers, actor,
+    })).rejects.toThrow("CONTRACT_COMMERCIAL_PRICE_STALE");
+    expect(c.publishedPricing.readInTransaction).not.toHaveBeenCalled();
+    expect(c.tx.contractCommercialSnapshot.create).not.toHaveBeenCalled();
+  });
+
+  it("uses existing latest-Pricing validation for historical null-lineage Contracts", async () => {
     const c = context({ perPersonSellingPrice: "550.00000" });
 
     await expect(c.service.freezeInTransaction(c.tx as never, {
       tenantId: "tenant-1", contract, passengers, actor,
     })).rejects.toThrow("CONTRACT_COMMERCIAL_PRICE_STALE");
+    expect(c.publishedPricing.readInTransaction).toHaveBeenCalledWith(c.tx, "tenant-1", "package-1");
     expect(c.tx.contractCommercialSnapshot.create).not.toHaveBeenCalled();
   });
 
@@ -87,11 +184,17 @@ describe("ContractCommercialSnapshotService", () => {
 
   it("reuses an existing snapshot without reading mutable Pricing state", async () => {
     const c = context({ existingSnapshotId: "snapshot-existing" });
+    const frozenContract = {
+      ...contract,
+      commercialPricingPublicationId: "publication-1",
+      commercialPublishedPricePerPerson: new Prisma.Decimal("500.00000"),
+    };
 
     await expect(c.service.freezeInTransaction(c.tx as never, {
-      tenantId: "tenant-1", contract, passengers, actor,
+      tenantId: "tenant-1", contract: frozenContract, passengers, actor,
     })).resolves.toEqual({ snapshotId: "snapshot-existing" });
     expect(c.publishedPricing.readInTransaction).not.toHaveBeenCalled();
+    expect(c.tx.travelPackagePricingPublication.findFirst).not.toHaveBeenCalled();
     expect(c.tx.contractCommercialSnapshot.create).not.toHaveBeenCalled();
   });
 
@@ -108,14 +211,17 @@ describe("ContractCommercialSnapshotService", () => {
 function context(overrides: {
   existingSnapshotId?: string;
   perPersonSellingPrice?: string;
+  versionFinalSellingPrice?: string;
+  retainedPublicationMissing?: boolean;
   currency?: string;
   componentLines?: any[];
   legacy?: boolean;
 } = {}) {
   const currency = overrides.currency ?? "USD";
   const perPersonSellingPrice = overrides.perPersonSellingPrice ?? "500.00000";
+  const versionFinalSellingPrice = overrides.versionFinalSellingPrice ?? perPersonSellingPrice;
   const componentLines = overrides.componentLines ?? (
-    perPersonSellingPrice === "550.00000"
+    versionFinalSellingPrice === "550.00000"
       ? [line("component-flight", "snapshot-flight", "330.00000"), line("component-hotel", "snapshot-hotel", "220.00000")]
       : [line("component-flight", "snapshot-flight", "300.00000"), line("component-hotel", "snapshot-hotel", "200.00000")]
   );
@@ -126,10 +232,16 @@ function context(overrides: {
     },
     pricingCalculationVersion: {
       findFirst: jest.fn().mockResolvedValue({
-        id: "version-1", costingProjectId: "project-1", currency, finalSellingPrice: new Prisma.Decimal(perPersonSellingPrice),
+        id: "version-1", costingProjectId: "project-1", currency, finalSellingPrice: new Prisma.Decimal(versionFinalSellingPrice),
       }),
     },
     pricingCalculationComponentLine: { findMany: jest.fn().mockResolvedValue(componentLines) },
+    travelPackagePricingPublication: {
+      findFirst: jest.fn().mockResolvedValue(overrides.retainedPublicationMissing ? null : {
+        id: "publication-1", costingProjectId: "project-1", pricingCalculationVersionId: "version-1",
+        publishedPrice: new Prisma.Decimal(versionFinalSellingPrice), currency,
+      }),
+    },
   };
   const publishedPricing = {
     readInTransaction: jest.fn().mockResolvedValue(overrides.legacy ? {

@@ -715,8 +715,47 @@ describe("ContractsService archive customer identity resolution", () => {
         participantCount: 5,
         commercialTotal: new Prisma.Decimal("2500.61725"),
         commercialCurrency: "USD",
+        commercialPricingPublicationId: "publication-1",
+        commercialPublishedPricePerPerson: new Prisma.Decimal("500.12345"),
       }),
     }));
+  });
+
+  it("retains each Pricing-published Contract authority when a later publication is used for a new Contract", async () => {
+    const { service, contractCreate, publishedTravelPackagePricing } = createArchiveService([holder]);
+    publishedTravelPackagePricing.read.mockResolvedValueOnce(publishedPrice("500.12345"));
+
+    await service.archiveContract(
+      { id: "agent-1", email: "agent@example.com", fullName: "Agent", tenantId: "tenant-1" },
+      packageArchiveDto({ contractNumber: "CT-PRICING-FIRST", totalAmount: undefined }),
+      [],
+    );
+
+    publishedTravelPackagePricing.read.mockResolvedValueOnce({
+      ...publishedPrice("550.00000"),
+      publicationId: "publication-2",
+      pricingCalculationVersionId: "version-2",
+    });
+    await service.archiveContract(
+      { id: "agent-1", email: "agent@example.com", fullName: "Agent", tenantId: "tenant-1" },
+      packageArchiveDto({ contractNumber: "CT-PRICING-SECOND", totalAmount: undefined }),
+      [],
+    );
+
+    const first = contractCreate.mock.calls[0][0].data;
+    const second = contractCreate.mock.calls[1][0].data;
+    expect(first).toEqual(expect.objectContaining({
+      commercialPricingPublicationId: "publication-1",
+      commercialPublishedPricePerPerson: new Prisma.Decimal("500.12345"),
+      commercialTotal: new Prisma.Decimal("500.12345"),
+    }));
+    expect(second).toEqual(expect.objectContaining({
+      commercialPricingPublicationId: "publication-2",
+      commercialPublishedPricePerPerson: new Prisma.Decimal("550.00000"),
+      commercialTotal: new Prisma.Decimal("550.00000"),
+    }));
+    expect(first.commercialPricingPublicationId).toBe("publication-1");
+    expect(first.commercialPublishedPricePerPerson).toEqual(new Prisma.Decimal("500.12345"));
   });
 
   it("accepts a Pricing-managed Contract without a submitted total because the server calculates it", async () => {
@@ -744,6 +783,39 @@ describe("ContractsService archive customer identity resolution", () => {
     )).rejects.toThrow("CONTRACT_COMMERCIAL_TOTAL_INVALID");
 
     expect(contractCreate).not.toHaveBeenCalled();
+  });
+
+  it("leaves archive-time Pricing authority null for non-PRICING_PUBLISHED Contracts", async () => {
+    const { service, contractCreate } = createArchiveService([holder]);
+
+    await service.archiveContract(
+      { id: "agent-1", email: "agent@example.com", fullName: "Agent", tenantId: "tenant-1" },
+      {
+        contractNumber: "CT-LEGACY-AUTHORITY",
+        clientFullName: holder.fullName,
+        clientIdNumber: holder.idNumber,
+        clientEmail: "holder@example.com",
+        destination: "Destination",
+        internalTripId: "internal-trip-1",
+        paymentConditionType: "CASH",
+        paymentMethod: "CARD",
+        payloadJson: JSON.stringify({
+          selectedCustomerId: holder.id,
+          clientIdType: holder.idType,
+          totalAmount: "100.00000",
+          reservationAmount: "0",
+        }),
+      },
+      [],
+    );
+
+    expect(contractCreate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        commercialPricingPublicationId: null,
+        commercialPublishedPricePerPerson: null,
+        commercialTotal: new Prisma.Decimal("100.00000"),
+      }),
+    }));
   });
 
   it("rejects a stale or client-edited total instead of persisting it", async () => {

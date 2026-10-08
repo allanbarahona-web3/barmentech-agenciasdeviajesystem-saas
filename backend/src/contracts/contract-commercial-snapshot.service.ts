@@ -22,6 +22,8 @@ type FreezeInput = {
     participantCount: number;
     commercialTotal: Prisma.Decimal;
     commercialCurrency: string;
+    commercialPricingPublicationId: string | null;
+    commercialPublishedPricePerPerson: Prisma.Decimal | null;
   };
   passengers: readonly ContractCommercialSnapshotPassengerInput[];
   actor: { userId: string; name: string };
@@ -48,20 +50,8 @@ export class ContractCommercialSnapshotService {
     });
     if (existing) return { snapshotId: existing.id };
 
-    const published = await this.publishedPricing.readInTransaction(
-      database,
-      input.tenantId,
-      input.contract.travelPackageId,
-    );
-    // Pre-Pricing packages intentionally retain their legacy Contract behavior;
-    // historical per-component commercial values cannot be invented.
-    if (published.kind === "LEGACY") return null;
-    if (published.unitScope !== CONTRACT_COMMERCIAL_UNIT_SCOPE) {
-      throw new ConflictException("CONTRACT_COMMERCIAL_SNAPSHOT_UNIT_SCOPE_INVALID");
-    }
-    if (published.currency !== input.contract.commercialCurrency) {
-      throw new ConflictException("CONTRACT_COMMERCIAL_PRICE_STALE");
-    }
+    const published = await this.publishedAuthority(database, input);
+    if (!published) return null;
 
     const version = await database.pricingCalculationVersion.findFirst({
       where: {
@@ -171,6 +161,75 @@ export class ContractCommercialSnapshotService {
       select: { id: true },
     });
     return { snapshotId: snapshot.id };
+  }
+
+  private async publishedAuthority(
+    database: TravelPackagePublishedPricingTransaction & Record<string, any>,
+    input: FreezeInput,
+  ): Promise<{
+    publicationId: string;
+    costingProjectId: string;
+    pricingCalculationVersionId: string;
+    perPersonSellingPrice: string;
+    currency: string;
+  } | null> {
+    const publicationId = input.contract.commercialPricingPublicationId ?? null;
+    const retainedPerPersonPrice = input.contract.commercialPublishedPricePerPerson ?? null;
+    const hasStoredAuthority = publicationId !== null || retainedPerPersonPrice !== null;
+
+    if (hasStoredAuthority) {
+      if (!publicationId || !(retainedPerPersonPrice instanceof Prisma.Decimal)) {
+        throw new ConflictException("CONTRACT_COMMERCIAL_SNAPSHOT_PRICING_INVALID");
+      }
+      const publication = await database.travelPackagePricingPublication.findFirst({
+        where: {
+          id: publicationId,
+          tenantId: input.tenantId,
+          travelPackageId: input.contract.travelPackageId,
+        },
+        select: {
+          id: true,
+          costingProjectId: true,
+          pricingCalculationVersionId: true,
+          publishedPrice: true,
+          currency: true,
+        },
+      });
+      if (!publication) {
+        throw new ConflictException("CONTRACT_COMMERCIAL_SNAPSHOT_PRICING_INVALID");
+      }
+      if (
+        publication.currency !== input.contract.commercialCurrency ||
+        !pricingAmountsEqual(decimalString(publication.publishedPrice), decimalString(retainedPerPersonPrice))
+      ) {
+        throw new ConflictException("CONTRACT_COMMERCIAL_PRICE_STALE");
+      }
+      return {
+        publicationId: publication.id,
+        costingProjectId: publication.costingProjectId,
+        pricingCalculationVersionId: publication.pricingCalculationVersionId,
+        perPersonSellingPrice: decimalString(retainedPerPersonPrice),
+        currency: publication.currency,
+      };
+    }
+
+    // CPS-1 pre-existing Contracts have no stored Pricing lineage. Preserve the
+    // existing latest-publication validation as their explicit compatibility path.
+    const current = await this.publishedPricing.readInTransaction(
+      database,
+      input.tenantId,
+      input.contract.travelPackageId,
+    );
+    // Pre-Pricing packages intentionally retain their legacy Contract behavior;
+    // historical per-component commercial values cannot be invented.
+    if (current.kind === "LEGACY") return null;
+    if (current.unitScope !== CONTRACT_COMMERCIAL_UNIT_SCOPE) {
+      throw new ConflictException("CONTRACT_COMMERCIAL_SNAPSHOT_UNIT_SCOPE_INVALID");
+    }
+    if (current.currency !== input.contract.commercialCurrency) {
+      throw new ConflictException("CONTRACT_COMMERCIAL_PRICE_STALE");
+    }
+    return current;
   }
 }
 

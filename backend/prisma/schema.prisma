@@ -315,6 +315,8 @@ model Contract {
   source                 ContractSource                           @default(SCHEDULED_TRIP)
   commercialTotal        Decimal?                                 @db.Decimal(19, 5)
   commercialCurrency     Currency?
+  commercialPricingPublicationId String?
+  commercialPublishedPricePerPerson Decimal?                      @db.Decimal(19, 5)
   paymentConditionType   PaymentConditionType?
   paymentDueDate         DateTime?                                @db.Date
   commercialTaxTreatment PriceTaxTreatment?
@@ -328,6 +330,7 @@ model Contract {
   internalTrip           InternalTrip?                            @relation(fields: [internalTripId], references: [id])
   tenant                 Tenant                                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   travelPackage          TravelPackage?                           @relation(fields: [travelPackageId], references: [id])
+  commercialPricingPublication TravelPackagePricingPublication?   @relation("ContractCommercialPricingPublication", fields: [commercialPricingPublicationId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "Contract_commercial_pricing_publication_tenant_fkey")
   documents              ContractDocument[]
   signatureEvents        ContractSignatureEvent[]
   usedTokens             ContractUsedToken[]
@@ -346,6 +349,7 @@ model Contract {
   @@index([contractType])
   @@index([createdAt])
   @@index([tenantId])
+  @@index([tenantId, commercialPricingPublicationId], map: "Contract_tenant_commercial_pricing_publication_idx")
 }
 
 model ContractFiscalSnapshot {
@@ -1755,6 +1759,7 @@ model TravelPackagePricingPublication {
   travelPackage               TravelPackage             @relation(fields: [travelPackageId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "travel_package_pricing_publications_travel_tenant_fkey")
   costingProject              CostingProject            @relation(fields: [costingProjectId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "travel_package_pricing_publications_project_tenant_fkey")
   pricingCalculationVersion   PricingCalculationVersion @relation(fields: [pricingCalculationVersionId, tenantId, costingProjectId], references: [id, tenantId, costingProjectId], onDelete: Restrict, map: "travel_package_pricing_publications_version_project_tenant_fkey")
+  contracts                   Contract[]                @relation("ContractCommercialPricingPublication")
 
   @@unique([id, tenantId], map: "travel_package_pricing_publications_id_tenant_key")
   @@unique([tenantId, pricingCalculationVersionId], map: "travel_package_pricing_publications_tenant_version_key")

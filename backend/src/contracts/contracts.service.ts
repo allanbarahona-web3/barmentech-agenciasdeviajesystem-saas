@@ -1564,6 +1564,8 @@ export class ContractsService {
     let travelPackageId: string | null = null;
     let authoritativeTravelCurrency: Currency | null = null;
     let publishedPerPersonPrice: Prisma.Decimal | null = null;
+    let commercialPricingPublicationId: string | null = null;
+    let commercialPublishedPricePerPerson: Prisma.Decimal | null = null;
 
     if (requestedInternalTripId) {
       const internalTrip = await this.prisma.internalTrip.findFirst({
@@ -1607,6 +1609,8 @@ export class ContractsService {
         publishedPerPersonPrice = requireCommercialTotal(
           commercialPrice.perPersonSellingPrice,
         );
+        commercialPricingPublicationId = commercialPrice.publicationId;
+        commercialPublishedPricePerPerson = publishedPerPersonPrice;
       }
     }
 
@@ -1797,6 +1801,8 @@ export class ContractsService {
           source: contractSource,
           commercialTotal,
           commercialCurrency: authoritativeTravelCurrency,
+          commercialPricingPublicationId,
+          commercialPublishedPricePerPerson,
           paymentConditionType,
           paymentDueDate,
           commercialTaxTreatment: PriceTaxTreatment.TAX_INCLUDED,

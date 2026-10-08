@@ -64,6 +64,8 @@ export class ContractReservationApprovalService {
         payload: true,
         commercialTotal: true,
         commercialCurrency: true,
+        commercialPricingPublicationId: true,
+        commercialPublishedPricePerPerson: true,
         paymentConditionType: true,
         paymentDueDate: true,
         commercialTaxTreatment: true,
@@ -134,6 +136,7 @@ export class ContractReservationApprovalService {
       id: string; tenantId: string; clientId: string; contractNumber: string; participantCount: number;
       travelPackageId: string | null; internalTripId: string | null; payload: unknown;
       commercialTotal: Prisma.Decimal | null; commercialCurrency: string | null;
+      commercialPricingPublicationId: string | null; commercialPublishedPricePerPerson: Prisma.Decimal | null;
       paymentConditionType: PaymentConditionType | null; paymentDueDate: Date | null;
       commercialTaxTreatment: PriceTaxTreatment | null;
     },
@@ -156,6 +159,8 @@ export class ContractReservationApprovalService {
           participantCount,
           commercialTotal: commercialTerms.total,
           commercialCurrency: commercialTerms.currencyCode,
+          commercialPricingPublicationId: contract.commercialPricingPublicationId,
+          commercialPublishedPricePerPerson: contract.commercialPublishedPricePerPerson,
         },
         passengers: rosterPassengers,
         actor,

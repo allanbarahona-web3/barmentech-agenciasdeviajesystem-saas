@@ -90,6 +90,28 @@ describe("ContractReservationApprovalService", () => {
     expect(c.tx.travelPackageParticipantContractSource.createMany).not.toHaveBeenCalled();
   });
 
+  it("passes archived Contract Pricing authority to commercial snapshot freezing", async () => {
+    const c = context({
+      travelPackageId: "package-1",
+      internalTripId: null,
+      commercialTotal: new Prisma.Decimal("500.00000"),
+      commercialPricingPublicationId: "publication-1",
+      commercialPublishedPricePerPerson: new Prisma.Decimal("500.00000"),
+    });
+    c.tx.travelPackage.findFirst.mockResolvedValue({ capacity: 2, occupiedSlots: 0, name: "Peru" });
+    c.tx.travelPackage.update.mockResolvedValue({ capacity: 2, occupiedSlots: 1, status: "OPEN" });
+
+    await c.service.approveInTransaction(c.tx as never, approvalInput);
+
+    expect(c.commercialSnapshots.freezeInTransaction).toHaveBeenCalledWith(c.tx, expect.objectContaining({
+      contract: expect.objectContaining({
+        commercialPricingPublicationId: "publication-1",
+        commercialPublishedPricePerPerson: new Prisma.Decimal("500.00000"),
+        commercialTotal: new Prisma.Decimal("500.00000"),
+      }),
+    }));
+  });
+
   it("runs the commercial allocation hook after obligation creation and before PENDING_SIGNATURE", async () => {
     const c = context();
     const afterCommercialObligation = jest.fn().mockResolvedValue(undefined);
@@ -343,6 +365,7 @@ function context(overrides: Record<string, unknown> = {}) {
     contractNumber: "CT-1", status: "PENDING_PAYMENT_RESERVE", participantCount: 1,
     travelPackageId: null, internalTripId: null, payload: {},
     commercialTotal: new Prisma.Decimal("1000"), commercialCurrency: "USD",
+    commercialPricingPublicationId: null, commercialPublishedPricePerPerson: null,
     paymentConditionType: PaymentConditionType.CASH, paymentDueDate: null,
     commercialTaxTreatment: PriceTaxTreatment.TAX_INCLUDED,
     ...overrides,
