@@ -9,7 +9,7 @@ CREATE TABLE "fiscal_credit_note_finance_effects" (
   CONSTRAINT "fiscal_credit_note_finance_effects_tenant_credit_note_key" UNIQUE ("tenantId", "creditNoteBillingDocumentId"),
   CONSTRAINT "fiscal_credit_note_finance_effects_tenant_idempotency_key" UNIQUE ("tenantId", "idempotencyKey"),
   CONSTRAINT "fiscal_credit_note_finance_effects_tenant_id_key" UNIQUE ("id", "tenantId"),
-  CONSTRAINT "fiscal_credit_note_finance_effects_tenant_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE,
+  CONSTRAINT "fiscal_credit_note_finance_effects_tenant_fkey" FOREIGN KEY ("tenantId") REFERENCES "tenants"("id") ON DELETE CASCADE,
   CONSTRAINT "fiscal_credit_note_finance_effects_customer_tenant_fkey" FOREIGN KEY ("customerId", "tenantId") REFERENCES "Client"("id", "tenantId") ON DELETE RESTRICT,
   CONSTRAINT "fiscal_credit_note_finance_effects_credit_note_tenant_fkey" FOREIGN KEY ("creditNoteBillingDocumentId", "tenantId") REFERENCES "billing_documents"("id", "tenantId") ON DELETE RESTRICT,
   CONSTRAINT "fiscal_credit_note_finance_effects_referenced_document_tenant_fkey" FOREIGN KEY ("referencedBillingDocumentId", "tenantId") REFERENCES "billing_documents"("id", "tenantId") ON DELETE RESTRICT,
@@ -26,7 +26,7 @@ CREATE TABLE "fiscal_credit_note_ar_adjustments" (
   CONSTRAINT "fiscal_credit_note_ar_adjustments_effect_tenant_key" UNIQUE ("fiscalCreditNoteEffectId", "tenantId"),
   CONSTRAINT "fiscal_credit_note_ar_adjustments_tenant_idempotency_key" UNIQUE ("tenantId", "idempotencyKey"),
   CONSTRAINT "fiscal_credit_note_ar_adjustments_tenant_id_key" UNIQUE ("id", "tenantId"),
-  CONSTRAINT "fiscal_credit_note_ar_adjustments_tenant_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE,
+  CONSTRAINT "fiscal_credit_note_ar_adjustments_tenant_fkey" FOREIGN KEY ("tenantId") REFERENCES "tenants"("id") ON DELETE CASCADE,
   CONSTRAINT "fiscal_credit_note_ar_adjustments_effect_tenant_fkey" FOREIGN KEY ("fiscalCreditNoteEffectId", "tenantId") REFERENCES "fiscal_credit_note_finance_effects"("id", "tenantId") ON DELETE RESTRICT,
   CONSTRAINT "fiscal_credit_note_ar_adjustments_receivable_tenant_fkey" FOREIGN KEY ("accountReceivableId", "tenantId") REFERENCES "account_receivables"("id", "tenantId") ON DELETE RESTRICT
 );
@@ -40,7 +40,7 @@ CREATE TABLE "fiscal_credit_note_credit_applications" (
   CONSTRAINT "fiscal_credit_note_credit_applications_pkey" PRIMARY KEY ("id"),
   CONSTRAINT "fiscal_credit_note_credit_applications_tenant_idempotency_key" UNIQUE ("tenantId", "idempotencyKey"),
   CONSTRAINT "fiscal_credit_note_credit_applications_tenant_id_key" UNIQUE ("id", "tenantId"),
-  CONSTRAINT "fiscal_credit_note_credit_applications_tenant_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE,
+  CONSTRAINT "fiscal_credit_note_credit_applications_tenant_fkey" FOREIGN KEY ("tenantId") REFERENCES "tenants"("id") ON DELETE CASCADE,
   CONSTRAINT "fiscal_credit_note_credit_applications_effect_tenant_fkey" FOREIGN KEY ("fiscalCreditNoteEffectId", "tenantId") REFERENCES "fiscal_credit_note_finance_effects"("id", "tenantId") ON DELETE RESTRICT,
   CONSTRAINT "fiscal_credit_note_credit_applications_receivable_tenant_fkey" FOREIGN KEY ("accountReceivableId", "tenantId") REFERENCES "account_receivables"("id", "tenantId") ON DELETE RESTRICT
 );
