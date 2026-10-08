@@ -996,7 +996,6 @@ export class FinanceReadService {
         SELECT
           "currencyCode",
           SUM("originalAmount") AS "totalContracted",
-          SUM("originalAmount" - "outstandingAmount") AS "commercialPaid",
           SUM("outstandingAmount") AS "commercialOutstanding"
         FROM "commercial_obligations"
         WHERE "tenantId" = ${tenantId}
@@ -1005,17 +1004,43 @@ export class FinanceReadService {
           AND "status" <> 'CANCELLED'
         GROUP BY "currencyCode"
       ),
+      commercial_payment_allocations AS (
+        SELECT obligation."currencyCode", SUM(allocation."amount") AS "paid"
+        FROM "commercial_obligation_allocations" allocation
+        INNER JOIN "commercial_obligations" obligation
+          ON obligation."id" = allocation."commercialObligationId" AND obligation."tenantId" = allocation."tenantId"
+        INNER JOIN "payments" payment
+          ON payment."id" = allocation."paymentId" AND payment."tenantId" = allocation."tenantId"
+        WHERE allocation."tenantId" = ${tenantId}
+          AND obligation."customerId" = ${customerId}
+          AND obligation."sourceType" = 'CONTRACT'
+          AND allocation."status" = 'ACTIVE'
+          AND payment."status" <> 'CANCELLED'
+        GROUP BY obligation."currencyCode"
+      ),
       account_receivables AS (
         SELECT
           "currencyCode",
           SUM("originalAmount") AS "totalInvoiced",
-          SUM("originalAmount" - "outstandingAmount") AS "receivablePaid",
           SUM("outstandingAmount") AS "receivableOutstanding"
         FROM "account_receivables"
         WHERE "tenantId" = ${tenantId}
           AND "customerId" = ${customerId}
           AND "status" <> 'CANCELLED'
         GROUP BY "currencyCode"
+      ),
+      receivable_payment_allocations AS (
+        SELECT ar."currencyCode", SUM(allocation."amount") AS "paid"
+        FROM "payment_allocations" allocation
+        INNER JOIN "account_receivables" ar
+          ON ar."id" = allocation."accountReceivableId" AND ar."tenantId" = allocation."tenantId"
+        INNER JOIN "payments" payment
+          ON payment."id" = allocation."paymentId" AND payment."tenantId" = allocation."tenantId"
+        WHERE allocation."tenantId" = ${tenantId}
+          AND ar."customerId" = ${customerId}
+          AND allocation."status" = 'ACTIVE'
+          AND payment."status" <> 'CANCELLED'
+        GROUP BY ar."currencyCode"
       ),
       available_payments AS (
         SELECT
@@ -1028,22 +1053,39 @@ export class FinanceReadService {
           AND "availableAmount" > 0
         GROUP BY "currencyCode"
       ),
+      available_credit_notes AS (
+        SELECT effect."currencyCode", SUM(effect."availableCreditAmount" - COALESCE(applied."amount", 0)) AS "available"
+        FROM "fiscal_credit_note_finance_effects" effect
+        LEFT JOIN (
+          SELECT "tenantId", "fiscalCreditNoteEffectId", SUM("amount") AS "amount"
+          FROM "fiscal_credit_note_credit_applications"
+          WHERE "status" = 'ACTIVE'
+          GROUP BY "tenantId", "fiscalCreditNoteEffectId"
+        ) applied ON applied."tenantId" = effect."tenantId" AND applied."fiscalCreditNoteEffectId" = effect."id"
+        WHERE effect."tenantId" = ${tenantId}
+          AND effect."customerId" = ${customerId}
+          AND effect."availableCreditAmount" - COALESCE(applied."amount", 0) > 0
+        GROUP BY effect."currencyCode"
+      ),
       currency_keys AS (
         SELECT "currencyCode" FROM commercial_obligations
         UNION
         SELECT "currencyCode" FROM account_receivables
         UNION
         SELECT "currencyCode" FROM available_payments
+        UNION
+        SELECT "currencyCode" FROM available_credit_notes
       )
       SELECT
         currency_keys."currencyCode",
         COALESCE(commercial_obligations."totalContracted", 0) AS "totalContracted",
         COALESCE(account_receivables."totalInvoiced", 0) AS "totalInvoiced",
-        COALESCE(commercial_obligations."commercialPaid", 0)
-          + COALESCE(account_receivables."receivablePaid", 0) AS "totalPaid",
+        COALESCE(commercial_payment_allocations."paid", 0)
+          + COALESCE(receivable_payment_allocations."paid", 0) AS "totalPaid",
         COALESCE(commercial_obligations."commercialOutstanding", 0)
           + COALESCE(account_receivables."receivableOutstanding", 0) AS "outstanding",
-        COALESCE(available_payments."available", 0) AS "available"
+        COALESCE(available_payments."available", 0)
+          + COALESCE(available_credit_notes."available", 0) AS "available"
       FROM currency_keys
       LEFT JOIN commercial_obligations
         ON commercial_obligations."currencyCode" = currency_keys."currencyCode"
@@ -1051,6 +1093,12 @@ export class FinanceReadService {
         ON account_receivables."currencyCode" = currency_keys."currencyCode"
       LEFT JOIN available_payments
         ON available_payments."currencyCode" = currency_keys."currencyCode"
+      LEFT JOIN receivable_payment_allocations
+        ON receivable_payment_allocations."currencyCode" = currency_keys."currencyCode"
+      LEFT JOIN available_credit_notes
+        ON available_credit_notes."currencyCode" = currency_keys."currencyCode"
+      LEFT JOIN commercial_payment_allocations
+        ON commercial_payment_allocations."currencyCode" = currency_keys."currencyCode"
       ORDER BY currency_keys."currencyCode" ASC
     `;
 

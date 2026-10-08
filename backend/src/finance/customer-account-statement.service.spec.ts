@@ -6,12 +6,13 @@ describe("CustomerAccountStatementService", () => {
   const accountReceivable = { findMany: jest.fn() };
   const commercialObligation = { findMany: jest.fn() };
   const payment = { findMany: jest.fn(), aggregate: jest.fn() };
+  const queryRaw = jest.fn();
   const tenantBillingConfiguration = { findUnique: jest.fn() };
   const renderDocumentToBuffer = jest.fn();
   const sendEmail = jest.fn();
   const getTenantConfig = jest.fn();
   const service = new CustomerAccountStatementService(
-    { client, accountReceivable, commercialObligation, payment, tenantBillingConfiguration } as never,
+    { client, accountReceivable, commercialObligation, payment, tenantBillingConfiguration, $queryRaw: queryRaw } as never,
     { renderDocumentToBuffer } as never,
     { sendEmail } as never,
     { getTenantConfig } as never,
@@ -24,6 +25,7 @@ describe("CustomerAccountStatementService", () => {
     commercialObligation.findMany.mockResolvedValue([]);
     payment.findMany.mockResolvedValue([{ id: "payment-1", receiptNumber: "RCP-1", receivedAt: new Date("2026-08-10"), receivedAmount: new Prisma.Decimal("50"), availableAmount: new Prisma.Decimal("10"), paymentMethod: "BANK_TRANSFER", purpose: "GENERAL", status: "PARTIALLY_ALLOCATED", allocations: [{ amount: new Prisma.Decimal("40"), allocatedAt: new Date("2026-08-10"), status: "ACTIVE", accountReceivable: { sourceNumber: "FE-1", sourceId: "source-1" } }], commercialObligationAllocations: [] }]);
     payment.aggregate.mockResolvedValue({ _sum: { availableAmount: new Prisma.Decimal("10") } });
+    queryRaw.mockResolvedValue([]);
     tenantBillingConfiguration.findUnique.mockResolvedValue({ fiscalTimezone: "America/Costa_Rica" });
     getTenantConfig.mockResolvedValue({ name: "Agencia" });
     renderDocumentToBuffer.mockResolvedValue({ pdfBuffer: Buffer.from("pdf"), signatureAnchors: {} });
@@ -42,6 +44,14 @@ describe("CustomerAccountStatementService", () => {
         receiptNumber: { not: null },
       }),
     }));
+  });
+
+  it("keeps a fiscal NC reduction out of payments while exposing its available credit", async () => {
+    accountReceivable.findMany.mockResolvedValue([{ id: "ar-1", sourceNumber: "FE-1", sourceId: "source-1", sourceDocumentType: "Factura electrónica", recognizedAt: new Date("2026-08-01"), dueDate: new Date("2026-08-31"), originalAmount: new Prisma.Decimal("100"), outstandingAmount: new Prisma.Decimal("0"), status: "SETTLED", paymentAllocations: [{ amount: new Prisma.Decimal("40"), allocatedAt: new Date("2026-08-10"), status: "ACTIVE", payment: { receiptNumber: "RCP-1" } }] }]);
+    queryRaw.mockResolvedValue([{ fiscalNumber: "NC-1", referencedFiscalNumber: "FE-1", totalCreditAmount: new Prisma.Decimal("60"), amountAppliedToAr: new Prisma.Decimal("60"), availableCreditAmount: new Prisma.Decimal("15"), effectiveAt: new Date("2026-10-08T12:00:00.000Z") }]);
+    const result = await service.get("tenant-1", "customer-1", "USD");
+    expect(result.totals).toEqual({ invoicedAmount: "100.00", allocatedAmount: "40.00", outstandingAmount: "0.00", availableAmount: "25.00" });
+    expect(result.creditNotes).toEqual([expect.objectContaining({ fiscalNumber: "NC-1", amountAppliedToAr: "60.00", availableCreditAmount: "15.00" })]);
   });
 
   it("excludes pending and rejected submissions while retaining confirmed payments", async () => {
@@ -88,7 +98,7 @@ describe("CustomerAccountStatementService", () => {
     payment.findMany.mockResolvedValue([]);
     const result = await service.get("tenant-1", "customer-1", "USD");
 
-    expect(result.totals).toEqual({ invoicedAmount: "200.00", allocatedAmount: "200.00", outstandingAmount: "0.00", availableAmount: "10.00" });
+    expect(result.totals).toEqual({ invoicedAmount: "200.00", allocatedAmount: "0.00", outstandingAmount: "0.00", availableAmount: "10.00" });
     expect(result.charges).toEqual(expect.arrayContaining([
       expect.objectContaining({ reference: "ALM-SET", status: "SETTLED", outstandingAmount: "0.00" }),
       expect.objectContaining({ reference: "ALM-CAN", status: "CANCELLED", allocations: [expect.objectContaining({ status: "REVERSED", reversalReason: "Corrección" })] }),

@@ -634,8 +634,11 @@ describe("FinanceReadService", () => {
     expect(sql).toContain('FROM "payments"');
     expect(sql).toContain('"sourceType" = \'CONTRACT\'');
     expect(sql).toContain('"status" <> \'CANCELLED\'');
-    expect((sql.match(/"status" <> 'CANCELLED'/g) ?? [])).toHaveLength(2);
-    expect(sql).toContain('SUM("originalAmount" - "outstandingAmount")');
+    expect((sql.match(/"status" <> 'CANCELLED'/g) ?? [])).toHaveLength(4);
+    expect(sql).toContain('FROM "commercial_obligation_allocations" allocation');
+    expect(sql).toContain('FROM "payment_allocations" allocation');
+    expect(sql).toContain('SUM(allocation."amount") AS "paid"');
+    expect(sql).toContain('FROM "fiscal_credit_note_finance_effects"');
     expect(sql).not.toContain('SUM("receivedAmount")');
     expect(sql).toContain("'RECEIVED', 'PARTIALLY_ALLOCATED'");
     expect(sql).not.toContain('FULLY_ALLOCATED');

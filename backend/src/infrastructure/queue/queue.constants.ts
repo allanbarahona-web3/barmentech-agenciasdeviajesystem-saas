@@ -6,6 +6,7 @@ export const PLATFORM_QUEUE_KEYS = {
   FISCAL_STATUS_RECONCILIATION: "fiscal-status-reconciliation",
   FISCAL_REFRESH_RECONCILIATION: "fiscal-refresh-reconciliation",
   ACCOUNT_RECEIVABLE_RECOGNITION: "account-receivable-recognition",
+  FISCAL_CREDIT_NOTE_FINANCE_EFFECT: "fiscal-credit-note-finance-effect",
   FISCAL_ARTIFACT_RETRIEVAL: "fiscal-artifact-retrieval",
   FISCAL_INVOICE_AUTO_DELIVERY: "fiscal-invoice-auto-delivery",
   CONTRACT_PAYMENT_FISCALIZATION: "contract-payment-fiscalization",
@@ -27,6 +28,7 @@ export const DEFAULT_QUEUE_NAMES: Record<PlatformQueueKey, string> = {
   "fiscal-status-reconciliation": "fiscal-status-reconciliation",
   "fiscal-refresh-reconciliation": "fiscal-refresh-reconciliation",
   "account-receivable-recognition": "account-receivable-recognition",
+  "fiscal-credit-note-finance-effect": "fiscal-credit-note-finance-effect",
   "fiscal-artifact-retrieval": "fiscal-artifact-retrieval",
   "fiscal-invoice-auto-delivery": "fiscal-invoice-auto-delivery",
   "contract-payment-fiscalization": "contract-payment-fiscalization",
@@ -48,6 +50,7 @@ export const QUEUE_NAME_ENV_KEYS: Record<PlatformQueueKey, string> = {
     "BULLMQ_FISCAL_REFRESH_RECONCILIATION_QUEUE_NAME",
   "account-receivable-recognition":
     "BULLMQ_ACCOUNT_RECEIVABLE_RECOGNITION_QUEUE_NAME",
+  "fiscal-credit-note-finance-effect": "BULLMQ_FISCAL_CREDIT_NOTE_FINANCE_EFFECT_QUEUE_NAME",
   "fiscal-artifact-retrieval": "BULLMQ_FISCAL_ARTIFACT_RETRIEVAL_QUEUE_NAME",
   "fiscal-invoice-auto-delivery": "BULLMQ_FISCAL_INVOICE_AUTO_DELIVERY_QUEUE_NAME",
   "contract-payment-fiscalization": "BULLMQ_CONTRACT_PAYMENT_FISCALIZATION_QUEUE_NAME",

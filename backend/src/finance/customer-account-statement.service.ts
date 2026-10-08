@@ -15,17 +15,33 @@ export class CustomerAccountStatementService {
   async get(tenantId: string, customerId: string, currencyCode: string): Promise<CustomerAccountStatement> {
     const customer = await this.prisma.client.findFirst({ where: { id: customerId, tenantId }, select: { id: true, fullName: true, idNumber: true, email: true } });
     if (!customer) throw new NotFoundException("CUSTOMER_ACCOUNT_STATEMENT_NOT_FOUND");
-    const [receivables, contractObligations, payments, available] = await Promise.all([
+    const [receivables, contractObligations, payments, available, creditNotes] = await Promise.all([
       this.prisma.accountReceivable.findMany({ where: { tenantId, customerId, currencyCode }, orderBy: [{ recognizedAt: "asc" }, { id: "asc" }], include: { paymentAllocations: { orderBy: { allocatedAt: "asc" }, include: { payment: { select: { receiptNumber: true } } } } } }),
       this.prisma.commercialObligation.findMany({ where: { tenantId, customerId, currencyCode, sourceType: "CONTRACT" }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], include: { allocations: { orderBy: { allocatedAt: "asc" }, include: { payment: { select: { id: true, receiptNumber: true, purpose: true } }, reversal: true } } } }),
       this.prisma.payment.findMany({ where: { tenantId, customerId, currencyCode, status: { in: [PaymentStatus.RECEIVED, PaymentStatus.PARTIALLY_ALLOCATED, PaymentStatus.FULLY_ALLOCATED, PaymentStatus.CANCELLED] }, receiptNumber: { not: null } }, orderBy: [{ receivedAt: "asc" }, { id: "asc" }], include: { allocations: { orderBy: { allocatedAt: "asc" }, include: { accountReceivable: { select: { sourceNumber: true, sourceId: true } } } }, commercialObligationAllocations: { orderBy: { allocatedAt: "asc" }, include: { commercialObligation: { select: { sourceType: true, sourceId: true, sourceReference: true } }, reversal: true } } } }),
       this.prisma.payment.aggregate({ where: { tenantId, customerId, currencyCode, status: { in: ["RECEIVED", "PARTIALLY_ALLOCATED"] }, availableAmount: { gt: 0 } }, _sum: { availableAmount: true } }),
+      this.prisma.$queryRaw<Array<{ fiscalNumber: string | null; referencedFiscalNumber: string | null; totalCreditAmount: Prisma.Decimal; amountAppliedToAr: Prisma.Decimal; availableCreditAmount: Prisma.Decimal; effectiveAt: Date }>>`
+        SELECT note."fiscalNumber", original."fiscalNumber" AS "referencedFiscalNumber", effect."totalCreditAmount", effect."amountAppliedToAr", effect."availableCreditAmount" - COALESCE(applied."amount", 0) AS "availableCreditAmount", effect."effectiveAt"
+        FROM "fiscal_credit_note_finance_effects" effect
+        INNER JOIN "billing_documents" note ON note."id" = effect."creditNoteBillingDocumentId" AND note."tenantId" = effect."tenantId"
+        INNER JOIN "billing_documents" original ON original."id" = effect."referencedBillingDocumentId" AND original."tenantId" = effect."tenantId"
+        LEFT JOIN (
+          SELECT "tenantId", "fiscalCreditNoteEffectId", SUM("amount") AS "amount"
+          FROM "fiscal_credit_note_credit_applications"
+          WHERE "status" = 'ACTIVE'
+          GROUP BY "tenantId", "fiscalCreditNoteEffectId"
+        ) applied ON applied."tenantId" = effect."tenantId" AND applied."fiscalCreditNoteEffectId" = effect."id"
+        WHERE effect."tenantId" = ${tenantId} AND effect."customerId" = ${customerId} AND effect."currencyCode" = ${currencyCode}
+        ORDER BY effect."effectiveAt" ASC, effect."id" ASC
+      `,
     ]);
     const active = (value: string) => value === "ACTIVE";
     const activeReceivables = receivables.filter((receivable) => receivable.status !== "CANCELLED");
     const activeContractObligations = contractObligations.filter((obligation) => obligation.status !== "CANCELLED");
     const invoiced = [...activeReceivables, ...activeContractObligations].reduce((sum, row) => sum.plus(row.originalAmount), new Prisma.Decimal(0));
     const outstanding = [...activeReceivables, ...activeContractObligations].reduce((sum, row) => sum.plus(row.outstandingAmount), new Prisma.Decimal(0));
+    const paymentApplied = receivables.reduce((sum, receivable) => sum.plus(receivable.paymentAllocations.filter((allocation) => active(allocation.status)).reduce((allocated, allocation) => allocated.plus(allocation.amount), new Prisma.Decimal(0))), new Prisma.Decimal(0))
+      .plus(contractObligations.reduce((sum, obligation) => sum.plus(obligation.allocations.filter((allocation) => active(allocation.status)).reduce((allocated, allocation) => allocated.plus(allocation.amount), new Prisma.Decimal(0))), new Prisma.Decimal(0)));
     const m = (value: Prisma.Decimal) => value.toFixed(Math.max(2, value.decimalPlaces()));
     const invoices = receivables.map((r) => ({ id: r.id, number: r.sourceNumber ?? r.sourceId, documentType: r.sourceDocumentType, recognizedAt: r.recognizedAt, dueDate: r.dueDate, originalAmount: m(r.originalAmount), allocatedAmount: m(r.paymentAllocations.filter((a) => active(a.status)).reduce((sum, a) => sum.plus(a.amount), new Prisma.Decimal(0))), outstandingAmount: m(r.outstandingAmount), status: r.status, allocations: r.paymentAllocations.map((a) => ({ receiptNumber: issuedReceiptNumber(a.payment.receiptNumber), amount: m(a.amount), allocatedAt: a.allocatedAt, status: a.status, statusLabel: customerAccountStatementStatusLabel(a.status) })) }));
     const contractCharges = contractObligations.map((obligation) => ({
@@ -59,7 +75,7 @@ export class CustomerAccountStatementService {
     ].sort((left, right) => left.recognizedAt.getTime() - right.recognizedAt.getTime() || left.id.localeCompare(right.id));
     return {
       generatedAt: new Date(), customer: { id: customer.id, name: customer.fullName, identification: customer.idNumber, email: customer.email }, currencyCode,
-      totals: { invoicedAmount: m(invoiced), allocatedAmount: m(invoiced.minus(outstanding)), outstandingAmount: m(outstanding), availableAmount: m(available._sum.availableAmount ?? new Prisma.Decimal(0)) },
+      totals: { invoicedAmount: m(invoiced), allocatedAmount: m(paymentApplied), outstandingAmount: m(outstanding), availableAmount: m((available._sum.availableAmount ?? new Prisma.Decimal(0)).plus(creditNotes.reduce((sum, effect) => sum.plus(effect.availableCreditAmount), new Prisma.Decimal(0)))) },
       invoices,
       charges,
       payments: payments.filter((p) => statementPaymentStatus(p.status)).map((p) => ({
@@ -69,6 +85,7 @@ export class CustomerAccountStatementService {
           ...p.commercialObligationAllocations.filter((a) => a.commercialObligation.sourceType === "CONTRACT").map((a) => ({ sourceType: "CONTRACT_OBLIGATION" as const, reference: a.commercialObligation.sourceReference ?? a.commercialObligation.sourceId, amount: m(a.amount), allocatedAt: a.allocatedAt, status: a.status, statusLabel: customerAccountStatementStatusLabel(a.status), reversedAt: a.reversal?.reversedAt ?? null, reversalReason: a.reversal?.reason ?? null })),
         ],
       })),
+      creditNotes: creditNotes.map((effect) => ({ fiscalNumber: effect.fiscalNumber ?? "—", referencedFiscalNumber: effect.referencedFiscalNumber ?? "—", totalCreditAmount: m(effect.totalCreditAmount), amountAppliedToAr: m(effect.amountAppliedToAr), availableCreditAmount: m(effect.availableCreditAmount), effectiveAt: effect.effectiveAt })),
     };
   }
 

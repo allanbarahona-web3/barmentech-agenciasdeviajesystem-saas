@@ -125,6 +125,9 @@ model Tenant {
   payments                                      Payment[]
   paymentAllocations                            PaymentAllocation[]
   paymentAllocationReversals                    PaymentAllocationReversal[]
+  fiscalCreditNoteFinanceEffects                FiscalCreditNoteFinanceEffect[]
+  fiscalCreditNoteArAdjustments                 FiscalCreditNoteArAdjustment[]
+  fiscalCreditNoteCreditApplications            FiscalCreditNoteCreditApplication[]
   paymentEvidence                               PaymentEvidence[]
   businessNumberSequences                       BusinessNumberSequence[]
   customerFundsAllocationCommands               CustomerFundsAllocationCommand[]
@@ -575,6 +578,7 @@ model Client {
   operationalRequirements              OperationalRequirement[]
   operationsIntakeOutboxEvents         OperationsIntakeOutboxEvent[]
   convertedLeads                       Lead[]                              @relation("LeadConvertedCustomer")
+  fiscalCreditNoteFinanceEffects       FiscalCreditNoteFinanceEffect[]
 
   @@unique([tenantId, idType, idNumber])
   @@unique([id, tenantId], map: "Client_id_tenantId_key")
@@ -3402,6 +3406,8 @@ model BillingDocument {
   references                        BillingDocumentReference[]       @relation("BillingDocumentReferences")
   referencedBy                      BillingDocumentReference[]       @relation("ReferencedBillingDocuments")
   paymentMethods                    BillingDocumentPaymentMethod[]
+  fiscalCreditNoteFinanceEffects    FiscalCreditNoteFinanceEffect[] @relation("FiscalCreditNoteFinanceEffectCreditNote")
+  referencedByCreditNoteFinanceEffects FiscalCreditNoteFinanceEffect[] @relation("FiscalCreditNoteFinanceEffectReferencedDocument")
   officialExchangeRateObservation   OfficialExchangeRateObservation? @relation("BillingDocumentOfficialExchangeRate", fields: [officialExchangeRateObservationId, fiscalExchangeRateEffectiveDate, fiscalExchangeRateSourceAuthority, fiscalExchangeRateIndicatorCode], references: [id, effectiveDate, sourceAuthority, sourceIndicatorCode], onDelete: Restrict, onUpdate: Restrict, map: "billing_documents_official_fx_snapshot_fkey")
 
   @@unique([tenantId, internalNumber])
@@ -3812,6 +3818,9 @@ model AccountReceivable {
   updatedAt                  DateTime                @updatedAt
   tenant                     Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   paymentAllocations         PaymentAllocation[]
+  fiscalCreditNoteFinanceEffects FiscalCreditNoteFinanceEffect[] @relation("FiscalCreditNoteAffectedReceivable")
+  fiscalCreditNoteArAdjustments FiscalCreditNoteArAdjustment[]
+  fiscalCreditNoteCreditApplications FiscalCreditNoteCreditApplication[]
 
   @@unique([tenantId, sourceType, sourceId])
   @@unique([id, tenantId])
@@ -3993,6 +4002,93 @@ model PaymentAllocationReversal {
   @@unique([paymentAllocationId, tenantId])
   @@index([tenantId, reversedAt])
   @@map("payment_allocation_reversals")
+}
+
+/// Immutable financial consequence of an ACCEPTED fiscal credit note. It is
+/// intentionally independent from Payment because a fiscal NC is not cash.
+model FiscalCreditNoteFinanceEffect {
+  id                          String   @id @default(cuid())
+  tenantId                    String
+  customerId                  String
+  currencyCode                String   @db.VarChar(3)
+  creditNoteBillingDocumentId String
+  referencedBillingDocumentId String
+  affectedAccountReceivableId String?
+  totalCreditAmount           Decimal  @db.Decimal(19, 5)
+  amountAppliedToAr           Decimal  @db.Decimal(19, 5)
+  availableCreditAmount       Decimal  @db.Decimal(19, 5)
+  effectiveAt                 DateTime @db.Timestamptz(6)
+  createdBySystem             Boolean  @default(true)
+  createdByUserId             String?  @db.VarChar(191)
+  idempotencyKey              String   @db.VarChar(200)
+  createdAt                   DateTime @default(now())
+  tenant                      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer                    Client   @relation(fields: [customerId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  creditNoteBillingDocument   BillingDocument @relation("FiscalCreditNoteFinanceEffectCreditNote", fields: [creditNoteBillingDocumentId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  referencedBillingDocument   BillingDocument @relation("FiscalCreditNoteFinanceEffectReferencedDocument", fields: [referencedBillingDocumentId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  affectedAccountReceivable   AccountReceivable? @relation("FiscalCreditNoteAffectedReceivable", fields: [affectedAccountReceivableId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  arAdjustment                FiscalCreditNoteArAdjustment?
+  creditApplications          FiscalCreditNoteCreditApplication[]
+
+  @@unique([tenantId, creditNoteBillingDocumentId])
+  @@unique([tenantId, idempotencyKey])
+  @@unique([id, tenantId])
+  @@index([tenantId, customerId, currencyCode, effectiveAt])
+  @@index([tenantId, referencedBillingDocumentId])
+  @@index([tenantId, affectedAccountReceivableId])
+  @@map("fiscal_credit_note_finance_effects")
+}
+
+/// Append-only source-aware reduction of an AR caused by a fiscal NC.
+model FiscalCreditNoteArAdjustment {
+  id                       String   @id @default(cuid())
+  tenantId                 String
+  fiscalCreditNoteEffectId String
+  accountReceivableId      String
+  amount                   Decimal  @db.Decimal(19, 5)
+  appliedAt                DateTime @db.Timestamptz(6)
+  idempotencyKey           String   @db.VarChar(200)
+  createdAt                DateTime @default(now())
+  tenant                   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  fiscalCreditNoteEffect   FiscalCreditNoteFinanceEffect @relation(fields: [fiscalCreditNoteEffectId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  accountReceivable        AccountReceivable @relation(fields: [accountReceivableId, tenantId], references: [id, tenantId], onDelete: Restrict)
+
+  @@unique([tenantId, fiscalCreditNoteEffectId])
+  @@unique([fiscalCreditNoteEffectId, tenantId])
+  @@unique([tenantId, idempotencyKey])
+  @@unique([id, tenantId])
+  @@index([tenantId, accountReceivableId, appliedAt])
+  @@map("fiscal_credit_note_ar_adjustments")
+}
+
+enum FiscalCreditNoteCreditApplicationStatus {
+  ACTIVE
+  REVERSED
+}
+
+/// Reserved append-only foundation for future consumption or external refund
+/// disposition of available NC credit. C3 does not create these records.
+model FiscalCreditNoteCreditApplication {
+  id                       String   @id @default(cuid())
+  tenantId                 String
+  fiscalCreditNoteEffectId String
+  accountReceivableId      String?
+  amount                   Decimal  @db.Decimal(19, 5)
+  status                   FiscalCreditNoteCreditApplicationStatus @default(ACTIVE)
+  appliedAt                DateTime @db.Timestamptz(6)
+  reversedAt               DateTime? @db.Timestamptz(6)
+  reversalReason           String?  @db.VarChar(500)
+  idempotencyKey           String   @db.VarChar(200)
+  createdAt                DateTime @default(now())
+  tenant                   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  fiscalCreditNoteEffect   FiscalCreditNoteFinanceEffect @relation(fields: [fiscalCreditNoteEffectId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  accountReceivable        AccountReceivable? @relation(fields: [accountReceivableId, tenantId], references: [id, tenantId], onDelete: Restrict)
+
+  @@unique([tenantId, idempotencyKey])
+  @@unique([id, tenantId])
+  @@index([tenantId, fiscalCreditNoteEffectId, status, appliedAt])
+  @@index([tenantId, accountReceivableId, status, appliedAt])
+  @@map("fiscal_credit_note_credit_applications")
 }
 
 model CommercialObligationAllocation {

@@ -1,0 +1,25 @@
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
+import { randomUUID } from "node:crypto";
+import { JobDispatcherService } from "../../infrastructure/job-dispatcher";
+import { PLATFORM_QUEUE_KEYS } from "../../infrastructure/queue";
+import { PrismaService } from "../../prisma/prisma.service";
+import { FISCAL_ACCEPTED_FANOUT_AGGREGATE_TYPE, FISCAL_CREDIT_NOTE_FINANCE_EFFECT_REQUESTED_EVENT_TYPE, FISCAL_CREDIT_NOTE_FINANCE_EFFECT_REQUESTED_EVENT_VERSION } from "./fiscal-accepted-fanout.constants";
+import { FISCAL_CREDIT_NOTE_FINANCE_EFFECT_BATCH_SIZE, FISCAL_CREDIT_NOTE_FINANCE_EFFECT_JOB_NAME, FISCAL_CREDIT_NOTE_FINANCE_EFFECT_LEASE_MS, FISCAL_CREDIT_NOTE_FINANCE_EFFECT_POLL_INTERVAL_MS, fiscalCreditNoteFinanceEffectJobId, type FiscalCreditNoteFinanceEffectJobPayload } from "./fiscal-credit-note-finance-effect.constants";
+
+@Injectable()
+export class FiscalCreditNoteFinanceEffectPublisher implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(FiscalCreditNoteFinanceEffectPublisher.name); private readonly owner = `fiscal-credit-note-finance-effect-${process.pid}-${randomUUID()}`; private timer: ReturnType<typeof setTimeout> | null = null; private active: Promise<void> | null = null; private stopping = false;
+  constructor(private readonly prisma: PrismaService, private readonly dispatcher: JobDispatcherService) {}
+  onModuleInit() { this.schedule(0); }
+  async onModuleDestroy() { this.stopping = true; if (this.timer) clearTimeout(this.timer); await this.active; }
+  async publishAvailableEvents() { for (const event of await this.claim()) { try { await this.publish(event); } catch { this.logger.error("Fiscal credit-note finance-effect publishing failed."); } } }
+  private schedule(ms: number) { if (!this.stopping) this.timer = setTimeout(() => { this.timer = null; void this.cycle(); }, ms); }
+  private async cycle() { if (this.stopping || this.active) return; this.active = this.publishAvailableEvents(); try { await this.active; } finally { this.active = null; this.schedule(FISCAL_CREDIT_NOTE_FINANCE_EFFECT_POLL_INTERVAL_MS); } }
+  private claim() { const now = new Date(), cutoff = new Date(now.getTime() - FISCAL_CREDIT_NOTE_FINANCE_EFFECT_LEASE_MS); return this.prisma.$transaction((tx) => tx.$queryRaw<any[]>`
+    WITH eligible AS (SELECT "id" FROM "billing_outbox_events" WHERE "eventType"=${FISCAL_CREDIT_NOTE_FINANCE_EFFECT_REQUESTED_EVENT_TYPE} AND "eventVersion"=${FISCAL_CREDIT_NOTE_FINANCE_EFFECT_REQUESTED_EVENT_VERSION} AND "attemptCount" < "maximumAttempts" AND (("status"='PENDING' AND "availableAt"<=${now}) OR ("status"='PROCESSING' AND "lockedAt"<${cutoff})) ORDER BY "availableAt" ASC,"createdAt" ASC LIMIT ${FISCAL_CREDIT_NOTE_FINANCE_EFFECT_BATCH_SIZE} FOR UPDATE SKIP LOCKED)
+    UPDATE "billing_outbox_events" AS event SET "status"='PROCESSING',"attemptCount"=event."attemptCount"+1,"lockedAt"=${now},"lockedBy"=${this.owner},"lastAttemptAt"=${now},"updatedAt"=${now} FROM eligible WHERE event."id"=eligible."id" RETURNING event."id",event."tenantId",event."aggregateType",event."aggregateId",event."causationId",event."payload",event."attemptCount",event."maximumAttempts"`); }
+  private async publish(event: any) { const payload = valid(event, this.owner); if (!payload) return this.finish(event, { status: "FAILED", lastError: "FISCAL_CREDIT_NOTE_FINANCE_EFFECT_OUTBOX_INVALID" }); try { await this.dispatcher.dispatch<FiscalCreditNoteFinanceEffectJobPayload>({ queueKey: PLATFORM_QUEUE_KEYS.FISCAL_CREDIT_NOTE_FINANCE_EFFECT, jobName: FISCAL_CREDIT_NOTE_FINANCE_EFFECT_JOB_NAME, payload, metadata: { tenantId: event.tenantId }, options: { jobId: fiscalCreditNoteFinanceEffectJobId(event.id, event.attemptCount, this.owner), attempts: 3, backoff: { type: "exponential", delay: 2000 }, removeOnComplete: false, removeOnFail: false } }); } catch { await this.finish(event, { status: event.attemptCount >= event.maximumAttempts ? "FAILED" : "PENDING", ...(event.attemptCount >= event.maximumAttempts ? { lastError: "FISCAL_CREDIT_NOTE_FINANCE_EFFECT_DISPATCH_FAILED" } : { availableAt: new Date(Date.now() + 1_000), lastError: "FISCAL_CREDIT_NOTE_FINANCE_EFFECT_DISPATCH_FAILED" }) }); } }
+  private finish(event: any, data: Prisma.BillingOutboxEventUpdateManyMutationInput) { return this.prisma.billingOutboxEvent.updateMany({ where: { id: event.id, tenantId: event.tenantId, status: "PROCESSING", lockedBy: this.owner }, data: { ...data, lockedAt: null, lockedBy: null } }); }
+}
+function valid(event: any, owner: string): FiscalCreditNoteFinanceEffectJobPayload | null { const p = event.payload; return event.aggregateType === FISCAL_ACCEPTED_FANOUT_AGGREGATE_TYPE && typeof event.causationId === "string" && p && typeof p === "object" && !Array.isArray(p) && Object.keys(p).length === 3 && p.tenantId === event.tenantId && typeof p.billingDocumentId === "string" && p.billingDocumentId === event.aggregateId && p.eventVersion === 1 ? { tenantId: event.tenantId, outboxEventId: event.id, lockOwner: owner, eventVersion: 1 } : null; }

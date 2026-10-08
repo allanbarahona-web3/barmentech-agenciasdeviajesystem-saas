@@ -11,6 +11,7 @@ import {
   ACCOUNT_RECEIVABLE_RECOGNITION_REQUESTED_EVENT_TYPE,
   ACCOUNT_RECEIVABLE_RECOGNITION_REQUESTED_EVENT_VERSION,
   accountReceivableRecognitionDeduplicationKey,
+  fiscalCreditNoteFinanceEffectDeduplicationKey,
   FISCAL_ACCEPTED_FANOUT_AGGREGATE_TYPE,
   FISCAL_ACCEPTED_FANOUT_BATCH_SIZE,
   FISCAL_ACCEPTED_FANOUT_PARENT_EVENT_TYPE,
@@ -19,6 +20,8 @@ import {
   FISCAL_ACCEPTED_FANOUT_PROCESSING_LEASE_MS,
   FISCAL_ACCEPTED_FANOUT_RETRY_BASE_MS,
   FISCAL_ACCEPTED_FANOUT_RETRY_MAX_MS,
+  FISCAL_CREDIT_NOTE_FINANCE_EFFECT_REQUESTED_EVENT_TYPE,
+  FISCAL_CREDIT_NOTE_FINANCE_EFFECT_REQUESTED_EVENT_VERSION,
 } from "./fiscal-accepted-fanout.constants";
 import { logFiscalPollerFailure } from "./fiscal-poller-error-logging";
 
@@ -46,6 +49,7 @@ const FANOUT_ERROR = "FISCAL_ACCEPTED_FANOUT_FAILED";
 const CLAIM_LOST_ERROR = "FISCAL_ACCEPTED_FANOUT_CLAIM_LOST";
 const CONTRACT_PAYMENT_FISCAL_SOURCE_TYPE = "CONTRACT_PAYMENT";
 const ACCOUNT_RECEIVABLE_DOCUMENT_TYPE = "01";
+const CREDIT_NOTE_DOCUMENT_TYPE = "03";
 
 class FanoutError extends Error {
   constructor(readonly code: string) {
@@ -212,6 +216,25 @@ export class FiscalAcceptedFanoutCoordinatorService
           }
         }
 
+        if (document.documentTypeCode === CREDIT_NOTE_DOCUMENT_TYPE) {
+          const deduplicationKey = fiscalCreditNoteFinanceEffectDeduplicationKey(payload.billingDocumentId);
+          await tx.billingOutboxEvent.createMany({
+            data: [{
+              tenantId: parent.tenantId,
+              eventType: FISCAL_CREDIT_NOTE_FINANCE_EFFECT_REQUESTED_EVENT_TYPE,
+              eventVersion: FISCAL_CREDIT_NOTE_FINANCE_EFFECT_REQUESTED_EVENT_VERSION,
+              aggregateType: parent.aggregateType,
+              aggregateId: parent.aggregateId,
+              causationId: parent.id,
+              deduplicationKey,
+              payload: { tenantId: payload.tenantId, billingDocumentId: payload.billingDocumentId, eventVersion: payload.eventVersion },
+            }],
+            skipDuplicates: true,
+          });
+          const child = await tx.billingOutboxEvent.findUnique({ where: { tenantId_deduplicationKey: { tenantId: parent.tenantId, deduplicationKey } } });
+          if (!child || !isExactFinanceEffectChild(child, parent, payload, deduplicationKey)) throw new FanoutError(CHILD_CONFLICT_ERROR);
+        }
+
         const completed = await tx.billingOutboxEvent.updateMany({
           where: {
             id: parent.id,
@@ -327,6 +350,20 @@ function isExactReceivableChild(
     child.aggregateId === parent.aggregateId &&
     child.causationId === parent.id &&
     child.deduplicationKey === deduplicationKey &&
+    isExactPayload(child.payload, payload);
+}
+
+function isExactFinanceEffectChild(
+  child: Parameters<typeof isExactReceivableChild>[0],
+  parent: Parameters<typeof isExactReceivableChild>[1],
+  payload: AcceptedEventPayload,
+  deduplicationKey: string,
+): boolean {
+  return child.tenantId === parent.tenantId &&
+    child.eventType === FISCAL_CREDIT_NOTE_FINANCE_EFFECT_REQUESTED_EVENT_TYPE &&
+    child.eventVersion === FISCAL_CREDIT_NOTE_FINANCE_EFFECT_REQUESTED_EVENT_VERSION &&
+    child.aggregateType === parent.aggregateType && child.aggregateId === parent.aggregateId &&
+    child.causationId === parent.id && child.deduplicationKey === deduplicationKey &&
     isExactPayload(child.payload, payload);
 }
 

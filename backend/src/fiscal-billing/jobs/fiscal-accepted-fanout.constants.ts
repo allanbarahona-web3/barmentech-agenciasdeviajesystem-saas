@@ -7,6 +7,10 @@ export const ACCOUNT_RECEIVABLE_RECOGNITION_REQUESTED_EVENT_TYPE =
   "account-receivable.recognition-requested";
 export const ACCOUNT_RECEIVABLE_RECOGNITION_REQUESTED_EVENT_VERSION = 1;
 
+export const FISCAL_CREDIT_NOTE_FINANCE_EFFECT_REQUESTED_EVENT_TYPE =
+  "fiscal-credit-note.finance-effect-requested";
+export const FISCAL_CREDIT_NOTE_FINANCE_EFFECT_REQUESTED_EVENT_VERSION = 1;
+
 export const FISCAL_INVOICE_AUTO_DELIVERY_REQUESTED_EVENT_TYPE =
   "billing-document.invoice-auto-delivery-requested";
 export const FISCAL_INVOICE_AUTO_DELIVERY_REQUESTED_EVENT_VERSION = 1;
@@ -24,6 +28,12 @@ export function accountReceivableRecognitionDeduplicationKey(
   billingDocumentId: string,
 ): string {
   return `billing-document.fiscal-accepted:receivable:${billingDocumentId}:v1`;
+}
+
+export function fiscalCreditNoteFinanceEffectDeduplicationKey(
+  billingDocumentId: string,
+): string {
+  return `billing-document.fiscal-accepted:credit-note-finance:${billingDocumentId}:v1`;
 }
 
 export function fiscalInvoiceAutoDeliveryDeduplicationKey(

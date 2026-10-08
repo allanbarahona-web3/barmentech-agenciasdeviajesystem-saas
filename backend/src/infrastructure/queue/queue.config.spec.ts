@@ -6,6 +6,7 @@ import { AccountReceivableRecognitionProcessor } from "../../fiscal-billing/jobs
 import { FiscalArtifactRetrievalProcessor } from "../../fiscal-billing/jobs/fiscal-artifact-retrieval.processor";
 import { FiscalArtifactRetrievalPublisher } from "../../fiscal-billing/jobs/fiscal-artifact-retrieval.publisher";
 import { FiscalInvoiceAutoDeliveryProcessor } from "../../fiscal-billing/jobs/fiscal-invoice-auto-delivery.processor";
+import { FiscalCreditNoteFinanceEffectProcessor } from "../../fiscal-billing/jobs/fiscal-credit-note-finance-effect.processor";
 import { FinanceModule } from "../../finance/finance.module";
 import { ContractPaymentFiscalizationProcessor } from "../../finance/contract-payment-fiscalization.processor";
 import {
@@ -25,6 +26,7 @@ describe("queue configuration", () => {
       FISCAL_STATUS_RECONCILIATION: "fiscal-status-reconciliation",
       FISCAL_REFRESH_RECONCILIATION: "fiscal-refresh-reconciliation",
       ACCOUNT_RECEIVABLE_RECOGNITION: "account-receivable-recognition",
+      FISCAL_CREDIT_NOTE_FINANCE_EFFECT: "fiscal-credit-note-finance-effect",
       FISCAL_ARTIFACT_RETRIEVAL: "fiscal-artifact-retrieval",
       FISCAL_INVOICE_AUTO_DELIVERY: "fiscal-invoice-auto-delivery",
       CONTRACT_PAYMENT_FISCALIZATION: "contract-payment-fiscalization",
@@ -42,6 +44,7 @@ describe("queue configuration", () => {
       "fiscal-status-reconciliation": "fiscal-status-reconciliation",
       "fiscal-refresh-reconciliation": "fiscal-refresh-reconciliation",
       "account-receivable-recognition": "account-receivable-recognition",
+      "fiscal-credit-note-finance-effect": "fiscal-credit-note-finance-effect",
       "fiscal-artifact-retrieval": "fiscal-artifact-retrieval",
       "fiscal-invoice-auto-delivery": "fiscal-invoice-auto-delivery",
       "contract-payment-fiscalization": "contract-payment-fiscalization",
@@ -67,6 +70,7 @@ describe("queue configuration", () => {
       ],
     ).toBe("fiscal-refresh-reconciliation");
     expect(getQueueConfig(configService()).queueNames[PLATFORM_QUEUE_KEYS.ACCOUNT_RECEIVABLE_RECOGNITION]).toBe("account-receivable-recognition");
+    expect(getQueueConfig(configService()).queueNames[PLATFORM_QUEUE_KEYS.FISCAL_CREDIT_NOTE_FINANCE_EFFECT]).toBe("fiscal-credit-note-finance-effect");
     expect(getQueueConfig(configService()).queueNames[PLATFORM_QUEUE_KEYS.FISCAL_ARTIFACT_RETRIEVAL]).toBe("fiscal-artifact-retrieval");
     expect(getQueueConfig(configService()).queueNames[PLATFORM_QUEUE_KEYS.FISCAL_INVOICE_AUTO_DELIVERY]).toBe("fiscal-invoice-auto-delivery");
     expect(getQueueConfig(configService()).queueNames[PLATFORM_QUEUE_KEYS.CONTRACT_PAYMENT_FISCALIZATION]).toBe("contract-payment-fiscalization");
@@ -97,6 +101,7 @@ describe("queue configuration", () => {
 
   it("uses the existing BullMQ environment-name convention for receivable recognition", () => {
     expect(QUEUE_NAME_ENV_KEYS[PLATFORM_QUEUE_KEYS.ACCOUNT_RECEIVABLE_RECOGNITION]).toBe("BULLMQ_ACCOUNT_RECEIVABLE_RECOGNITION_QUEUE_NAME");
+    expect(QUEUE_NAME_ENV_KEYS[PLATFORM_QUEUE_KEYS.FISCAL_CREDIT_NOTE_FINANCE_EFFECT]).toBe("BULLMQ_FISCAL_CREDIT_NOTE_FINANCE_EFFECT_QUEUE_NAME");
   });
 
   it("uses the existing BullMQ environment-name convention for airfare pricing", () => {
@@ -123,6 +128,7 @@ describe("queue configuration", () => {
 
     expect(providers).toContain(FiscalBillingSubmissionProcessor);
     expect(providers).toContain(AccountReceivableRecognitionProcessor);
+    expect(providers).toContain(FiscalCreditNoteFinanceEffectProcessor);
     expect(providers.filter((value) => value === FiscalArtifactRetrievalPublisher)).toHaveLength(1);
     expect(providers.filter((value) => value === FiscalArtifactRetrievalProcessor)).toHaveLength(1);
     expect(providers.filter((value) => value === FiscalInvoiceAutoDeliveryProcessor)).toHaveLength(1);
@@ -131,9 +137,10 @@ describe("queue configuration", () => {
       PLATFORM_QUEUE_KEYS.FISCAL_STATUS_RECONCILIATION,
       PLATFORM_QUEUE_KEYS.FISCAL_REFRESH_RECONCILIATION,
       PLATFORM_QUEUE_KEYS.ACCOUNT_RECEIVABLE_RECOGNITION,
+      PLATFORM_QUEUE_KEYS.FISCAL_CREDIT_NOTE_FINANCE_EFFECT,
       PLATFORM_QUEUE_KEYS.FISCAL_ARTIFACT_RETRIEVAL,
       PLATFORM_QUEUE_KEYS.FISCAL_INVOICE_AUTO_DELIVERY,
-    ]).size).toBe(6);
+    ]).size).toBe(7);
   });
 
   it("registers Contract-payment fiscalization on its own queue", () => {

@@ -80,11 +80,10 @@ describe("FiscalAcceptedFanoutCoordinatorService", () => {
     }));
   });
 
-  it("completes an accepted credit note without scheduling an invoice AR child or Finance effect", async () => {
+  it("schedules only the dedicated Finance child for an accepted credit note", async () => {
     const c = context([parent()], { documentTypeCode: "03" });
     await c.service.fanOutAvailableEvents();
-    expect(c.tx.billingOutboxEvent.createMany).not.toHaveBeenCalled();
-    expect(c.tx.billingOutboxEvent.findUnique.mock.calls.some((call) => "tenantId_deduplicationKey" in call[0].where)).toBe(false);
+    expect(c.tx.billingOutboxEvent.createMany).toHaveBeenCalledWith(expect.objectContaining({ data: [expect.objectContaining({ eventType: "fiscal-credit-note.finance-effect-requested" })] }));
     expect(c.tx.billingOutboxEvent.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "PROCESSED" }) }));
   });
 
@@ -216,7 +215,9 @@ function context(events: ReturnType<typeof parent>[], options: { createCount?: n
       findUnique: jest.fn(async ({ where }: { where: Record<string, unknown> }) => {
         if ("id" in where) return events.find((event) => event.id === where.id) ?? null;
         const deduplicationKey = (where.tenantId_deduplicationKey as { deduplicationKey?: string } | undefined)?.deduplicationKey;
-        return options.child === undefined ? child(events[0]) : options.child;
+        return options.child === undefined
+          ? (options.documentTypeCode === "03" ? financeChild(events[0]) : child(events[0]))
+          : options.child;
       }),
       createMany: jest.fn().mockResolvedValue({ count: options.createCount ?? 1 }),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
@@ -255,6 +256,16 @@ function childData(event: ReturnType<typeof parent>) {
     causationId: event.id,
     deduplicationKey: accountReceivableRecognitionDeduplicationKey(payload.billingDocumentId),
     payload,
+  };
+}
+
+function financeChild(event: ReturnType<typeof parent>) {
+  const payload = event.payload as { tenantId: string; billingDocumentId: string; eventVersion: number };
+  return {
+    id: "credit-note-child-a", tenantId: event.tenantId,
+    eventType: "fiscal-credit-note.finance-effect-requested", eventVersion: 1,
+    aggregateType: "BillingDocument", aggregateId: payload.billingDocumentId, causationId: event.id,
+    deduplicationKey: `billing-document.fiscal-accepted:credit-note-finance:${payload.billingDocumentId}:v1`, payload,
   };
 }
 

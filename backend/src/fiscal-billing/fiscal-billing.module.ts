@@ -72,6 +72,9 @@ import { FiscalInvoiceAutoDeliveryService } from "./fiscal-invoice-auto-delivery
 import { FiscalInvoiceAutoDeliveryPublisher } from "./jobs/fiscal-invoice-auto-delivery.publisher";
 import { FiscalInvoiceAutoDeliveryProcessor } from "./jobs/fiscal-invoice-auto-delivery.processor";
 import { FiscalCreditNoteDraftService } from "./fiscal-credit-note-draft.service";
+import { FiscalCreditNoteFinanceEffectService } from "./fiscal-credit-note-finance-effect.service";
+import { FiscalCreditNoteFinanceEffectPublisher } from "./jobs/fiscal-credit-note-finance-effect.publisher";
+import { FiscalCreditNoteFinanceEffectProcessor } from "./jobs/fiscal-credit-note-finance-effect.processor";
 
 @Module({
   imports: [
@@ -91,6 +94,9 @@ import { FiscalCreditNoteDraftService } from "./fiscal-credit-note-draft.service
   providers: [
     SalesOrderFiscalBillingService,
     FiscalCreditNoteDraftService,
+    FiscalCreditNoteFinanceEffectService,
+    FiscalCreditNoteFinanceEffectPublisher,
+    FiscalCreditNoteFinanceEffectProcessor,
     BillingDocumentService,
     PrismaSalesOrderFiscalBillingRepository,
     PrismaBillingDocumentRepository,
