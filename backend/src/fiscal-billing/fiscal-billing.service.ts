@@ -32,6 +32,7 @@ import {
   resolveCrDraftCommercialCondition,
   resolveCrDraftPaymentMethods,
   resolveCrDraftReceiverIdentity,
+  requireCrTicketCashCondition,
 } from "./fiscal-draft-selection";
 import {
   clientFiscalReceiverPrefill,
@@ -208,7 +209,10 @@ export class SalesOrderFiscalBillingService {
     if (!issuer) throw fiscalBillingError("FISCAL_ISSUER_NOT_FOUND");
     if (!issuer.isActive) throw fiscalBillingError("FISCAL_ISSUER_NOT_ACTIVE");
     this.assertDraftReady(analysis);
-    resolveCrDraftCommercialCondition(analysis.salesOrder);
+    const commercialCondition = resolveCrDraftCommercialCondition(
+      analysis.salesOrder,
+    );
+    requireCrTicketCashCondition(input.documentTypeCode, commercialCondition);
     const receiverIdentity = resolveCrDraftReceiverIdentity(
       input.documentTypeCode,
       input.receiverIdentificationTypeCode,

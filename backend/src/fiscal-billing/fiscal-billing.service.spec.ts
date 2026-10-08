@@ -492,6 +492,31 @@ describe("SalesOrderFiscalBillingService", () => {
     expect(repository.createDraft).not.toHaveBeenCalled();
   });
 
+  it("rejects CREDIT sales orders for 04 before draft persistence", async () => {
+    const { service, repository } = setup({
+      salesOrder: salesOrder({
+        paymentConditionType: "CREDIT",
+        paymentTermValue: 30,
+        paymentTermUnit: "DAYS",
+      }),
+    });
+
+    await expectCode(
+      service.createOrResumeDraft(
+        "tenant-a",
+        "sales-a",
+        {
+          fiscalIssuerId: "issuer-a",
+          documentTypeCode: "04",
+          paymentMethodCodes: ["01"],
+        },
+        "user-a",
+      ),
+      "BILLING_TICKET_CASH_ONLY",
+    );
+    expect(repository.createDraft).not.toHaveBeenCalled();
+  });
+
   it("normalizes and deduplicates one to four payment methods in first-occurrence order", async () => {
     const { service, repository } = setup();
     await service.createOrResumeDraft(

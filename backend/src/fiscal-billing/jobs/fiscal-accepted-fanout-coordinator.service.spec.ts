@@ -38,7 +38,7 @@ describe("FiscalAcceptedFanoutCoordinatorService", () => {
 
     expect(c.tx.billingDocument.findUnique).toHaveBeenCalledWith({
       where: { id_tenantId: { id: "document-a", tenantId: "tenant-a" } },
-      select: { sourceType: true },
+      select: { sourceType: true, documentTypeCode: true },
     });
     expect(c.tx.billingOutboxEvent.createMany).not.toHaveBeenCalled();
     expect(c.tx.billingOutboxEvent.updateMany).toHaveBeenCalledWith(expect.objectContaining({
@@ -60,6 +60,24 @@ describe("FiscalAcceptedFanoutCoordinatorService", () => {
 
     expect(c.tx.billingOutboxEvent.createMany).not.toHaveBeenCalled();
     expect(c.tx.billingOutboxEvent.updateMany).toHaveBeenCalledTimes(2);
+  });
+
+  it("completes an accepted electronic ticket without scheduling an AR child", async () => {
+    const c = context([parent()], { documentTypeCode: "04" });
+
+    await c.service.fanOutAvailableEvents();
+
+    expect(c.tx.billingDocument.findUnique).toHaveBeenCalledWith({
+      where: { id_tenantId: { id: "document-a", tenantId: "tenant-a" } },
+      select: { sourceType: true, documentTypeCode: true },
+    });
+    expect(c.tx.billingOutboxEvent.createMany).not.toHaveBeenCalled();
+    expect(c.tx.billingOutboxEvent.findUnique.mock.calls.some(
+      (call) => "tenantId_deduplicationKey" in call[0].where,
+    )).toBe(false);
+    expect(c.tx.billingOutboxEvent.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: "PROCESSED", lockedAt: null, lockedBy: null }),
+    }));
   });
 
   it("does not complete the parent when child persistence fails", async () => {
@@ -174,7 +192,7 @@ describe("FiscalAcceptedFanoutCoordinatorService", () => {
   });
 });
 
-function context(events: ReturnType<typeof parent>[], options: { createCount?: number; child?: Record<string, unknown> | null; sourceType?: string | null } = {}) {
+function context(events: ReturnType<typeof parent>[], options: { createCount?: number; child?: Record<string, unknown> | null; sourceType?: string | null; documentTypeCode?: string } = {}) {
   const queryRaw = jest.fn()
     .mockResolvedValueOnce(events)
     .mockImplementation(async () => [{ id: "parent-a" }]);
@@ -183,6 +201,7 @@ function context(events: ReturnType<typeof parent>[], options: { createCount?: n
     billingDocument: {
       findUnique: jest.fn().mockResolvedValue({
         sourceType: options.sourceType ?? "SALES_ORDER",
+        documentTypeCode: options.documentTypeCode ?? "01",
       }),
     },
     billingOutboxEvent: {

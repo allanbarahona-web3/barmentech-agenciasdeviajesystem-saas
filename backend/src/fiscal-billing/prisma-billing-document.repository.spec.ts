@@ -66,6 +66,9 @@ describe("PrismaBillingDocumentRepository generic draft persistence", () => {
   it("loads issuance preflight only by the tenant-scoped document identity", async () => {
     const findUnique = jest.fn().mockResolvedValue({
       id: "document-a",
+      documentTypeCode: "01",
+      paymentConditionCode: "01",
+      creditTermDays: null,
       billingMode: "ELECTRONIC_PROVIDER",
       lifecycleStatus: "DRAFT",
       providerStatus: "NOT_SUBMITTED",
@@ -92,6 +95,7 @@ describe("PrismaBillingDocumentRepository generic draft persistence", () => {
 
     expect(findUnique).toHaveBeenCalledWith(expect.objectContaining({
       where: { id_tenantId: { id: "document-a", tenantId: "tenant-a" } },
+      select: expect.objectContaining({ documentTypeCode: true, paymentConditionCode: true, creditTermDays: true }),
     }));
   });
   it("produces a Prisma-valid USD type-01 nested snapshot with tenant-safe inherited relations", async () => {

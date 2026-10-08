@@ -56,6 +56,7 @@ interface Prepared {
   recipient: string;
   receiverName: string;
   fiscalNumber: string;
+  documentLabel: "Factura electrónica" | "Tiquete electrónico";
   idempotencyKey: string;
   mode: DeliveryMode;
   cc: string[];
@@ -129,14 +130,14 @@ export class FiscalInvoiceAutoDeliveryService {
       tenantId: claim.tenantId,
       to: prepared.recipient,
       ...(prepared.cc.length ? { cc: prepared.cc } : {}),
-      subject: `Factura electrónica ${prepared.fiscalNumber}`,
+      subject: `${prepared.documentLabel} ${prepared.fiscalNumber}`,
       template: "business-document-attachment",
       templateData: {
         recipientName: prepared.receiverName,
-        documentLabel: "Factura electrónica",
+        documentLabel: prepared.documentLabel,
         documentNumber: prepared.fiscalNumber,
-        message: prepared.mode === "MANUAL_RESEND" ? "Adjuntamos nuevamente su factura electrónica y los documentos fiscales asociados." : "Adjuntamos su factura electrónica y los documentos fiscales asociados.",
-        attachmentSummary: "La factura, el XML firmado y la respuesta de la autoridad tributaria se encuentran adjuntos.",
+        message: prepared.mode === "MANUAL_RESEND" ? `Adjuntamos nuevamente su ${prepared.documentLabel.toLowerCase()} y los documentos fiscales asociados.` : `Adjuntamos su ${prepared.documentLabel.toLowerCase()} y los documentos fiscales asociados.`,
+        attachmentSummary: `${prepared.documentLabel === "Factura electrónica" ? "La factura" : "El tiquete"}, el XML firmado y la respuesta de la autoridad tributaria se encuentran adjuntos.`,
       },
       attachments,
       idempotencyKey: prepared.idempotencyKey,
@@ -173,9 +174,10 @@ export class FiscalInvoiceAutoDeliveryService {
       if (!payload) throw permanent(FISCAL_INVOICE_AUTO_DELIVERY_ERRORS.CHILD_INVALID);
       const document = await tx.billingDocument.findUnique({
         where: { id_tenantId: { id: payload.billingDocumentId, tenantId: claim.tenantId } },
-        select: { id: true, lifecycleStatus: true, providerStatus: true, taxAuthorityStatus: true, receiverEmail: true, receiverName: true, fiscalNumber: true },
+        select: { id: true, documentTypeCode: true, lifecycleStatus: true, providerStatus: true, taxAuthorityStatus: true, receiverEmail: true, receiverName: true, fiscalNumber: true },
       });
-      if (!document || document.lifecycleStatus !== "SUBMITTED" || document.providerStatus !== "PROCESSED" || document.taxAuthorityStatus !== "ACCEPTED" || !nonEmpty(document.receiverName) || !nonEmpty(document.fiscalNumber)) throw permanent(FISCAL_INVOICE_AUTO_DELIVERY_ERRORS.DOCUMENT_INELIGIBLE);
+      const documentLabel = document && fiscalDocumentLabel(document.documentTypeCode);
+      if (!document || !documentLabel || document.lifecycleStatus !== "SUBMITTED" || document.providerStatus !== "PROCESSED" || document.taxAuthorityStatus !== "ACCEPTED" || !nonEmpty(document.receiverName) || !nonEmpty(document.fiscalNumber)) throw permanent(FISCAL_INVOICE_AUTO_DELIVERY_ERRORS.DOCUMENT_INELIGIBLE);
       const recipient = document.receiverEmail?.trim() ?? "";
       const rows = await tx.billingDocumentArtifact.findMany({
         where: { tenantId: claim.tenantId, billingDocumentId: payload.billingDocumentId, artifactType: { in: REQUIRED_ARTIFACT_TYPES } },
@@ -185,7 +187,7 @@ export class FiscalInvoiceAutoDeliveryService {
       const manual = isManualPayload(payload);
       const resolvedRecipient = manual ? payload.to : recipient;
       if (!resolvedRecipient || !isEmail(resolvedRecipient)) throw permanent(FISCAL_INVOICE_AUTO_DELIVERY_ERRORS.RECIPIENT_INVALID);
-      return { claim, payload, causationId: child.causationId!, recipient: resolvedRecipient, receiverName: document.receiverName, fiscalNumber: document.fiscalNumber, idempotencyKey: manual ? manualProviderKey(claim.tenantId, payload.billingDocumentId, payload.requestId) : providerKey(claim.tenantId, payload.billingDocumentId), mode: manual ? "MANUAL_RESEND" : "INITIAL_AUTOMATIC", cc: manual ? payload.cc : [], requestId: manual ? payload.requestId : null, actorUserId: manual ? payload.requestedByUserId : SYSTEM_ACTOR_ID };
+      return { claim, payload, causationId: child.causationId!, recipient: resolvedRecipient, receiverName: document.receiverName, fiscalNumber: document.fiscalNumber, documentLabel, idempotencyKey: manual ? manualProviderKey(claim.tenantId, payload.billingDocumentId, payload.requestId) : providerKey(claim.tenantId, payload.billingDocumentId), mode: manual ? "MANUAL_RESEND" : "INITIAL_AUTOMATIC", cc: manual ? payload.cc : [], requestId: manual ? payload.requestId : null, actorUserId: manual ? payload.requestedByUserId : SYSTEM_ACTOR_ID };
     });
   }
 
@@ -283,6 +285,7 @@ function auditIdentity(child: { eventType: string; payload: Prisma.JsonValue }, 
   return { mode: "INITIAL_AUTOMATIC" as const, cc: [] as string[], requestId: null, actorUserId: SYSTEM_ACTOR_ID, idempotencyKey: providerKey(tenantId, billingDocumentId), recipient: null };
 }
 function normalizeEmail(value: unknown): string { return typeof value === "string" ? value.trim().toLowerCase() : ""; }
+function fiscalDocumentLabel(value: string): "Factura electrónica" | "Tiquete electrónico" | null { return value === "01" ? "Factura electrónica" : value === "04" ? "Tiquete electrónico" : null; }
 function normalizeCc(value: unknown, recipient: string): string[] {
   if (value === undefined) return [];
   if (!Array.isArray(value) || value.length > 10) throw requestError("FISCAL_INVOICE_MANUAL_RESEND_CC_INVALID", HttpStatus.BAD_REQUEST);

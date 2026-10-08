@@ -24,6 +24,37 @@ describe("BillingDocumentStatusPersistenceService",()=>{
     expect(c.clock.now).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps processing and rejected electronic tickets out of the Finance fanout", async () => {
+    const ticketIdentity = {
+      documentTypeCode: "04",
+      fiscalNumber: "00100001040000000042",
+      haciendaKey: KEY.slice(0, 21) + "00100001040000000042" + KEY.slice(41),
+    };
+    let c = context(
+      row(ticketIdentity),
+      lookup({
+        persistedIdentity: ticketIdentity,
+        providerResult: { ...ticketIdentity, consecutive: ticketIdentity.fiscalNumber },
+      }),
+    );
+    await c.service.persist(c.lookup);
+    noSideEffects(c);
+
+    c = context(
+      row(ticketIdentity),
+      lookup({
+        persistedIdentity: ticketIdentity,
+        providerResult: {
+          ...ticketIdentity,
+          consecutive: ticketIdentity.fiscalNumber,
+          ...rejected("rejected"),
+        },
+      }),
+    );
+    await c.service.persist(c.lookup);
+    expect(c.tx.billingOutboxEvent.createMany.mock.calls).toEqual([[terminalEvent()]]);
+  });
+
   it("recognizes an exact completed non-final winner without a write or clock",async()=>{
     const winner=row({providerStatusCheckAttempts:1,providerLastStatusCheckAt:ISSUED,providerNextStatusCheckAt:new Date(ISSUED.getTime()+20_000)}),c=context(winner,lookup());
     await expect(c.service.persist(c.lookup)).resolves.toMatchObject({taxAuthorityStatus:"PROCESSING",newlyPersisted:false});

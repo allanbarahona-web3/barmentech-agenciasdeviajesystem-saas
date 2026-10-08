@@ -448,6 +448,26 @@ describe("BillingDocumentService generic core", () => {
     );
   });
 
+  it("rejects a CREDIT electronic ticket before allocation or fiscal submission", async () => {
+    const repository = {
+      findIssuancePreflight: jest.fn().mockResolvedValue(preflight({
+        documentTypeCode: "04",
+        paymentConditionCode: "02",
+        creditTermDays: 30,
+      })),
+      requestElectronicIssuance: jest.fn(),
+    };
+    const resolver = { resolveExactObservation: jest.fn() };
+    const clock = { now: jest.fn() };
+    const service = new BillingDocumentService(repository as never, resolver as never, clock as never);
+
+    await expect(service.requestElectronicIssuance("tenant-a", "document-a", "user-a"))
+      .rejects.toMatchObject({ response: expect.objectContaining({ code: "BILLING_TICKET_CASH_ONLY" }) });
+    expect(resolver.resolveExactObservation).not.toHaveBeenCalled();
+    expect(clock.now).not.toHaveBeenCalled();
+    expect(repository.requestElectronicIssuance).not.toHaveBeenCalled();
+  });
+
   it("returns the same not-found error for a tenant-scoped preflight miss", async () => {
     const repository = { findIssuancePreflight: jest.fn().mockResolvedValue(null) };
     const resolver = { resolveExactObservation: jest.fn() };
@@ -610,7 +630,7 @@ function acceptedWorkspace(
 
 function preflight(overrides: Record<string, unknown> = {}) {
   return {
-    id: "document-a", billingMode: "ELECTRONIC_PROVIDER", lifecycleStatus: "DRAFT",
+    id: "document-a", documentTypeCode: "01", paymentConditionCode: "01", creditTermDays: null, billingMode: "ELECTRONIC_PROVIDER", lifecycleStatus: "DRAFT",
     fiscalCalculationPolicyVersion: "CR_V44_DECIMAL_V1",
     providerStatus: "NOT_SUBMITTED", taxAuthorityStatus: "NOT_SUBMITTED",
     currencyCode: "CRC", fiscalNumber: null, providerDocumentId: null,

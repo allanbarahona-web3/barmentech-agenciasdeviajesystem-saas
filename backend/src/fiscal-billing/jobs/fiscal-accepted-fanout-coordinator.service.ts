@@ -45,6 +45,7 @@ const CHILD_CONFLICT_ERROR = "FISCAL_ACCEPTED_FANOUT_CHILD_CONFLICT";
 const FANOUT_ERROR = "FISCAL_ACCEPTED_FANOUT_FAILED";
 const CLAIM_LOST_ERROR = "FISCAL_ACCEPTED_FANOUT_CLAIM_LOST";
 const CONTRACT_PAYMENT_FISCAL_SOURCE_TYPE = "CONTRACT_PAYMENT";
+const ACCOUNT_RECEIVABLE_DOCUMENT_TYPE = "01";
 
 class FanoutError extends Error {
   constructor(readonly code: string) {
@@ -172,11 +173,14 @@ export class FiscalAcceptedFanoutCoordinatorService
               tenantId: payload.tenantId,
             },
           },
-          select: { sourceType: true },
+          select: { sourceType: true, documentTypeCode: true },
         });
         if (!document) throw new FanoutError(INVALID_PARENT_ERROR);
 
-        if (document.sourceType !== CONTRACT_PAYMENT_FISCAL_SOURCE_TYPE) {
+        if (
+          document.sourceType !== CONTRACT_PAYMENT_FISCAL_SOURCE_TYPE &&
+          document.documentTypeCode === ACCOUNT_RECEIVABLE_DOCUMENT_TYPE
+        ) {
           const deduplicationKey = accountReceivableRecognitionDeduplicationKey(payload.billingDocumentId);
           await tx.billingOutboxEvent.createMany({
             data: [{

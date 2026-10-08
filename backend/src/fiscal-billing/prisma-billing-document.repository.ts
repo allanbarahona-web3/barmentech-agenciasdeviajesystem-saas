@@ -38,6 +38,7 @@ import {
   requireCrDraftDocumentType,
   resolveCrDraftCommercialCondition,
   resolveCrDraftReceiverIdentity,
+  requireCrTicketCashCondition,
   validateCrDraftPaymentSnapshots,
 } from "./fiscal-draft-selection";
 import { validateCrV44CalculatedSnapshot } from "./cr-v44-calculated-snapshot-validator";
@@ -294,6 +295,9 @@ export class PrismaBillingDocumentRepository
       where: { id_tenantId: { id: billingDocumentId, tenantId } },
       select: {
         id: true,
+        documentTypeCode: true,
+        paymentConditionCode: true,
+        creditTermDays: true,
         fiscalCalculationPolicyVersion: true,
         billingMode: true,
         lifecycleStatus: true,
@@ -510,6 +514,10 @@ export class PrismaBillingDocumentRepository
         }
 
         const commercialCondition = resolveCrDraftCommercialCondition(salesOrder);
+        requireCrTicketCashCondition(
+          request.documentTypeCode,
+          commercialCondition,
+        );
         const command: BillingDocumentDraftCommand = {
           tenantId: request.tenantId,
           fiscalIssuerId: issuer.id,
@@ -1189,6 +1197,9 @@ export class PrismaBillingDocumentRepository
   }
 
   private requireEligibleDraft(document: {
+    documentTypeCode: string;
+    paymentConditionCode: string | null;
+    creditTermDays: number | null;
     fiscalCalculationPolicyVersion: string | null;
     billingMode: string;
     lifecycleStatus: string;
@@ -1197,6 +1208,13 @@ export class PrismaBillingDocumentRepository
     fiscalNumber: string | null;
     providerDocumentId: string | null;
   }) {
+    if (
+      document.documentTypeCode === CR_DOCUMENT_TYPES.ELECTRONIC_TICKET &&
+      (document.paymentConditionCode !== "01" ||
+        document.creditTermDays !== null)
+    ) {
+      throw fiscalBillingError("BILLING_TICKET_CASH_ONLY");
+    }
     if (document.fiscalCalculationPolicyVersion !== CR_V44_DECIMAL_V1) {
       throw fiscalBillingError(
         "BILLING_DOCUMENT_FISCAL_CALCULATION_POLICY_UNSUPPORTED",

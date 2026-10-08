@@ -123,3 +123,17 @@ export function resolveCrDraftCommercialCondition(source: {
   }
   throw fiscalBillingError("BILLING_COMMERCIAL_CREDIT_TERM_INVALID");
 }
+
+export function requireCrTicketCashCondition(
+  documentTypeCode: string,
+  commercialCondition: { paymentConditionCode: string; creditTermDays: number | null },
+): void {
+  requireCrDraftDocumentType(documentTypeCode);
+  if (
+    documentTypeCode === CR_DOCUMENT_TYPES.ELECTRONIC_TICKET &&
+    (commercialCondition.paymentConditionCode !== "01" ||
+      commercialCondition.creditTermDays !== null)
+  ) {
+    throw fiscalBillingError("BILLING_TICKET_CASH_ONLY");
+  }
+}

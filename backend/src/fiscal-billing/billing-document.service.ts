@@ -18,6 +18,7 @@ import { fiscalBillingError } from "./fiscal-billing.errors";
 import { FiscalIssuanceClock } from "./fiscal-issuance.clock";
 import { costaRicaDate } from "./fiscal-emission-time";
 import { CR_V44_DECIMAL_V1 } from "./cr-v44-fiscal-calculation-policy";
+import { CR_DOCUMENT_TYPES } from "./fiscal-billing.constants";
 
 @Injectable()
 export class BillingDocumentService {
@@ -45,6 +46,13 @@ export class BillingDocumentService {
       billingDocumentId,
     );
     if (!preflight) throw fiscalBillingError("BILLING_DOCUMENT_NOT_FOUND");
+    if (
+      preflight.documentTypeCode === CR_DOCUMENT_TYPES.ELECTRONIC_TICKET &&
+      (preflight.paymentConditionCode !== "01" ||
+        preflight.creditTermDays !== null)
+    ) {
+      throw fiscalBillingError("BILLING_TICKET_CASH_ONLY");
+    }
 
     if (allocationState(preflight) === "COMPLETE") {
       return this.repository.requestElectronicIssuance(

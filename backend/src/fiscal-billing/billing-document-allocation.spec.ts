@@ -246,6 +246,7 @@ describe("PrismaBillingDocumentRepository fiscal allocation", () => {
       documentId: "document-b",
       sequenceId: "sequence-b",
       documentTypeCode: "04",
+      document: { paymentConditionCode: "01", creditTermDays: null },
     });
 
     const [a, b] = await Promise.all([

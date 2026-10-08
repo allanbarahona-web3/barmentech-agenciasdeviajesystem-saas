@@ -148,6 +148,9 @@ export interface BillingDocumentFiscalAllocationResult {
 
 export interface BillingDocumentIssuancePreflight {
   id: string;
+  documentTypeCode: string;
+  paymentConditionCode: string | null;
+  creditTermDays: number | null;
   fiscalCalculationPolicyVersion: string | null;
   billingMode: string;
   lifecycleStatus: string;

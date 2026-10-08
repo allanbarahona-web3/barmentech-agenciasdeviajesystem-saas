@@ -91,14 +91,17 @@ function fiscalKey(invoice: AcceptedBillingInvoice): string {
 }
 
 function invoiceSummary(invoice: AcceptedBillingInvoice, documentType: string): string {
+  const documentNumberLabel = invoice.documentTypeCode === "04"
+    ? "Número de tiquete"
+    : "Número de factura";
   return `<section class="invoice-summary transaction-invoice-summary">
   <article>${sectionHeading("Datos de la transacción")}<dl>
     ${row("Condición", paymentCondition(invoice))}${row("Moneda", invoice.currencyCode)}
     ${invoice.salesOrder ? row("Orden de venta", invoice.salesOrder.number ?? invoice.salesOrder.id) : ""}
     ${invoice.paymentMethods.length ? row("Medio de pago", paymentMethods(invoice)) : ""}
   </dl></article>
-  <article>${sectionHeading("Factura electrónica")}<dl>
-    ${row("Número de factura", invoice.fiscalNumber)}${row("Fecha de emisión", formatDate(invoice.issuedDate))}${row("Tipo de comprobante", documentType)}
+  <article>${sectionHeading(documentType)}<dl>
+    ${row(documentNumberLabel, invoice.fiscalNumber)}${row("Fecha de emisión", formatDate(invoice.issuedDate))}${row("Tipo de comprobante", documentType)}
   </dl></article>
 </section>`;
 }

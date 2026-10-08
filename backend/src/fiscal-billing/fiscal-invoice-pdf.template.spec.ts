@@ -54,6 +54,17 @@ describe("fiscalInvoicePdfTemplate", () => {
     expect(html).not.toContain("<script>unsafe()</script>");
   });
 
+  it("uses ticket-specific visible labels for an accepted electronic ticket", () => {
+    const invoice = fixture();
+    invoice.documentTypeCode = "04";
+
+    const html = fiscalInvoicePdfTemplate(invoice, branding());
+
+    expect(html).toContain("Tiquete electrónico");
+    expect(html).toContain("Número de tiquete");
+    expect(html).not.toContain("Número de factura");
+  });
+
   it("falls back safely when optional tenant branding is absent or invalid", () => {
     const html = fiscalInvoicePdfTemplate(fixture(), { commercialName: null, logoSrc: null, contactEmail: null, contactPhone: null, contactWhatsApp: null, businessAddress: null, primaryColor: "red;display:none", secondaryColor: null });
     expect(html).toContain("Issuer SA");

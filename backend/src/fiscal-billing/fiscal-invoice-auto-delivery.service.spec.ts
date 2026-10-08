@@ -37,6 +37,25 @@ describe("FiscalInvoiceAutoDeliveryService", () => {
     expect(c.update).toHaveBeenLastCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "PROCESSED" }) }));
   });
 
+  it("delivers an accepted electronic ticket with ticket-specific labels and normal artifacts", async () => {
+    const c = context({ document: { documentTypeCode: "04" } });
+
+    await c.service.processClaimedDelivery(claim());
+
+    expect(c.pdf).toHaveBeenCalledWith("tenant-a", "document-a");
+    expect(c.download.mock.calls.map((call) => call.slice(2))).toEqual([
+      ["INTERNAL_PDF", "5"], ["SIGNED_FISCAL_XML", "4"], ["TAX_AUTHORITY_RESPONSE_XML", "3"],
+    ]);
+    expect(c.send).toHaveBeenCalledWith(expect.objectContaining({
+      subject: "Tiquete electrónico 00100001010000000042",
+      templateData: expect.objectContaining({
+        documentLabel: "Tiquete electrónico",
+        message: "Adjuntamos su tiquete electrónico y los documentos fiscales asociados.",
+        attachmentSummary: "El tiquete, el XML firmado y la respuesta de la autoridad tributaria se encuentran adjuntos.",
+      }),
+    }));
+  });
+
   it("uses only immutable receiverEmail and treats a missing receiver as permanent", async () => {
     const c = context({ document: { receiverEmail: null } });
     await expect(c.service.processClaimedDelivery(claim())).rejects.toEqual(expect.objectContaining({ code: FISCAL_INVOICE_AUTO_DELIVERY_ERRORS.RECIPIENT_INVALID, retryable: false }));
@@ -107,7 +126,7 @@ describe("FiscalInvoiceAutoDeliveryService", () => {
 
 function context(overrides: { artifacts?: Array<{ artifactType: string; version: number; status: string }>; document?: Record<string, unknown>; emailResult?: Record<string, unknown>; child?: Record<string, unknown> } = {}) {
   const child = overrides.child ?? { id: "child-a", tenantId: "tenant-a", eventType: FISCAL_INVOICE_AUTO_DELIVERY_REQUESTED_EVENT_TYPE, eventVersion: 1, aggregateType: "BillingDocument", aggregateId: "document-a", causationId: "parent-a", correlationId: null, payload: { tenantId: "tenant-a", billingDocumentId: "document-a", eventVersion: 1 }, attemptCount: 1, maximumAttempts: 5 };
-  const document = { id: "document-a", lifecycleStatus: "SUBMITTED", providerStatus: "PROCESSED", taxAuthorityStatus: "ACCEPTED", receiverEmail: "receiver@example.com", receiverName: "Receiver", fiscalNumber: "00100001010000000042", ...overrides.document };
+  const document = { id: "document-a", documentTypeCode: "01", lifecycleStatus: "SUBMITTED", providerStatus: "PROCESSED", taxAuthorityStatus: "ACCEPTED", receiverEmail: "receiver@example.com", receiverName: "Receiver", fiscalNumber: "00100001010000000042", ...overrides.document };
   const findUnique = jest.fn(async (args: { where: Record<string, unknown> }) => "id" in args.where ? child : document);
   const update = jest.fn().mockResolvedValue({ count: 1 });
   const audit = jest.fn().mockResolvedValue({ id: "audit-a" });
