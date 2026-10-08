@@ -42,6 +42,12 @@ import { getAllBankAccounts } from "@/lib/bank-accounts-api";
 import { type TenantLegalInfo, type BankAccountForContract } from "@/features/contracts-form/pdf-template";
 import { buildDocumentPackage } from "@/features/documents/builder/document-builder";
 import { calculateParticipants } from "@/features/contracts-form/capacity-validation";
+import {
+  archivePayloadForCommercialAuthority,
+  calculateContractDisplayPassengerQuantity,
+  calculatePublishedPricingDisplayTotal,
+  isPricingPublished,
+} from "@/features/contracts-form/published-pricing-display";
 import { ConfirmModal } from "@/components/confirm-modal";
 
 /**
@@ -596,16 +602,22 @@ export function ContractsWizard({
         
         // Pre-llenar el formulario con los datos del paquete
         setState((prev) => {
-          const price = travelPackage.packagePrice
-            ? String(typeof travelPackage.packagePrice === 'string' 
-                ? parseFloat(travelPackage.packagePrice).toFixed(2) 
-                : travelPackage.packagePrice.toFixed(2))
-            : "";
-
-          // Calculate initial totalAmount and reservationAmount: both are per person × total people (1 + companions + minors)
-          const totalPeople = 1 + prev.companions.length + prev.minors.length;
-          const priceNum = price ? parseFloat(price) : 0;
-          const totalAmount = priceNum > 0 ? (priceNum * totalPeople).toFixed(2) : price;
+          const pricingPublished = isPricingPublished(travelPackage.commercialPriceStatus);
+          const sourcePrice = String(travelPackage.packagePrice || "").trim();
+          const price = pricingPublished
+            ? sourcePrice
+            : sourcePrice
+              ? Number.parseFloat(sourcePrice).toFixed(2)
+              : "";
+          const totalPeople = calculateContractDisplayPassengerQuantity({
+            companions: prev.companions,
+            minors: prev.minors,
+          });
+          const totalAmount = pricingPublished
+            ? calculatePublishedPricingDisplayTotal(price, totalPeople) ?? ""
+            : price
+              ? (Number.parseFloat(price) * totalPeople).toFixed(2)
+              : "";
 
           // Reservation is also per person, multiply by total people
           const reservationPerPerson = travelPackage.minReservation !== null && travelPackage.minReservation !== undefined
@@ -619,7 +631,8 @@ export function ContractsWizard({
           const withDates = syncTourDates({
             ...prev,
             travelPackageId: packageId,
-            pricePerPerson: price, // Store base price per person
+            travelPackageCommercialPriceStatus: travelPackage.commercialPriceStatus,
+            pricePerPerson: price,
             reservationPerPerson: reservationPerPerson > 0 ? reservationPerPerson.toFixed(2) : "", // Store base reservation per person
             destination: travelPackage.destination,
             startDate: toLocalDateIso(travelPackage.departureDate),
@@ -637,6 +650,46 @@ export function ContractsWizard({
         setStatus(error instanceof Error ? error.message : "No se pudo cargar el viaje.");
       });
   }, [initialTravelPackageId, initialDraftId]);
+
+  useEffect(() => {
+    const packageId = String(state.travelPackageId || "").trim();
+    if (!packageId || loadedTravelPackage?.id === packageId) return;
+
+    let cancelled = false;
+    void getTravelPackageById(packageId)
+      .then((travelPackage) => {
+        if (cancelled) return;
+        setLoadedTravelPackage(travelPackage);
+        setState((previous) => {
+          if (previous.travelPackageId !== packageId) return previous;
+          if (!isPricingPublished(travelPackage.commercialPriceStatus) || travelPackage.packagePrice === null) {
+            return {
+              ...previous,
+              travelPackageCommercialPriceStatus: travelPackage.commercialPriceStatus,
+            };
+          }
+          const pricePerPerson = String(travelPackage.packagePrice).trim();
+          const totalAmount = calculatePublishedPricingDisplayTotal(
+            pricePerPerson,
+            calculateContractDisplayPassengerQuantity({
+              companions: previous.companions,
+              minors: previous.minors,
+            }),
+          );
+          return applyMoneyDerivedValues({
+            ...previous,
+            travelPackageCommercialPriceStatus: travelPackage.commercialPriceStatus,
+            pricePerPerson,
+            totalAmount: totalAmount ?? previous.totalAmount,
+          });
+        });
+      })
+      .catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [loadedTravelPackage?.id, state.travelPackageId]);
 
   // Load internal trip if initialInternalTripId is provided
   useEffect(() => {
@@ -1234,7 +1287,15 @@ console.log("====================================");
         reservationAmount: archiveInitialPayment.reservationAmount,
         paymentDueDate: archivePaymentTerms.paymentDueDate || "",
       };
-      const payloadJson = JSON.stringify(archiveState);
+      const loadedTravelPackageStatus = loadedTravelPackage?.id === archiveState.travelPackageId
+        ? loadedTravelPackage?.commercialPriceStatus
+        : undefined;
+      const pricingPublishedForArchive = isPricingPublished(
+        loadedTravelPackageStatus ?? archiveState.travelPackageCommercialPriceStatus,
+      );
+      const payloadJson = JSON.stringify(
+        archivePayloadForCommercialAuthority(archiveState, pricingPublishedForArchive),
+      );
       console.log("====================================");
       console.log("📏 TAMAÑOS DE CAMPOS A ENVIAR:");
       console.log("====================================");

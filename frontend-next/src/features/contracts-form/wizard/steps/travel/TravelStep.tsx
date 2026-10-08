@@ -1,5 +1,6 @@
 import type { ContractFormState } from "@/features/contracts-form/types";
 import { applyMoneyDerivedValues, syncTourDates, addDaysIso } from "@/features/contracts-form/utils";
+import { isPricingPublished } from "@/features/contracts-form/published-pricing-display";
 import {
   FINANCE_PAYMENT_METHOD_OPTIONS,
   type FinancePaymentMethod,
@@ -59,6 +60,7 @@ export function TravelStep({
 }: TravelStepProps) {
   const isCash = state.paymentConditionType === "CASH";
   const isCredit = state.paymentConditionType === "CREDIT";
+  const pricingPublished = isPricingPublished(state.travelPackageCommercialPriceStatus);
 
   // Parse selected luggage types from luggageClause
   const parseLuggageSelection = (): Set<string> => {
@@ -406,15 +408,23 @@ export function TravelStep({
           </select>
         </label>
 
+        {pricingPublished ? (
+          <label>
+            Precio publicado por persona USD
+            <input value={state.pricePerPerson || ""} readOnly />
+          </label>
+        ) : null}
+
         <label>
-          Monto total USD
+          {pricingPublished ? "Monto total USD (precio publicado)" : "Monto total USD"}
           <input
             type="number"
-            step="0.01"
+            step={pricingPublished ? "0.00001" : "0.01"}
             value={state.totalAmount}
             placeholder="Ej. 1250.00"
-            onChange={(event) => onMoneyChange("totalAmount", event.target.value)}
-            onBlur={() => onMoneyBlur("totalAmount")}
+            readOnly={pricingPublished}
+            onChange={pricingPublished ? undefined : (event) => onMoneyChange("totalAmount", event.target.value)}
+            onBlur={pricingPublished ? undefined : () => onMoneyBlur("totalAmount")}
           />
         </label>
 

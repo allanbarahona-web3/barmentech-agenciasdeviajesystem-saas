@@ -1,5 +1,10 @@
 import { Companion, ContractFormState, ItineraryItem, Minor } from "@/features/contracts-form/types";
 import { isClientIdentificationType } from '@/features/customers/client-identification';
+import {
+  calculateContractDisplayPassengerQuantity,
+  calculatePublishedPricingDisplayTotal,
+  isPricingPublished,
+} from "@/features/contracts-form/published-pricing-display";
 
 /**
  * Get today's date in YYYY-MM-DD format using local timezone
@@ -62,6 +67,36 @@ const toMoney = (value: string): number => {
 };
 
 const formatMoney = (value: number): string => value.toFixed(2);
+
+const recalculateTravelPackageAmounts = (state: ContractFormState): ContractFormState => {
+  if (!state.travelPackageId || !state.pricePerPerson) return state;
+
+  const participantCount = calculateContractDisplayPassengerQuantity({
+    companions: state.companions,
+    minors: state.minors,
+  });
+  const reservationPerPerson = state.reservationPerPerson ? toMoney(state.reservationPerPerson) : 0;
+  const reservationAmount = !Number.isNaN(reservationPerPerson) && reservationPerPerson > 0
+    ? formatMoney(reservationPerPerson * participantCount)
+    : state.reservationAmount;
+
+  if (isPricingPublished(state.travelPackageCommercialPriceStatus)) {
+    const totalAmount = calculatePublishedPricingDisplayTotal(state.pricePerPerson, participantCount);
+    return applyMoneyDerivedValues({
+      ...state,
+      totalAmount: totalAmount ?? state.totalAmount,
+      reservationAmount,
+    });
+  }
+
+  const pricePerPerson = toMoney(state.pricePerPerson);
+  if (Number.isNaN(pricePerPerson)) return state;
+  return applyMoneyDerivedValues({
+    ...state,
+    totalAmount: formatMoney(pricePerPerson * participantCount),
+    reservationAmount,
+  });
+};
 
 const daysBetweenInclusive = (startIso: string, endIso: string): number => {
   const start = new Date(`${startIso}T00:00:00`);
@@ -327,26 +362,7 @@ export const addCompanion = (state: ContractFormState): ContractFormState => {
     },
   };
   
-  // Recalculate totalAmount and reservationAmount if this is from a travel package
-  if (updatedState.travelPackageId && updatedState.pricePerPerson) {
-    const pricePerPerson = toMoney(updatedState.pricePerPerson);
-    const reservationPerPerson = updatedState.reservationPerPerson ? toMoney(updatedState.reservationPerPerson) : 0;
-    if (!Number.isNaN(pricePerPerson)) {
-      const totalPeople = 1 + updatedState.companions.length + updatedState.minors.length;
-      const newTotal = pricePerPerson * totalPeople;
-      const newReservation = !Number.isNaN(reservationPerPerson) && reservationPerPerson > 0 
-        ? reservationPerPerson * totalPeople 
-        : 0;
-      
-      return applyMoneyDerivedValues({
-        ...updatedState,
-        totalAmount: formatMoney(newTotal),
-        reservationAmount: newReservation > 0 ? formatMoney(newReservation) : updatedState.reservationAmount,
-      });
-    }
-  }
-  
-  return updatedState;
+  return recalculateTravelPackageAmounts(updatedState);
 };
 
 export const addCompanionFromCustomer = (
@@ -401,26 +417,7 @@ export const addCompanionFromCustomer = (
     },
   };
   
-  // Recalculate totalAmount and reservationAmount if this is from a travel package
-  if (updatedState.travelPackageId && updatedState.pricePerPerson) {
-    const pricePerPerson = toMoney(updatedState.pricePerPerson);
-    const reservationPerPerson = updatedState.reservationPerPerson ? toMoney(updatedState.reservationPerPerson) : 0;
-    if (!Number.isNaN(pricePerPerson)) {
-      const totalPeople = 1 + updatedState.companions.length + updatedState.minors.length;
-      const newTotal = pricePerPerson * totalPeople;
-      const newReservation = !Number.isNaN(reservationPerPerson) && reservationPerPerson > 0 
-        ? reservationPerPerson * totalPeople 
-        : 0;
-      
-      return applyMoneyDerivedValues({
-        ...updatedState,
-        totalAmount: formatMoney(newTotal),
-        reservationAmount: newReservation > 0 ? formatMoney(newReservation) : updatedState.reservationAmount,
-      });
-    }
-  }
-  
-  return updatedState;
+  return recalculateTravelPackageAmounts(updatedState);
 };
 
 export const removeCompanion = (state: ContractFormState, id: string): ContractFormState => {
@@ -441,26 +438,7 @@ export const removeCompanion = (state: ContractFormState, id: string): ContractF
     },
   };
   
-  // Recalculate totalAmount and reservationAmount if this is from a travel package
-  if (updatedState.travelPackageId && updatedState.pricePerPerson) {
-    const pricePerPerson = toMoney(updatedState.pricePerPerson);
-    const reservationPerPerson = updatedState.reservationPerPerson ? toMoney(updatedState.reservationPerPerson) : 0;
-    if (!Number.isNaN(pricePerPerson)) {
-      const totalPeople = 1 + updatedState.companions.length + updatedState.minors.length;
-      const newTotal = pricePerPerson * totalPeople;
-      const newReservation = !Number.isNaN(reservationPerPerson) && reservationPerPerson > 0 
-        ? reservationPerPerson * totalPeople 
-        : 0;
-      
-      return applyMoneyDerivedValues({
-        ...updatedState,
-        totalAmount: formatMoney(newTotal),
-        reservationAmount: newReservation > 0 ? formatMoney(newReservation) : updatedState.reservationAmount,
-      });
-    }
-  }
-  
-  return updatedState;
+  return recalculateTravelPackageAmounts(updatedState);
 };
 
 export const updateCompanion = (
@@ -468,7 +446,7 @@ export const updateCompanion = (
   id: string,
   field: keyof Companion,
   value: string,
-): ContractFormState => ({
+): ContractFormState => recalculateTravelPackageAmounts({
   ...state,
   companions: state.companions.map((item) => (item.id === id ? { ...item, [field]: value } : item)),
 });
@@ -488,26 +466,7 @@ export const addMinor = (state: ContractFormState): ContractFormState => {
     },
   };
   
-  // Recalculate totalAmount and reservationAmount if this is from a travel package
-  if (updatedState.travelPackageId && updatedState.pricePerPerson) {
-    const pricePerPerson = toMoney(updatedState.pricePerPerson);
-    const reservationPerPerson = updatedState.reservationPerPerson ? toMoney(updatedState.reservationPerPerson) : 0;
-    if (!Number.isNaN(pricePerPerson)) {
-      const totalPeople = 1 + updatedState.companions.length + updatedState.minors.length;
-      const newTotal = pricePerPerson * totalPeople;
-      const newReservation = !Number.isNaN(reservationPerPerson) && reservationPerPerson > 0 
-        ? reservationPerPerson * totalPeople 
-        : 0;
-      
-      return applyMoneyDerivedValues({
-        ...updatedState,
-        totalAmount: formatMoney(newTotal),
-        reservationAmount: newReservation > 0 ? formatMoney(newReservation) : updatedState.reservationAmount,
-      });
-    }
-  }
-  
-  return updatedState;
+  return recalculateTravelPackageAmounts(updatedState);
 };
 
 export const removeMinor = (state: ContractFormState, id: string): ContractFormState => {
@@ -523,26 +482,7 @@ export const removeMinor = (state: ContractFormState, id: string): ContractFormS
     },
   };
   
-  // Recalculate totalAmount and reservationAmount if this is from a travel package
-  if (updatedState.travelPackageId && updatedState.pricePerPerson) {
-    const pricePerPerson = toMoney(updatedState.pricePerPerson);
-    const reservationPerPerson = updatedState.reservationPerPerson ? toMoney(updatedState.reservationPerPerson) : 0;
-    if (!Number.isNaN(pricePerPerson)) {
-      const totalPeople = 1 + updatedState.companions.length + updatedState.minors.length;
-      const newTotal = pricePerPerson * totalPeople;
-      const newReservation = !Number.isNaN(reservationPerPerson) && reservationPerPerson > 0 
-        ? reservationPerPerson * totalPeople 
-        : 0;
-      
-      return applyMoneyDerivedValues({
-        ...updatedState,
-        totalAmount: formatMoney(newTotal),
-        reservationAmount: newReservation > 0 ? formatMoney(newReservation) : updatedState.reservationAmount,
-      });
-    }
-  }
-  
-  return updatedState;
+  return recalculateTravelPackageAmounts(updatedState);
 };
 
 export const updateMinor = (
@@ -553,12 +493,12 @@ export const updateMinor = (
 ): ContractFormState => {
   // Handle boolean conversion for travelsWithParent field
   if (field === "travelsWithParent") {
-    return {
+    return recalculateTravelPackageAmounts({
       ...state,
       minors: state.minors.map((item) => 
         item.id === id ? { ...item, [field]: value === "true" } : item
       ),
-    };
+    });
   }
 
   const clearsCustomerIdentity =
@@ -566,7 +506,7 @@ export const updateMinor = (
     field === "minorIdType" ||
     field === "minorId";
   
-  return {
+  return recalculateTravelPackageAmounts({
     ...state,
     minors: state.minors.map((item) =>
       item.id === id
@@ -577,5 +517,5 @@ export const updateMinor = (
           }
         : item
     ),
-  };
+  });
 };

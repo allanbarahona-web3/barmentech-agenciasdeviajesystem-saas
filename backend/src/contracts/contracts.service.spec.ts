@@ -734,6 +734,18 @@ describe("ContractsService archive customer identity resolution", () => {
     }));
   });
 
+  it("continues to require a submitted total for a legacy TravelPackage", async () => {
+    const { service, contractCreate } = createArchiveService([holder]);
+
+    await expect(service.archiveContract(
+      { id: "agent-1", email: "agent@example.com", fullName: "Agent", tenantId: "tenant-1" },
+      packageArchiveDto({ contractNumber: "CT-LEGACY-NO-PAYLOAD", totalAmount: undefined }),
+      [],
+    )).rejects.toThrow("CONTRACT_COMMERCIAL_TOTAL_INVALID");
+
+    expect(contractCreate).not.toHaveBeenCalled();
+  });
+
   it("rejects a stale or client-edited total instead of persisting it", async () => {
     const { service, contractCreate, publishedTravelPackagePricing } = createArchiveService([holder]);
     publishedTravelPackagePricing.read.mockResolvedValue(publishedPrice("550.00000"));

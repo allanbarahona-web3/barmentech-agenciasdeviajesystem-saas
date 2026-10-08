@@ -69,6 +69,7 @@ export type ContractFormState = {
   issuedAt: string;
   destination: string;
   travelPackageId?: string | null;
+  travelPackageCommercialPriceStatus?: "PENDING" | "LEGACY" | "PRICING_PUBLISHED" | null;
   pricePerPerson?: string | null; // Base package price per person (USD)
   reservationPerPerson?: string | null; // Base reservation amount per person
   startDate: string;
