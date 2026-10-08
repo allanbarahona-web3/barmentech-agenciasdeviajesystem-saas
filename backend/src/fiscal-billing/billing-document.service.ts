@@ -337,6 +337,13 @@ function mapAcceptedInvoice(
       description: method.description,
       declaredAmount: method.declaredAmount,
     })),
+    ...(workspace.references.length ? { references: workspace.references.map((reference) => ({
+      referencedDocumentTypeCode: reference.referencedDocumentTypeCode,
+      externalDocumentKey: reference.externalDocumentKey,
+      externalDocumentNumber: reference.externalDocumentNumber,
+      reasonCode: reference.reasonCode,
+      reasonDescription: reference.reasonDescription,
+    })) } : {}),
     lines: workspace.lines.map((line) => ({
       lineNumber: line.lineNumber,
       cabysCode: line.cabysCode,

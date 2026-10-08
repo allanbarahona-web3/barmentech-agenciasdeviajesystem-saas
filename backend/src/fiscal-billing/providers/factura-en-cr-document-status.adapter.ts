@@ -128,7 +128,7 @@ function validateInput(input: ElectronicDocumentStatusLookupInput): void {
     !/^\d{20}$/.test(expectedConsecutive) ||
     (expectedProviderEnvironment !== "sandbox" &&
       expectedProviderEnvironment !== "production") ||
-    (expectedDocumentType !== "01" && expectedDocumentType !== "04") ||
+    (expectedDocumentType !== "01" && expectedDocumentType !== "03" && expectedDocumentType !== "04") ||
     !canonicalDate(expectedFiscalIssueDate) ||
     expectedConsecutive.slice(8, 10) !== expectedDocumentType ||
     !validHaciendaKey(

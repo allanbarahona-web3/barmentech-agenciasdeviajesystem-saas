@@ -6,11 +6,13 @@ import { Roles } from "../auth/roles.decorator";
 import { RolesGuard } from "../auth/roles.guard";
 import {
   CreateBillingDraftDto,
+  CreateFiscalCreditNoteDraftDto,
   ListEligibleSalesOrdersDto,
   ManualInvoiceEmailResendDto,
 } from "./dto/fiscal-billing.dto";
 import { BillingDocumentService } from "./billing-document.service";
 import { SalesOrderFiscalBillingService } from "./fiscal-billing.service";
+import { FiscalCreditNoteDraftService } from "./fiscal-credit-note-draft.service";
 import { FiscalArtifactReadService } from './fiscal-artifact-read.service';
 import { FiscalInvoicePdfService } from "./fiscal-invoice-pdf.service";
 import { FiscalInvoiceAutoDeliveryService } from "./fiscal-invoice-auto-delivery.service";
@@ -29,6 +31,7 @@ export class FiscalBillingController {
     private readonly artifactReadService: FiscalArtifactReadService,
     private readonly fiscalInvoicePdfService: FiscalInvoicePdfService,
     private readonly fiscalInvoiceAutoDeliveryService: FiscalInvoiceAutoDeliveryService,
+    private readonly fiscalCreditNoteDraftService?: FiscalCreditNoteDraftService,
   ) {}
 
   @Get("sales-orders/eligible")
@@ -73,6 +76,18 @@ export class FiscalBillingController {
       salesOrderId,
       body,
       request.user.id,
+    );
+  }
+
+  @Post("credit-notes/draft")
+  createCreditNoteDraft(
+    @Req() request: FiscalBillingRequest,
+    @Body() body: CreateFiscalCreditNoteDraftDto,
+  ) {
+    return this.fiscalCreditNoteDraftService!.createDraft(
+      request.user.tenantId,
+      request.user.id,
+      body,
     );
   }
 

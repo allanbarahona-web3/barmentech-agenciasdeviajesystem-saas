@@ -1,14 +1,14 @@
 export const ELECTRONIC_DOCUMENT_SUBMISSION_PROVIDER = Symbol("ELECTRONIC_DOCUMENT_SUBMISSION_PROVIDER");
 
 export interface PreparedElectronicDocumentSubmission {
-  readonly endpoint: "/documents/factura" | "/documents/tiquete";
+  readonly endpoint: "/documents/factura" | "/documents/nota-credito" | "/documents/tiquete";
   readonly canonicalBody: string;
   readonly requestHash: string;
   readonly idempotencyKey: string;
   readonly metadata: {
     readonly billingDocumentId: string;
     readonly tenantId: string;
-    readonly documentTypeCode: "01" | "04";
+    readonly documentTypeCode: "01" | "03" | "04";
     readonly fiscalNumber: string;
     readonly fiscalIssueDate: string;
   };

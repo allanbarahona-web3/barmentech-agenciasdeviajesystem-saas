@@ -69,7 +69,7 @@ describe("BillingDocumentStatusLookupService", () => {
 
   it.each([
     ["external mode", { billingMode: "EXTERNAL_REGISTRATION" }, "BILLING_DOCUMENT_STATUS_LOOKUP_INELIGIBLE"],
-    ["unsupported type", { documentTypeCode: "03" }, "BILLING_DOCUMENT_STATUS_LOOKUP_INELIGIBLE"],
+    ["unsupported type", { documentTypeCode: "02" }, "BILLING_DOCUMENT_STATUS_LOOKUP_INELIGIBLE"],
     ["allocation ID", { billingDocumentNumberSequenceId: null }, "BILLING_DOCUMENT_STATUS_SNAPSHOT_INVALID"],
     ["allocation number", { allocatedSequenceNumber: null }, "BILLING_DOCUMENT_STATUS_SNAPSHOT_INVALID"],
     ["provider ID", { providerDocumentId: null, haciendaKey: null, providerEnvironment: null, submittedAt: null }, "BILLING_DOCUMENT_STATUS_LOOKUP_INELIGIBLE"],

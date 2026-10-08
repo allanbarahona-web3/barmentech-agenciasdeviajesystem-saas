@@ -309,6 +309,13 @@ export interface AcceptedBillingInvoice {
     description: string | null;
     declaredAmount: string | null;
   }>;
+  references?: Array<{
+    referencedDocumentTypeCode: string;
+    externalDocumentKey: string | null;
+    externalDocumentNumber: string | null;
+    reasonCode: string;
+    reasonDescription: string | null;
+  }>;
   lines: Array<{
     lineNumber: number;
     cabysCode: string | null;

@@ -57,13 +57,13 @@ export class BillingDocumentSubmissionAttemptService {
   }
 }
 
-interface AttemptInput {tenantId:string;billingDocumentId:string;billingDocumentNumberSequenceId:string;allocatedSequenceNumber:bigint;fiscalNumber:string;issuanceIdempotencyKey:string;requestHash:string;documentTypeCode:"01"|"04";fiscalIssueDate:Date;}
+interface AttemptInput {tenantId:string;billingDocumentId:string;billingDocumentNumberSequenceId:string;allocatedSequenceNumber:bigint;fiscalNumber:string;issuanceIdempotencyKey:string;requestHash:string;documentTypeCode:"01"|"03"|"04";fiscalIssueDate:Date;}
 function attemptInput(value:BillingDocumentSubmissionPreparationResult):AttemptInput{
   try{
     const p=value.preparedSubmission,identity=value.identity,allocation=value.allocationIdentity;
     if(!identity.tenantId||!identity.billingDocumentId||!allocation.billingDocumentNumberSequenceId||!/^[1-9]\d{0,9}$/.test(allocation.allocatedSequenceNumber)||
       !/^\d{20}$/.test(p.metadata.fiscalNumber)||!/^billing-document:.+:electronic-issuance:v1$/.test(p.idempotencyKey)||
-      !/^[a-f0-9]{64}$/.test(p.requestHash)||(p.metadata.documentTypeCode!=="01"&&p.metadata.documentTypeCode!=="04")||
+      !/^[a-f0-9]{64}$/.test(p.requestHash)||(p.metadata.documentTypeCode!=="01"&&p.metadata.documentTypeCode!=="03"&&p.metadata.documentTypeCode!=="04")||
       p.metadata.tenantId!==identity.tenantId||p.metadata.billingDocumentId!==identity.billingDocumentId||!/^\d{4}-\d{2}-\d{2}$/.test(p.metadata.fiscalIssueDate)) identityConflict();
     const allocatedSequenceNumber=BigInt(allocation.allocatedSequenceNumber),fiscalIssueDate=dateOnly(p.metadata.fiscalIssueDate);
     return{tenantId:identity.tenantId,billingDocumentId:identity.billingDocumentId,billingDocumentNumberSequenceId:allocation.billingDocumentNumberSequenceId,
@@ -87,7 +87,7 @@ function classifyExisting(row:AttemptRow,input:AttemptInput):"ALREADY_ACKNOWLEDG
   return null;
 }
 function requirePristineEligibility(row:AttemptRow){if(row.billingMode!=="ELECTRONIC_PROVIDER"||row.lifecycleStatus!=="CONFIRMED"||row.providerStatus!=="PENDING"||row.taxAuthorityStatus!=="NOT_SUBMITTED"||
-  (row.documentTypeCode!=="01"&&row.documentTypeCode!=="04")||!row.billingDocumentNumberSequenceId||row.allocatedSequenceNumber===null||row.fiscalNumber===null||row.issuanceIdempotencyKey===null||row.fiscalIssueDate===null||
+  (row.documentTypeCode!=="01"&&row.documentTypeCode!=="03"&&row.documentTypeCode!=="04")||!row.billingDocumentNumberSequenceId||row.allocatedSequenceNumber===null||row.fiscalNumber===null||row.issuanceIdempotencyKey===null||row.fiscalIssueDate===null||
   row.providerDocumentId!==null||row.haciendaKey!==null||row.providerEnvironment!==null||row.submittedAt!==null)corrupt();}
 function dateOnly(value:string){const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(value);if(!m)identityConflict();const date=new Date(Date.UTC(+m![1],+m![2]-1,+m![3]));if(date.getUTCFullYear()!==+m![1]||date.getUTCMonth()+1!==+m![2]||date.getUTCDate()!==+m![3])identityConflict();return date;}
 function sameDate(a:Date|null,b:Date){return !!a&&Number.isFinite(a.getTime())&&a.getUTCFullYear()===b.getUTCFullYear()&&a.getUTCMonth()===b.getUTCMonth()&&a.getUTCDate()===b.getUTCDate();}

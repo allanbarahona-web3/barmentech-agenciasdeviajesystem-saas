@@ -5,7 +5,7 @@ export type FiscalXmlTerminalStatus = 'ACCEPTED' | 'REJECTED';
 
 export interface FiscalXmlIdentityValidationInput {
   readonly artifactType: FiscalXmlArtifactType;
-  readonly documentTypeCode: '01' | '04';
+  readonly documentTypeCode: '01' | '03' | '04';
   readonly fiscalNumber: string;
   readonly haciendaKey: string;
   readonly taxAuthorityStatus: FiscalXmlTerminalStatus;
@@ -15,7 +15,7 @@ export interface FiscalXmlIdentityValidationInput {
 
 export interface FiscalXmlIdentityValidationResult {
   readonly artifactType: FiscalXmlArtifactType;
-  readonly documentTypeCode: '01' | '04';
+  readonly documentTypeCode: '01' | '03' | '04';
   readonly haciendaKey: string;
   readonly fiscalNumber?: string;
   readonly terminalResponseStatus?: 'aceptado' | 'rechazado';
@@ -50,6 +50,7 @@ const MAXIMUM_BYTES = 5 * 1024 * 1024;
 const DEFAULT_LIMITS = { maximumDepth: 64, maximumElements: 10_000, maximumIdentityTextLength: 256 } as const;
 const SIGNED_DOCUMENTS = {
   '01': { root: 'FacturaElectronica', namespace: 'https://cdn.comprobanteselectronicos.go.cr/xml-schemas/v4.4/facturaElectronica' },
+  '03': { root: 'NotaCreditoElectronica', namespace: 'https://cdn.comprobanteselectronicos.go.cr/xml-schemas/v4.4/notaCreditoElectronica' },
   '04': { root: 'TiqueteElectronico', namespace: 'https://cdn.comprobanteselectronicos.go.cr/xml-schemas/v4.4/tiqueteElectronico' },
 } as const;
 const RESPONSE_ROOT = { root: 'MensajeHacienda', namespace: 'https://cdn.comprobanteselectronicos.go.cr/xml-schemas/v4.4/mensajeHacienda' } as const;
@@ -172,7 +173,7 @@ function normalizeResponseStatus(value: string): 'aceptado' | 'rechazado' | null
 function validateInput(input: FiscalXmlIdentityValidationInput): void {
   if (!record(input) || !Buffer.isBuffer(input.bytes) || input.bytes.length === 0 || input.bytes.length > MAXIMUM_BYTES ||
     (input.artifactType !== 'SIGNED_FISCAL_XML' && input.artifactType !== 'TAX_AUTHORITY_RESPONSE_XML') ||
-    (input.documentTypeCode !== '01' && input.documentTypeCode !== '04') ||
+    (input.documentTypeCode !== '01' && input.documentTypeCode !== '03' && input.documentTypeCode !== '04') ||
     (input.taxAuthorityStatus !== 'ACCEPTED' && input.taxAuthorityStatus !== 'REJECTED') ||
     (input.normalizedMimeType !== 'application/xml' && input.normalizedMimeType !== 'text/xml') ||
     !nonEmptyBounded(input.fiscalNumber, 20) || !nonEmptyBounded(input.haciendaKey, 50)) fail('FISCAL_XML_IDENTITY_CAPACITY_OR_MIME_FAILURE');

@@ -71,6 +71,7 @@ import { EmailModule } from "../email/email.module";
 import { FiscalInvoiceAutoDeliveryService } from "./fiscal-invoice-auto-delivery.service";
 import { FiscalInvoiceAutoDeliveryPublisher } from "./jobs/fiscal-invoice-auto-delivery.publisher";
 import { FiscalInvoiceAutoDeliveryProcessor } from "./jobs/fiscal-invoice-auto-delivery.processor";
+import { FiscalCreditNoteDraftService } from "./fiscal-credit-note-draft.service";
 
 @Module({
   imports: [
@@ -89,6 +90,7 @@ import { FiscalInvoiceAutoDeliveryProcessor } from "./jobs/fiscal-invoice-auto-d
   ],
   providers: [
     SalesOrderFiscalBillingService,
+    FiscalCreditNoteDraftService,
     BillingDocumentService,
     PrismaSalesOrderFiscalBillingRepository,
     PrismaBillingDocumentRepository,

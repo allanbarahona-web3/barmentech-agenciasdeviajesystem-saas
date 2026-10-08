@@ -116,7 +116,7 @@ export class BillingDocumentStatusPersistenceService {
 interface ValidatedInput {
   tenantId: string; billingDocumentId: string; sequenceId: string; allocatedSequenceNumber: bigint;
   providerDocumentId: string; haciendaKey: string; issuanceIdempotencyKey: string; fiscalEmissionAt: Date;
-  requestHash: string; attemptedAt: Date; fiscalNumber: string; documentTypeCode: "01" | "04";
+  requestHash: string; attemptedAt: Date; fiscalNumber: string; documentTypeCode: "01" | "03" | "04";
   providerEnvironment: "sandbox" | "production"; fiscalIssueDate: string; submittedAt: Date;
   sourceTaxStatus: "PROCESSING" | "ACCEPTED" | "REJECTED"; decision: Decision; rejectionDetail: string | null;
   statusCheckAttempts:number;lastStatusCheckAt:Date|null;nextStatusCheckAt:Date|null;statusCheckLockOwner:string|null;statusCheckLeaseUntil:Date|null;
@@ -131,7 +131,7 @@ function validateInput(value: BillingDocumentStatusLookupResult): ValidatedInput
       !/^[A-Za-z0-9_-]{1,255}$/.test(identity.providerDocumentId) || !/^\d{50}$/.test(identity.haciendaKey) ||
       identity.issuanceIdempotencyKey !== `billing-document:${identity.billingDocumentId}:electronic-issuance:v1` || identity.issuanceIdempotencyKey.length > 100 ||
       !validDate(identity.fiscalEmissionAt) || !/^[a-f0-9]{64}$/.test(identity.providerRequestHash) || !validDate(identity.providerLastAttemptAt) ||
-      !/^\d{20}$/.test(identity.fiscalNumber) || (identity.documentTypeCode !== "01" && identity.documentTypeCode !== "04") ||
+      !/^\d{20}$/.test(identity.fiscalNumber) || (identity.documentTypeCode !== "01" && identity.documentTypeCode !== "03" && identity.documentTypeCode !== "04") ||
       (identity.providerEnvironment !== "sandbox" && identity.providerEnvironment !== "production") || !canonicalDate(identity.fiscalIssueDate) ||
       identity.lifecycleStatus !== "SUBMITTED" || identity.providerStatus !== "PROCESSED" ||
       !["PROCESSING", "ACCEPTED", "REJECTED"].includes(identity.taxAuthorityStatus) || identity.providerReconciliationRequired !== false ||
@@ -178,7 +178,7 @@ function requireCompleteState(row: PersistenceRow) {
   if (row.billingMode !== "ELECTRONIC_PROVIDER" || row.lifecycleStatus !== "SUBMITTED" || row.providerStatus !== "PROCESSED" ||
     (row.taxAuthorityStatus !== "PROCESSING" && row.taxAuthorityStatus !== "ACCEPTED" && row.taxAuthorityStatus !== "REJECTED") ||
     !safe(row.billingDocumentNumberSequenceId, 191) || typeof row.allocatedSequenceNumber !== "bigint" || !safe(row.fiscalNumber, 50) ||
-    (row.documentTypeCode !== "01" && row.documentTypeCode !== "04") || !safe(row.issuanceIdempotencyKey, 100) ||
+    (row.documentTypeCode !== "01" && row.documentTypeCode !== "03" && row.documentTypeCode !== "04") || !safe(row.issuanceIdempotencyKey, 100) ||
     !safe(row.providerRequestHash, 64) || !validDate(row.providerLastAttemptAt) || !safe(row.providerDocumentId, 255) ||
     !safe(row.haciendaKey, 50) || (row.providerEnvironment !== "sandbox" && row.providerEnvironment !== "production") ||
     !validDate(row.fiscalEmissionAt) || !validDate(row.fiscalIssueDate) || !validDate(row.submittedAt) ||

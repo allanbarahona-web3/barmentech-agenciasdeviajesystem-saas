@@ -8,7 +8,7 @@ export interface ElectronicDocumentStatusLookupInput {
   readonly expectedConsecutive: string;
   readonly expectedProviderEnvironment: "sandbox" | "production";
   readonly expectedFiscalIssueDate: string;
-  readonly expectedDocumentType: "01" | "04";
+  readonly expectedDocumentType: "01" | "03" | "04";
 }
 
 export interface ElectronicDocumentStatusResult {

@@ -3485,35 +3485,41 @@ model OfficialExchangeRateObservation {
 }
 
 model BillingDocumentLine {
-  id                  String           @id @default(cuid())
-  tenantId            String
-  billingDocumentId   String
-  lineNumber          Int
-  cabysCode           String?          @db.VarChar(13)
-  itemCode            String?          @db.VarChar(50)
-  description         String
-  quantity            Decimal          @db.Decimal(18, 4)
-  unitOfMeasureCode   String           @db.VarChar(20)
-  unitPrice           Decimal          @db.Decimal(19, 5)
-  grossAmount         Decimal          @db.Decimal(19, 5)
-  discountAmount      Decimal          @db.Decimal(19, 5)
-  discountCode        String?          @db.VarChar(4)
-  discountReason      String?
-  taxableBase         Decimal          @db.Decimal(19, 5)
-  taxAmount           Decimal          @db.Decimal(19, 5)
-  exoneratedTaxAmount Decimal          @db.Decimal(19, 5)
-  netTaxAmount        Decimal          @db.Decimal(19, 5)
-  lineSubtotal        Decimal          @db.Decimal(19, 5)
-  lineTotal           Decimal          @db.Decimal(19, 5)
-  createdAt           DateTime         @default(now())
-  updatedAt           DateTime         @updatedAt
-  tenant              Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  billingDocument     BillingDocument  @relation(fields: [billingDocumentId, tenantId], references: [id, tenantId], onDelete: Cascade)
-  taxes               BillingLineTax[]
+  id                          String                @id @default(cuid())
+  tenantId                    String
+  billingDocumentId           String
+  /// For a fiscal credit-note line, immutable lineage to the credited line.
+  /// Null preserves all pre-credit-note and non-credit-note fiscal lines.
+  sourceBillingDocumentLineId String?
+  lineNumber                  Int
+  cabysCode                   String?               @db.VarChar(13)
+  itemCode                    String?               @db.VarChar(50)
+  description                 String
+  quantity                    Decimal               @db.Decimal(18, 4)
+  unitOfMeasureCode           String                @db.VarChar(20)
+  unitPrice                   Decimal               @db.Decimal(19, 5)
+  grossAmount                 Decimal               @db.Decimal(19, 5)
+  discountAmount              Decimal               @db.Decimal(19, 5)
+  discountCode                String?               @db.VarChar(4)
+  discountReason              String?
+  taxableBase                 Decimal               @db.Decimal(19, 5)
+  taxAmount                   Decimal               @db.Decimal(19, 5)
+  exoneratedTaxAmount         Decimal               @db.Decimal(19, 5)
+  netTaxAmount                Decimal               @db.Decimal(19, 5)
+  lineSubtotal                Decimal               @db.Decimal(19, 5)
+  lineTotal                   Decimal               @db.Decimal(19, 5)
+  createdAt                   DateTime              @default(now())
+  updatedAt                   DateTime              @updatedAt
+  tenant                      Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  billingDocument             BillingDocument       @relation(fields: [billingDocumentId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  sourceBillingDocumentLine   BillingDocumentLine?  @relation("BillingDocumentLineCreditSource", fields: [sourceBillingDocumentLineId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "billing_document_lines_credit_source_tenant_fkey")
+  creditedBy                  BillingDocumentLine[] @relation("BillingDocumentLineCreditSource")
+  taxes                       BillingLineTax[]
 
   @@unique([billingDocumentId, lineNumber])
   @@unique([id, tenantId])
   @@index([tenantId])
+  @@index([tenantId, sourceBillingDocumentLineId], map: "billing_document_lines_tenant_credit_source_idx")
   @@map("billing_document_lines")
 }
 
@@ -3577,6 +3583,7 @@ model BillingDocumentReference {
   reasonCode                  String           @db.VarChar(4)
   reasonDescription           String?
   referenceDate               DateTime         @db.Date
+  referenceEmissionAt         DateTime?
   createdAt                   DateTime         @default(now())
   updatedAt                   DateTime         @updatedAt
   tenant                      Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)

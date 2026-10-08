@@ -14,14 +14,15 @@ export interface FacturaEnCrSubmissionAggregate {
   fiscalEmissionAt: Date | null; fiscalIssueDate: Date | string | null; currencyCode: string; exchangeRate: string | null;
   officialExchangeRateObservation: FacturaEnCrOfficialRateSnapshot | null; paymentConditionCode: string | null; creditTermDays: number | null;
   receiver: FacturaEnCrReceiverSnapshot | null; paymentMethods: Array<{ paymentMethodOrder: number; paymentMethodCode: string; description: string | null; declaredAmount: string | null }>;
-  totals: FacturaEnCrTotalsSnapshot; lines: FacturaEnCrLineSnapshot[];
+  references?: FacturaEnCrReferenceSnapshot[]; totals: FacturaEnCrTotalsSnapshot; lines: FacturaEnCrLineSnapshot[];
 }
+export interface FacturaEnCrReferenceSnapshot { referencedDocumentTypeCode: string; externalDocumentKey: string | null; referenceDate: Date | string | null; referenceEmissionAt: Date | null; reasonCode: string; reasonDescription: string | null; }
 export interface FacturaEnCrTotalsSnapshot { grossSubtotal:string; discountTotal:string; taxableTotal:string; exemptTotal:string; exoneratedTotal:string; grossTaxTotal:string; exoneratedTaxTotal:string; netTaxTotal:string; total:string; }
 export interface FacturaEnCrOfficialRateSnapshot { id: string; countryCode: string; foreignCurrencyCode: string; localCurrencyCode: string; rateType: string; effectiveDate: Date | string; value: string; sourceAuthority: string; sourceIndicatorCode: string; requestIdentity: string; responseHash: string | null; }
 export interface FacturaEnCrReceiverSnapshot { name: string | null; identificationType: string | null; identification: string | null; economicActivityCode: string | null; email: string | null; /** Unconstrained persisted phone is intentionally not parsed/emitted. */ phone: string | null; address: { provinceCode?: unknown; cantonCode?: unknown; districtCode?: unknown; neighborhoodCode?: unknown; otherAddressDetails?: unknown } | null; }
 export interface FacturaEnCrLineSnapshot { lineNumber: number; cabysCode: string | null; itemCode?: string | null; description: string; quantity: string; unitOfMeasureCode: string; unitPrice: string; grossAmount: string; discountAmount: string; discountCode: string | null; discountReason: string | null; taxableBase: string; taxAmount: string; exoneratedTaxAmount: string; netTaxAmount: string; lineSubtotal: string; lineTotal: string; taxes: FacturaEnCrTaxSnapshot[]; }
 export interface FacturaEnCrTaxSnapshot { taxOrder: number; taxCode: string; rateCode: string; ratePercentage: string; taxableBase: string; taxAmount: string; calculationFactor: string | null; netTaxAmount: string; exemption: null | { documentTypeCode: string; documentNumber: string; legalArticle: string | null; legalSection: string | null; issuingInstitutionCode: string | null; issuingInstitutionName: string | null; otherInstitutionDescription: string | null; issueDate: Date | string; exemptedPercentage: string; exemptedAmount: string }; }
-export interface FacturaEnCrPreparedSubmission { endpoint: "/documents/factura" | "/documents/tiquete"; canonicalBody: string; requestHash: string; idempotencyKey: string; metadata: { billingDocumentId: string; tenantId: string; documentTypeCode: "01" | "04"; fiscalNumber: string; fiscalIssueDate: string }; }
+export interface FacturaEnCrPreparedSubmission { endpoint: "/documents/factura" | "/documents/nota-credito" | "/documents/tiquete"; canonicalBody: string; requestHash: string; idempotencyKey: string; metadata: { billingDocumentId: string; tenantId: string; documentTypeCode: "01" | "03" | "04"; fiscalNumber: string; fiscalIssueDate: string }; }
 
 type Json = string | boolean | null | ExactDecimal | Json[] | { [key: string]: Json }; class ExactDecimal { constructor(readonly value: string) {} }
 type Dec = { coefficient: bigint; scale: number; canonical: string };
@@ -37,7 +38,7 @@ export function prepareFacturaEnCrSubmission(d: FacturaEnCrSubmissionAggregate):
     try { validateCrV44CalculatedSnapshot(d); }
     catch { fail("FACTURA_EN_CR_LINE_TAX_INVALID"); }
   }
-  const endpoint = d.documentTypeCode === "01" ? "/documents/factura" : d.documentTypeCode === "04" ? "/documents/tiquete" : fail("FACTURA_EN_CR_DOCUMENT_TYPE_UNSUPPORTED");
+  const endpoint = d.documentTypeCode === "01" ? "/documents/factura" : d.documentTypeCode === "03" ? "/documents/nota-credito" : d.documentTypeCode === "04" ? "/documents/tiquete" : fail("FACTURA_EN_CR_DOCUMENT_TYPE_UNSUPPORTED");
   const branch = required(d.issuerEstablishmentCode), terminal = required(d.issuerTerminalCode);
   if (!/^\d{3}$/.test(branch) || !/^\d{5}$/.test(terminal) || !d.billingDocumentNumberSequenceId) fail("FACTURA_EN_CR_ALLOCATION_MISMATCH");
   const rawBase = typeof d.allocatedSequenceNumber === "bigint" ? d.allocatedSequenceNumber.toString() : d.allocatedSequenceNumber;
@@ -61,8 +62,19 @@ export function prepareFacturaEnCrSubmission(d: FacturaEnCrSubmissionAggregate):
   else fail("FACTURA_EN_CR_OFFICIAL_RATE_MISMATCH");
   if (receiver) { if (d.receiver!.economicActivityCode) body.codigoActividadReceptor=d.receiver!.economicActivityCode; body.receptor=receiver; }
   body.detalle=[...d.lines].sort((a,b)=>a.lineNumber-b.lineNumber).map(line=>mapLine(line,calculatedPolicy));
+  if (d.documentTypeCode === "03") body.referencia = mapCreditNoteReferences(d.references ?? []);
   let canonicalBody: string; try { canonicalBody=serialize(body); } catch(error) { if(error instanceof FacturaEnCrPreparationError) throw error; fail("FACTURA_EN_CR_CANONICAL_SERIALIZATION_FAILED"); }
-  return { endpoint,canonicalBody,requestHash:createHash("sha256").update(canonicalBody,"utf8").digest("hex"),idempotencyKey,metadata:{billingDocumentId:d.id,tenantId:d.tenantId,documentTypeCode:d.documentTypeCode as "01"|"04",fiscalNumber,fiscalIssueDate} };
+  return { endpoint,canonicalBody,requestHash:createHash("sha256").update(canonicalBody,"utf8").digest("hex"),idempotencyKey,metadata:{billingDocumentId:d.id,tenantId:d.tenantId,documentTypeCode:d.documentTypeCode as "01"|"03"|"04",fiscalNumber,fiscalIssueDate} };
+}
+
+function mapCreditNoteReferences(references: FacturaEnCrReferenceSnapshot[]): Json {
+  if (references.length !== 1) fail("FACTURA_EN_CR_SNAPSHOT_INCOMPLETE");
+  const reference = references[0];
+  if ((reference.referencedDocumentTypeCode !== "01" && reference.referencedDocumentTypeCode !== "04") || !/^\d{50}$/.test(reference.externalDocumentKey ?? "") ||
+    (reference.reasonCode !== "01" && reference.reasonCode !== "02") || !reference.reasonDescription?.trim()) fail("FACTURA_EN_CR_SNAPSHOT_INCOMPLETE");
+  const issueDate = dateOnly(reference.referenceDate, "FACTURA_EN_CR_SNAPSHOT_INCOMPLETE");
+  const fechaEmision = emissionTime(reference.referenceEmissionAt, issueDate);
+  return [{ tipoDocumento: reference.referencedDocumentTypeCode, numero: reference.externalDocumentKey!, fechaEmision, codigo: reference.reasonCode, razon: reference.reasonDescription }];
 }
 
 function officialRate(o: FacturaEnCrOfficialRateSnapshot|null, exchangeRate:string|null, issueDate:string):string {
@@ -73,9 +85,9 @@ function officialRate(o: FacturaEnCrOfficialRateSnapshot|null, exchangeRate:stri
 }
 function mapReceiver(r:FacturaEnCrReceiverSnapshot|null,type:string):Json|null {
   const any=r&&Object.values(r).some(v=>v!==null); if(!any){if(type==="01")fail("FACTURA_EN_CR_RECEIVER_INVALID");return null;}
-  if(!r?.name?.trim()||!r.identificationType||!r.identification)fail("FACTURA_EN_CR_RECEIVER_INVALID");
+  if(!r?.name?.trim()||((r.identificationType===null)!==(r.identification===null))||(type==="01"&&(!r.identificationType||!r.identification)))fail("FACTURA_EN_CR_RECEIVER_INVALID");
   // Receiver order: identity/name, optional activity/email, location. Phone and neighborhood code are omitted.
-  const out:{[key:string]:Json}={tipoIdentificacion:r.identificationType,numeroIdentificacion:r.identification,nombre:r.name}; if(r.economicActivityCode)out.codigoActividad=r.economicActivityCode;if(r.email)out.correoElectronico=r.email;
+  const out:{[key:string]:Json}=r.identificationType&&r.identification ? {tipoIdentificacion:r.identificationType,numeroIdentificacion:r.identification,nombre:r.name} : {nombre:r.name}; if(r.economicActivityCode)out.codigoActividad=r.economicActivityCode;if(r.email)out.correoElectronico=r.email;
   if(r.address){const allowed=new Set(["provinceCode","cantonCode","districtCode","neighborhoodCode","otherAddressDetails"]);if(Object.keys(r.address).some(k=>!allowed.has(k)))fail("FACTURA_EN_CR_RECEIVER_INVALID");const {provinceCode:p,cantonCode:c,districtCode:di,otherAddressDetails:o}=r.address;if(typeof p!=="string"||!/^\d$/.test(p)||typeof c!=="string"||!/^\d{2}$/.test(c)||typeof di!=="string"||!/^\d{2}$/.test(di)||typeof o!=="string"||!o.trim())fail("FACTURA_EN_CR_RECEIVER_INVALID");out.ubicacion={provincia:p,canton:c,distrito:di,otrasSenas:o};} return out;
 }
 function mapLine(l:FacturaEnCrLineSnapshot,calculatedPolicy:boolean):Json {

@@ -6,6 +6,22 @@ import type {
 } from "./billing-document.types";
 
 describe("BillingDocumentService generic core", () => {
+  it("forwards a type-03 draft through the generic issuance path", async () => {
+    const repository = {
+      findIssuancePreflight: jest.fn().mockResolvedValue(preflight({ documentTypeCode: "03" })),
+      requestElectronicIssuance: jest.fn().mockResolvedValue({ newlyAllocated: true }),
+    };
+    const resolver = { resolveExactObservation: jest.fn() };
+    const instant = new Date("2026-08-22T06:00:00.000Z");
+    const clock = { now: jest.fn().mockReturnValue(instant) };
+    const service = new BillingDocumentService(repository as never, resolver as never, clock as never);
+
+    await expect(service.requestElectronicIssuance("tenant-a", "document-a", "user-a")).resolves.toEqual({ newlyAllocated: true });
+    expect(resolver.resolveExactObservation).not.toHaveBeenCalled();
+    expect(repository.requestElectronicIssuance).toHaveBeenCalledWith("tenant-a", "document-a", "user-a", {
+      expectedCurrencyCode: "CRC", fiscalEmissionAt: instant, fiscalIssueDate: "2026-08-22", officialRate: null,
+    });
+  });
   it.each([
     ["Sales Order source", { sourceType: "SALES_ORDER" }],
     ["CR policy", { fiscalCalculationPolicyVersion: "CR_V44_DECIMAL_V1" }],

@@ -56,7 +56,7 @@ interface Prepared {
   recipient: string;
   receiverName: string;
   fiscalNumber: string;
-  documentLabel: "Factura electrónica" | "Tiquete electrónico";
+  documentLabel: "Factura electrónica" | "Nota de crédito electrónica" | "Tiquete electrónico";
   idempotencyKey: string;
   mode: DeliveryMode;
   cc: string[];
@@ -119,7 +119,7 @@ export class FiscalInvoiceAutoDeliveryService {
     const attachments = await Promise.all(resolvedArtifacts.map(async ({ type, version }) => {
       try {
         const artifact = await this.artifacts.download(claim.tenantId, prepared.payload.billingDocumentId, type, String(version));
-        return { filename: artifact.filename, content: artifact.bytes.toString("base64"), contentType: artifact.mimeType };
+        return { filename: prepared.documentLabel === "Nota de crédito electrónica" ? creditNoteAttachmentName(prepared.fiscalNumber, type, artifact.mimeType) : artifact.filename, content: artifact.bytes.toString("base64"), contentType: artifact.mimeType };
       } catch (error) {
         throw classifyExternal(error, FISCAL_INVOICE_AUTO_DELIVERY_ERRORS.ARTIFACT_INVALID);
       }
@@ -137,7 +137,7 @@ export class FiscalInvoiceAutoDeliveryService {
         documentLabel: prepared.documentLabel,
         documentNumber: prepared.fiscalNumber,
         message: prepared.mode === "MANUAL_RESEND" ? `Adjuntamos nuevamente su ${prepared.documentLabel.toLowerCase()} y los documentos fiscales asociados.` : `Adjuntamos su ${prepared.documentLabel.toLowerCase()} y los documentos fiscales asociados.`,
-        attachmentSummary: `${prepared.documentLabel === "Factura electrónica" ? "La factura" : "El tiquete"}, el XML firmado y la respuesta de la autoridad tributaria se encuentran adjuntos.`,
+        attachmentSummary: `${prepared.documentLabel === "Factura electrónica" ? "La factura" : prepared.documentLabel === "Nota de crédito electrónica" ? "La nota de crédito" : "El tiquete"}, el XML firmado y la respuesta de la autoridad tributaria se encuentran adjuntos.`,
       },
       attachments,
       idempotencyKey: prepared.idempotencyKey,
@@ -285,7 +285,8 @@ function auditIdentity(child: { eventType: string; payload: Prisma.JsonValue }, 
   return { mode: "INITIAL_AUTOMATIC" as const, cc: [] as string[], requestId: null, actorUserId: SYSTEM_ACTOR_ID, idempotencyKey: providerKey(tenantId, billingDocumentId), recipient: null };
 }
 function normalizeEmail(value: unknown): string { return typeof value === "string" ? value.trim().toLowerCase() : ""; }
-function fiscalDocumentLabel(value: string): "Factura electrónica" | "Tiquete electrónico" | null { return value === "01" ? "Factura electrónica" : value === "04" ? "Tiquete electrónico" : null; }
+function fiscalDocumentLabel(value: string): "Factura electrónica" | "Nota de crédito electrónica" | "Tiquete electrónico" | null { return value === "01" ? "Factura electrónica" : value === "03" ? "Nota de crédito electrónica" : value === "04" ? "Tiquete electrónico" : null; }
+function creditNoteAttachmentName(fiscalNumber: string, artifactType: string, mimeType: string): string { return `nota-credito-electronica-${fiscalNumber}-${artifactType === "INTERNAL_PDF" ? "representacion" : artifactType === "SIGNED_FISCAL_XML" ? "firmada" : "respuesta"}.${mimeType === "application/pdf" ? "pdf" : "xml"}`; }
 function normalizeCc(value: unknown, recipient: string): string[] {
   if (value === undefined) return [];
   if (!Array.isArray(value) || value.length > 10) throw requestError("FISCAL_INVOICE_MANUAL_RESEND_CC_INVALID", HttpStatus.BAD_REQUEST);

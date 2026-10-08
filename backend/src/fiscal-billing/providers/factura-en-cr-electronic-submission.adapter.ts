@@ -74,12 +74,12 @@ export class FacturaEnCrElectronicSubmissionAdapter implements ElectronicDocumen
 }
 
 function validatePrepared(p: PreparedElectronicDocumentSubmission): void {
-  if (!p || (p.endpoint !== "/documents/factura" && p.endpoint !== "/documents/tiquete") ||
+  if (!p || (p.endpoint !== "/documents/factura" && p.endpoint !== "/documents/nota-credito" && p.endpoint !== "/documents/tiquete") ||
     typeof p.canonicalBody !== "string" || !p.canonicalBody || !/^[a-f0-9]{64}$/.test(p.requestHash) ||
     typeof p.idempotencyKey !== "string" || !p.idempotencyKey || p.idempotencyKey.length > 100 ||
-    !p.metadata || !/^(01|04)$/.test(p.metadata.documentTypeCode) || !/^\d{20}$/.test(p.metadata.fiscalNumber) || !canonicalDate(p.metadata.fiscalIssueDate) ||
+    !p.metadata || !/^(01|03|04)$/.test(p.metadata.documentTypeCode) || !/^\d{20}$/.test(p.metadata.fiscalNumber) || !canonicalDate(p.metadata.fiscalIssueDate) ||
     p.metadata.fiscalNumber.slice(8, 10) !== p.metadata.documentTypeCode ||
-    (p.metadata.documentTypeCode === "01" ? p.endpoint !== "/documents/factura" : p.endpoint !== "/documents/tiquete")) localInvalid();
+    (p.metadata.documentTypeCode === "01" ? p.endpoint !== "/documents/factura" : p.metadata.documentTypeCode === "03" ? p.endpoint !== "/documents/nota-credito" : p.endpoint !== "/documents/tiquete")) localInvalid();
 }
 
 async function readBoundedBody(response: Response): Promise<string> {

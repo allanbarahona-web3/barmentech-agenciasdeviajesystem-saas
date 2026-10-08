@@ -41,7 +41,7 @@ export interface BillingDocumentStatusLookupResult {
     readonly providerRequestHash: string;
     readonly providerLastAttemptAt: Date;
     readonly fiscalNumber: string;
-    readonly documentTypeCode: "01" | "04";
+    readonly documentTypeCode: "01" | "03" | "04";
     readonly providerEnvironment: "sandbox" | "production";
     readonly fiscalIssueDate: string;
     readonly lifecycleStatus: "SUBMITTED";
@@ -141,8 +141,8 @@ export class BillingDocumentStatusLookupService {
 }
 
 function validateSnapshot(row: StatusLookupRow) {
-  if (row.billingMode !== "ELECTRONIC_PROVIDER" || (row.documentTypeCode !== "01" && row.documentTypeCode !== "04")) ineligible();
-  const documentTypeCode: "01" | "04" = row.documentTypeCode === "01" ? "01" : "04";
+  if (row.billingMode !== "ELECTRONIC_PROVIDER" || (row.documentTypeCode !== "01" && row.documentTypeCode !== "03" && row.documentTypeCode !== "04")) ineligible();
+  const documentTypeCode: "01" | "03" | "04" = row.documentTypeCode === "01" ? "01" : row.documentTypeCode === "03" ? "03" : "04";
   const hasAnyAcknowledgement = row.providerDocumentId !== null || row.haciendaKey !== null || row.providerEnvironment !== null || row.submittedAt !== null;
   if (row.providerDocumentId === null && !hasAnyAcknowledgement) ineligible();
   if (row.lifecycleStatus !== "SUBMITTED" || row.providerStatus !== "PROCESSED" ||

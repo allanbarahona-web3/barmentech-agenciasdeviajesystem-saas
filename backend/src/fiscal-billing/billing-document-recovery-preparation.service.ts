@@ -12,7 +12,7 @@ export interface BillingDocumentRecoveryPreparationResult {
   readonly billingDocumentNumberSequenceId: string;
   readonly allocatedSequenceNumber: string;
   readonly fiscalNumber: string;
-  readonly documentTypeCode: "01" | "04";
+  readonly documentTypeCode: "01" | "03" | "04";
   readonly issuanceIdempotencyKey: string;
   readonly providerRequestHash: string;
   readonly providerLastAttemptAt: Date;
@@ -55,15 +55,15 @@ function validateRecovery(value: BillingDocumentSubmissionPreparationResult, ten
     prepared.metadata?.tenantId !== tenantId || prepared.metadata?.billingDocumentId !== billingDocumentId) mismatch();
   if (!safeString(allocation.billingDocumentNumberSequenceId,191) || typeof allocation.allocatedSequenceNumber !== "string" || !/^[1-9]\d{0,9}$/.test(allocation.allocatedSequenceNumber)) mismatch();
   if (typeof recovery.fiscalNumber !== "string" || !/^\d{20}$/.test(recovery.fiscalNumber) ||
-    (recovery.documentTypeCode !== "01" && recovery.documentTypeCode !== "04") ||
+    (recovery.documentTypeCode !== "01" && recovery.documentTypeCode !== "03" && recovery.documentTypeCode !== "04") ||
     typeof recovery.issuanceIdempotencyKey !== "string" || recovery.issuanceIdempotencyKey !== `billing-document:${billingDocumentId}:electronic-issuance:v1` ||
     !validDate(recovery.fiscalEmissionAt) || typeof recovery.fiscalIssueDate !== "string" || !canonicalDate(recovery.fiscalIssueDate) || recovery.issuedAt !== null) mismatch();
   if (recovery.fiscalNumber.slice(8,10) !== recovery.documentTypeCode || recovery.fiscalNumber.slice(10) !== allocation.allocatedSequenceNumber.padStart(10,"0") ||
     prepared.metadata?.fiscalNumber !== recovery.fiscalNumber || prepared.metadata?.documentTypeCode !== recovery.documentTypeCode ||
     prepared.metadata?.fiscalIssueDate !== recovery.fiscalIssueDate || prepared.idempotencyKey !== recovery.issuanceIdempotencyKey ||
     typeof prepared.canonicalBody !== "string" || !prepared.canonicalBody ||
-    (prepared.endpoint !== "/documents/factura" && prepared.endpoint !== "/documents/tiquete") ||
-    prepared.endpoint !== (recovery.documentTypeCode === "01" ? "/documents/factura" : "/documents/tiquete") ||
+    (prepared.endpoint !== "/documents/factura" && prepared.endpoint !== "/documents/nota-credito" && prepared.endpoint !== "/documents/tiquete") ||
+    prepared.endpoint !== (recovery.documentTypeCode === "01" ? "/documents/factura" : recovery.documentTypeCode === "03" ? "/documents/nota-credito" : "/documents/tiquete") ||
     typeof prepared.requestHash !== "string" || !/^[a-f0-9]{64}$/.test(prepared.requestHash)) mismatch();
 
   const errorCode=state.providerLastErrorCode,errorAt=state.providerLastErrorAt;

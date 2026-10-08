@@ -9,7 +9,7 @@ import {
 import type { AcceptedBillingInvoice } from "./billing-document.types";
 import { parseFiscalDecimal, quantizeFiscalDecimal } from "./fiscal-decimal";
 
-const DOCUMENT_TYPES: Readonly<Record<string, string>> = { "01": "Factura electrónica", "04": "Tiquete electrónico" };
+const DOCUMENT_TYPES: Readonly<Record<string, string>> = { "01": "Factura electrónica", "03": "Nota de crédito electrónica", "04": "Tiquete electrónico" };
 const IDENTIFICATION_TYPES: Readonly<Record<string, string>> = { "01": "Cédula física", "02": "Cédula jurídica", "03": "DIMEX", "04": "NITE" };
 const PAYMENT_METHODS: Readonly<Record<string, string>> = {
   "01": "Efectivo",
@@ -48,6 +48,7 @@ export function fiscalInvoicePdfTemplate(invoice: AcceptedBillingInvoice, brandi
     parties(invoice, branding),
     fiscalKey(invoice),
     invoiceSummary(invoice, documentType),
+    creditNoteReference(invoice),
     invoiceLines(invoice),
     invoiceTotals(invoice),
     documentFooter(company),
@@ -93,7 +94,9 @@ function fiscalKey(invoice: AcceptedBillingInvoice): string {
 function invoiceSummary(invoice: AcceptedBillingInvoice, documentType: string): string {
   const documentNumberLabel = invoice.documentTypeCode === "04"
     ? "Número de tiquete"
-    : "Número de factura";
+    : invoice.documentTypeCode === "03"
+      ? "Número de nota de crédito"
+      : "Número de factura";
   return `<section class="invoice-summary transaction-invoice-summary">
   <article>${sectionHeading("Datos de la transacción")}<dl>
     ${row("Condición", paymentCondition(invoice))}${row("Moneda", invoice.currencyCode)}
@@ -104,6 +107,18 @@ function invoiceSummary(invoice: AcceptedBillingInvoice, documentType: string): 
     ${row(documentNumberLabel, invoice.fiscalNumber)}${row("Fecha de emisión", formatDate(invoice.issuedDate))}${row("Tipo de comprobante", documentType)}
   </dl></article>
 </section>`;
+}
+
+function creditNoteReference(invoice: AcceptedBillingInvoice): string {
+  if (invoice.documentTypeCode !== "03") return "";
+  const reference = invoice.references?.[0];
+  if (!reference) return "";
+  const originalLabel = reference.referencedDocumentTypeCode === "04" ? "Tiquete electrónico" : "Factura electrónica";
+  return `<section class="invoice-summary transaction-invoice-summary"><article>${sectionHeading("Documento referenciado")}<dl>
+    ${row("Tipo", originalLabel)}${row("Número", reference.externalDocumentNumber ?? "No disponible")}${row("Clave de Hacienda", reference.externalDocumentKey ?? "No disponible")}
+  </dl></article><article>${sectionHeading("Motivo de la nota de crédito")}<dl>
+    ${row("Código", reference.reasonCode)}${row("Razón", reference.reasonDescription ?? "No disponible")}
+  </dl></article></section>`;
 }
 
 function invoiceLines(invoice: AcceptedBillingInvoice): string {

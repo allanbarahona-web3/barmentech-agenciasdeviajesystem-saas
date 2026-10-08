@@ -80,6 +80,14 @@ describe("FiscalAcceptedFanoutCoordinatorService", () => {
     }));
   });
 
+  it("completes an accepted credit note without scheduling an invoice AR child or Finance effect", async () => {
+    const c = context([parent()], { documentTypeCode: "03" });
+    await c.service.fanOutAvailableEvents();
+    expect(c.tx.billingOutboxEvent.createMany).not.toHaveBeenCalled();
+    expect(c.tx.billingOutboxEvent.findUnique.mock.calls.some((call) => "tenantId_deduplicationKey" in call[0].where)).toBe(false);
+    expect(c.tx.billingOutboxEvent.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "PROCESSED" }) }));
+  });
+
   it("does not complete the parent when child persistence fails", async () => {
     const c = context([parent()]);
     c.tx.billingOutboxEvent.createMany.mockRejectedValueOnce(new Error("insert failed"));

@@ -49,6 +49,7 @@ import { resolveSalesOrderLineFiscalSnapshot } from "./sales-order-line-fiscal-s
 const MAX_SEQUENCE_NUMBER = 9_999_999_999n;
 const SUPPORTED_DOCUMENT_TYPES = new Set<string>([
   CR_DOCUMENT_TYPES.ELECTRONIC_INVOICE,
+  "03",
   CR_DOCUMENT_TYPES.ELECTRONIC_TICKET,
 ]);
 const ISSUANCE_EVENT_TYPE = "billing-document.electronic-issuance-requested";
@@ -685,6 +686,7 @@ export class PrismaBillingDocumentRepository
         const document = await tx.billingDocument.findUnique({
           where: { id_tenantId: { id: billingDocumentId, tenantId } },
           include: {
+            references: { orderBy: { referenceOrder: "asc" } },
             lines: {
               orderBy: { lineNumber: "asc" },
               include: {
@@ -713,6 +715,7 @@ export class PrismaBillingDocumentRepository
           );
         }
 
+        await this.requireCreditNoteIssuanceEligibility(tx, document);
         this.requireEligibleDraft(document);
         const fiscalSnapshot = await this.verifyFiscalPreparation(
           tx,
@@ -1234,6 +1237,83 @@ export class PrismaBillingDocumentRepository
     }
   }
 
+  private async requireCreditNoteIssuanceEligibility(
+    tx: Prisma.TransactionClient,
+    document: any,
+  ): Promise<void> {
+    if (document.documentTypeCode !== "03") return;
+    const references = document.references;
+    if (!Array.isArray(references) || references.length !== 1) {
+      throw fiscalBillingError("BILLING_CREDIT_NOTE_ORIGINAL_FISCAL_IDENTITY_INVALID");
+    }
+    const reference = references[0];
+    if ((reference.referencedDocumentTypeCode !== "01" && reference.referencedDocumentTypeCode !== "04") ||
+      !reference.referencedBillingDocumentId || !/^\d{50}$/.test(reference.externalDocumentKey ?? "") ||
+      !/^\d{20}$/.test(reference.externalDocumentNumber ?? "") ||
+      (reference.reasonCode !== "01" && reference.reasonCode !== "02") || !reference.reasonDescription?.trim() ||
+      !(reference.referenceDate instanceof Date) || !Number.isFinite(reference.referenceDate.getTime())) {
+      throw fiscalBillingError("BILLING_CREDIT_NOTE_ORIGINAL_FISCAL_IDENTITY_INVALID");
+    }
+    const emissionSnapshots = await tx.$queryRaw<Array<{ referenceEmissionAt: Date | null }>>`
+      SELECT "referenceEmissionAt"
+      FROM "billing_document_references"
+      WHERE "id" = ${reference.id} AND "tenantId" = ${document.tenantId}
+      FOR UPDATE
+    `;
+    if (
+      emissionSnapshots.length !== 1 ||
+      !(emissionSnapshots[0].referenceEmissionAt instanceof Date) ||
+      !Number.isFinite(emissionSnapshots[0].referenceEmissionAt.getTime())
+    ) {
+      throw fiscalBillingError("BILLING_CREDIT_NOTE_ORIGINAL_FISCAL_IDENTITY_INVALID");
+    }
+    const originals = await tx.$queryRaw<Array<{ id: string }>>`
+      SELECT "id" FROM "billing_documents"
+      WHERE "id" = ${reference.referencedBillingDocumentId} AND "tenantId" = ${document.tenantId}
+      FOR UPDATE
+    `;
+    if (originals.length !== 1) throw fiscalBillingError("BILLING_CREDIT_NOTE_ORIGINAL_NOT_FOUND");
+    const original = await tx.billingDocument.findUnique({
+      where: { id_tenantId: { id: reference.referencedBillingDocumentId, tenantId: document.tenantId } },
+      include: { lines: { orderBy: { lineNumber: "asc" } } },
+    });
+    if (!original || original.taxAuthorityStatus !== "ACCEPTED") throw fiscalBillingError("BILLING_CREDIT_NOTE_ORIGINAL_NOT_ACCEPTED");
+    if ((original.documentTypeCode !== "01" && original.documentTypeCode !== "04") || original.documentTypeCode !== reference.referencedDocumentTypeCode ||
+      original.haciendaKey !== reference.externalDocumentKey || original.fiscalNumber !== reference.externalDocumentNumber ||
+      !original.fiscalIssueDate || original.fiscalIssueDate.getTime() !== reference.referenceDate.getTime()) {
+      throw fiscalBillingError("BILLING_CREDIT_NOTE_ORIGINAL_FISCAL_IDENTITY_INVALID");
+    }
+    const ncLines = await tx.$queryRaw<Array<{ sourceBillingDocumentLineId: string | null; quantity: Prisma.Decimal; lineTotal: Prisma.Decimal }>>`
+      SELECT "sourceBillingDocumentLineId", "quantity", "lineTotal"
+      FROM "billing_document_lines"
+      WHERE "tenantId" = ${document.tenantId} AND "billingDocumentId" = ${document.id}
+      FOR UPDATE
+    `;
+    if (!ncLines.length || ncLines.some((line) => !line.sourceBillingDocumentLineId || line.quantity.lte(0) || line.lineTotal.lte(0))) {
+      throw fiscalBillingError("BILLING_CREDIT_NOTE_INPUT_INVALID");
+    }
+    const originalById = new Map(original.lines.map((line) => [line.id, line]));
+    if (ncLines.some((line) => !originalById.has(line.sourceBillingDocumentLineId!))) throw fiscalBillingError("BILLING_CREDIT_NOTE_SOURCE_LINE_INVALID");
+    const accepted = await tx.$queryRaw<Array<{ sourceBillingDocumentLineId: string; quantity: Prisma.Decimal; lineTotal: Prisma.Decimal }>>`
+      SELECT line."sourceBillingDocumentLineId", line."quantity", line."lineTotal"
+      FROM "billing_document_lines" line
+      INNER JOIN "billing_documents" note ON note."id" = line."billingDocumentId" AND note."tenantId" = line."tenantId"
+      WHERE note."tenantId" = ${document.tenantId}
+        AND note."documentTypeCode" = '03' AND note."taxAuthorityStatus" = 'ACCEPTED'
+        AND note."id" <> ${document.id} AND note."sourceId" = ${original.id}
+        AND line."sourceBillingDocumentLineId" IS NOT NULL
+      FOR UPDATE
+    `;
+    for (const line of ncLines) {
+      const source = originalById.get(line.sourceBillingDocumentLineId!)!;
+      const used = accepted.filter((row) => row.sourceBillingDocumentLineId === source.id)
+        .reduce((sum, row) => sum.plus(row.quantity), new Prisma.Decimal(0));
+      if (used.plus(line.quantity).greaterThan(source.quantity)) throw fiscalBillingError("BILLING_CREDIT_NOTE_CREDIT_CAP_EXCEEDED");
+    }
+    const full = ncLines.length === original.lines.length && ncLines.every((line) => line.quantity.equals(originalById.get(line.sourceBillingDocumentLineId!)!.quantity));
+    if ((reference.reasonCode === "01") !== full) throw fiscalBillingError("BILLING_CREDIT_NOTE_INPUT_INVALID");
+  }
+
   private async requireFinalReadiness(
     tx: Prisma.TransactionClient,
     document: AllocationDocument,
@@ -1254,7 +1334,7 @@ export class PrismaBillingDocumentRepository
       !/^\d{5}$/.test(document.issuerTerminalCode ?? "") ||
       !document.issuerEconomicActivityCode?.trim() ||
       !["CRC", "USD"].includes(document.currencyCode) ||
-      (document.documentTypeCode !== "04" &&
+      (document.documentTypeCode === "01" &&
         (!document.receiverName?.trim() ||
           !document.receiverIdentificationType?.trim() ||
           !document.receiverIdentification?.trim()))

@@ -139,7 +139,7 @@ describe("BillingDocumentSubmissionPreparationService",()=>{
 
   it.each([
     ["missing fiscal number",{fiscalNumber:null}],["non-string fiscal number",{fiscalNumber:42}],
-    ["unsupported document type",{documentTypeCode:"03"}],["non-string document type",{documentTypeCode:1}],
+    ["unsupported document type",{documentTypeCode:"02"}],["non-string document type",{documentTypeCode:1}],
     ["missing issuance key",{issuanceIdempotencyKey:null}],["non-string issuance key",{issuanceIdempotencyKey:1}],
     ["missing fiscal issue date",{fiscalIssueDate:null}],["invalid fiscal issue date",{fiscalIssueDate:new Date("invalid")}],["non-Date fiscal issue date",{fiscalIssueDate:"2026-08-24"}],
     ["missing fiscal emission",{fiscalEmissionAt:null}],["invalid fiscal emission",{fiscalEmissionAt:new Date("invalid")}],["non-Date fiscal emission",{fiscalEmissionAt:"2026-08-24T06:00:00.456Z"}],

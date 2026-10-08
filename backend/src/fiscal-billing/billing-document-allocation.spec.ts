@@ -351,7 +351,7 @@ describe("PrismaBillingDocumentRepository fiscal allocation", () => {
     expect(currencyMismatch.tx.billingDocumentNumberSequence.findUnique).not.toHaveBeenCalled();
   });
 
-  it.each(["02", "03", "08", "09", "10"])(
+  it.each(["02", "08", "09", "10"])(
     "rejects unsupported draft document type %s before sequence access",
     async (documentTypeCode) => {
       const { repository, tx } = setupNewAllocation({ documentTypeCode });

@@ -65,6 +65,15 @@ describe("fiscalInvoicePdfTemplate", () => {
     expect(html).not.toContain("Número de factura");
   });
 
+  it("uses credit-note-specific visible labels", () => {
+    const invoice = fixture(); invoice.documentTypeCode = "03"; invoice.references = [{ referencedDocumentTypeCode: "04", externalDocumentKey: "50630082600310100000000400001040000000228123456789", externalDocumentNumber: "00100001040000000228", reasonCode: "02", reasonDescription: "Corrección parcial" }];
+    const html = fiscalInvoicePdfTemplate(invoice, branding());
+    expect(html).toContain("Nota de crédito electrónica");
+    expect(html).toContain("Número de nota de crédito");
+    expect(html).toContain("Documento referenciado"); expect(html).toContain("Tiquete electrónico"); expect(html).toContain("00100001040000000228"); expect(html).toContain("Corrección parcial");
+    expect(html).not.toContain("Número de factura");
+  });
+
   it("falls back safely when optional tenant branding is absent or invalid", () => {
     const html = fiscalInvoicePdfTemplate(fixture(), { commercialName: null, logoSrc: null, contactEmail: null, contactPhone: null, contactWhatsApp: null, businessAddress: null, primaryColor: "red;display:none", secondaryColor: null });
     expect(html).toContain("Issuer SA");

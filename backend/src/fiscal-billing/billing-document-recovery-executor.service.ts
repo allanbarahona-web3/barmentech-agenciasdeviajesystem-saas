@@ -60,14 +60,14 @@ export class BillingDocumentRecoveryExecutorService{
 }
 
 function validateInput(i:BillingDocumentRecoveryPreparationResult){try{if(!bounded(i.tenantId)||!bounded(i.billingDocumentId)||!safe(i.billingDocumentNumberSequenceId,191)||
-  typeof i.allocatedSequenceNumber!=="string"||!/^[1-9]\d{0,9}$/.test(i.allocatedSequenceNumber)||typeof i.fiscalNumber!=="string"||!/^\d{20}$/.test(i.fiscalNumber)||(i.documentTypeCode!=="01"&&i.documentTypeCode!=="04")||
+  typeof i.allocatedSequenceNumber!=="string"||!/^[1-9]\d{0,9}$/.test(i.allocatedSequenceNumber)||typeof i.fiscalNumber!=="string"||!/^\d{20}$/.test(i.fiscalNumber)||(i.documentTypeCode!=="01"&&i.documentTypeCode!=="03"&&i.documentTypeCode!=="04")||
   i.fiscalNumber.slice(8,10)!==i.documentTypeCode||i.fiscalNumber.slice(10)!==i.allocatedSequenceNumber.padStart(10,"0")||i.issuanceIdempotencyKey!==`billing-document:${i.billingDocumentId}:electronic-issuance:v1`||
   !/^[a-f0-9]{64}$/.test(i.providerRequestHash)||!validDate(i.providerLastAttemptAt)||!validDate(i.fiscalEmissionAt)||!canonicalDate(i.fiscalIssueDate)||
   i.lifecycleStatus!=="CONFIRMED"||i.providerStatus!=="PENDING"||i.taxAuthorityStatus!=="NOT_SUBMITTED"||i.providerReconciliationRequired!==true||i.submittedAt!==null||i.issuedAt!==null||
   (i.providerLastErrorCode===null)!==(i.providerLastErrorAt===null)||(i.providerLastErrorCode!==null&&!/^[A-Z][A-Z0-9_]{0,99}$/.test(i.providerLastErrorCode))||(i.providerLastErrorAt!==null&&!validDate(i.providerLastErrorAt))||
   i.preparedSubmission.requestHash!==i.providerRequestHash||i.preparedSubmission.idempotencyKey!==i.issuanceIdempotencyKey)corrupt();BigInt(i.allocatedSequenceNumber);}catch(error){if(error instanceof HttpException)throw error;corrupt();}}
 function requireUncertain(r:RecoveryRow){if(r.billingMode!=="ELECTRONIC_PROVIDER"||r.lifecycleStatus!=="CONFIRMED"||r.providerStatus!=="PENDING"||r.taxAuthorityStatus!=="NOT_SUBMITTED"||!r.providerReconciliationRequired||
-  !safe(r.billingDocumentNumberSequenceId,191)||typeof r.allocatedSequenceNumber!=="bigint"||!safe(r.fiscalNumber,50)||(r.documentTypeCode!=="01"&&r.documentTypeCode!=="04")||!safe(r.issuanceIdempotencyKey,100)||!validDate(r.fiscalEmissionAt)||!validDate(r.fiscalIssueDate)||
+  !safe(r.billingDocumentNumberSequenceId,191)||typeof r.allocatedSequenceNumber!=="bigint"||!safe(r.fiscalNumber,50)||(r.documentTypeCode!=="01"&&r.documentTypeCode!=="03"&&r.documentTypeCode!=="04")||!safe(r.issuanceIdempotencyKey,100)||!validDate(r.fiscalEmissionAt)||!validDate(r.fiscalIssueDate)||
   !safe(r.providerRequestHash,64)||!validDate(r.providerLastAttemptAt)||r.providerDocumentId!==null||r.haciendaKey!==null||r.providerEnvironment!==null||r.submittedAt!==null||r.issuedAt!==null||
   (r.providerLastErrorCode===null)!==(r.providerLastErrorAt===null)||(r.providerLastErrorCode!==null&&!/^[A-Z][A-Z0-9_]{0,99}$/.test(r.providerLastErrorCode))||(r.providerLastErrorAt!==null&&!validDate(r.providerLastErrorAt)))corrupt();}
 function requireImmutable(r:RecoveryRow,i:BillingDocumentRecoveryPreparationResult){if(r.id!==i.billingDocumentId||r.tenantId!==i.tenantId||r.billingDocumentNumberSequenceId!==i.billingDocumentNumberSequenceId||r.allocatedSequenceNumber!==BigInt(i.allocatedSequenceNumber)||

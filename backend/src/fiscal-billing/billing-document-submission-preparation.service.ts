@@ -32,6 +32,9 @@ const submissionSelect = Prisma.validator<Prisma.BillingDocumentSelect>()({
   paymentMethods: { orderBy: [{ paymentMethodOrder: "asc" }, { id: "asc" }], select: {
     id: true, tenantId: true, paymentMethodOrder: true, paymentMethodCode: true, description: true, declaredAmount: true,
   } },
+  references: { orderBy: [{ referenceOrder: "asc" }, { id: "asc" }], select: {
+    referencedDocumentTypeCode: true, externalDocumentKey: true, referenceDate: true, reasonCode: true, reasonDescription: true,
+  } },
   lines: { orderBy: [{ lineNumber: "asc" }, { id: "asc" }], select: {
     id: true, tenantId: true, lineNumber: true, cabysCode: true, itemCode: true, description: true, quantity: true,
     unitOfMeasureCode: true, unitPrice: true, grossAmount: true, discountAmount: true, discountCode: true,
@@ -59,7 +62,7 @@ export interface BillingDocumentSubmissionPreparationResult {
   };
   readonly recoveryIdentity: {
     readonly fiscalNumber: string;
-    readonly documentTypeCode: "01" | "04";
+    readonly documentTypeCode: "01" | "03" | "04";
     readonly issuanceIdempotencyKey: string;
     readonly fiscalEmissionAt: Date;
     readonly fiscalIssueDate: string;
@@ -91,8 +94,9 @@ export class BillingDocumentSubmissionPreparationService {
       throw fiscalBillingError("BILLING_DOCUMENT_FISCAL_CALCULATION_POLICY_UNSUPPORTED");
     }
 
+    const referenceEmissionAt = row.documentTypeCode === "03" ? await this.creditNoteReferenceEmissionAt(tenantId, row.id) : null;
     let aggregate: FacturaEnCrSubmissionAggregate;
-    try { aggregate = mapAggregate(row, tenantId); }
+    try { aggregate = mapAggregate(row, tenantId, referenceEmissionAt); }
     catch { throw fiscalBillingError("BILLING_DOCUMENT_SUBMISSION_SNAPSHOT_INVALID"); }
     if (!aggregate.billingDocumentNumberSequenceId || typeof aggregate.allocatedSequenceNumber !== "string") {
       throw fiscalBillingError("BILLING_DOCUMENT_SUBMISSION_SNAPSHOT_INVALID");
@@ -132,11 +136,20 @@ export class BillingDocumentSubmissionPreparationService {
       },
     };
   }
+
+  private async creditNoteReferenceEmissionAt(tenantId: string, billingDocumentId: string): Promise<Date | null> {
+    const rows = await this.prisma.$queryRaw<Array<{ referenceEmissionAt: Date | null }>>`
+      SELECT "referenceEmissionAt" FROM "billing_document_references"
+      WHERE "tenantId" = ${tenantId} AND "billingDocumentId" = ${billingDocumentId}
+      ORDER BY "referenceOrder" ASC, "id" ASC
+    `;
+    return rows.length === 1 && rows[0].referenceEmissionAt instanceof Date ? rows[0].referenceEmissionAt : null;
+  }
 }
 
 function mapRecoveryIdentity(row: SubmissionRow): BillingDocumentSubmissionPreparationResult["recoveryIdentity"] {
   if (typeof row.fiscalNumber !== "string" || !/^\d{20}$/.test(row.fiscalNumber) ||
-    (row.documentTypeCode !== "01" && row.documentTypeCode !== "04") ||
+    (row.documentTypeCode !== "01" && row.documentTypeCode !== "03" && row.documentTypeCode !== "04") ||
     typeof row.issuanceIdempotencyKey !== "string" ||
     row.issuanceIdempotencyKey !== `billing-document:${row.id}:electronic-issuance:v1` || row.issuanceIdempotencyKey.length > 100) invalidSnapshot();
   const fiscalIssueDate = dateOnly(row.fiscalIssueDate);
@@ -147,9 +160,9 @@ function mapRecoveryIdentity(row: SubmissionRow): BillingDocumentSubmissionPrepa
     issuedAt: row.issuedAt === null ? null : new Date(row.issuedAt.getTime()) };
 }
 
-function mapAggregate(row: SubmissionRow, expectedTenantId: string): FacturaEnCrSubmissionAggregate {
+function mapAggregate(row: SubmissionRow, expectedTenantId: string, referenceEmissionAt: Date | null): FacturaEnCrSubmissionAggregate {
   if (row.tenantId !== expectedTenantId || row.billingMode !== "ELECTRONIC_PROVIDER" || !["CONFIRMED", "SUBMITTED"].includes(row.lifecycleStatus) ||
-    !["01", "04"].includes(row.documentTypeCode) || row.paymentMethods.some(x => x.tenantId !== expectedTenantId) ||
+    !["01", "03", "04"].includes(row.documentTypeCode) || row.paymentMethods.some(x => x.tenantId !== expectedTenantId) ||
     row.lines.some(x => x.tenantId !== expectedTenantId || x.taxes.some(t => t.tenantId !== expectedTenantId || (t.exemption !== null && t.exemption.tenantId !== expectedTenantId)))) invalidSnapshot();
   verifyOfficialSnapshot(row);
   return {
@@ -182,6 +195,8 @@ function mapAggregate(row: SubmissionRow, expectedTenantId: string): FacturaEnCr
       address: address(row.receiverAddressSnapshot) },
     paymentMethods: row.paymentMethods.map(x => ({ paymentMethodOrder: x.paymentMethodOrder, paymentMethodCode: x.paymentMethodCode,
       description: x.description, declaredAmount: decimal(x.declaredAmount) })),
+    references: (row.references ?? []).map(reference => ({ referencedDocumentTypeCode: reference.referencedDocumentTypeCode, externalDocumentKey: reference.externalDocumentKey,
+      referenceDate: dateOnly(reference.referenceDate), referenceEmissionAt, reasonCode: reference.reasonCode, reasonDescription: reference.reasonDescription })),
     lines: row.lines.map(line => ({ lineNumber: line.lineNumber, cabysCode: line.cabysCode, itemCode: line.itemCode,
       description: line.description, quantity: decimal(line.quantity)!, unitOfMeasureCode: line.unitOfMeasureCode,
       unitPrice: decimal(line.unitPrice)!, grossAmount: decimal(line.grossAmount)!, discountAmount: decimal(line.discountAmount)!,

@@ -56,6 +56,16 @@ describe("FiscalInvoiceAutoDeliveryService", () => {
     }));
   });
 
+  it("delivers an accepted credit note with type-aware wording and attachment names", async () => {
+    const c = context({ document: { documentTypeCode: "03" } });
+    await c.service.processClaimedDelivery(claim());
+    expect(c.send).toHaveBeenCalledWith(expect.objectContaining({
+      subject: "Nota de crédito electrónica 00100001010000000042",
+      templateData: expect.objectContaining({ documentLabel: "Nota de crédito electrónica", message: "Adjuntamos su nota de crédito electrónica y los documentos fiscales asociados.", attachmentSummary: "La nota de crédito, el XML firmado y la respuesta de la autoridad tributaria se encuentran adjuntos." }),
+      attachments: expect.arrayContaining([expect.objectContaining({ filename: "nota-credito-electronica-00100001010000000042-representacion.pdf" }), expect.objectContaining({ filename: "nota-credito-electronica-00100001010000000042-firmada.xml" }), expect.objectContaining({ filename: "nota-credito-electronica-00100001010000000042-respuesta.xml" })]),
+    }));
+  });
+
   it("uses only immutable receiverEmail and treats a missing receiver as permanent", async () => {
     const c = context({ document: { receiverEmail: null } });
     await expect(c.service.processClaimedDelivery(claim())).rejects.toEqual(expect.objectContaining({ code: FISCAL_INVOICE_AUTO_DELIVERY_ERRORS.RECIPIENT_INVALID, retryable: false }));

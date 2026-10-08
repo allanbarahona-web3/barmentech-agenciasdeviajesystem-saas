@@ -1,8 +1,9 @@
-import { Transform } from "class-transformer";
+import { Transform, Type } from "class-transformer";
 import {
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
+  IsBoolean,
   IsIn,
   IsInt,
   IsEmail,
@@ -11,6 +12,7 @@ import {
   MaxLength,
   Max,
   Min,
+  ValidateNested,
 } from "class-validator";
 import { CR_DOCUMENT_TYPES } from "../fiscal-billing.constants";
 
@@ -66,4 +68,45 @@ export class CreateBillingDraftDto {
   @IsString({ each: true })
   paymentMethodCodes!: string[];
 
+}
+
+export class FiscalCreditNoteLineSelectionDto {
+  @IsString()
+  @MaxLength(191)
+  sourceBillingDocumentLineId!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  creditedQuantity?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  creditedGrossAmount?: string;
+}
+
+export class CreateFiscalCreditNoteDraftDto {
+  @IsString()
+  @MaxLength(191)
+  originalBillingDocumentId!: string;
+
+  @IsString()
+  @MaxLength(4)
+  referenceReasonCode!: string;
+
+  @IsString()
+  @MaxLength(500)
+  referenceReasonDescription!: string;
+
+  @IsBoolean()
+  fullDocument!: boolean;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(100)
+  @ValidateNested({ each: true })
+  @Type(() => FiscalCreditNoteLineSelectionDto)
+  lines?: FiscalCreditNoteLineSelectionDto[];
 }
