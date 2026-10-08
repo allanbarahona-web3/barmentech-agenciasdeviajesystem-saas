@@ -33,6 +33,10 @@ const DOCUMENT_TYPES: Record<string, string> = {
   '04': 'Tiquete electrónico',
 };
 
+function documentTypeLabel(documentTypeCode: string): string {
+  return DOCUMENT_TYPES[documentTypeCode] ?? 'Documento electrónico';
+}
+
 const IDENTIFICATION_TYPES: Record<string, string> = {
   '01': 'Cédula física',
   '02': 'Cédula jurídica',
@@ -348,8 +352,8 @@ export default function AcceptedInvoicePage() {
 
         <header className={styles.header}>
           <p className={styles.eyebrow}>Factura fiscal</p>
-          <h1 className={styles.title}>Factura electrónica #{invoice.fiscalNumber}</h1>
-          <p className={styles.subtitle}>{DOCUMENT_TYPES[invoice.documentTypeCode] ?? `Documento ${invoice.documentTypeCode}`} · Emitida el {formatDate(invoice.issuedDate)}</p>
+          <h1 className={styles.title}>{documentTypeLabel(invoice.documentTypeCode)} #{invoice.fiscalNumber}</h1>
+          <p className={styles.subtitle}>{documentTypeLabel(invoice.documentTypeCode)} · Emitida el {formatDate(invoice.issuedDate)}</p>
           <div className={styles.types}>
             <Badge variant="outline" className={styles.readyBadge}>Aceptada</Badge>
             <Badge variant="outline" className={styles.documentTypeBadge}>{invoice.currencyCode}</Badge>
@@ -368,7 +372,7 @@ export default function AcceptedInvoicePage() {
           <section className={`${styles.card} ${styles.section}`}>
             <h2>Información de factura</h2>
             <dl className={styles.details}>
-              <div><dt>Documento</dt><dd>{DOCUMENT_TYPES[invoice.documentTypeCode] ?? invoice.documentTypeCode}</dd></div>
+              <div><dt>Documento</dt><dd>{documentTypeLabel(invoice.documentTypeCode)}</dd></div>
               <div><dt>Número de factura</dt><dd>{invoice.fiscalNumber}</dd></div>
               <div><dt>Clave de Hacienda</dt><dd>{invoice.haciendaKey}</dd></div>
               <div><dt>Fecha de emisión</dt><dd>{formatDate(invoice.issuedDate)}</dd></div>

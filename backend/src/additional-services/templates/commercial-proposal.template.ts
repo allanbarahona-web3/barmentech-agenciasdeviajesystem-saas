@@ -48,7 +48,7 @@ function quotationHeader(proposal: CommercialProposalPdfDto): string {
     </div>
   </div>
   <div class="quote-identity">
-    <p class="quote-title">COTIZACIÓN</p>
+    <p class="quote-title">COTIZACIÓN DE SERVICIOS ADICIONALES</p>
     <p class="quote-number">${escapeHtml(proposal.proposalNumber)}</p>
     <dl>
       <div><dt>Emisión</dt><dd>${displayDate(proposal.issuedAt)}</dd></div>
@@ -75,7 +75,6 @@ function customerTravelSummary(proposal: CommercialProposalPdfDto): string {
           "Fechas",
           `${displayDate(travel.departureDate)} – ${displayDate(travel.returnDate)}`,
         ),
-        summaryRow("Referencia", travel.reference),
       ].join("")
     : `<p class="summary-empty">Sin viaje asociado</p>`;
 

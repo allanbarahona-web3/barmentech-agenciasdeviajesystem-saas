@@ -13,16 +13,24 @@ describe("commercialProposalTemplate", () => {
 
     expect(html).toContain("<!DOCTYPE html>");
     expect(html).toContain("Viajes &amp; Compañía");
-    expect(html).toContain("COTIZACIÓN");
+    expect(html).toContain("COTIZACIÓN DE SERVICIOS ADICIONALES");
     expect(html).toContain("AS-2026-0042");
     expect(html).toContain("Ana &lt;Cliente&gt;");
     expect(html).toContain("Europa 2026");
+    expect(html).toContain("España");
+    expect(html).toContain("01/10/2026");
+    expect(html).toContain("10/10/2026");
+    expect(html).not.toContain("Referencia");
+    expect(html).not.toContain("PKG-2026-10");
     expect(html).toContain("Equipaje adicional");
     expect(html).toContain("Equipaje documentado");
     expect(html).not.toContain("CHECKED_BAGGAGE");
     expect(html).toContain("Sujeto a disponibilidad.");
     expect(html).toContain("CONDICIONES COMERCIALES");
     expect(html).toContain("15 días");
+    expect(html).toContain("USD&nbsp;100,00");
+    expect(html).toContain("USD&nbsp;13,00");
+    expect(html).toContain("USD&nbsp;113,00");
     expect(html).toContain('<footer class="quote-footer">');
 
     const body = html.slice(html.indexOf("<body>"));
