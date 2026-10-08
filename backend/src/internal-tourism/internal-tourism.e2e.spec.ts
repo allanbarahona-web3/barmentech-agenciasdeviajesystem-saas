@@ -43,14 +43,14 @@ describe('Internal Tourism Module - E2E Tests', () => {
           useValue: {
             internalTrip: {
               create: jest.fn(),
-              findUnique: jest.fn(),
+              findFirst: jest.fn(),
               findMany: jest.fn(),
               update: jest.fn(),
               count: jest.fn(),
             },
             internalTourBooking: {
               create: jest.fn(),
-              findUnique: jest.fn(),
+              findFirst: jest.fn(),
               findMany: jest.fn(),
               update: jest.fn(),
               count: jest.fn(),
@@ -62,7 +62,7 @@ describe('Internal Tourism Module - E2E Tests', () => {
               count: jest.fn(),
             },
             client: {
-              findUnique: jest.fn(),
+              findMany: jest.fn(),
             },
             billingPayment: {
               create: jest.fn(),
@@ -91,6 +91,10 @@ describe('Internal Tourism Module - E2E Tests', () => {
     bookingsService = moduleFixture.get<InternalBookingsService>(InternalBookingsService);
     emailService = moduleFixture.get<EmailService>(EmailService);
     prismaService = moduleFixture.get<PrismaService>(PrismaService);
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
   });
 
   afterAll(async () => {
@@ -205,14 +209,14 @@ describe('Internal Tourism Module - E2E Tests', () => {
         tenantId: mockTenantId,
       };
 
-      jest.spyOn(prismaService.internalTrip, 'findUnique').mockResolvedValue(mockTrip as any);
-      jest.spyOn(prismaService.client, 'findUnique').mockResolvedValue(mockClient as any);
-      jest.spyOn(prismaService.internalTourBooking, 'findMany').mockResolvedValue([]);
+      jest.spyOn(prismaService.internalTrip, 'findFirst').mockResolvedValue(mockTrip as any);
+      jest.spyOn(prismaService.client, 'findMany').mockResolvedValue([
+        mockClient,
+        { ...mockClient, id: 'client-456', email: 'companion@example.com' },
+      ] as any);
+      jest.spyOn(prismaService.internalTourBooking, 'findFirst').mockResolvedValue(null);
       jest.spyOn(prismaService.internalTourBooking, 'count').mockResolvedValue(0);
-      jest.spyOn(prismaService, '$transaction').mockResolvedValue({
-        booking: mockBooking,
-        invoice: mockInvoice,
-      });
+      jest.spyOn(prismaService, '$transaction').mockResolvedValue(mockBooking);
       jest.spyOn(emailService, 'sendEmail').mockResolvedValue({} as any);
 
       const result = await bookingsService.createBooking(
@@ -229,39 +233,51 @@ describe('Internal Tourism Module - E2E Tests', () => {
       );
 
       expect(result).toBeDefined();
-      expect(result.booking.id).toBe('booking-123');
-      expect(result.booking.status).toBe('PENDING');
-      expect(result.booking.bookingCode).toMatch(/^IT-\d{6}-\d{3}$/);
+      expect(result.id).toBe('booking-123');
+      expect(result.status).toBe('PENDING');
+      expect(result.bookingCode).toMatch(/^IT-\d{6}-\d{3}$/);
       expect(emailService.sendEmail).toHaveBeenCalledWith(
         expect.objectContaining({
           template: 'booking-confirmation',
         }),
       );
 
-      createdBookingId = result.booking.id;
+      createdBookingId = result.id;
     });
 
     it('Step 3: Should record payment and update booking status', async () => {
-      const paidBooking = {
+      const bookingBeforePayment = {
         id: createdBookingId,
         bookingCode: 'IT-202605-001',
         internalTripId: createdTripId,
         clientId: 'client-123',
         participantCount: 2,
         totalAmount: new Decimal('180000'),
-        paidAmount: new Decimal('180000'),
-        pendingAmount: new Decimal('0'),
+        paidAmount: new Decimal('0'),
+        pendingAmount: new Decimal('180000'),
         currency: 'CRC',
-        status: 'PAID',
+        status: 'PENDING',
         tenantId: mockTenantId,
         notes: null,
         createdAt: new Date(),
         updatedAt: new Date(),
       };
 
+      const paidBooking = {
+        ...bookingBeforePayment,
+        paidAmount: new Decimal('180000'),
+        pendingAmount: new Decimal('0'),
+        status: 'PAID',
+      };
+
       jest
-        .spyOn(prismaService.internalTourBooking, 'findUnique')
-        .mockResolvedValue({ ...paidBooking, client: { email: 'client@example.com', fullName: 'Test' }, internalTrip: { name: 'Trip' } } as any);
+        .spyOn(prismaService.internalTourBooking, 'findFirst')
+        .mockResolvedValueOnce({ ...bookingBeforePayment, invoice: { id: 'invoice-123' } } as any)
+        .mockResolvedValueOnce({
+          ...paidBooking,
+          client: { email: 'client@example.com', fullName: 'Test' },
+          internalTrip: { name: 'Trip', destination: 'Destination', departureDate: new Date(), returnDate: new Date() },
+        } as any);
       jest.spyOn(prismaService, '$transaction').mockResolvedValue(paidBooking);
       jest.spyOn(emailService, 'sendEmail').mockResolvedValue({} as any);
 
@@ -274,8 +290,8 @@ describe('Internal Tourism Module - E2E Tests', () => {
       );
 
       expect(result).toBeDefined();
-      expect(result.paidAmount).toEqual(new Decimal('180000'));
-      expect(result.pendingAmount).toEqual(new Decimal('0'));
+      expect(result.paidAmount).toBe(180000);
+      expect(result.pendingAmount).toBe(0);
       expect(result.status).toBe('PAID');
       expect(emailService.sendEmail).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -325,8 +341,7 @@ describe('Internal Tourism Module - E2E Tests', () => {
         },
       ];
 
-      jest.spyOn(prismaService.internalTrip, 'findUnique').mockResolvedValue(mockTrip as any);
-      jest.spyOn(prismaService.internalTourBooking, 'findMany').mockResolvedValue(mockBookings as any);
+      jest.spyOn(prismaService.internalTrip, 'findFirst').mockResolvedValue({ ...mockTrip, bookings: mockBookings } as any);
       jest.spyOn(prismaService.internalTrip, 'update').mockResolvedValue({
         ...mockTrip,
         status: 'CANCELLED',
@@ -386,8 +401,8 @@ describe('Internal Tourism Module - E2E Tests', () => {
 
       const cancelledBooking = { ...paidBooking, status: 'CANCELLED' };
 
-      jest.spyOn(prismaService.internalTourBooking, 'findUnique').mockResolvedValue(paidBooking as any);
-      jest.spyOn(prismaService, '$transaction').mockResolvedValue(cancelledBooking);
+      jest.spyOn(prismaService.internalTourBooking, 'findFirst').mockResolvedValue(paidBooking as any);
+      jest.spyOn(prismaService.internalTourBooking, 'update').mockResolvedValue(cancelledBooking as any);
       jest.spyOn(emailService, 'sendEmail').mockResolvedValue({} as any);
 
       const result = await bookingsService.cancelBooking(
@@ -402,7 +417,7 @@ describe('Internal Tourism Module - E2E Tests', () => {
         expect.objectContaining({
           template: 'trip-cancelled',
           to: mockClient.email,
-          data: expect.objectContaining({
+          templateData: expect.objectContaining({
             refundAmount: 180000, // Full refund since it was paid
           }),
         }),
@@ -490,13 +505,11 @@ describe('Internal Tourism Module - E2E Tests', () => {
         internalTrip: mockTrip,
       };
 
-      jest.spyOn(prismaService.internalTrip, 'findUnique').mockResolvedValue(mockTrip as any);
-      jest.spyOn(prismaService.client, 'findUnique').mockResolvedValue(mockClient as any);
+      jest.spyOn(prismaService.internalTrip, 'findFirst').mockResolvedValue(mockTrip as any);
+      jest.spyOn(prismaService.client, 'findMany').mockResolvedValue([mockClient] as any);
+      jest.spyOn(prismaService.internalTourBooking, 'findFirst').mockResolvedValue(null);
       jest.spyOn(prismaService.internalTourBooking, 'count').mockResolvedValue(0);
-      jest.spyOn(prismaService, '$transaction').mockResolvedValue({
-        booking: mockBooking,
-        invoice: {},
-      });
+      jest.spyOn(prismaService, '$transaction').mockResolvedValue(mockBooking);
 
       // Email service throws an error
       jest
@@ -517,7 +530,7 @@ describe('Internal Tourism Module - E2E Tests', () => {
       );
 
       expect(result).toBeDefined();
-      expect(result.booking.id).toBe('booking-email-test');
+      expect(result.id).toBe('booking-email-test');
     });
   });
 });

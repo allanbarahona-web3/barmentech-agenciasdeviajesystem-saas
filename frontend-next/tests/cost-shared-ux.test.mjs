@@ -37,13 +37,13 @@ test("Additional Services retains its existing airport field without Cost Engine
   assert.doesNotMatch(airportSelector, /additional-services/i);
 });
 
-test("Cost Engine opens evidence inline and resolves signed URLs only for the selected attachment", () => {
+test("Cost Engine opens evidence inline through its injected adapter and resolves signed URLs only for the selected attachment", () => {
   for (const source of [workspace, evolution]) {
     assert.match(source, /AttachmentViewer/);
     assert.doesNotMatch(source, /window\.open/);
   }
-  assert.match(workspace, /listCostEvidence\(initialSnapshot\.id\)/);
-  assert.match(workspace, /getCostEvidenceAccess\(evidenceViewer\.snapshotId, attachment\.id\)/);
+  assert.match(workspace, /api\.listEvidence\(initialSnapshot\.id\)/);
+  assert.match(workspace, /api\.getEvidenceAccess\(evidenceViewer\.snapshotId, attachment\.id\)/);
   assert.match(workspace, /originalFileName: item\.originalFileName, mimeType: item\.mimeType/);
   assert.match(evolution, /originalFileName: evidence\.originalFileName, mimeType: evidence\.mimeType/);
   assert.match(viewer, /current\?\.mimeType\?\.startsWith\("image\/"\)/);

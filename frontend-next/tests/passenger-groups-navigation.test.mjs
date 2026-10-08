@@ -42,7 +42,7 @@ test('navigation uses a distinct Layers3 identity and exposes the parallel trip 
   const dashboard = readSource('../src/app/agent-dashboard/page.tsx');
 
   assert.match(nav, /hasPassengerGroupsAccess = isAdmin \|\| role === "AGENT" \|\| role === "OPERACIONES"/);
-  assert.match(nav, /import \{ Layers3 \} from "lucide-react"/);
+  assert.match(nav, /import \{ ClipboardCheck, Layers3 \} from "lucide-react"/);
   assert.match(nav, /label: "Agrupaciones"/);
   assert.match(nav, /icon: <Layers3 aria-hidden="true" size=\{18\}/);
   assert.match(nav, /label: "Ventas \/ Contratos"/);

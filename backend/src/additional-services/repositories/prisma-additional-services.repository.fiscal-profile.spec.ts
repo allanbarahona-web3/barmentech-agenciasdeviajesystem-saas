@@ -36,7 +36,7 @@ describe("PrismaAdditionalServicesRepository fiscal profiles", () => {
     const decimal = create.mock.calls[0][0].data.taxPercentage;
     expect(decimal).toBeInstanceOf(Decimal);
     expect(decimal.toString()).toBe("13");
-    expect(result.taxPercentage).toBe("13");
+    expect(result.taxPercentage).toBe("13.0000");
     expect(typeof result.taxPercentage).toBe("string");
   });
 
@@ -60,8 +60,10 @@ describe("PrismaAdditionalServicesRepository fiscal profiles", () => {
         },
       },
     ]);
+    const $queryRaw = jest.fn().mockResolvedValue([]);
     const repository = new PrismaAdditionalServicesRepository({
       additionalServiceCatalog: { findMany },
+      $queryRaw,
     } as never);
 
     const [result] = await repository.findAdditionalServiceCatalogs("tenant-1");
@@ -73,6 +75,9 @@ describe("PrismaAdditionalServicesRepository fiscal profiles", () => {
         select: expect.objectContaining({ fiscalProfile: expect.any(Object) }),
       }),
     );
+    expect($queryRaw).toHaveBeenCalledTimes(1);
+    expect(result.usages).toEqual([]);
     expect(result.fiscalProfile?.taxPercentage).toBe("13");
+    expect(typeof result.fiscalProfile?.taxPercentage).toBe("string");
   });
 });

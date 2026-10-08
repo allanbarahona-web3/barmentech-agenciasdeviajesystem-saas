@@ -164,8 +164,10 @@ export class MockFactory {
   static createMockCreateBookingDto(overrides?: any) {
     return {
       internalTripId: 'trip-123',
-      clientId: 'client-123',
-      participantCount: 2,
+      participants: [
+        { clientId: 'client-123', role: 'HOLDER' },
+        { clientId: 'client-456', role: 'COMPANION' },
+      ],
       notes: null,
       ...overrides,
     };

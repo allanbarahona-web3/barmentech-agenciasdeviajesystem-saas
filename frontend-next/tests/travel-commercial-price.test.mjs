@@ -31,7 +31,7 @@ test("travel cards distinguish pending, legacy, and Pricing-published commercial
   assert.match(priceDisplay, /return "Precio pendiente"/);
   assert.match(packages, /formatTravelCommercialPrice\(pkg\.packagePrice, pkg\.priceCurrency, pkg\.commercialPriceStatus\)/);
   assert.match(internalList, /formatTravelCommercialPrice\(trip\.price, trip\.currency, trip\.commercialPriceStatus\)/);
-  assert.match(pricingWorkspace, /Precio manual heredado; aún no ha sido publicado por Pricing/);
+  assert.match(pricingWorkspace, /Precio manual heredado; aún no ha sido publicado mediante este flujo de precios\./);
 });
 
 test("ordinary edit forms do not send a manual price for Pricing-published travel", () => {

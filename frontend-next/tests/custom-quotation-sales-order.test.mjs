@@ -51,8 +51,10 @@ test('la orden existente se toma de la versión persistida y no de estado optimi
   assert.match(completion, /Creando orden de venta\.\.\./);
 });
 
-test('los controles se limitan al workspace interno y no exponen billing ni datos internos', () => {
+test('los controles se limitan al workspace interno, conservan la clasificación fiscal por línea y no exponen internals de pricing o Finance', () => {
   assert.match(completion, /if \(!isAccepted\) return null/);
   assert.doesNotMatch(publicApproval, /SalesOrder|orden de venta|sales-order/i);
-  assert.doesNotMatch(`${api}\n${completion}`, /billing-api|account-receivable|authoritativeCostAmount|PricingConfiguration|TenantPricingPolicy|riskMarginPercent|salesCommissionPercent|bankCommissionPercent|agencyProfit|CABYS|UoM|taxCode|taxRate/i);
+  assert.match(api, /export type CustomQuotationFiscalClassification/);
+  assert.match(api, /cabysCode: string; unitOfMeasureCode: string; taxCode: string; taxRateCode: string; taxPercentage: string/);
+  assert.doesNotMatch(`${api}\n${completion}`, /billing-api|account-receivable|authoritativeCostAmount|PricingConfiguration|TenantPricingPolicy|riskMarginPercent|salesCommissionPercent|bankCommissionPercent|agencyProfit/i);
 });

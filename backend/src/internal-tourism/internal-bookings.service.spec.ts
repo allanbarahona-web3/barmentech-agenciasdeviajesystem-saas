@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException, NotFoundException, ConflictException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { InternalBookingsService } from './internal-bookings.service';
+import { InternalToursService } from './internal-tours.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { CreateInternalBookingDto } from './dto';
@@ -23,12 +24,14 @@ describe('InternalBookingsService', () => {
   let mockClient: any;
   let mockBooking: any;
   let mockInvoice: any;
+  let mockParticipants: any[];
 
   beforeEach(async () => {
     mockTrip = MockFactory.createMockTrip();
     mockClient = MockFactory.createMockClient();
     mockBooking = MockFactory.createMockBooking();
     mockInvoice = MockFactory.createMockInvoice();
+    mockParticipants = [mockClient, MockFactory.createMockClient({ id: 'client-456', email: 'companion@example.com' })];
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -38,7 +41,7 @@ describe('InternalBookingsService', () => {
           useValue: {
             internalTourBooking: {
               create: jest.fn(),
-              findUnique: jest.fn(),
+              findFirst: jest.fn(),
               findMany: jest.fn(),
               update: jest.fn(),
               count: jest.fn(),
@@ -46,13 +49,13 @@ describe('InternalBookingsService', () => {
             internalTourInvoice: {
               create: jest.fn(),
               update: jest.fn(),
-              findUnique: jest.fn(),
+              count: jest.fn(),
             },
             internalTrip: {
-              findUnique: jest.fn(),
+              findFirst: jest.fn(),
             },
             client: {
-              findUnique: jest.fn(),
+              findMany: jest.fn(),
             },
             billingPayment: {
               create: jest.fn(),
@@ -64,6 +67,12 @@ describe('InternalBookingsService', () => {
           provide: EmailService,
           useValue: {
             sendEmail: jest.fn(),
+          },
+        },
+        {
+          provide: InternalToursService,
+          useValue: {
+            decrementOccupiedSlots: jest.fn(),
           },
         },
       ],
@@ -86,8 +95,9 @@ describe('InternalBookingsService', () => {
     });
 
     it('should create a booking successfully and send confirmation email', async () => {
-      jest.spyOn(prismaService.internalTrip, 'findUnique').mockResolvedValue(mockTrip);
-      jest.spyOn(prismaService.client, 'findUnique').mockResolvedValue(mockClient);
+      jest.spyOn(prismaService.internalTrip, 'findFirst').mockResolvedValue(mockTrip);
+      jest.spyOn(prismaService.client, 'findMany').mockResolvedValue(mockParticipants);
+      jest.spyOn(prismaService.internalTourBooking, 'findFirst').mockResolvedValue(null);
       jest.spyOn(prismaService.internalTourBooking, 'count').mockResolvedValue(0);
 
       const transactionResult = {
@@ -95,7 +105,7 @@ describe('InternalBookingsService', () => {
         invoice: mockInvoice,
       };
 
-      jest.spyOn(prismaService, '$transaction').mockResolvedValue(transactionResult);
+      jest.spyOn(prismaService, '$transaction').mockResolvedValue(transactionResult.booking);
       jest.spyOn(emailService, 'sendEmail').mockResolvedValue({} as any);
 
       const result = await service.createBooking(mockTenantId, mockUserId, mockUserName, createBookingDto);
@@ -109,7 +119,7 @@ describe('InternalBookingsService', () => {
     });
 
     it('should throw error if trip does not exist', async () => {
-      jest.spyOn(prismaService.internalTrip, 'findUnique').mockResolvedValue(null);
+      jest.spyOn(prismaService.internalTrip, 'findFirst').mockResolvedValue(null);
 
       await expect(
         service.createBooking(mockTenantId, mockUserId, mockUserName, createBookingDto),
@@ -117,8 +127,8 @@ describe('InternalBookingsService', () => {
     });
 
     it('should throw error if client does not exist', async () => {
-      jest.spyOn(prismaService.internalTrip, 'findUnique').mockResolvedValue(mockTrip);
-      jest.spyOn(prismaService.client, 'findUnique').mockResolvedValue(null);
+      jest.spyOn(prismaService.internalTrip, 'findFirst').mockResolvedValue(mockTrip);
+      jest.spyOn(prismaService.client, 'findMany').mockResolvedValue([]);
 
       await expect(
         service.createBooking(mockTenantId, mockUserId, mockUserName, createBookingDto),
@@ -127,7 +137,8 @@ describe('InternalBookingsService', () => {
 
     it('should throw error if trip is not OPEN', async () => {
       const cancelledTrip = { ...mockTrip, status: 'CANCELLED' };
-      jest.spyOn(prismaService.internalTrip, 'findUnique').mockResolvedValue(cancelledTrip);
+      jest.spyOn(prismaService.internalTrip, 'findFirst').mockResolvedValue(cancelledTrip);
+      jest.spyOn(prismaService.client, 'findMany').mockResolvedValue(mockParticipants);
 
       await expect(
         service.createBooking(mockTenantId, mockUserId, mockUserName, createBookingDto),
@@ -136,8 +147,9 @@ describe('InternalBookingsService', () => {
 
     it('should throw error if booking would exceed trip capacity', async () => {
       const fullTrip = { ...mockTrip, capacity: 5 };
-      jest.spyOn(prismaService.internalTrip, 'findUnique').mockResolvedValue(fullTrip);
-      jest.spyOn(prismaService.client, 'findUnique').mockResolvedValue(mockClient);
+      jest.spyOn(prismaService.internalTrip, 'findFirst').mockResolvedValue(fullTrip);
+      jest.spyOn(prismaService.client, 'findMany').mockResolvedValue(mockParticipants);
+      jest.spyOn(prismaService.internalTourBooking, 'findFirst').mockResolvedValue(null);
       jest.spyOn(prismaService.internalTourBooking, 'count').mockResolvedValue(4); // 4 participants already booked
 
       await expect(
@@ -145,40 +157,47 @@ describe('InternalBookingsService', () => {
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('should throw error if client already has booking for this trip', async () => {
-      jest.spyOn(prismaService.internalTrip, 'findUnique').mockResolvedValue(mockTrip);
-      jest.spyOn(prismaService.client, 'findUnique').mockResolvedValue(mockClient);
-      jest.spyOn(prismaService.internalTourBooking, 'findMany').mockResolvedValue([mockBooking]);
+    it('should reject an active holder booking for the same trip', async () => {
+      jest.spyOn(prismaService.internalTrip, 'findFirst').mockResolvedValue(mockTrip);
+      jest.spyOn(prismaService.client, 'findMany').mockResolvedValue(mockParticipants);
+      jest.spyOn(prismaService.internalTourBooking, 'findFirst').mockResolvedValue(mockBooking);
 
       await expect(
         service.createBooking(mockTenantId, mockUserId, mockUserName, createBookingDto),
-      ).rejects.toThrow(ConflictException);
+      ).rejects.toThrow(BadRequestException);
     });
   });
 
   describe('getBooking', () => {
     it('should return a booking by id', async () => {
-      jest.spyOn(prismaService.internalTourBooking, 'findUnique').mockResolvedValue(mockBooking);
+      jest.spyOn(prismaService.internalTourBooking, 'findFirst').mockResolvedValue(mockBooking);
 
       const result = await service.getBooking(mockTenantId, 'booking-123');
 
-      expect(result).toEqual(mockBooking);
+      expect(result).toEqual(expect.objectContaining({
+        ...mockBooking,
+        totalAmount: 180000,
+        paidAmount: 0,
+        pendingAmount: 180000,
+      }));
     });
 
     it('should throw error if booking does not exist', async () => {
-      jest.spyOn(prismaService.internalTourBooking, 'findUnique').mockResolvedValue(null);
+      jest.spyOn(prismaService.internalTourBooking, 'findFirst').mockResolvedValue(null);
 
       await expect(service.getBooking(mockTenantId, 'nonexistent')).rejects.toThrow(
         NotFoundException,
       );
     });
 
-    it('should throw error if booking belongs to different tenant', async () => {
-      const otherTenantBooking = { ...mockBooking, tenantId: 'other-tenant' };
-      jest.spyOn(prismaService.internalTourBooking, 'findUnique').mockResolvedValue(otherTenantBooking);
+    it('scopes booking lookup to the current tenant', async () => {
+      jest.spyOn(prismaService.internalTourBooking, 'findFirst').mockResolvedValue(null);
 
       await expect(service.getBooking(mockTenantId, 'booking-123')).rejects.toThrow(
         NotFoundException,
+      );
+      expect(prismaService.internalTourBooking.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'booking-123', tenantId: mockTenantId } }),
       );
     });
   });
@@ -190,7 +209,14 @@ describe('InternalBookingsService', () => {
 
       const result = await service.listBookings(mockTenantId, {});
 
-      expect(result).toEqual(bookings);
+      expect(result).toEqual(bookings.map((booking) => expect.objectContaining({
+        ...booking,
+        travelId: booking.id,
+        travelType: 'INTERNAL',
+        totalAmount: Number(booking.totalAmount),
+        paidAmount: Number(booking.paidAmount),
+        pendingAmount: Number(booking.pendingAmount),
+      })));
     });
 
     it('should filter by trip id', async () => {
@@ -224,7 +250,9 @@ describe('InternalBookingsService', () => {
 
   describe('recordPayment', () => {
     it('should record payment and send confirmation email', async () => {
-      jest.spyOn(prismaService.internalTourBooking, 'findUnique').mockResolvedValue(mockBooking);
+      jest.spyOn(prismaService.internalTourBooking, 'findFirst')
+        .mockResolvedValueOnce({ ...mockBooking, invoice: mockInvoice })
+        .mockResolvedValueOnce({ ...mockBooking, client: mockClient, internalTrip: mockTrip });
 
       const updatedBooking = {
         ...mockBooking,
@@ -247,7 +275,7 @@ describe('InternalBookingsService', () => {
     });
 
     it('should throw error if booking does not exist', async () => {
-      jest.spyOn(prismaService.internalTourBooking, 'findUnique').mockResolvedValue(null);
+      jest.spyOn(prismaService.internalTourBooking, 'findFirst').mockResolvedValue(null);
 
       await expect(
         service.recordPayment(mockTenantId, 'nonexistent', 100000, mockUserId, mockUserName),
@@ -255,7 +283,7 @@ describe('InternalBookingsService', () => {
     });
 
     it('should throw error if payment exceeds pending amount', async () => {
-      jest.spyOn(prismaService.internalTourBooking, 'findUnique').mockResolvedValue(mockBooking);
+      jest.spyOn(prismaService.internalTourBooking, 'findFirst').mockResolvedValue({ ...mockBooking, invoice: mockInvoice });
 
       // Trying to pay more than pending amount
       await expect(
@@ -264,7 +292,9 @@ describe('InternalBookingsService', () => {
     });
 
     it('should handle partial payments', async () => {
-      jest.spyOn(prismaService.internalTourBooking, 'findUnique').mockResolvedValue(mockBooking);
+      jest.spyOn(prismaService.internalTourBooking, 'findFirst')
+        .mockResolvedValueOnce({ ...mockBooking, invoice: mockInvoice })
+        .mockResolvedValueOnce({ ...mockBooking, client: mockClient, internalTrip: mockTrip });
 
       const partiallyPaidBooking = {
         ...mockBooking,
@@ -278,8 +308,8 @@ describe('InternalBookingsService', () => {
 
       const result = await service.recordPayment(mockTenantId, 'booking-123', 90000, mockUserId, mockUserName);
 
-      expect(result.paidAmount).toEqual(new Decimal('90000'));
-      expect(result.pendingAmount).toEqual(new Decimal('90000'));
+      expect(result.paidAmount).toBe(90000);
+      expect(result.pendingAmount).toBe(90000);
       expect(result.status).toBe('PENDING');
     });
   });
@@ -292,10 +322,10 @@ describe('InternalBookingsService', () => {
         pendingAmount: new Decimal('90000'),
       };
 
-      jest.spyOn(prismaService.internalTourBooking, 'findUnique').mockResolvedValue(paidBooking);
+      jest.spyOn(prismaService.internalTourBooking, 'findFirst').mockResolvedValue({ ...paidBooking, client: mockClient, internalTrip: mockTrip });
 
       const cancelledBooking = { ...paidBooking, status: 'CANCELLED' };
-      jest.spyOn(prismaService, '$transaction').mockResolvedValue(cancelledBooking);
+      jest.spyOn(prismaService.internalTourBooking, 'update').mockResolvedValue(cancelledBooking);
       jest.spyOn(emailService, 'sendEmail').mockResolvedValue({} as any);
 
       const result = await service.cancelBooking(mockTenantId, 'booking-123', mockUserId, mockUserName);
@@ -304,7 +334,7 @@ describe('InternalBookingsService', () => {
       expect(emailService.sendEmail).toHaveBeenCalledWith(
         expect.objectContaining({
           template: 'trip-cancelled',
-          data: expect.objectContaining({
+          templateData: expect.objectContaining({
             recipientName: mockClient.fullName,
             refundAmount: 90000, // paidAmount
           }),
@@ -313,7 +343,7 @@ describe('InternalBookingsService', () => {
     });
 
     it('should throw error if booking does not exist', async () => {
-      jest.spyOn(prismaService.internalTourBooking, 'findUnique').mockResolvedValue(null);
+      jest.spyOn(prismaService.internalTourBooking, 'findFirst').mockResolvedValue(null);
 
       await expect(
         service.cancelBooking(mockTenantId, 'nonexistent', mockUserId, mockUserName),
@@ -322,7 +352,7 @@ describe('InternalBookingsService', () => {
 
     it('should not allow cancelling already cancelled booking', async () => {
       const cancelledBooking = { ...mockBooking, status: 'CANCELLED' };
-      jest.spyOn(prismaService.internalTourBooking, 'findUnique').mockResolvedValue(cancelledBooking);
+      jest.spyOn(prismaService.internalTourBooking, 'findFirst').mockResolvedValue(cancelledBooking);
 
       await expect(
         service.cancelBooking(mockTenantId, 'booking-123', mockUserId, mockUserName),
@@ -359,8 +389,13 @@ describe('InternalBookingsService', () => {
 
   describe('Edge Cases', () => {
     it('should handle currency conversion properly (Decimal precision)', async () => {
-      jest.spyOn(prismaService.internalTrip, 'findUnique').mockResolvedValue(mockTrip);
-      jest.spyOn(prismaService.client, 'findUnique').mockResolvedValue(mockClient);
+      jest.spyOn(prismaService.internalTrip, 'findFirst').mockResolvedValue(mockTrip);
+      jest.spyOn(prismaService.client, 'findMany').mockResolvedValue([
+        mockClient,
+        MockFactory.createMockClient({ id: 'client-456' }),
+        MockFactory.createMockClient({ id: 'client-789' }),
+      ]);
+      jest.spyOn(prismaService.internalTourBooking, 'findFirst').mockResolvedValue(null);
       jest.spyOn(prismaService.internalTourBooking, 'count').mockResolvedValue(0);
 
       // 3 participants x 90000 CRC = 270000 CRC
@@ -375,7 +410,7 @@ describe('InternalBookingsService', () => {
         invoice: { ...mockInvoice, totalAmount: new Decimal('270000') },
       };
 
-      jest.spyOn(prismaService, '$transaction').mockResolvedValue(transactionResult);
+      jest.spyOn(prismaService, '$transaction').mockResolvedValue(transactionResult.booking);
       jest.spyOn(emailService, 'sendEmail').mockResolvedValue({} as any);
 
       const result = await service.createBooking(mockTenantId, mockUserId, mockUserName, {
@@ -387,7 +422,7 @@ describe('InternalBookingsService', () => {
         ],
       });
 
-      expect(result.booking.totalAmount).toEqual(new Decimal('270000'));
+      expect(result.totalAmount).toBe(270000);
     });
 
     it('should handle multiple partial payments accumulating to full payment', async () => {
@@ -397,7 +432,9 @@ describe('InternalBookingsService', () => {
         pendingAmount: new Decimal('120000'),
       };
 
-      jest.spyOn(prismaService.internalTourBooking, 'findUnique').mockResolvedValue(bookingWithFirstPayment);
+      jest.spyOn(prismaService.internalTourBooking, 'findFirst')
+        .mockResolvedValueOnce({ ...bookingWithFirstPayment, invoice: mockInvoice })
+        .mockResolvedValueOnce({ ...bookingWithFirstPayment, client: mockClient, internalTrip: mockTrip });
 
       const updatedBooking = {
         ...bookingWithFirstPayment,
@@ -410,8 +447,8 @@ describe('InternalBookingsService', () => {
 
       const result = await service.recordPayment(mockTenantId, 'booking-123', 90000, mockUserId, mockUserName);
 
-      expect(result.paidAmount).toEqual(new Decimal('150000'));
-      expect(result.pendingAmount).toEqual(new Decimal('30000'));
+      expect(result.paidAmount).toBe(150000);
+      expect(result.pendingAmount).toBe(30000);
     });
   });
 });

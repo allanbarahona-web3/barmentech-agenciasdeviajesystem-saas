@@ -32,6 +32,7 @@ describe("queue configuration", () => {
       NOTIFICATION: "notification",
       PACKAGE_COMPLETED: "package-completed",
       WORKER_RUNTIME: "worker-runtime",
+      AIRFARE_PRICING: "airfare-pricing",
     });
     expect(DEFAULT_QUEUE_NAMES).toEqual({
       billing: "billing",
@@ -48,6 +49,7 @@ describe("queue configuration", () => {
       notification: "notification",
       "package-completed": "package-completed",
       "worker-runtime": "worker-runtime",
+      "airfare-pricing": "airfare-pricing",
     });
     expect(
       getQueueConfig(configService()).queueNames[
@@ -68,6 +70,7 @@ describe("queue configuration", () => {
     expect(getQueueConfig(configService()).queueNames[PLATFORM_QUEUE_KEYS.FISCAL_ARTIFACT_RETRIEVAL]).toBe("fiscal-artifact-retrieval");
     expect(getQueueConfig(configService()).queueNames[PLATFORM_QUEUE_KEYS.FISCAL_INVOICE_AUTO_DELIVERY]).toBe("fiscal-invoice-auto-delivery");
     expect(getQueueConfig(configService()).queueNames[PLATFORM_QUEUE_KEYS.CONTRACT_PAYMENT_FISCALIZATION]).toBe("contract-payment-fiscalization");
+    expect(getQueueConfig(configService()).queueNames[PLATFORM_QUEUE_KEYS.AIRFARE_PRICING]).toBe("airfare-pricing");
   });
 
   it("uses stable optional environment-name keys for both reconciliation queues", () => {
@@ -94,6 +97,11 @@ describe("queue configuration", () => {
 
   it("uses the existing BullMQ environment-name convention for receivable recognition", () => {
     expect(QUEUE_NAME_ENV_KEYS[PLATFORM_QUEUE_KEYS.ACCOUNT_RECEIVABLE_RECOGNITION]).toBe("BULLMQ_ACCOUNT_RECEIVABLE_RECOGNITION_QUEUE_NAME");
+  });
+
+  it("uses the existing BullMQ environment-name convention for airfare pricing", () => {
+    expect(QUEUE_NAME_ENV_KEYS[PLATFORM_QUEUE_KEYS.AIRFARE_PRICING]).toBe("BULLMQ_AIRFARE_PRICING_QUEUE_NAME");
+    expect(getQueueConfig(configService({ BULLMQ_AIRFARE_PRICING_QUEUE_NAME: "airfare-custom" })).queueNames[PLATFORM_QUEUE_KEYS.AIRFARE_PRICING]).toBe("airfare-custom");
   });
 
   it("resolves the artifact queue override and rejects physical collisions", () => {

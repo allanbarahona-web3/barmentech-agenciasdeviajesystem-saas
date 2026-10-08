@@ -56,7 +56,6 @@ describe("fiscal issuer CR identification", () => {
         details: {
           identificationTypeCode: "01",
           expectedCanonicalFormat: "9 dígitos",
-          receivedCanonicalLength: 10,
         },
       });
       expect(JSON.stringify(exception.getResponse())).not.toContain("1234567890");
