@@ -1,5 +1,6 @@
 import { fetchApi } from '@/lib/api-client';
 import { contractReservationApprovePath, contractReservationEvidencePath, contractReservationPendingPath, contractReservationRejectPath, invoicePendingPaymentDetailPath, invoicePendingPaymentPrecheckPath } from '@/lib/contract-reservation-review';
+import { formatFinanceMoneyDisplay } from '@/lib/finance-money-display';
 import type { FinancePaymentMethod } from '@/lib/finance-payment-methods';
 
 export type AccountReceivableStatus =
@@ -1335,11 +1336,7 @@ export function getReportedInvoicePaymentEvidence(customerId: string, paymentId:
 }
 
 export function formatFinanceMoney(value: string, currency: string): string {
-  const match = /^(-?)(\d+)(?:\.(\d+))?$/.exec(value);
-  if (!match) return `${currency} ${value}`;
-  const whole = match[2].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-  const fraction = match[3] ? `.${match[3]}` : '';
-  return `${currency} ${match[1]}${whole}${fraction}`;
+  return formatFinanceMoneyDisplay(value, currency);
 }
 
 /** Presentation-only, Decimal-string rounding for Customer Profile amounts. */

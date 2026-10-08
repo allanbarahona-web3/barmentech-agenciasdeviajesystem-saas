@@ -19,6 +19,11 @@ export class OperationalStandaloneRequirementsController {
     return this.service.listStandalone(request.user.tenantId, query);
   }
 
+  @Get("custom-quotation-groups")
+  listCustomQuotationGroups(@Req() request: OperationsRequest, @Query() query: ListOperationalRequirementsDto) {
+    return this.service.listStandaloneCustomQuotationGroups(request.user.tenantId, query);
+  }
+
   @Get(":requirementId")
   find(@Req() request: OperationsRequest, @Param("requirementId") requirementId: string) {
     return this.service.findStandalone(request.user.tenantId, requirementId);

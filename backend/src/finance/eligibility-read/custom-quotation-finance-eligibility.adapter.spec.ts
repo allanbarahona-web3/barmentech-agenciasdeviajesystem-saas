@@ -43,6 +43,40 @@ describe("CustomQuotationFinanceEligibilityAdapter", () => {
     ]);
   });
 
+  it("allows an accepted CASH electronic ticket without an AccountReceivable", async () => {
+    const c = context({
+      rows: [authorityRow({
+        billingDocumentType: "04",
+        billingDocumentTaxAuthorityStatus: "ACCEPTED",
+        billingPaymentConditionCode: "01",
+        billingCreditTermDays: null,
+        accountReceivableSourceId: null,
+        currencyCode: null,
+        originalAmount: null,
+        outstandingAmount: null,
+        accountReceivableStatus: null,
+        settledAt: null,
+        updatedAt: null,
+      })],
+    });
+
+    await expect(c.adapter.readMany(request())).resolves.toEqual([
+      expect.objectContaining({ source: source(), eligibility: "ELIGIBLE", reason: "SETTLED" }),
+    ]);
+    expect(c.tx).not.toHaveProperty("accountReceivable");
+  });
+
+  it.each([
+    ["not accepted", authorityRow({ billingDocumentType: "04", billingDocumentTaxAuthorityStatus: "PROCESSING", accountReceivableSourceId: null })],
+    ["not CASH", authorityRow({ billingDocumentType: "04", billingPaymentConditionCode: "02", accountReceivableSourceId: null })],
+    ["with a credit term", authorityRow({ billingDocumentType: "04", billingCreditTermDays: 30, accountReceivableSourceId: null })],
+  ])("blocks an electronic ticket that is %s", async (_case, row) => {
+    const c = context({ rows: [row] });
+    await expect(c.adapter.readMany(request())).resolves.toEqual([
+      expect.objectContaining({ eligibility: "BLOCKED", reason: "FINANCIAL_DATA_MISSING" }),
+    ]);
+  });
+
   it.each([
     ["missing immutable version line", authorityRow({ lineId: null })],
     ["missing SalesOrderLine", authorityRow({ salesOrderLineId: null })],
@@ -159,6 +193,10 @@ function authorityRow(overrides: Record<string, unknown> = {}, value = source())
     salesOrderSourceId: value.sourceId,
     salesOrderStatus: "CREATED",
     billingDocumentId: "document-a",
+    billingDocumentType: "01",
+    billingDocumentTaxAuthorityStatus: "ACCEPTED",
+    billingPaymentConditionCode: "01",
+    billingCreditTermDays: null,
     accountReceivableSourceId: "document-a",
     currencyCode: "USD",
     originalAmount: decimal("300"),

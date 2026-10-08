@@ -245,6 +245,125 @@ describe("OperationalRequirementsService", () => {
     }));
   });
 
+  it("groups Custom Quotation lines by immutable version source without collapsing separate quotations for one customer", async () => {
+    const c = context();
+    c.tx.operationalRequirement.groupBy.mockResolvedValue([{ sourceId: "version-a" }, { sourceId: "version-b" }]);
+    c.tx.$queryRaw.mockResolvedValue([{ total: 2n }]);
+    c.tx.operationalRequirement.findMany.mockResolvedValue([
+      customQuotationRequirement({ id: "requirement-a", sourceId: "version-a", sourceLineId: "line-a", description: "Alimentación", soldAmount: new Prisma.Decimal("10.00000"), status: "PENDING" }),
+      customQuotationRequirement({ id: "requirement-b", sourceId: "version-a", sourceLineId: "line-b", description: "Transporte", soldAmount: new Prisma.Decimal("20.00000"), status: "IN_PROGRESS" }),
+      customQuotationRequirement({ id: "requirement-c", sourceId: "version-b", sourceLineId: "line-c", description: "Equipaje", soldAmount: new Prisma.Decimal("30.00000"), status: "PENDING" }),
+    ]);
+    c.tx.customQuotationVersion.findMany.mockResolvedValue([
+      { id: "version-a", customQuotation: { quotationNumber: "CQ-001" }, salesOrder: { id: "sales-a", orderNumber: "SO-001" } },
+      { id: "version-b", customQuotation: { quotationNumber: "CQ-002" }, salesOrder: { id: "sales-b", orderNumber: "SO-002" } },
+    ]);
+    c.tx.billingDocument.findMany.mockResolvedValue([
+      acceptedBillingDocument({ sourceId: "sales-a", documentTypeCode: "01", fiscalNumber: "00100001010000000001" }),
+    ]);
+
+    const result = await c.service.listStandaloneCustomQuotationGroups(tenantId, { page: 1, pageSize: 20 });
+
+    expect(result).toMatchObject({
+      total: 2,
+      items: [
+        {
+          sourceId: "version-a", quotationNumber: "CQ-001", salesOrderNumber: "SO-001",
+          billingDocumentId: "billing-a", billingDocumentType: "01", fiscalDocumentNumber: "00100001010000000001",
+          fiscalKey: "5".repeat(50), fiscalTotal: { amount: "30", currency: "USD" }, fiscalStatus: "ACCEPTED",
+          customer: { id: "customer-a", fullName: "Ada Customer", idType: "01", idNumber: "1-0001-0001" },
+          serviceCount: 2, status: "IN_PROGRESS", commercialValue: { amount: "30", currency: "USD" },
+          requirements: [{ requirementId: "requirement-a", sourceLineId: "line-a" }, { requirementId: "requirement-b", sourceLineId: "line-b" }],
+        },
+        { sourceId: "version-b", quotationNumber: "CQ-002", serviceCount: 1, requirements: [{ requirementId: "requirement-c", sourceLineId: "line-c" }] },
+      ],
+    });
+    expect(result.items[0].requirements.map((item) => item.requirementId)).toEqual(["requirement-a", "requirement-b"]);
+    expect(c.tx.operationalRequirement.groupBy).toHaveBeenCalledTimes(1);
+    expect(c.tx.operationalRequirement.findMany).toHaveBeenCalledTimes(1);
+    expect(c.tx.customQuotationVersion.findMany).toHaveBeenCalledTimes(1);
+    expect(c.tx.billingDocument.findMany).toHaveBeenCalledTimes(1);
+    expect(c.tx.billingDocument.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ tenantId, sourceType: "SALES_ORDER", sourceId: { in: ["sales-a", "sales-b"] }, sourceRole: "PRIMARY" }),
+    }));
+    expect(c.finance.readMany).toHaveBeenCalledTimes(1);
+    expect(c.tx.$queryRaw).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["01", "00100001010000000001"],
+    ["04", "00400001010000000004"],
+  ])("includes the accepted primary fiscal document type %s without per-group reads", async (documentTypeCode, fiscalNumber) => {
+    const c = context();
+    c.tx.operationalRequirement.groupBy.mockResolvedValue([{ sourceId: "version-a" }]);
+    c.tx.$queryRaw.mockResolvedValue([{ total: 1 }]);
+    c.tx.operationalRequirement.findMany.mockResolvedValue([customQuotationRequirement()]);
+    c.tx.customQuotationVersion.findMany.mockResolvedValue([
+      { id: "version-a", customQuotation: { quotationNumber: "CQ-001" }, salesOrder: { id: "sales-a", orderNumber: "SO-001" } },
+    ]);
+    c.tx.billingDocument.findMany.mockResolvedValue([
+      acceptedBillingDocument({ documentTypeCode, fiscalNumber }),
+    ]);
+
+    await expect(c.service.listStandaloneCustomQuotationGroups(tenantId, {})).resolves.toMatchObject({
+      items: [{ billingDocumentId: "billing-a", billingDocumentType: documentTypeCode, fiscalDocumentNumber: fiscalNumber, fiscalStatus: "ACCEPTED" }],
+    });
+    expect(c.tx.billingDocument.findMany).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps an Operations group visible without fiscal fields when no accepted document exists", async () => {
+    const c = context();
+    c.tx.operationalRequirement.groupBy.mockResolvedValue([{ sourceId: "version-a" }]);
+    c.tx.$queryRaw.mockResolvedValue([{ total: 1 }]);
+    c.tx.operationalRequirement.findMany.mockResolvedValue([customQuotationRequirement()]);
+    c.tx.customQuotationVersion.findMany.mockResolvedValue([
+      { id: "version-a", customQuotation: { quotationNumber: "CQ-001" }, salesOrder: { id: "sales-a", orderNumber: "SO-001" } },
+    ]);
+    c.tx.billingDocument.findMany.mockResolvedValue([]);
+
+    await expect(c.service.listStandaloneCustomQuotationGroups(tenantId, {})).resolves.toMatchObject({
+      items: [{ billingDocumentId: null, billingDocumentType: null, fiscalDocumentNumber: null, fiscalKey: null, fiscalTotal: null, fiscalStatus: null }],
+    });
+  });
+
+  it.each([
+    ["no fiscal document", [], financialResult({ eligibility: "BLOCKED", reason: "FINANCIAL_DATA_MISSING" }), "PENDIENTE_FACTURACION"],
+    ["pending fiscal document", [acceptedBillingDocument({ taxAuthorityStatus: "PROCESSING" })], financialResult({ eligibility: "BLOCKED", reason: "FINANCIAL_DATA_MISSING" }), "PENDIENTE_ACEPTACION_FISCAL"],
+    ["accepted invoice without AR", [acceptedBillingDocument()], financialResult({ eligibility: "BLOCKED", reason: "FINANCIAL_DATA_MISSING" }), "PENDIENTE_REGISTRO_FINANCIERO"],
+    ["accepted invoice with outstanding balance", [acceptedBillingDocument()], financialResult({ eligibility: "BLOCKED", reason: "OUTSTANDING_BALANCE", financial: { outstandingAmount: "10.00", currency: "USD" } }), "PENDIENTE_PAGO"],
+    ["settled invoice", [acceptedBillingDocument()], financialResult({ eligibility: "ELIGIBLE", reason: "SETTLED" }), "LISTO_PARA_PROCESAR"],
+    ["accepted CASH ticket", [acceptedBillingDocument({ documentTypeCode: "04" })], financialResult({ eligibility: "ELIGIBLE", reason: "SETTLED" }), "LISTO_PARA_PROCESAR"],
+  ])("projects %s as the service finance eligibility without per-service reads", async (_case, documents, financeResult, eligibilityStatus) => {
+    const c = context();
+    c.tx.operationalRequirement.groupBy.mockResolvedValue([{ sourceId: "version-a" }]);
+    c.tx.$queryRaw.mockResolvedValue([{ total: 1 }]);
+    c.tx.operationalRequirement.findMany.mockResolvedValue([customQuotationRequirement()]);
+    c.tx.customQuotationVersion.findMany.mockResolvedValue([
+      { id: "version-a", customQuotation: { quotationNumber: "CQ-001" }, salesOrder: { id: "sales-a", orderNumber: "SO-001" } },
+    ]);
+    c.tx.billingDocument.findMany.mockResolvedValue(documents);
+    c.finance.readMany.mockResolvedValue([financeResult]);
+    const financial = (financeResult as any).financial;
+
+    await expect(c.service.listStandaloneCustomQuotationGroups(tenantId, {})).resolves.toMatchObject({
+      items: [{ requirements: [{ eligibilityStatus, eligibilityReason: financeResult.reason, outstandingAmount: financial?.outstandingAmount ?? null, currency: financial?.currency ?? null }] }],
+    });
+    expect(c.finance.readMany).toHaveBeenCalledWith({ tenantId, sources: [{ sourceType: "CUSTOM_QUOTATION_LINE", sourceId: "version-a", sourceLineId: "line-a" }] });
+  });
+
+  it("marks mixed terminal Custom Quotation services as display-only COMPLETED", async () => {
+    const c = context();
+    c.tx.operationalRequirement.groupBy.mockResolvedValue([{ sourceId: "version-a" }]);
+    c.tx.$queryRaw.mockResolvedValue([{ total: 1 }]);
+    c.tx.operationalRequirement.findMany.mockResolvedValue([
+      customQuotationRequirement({ id: "requirement-a", status: "FULFILLED" }),
+      customQuotationRequirement({ id: "requirement-b", sourceLineId: "line-b", status: "CANCELLED" }),
+    ]);
+    c.tx.customQuotationVersion.findMany.mockResolvedValue([{ id: "version-a", customQuotation: { quotationNumber: "CQ-001" }, salesOrder: null }]);
+
+    await expect(c.service.listStandaloneCustomQuotationGroups(tenantId, {})).resolves.toMatchObject({ items: [{ status: "COMPLETED" }] });
+  });
+
   it("rejects standalone passenger assignment explicitly", async () => {
     const c = context();
     c.tx.operationalRequirement.findFirst.mockResolvedValue({ id: requirementId, status: "PENDING" });
@@ -263,18 +382,60 @@ describe("OperationalRequirementsService", () => {
 });
 
 function context() {
+  const finance = { readMany: jest.fn().mockResolvedValue([]) };
   const tx = {
     $executeRaw: jest.fn(),
+    $queryRaw: jest.fn(),
     travelPackage: { findFirst: jest.fn() },
     travelPackageParticipant: { findMany: jest.fn() },
     user: { findFirst: jest.fn() },
-    operationalRequirement: { create: jest.fn(), findFirst: jest.fn(), findMany: jest.fn(), count: jest.fn(), updateMany: jest.fn() },
+    operationalRequirement: { create: jest.fn(), findFirst: jest.fn(), findMany: jest.fn(), count: jest.fn(), updateMany: jest.fn(), groupBy: jest.fn() },
     operationalRequirementPassenger: { createMany: jest.fn(), findMany: jest.fn(), deleteMany: jest.fn() },
     operationalFulfillmentPassenger: { findMany: jest.fn() },
     operationalFulfillment: { findMany: jest.fn() },
+    customQuotationVersion: { findMany: jest.fn() },
+    billingDocument: { findMany: jest.fn() },
   };
   const prisma = { $transaction: jest.fn(async (work: (transaction: typeof tx) => Promise<unknown>) => work(tx)) };
-  return { tx, service: new OperationalRequirementsService(prisma as never) };
+  return { tx, finance, service: new OperationalRequirementsService(prisma as never, finance) };
+}
+
+function customQuotationRequirement(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "requirement-a",
+    sourceId: "version-a",
+    sourceLineId: "line-a",
+    description: "Alimentación",
+    status: "PENDING",
+    soldAmount: new Prisma.Decimal("10.00000"),
+    soldCurrency: "USD",
+    createdAt: new Date("2026-10-01T00:00:00.000Z"),
+    customer: { id: "customer-a", fullName: "Ada Customer", idType: "01", idNumber: "1-0001-0001" },
+    ...overrides,
+  };
+}
+
+function acceptedBillingDocument(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "billing-a",
+    sourceId: "sales-a",
+    documentTypeCode: "01",
+    fiscalNumber: "00100001010000000001",
+    haciendaKey: "5".repeat(50),
+    currencyCode: "USD",
+    total: new Prisma.Decimal("30.00000"),
+    taxAuthorityStatus: "ACCEPTED",
+    ...overrides,
+  };
+}
+
+function financialResult(overrides: Record<string, any> = {}) {
+  return {
+    source: { sourceType: "CUSTOM_QUOTATION_LINE", sourceId: "version-a", sourceLineId: "line-a" },
+    eligibility: "ELIGIBLE",
+    reason: "SETTLED",
+    ...overrides,
+  };
 }
 
 function createInput(overrides: Record<string, unknown> = {}) {

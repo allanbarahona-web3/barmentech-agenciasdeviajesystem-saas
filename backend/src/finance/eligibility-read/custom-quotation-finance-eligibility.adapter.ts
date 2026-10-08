@@ -22,6 +22,8 @@ const CUSTOM_QUOTATION_SALES_ORDER_SOURCE_TYPE = "CUSTOM_QUOTATION_VERSION";
 const SALES_ORDER_BILLING_SOURCE_TYPE = "SALES_ORDER";
 const BILLING_DOCUMENT_RECEIVABLE_SOURCE_TYPE = "BILLING_DOCUMENT";
 const ELECTRONIC_INVOICE_DOCUMENT_TYPE = "01";
+const ELECTRONIC_TICKET_DOCUMENT_TYPE = "04";
+const CASH_PAYMENT_CONDITION_CODE = "01";
 
 type Tx = any;
 type Database = { $transaction<T>(work: (transaction: Tx) => Promise<T>): Promise<T> };
@@ -44,6 +46,10 @@ type AuthorityRow = {
   salesOrderSourceId: string | null;
   salesOrderStatus: string | null;
   billingDocumentId: string | null;
+  billingDocumentType: string | null;
+  billingDocumentTaxAuthorityStatus: string | null;
+  billingPaymentConditionCode: string | null;
+  billingCreditTermDays: number | null;
   accountReceivableSourceId: string | null;
   currencyCode: string | null;
   originalAmount: Prisma.Decimal | null;
@@ -57,8 +63,10 @@ type AuthorityRow = {
  * Finance-owned resolver for immutable Custom Quotation version-line work.
  * Billing currently settles an accepted SalesOrder invoice as a whole: Billing
  * lines have no persisted SalesOrderLine allocation identity. Consequently a
- * quotation line becomes eligible only when its sole accepted primary invoice
- * has a fully settled AR; no payment allocation is inferred per line.
+ * quotation line with Factura 01 becomes eligible only when its sole accepted
+ * primary invoice has a fully settled AR; no payment allocation is inferred per
+ * line. An accepted CASH Tiquete 04 is eligible from its immutable fiscal
+ * payment-condition snapshot and never has an AR lookup.
  */
 @Injectable()
 export class CustomQuotationFinanceEligibilityAdapter implements FinanceEligibilityReader {
@@ -123,7 +131,11 @@ function customQuotationAuthorityRows(
       version_line."soldAmount" AS "lineSoldAmount",
       sales_link."salesOrderLineId", sales_link."lineSalesOrderId", sales_link."salesOrderLineTotal", sales_link."salesOrderId",
       sales_link."salesOrderSourceType", sales_link."salesOrderSourceId", sales_link."salesOrderStatus",
-      billing.id AS "billingDocumentId", receivable."sourceId" AS "accountReceivableSourceId",
+      billing.id AS "billingDocumentId", billing."documentTypeCode" AS "billingDocumentType",
+      billing."taxAuthorityStatus" AS "billingDocumentTaxAuthorityStatus",
+      billing."paymentConditionCode" AS "billingPaymentConditionCode",
+      billing."creditTermDays" AS "billingCreditTermDays",
+      receivable."sourceId" AS "accountReceivableSourceId",
       receivable."currencyCode", receivable."originalAmount", receivable."outstandingAmount",
       receivable.status::text AS "accountReceivableStatus", receivable."settledAt", receivable."updatedAt"
     FROM requested
@@ -149,19 +161,65 @@ function customQuotationAuthorityRows(
         AND line."customQuotationVersionLineId" = version_line.id
     ) sales_link ON true
     LEFT JOIN LATERAL (
-      SELECT CASE WHEN COUNT(*) = 1 THEN MIN(document.id) ELSE NULL END AS id
+      SELECT
+        CASE
+          WHEN COUNT(*) FILTER (WHERE document."documentTypeCode" = ${ELECTRONIC_INVOICE_DOCUMENT_TYPE} AND document."taxAuthorityStatus" = 'ACCEPTED') = 1
+            THEN MIN(document.id) FILTER (WHERE document."documentTypeCode" = ${ELECTRONIC_INVOICE_DOCUMENT_TYPE} AND document."taxAuthorityStatus" = 'ACCEPTED')
+          WHEN COUNT(*) FILTER (WHERE document."documentTypeCode" = ${ELECTRONIC_INVOICE_DOCUMENT_TYPE} AND document."taxAuthorityStatus" = 'ACCEPTED') = 0
+            AND COUNT(*) FILTER (WHERE document."documentTypeCode" = ${ELECTRONIC_TICKET_DOCUMENT_TYPE}) = 1
+            THEN MIN(document.id) FILTER (WHERE document."documentTypeCode" = ${ELECTRONIC_TICKET_DOCUMENT_TYPE})
+          ELSE NULL
+        END AS id,
+        CASE
+          WHEN COUNT(*) FILTER (WHERE document."documentTypeCode" = ${ELECTRONIC_INVOICE_DOCUMENT_TYPE} AND document."taxAuthorityStatus" = 'ACCEPTED') = 1
+            THEN MIN(document."documentTypeCode") FILTER (WHERE document."documentTypeCode" = ${ELECTRONIC_INVOICE_DOCUMENT_TYPE} AND document."taxAuthorityStatus" = 'ACCEPTED')
+          WHEN COUNT(*) FILTER (WHERE document."documentTypeCode" = ${ELECTRONIC_INVOICE_DOCUMENT_TYPE} AND document."taxAuthorityStatus" = 'ACCEPTED') = 0
+            AND COUNT(*) FILTER (WHERE document."documentTypeCode" = ${ELECTRONIC_TICKET_DOCUMENT_TYPE}) = 1
+            THEN MIN(document."documentTypeCode") FILTER (WHERE document."documentTypeCode" = ${ELECTRONIC_TICKET_DOCUMENT_TYPE})
+          ELSE NULL
+        END AS "documentTypeCode",
+        CASE
+          WHEN COUNT(*) FILTER (WHERE document."documentTypeCode" = ${ELECTRONIC_INVOICE_DOCUMENT_TYPE} AND document."taxAuthorityStatus" = 'ACCEPTED') = 1
+            THEN MIN(document."taxAuthorityStatus"::text) FILTER (WHERE document."documentTypeCode" = ${ELECTRONIC_INVOICE_DOCUMENT_TYPE} AND document."taxAuthorityStatus" = 'ACCEPTED')
+          WHEN COUNT(*) FILTER (WHERE document."documentTypeCode" = ${ELECTRONIC_INVOICE_DOCUMENT_TYPE} AND document."taxAuthorityStatus" = 'ACCEPTED') = 0
+            AND COUNT(*) FILTER (WHERE document."documentTypeCode" = ${ELECTRONIC_TICKET_DOCUMENT_TYPE}) = 1
+            THEN MIN(document."taxAuthorityStatus"::text) FILTER (WHERE document."documentTypeCode" = ${ELECTRONIC_TICKET_DOCUMENT_TYPE})
+          ELSE NULL
+        END AS "taxAuthorityStatus",
+        CASE
+          WHEN COUNT(*) FILTER (WHERE document."documentTypeCode" = ${ELECTRONIC_INVOICE_DOCUMENT_TYPE} AND document."taxAuthorityStatus" = 'ACCEPTED') = 1
+            THEN MIN(document."paymentConditionCode") FILTER (WHERE document."documentTypeCode" = ${ELECTRONIC_INVOICE_DOCUMENT_TYPE} AND document."taxAuthorityStatus" = 'ACCEPTED')
+          WHEN COUNT(*) FILTER (WHERE document."documentTypeCode" = ${ELECTRONIC_INVOICE_DOCUMENT_TYPE} AND document."taxAuthorityStatus" = 'ACCEPTED') = 0
+            AND COUNT(*) FILTER (WHERE document."documentTypeCode" = ${ELECTRONIC_TICKET_DOCUMENT_TYPE}) = 1
+            THEN MIN(document."paymentConditionCode") FILTER (WHERE document."documentTypeCode" = ${ELECTRONIC_TICKET_DOCUMENT_TYPE})
+          ELSE NULL
+        END AS "paymentConditionCode",
+        CASE
+          WHEN COUNT(*) FILTER (WHERE document."documentTypeCode" = ${ELECTRONIC_INVOICE_DOCUMENT_TYPE} AND document."taxAuthorityStatus" = 'ACCEPTED') = 1
+            THEN MIN(document."creditTermDays") FILTER (WHERE document."documentTypeCode" = ${ELECTRONIC_INVOICE_DOCUMENT_TYPE} AND document."taxAuthorityStatus" = 'ACCEPTED')
+          WHEN COUNT(*) FILTER (WHERE document."documentTypeCode" = ${ELECTRONIC_INVOICE_DOCUMENT_TYPE} AND document."taxAuthorityStatus" = 'ACCEPTED') = 0
+            AND COUNT(*) FILTER (WHERE document."documentTypeCode" = ${ELECTRONIC_TICKET_DOCUMENT_TYPE}) = 1
+            THEN MIN(document."creditTermDays") FILTER (WHERE document."documentTypeCode" = ${ELECTRONIC_TICKET_DOCUMENT_TYPE})
+          ELSE NULL
+        END AS "creditTermDays"
       FROM "billing_documents" document
       WHERE document."tenantId" = ${tenantId}
         AND document."sourceType" = ${SALES_ORDER_BILLING_SOURCE_TYPE}
         AND document."sourceId" = sales_link."salesOrderId"
         AND document."sourceRole" = 'PRIMARY'
-        AND document."documentTypeCode" = ${ELECTRONIC_INVOICE_DOCUMENT_TYPE}
-        AND document."taxAuthorityStatus" = 'ACCEPTED'
+        AND (
+          (document."documentTypeCode" = ${ELECTRONIC_INVOICE_DOCUMENT_TYPE} AND document."taxAuthorityStatus" = 'ACCEPTED')
+          OR document."documentTypeCode" = ${ELECTRONIC_TICKET_DOCUMENT_TYPE}
+        )
     ) billing ON true
-    LEFT JOIN "account_receivables" receivable
-      ON receivable."tenantId" = ${tenantId}
-      AND receivable."sourceType" = ${BILLING_DOCUMENT_RECEIVABLE_SOURCE_TYPE}
-      AND receivable."sourceId" = billing.id
+    LEFT JOIN LATERAL (
+      SELECT receivable.*
+      FROM "account_receivables" receivable
+      WHERE billing."documentTypeCode" = ${ELECTRONIC_INVOICE_DOCUMENT_TYPE}
+        AND receivable."tenantId" = ${tenantId}
+        AND receivable."sourceType" = ${BILLING_DOCUMENT_RECEIVABLE_SOURCE_TYPE}
+        AND receivable."sourceId" = billing.id
+    ) receivable ON true
   `;
 }
 
@@ -192,10 +250,28 @@ function eligibilityFromAuthorityRow(
   ) {
     return sourceNotFinanciallyActive(source);
   }
-  if (!row.billingDocumentId || !row.accountReceivableSourceId || !validFinancialAmounts(row)) {
+  if (!row.billingDocumentId) {
     return missingFinancialData(source);
   }
+  if (row.billingDocumentType === ELECTRONIC_TICKET_DOCUMENT_TYPE) {
+    return ticketEligibility(source, row);
+  }
+  if (
+    row.billingDocumentType !== ELECTRONIC_INVOICE_DOCUMENT_TYPE ||
+    !row.accountReceivableSourceId ||
+    !validFinancialAmounts(row)
+  ) return missingFinancialData(source);
   return eligibilityFromReceivable(source, row);
+}
+
+function ticketEligibility(source: CommercialSourceRef, billing: AuthorityRow): FinanceEligibilityResult {
+  const acceptedCashTicket =
+    billing.billingDocumentTaxAuthorityStatus === "ACCEPTED" &&
+    billing.billingPaymentConditionCode === CASH_PAYMENT_CONDITION_CODE &&
+    billing.billingCreditTermDays === null;
+  return acceptedCashTicket
+    ? { source, eligibility: "ELIGIBLE", reason: "SETTLED" }
+    : missingFinancialData(source);
 }
 
 function eligibilityFromReceivable(

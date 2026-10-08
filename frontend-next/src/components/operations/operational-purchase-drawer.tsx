@@ -1,7 +1,7 @@
 'use client';
 
 import { type FormEvent, useEffect, useState } from 'react';
-import { createOperationalPurchase, operationsErrorMessage, uploadOperationalEvidence, type CreateOperationalPurchaseInput, type OperationalRequirementDetail } from '@/lib/operations-api';
+import { createOperationalPurchase, createStandaloneOperationalPurchase, operationsErrorMessage, uploadOperationalEvidence, uploadStandaloneOperationalEvidence, type CreateOperationalPurchaseInput, type OperationalRequirementDetail, type StandaloneOperationalRequirementDetail } from '@/lib/operations-api';
 import { tenantDateTimeInputToUtc } from '@/shared/regional';
 import { useTenantRegional } from '@/shared/regional/tenant-regional-provider';
 import { Button } from '@/components/ui/button';
@@ -15,9 +15,10 @@ const allowedMimeTypes = new Set(['application/pdf', 'image/jpeg', 'image/png', 
 const maxEvidenceBytes = 10 * 1024 * 1024;
 
 type PurchaseForm = { providerName: string; supplierReference: string; amount: string; currency: string; taxAmount: string; purchasedAt: string; supplierInvoiceNumber: string; notes: string };
+type ResolvedFulfillment = { id: string; created: boolean };
 const emptyPurchase = (currency = ''): PurchaseForm => ({ providerName: '', supplierReference: '', amount: '', currency, taxAmount: '', purchasedAt: '', supplierInvoiceNumber: '', notes: '' });
 
-export function OperationalPurchaseDrawer({ open, travelPackageId, requirementId, fulfillmentId, providerName, soldValue, onOpenChange, onCreated }: { open: boolean; travelPackageId: string; requirementId: string; fulfillmentId: string; providerName?: string | null; soldValue?: OperationalRequirementDetail['soldValue']; onOpenChange: (open: boolean) => void; onCreated: (result: { evidenceUploadFailed: boolean }) => Promise<void> | void }) {
+export function OperationalPurchaseDrawer({ open, travelPackageId, requirementId, fulfillmentId, ensureFulfillment, providerName, soldValue, onOpenChange, onCreated }: { open: boolean; travelPackageId?: string | null; requirementId: string; fulfillmentId?: string | null; ensureFulfillment?: () => Promise<ResolvedFulfillment>; providerName?: string | null; soldValue?: OperationalRequirementDetail['soldValue'] | StandaloneOperationalRequirementDetail['soldValue']; onOpenChange: (open: boolean) => void; onCreated: (result: { evidenceUploadFailed: boolean }) => Promise<void> | void }) {
   const { timeZone, preferredCurrency } = useTenantRegional();
   const [form, setForm] = useState<PurchaseForm>(emptyPurchase());
   const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
@@ -39,12 +40,21 @@ export function OperationalPurchaseDrawer({ open, travelPackageId, requirementId
     const validation = validatePurchase(form);
     if (validation) { setError(validation); return; }
     setSaving(true);
+    let createdFulfillment = false;
     try {
-      const purchase = await createOperationalPurchase(travelPackageId, requirementId, fulfillmentId, purchaseInput(form, timeZone));
+      const input = purchaseInput(form, timeZone);
+      const resolvedFulfillment = fulfillmentId ? { id: fulfillmentId, created: false } : await ensureFulfillment?.();
+      if (!resolvedFulfillment) throw new Error('OPERATIONAL_FULFILLMENT_REQUIRED');
+      createdFulfillment = resolvedFulfillment.created;
+      const effectiveFulfillmentId = resolvedFulfillment.id;
+      const purchase = travelPackageId
+        ? await createOperationalPurchase(travelPackageId, requirementId, effectiveFulfillmentId, input)
+        : await createStandaloneOperationalPurchase(requirementId, effectiveFulfillmentId, input);
       let evidenceUploadFailed = false;
       if (evidenceFile) {
         try {
-          await uploadOperationalEvidence(travelPackageId, requirementId, fulfillmentId, { evidenceType: 'OTHER', operationalPurchaseId: purchase.id, file: evidenceFile });
+          if (travelPackageId) await uploadOperationalEvidence(travelPackageId, requirementId, effectiveFulfillmentId, { evidenceType: 'OTHER', operationalPurchaseId: purchase.id, file: evidenceFile });
+          else await uploadStandaloneOperationalEvidence(requirementId, effectiveFulfillmentId, { evidenceType: 'OTHER', operationalPurchaseId: purchase.id, file: evidenceFile });
         } catch {
           evidenceUploadFailed = true;
         }
@@ -52,7 +62,7 @@ export function OperationalPurchaseDrawer({ open, travelPackageId, requirementId
       onOpenChange(false);
       await onCreated({ evidenceUploadFailed });
     } catch (reason) {
-      setError(message(reason, 'No se pudo registrar la compra.'));
+      setError(createdFulfillment ? 'La gestión se creó, pero no se pudo registrar la compra. Inténtelo de nuevo; se reutilizará esta gestión.' : message(reason, 'No se pudo registrar la compra.'));
     } finally {
       setSaving(false);
     }

@@ -228,6 +228,39 @@ export interface StandaloneOperationalRequirementDetail extends StandaloneOperat
   workflow: { fulfillmentCount: number; purchaseCount: number; fulfillmentStatuses: Array<{ id: string; status: OperationalFulfillmentStatus }> };
 }
 export interface StandaloneOperationalRequirementsPage { items: StandaloneOperationalRequirement[]; total: number; page: number; pageSize: number; totalPages: number; }
+export type CustomQuotationOperationsGroupStatus = 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED' | 'NOT_APPLICABLE';
+export type CustomQuotationFinanceEligibilityStatus = 'PENDIENTE_FACTURACION' | 'PENDIENTE_ACEPTACION_FISCAL' | 'PENDIENTE_REGISTRO_FINANCIERO' | 'PENDIENTE_PAGO' | 'LISTO_PARA_PROCESAR';
+export interface CustomQuotationOperationsGroup {
+  sourceType: 'CUSTOM_QUOTATION_LINE';
+  sourceId: string;
+  quotationVersionId: string;
+  customer: { id: string; fullName: string; idType: string | null; idNumber: string } | null;
+  quotationNumber: string | null;
+  salesOrderNumber: string | null;
+  billingDocumentId: string | null;
+  billingDocumentType: string | null;
+  fiscalDocumentNumber: string | null;
+  fiscalKey: string | null;
+  fiscalTotal: { amount: string; currency: string } | null;
+  fiscalStatus: string | null;
+  createdAt: string;
+  status: CustomQuotationOperationsGroupStatus;
+  currency: string | null;
+  commercialValue: { amount: string | null; currency: string | null };
+  serviceCount: number;
+  requirements: Array<{
+    requirementId: string;
+    sourceLineId: string | null;
+    description: string;
+    commercialValue: { amount: string | null; currency: string | null };
+    status: OperationalRequirementStatus;
+    eligibilityStatus: CustomQuotationFinanceEligibilityStatus;
+    eligibilityReason: string | null;
+    outstandingAmount: string | null;
+    currency: string | null;
+  }>;
+}
+export interface CustomQuotationOperationsGroupsPage { items: CustomQuotationOperationsGroup[]; total: number; page: number; pageSize: number; totalPages: number; }
 export type StandaloneOperationalFulfillmentSummary = Omit<OperationalFulfillmentSummary, 'travelPackageId' | 'passengerCount' | 'passengerPreview'> & { travelPackageId: null; passengerCount: 0; passengerPreview: []; };
 export type StandaloneOperationalFulfillmentDetail = Omit<OperationalFulfillmentDetail, 'travelPackageId' | 'passengerCount' | 'passengerPreview' | 'passengers'> & { travelPackageId: null; passengerCount: 0; passengerPreview: []; passengers: []; };
 export interface StandaloneOperationalFulfillmentsPage { items: StandaloneOperationalFulfillmentSummary[]; total: number; page: number; pageSize: number; totalPages: number; }
@@ -237,6 +270,7 @@ export type StandaloneOperationalEvidence = Omit<OperationalEvidence, 'travelPac
 export interface StandaloneOperationalEvidencePage { items: StandaloneOperationalEvidence[]; total: number; page: number; pageSize: number; totalPages: number; }
 
 function standaloneRequirementsPath(suffix = '') { return `/operations/standalone/requirements${suffix}`; }
+function customQuotationGroupsPath() { return `${standaloneRequirementsPath('/custom-quotation-groups')}`; }
 function standaloneFulfillmentsPath(requirementId: string, suffix = '') { return `${standaloneRequirementsPath(`/${encodeURIComponent(requirementId)}/fulfillments`)}${suffix}`; }
 function standalonePurchasesPath(requirementId: string, fulfillmentId: string, suffix = '') { return `${standaloneFulfillmentsPath(requirementId, `/${encodeURIComponent(fulfillmentId)}/purchases`)}${suffix}`; }
 function standaloneEvidencePath(requirementId: string, fulfillmentId: string, suffix = '') { return `${standaloneFulfillmentsPath(requirementId, `/${encodeURIComponent(fulfillmentId)}/evidence`)}${suffix}`; }
@@ -247,6 +281,11 @@ export function listStandaloneOperationalRequirements(input: { page?: number; st
   if (input.search?.trim()) params.set('search', input.search.trim());
   if (input.sourceType?.trim()) params.set('sourceType', input.sourceType.trim());
   return operationsRequest(`${standaloneRequirementsPath()}?${params}`, 'GET');
+}
+export function listCustomQuotationOperationsGroups(input: { page?: number; search?: string } = {}): Promise<CustomQuotationOperationsGroupsPage> {
+  const params = new URLSearchParams({ page: String(input.page ?? 1), pageSize: '20' });
+  if (input.search?.trim()) params.set('search', input.search.trim());
+  return operationsRequest(`${customQuotationGroupsPath()}?${params}`, 'GET');
 }
 export function getStandaloneOperationalRequirement(requirementId: string): Promise<StandaloneOperationalRequirementDetail> { return operationsRequest(standaloneRequirementsPath(`/${encodeURIComponent(requirementId)}`), 'GET'); }
 export function listStandaloneOperationalFulfillments(requirementId: string, page = 1): Promise<StandaloneOperationalFulfillmentsPage> { return operationsRequest(`${standaloneFulfillmentsPath(requirementId)}?${new URLSearchParams({ page: String(page), pageSize: '20' })}`, 'GET'); }

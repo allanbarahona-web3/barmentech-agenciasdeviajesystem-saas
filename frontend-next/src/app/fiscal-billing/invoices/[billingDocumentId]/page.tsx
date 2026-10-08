@@ -130,14 +130,16 @@ export default function AcceptedInvoicePage() {
       return;
     }
     const role = String(session.user.role ?? '').toUpperCase();
-    if (role !== 'ADMIN' && role !== 'FACTURACION_COBROS' && !(role === 'AGENT' && customerId)) {
+    if (role !== 'ADMIN' && role !== 'FACTURACION_COBROS' && role !== 'OPERACIONES' && !(role === 'AGENT' && customerId)) {
       router.replace(getHomeRouteForRole(role));
       return;
     }
     queueMicrotask(() => setAuthorized(true));
   }, [customerId, router]);
 
-  const customerScopedReadOnly = String(getStoredSession()?.user?.role ?? '').toUpperCase() === 'AGENT' && Boolean(customerId);
+  const viewerRole = String(getStoredSession()?.user?.role ?? '').toUpperCase();
+  const customerScopedReadOnly = viewerRole === 'AGENT' && Boolean(customerId);
+  const readOnlyViewer = customerScopedReadOnly || viewerRole === 'OPERACIONES';
 
   useEffect(() => {
     if (!authorized) return;
@@ -438,7 +440,7 @@ export default function AcceptedInvoicePage() {
           <h2>Documentos</h2>
           <p className={styles.muted}>Descargue los documentos disponibles de esta factura aceptada.</p>
           <div className={styles.workspaceActions}>
-            {!customerScopedReadOnly ? <Button
+            {!readOnlyViewer ? <Button
               type="button"
               className={styles.primaryAction}
               disabled={emailSubmitting}
@@ -447,7 +449,7 @@ export default function AcceptedInvoicePage() {
               <Mail aria-hidden="true" />
               Reenviar por correo
             </Button> : null}
-            {!customerScopedReadOnly ? <Button
+            {!readOnlyViewer ? <Button
               type="button"
               className={styles.primaryAction}
               disabled={documentAction !== null}
@@ -462,7 +464,7 @@ export default function AcceptedInvoicePage() {
                   ? 'Descargando PDF…'
                   : 'Descargar PDF'}
             </Button> : null}
-            {customerScopedReadOnly && internalPdf ? <Button
+            {readOnlyViewer && internalPdf ? <Button
               type="button"
               className={styles.primaryAction}
               disabled={documentAction !== null}
@@ -514,7 +516,7 @@ export default function AcceptedInvoicePage() {
           )}
         </section>
 
-        {!customerScopedReadOnly ? <div className={styles.workspaceActions}>
+        {!readOnlyViewer ? <div className={styles.workspaceActions}>
           <Button asChild variant="outline" className={styles.secondaryAction}>
             <Link href={`/fiscal-billing/documents/${encodeURIComponent(invoice.billingDocumentId)}`}>Detalles técnicos</Link>
           </Button>

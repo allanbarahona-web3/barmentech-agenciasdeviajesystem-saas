@@ -92,7 +92,10 @@ describe("FiscalBillingController accepted invoice", () => {
       UserRole.ADMIN,
       UserRole.FACTURACION_COBROS,
       UserRole.CONTADOR,
+      UserRole.OPERACIONES,
     ]);
+    expect(canActivate(UserRole.OPERACIONES, handler)).toBe(true);
+    expect(() => canActivate(UserRole.OPERACIONES, FiscalBillingController.prototype.generateInvoicePdf)).toThrow(ForbiddenException);
     await expect(
       controller.invoice(
         {
@@ -110,6 +113,18 @@ describe("FiscalBillingController accepted invoice", () => {
   });
 });
 
+describe("FiscalBillingController Operations read-only access", () => {
+  it.each([
+    FiscalBillingController.prototype.generateInvoicePdf,
+    FiscalBillingController.prototype.resendInvoiceEmail,
+    FiscalBillingController.prototype.requestElectronicIssuance,
+    FiscalBillingController.prototype.createOrResumeDraft,
+    FiscalBillingController.prototype.createCreditNoteDraft,
+  ])("keeps OPERACIONES out of %s", (handler) => {
+    expect(() => canActivate(UserRole.OPERACIONES, handler)).toThrow(ForbiddenException);
+  });
+});
+
 describe('FiscalBillingController artifact reads', () => {
   it('keeps artifact routes behind the existing guards and trusted tenant context', async () => {
     const artifacts = [{ artifactType: 'SIGNED_FISCAL_XML', version: 1, status: 'AVAILABLE', downloadAvailable: true }];
@@ -119,7 +134,8 @@ describe('FiscalBillingController artifact reads', () => {
     expect(Reflect.getMetadata(PATH_METADATA, FiscalBillingController.prototype.listArtifacts)).toBe('documents/:billingDocumentId/artifacts');
     expect(Reflect.getMetadata(PATH_METADATA, FiscalBillingController.prototype.downloadArtifact)).toBe('documents/:billingDocumentId/artifacts/:artifactType/versions/:version/download');
     for (const handler of [FiscalBillingController.prototype.listArtifacts, FiscalBillingController.prototype.downloadArtifact]) {
-      expect(Reflect.getMetadata(ROLES_KEY, handler)).toEqual([UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.CONTADOR]);
+      expect(Reflect.getMetadata(ROLES_KEY, handler)).toEqual([UserRole.ADMIN, UserRole.FACTURACION_COBROS, UserRole.CONTADOR, UserRole.OPERACIONES]);
+      expect(canActivate(UserRole.OPERACIONES, handler)).toBe(true);
     }
     await expect(controller.listArtifacts(request, 'document-a')).resolves.toBe(artifacts);
     expect(read.list).toHaveBeenCalledWith('tenant-a', 'document-a');
@@ -258,10 +274,10 @@ describe("FiscalBillingController electronic issuance request", () => {
   });
 });
 
-function canActivate(role: UserRole) {
+function canActivate(role: UserRole, handler: Function = FiscalBillingController.prototype.listEligible) {
   const guard = new RolesGuard(new Reflector());
   const context = {
-    getHandler: () => FiscalBillingController.prototype.listEligible,
+    getHandler: () => handler,
     getClass: () => FiscalBillingController,
     switchToHttp: () => ({ getRequest: () => ({ user: { role } }) }),
   };

@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { AdditionalServicesModule } from "../../additional-services/additional-services.module";
 import { CustomQuotationsModule } from "../../custom-quotations/custom-quotations.module";
+import { FinanceModule } from "../../finance/finance.module";
 import { OperationalRequirementsController } from "./operational-requirements.controller";
 import { OperationalStandaloneRequirementsController } from "./operational-standalone-requirements.controller";
 import { OperationalRequirementsService } from "./operational-requirements.service";
@@ -18,7 +19,7 @@ import {
 } from "../intake/travel-package-cost-component-operational-work-source-reconciliation.adapter";
 
 @Module({
-  imports: [AdditionalServicesModule, CustomQuotationsModule],
+  imports: [AdditionalServicesModule, CustomQuotationsModule, FinanceModule],
   controllers: [OperationalRequirementsController, OperationalStandaloneRequirementsController],
   providers: [
     OperationalRequirementsService,

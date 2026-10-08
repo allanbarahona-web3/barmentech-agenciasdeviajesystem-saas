@@ -1,5 +1,6 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
+import { FINANCE_ELIGIBILITY_READER, type CommercialSourceRef, type FinanceEligibilityReader, type FinanceEligibilityResult } from "../../finance/eligibility-read/finance-eligibility-reader.port";
 import { PrismaService } from "../../prisma/prisma.service";
 import { runTenantTransaction } from "../../tenant/tenant-transaction";
 import {
@@ -17,6 +18,7 @@ export type OperationalRequirementsActor = { userId: string; name: string };
 
 type OperationsTransaction = {
   $executeRaw<T = unknown>(query: TemplateStringsArray, ...values: unknown[]): Promise<T>;
+  $queryRaw<T = unknown>(query: TemplateStringsArray, ...values: unknown[]): Promise<T>;
   travelPackage: Record<string, (...args: any[]) => Promise<any>>;
   travelPackageParticipant: Record<string, (...args: any[]) => Promise<any>>;
   user: Record<string, (...args: any[]) => Promise<any>>;
@@ -24,6 +26,8 @@ type OperationsTransaction = {
   operationalRequirementPassenger: Record<string, (...args: any[]) => Promise<any>>;
   operationalFulfillmentPassenger: Record<string, (...args: any[]) => Promise<any>>;
   operationalFulfillment: Record<string, (...args: any[]) => Promise<any>>;
+  customQuotationVersion: Record<string, (...args: any[]) => Promise<any>>;
+  billingDocument: Record<string, (...args: any[]) => Promise<any>>;
 };
 
 type OperationsDatabase = {
@@ -74,6 +78,38 @@ type RequirementRecord = {
 type RequirementSummaryRecord = Omit<RequirementRecord, "passengers"> & {
   _count: { passengers: number };
 };
+type CustomQuotationGroupChildRecord = {
+  id: string;
+  sourceId: string | null;
+  sourceLineId: string | null;
+  description: string;
+  status: RequirementStatus;
+  soldAmount: Prisma.Decimal | null;
+  soldCurrency: string | null;
+  createdAt: Date;
+  customer: { id: string; fullName: string; idType: string | null; idNumber: string } | null;
+};
+type CustomQuotationVersionRecord = {
+  id: string;
+  customQuotation: { quotationNumber: string };
+  salesOrder: { id: string; orderNumber: string } | null;
+};
+type PrimaryBillingDocumentRecord = {
+  id: string;
+  sourceId: string | null;
+  documentTypeCode: string;
+  fiscalNumber: string | null;
+  haciendaKey: string | null;
+  currencyCode: string;
+  total: Prisma.Decimal;
+  taxAuthorityStatus: string;
+};
+type CustomQuotationFinanceEligibilityStatus =
+  | "PENDIENTE_FACTURACION"
+  | "PENDIENTE_ACEPTACION_FISCAL"
+  | "PENDIENTE_REGISTRO_FINANCIERO"
+  | "PENDIENTE_PAGO"
+  | "LISTO_PARA_PROCESAR";
 
 const REQUIREMENT_DETAIL_SELECT = {
   id: true,
@@ -150,6 +186,18 @@ const REQUIREMENT_SUMMARY_SELECT = {
   _count: { select: { passengers: true } },
 } as const;
 
+const CUSTOM_QUOTATION_GROUP_CHILD_SELECT = {
+  id: true,
+  sourceId: true,
+  sourceLineId: true,
+  description: true,
+  status: true,
+  soldAmount: true,
+  soldCurrency: true,
+  createdAt: true,
+  customer: { select: { id: true, fullName: true, idType: true, idNumber: true } },
+} as const;
+
 const STATUS_TRANSITIONS: Readonly<Record<RequirementStatus, readonly RequirementStatus[]>> = {
   PENDING: ["IN_PROGRESS", "CANCELLED", "NOT_APPLICABLE"],
   IN_PROGRESS: ["PENDING", "CANCELLED", "NOT_APPLICABLE"],
@@ -162,7 +210,10 @@ const STATUS_TRANSITIONS: Readonly<Record<RequirementStatus, readonly Requiremen
 export class OperationalRequirementsService {
   private readonly database: OperationsDatabase;
 
-  constructor(prisma: PrismaService) {
+  constructor(
+    prisma: PrismaService,
+    @Inject(FINANCE_ELIGIBILITY_READER) private readonly finance: FinanceEligibilityReader,
+  ) {
     this.database = prisma as unknown as OperationsDatabase;
   }
 
@@ -449,6 +500,126 @@ export class OperationalRequirementsService {
     });
   }
 
+  /**
+   * Read-only commercial presentation for Custom Quotation Operations work.
+   * The source line remains the requirement identity; this only groups the
+   * queue by the accepted immutable quotation-version source.
+   */
+  async listStandaloneCustomQuotationGroups(tenantId: string, input: ListOperationalRequirementsDto) {
+    const page = normalizePage(input.page);
+    const pageSize = normalizePageSize(input.pageSize);
+    const where = customQuotationGroupWhere(tenantId, input);
+    const pageResult = await this.withTenantTransaction(tenantId, async (tx) => {
+      const [groups, totalRows] = await Promise.all([
+        tx.operationalRequirement.groupBy({
+          by: ["sourceId"],
+          where,
+          _min: { createdAt: true },
+          orderBy: [{ _min: { createdAt: "asc" } }, { sourceId: "asc" }],
+          skip: (page - 1) * pageSize,
+          take: pageSize,
+        }) as Promise<Array<{ sourceId: string | null }>>,
+        countCustomQuotationGroups(tx, tenantId, optionalText(input.search)),
+      ]);
+      const sourceIds = groups.map((group) => group.sourceId).filter((value): value is string => Boolean(value));
+      if (sourceIds.length === 0) {
+        const total = numberValue(totalRows[0]?.total);
+        return { items: [], total, page, pageSize, totalPages: total === 0 ? 0 : Math.ceil(total / pageSize) };
+      }
+      const [requirements, versions] = await Promise.all([
+        tx.operationalRequirement.findMany({
+          where: { ...customQuotationGroupWhere(tenantId, {}), sourceId: { in: sourceIds } },
+          select: CUSTOM_QUOTATION_GROUP_CHILD_SELECT,
+          orderBy: [{ sourceId: "asc" }, { createdAt: "asc" }, { id: "asc" }],
+        }) as Promise<CustomQuotationGroupChildRecord[]>,
+        tx.customQuotationVersion.findMany({
+          where: { tenantId, id: { in: sourceIds } },
+          select: {
+            id: true,
+            customQuotation: { select: { quotationNumber: true } },
+            salesOrder: { select: { id: true, orderNumber: true } },
+          },
+        }) as Promise<CustomQuotationVersionRecord[]>,
+      ]);
+      const salesOrderIds = versions.flatMap((version) => version.salesOrder ? [version.salesOrder.id] : []);
+      const billingDocuments = salesOrderIds.length === 0 ? [] : await (tx.billingDocument.findMany({
+        where: {
+          tenantId,
+          sourceType: "SALES_ORDER",
+          sourceId: { in: salesOrderIds },
+          sourceRole: "PRIMARY",
+        },
+        select: {
+          id: true,
+          sourceId: true,
+          documentTypeCode: true,
+          fiscalNumber: true,
+          haciendaKey: true,
+          currencyCode: true,
+          total: true,
+          taxAuthorityStatus: true,
+        },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      }) as Promise<PrimaryBillingDocumentRecord[]>);
+      const requirementsBySource = new Map<string, CustomQuotationGroupChildRecord[]>();
+      for (const requirement of requirements) {
+        if (!requirement.sourceId) continue;
+        const items = requirementsBySource.get(requirement.sourceId) ?? [];
+        items.push(requirement);
+        requirementsBySource.set(requirement.sourceId, items);
+      }
+      const versionById = new Map(versions.map((version) => [version.id, version]));
+      const billingDocumentsBySalesOrderId = new Map<string, PrimaryBillingDocumentRecord[]>();
+      for (const document of billingDocuments) {
+        if (!document.sourceId) continue;
+        const documents = billingDocumentsBySalesOrderId.get(document.sourceId) ?? [];
+        documents.push(document);
+        billingDocumentsBySalesOrderId.set(document.sourceId, documents);
+      }
+      const items = sourceIds.map((sourceId) => {
+        const version = versionById.get(sourceId);
+        return toCustomQuotationGroup(
+          sourceId,
+          requirementsBySource.get(sourceId) ?? [],
+          version,
+          version?.salesOrder ? billingDocumentsBySalesOrderId.get(version.salesOrder.id) ?? [] : [],
+        );
+      });
+      const total = numberValue(totalRows[0]?.total);
+      return { items, total, page, pageSize, totalPages: total === 0 ? 0 : Math.ceil(total / pageSize) };
+    });
+    const sources = new Map<string, CommercialSourceRef>();
+    for (const group of pageResult.items) {
+      for (const requirement of group.requirements) {
+        if (!requirement.sourceLineId) continue;
+        const source = { sourceType: "CUSTOM_QUOTATION_LINE", sourceId: group.sourceId, sourceLineId: requirement.sourceLineId } as CommercialSourceRef;
+        sources.set(customQuotationFinanceSourceKey(source), source);
+      }
+    }
+    const financeResults = sources.size === 0
+      ? []
+      : await this.finance.readMany({ tenantId, sources: [...sources.values()] });
+    const financeBySource = new Map(financeResults.map((result) => [customQuotationFinanceSourceKey(result.source), result]));
+    return {
+      ...pageResult,
+      items: pageResult.items.map(({ fiscalDocumentState, ...group }) => ({
+        ...group,
+        requirements: group.requirements.map((requirement) => {
+          const source = requirement.sourceLineId
+            ? { sourceType: "CUSTOM_QUOTATION_LINE", sourceId: group.sourceId, sourceLineId: requirement.sourceLineId } as CommercialSourceRef
+            : null;
+          return {
+            ...requirement,
+            ...customQuotationEligibilityProjection(
+              financeBySource.get(source ? customQuotationFinanceSourceKey(source) : ""),
+              fiscalDocumentState,
+            ),
+          };
+        }),
+      })),
+    };
+  }
+
   async findStandalone(tenantId: string, requirementId: string) {
     return this.withTenantTransaction(tenantId, async (tx) => {
       const requirement = await this.findStandaloneRequirement(tx, tenantId, requirementId);
@@ -674,6 +845,147 @@ function requirementListWhere(tenantId: string, travelPackageId: string | null, 
     }),
     ...(search ? { OR: [{ description: { contains: search, mode: "insensitive" } }, { sourceReference: { contains: search, mode: "insensitive" } }, { customer: { is: { fullName: { contains: search, mode: "insensitive" } } } }] } : {}),
   };
+}
+
+function customQuotationGroupWhere(tenantId: string, input: Pick<ListOperationalRequirementsDto, "search">) {
+  const search = optionalText(input.search);
+  return {
+    tenantId,
+    scopeType: "STANDALONE_CUSTOMER" as const,
+    travelPackageId: null,
+    customerId: { not: null },
+    sourceType: "CUSTOM_QUOTATION_LINE",
+    sourceId: { not: null },
+    ...(search ? {
+      OR: [
+        { description: { contains: search, mode: "insensitive" } },
+        { customer: { is: { fullName: { contains: search, mode: "insensitive" } } } },
+      ],
+    } : {}),
+  };
+}
+
+function countCustomQuotationGroups(tx: OperationsTransaction, tenantId: string, search: string | null) {
+  const searchClause = search
+    ? Prisma.sql`AND (requirement."description" ILIKE ${`%${search}%`} OR customer."fullName" ILIKE ${`%${search}%`})`
+    : Prisma.empty;
+  return tx.$queryRaw<Array<{ total: bigint | number }>>`
+    SELECT COUNT(DISTINCT requirement."sourceId") AS total
+    FROM "operational_requirements" requirement
+    INNER JOIN "Client" customer
+      ON customer."id" = requirement."customerId" AND customer."tenantId" = requirement."tenantId"
+    WHERE requirement."tenantId" = ${tenantId}
+      AND requirement."scopeType" = 'STANDALONE_CUSTOMER'
+      AND requirement."travelPackageId" IS NULL
+      AND requirement."sourceType" = 'CUSTOM_QUOTATION_LINE'
+      AND requirement."sourceId" IS NOT NULL
+      ${searchClause}
+  `;
+}
+
+function toCustomQuotationGroup(
+  sourceId: string,
+  requirements: CustomQuotationGroupChildRecord[],
+  version: CustomQuotationVersionRecord | undefined,
+  billingDocuments: PrimaryBillingDocumentRecord[],
+) {
+  const billingDocument = billingDocuments.find((document) => document.taxAuthorityStatus === "ACCEPTED");
+  const fiscalDocumentState: "MISSING" | "PENDING" | "ACCEPTED" = billingDocuments.length === 0
+    ? "MISSING"
+    : billingDocument ? "ACCEPTED" : "PENDING";
+  const first = requirements[0];
+  const currencies = [...new Set(requirements.map((requirement) => requirement.soldCurrency).filter((value): value is string => Boolean(value)))];
+  const currency = currencies.length === 1 ? currencies[0] : null;
+  const hasCompleteValues = Boolean(currency) && requirements.every((requirement) => requirement.soldAmount !== null && requirement.soldCurrency === currency);
+  const total = hasCompleteValues
+    ? requirements.reduce((sum, requirement) => sum.plus(requirement.soldAmount!), new Prisma.Decimal(0)).toFixed()
+    : null;
+  return {
+    sourceType: "CUSTOM_QUOTATION_LINE",
+    sourceId,
+    quotationVersionId: sourceId,
+    customer: first?.customer
+      ? { id: first.customer.id, fullName: first.customer.fullName, idType: first.customer.idType, idNumber: first.customer.idNumber }
+      : null,
+    quotationNumber: version?.customQuotation.quotationNumber ?? null,
+    salesOrderNumber: version?.salesOrder?.orderNumber ?? null,
+    billingDocumentId: billingDocument?.id ?? null,
+    billingDocumentType: billingDocument?.documentTypeCode ?? null,
+    fiscalDocumentNumber: billingDocument?.fiscalNumber ?? null,
+    fiscalKey: billingDocument?.haciendaKey ?? null,
+    fiscalTotal: billingDocument
+      ? { amount: billingDocument.total.toFixed(), currency: billingDocument.currencyCode }
+      : null,
+    fiscalStatus: billingDocument?.taxAuthorityStatus ?? null,
+    fiscalDocumentState,
+    createdAt: requirements.reduce<Date | null>((earliest, requirement) => !earliest || requirement.createdAt < earliest ? requirement.createdAt : earliest, null),
+    status: customQuotationGroupStatus(requirements.map((requirement) => requirement.status)),
+    currency,
+    commercialValue: { amount: total, currency },
+    serviceCount: requirements.length,
+    requirements: requirements.map((requirement) => ({
+      requirementId: requirement.id,
+      sourceLineId: requirement.sourceLineId,
+      description: requirement.description,
+      commercialValue: { amount: requirement.soldAmount?.toFixed() ?? null, currency: requirement.soldCurrency },
+      status: requirement.status,
+    })),
+  };
+}
+
+function customQuotationFinanceSourceKey(source: CommercialSourceRef) {
+  return `${source.sourceType}\u0000${source.sourceId}\u0000${source.sourceLineId ?? ""}`;
+}
+
+function customQuotationEligibilityProjection(
+  finance: FinanceEligibilityResult | undefined,
+  fiscalDocumentState: "MISSING" | "PENDING" | "ACCEPTED",
+): {
+  eligibilityStatus: CustomQuotationFinanceEligibilityStatus;
+  eligibilityReason: string | null;
+  outstandingAmount: string | null;
+  currency: string | null;
+} {
+  if (finance?.eligibility === "ELIGIBLE") {
+    return {
+      eligibilityStatus: "LISTO_PARA_PROCESAR",
+      eligibilityReason: finance.reason,
+      outstandingAmount: finance.financial?.outstandingAmount ?? null,
+      currency: finance.financial?.currency ?? null,
+    };
+  }
+  if (fiscalDocumentState === "MISSING") {
+    return { eligibilityStatus: "PENDIENTE_FACTURACION", eligibilityReason: finance?.reason ?? null, outstandingAmount: null, currency: null };
+  }
+  if (fiscalDocumentState === "PENDING") {
+    return { eligibilityStatus: "PENDIENTE_ACEPTACION_FISCAL", eligibilityReason: finance?.reason ?? null, outstandingAmount: null, currency: null };
+  }
+  if (finance?.reason === "OUTSTANDING_BALANCE") {
+    return {
+      eligibilityStatus: "PENDIENTE_PAGO",
+      eligibilityReason: finance.reason,
+      outstandingAmount: finance.financial?.outstandingAmount ?? null,
+      currency: finance.financial?.currency ?? null,
+    };
+  }
+  return {
+    eligibilityStatus: "PENDIENTE_REGISTRO_FINANCIERO",
+    eligibilityReason: finance?.reason ?? null,
+    outstandingAmount: finance?.financial?.outstandingAmount ?? null,
+    currency: finance?.financial?.currency ?? null,
+  };
+}
+
+function customQuotationGroupStatus(statuses: RequirementStatus[]) {
+  if (statuses.every((status) => status === "PENDING")) return "PENDING" as const;
+  if (statuses.some((status) => status === "PENDING" || status === "IN_PROGRESS")) return "IN_PROGRESS" as const;
+  if (statuses.every((status) => status === "CANCELLED")) return "CANCELLED" as const;
+  if (statuses.every((status) => status === "NOT_APPLICABLE")) return "NOT_APPLICABLE" as const;
+  return "COMPLETED" as const;
+}
+
+function numberValue(value: bigint | number | undefined) {
+  return typeof value === "bigint" ? Number(value) : value ?? 0;
 }
 
 function hasUpdate(input: UpdateOperationalRequirementDto) {

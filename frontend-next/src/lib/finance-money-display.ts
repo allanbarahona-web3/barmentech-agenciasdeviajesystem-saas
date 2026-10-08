@@ -1,4 +1,4 @@
-/** Presentation-only Decimal-string rounding for Customer Profile amounts. */
+/** Presentation-only Decimal-string rounding for user-facing currency amounts. */
 export function formatFinanceMoneyDisplay(value: string, currency: string): string {
   const match = /^(-?)(\d+)(?:\.(\d+))?$/.exec(value);
   if (!match) return `${currency} ${value}`;

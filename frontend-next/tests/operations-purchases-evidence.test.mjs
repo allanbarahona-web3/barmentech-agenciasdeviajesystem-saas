@@ -46,9 +46,12 @@ test('Purchase form can persist an optional linked document after the Purchase s
   const source = drawer();
   for (const text of ['Número de factura del proveedor', 'evidenceFile']) assert.match(source, new RegExp(text));
   assert.match(source, /Documento de respaldo \(opcional\)/);
-  assert.match(source, /const purchase = await createOperationalPurchase/);
+  assert.match(source, /const purchase = travelPackageId/);
+  assert.match(source, /await createOperationalPurchase\(travelPackageId, requirementId, effectiveFulfillmentId, input\)/);
+  assert.match(source, /await createStandaloneOperationalPurchase\(requirementId, effectiveFulfillmentId, input\)/);
   assert.match(source, /operationalPurchaseId: purchase\.id/);
   assert.match(source, /await uploadOperationalEvidence/);
+  assert.match(source, /await uploadStandaloneOperationalEvidence/);
   assert.match(source, /onCreated\(\{ evidenceUploadFailed \}\)/);
   assert.doesNotMatch(source, /margen|margin|utilidad|ganancia/i);
 });
@@ -111,9 +114,10 @@ test('Operations API centralizes purchase and evidence transport, including mult
 });
 
 test('Purchases/Documents and management both use the one canonical Purchase drawer', () => {
-  const history = workspace(); const management = read('../src/components/operations/operational-fulfillments-workspace.tsx'); const form = drawer();
+  const history = workspace(); const management = read('../src/components/operations/operational-fulfillments-workspace.tsx'); const standalone = read('../src/components/operations/standalone-operational-requirements-workspace.tsx'); const form = drawer();
   assert.match(history, /<OperationalPurchaseDrawer/);
   assert.match(management, /<OperationalPurchaseDrawer/);
+  assert.match(standalone, /<OperationalPurchaseDrawer/);
   assert.equal((history.match(/operational-purchase-form/g) ?? []).length, 0);
   assert.equal((management.match(/operational-purchase-form/g) ?? []).length, 0);
   assert.equal((form.match(/operational-purchase-form/g) ?? []).length, 2);
@@ -123,7 +127,7 @@ test('Purchases/Documents and management both use the one canonical Purchase dra
 test('Drawer preserves Finance-blocked form state and reports evidence partial success without retrying Purchase', () => {
   const source = drawer();
   assert.match(source, /FINANCIAL_ELIGIBILITY_BLOCKED/);
-  assert.match(source, /setError\(message\(reason, 'No se pudo registrar la compra\.'\)\)/);
+  assert.match(source, /setError\(createdFulfillment \? 'La gestión se creó, pero no se pudo registrar la compra/);
   assert.match(source, /operationalPurchaseId: purchase\.id/);
   assert.match(source, /let evidenceUploadFailed = false/);
   assert.match(source, /evidenceUploadFailed = true/);
