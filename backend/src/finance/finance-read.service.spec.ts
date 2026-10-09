@@ -631,6 +631,8 @@ describe("FinanceReadService", () => {
     const sql = rawSql(queryRaw, 0);
     expect(sql).toContain('WITH commercial_obligation_totals AS');
     expect(sql).not.toContain('WITH commercial_obligations AS');
+    expect(sql).toContain('account_receivable_totals AS');
+    expect(sql).not.toContain('account_receivables AS');
     expect(sql).toContain('FROM "commercial_obligations"');
     expect(sql).toContain('FROM "account_receivables"');
     expect(sql).toContain('FROM "payments"');
@@ -641,6 +643,11 @@ describe("FinanceReadService", () => {
     expect(sql).toContain('INNER JOIN "commercial_obligations" obligation');
     expect(sql).toContain('obligation."id" = allocation."commercialObligationId"');
     expect(sql).toContain('FROM "payment_allocations" allocation');
+    expect(sql).toContain('INNER JOIN "account_receivables" ar');
+    expect(sql).toContain('ar."id" = allocation."accountReceivableId"');
+    expect(sql).toContain('ar."tenantId" = allocation."tenantId"');
+    expect(sql).toContain('ar."customerId" = ?');
+    expect(sql).toContain('GROUP BY ar."currencyCode"');
     expect(sql).toContain('SUM(allocation."amount") AS "paid"');
     expect(sql).toContain('FROM "fiscal_credit_note_finance_effects"');
     expect(sql).not.toContain('SUM("receivedAmount")');
@@ -657,6 +664,34 @@ describe("FinanceReadService", () => {
     expect(prisma).not.toHaveProperty("billingDocument");
     expect(prisma).not.toHaveProperty("billingInvoice");
     expect(prisma).not.toHaveProperty("payment");
+  });
+
+  it("preserves payment-backed paid totals while exposing NC AR reductions and available credit separately", async () => {
+    const queryRaw = jest.fn().mockResolvedValue([
+      customerFinancialSummaryRow({
+        currencyCode: "CRC",
+        totalContracted: d("0"),
+        totalInvoiced: d("100"),
+        totalPaid: d("25"),
+        outstanding: d("75"),
+        available: d("40"),
+      }),
+    ]);
+    const dailyRates = { resolveDailyExchangeRate: jest.fn().mockResolvedValue(dailyRate({ status: "NOT_REQUIRED", rate: undefined })) };
+    const service = new FinanceReadService({ $queryRaw: queryRaw } as unknown as PrismaService, dailyRates as never);
+
+    await expect(service.getCustomerFinancialSummary("tenant-a", "customer-a")).resolves.toEqual({
+      customerId: "customer-a",
+      baseCurrencyCode: "CRC",
+      consolidated: { totalContracted: "0.00000", totalInvoiced: "100.00000", totalPaid: "25.00000", outstanding: "75.00000", available: "40.00000" },
+      currencies: [{ currencyCode: "CRC", totalContracted: "0", totalInvoiced: "100", totalPaid: "25", outstanding: "75", available: "40" }],
+      exchangeRateContext: null,
+    });
+    const sql = rawSql(queryRaw, 0);
+    expect(sql).toContain('COALESCE(commercial_payment_allocations."paid", 0)');
+    expect(sql).toContain('COALESCE(receivable_payment_allocations."paid", 0) AS "totalPaid"');
+    expect(sql).toContain('COALESCE(available_payments."available", 0)');
+    expect(sql).toContain('COALESCE(available_credit_notes."available", 0) AS "available"');
   });
 
   it("returns no inactive currencies and preserves zero decimal strings for available-only money", async () => {

@@ -1018,7 +1018,7 @@ export class FinanceReadService {
           AND payment."status" <> 'CANCELLED'
         GROUP BY obligation."currencyCode"
       ),
-      account_receivables AS (
+      account_receivable_totals AS (
         SELECT
           "currencyCode",
           SUM("originalAmount") AS "totalInvoiced",
@@ -1070,7 +1070,7 @@ export class FinanceReadService {
       currency_keys AS (
         SELECT "currencyCode" FROM commercial_obligation_totals
         UNION
-        SELECT "currencyCode" FROM account_receivables
+        SELECT "currencyCode" FROM account_receivable_totals
         UNION
         SELECT "currencyCode" FROM available_payments
         UNION
@@ -1079,18 +1079,18 @@ export class FinanceReadService {
       SELECT
         currency_keys."currencyCode",
         COALESCE(commercial_obligation_totals."totalContracted", 0) AS "totalContracted",
-        COALESCE(account_receivables."totalInvoiced", 0) AS "totalInvoiced",
+        COALESCE(account_receivable_totals."totalInvoiced", 0) AS "totalInvoiced",
         COALESCE(commercial_payment_allocations."paid", 0)
           + COALESCE(receivable_payment_allocations."paid", 0) AS "totalPaid",
         COALESCE(commercial_obligation_totals."commercialOutstanding", 0)
-          + COALESCE(account_receivables."receivableOutstanding", 0) AS "outstanding",
+          + COALESCE(account_receivable_totals."receivableOutstanding", 0) AS "outstanding",
         COALESCE(available_payments."available", 0)
           + COALESCE(available_credit_notes."available", 0) AS "available"
       FROM currency_keys
       LEFT JOIN commercial_obligation_totals
         ON commercial_obligation_totals."currencyCode" = currency_keys."currencyCode"
-      LEFT JOIN account_receivables
-        ON account_receivables."currencyCode" = currency_keys."currencyCode"
+      LEFT JOIN account_receivable_totals
+        ON account_receivable_totals."currencyCode" = currency_keys."currencyCode"
       LEFT JOIN available_payments
         ON available_payments."currencyCode" = currency_keys."currencyCode"
       LEFT JOIN receivable_payment_allocations
