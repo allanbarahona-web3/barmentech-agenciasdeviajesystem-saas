@@ -629,6 +629,8 @@ describe("FinanceReadService", () => {
     });
 
     const sql = rawSql(queryRaw, 0);
+    expect(sql).toContain('WITH commercial_obligation_totals AS');
+    expect(sql).not.toContain('WITH commercial_obligations AS');
     expect(sql).toContain('FROM "commercial_obligations"');
     expect(sql).toContain('FROM "account_receivables"');
     expect(sql).toContain('FROM "payments"');
@@ -636,6 +638,8 @@ describe("FinanceReadService", () => {
     expect(sql).toContain('"status" <> \'CANCELLED\'');
     expect((sql.match(/"status" <> 'CANCELLED'/g) ?? [])).toHaveLength(4);
     expect(sql).toContain('FROM "commercial_obligation_allocations" allocation');
+    expect(sql).toContain('INNER JOIN "commercial_obligations" obligation');
+    expect(sql).toContain('obligation."id" = allocation."commercialObligationId"');
     expect(sql).toContain('FROM "payment_allocations" allocation');
     expect(sql).toContain('SUM(allocation."amount") AS "paid"');
     expect(sql).toContain('FROM "fiscal_credit_note_finance_effects"');
