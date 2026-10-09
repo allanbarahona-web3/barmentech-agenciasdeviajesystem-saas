@@ -1,4 +1,4 @@
-import { HttpException, Injectable } from "@nestjs/common";
+import { HttpException, Injectable, Logger } from "@nestjs/common";
 import { Prisma } from "@prisma/client";
 import { randomUUID } from "node:crypto";
 import { PrismaService } from "../prisma/prisma.service";
@@ -12,6 +12,7 @@ import {
 } from "./cr-v44-fiscal-calculation-policy";
 import { mapCrV44CalculationToBillingDocumentSnapshot } from "./cr-v44-billing-document-snapshot";
 import { fiscalBillingError } from "./fiscal-billing.errors";
+import { resolveTaxIncludedGrossCrV44Candidate } from "./tax-included-gross-calculator-input";
 
 const CREDIT_NOTE_DOCUMENT_TYPE = "03";
 const CREDITABLE_DOCUMENT_TYPES = new Set(["01", "04"]);
@@ -19,6 +20,7 @@ const MAX_DECIMAL = new Prisma.Decimal("99999999999999.99999");
 
 type DraftLine = {
   sourceLineId: string;
+  creditBasis: "QUANTITY" | "GROSS_AMOUNT" | "TOTAL_AMOUNT";
   lineNumber: number;
   cabysCode: string | null;
   itemCode: string | null;
@@ -52,11 +54,14 @@ type DraftLine = {
 type AcceptedCreditUsage = {
   sourceLineId: string;
   creditedQuantity: Prisma.Decimal;
+  creditedGrossAmount: Prisma.Decimal;
   creditedLineTotal: Prisma.Decimal;
 };
 
 @Injectable()
 export class FiscalCreditNoteDraftService {
+  private readonly logger = new Logger(FiscalCreditNoteDraftService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   async createDraft(
@@ -101,8 +106,11 @@ export class FiscalCreditNoteDraftService {
           : partialLines(original.lines, command.lines);
         assertCreditCapacity(original.lines, lines, usage);
         const totals = command.fullDocument ? totalsFromOriginal(original) : totalsFor(lines);
-        const draft = await tx.billingDocument.create({
-          data: {
+        // The parent uses the unchecked create input used by the established
+        // fiscal-document repository.  This keeps the tenant scalar on the
+        // parent while Prisma propagates the composite tenant/document keys to
+        // nested relation creates.
+        const draftCreateData: Prisma.BillingDocumentUncheckedCreateInput = {
             tenantId: command.tenantId,
             documentTypeCode: CREDIT_NOTE_DOCUMENT_TYPE,
             billingMode: original.billingMode,
@@ -120,13 +128,13 @@ export class FiscalCreditNoteDraftService {
             fiscalCalculationPolicyVersion: CR_V44_DECIMAL_V1,
             countryCode: original.countryCode,
             currencyCode: original.currencyCode,
-            exchangeRate: null,
+            exchangeRate: original.currencyCode === "USD" ? original.exchangeRate : null,
             fiscalEmissionAt: null,
             fiscalIssueDate: null,
-            officialExchangeRateObservationId: null,
-            fiscalExchangeRateEffectiveDate: null,
-            fiscalExchangeRateSourceAuthority: null,
-            fiscalExchangeRateIndicatorCode: null,
+            officialExchangeRateObservationId: original.currencyCode === "USD" ? original.officialExchangeRateObservationId : null,
+            fiscalExchangeRateEffectiveDate: original.currencyCode === "USD" ? original.fiscalExchangeRateEffectiveDate : null,
+            fiscalExchangeRateSourceAuthority: original.currencyCode === "USD" ? original.fiscalExchangeRateSourceAuthority : null,
+            fiscalExchangeRateIndicatorCode: original.currencyCode === "USD" ? original.fiscalExchangeRateIndicatorCode : null,
             issuedAt: null,
             paymentConditionCode: original.paymentConditionCode,
             creditTermDays: original.creditTermDays,
@@ -177,7 +185,6 @@ export class FiscalCreditNoteDraftService {
             },
             paymentMethods: {
               create: original.paymentMethods.map((method) => ({
-                tenantId: command.tenantId,
                 paymentMethodOrder: method.paymentMethodOrder,
                 paymentMethodCode: method.paymentMethodCode,
                 description: method.description,
@@ -186,7 +193,6 @@ export class FiscalCreditNoteDraftService {
             },
             lines: {
               create: lines.map((line) => ({
-                tenantId: command.tenantId,
                 lineNumber: line.lineNumber,
                 cabysCode: line.cabysCode,
                 itemCode: line.itemCode,
@@ -206,7 +212,6 @@ export class FiscalCreditNoteDraftService {
                 lineTotal: line.lineTotal,
                 taxes: {
                   create: line.taxes.map((tax) => ({
-                    tenantId: command.tenantId,
                     taxOrder: tax.taxOrder,
                     taxCode: tax.taxCode,
                     rateCode: tax.rateCode,
@@ -226,7 +231,9 @@ export class FiscalCreditNoteDraftService {
                 },
               })),
             },
-          },
+          };
+        const draft = await tx.billingDocument.create({
+          data: draftCreateData,
           select: {
             id: true,
             internalNumber: true,
@@ -273,9 +280,63 @@ export class FiscalCreditNoteDraftService {
       });
     } catch (error) {
       if (error instanceof HttpException) throw error;
+      this.logPersistenceFailure(command.tenantId, command.originalBillingDocumentId, error);
       throw fiscalBillingError("BILLING_CREDIT_NOTE_DRAFT_PERSISTENCE_FAILED");
     }
   }
+
+  private logPersistenceFailure(
+    tenantId: string,
+    originalBillingDocumentId: string,
+    error: unknown,
+  ): void {
+    const details = persistenceErrorDetails(error);
+    this.logger.error(
+      JSON.stringify({
+        operation: "fiscal-credit-note-draft-persistence",
+        tenantId,
+        originalBillingDocumentId,
+        errorName: details.name,
+        errorMessage: details.message,
+        prismaCode: details.prismaCode,
+        prismaMeta: details.prismaMeta,
+      }),
+      details.stack,
+    );
+  }
+}
+
+function persistenceErrorDetails(error: unknown): {
+  name: string;
+  message: string;
+  stack: string | undefined;
+  prismaCode: string | null;
+  prismaMeta: Record<string, string | string[]> | null;
+} {
+  const value = error instanceof Error ? error : null;
+  const record = error !== null && typeof error === "object" ? error as {
+    code?: unknown;
+    meta?: unknown;
+  } : null;
+  return {
+    name: value?.name || "UnknownError",
+    message: value?.message || "Unknown persistence error",
+    stack: value?.stack,
+    prismaCode: typeof record?.code === "string" ? record.code : null,
+    prismaMeta: safePrismaMeta(record?.meta),
+  };
+}
+
+function safePrismaMeta(value: unknown): Record<string, string | string[]> | null {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return null;
+  const source = value as Record<string, unknown>;
+  const result: Record<string, string | string[]> = {};
+  for (const key of ["target", "constraint", "field_name", "modelName", "code"]) {
+    const candidate = source[key];
+    if (typeof candidate === "string") result[key] = candidate;
+    else if (Array.isArray(candidate) && candidate.every((item) => typeof item === "string")) result[key] = candidate;
+  }
+  return Object.keys(result).length ? result : null;
 }
 
 function normalizeInput(tenantId: string, actorId: string, value: CreateFiscalCreditNoteDraftDto) {
@@ -292,7 +353,14 @@ function normalizeInput(tenantId: string, actorId: string, value: CreateFiscalCr
   return { tenantId, actorId, originalBillingDocumentId, reasonCode, reasonDescription, fullDocument: value.fullDocument, lines };
 }
 
-function normalizeSelections(value: unknown): Array<{ sourceLineId: string; quantity: Prisma.Decimal | null; grossAmount: Prisma.Decimal | null }> {
+type PartialCreditSelection = {
+  sourceLineId: string;
+  quantity: Prisma.Decimal | null;
+  grossAmount: Prisma.Decimal | null;
+  totalAmount: Prisma.Decimal | null;
+};
+
+function normalizeSelections(value: unknown): PartialCreditSelection[] {
   if (value === undefined || value === null) return [];
   if (!Array.isArray(value) || !value.length || value.length > 100) throw fiscalBillingError("BILLING_CREDIT_NOTE_INPUT_INVALID");
   const ids = new Set<string>();
@@ -301,11 +369,13 @@ function normalizeSelections(value: unknown): Array<{ sourceLineId: string; quan
     const sourceLineId = text(selection?.sourceBillingDocumentLineId, 191);
     const quantity = decimal(selection?.creditedQuantity, 4);
     const grossAmount = decimal(selection?.creditedGrossAmount, 5);
-    if (!sourceLineId || ids.has(sourceLineId) || (quantity === null) === (grossAmount === null)) {
+    const totalAmount = decimal(selection?.creditedTotalAmount, 5);
+    const inputCount = [quantity, grossAmount, totalAmount].filter((amount) => amount !== null).length;
+    if (!sourceLineId || ids.has(sourceLineId) || inputCount !== 1) {
       throw fiscalBillingError("BILLING_CREDIT_NOTE_INPUT_INVALID");
     }
     ids.add(sourceLineId);
-    return { sourceLineId, quantity, grossAmount };
+    return { sourceLineId, quantity, grossAmount, totalAmount };
   });
 }
 
@@ -327,27 +397,84 @@ function fullLine(source: any): DraftLine {
   return cloneSourceLine(source);
 }
 
-function partialLines(sourceLines: any[], selections: Array<{ sourceLineId: string; quantity: Prisma.Decimal | null; grossAmount: Prisma.Decimal | null }>): DraftLine[] {
+function partialLines(sourceLines: any[], selections: PartialCreditSelection[]): DraftLine[] {
   const sourceById = new Map(sourceLines.map((line) => [line.id, line]));
   const result = selections.map((selection) => {
     const source = sourceById.get(selection.sourceLineId);
     if (!source) throw fiscalBillingError("BILLING_CREDIT_NOTE_SOURCE_LINE_INVALID");
-    return partialLine(source, selection.quantity, selection.grossAmount);
+    return partialLine(source, selection.quantity, selection.grossAmount, selection.totalAmount);
   });
   return result.sort((left, right) => left.lineNumber - right.lineNumber || left.sourceLineId.localeCompare(right.sourceLineId));
 }
 
-function partialLine(source: any, requestedQuantity: Prisma.Decimal | null, requestedGrossAmount: Prisma.Decimal | null): DraftLine {
+function partialLine(
+  source: any,
+  requestedQuantity: Prisma.Decimal | null,
+  requestedGrossAmount: Prisma.Decimal | null,
+  requestedTotalAmount: Prisma.Decimal | null,
+): DraftLine {
   if (!positive(source.quantity) || !positive(source.unitPrice) || !positive(source.grossAmount) || source.taxes.length !== 1 || source.taxes[0].taxCode !== "01" || source.taxes[0].exemption !== null || !source.cabysCode) {
     throw fiscalBillingError("BILLING_CREDIT_NOTE_SOURCE_LINE_UNSUPPORTED");
   }
-  const quantity = requestedQuantity ?? quantityForGrossAmount(requestedGrossAmount!, source.unitPrice);
+  if (requestedGrossAmount !== null) {
+    assertMonetarySourceWithoutDiscount(source);
+    return calculatedPartialLine(source, "GROSS_AMOUNT", new Prisma.Decimal(1), requestedGrossAmount, new Prisma.Decimal(0));
+  }
+  if (requestedTotalAmount !== null) {
+    assertMonetarySourceWithoutDiscount(source);
+    return totalAmountPartialLine(source, requestedTotalAmount);
+  }
+  const quantity = requestedQuantity!;
   if (!positive(quantity) || quantity.greaterThan(source.quantity)) throw fiscalBillingError("BILLING_CREDIT_NOTE_CREDIT_CAP_EXCEEDED");
   const grossAmount = money(quantity.times(source.unitPrice));
-  if (requestedGrossAmount && !grossAmount.equals(requestedGrossAmount)) throw fiscalBillingError("BILLING_CREDIT_NOTE_INPUT_INVALID");
   const discountAmount = source.discountAmount.isZero()
     ? new Prisma.Decimal(0)
     : money(grossAmount.times(source.discountAmount).dividedBy(source.grossAmount));
+  return calculatedPartialLine(source, "QUANTITY", quantity, source.unitPrice, discountAmount);
+}
+
+function assertMonetarySourceWithoutDiscount(source: any): void {
+  if (!source.discountAmount.isZero() || source.discountCode !== null || source.discountReason !== null) {
+    throw fiscalBillingError("BILLING_CREDIT_NOTE_SOURCE_LINE_DISCOUNT_UNSUPPORTED");
+  }
+}
+
+function totalAmountPartialLine(source: any, requestedTotalAmount: Prisma.Decimal): DraftLine {
+  const tax = source.taxes[0];
+  let candidate: ReturnType<typeof resolveTaxIncludedGrossCrV44Candidate>;
+  try {
+    candidate = resolveTaxIncludedGrossCrV44Candidate({
+      grossAmount: requestedTotalAmount,
+      category: "SERVICE",
+      quantity: new Prisma.Decimal(1),
+      tax: { tariffCode: tax.rateCode, ratePercentage: tax.ratePercentage.toFixed() },
+    });
+  } catch {
+    throw fiscalBillingError("BILLING_CREDIT_NOTE_SOURCE_LINE_UNSUPPORTED");
+  }
+  if (!candidate.calculatedTotal.equals(requestedTotalAmount)) {
+    throw fiscalBillingError("BILLING_CREDIT_NOTE_TOTAL_AMOUNT_UNRECONCILABLE");
+  }
+  const line = calculatedPartialLine(
+    source,
+    "TOTAL_AMOUNT",
+    new Prisma.Decimal(1),
+    new Prisma.Decimal(candidate.unitPrice),
+    new Prisma.Decimal(0),
+  );
+  if (!line.lineTotal.equals(requestedTotalAmount)) {
+    throw fiscalBillingError("BILLING_CREDIT_NOTE_TOTAL_AMOUNT_UNRECONCILABLE");
+  }
+  return line;
+}
+
+function calculatedPartialLine(
+  source: any,
+  creditBasis: DraftLine["creditBasis"],
+  quantity: Prisma.Decimal,
+  unitPrice: Prisma.Decimal,
+  discountAmount: Prisma.Decimal,
+): DraftLine {
   const tax = source.taxes[0];
   let calculated: ReturnType<typeof mapCrV44CalculationToBillingDocumentSnapshot>;
   try {
@@ -357,7 +484,7 @@ function partialLine(source: any, requestedQuantity: Prisma.Decimal | null, requ
           lineNumber: source.lineNumber,
           category: "SERVICE",
           quantity: quantity.toFixed(),
-          unitPrice: source.unitPrice.toFixed(),
+          unitPrice: unitPrice.toFixed(),
           discounts: discountAmount.isZero() ? [] : [{ order: 1, kind: "EXACT_AMOUNT", amount: discountAmount.toFixed() }],
           taxes: [{ kind: "ORDINARY_IVA", tariffCode: tax.rateCode, ratePercentage: tax.ratePercentage.toFixed() }],
         }],
@@ -373,6 +500,7 @@ function partialLine(source: any, requestedQuantity: Prisma.Decimal | null, requ
   }
   return {
     sourceLineId: source.id,
+    creditBasis,
     lineNumber: line.lineNumber,
     cabysCode: line.cabysCode,
     itemCode: line.itemCode,
@@ -407,6 +535,7 @@ function partialLine(source: any, requestedQuantity: Prisma.Decimal | null, requ
 function cloneSourceLine(source: any): DraftLine {
   return {
     sourceLineId: source.id,
+    creditBasis: "QUANTITY",
     lineNumber: source.lineNumber,
     cabysCode: source.cabysCode,
     itemCode: source.itemCode,
@@ -447,8 +576,27 @@ function assertCreditCapacity(sourceLines: any[], draftLines: DraftLine[], usage
   const usedByLine = new Map(usage.map((row) => [row.sourceLineId, row]));
   for (const line of draftLines) {
     const source = sourceLines.find((candidate) => candidate.id === line.sourceLineId);
-    const used = usedByLine.get(line.sourceLineId)?.creditedQuantity ?? new Prisma.Decimal(0);
-    if (!source || line.quantity.plus(used).greaterThan(source.quantity)) {
+    const used = usedByLine.get(line.sourceLineId);
+    if (!source) {
+      throw fiscalBillingError("BILLING_CREDIT_NOTE_CREDIT_CAP_EXCEEDED");
+    }
+    if (line.creditBasis === "GROSS_AMOUNT") {
+      const usedGrossAmount = used?.creditedGrossAmount ?? new Prisma.Decimal(0);
+      const usedLineTotal = used?.creditedLineTotal ?? new Prisma.Decimal(0);
+      if (line.grossAmount.plus(usedGrossAmount).greaterThan(source.grossAmount) || line.lineTotal.plus(usedLineTotal).greaterThan(source.lineTotal)) {
+        throw fiscalBillingError("BILLING_CREDIT_NOTE_CREDIT_CAP_EXCEEDED");
+      }
+      continue;
+    }
+    if (line.creditBasis === "TOTAL_AMOUNT") {
+      const usedLineTotal = used?.creditedLineTotal ?? new Prisma.Decimal(0);
+      if (line.lineTotal.plus(usedLineTotal).greaterThan(source.lineTotal)) {
+        throw fiscalBillingError("BILLING_CREDIT_NOTE_CREDIT_CAP_EXCEEDED");
+      }
+      continue;
+    }
+    const usedQuantity = used?.creditedQuantity ?? new Prisma.Decimal(0);
+    if (line.quantity.plus(usedQuantity).greaterThan(source.quantity)) {
       throw fiscalBillingError("BILLING_CREDIT_NOTE_CREDIT_CAP_EXCEEDED");
     }
   }
@@ -462,11 +610,14 @@ function assertCreditCapacity(sourceLines: any[], draftLines: DraftLine[], usage
 
 function totalsFor(lines: DraftLine[]) {
   const sum = (field: keyof Pick<DraftLine, "grossAmount" | "discountAmount" | "taxableBase" | "taxAmount" | "exoneratedTaxAmount" | "netTaxAmount" | "lineTotal">) => lines.reduce((total, line) => total.plus(line[field]), new Prisma.Decimal(0));
+  const sumByTaxRate = (rateCode: string, field: "taxableBase") => lines
+    .filter((line) => line.taxes[0]?.rateCode === rateCode)
+    .reduce((total, line) => total.plus(line[field]), new Prisma.Decimal(0));
   return {
     grossSubtotal: sum("grossAmount"),
     discountTotal: sum("discountAmount"),
-    taxableTotal: sum("taxableBase"),
-    exemptTotal: new Prisma.Decimal(0),
+    taxableTotal: sum("taxableBase").minus(sumByTaxRate("10", "taxableBase")),
+    exemptTotal: sumByTaxRate("10", "taxableBase"),
     exoneratedTotal: new Prisma.Decimal(0),
     grossTaxTotal: sum("taxAmount"),
     exoneratedTaxTotal: sum("exoneratedTaxAmount"),
@@ -493,6 +644,7 @@ async function acceptedCreditUsage(tx: Prisma.TransactionClient, tenantId: strin
   return tx.$queryRaw<AcceptedCreditUsage[]>`
     SELECT line."sourceBillingDocumentLineId" AS "sourceLineId",
       SUM(line."quantity") AS "creditedQuantity",
+      SUM(line."grossAmount") AS "creditedGrossAmount",
       SUM(line."lineTotal") AS "creditedLineTotal"
     FROM "billing_document_lines" line
     INNER JOIN "billing_documents" credit ON credit."id" = line."billingDocumentId"
@@ -518,14 +670,6 @@ async function lockOriginalLines(tx: Prisma.TransactionClient, tenantId: string,
 
 async function lockAcceptedCreditNotes(tx: Prisma.TransactionClient, tenantId: string, documentId: string): Promise<void> {
   await tx.$queryRaw`SELECT credit."id" FROM "billing_document_references" reference INNER JOIN "billing_documents" credit ON credit."id" = reference."billingDocumentId" AND credit."tenantId" = reference."tenantId" WHERE reference."tenantId" = ${tenantId} AND reference."referencedBillingDocumentId" = ${documentId} AND credit."documentTypeCode" = ${CREDIT_NOTE_DOCUMENT_TYPE} AND credit."taxAuthorityStatus" = 'ACCEPTED' ORDER BY credit."id" ASC FOR UPDATE`;
-}
-
-function quantityForGrossAmount(grossAmount: Prisma.Decimal, unitPrice: Prisma.Decimal): Prisma.Decimal {
-  const quantity = grossAmount.dividedBy(unitPrice);
-  if (!quantity.isFinite() || quantity.decimalPlaces() > 4 || !money(quantity.times(unitPrice)).equals(grossAmount)) {
-    throw fiscalBillingError("BILLING_CREDIT_NOTE_INPUT_INVALID");
-  }
-  return quantity;
 }
 
 function money(value: Prisma.Decimal): Prisma.Decimal {

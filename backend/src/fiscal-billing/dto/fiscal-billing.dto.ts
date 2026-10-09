@@ -84,6 +84,11 @@ export class FiscalCreditNoteLineSelectionDto {
   @IsString()
   @MaxLength(40)
   creditedGrossAmount?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  creditedTotalAmount?: string;
 }
 
 export class CreateFiscalCreditNoteDraftDto {

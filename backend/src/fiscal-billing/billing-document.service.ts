@@ -9,6 +9,7 @@ import type {
   CrV44CalculatedBillingDocumentDraftCommand,
   CrV44SalesOrderDraftCommand,
   BillingDocumentFiscalPreparation,
+  BillingDocumentOfficialRatePreparation,
   BillingDocumentIssuancePreflight,
   AcceptedBillingInvoice,
   BillingDocumentWorkspace,
@@ -83,31 +84,9 @@ export class BillingDocumentService {
     const fiscalIssueDate = costaRicaDate(fiscalEmissionAt);
     let officialRate: BillingDocumentFiscalPreparation["officialRate"] = null;
     if (preflight.currencyCode === "USD") {
-      const observation = await this.officialExchangeRateResolver.resolveExactObservation({
-        countryCode: "CR",
-        foreignCurrencyCode: "USD",
-        localCurrencyCode: "CRC",
-        rateType: "REFERENCE_SELL",
-        effectiveDate: fiscalIssueDate,
-      });
-      if (
-        observation.sourceAuthority !== "BCCR" ||
-        observation.sourceIndicatorCode !== "318" ||
-        observation.effectiveDate !== fiscalIssueDate ||
-        observation.countryCode !== "CR" ||
-        observation.foreignCurrencyCode !== "USD" ||
-        observation.localCurrencyCode !== "CRC" ||
-        observation.rateType !== "REFERENCE_SELL"
-      ) {
-        throw fiscalBillingError("BILLING_DOCUMENT_OFFICIAL_RATE_MISMATCH");
-      }
-      officialRate = {
-        observationId: observation.id,
-        value: observation.value,
-        effectiveDate: observation.effectiveDate,
-        sourceAuthority: observation.sourceAuthority,
-        sourceIndicatorCode: observation.sourceIndicatorCode,
-      };
+      officialRate = preflight.documentTypeCode === "03"
+        ? inheritedCreditNoteOfficialRate(preflight)
+        : await this.resolveCurrentOfficialRate(fiscalIssueDate);
     }
 
     return this.repository.requestElectronicIssuance(
@@ -121,6 +100,36 @@ export class BillingDocumentService {
         officialRate,
       },
     );
+  }
+
+  private async resolveCurrentOfficialRate(
+    fiscalIssueDate: string,
+  ): Promise<BillingDocumentOfficialRatePreparation> {
+    const observation = await this.officialExchangeRateResolver.resolveExactObservation({
+      countryCode: "CR",
+      foreignCurrencyCode: "USD",
+      localCurrencyCode: "CRC",
+      rateType: "REFERENCE_SELL",
+      effectiveDate: fiscalIssueDate,
+    });
+    if (
+      observation.sourceAuthority !== "BCCR" ||
+      observation.sourceIndicatorCode !== "318" ||
+      observation.effectiveDate !== fiscalIssueDate ||
+      observation.countryCode !== "CR" ||
+      observation.foreignCurrencyCode !== "USD" ||
+      observation.localCurrencyCode !== "CRC" ||
+      observation.rateType !== "REFERENCE_SELL"
+    ) {
+      throw fiscalBillingError("BILLING_DOCUMENT_OFFICIAL_RATE_MISMATCH");
+    }
+    return {
+      observationId: observation.id,
+      value: observation.value,
+      effectiveDate: observation.effectiveDate,
+      sourceAuthority: observation.sourceAuthority,
+      sourceIndicatorCode: observation.sourceIndicatorCode,
+    };
   }
 
   async createOrResumeDraft(command: BillingDocumentDraftCommand) {
@@ -444,6 +453,20 @@ function allocationState(document: BillingDocumentIssuancePreflight) {
 }
 
 function isCleanEligibleDraft(document: BillingDocumentIssuancePreflight) {
+  const hasNoFiscalRateSnapshot =
+    document.exchangeRate === null &&
+    document.officialExchangeRateObservationId === null &&
+    document.fiscalExchangeRateEffectiveDate === null &&
+    document.fiscalExchangeRateSourceAuthority === null &&
+    document.fiscalExchangeRateIndicatorCode === null;
+  const hasInheritedCreditNoteRateSnapshot =
+    document.documentTypeCode === "03" &&
+    document.currencyCode === "USD" &&
+    typeof document.exchangeRate === "string" &&
+    typeof document.officialExchangeRateObservationId === "string" &&
+    document.fiscalExchangeRateEffectiveDate instanceof Date &&
+    document.fiscalExchangeRateSourceAuthority === "BCCR" &&
+    document.fiscalExchangeRateIndicatorCode === "318";
   return (
     document.billingMode === "ELECTRONIC_PROVIDER" &&
     document.fiscalCalculationPolicyVersion === CR_V44_DECIMAL_V1 &&
@@ -454,10 +477,43 @@ function isCleanEligibleDraft(document: BillingDocumentIssuancePreflight) {
     document.providerDocumentId === null &&
     document.fiscalEmissionAt === null &&
     document.fiscalIssueDate === null &&
-    document.exchangeRate === null &&
-    document.officialExchangeRateObservationId === null &&
-    document.fiscalExchangeRateEffectiveDate === null &&
-    document.fiscalExchangeRateSourceAuthority === null &&
-    document.fiscalExchangeRateIndicatorCode === null
+    (hasNoFiscalRateSnapshot || hasInheritedCreditNoteRateSnapshot)
   );
+}
+
+function inheritedCreditNoteOfficialRate(
+  document: BillingDocumentIssuancePreflight,
+): BillingDocumentOfficialRatePreparation {
+  if (
+    !isCanonicalPositiveDecimal(document.exchangeRate) ||
+    !document.officialExchangeRateObservationId ||
+    !(document.fiscalExchangeRateEffectiveDate instanceof Date) ||
+    !Number.isFinite(document.fiscalExchangeRateEffectiveDate.getTime()) ||
+    document.fiscalExchangeRateSourceAuthority !== "BCCR" ||
+    document.fiscalExchangeRateIndicatorCode !== "318"
+  ) {
+    throw fiscalBillingError("BILLING_DOCUMENT_OFFICIAL_RATE_MISMATCH");
+  }
+  return {
+    observationId: document.officialExchangeRateObservationId,
+    value: document.exchangeRate,
+    effectiveDate: dateToDateOnly(document.fiscalExchangeRateEffectiveDate),
+    sourceAuthority: document.fiscalExchangeRateSourceAuthority,
+    sourceIndicatorCode: document.fiscalExchangeRateIndicatorCode,
+    inheritedFromReference: true,
+  };
+}
+
+function isCanonicalPositiveDecimal(value: string | null): value is string {
+  const match = /^((?:0|[1-9]\d*))(?:\.(\d+))?$/.exec(value ?? "");
+  if (!match) return false;
+  return !(match[1] === "0" && !(match[2] ?? "").replace(/0+$/, ""));
+}
+
+function dateToDateOnly(value: Date): string {
+  return [
+    value.getUTCFullYear().toString().padStart(4, "0"),
+    (value.getUTCMonth() + 1).toString().padStart(2, "0"),
+    value.getUTCDate().toString().padStart(2, "0"),
+  ].join("-");
 }

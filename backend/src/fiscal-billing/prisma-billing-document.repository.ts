@@ -263,6 +263,13 @@ const workspaceSelect=Prisma.validator<Prisma.BillingDocumentSelect>()({
       exemption:{select:{id:true,documentTypeCode:true,documentNumber:true,legalArticle:true,legalSection:true,issuingInstitutionCode:true,issuingInstitutionName:true,otherInstitutionDescription:true,issueDate:true,exemptedPercentage:true,exemptedAmount:true}}}}}}
 });
 type WorkspaceRow=Prisma.BillingDocumentGetPayload<{select:typeof workspaceSelect}>;
+type CreditNoteIssuanceLine = {
+  sourceBillingDocumentLineId: string | null;
+  quantity: Prisma.Decimal;
+  unitPrice: Prisma.Decimal;
+  grossAmount: Prisma.Decimal;
+  lineTotal: Prisma.Decimal;
+};
 
 @Injectable()
 export class PrismaBillingDocumentRepository
@@ -715,12 +722,13 @@ export class PrismaBillingDocumentRepository
           );
         }
 
-        await this.requireCreditNoteIssuanceEligibility(tx, document);
+        const creditNoteOriginal = await this.requireCreditNoteIssuanceEligibility(tx, document);
         this.requireEligibleDraft(document);
         const fiscalSnapshot = await this.verifyFiscalPreparation(
           tx,
           document,
           preparation,
+          creditNoteOriginal,
         );
         await this.requireFinalReadiness(tx, document);
 
@@ -985,17 +993,23 @@ export class PrismaBillingDocumentRepository
     tx: Prisma.TransactionClient,
     document: AllocationDocument,
     preparation: BillingDocumentFiscalPreparation | null,
+    creditNoteOriginal: any | null,
   ) {
+    const inheritedCreditNoteRate =
+      document.documentTypeCode === "03" &&
+      document.currencyCode === "USD" &&
+      creditNoteOriginal !== null;
     if (
       !preparation ||
       document.currencyCode !== preparation.expectedCurrencyCode ||
       document.fiscalEmissionAt !== null ||
       document.fiscalIssueDate !== null ||
-      document.exchangeRate !== null ||
-      document.officialExchangeRateObservationId !== null ||
-      document.fiscalExchangeRateEffectiveDate !== null ||
-      document.fiscalExchangeRateSourceAuthority !== null ||
-      document.fiscalExchangeRateIndicatorCode !== null ||
+      (!inheritedCreditNoteRate &&
+        (document.exchangeRate !== null ||
+          document.officialExchangeRateObservationId !== null ||
+          document.fiscalExchangeRateEffectiveDate !== null ||
+          document.fiscalExchangeRateSourceAuthority !== null ||
+          document.fiscalExchangeRateIndicatorCode !== null)) ||
       !isCanonicalDate(preparation.fiscalIssueDate) ||
       costaRicaDate(preparation.fiscalEmissionAt) !== preparation.fiscalIssueDate
     ) {
@@ -1024,14 +1038,18 @@ export class PrismaBillingDocumentRepository
       !rate ||
       rate.sourceAuthority !== "BCCR" ||
       rate.sourceIndicatorCode !== "318" ||
-      rate.effectiveDate !== preparation.fiscalIssueDate ||
+      (!inheritedCreditNoteRate && rate.effectiveDate !== preparation.fiscalIssueDate) ||
+      (inheritedCreditNoteRate &&
+        (!rate.inheritedFromReference ||
+          !sameFiscalExchangeRateSnapshot(document, creditNoteOriginal) ||
+          !sameRatePreparationSnapshot(document, rate))) ||
       !isCanonicalPositiveDecimal(rate.value)
     ) {
       throw fiscalBillingError("BILLING_DOCUMENT_OFFICIAL_RATE_MISMATCH");
     }
     const observation = await this.loadAndVerifyOfficialObservation(tx, {
       observationId: rate.observationId,
-      effectiveDate: preparation.fiscalIssueDate,
+      effectiveDate: rate.effectiveDate,
       value: rate.value,
       sourceAuthority: rate.sourceAuthority,
       sourceIndicatorCode: rate.sourceIndicatorCode,
@@ -1041,7 +1059,7 @@ export class PrismaBillingDocumentRepository
       fiscalIssueDate,
       exchangeRate: new Prisma.Decimal(rate.value),
       officialExchangeRateObservationId: observation.id,
-      fiscalExchangeRateEffectiveDate: fiscalIssueDate,
+      fiscalExchangeRateEffectiveDate: dateOnlyToUtc(rate.effectiveDate),
       fiscalExchangeRateSourceAuthority: observation.sourceAuthority,
       fiscalExchangeRateIndicatorCode: observation.sourceIndicatorCode,
     };
@@ -1140,7 +1158,7 @@ export class PrismaBillingDocumentRepository
     if (document.currencyCode === "USD") {
       await this.loadAndVerifyOfficialObservation(tx, {
         observationId: document.officialExchangeRateObservationId!,
-        effectiveDate: dateToDateOnly(document.fiscalIssueDate!),
+        effectiveDate: dateToDateOnly(document.fiscalExchangeRateEffectiveDate!),
         value: document.exchangeRate!.toFixed(),
         sourceAuthority: document.fiscalExchangeRateSourceAuthority!,
         sourceIndicatorCode: document.fiscalExchangeRateIndicatorCode!,
@@ -1240,8 +1258,8 @@ export class PrismaBillingDocumentRepository
   private async requireCreditNoteIssuanceEligibility(
     tx: Prisma.TransactionClient,
     document: any,
-  ): Promise<void> {
-    if (document.documentTypeCode !== "03") return;
+  ): Promise<any | null> {
+    if (document.documentTypeCode !== "03") return null;
     const references = document.references;
     if (!Array.isArray(references) || references.length !== 1) {
       throw fiscalBillingError("BILLING_CREDIT_NOTE_ORIGINAL_FISCAL_IDENTITY_INVALID");
@@ -1283,8 +1301,14 @@ export class PrismaBillingDocumentRepository
       !original.fiscalIssueDate || original.fiscalIssueDate.getTime() !== reference.referenceDate.getTime()) {
       throw fiscalBillingError("BILLING_CREDIT_NOTE_ORIGINAL_FISCAL_IDENTITY_INVALID");
     }
-    const ncLines = await tx.$queryRaw<Array<{ sourceBillingDocumentLineId: string | null; quantity: Prisma.Decimal; lineTotal: Prisma.Decimal }>>`
-      SELECT "sourceBillingDocumentLineId", "quantity", "lineTotal"
+    if (
+      original.currencyCode !== document.currencyCode ||
+      !sameFiscalExchangeRateSnapshot(document, original)
+    ) {
+      throw fiscalBillingError("BILLING_DOCUMENT_OFFICIAL_RATE_MISMATCH");
+    }
+    const ncLines = await tx.$queryRaw<CreditNoteIssuanceLine[]>`
+      SELECT "sourceBillingDocumentLineId", "quantity", "unitPrice", "grossAmount", "lineTotal"
       FROM "billing_document_lines"
       WHERE "tenantId" = ${document.tenantId} AND "billingDocumentId" = ${document.id}
       FOR UPDATE
@@ -1294,8 +1318,8 @@ export class PrismaBillingDocumentRepository
     }
     const originalById = new Map(original.lines.map((line) => [line.id, line]));
     if (ncLines.some((line) => !originalById.has(line.sourceBillingDocumentLineId!))) throw fiscalBillingError("BILLING_CREDIT_NOTE_SOURCE_LINE_INVALID");
-    const accepted = await tx.$queryRaw<Array<{ sourceBillingDocumentLineId: string; quantity: Prisma.Decimal; lineTotal: Prisma.Decimal }>>`
-      SELECT line."sourceBillingDocumentLineId", line."quantity", line."lineTotal"
+    const accepted = await tx.$queryRaw<CreditNoteIssuanceLine[]>`
+      SELECT line."sourceBillingDocumentLineId", line."quantity", line."unitPrice", line."grossAmount", line."lineTotal"
       FROM "billing_document_lines" line
       INNER JOIN "billing_documents" note ON note."id" = line."billingDocumentId" AND note."tenantId" = line."tenantId"
       WHERE note."tenantId" = ${document.tenantId}
@@ -1306,12 +1330,28 @@ export class PrismaBillingDocumentRepository
     `;
     for (const line of ncLines) {
       const source = originalById.get(line.sourceBillingDocumentLineId!)!;
-      const used = accepted.filter((row) => row.sourceBillingDocumentLineId === source.id)
-        .reduce((sum, row) => sum.plus(row.quantity), new Prisma.Decimal(0));
-      if (used.plus(line.quantity).greaterThan(source.quantity)) throw fiscalBillingError("BILLING_CREDIT_NOTE_CREDIT_CAP_EXCEEDED");
+      const acceptedForSource = accepted.filter((row) => row.sourceBillingDocumentLineId === source.id);
+      const usedLineTotal = sumCreditNoteIssuanceField(acceptedForSource, "lineTotal");
+      if (usedLineTotal.plus(line.lineTotal).greaterThan(source.lineTotal)) {
+        throw fiscalBillingError("BILLING_CREDIT_NOTE_CREDIT_CAP_EXCEEDED");
+      }
+      if (isQuantityBasedCredit(line, source)) {
+        const usedQuantity = acceptedForSource
+          .filter((row) => isQuantityBasedCredit(row, source))
+          .reduce((sum, row) => sum.plus(row.quantity), new Prisma.Decimal(0));
+        if (usedQuantity.plus(line.quantity).greaterThan(source.quantity)) {
+          throw fiscalBillingError("BILLING_CREDIT_NOTE_CREDIT_CAP_EXCEEDED");
+        }
+        continue;
+      }
+      const usedGrossAmount = sumCreditNoteIssuanceField(acceptedForSource, "grossAmount");
+      if (usedGrossAmount.plus(line.grossAmount).greaterThan(source.grossAmount)) {
+        throw fiscalBillingError("BILLING_CREDIT_NOTE_CREDIT_CAP_EXCEEDED");
+      }
     }
-    const full = ncLines.length === original.lines.length && ncLines.every((line) => line.quantity.equals(originalById.get(line.sourceBillingDocumentLineId!)!.quantity));
+    const full = isFullCreditNote(original.lines, ncLines);
     if ((reference.reasonCode === "01") !== full) throw fiscalBillingError("BILLING_CREDIT_NOTE_INPUT_INVALID");
+    return original;
   }
 
   private async requireFinalReadiness(
@@ -1922,7 +1962,7 @@ function workspaceFiscalIdentityReady(document:WorkspaceRow):boolean{
   const emissionEmpty=document.fiscalEmissionAt===null&&document.fiscalIssueDate===null;
   const emissionComplete=validWorkspaceDate(document.fiscalEmissionAt)&&validWorkspaceDate(document.fiscalIssueDate);
   const rateEmpty=document.exchangeRate===null&&document.officialExchangeRateObservationId===null&&document.fiscalExchangeRateEffectiveDate===null&&document.fiscalExchangeRateSourceAuthority===null&&document.fiscalExchangeRateIndicatorCode===null;
-  const rateComplete=document.exchangeRate!==null&&document.exchangeRate.greaterThan(0)&&typeof document.officialExchangeRateObservationId==="string"&&document.officialExchangeRateObservationId.length>0&&validWorkspaceDate(document.fiscalExchangeRateEffectiveDate)&&document.fiscalExchangeRateSourceAuthority==="BCCR"&&document.fiscalExchangeRateIndicatorCode==="318"&&validWorkspaceDate(document.fiscalIssueDate)&&document.fiscalExchangeRateEffectiveDate!.getTime()===document.fiscalIssueDate!.getTime();
+  const rateComplete=document.exchangeRate!==null&&document.exchangeRate.greaterThan(0)&&typeof document.officialExchangeRateObservationId==="string"&&document.officialExchangeRateObservationId.length>0&&validWorkspaceDate(document.fiscalExchangeRateEffectiveDate)&&document.fiscalExchangeRateSourceAuthority==="BCCR"&&document.fiscalExchangeRateIndicatorCode==="318"&&validWorkspaceDate(document.fiscalIssueDate)&&(document.documentTypeCode==="03"||document.fiscalExchangeRateEffectiveDate!.getTime()===document.fiscalIssueDate!.getTime());
   if(!allocated)return emissionEmpty&&rateEmpty;
   return emissionComplete&&(document.currencyCode==="CRC"?rateEmpty:rateComplete);
 }
@@ -2000,14 +2040,82 @@ function validExistingFiscalSnapshot(document: AllocationDocument): boolean {
     );
   }
   if (document.currencyCode !== "USD") return false;
+  const allowsInheritedReferenceDate = document.documentTypeCode === "03";
   return (
     document.exchangeRate !== null &&
     document.exchangeRate.gt(0) &&
     document.officialExchangeRateObservationId !== null &&
     document.fiscalExchangeRateEffectiveDate !== null &&
-    dateToDateOnly(document.fiscalExchangeRateEffectiveDate) === issueDate &&
+    (allowsInheritedReferenceDate ||
+      dateToDateOnly(document.fiscalExchangeRateEffectiveDate) === issueDate) &&
     document.fiscalExchangeRateSourceAuthority === "BCCR" &&
     document.fiscalExchangeRateIndicatorCode === "318"
+  );
+}
+
+function sameFiscalExchangeRateSnapshot(
+  left: {
+    exchangeRate: Prisma.Decimal | null;
+    officialExchangeRateObservationId: string | null;
+    fiscalExchangeRateEffectiveDate: Date | null;
+    fiscalExchangeRateSourceAuthority: string | null;
+    fiscalExchangeRateIndicatorCode: string | null;
+  },
+  right: {
+    exchangeRate: Prisma.Decimal | null;
+    officialExchangeRateObservationId: string | null;
+    fiscalExchangeRateEffectiveDate: Date | null;
+    fiscalExchangeRateSourceAuthority: string | null;
+    fiscalExchangeRateIndicatorCode: string | null;
+  },
+): boolean {
+  if (left.exchangeRate === null || right.exchangeRate === null) {
+    return (
+      left.exchangeRate === null &&
+      right.exchangeRate === null &&
+      left.officialExchangeRateObservationId === null &&
+      right.officialExchangeRateObservationId === null &&
+      left.fiscalExchangeRateEffectiveDate === null &&
+      right.fiscalExchangeRateEffectiveDate === null &&
+      left.fiscalExchangeRateSourceAuthority === null &&
+      right.fiscalExchangeRateSourceAuthority === null &&
+      left.fiscalExchangeRateIndicatorCode === null &&
+      right.fiscalExchangeRateIndicatorCode === null
+    );
+  }
+  return (
+    left.exchangeRate.equals(right.exchangeRate) &&
+    left.officialExchangeRateObservationId !== null &&
+    left.officialExchangeRateObservationId === right.officialExchangeRateObservationId &&
+    left.fiscalExchangeRateEffectiveDate !== null &&
+    right.fiscalExchangeRateEffectiveDate !== null &&
+    left.fiscalExchangeRateEffectiveDate.getTime() ===
+      right.fiscalExchangeRateEffectiveDate.getTime() &&
+    left.fiscalExchangeRateSourceAuthority ===
+      right.fiscalExchangeRateSourceAuthority &&
+    left.fiscalExchangeRateIndicatorCode ===
+      right.fiscalExchangeRateIndicatorCode
+  );
+}
+
+function sameRatePreparationSnapshot(
+  document: {
+    exchangeRate: Prisma.Decimal | null;
+    officialExchangeRateObservationId: string | null;
+    fiscalExchangeRateEffectiveDate: Date | null;
+    fiscalExchangeRateSourceAuthority: string | null;
+    fiscalExchangeRateIndicatorCode: string | null;
+  },
+  rate: NonNullable<BillingDocumentFiscalPreparation["officialRate"]>,
+): boolean {
+  return (
+    document.exchangeRate !== null &&
+    document.exchangeRate.equals(new Prisma.Decimal(rate.value)) &&
+    document.officialExchangeRateObservationId === rate.observationId &&
+    document.fiscalExchangeRateEffectiveDate !== null &&
+    dateToDateOnly(document.fiscalExchangeRateEffectiveDate) === rate.effectiveDate &&
+    document.fiscalExchangeRateSourceAuthority === rate.sourceAuthority &&
+    document.fiscalExchangeRateIndicatorCode === rate.sourceIndicatorCode
   );
 }
 
@@ -2091,6 +2199,53 @@ function calculatedSnapshot(document: AllocationDocument | WorkspaceRow) {
       })),
     })),
   };
+}
+
+function isFullCreditNote(
+  sourceLines: ReadonlyArray<{
+    id: string;
+    quantity: Prisma.Decimal;
+    grossAmount: Prisma.Decimal;
+    lineTotal: Prisma.Decimal;
+  }>,
+  creditLines: readonly CreditNoteIssuanceLine[],
+): boolean {
+  if (creditLines.length !== sourceLines.length) return false;
+  const sourceById = new Map(sourceLines.map((line) => [line.id, line]));
+  const creditedSourceIds = new Set<string>();
+  for (const line of creditLines) {
+    if (!line.sourceBillingDocumentLineId || creditedSourceIds.has(line.sourceBillingDocumentLineId)) {
+      return false;
+    }
+    creditedSourceIds.add(line.sourceBillingDocumentLineId);
+    const source = sourceById.get(line.sourceBillingDocumentLineId);
+    if (
+      !source ||
+      !line.quantity.equals(source.quantity) ||
+      !line.grossAmount.equals(source.grossAmount) ||
+      !line.lineTotal.equals(source.lineTotal)
+    ) {
+      return false;
+    }
+  }
+  return creditedSourceIds.size === sourceById.size;
+}
+
+function isQuantityBasedCredit(
+  line: CreditNoteIssuanceLine,
+  source: { unitPrice: Prisma.Decimal },
+): boolean {
+  const expectedGrossAmount = line.quantity
+    .times(source.unitPrice)
+    .toDecimalPlaces(5, Prisma.Decimal.ROUND_HALF_UP);
+  return line.unitPrice.equals(source.unitPrice) && line.grossAmount.equals(expectedGrossAmount);
+}
+
+function sumCreditNoteIssuanceField(
+  lines: readonly CreditNoteIssuanceLine[],
+  field: "grossAmount" | "lineTotal",
+): Prisma.Decimal {
+  return lines.reduce((sum, line) => sum.plus(line[field]), new Prisma.Decimal(0));
 }
 
 function readinessFailure(): never {

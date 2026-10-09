@@ -177,6 +177,7 @@ export interface BillingDocumentOfficialRatePreparation {
   effectiveDate: string;
   sourceAuthority: string;
   sourceIndicatorCode: string;
+  inheritedFromReference?: true;
 }
 
 export interface BillingDocumentFiscalPreparation {

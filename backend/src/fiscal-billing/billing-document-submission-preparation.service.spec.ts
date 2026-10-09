@@ -64,6 +64,26 @@ describe("BillingDocumentSubmissionPreparationService",()=>{
     expect(builder.mock.calls[0][0].officialExchangeRateObservation).toEqual({id:"obs-a",countryCode:"CR",foreignCurrencyCode:"USD",localCurrencyCode:"CRC",rateType:"REFERENCE_SELL",effectiveDate:"2026-08-24",value:"512.123456789012",sourceAuthority:"BCCR",sourceIndicatorCode:"318",requestIdentity:"identity",responseHash:"a".repeat(64)});
   });
 
+  it("allows a type-03 USD snapshot inherited from an accepted original with a historical rate date",async()=>{
+    const effectiveDate=new Date("2026-09-15T00:00:00.000Z"),rate=d("526.340000000001");
+    const original={currencyCode:"USD",taxAuthorityStatus:"ACCEPTED",exchangeRate:rate,officialExchangeRateObservationId:"original-observation",fiscalExchangeRateEffectiveDate:effectiveDate,fiscalExchangeRateSourceAuthority:"BCCR",fiscalExchangeRateIndicatorCode:"318"};
+    const credit=row({documentTypeCode:"03",fiscalNumber:"00100001030000000042",currencyCode:"USD",exchangeRate:rate,officialExchangeRateObservationId:"original-observation",fiscalExchangeRateEffectiveDate:effectiveDate,fiscalExchangeRateSourceAuthority:"BCCR",fiscalExchangeRateIndicatorCode:"318",officialExchangeRateObservation:{id:"original-observation",countryCode:"CR",foreignCurrencyCode:"USD",localCurrencyCode:"CRC",rateType:"REFERENCE_SELL",effectiveDate,value:rate,sourceAuthority:"BCCR",sourceIndicatorCode:"318",requestIdentity:"identity",responseHash:"a".repeat(64)},references:[{referencedDocumentTypeCode:"01",externalDocumentKey:"5".repeat(50),referenceDate:new Date("2026-09-15T00:00:00.000Z"),reasonCode:"02",reasonDescription:"Corrección parcial",referencedBillingDocument:original}]});
+    const builder=jest.spyOn(facturaBuilder,"prepareFacturaEnCrSubmission").mockReturnValue(prepared());
+
+    await expect(subject(jest.fn().mockResolvedValue(credit)).prepare("tenant-a","document-a")).resolves.toBeDefined();
+    expect(builder).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a type-03 USD snapshot that does not exactly match its accepted original",async()=>{
+    const effectiveDate=new Date("2026-09-15T00:00:00.000Z"),rate=d("526.340000000001");
+    const credit=row({documentTypeCode:"03",fiscalNumber:"00100001030000000042",currencyCode:"USD",exchangeRate:rate,officialExchangeRateObservationId:"wrong-observation",fiscalExchangeRateEffectiveDate:effectiveDate,fiscalExchangeRateSourceAuthority:"BCCR",fiscalExchangeRateIndicatorCode:"318",officialExchangeRateObservation:{id:"wrong-observation",countryCode:"CR",foreignCurrencyCode:"USD",localCurrencyCode:"CRC",rateType:"REFERENCE_SELL",effectiveDate,value:rate,sourceAuthority:"BCCR",sourceIndicatorCode:"318",requestIdentity:"identity",responseHash:"a".repeat(64)},references:[{referencedDocumentTypeCode:"01",externalDocumentKey:"5".repeat(50),referenceDate:effectiveDate,reasonCode:"02",reasonDescription:"Corrección parcial",referencedBillingDocument:{currencyCode:"USD",taxAuthorityStatus:"ACCEPTED",exchangeRate:rate,officialExchangeRateObservationId:"original-observation",fiscalExchangeRateEffectiveDate:effectiveDate,fiscalExchangeRateSourceAuthority:"BCCR",fiscalExchangeRateIndicatorCode:"318"}}]});
+    const builder=jest.spyOn(facturaBuilder,"prepareFacturaEnCrSubmission");
+
+    const error=await capture(subject(jest.fn().mockResolvedValue(credit)).prepare("tenant-a","document-a"));
+    expect(error.getResponse()).toMatchObject({code:"BILLING_DOCUMENT_SUBMISSION_SNAPSHOT_INVALID"});
+    expect(builder).not.toHaveBeenCalled();
+  });
+
   it("passes receiver codes through without guessing phone, neighborhood, or missing activity into the provider body",async()=>{
     const valid=row({allocatedSequenceNumber:42n});
     const builder=jest.spyOn(facturaBuilder,"prepareFacturaEnCrSubmission");
@@ -151,7 +171,7 @@ describe("BillingDocumentSubmissionPreparationService",()=>{
   });
 });
 
-function subject(findUnique:jest.Mock){return new BillingDocumentSubmissionPreparationService({billingDocument:{findUnique}} as unknown as PrismaService);}
+function subject(findUnique:jest.Mock){return new BillingDocumentSubmissionPreparationService({billingDocument:{findUnique},$queryRaw:jest.fn().mockResolvedValue([{referenceEmissionAt:new Date("2026-09-15T06:00:00.000Z")}])} as unknown as PrismaService);}
 function d(value:string){return new Prisma.Decimal(value);}
 function row(overrides:Record<string,unknown>={}){return{id:"document-a",tenantId:"tenant-a",documentTypeCode:"01",billingMode:"ELECTRONIC_PROVIDER",lifecycleStatus:"CONFIRMED",fiscalCalculationPolicyVersion:"CR_V44_DECIMAL_V1",
   issuerIdentification:"3101000000",issuerEconomicActivityCode:"791100",issuerEstablishmentCode:"001",issuerTerminalCode:"00001",

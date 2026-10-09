@@ -34,6 +34,11 @@ const submissionSelect = Prisma.validator<Prisma.BillingDocumentSelect>()({
   } },
   references: { orderBy: [{ referenceOrder: "asc" }, { id: "asc" }], select: {
     referencedDocumentTypeCode: true, externalDocumentKey: true, referenceDate: true, reasonCode: true, reasonDescription: true,
+    referencedBillingDocument: { select: {
+      currencyCode: true, taxAuthorityStatus: true, exchangeRate: true,
+      officialExchangeRateObservationId: true, fiscalExchangeRateEffectiveDate: true,
+      fiscalExchangeRateSourceAuthority: true, fiscalExchangeRateIndicatorCode: true,
+    } },
   } },
   lines: { orderBy: [{ lineNumber: "asc" }, { id: "asc" }], select: {
     id: true, tenantId: true, lineNumber: true, cabysCode: true, itemCode: true, description: true, quantity: true,
@@ -220,11 +225,32 @@ function verifyOfficialSnapshot(row: SubmissionRow) {
   const observation = row.officialExchangeRateObservation;
   if (row.currencyCode === "CRC") {
     if (row.exchangeRate !== null || observation !== null || row.officialExchangeRateObservationId !== null || row.fiscalExchangeRateEffectiveDate !== null || row.fiscalExchangeRateSourceAuthority !== null || row.fiscalExchangeRateIndicatorCode !== null) invalidSnapshot();
+    if (row.documentTypeCode === "03" && !matchesCreditNoteReferenceSnapshot(row)) invalidSnapshot();
     return;
   }
   if (row.currencyCode !== "USD" || !observation || row.officialExchangeRateObservationId !== observation.id ||
     dateOnly(row.fiscalExchangeRateEffectiveDate) !== dateOnly(observation.effectiveDate) ||
-    row.fiscalExchangeRateSourceAuthority !== observation.sourceAuthority || row.fiscalExchangeRateIndicatorCode !== observation.sourceIndicatorCode) invalidSnapshot();
+    row.fiscalExchangeRateSourceAuthority !== observation.sourceAuthority || row.fiscalExchangeRateIndicatorCode !== observation.sourceIndicatorCode ||
+    (row.documentTypeCode !== "03" && dateOnly(row.fiscalExchangeRateEffectiveDate) !== dateOnly(row.fiscalIssueDate)) ||
+    (row.documentTypeCode === "03" && !matchesCreditNoteReferenceSnapshot(row))) invalidSnapshot();
+}
+
+function matchesCreditNoteReferenceSnapshot(row: SubmissionRow): boolean {
+  if (row.references.length !== 1) return false;
+  const original = row.references[0].referencedBillingDocument;
+  if (!original || original.taxAuthorityStatus !== "ACCEPTED" || original.currencyCode !== row.currencyCode) return false;
+  if (row.currencyCode === "CRC") {
+    return original.exchangeRate === null && original.officialExchangeRateObservationId === null &&
+      original.fiscalExchangeRateEffectiveDate === null && original.fiscalExchangeRateSourceAuthority === null &&
+      original.fiscalExchangeRateIndicatorCode === null;
+  }
+  return row.exchangeRate !== null && original.exchangeRate !== null &&
+    row.exchangeRate.equals(original.exchangeRate) &&
+    row.officialExchangeRateObservationId === original.officialExchangeRateObservationId &&
+    row.fiscalExchangeRateEffectiveDate !== null && original.fiscalExchangeRateEffectiveDate !== null &&
+    row.fiscalExchangeRateEffectiveDate.getTime() === original.fiscalExchangeRateEffectiveDate.getTime() &&
+    row.fiscalExchangeRateSourceAuthority === original.fiscalExchangeRateSourceAuthority &&
+    row.fiscalExchangeRateIndicatorCode === original.fiscalExchangeRateIndicatorCode;
 }
 function decimal(value: { toFixed(): string } | null): string | null { if (value === null) return null; const result=value.toFixed(); if (!/^(0|[1-9]\d*)(?:\.\d+)?$/.test(result)) invalidSnapshot(); return result; }
 function dateOnly(value: Date | null): string | null { if (!value || !Number.isFinite(value.getTime())) return null; return `${value.getUTCFullYear().toString().padStart(4,"0")}-${(value.getUTCMonth()+1).toString().padStart(2,"0")}-${value.getUTCDate().toString().padStart(2,"0")}`; }

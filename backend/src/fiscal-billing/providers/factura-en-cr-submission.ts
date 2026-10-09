@@ -58,7 +58,7 @@ export function prepareFacturaEnCrSubmission(d: FacturaEnCrSubmissionAggregate):
   else fail("FACTURA_EN_CR_SNAPSHOT_INCOMPLETE");
   body.medioPago=[methods[0].paymentMethodCode];
   if (d.currencyCode === "CRC") { if (d.exchangeRate !== null || d.officialExchangeRateObservation !== null) fail("FACTURA_EN_CR_OFFICIAL_RATE_MISMATCH"); body.currency="CRC"; }
-  else if (d.currencyCode === "USD") { const value=officialRate(d.officialExchangeRateObservation,d.exchangeRate,fiscalIssueDate); body.currency="USD"; body.exchangeRate=new ExactDecimal(value); }
+  else if (d.currencyCode === "USD") { const value=officialRate(d.officialExchangeRateObservation,d.exchangeRate,fiscalIssueDate,d.documentTypeCode==="03"); body.currency="USD"; body.exchangeRate=new ExactDecimal(value); }
   else fail("FACTURA_EN_CR_OFFICIAL_RATE_MISMATCH");
   if (receiver) { if (d.receiver!.economicActivityCode) body.codigoActividadReceptor=d.receiver!.economicActivityCode; body.receptor=receiver; }
   body.detalle=[...d.lines].sort((a,b)=>a.lineNumber-b.lineNumber).map(line=>mapLine(line,calculatedPolicy));
@@ -77,10 +77,11 @@ function mapCreditNoteReferences(references: FacturaEnCrReferenceSnapshot[]): Js
   return [{ tipoDocumento: reference.referencedDocumentTypeCode, numero: reference.externalDocumentKey!, fechaEmision, codigo: reference.reasonCode, razon: reference.reasonDescription }];
 }
 
-function officialRate(o: FacturaEnCrOfficialRateSnapshot|null, exchangeRate:string|null, issueDate:string):string {
-  if (!o?.id || o.countryCode!=="CR" || o.foreignCurrencyCode!=="USD" || o.localCurrencyCode!=="CRC" || o.rateType!=="REFERENCE_SELL" || dateOnly(o.effectiveDate,"FACTURA_EN_CR_OFFICIAL_RATE_MISMATCH")!==issueDate || o.sourceAuthority!=="BCCR" || o.sourceIndicatorCode!=="318" || !/^[a-f0-9]{64}$/.test(o.responseHash??"")) fail("FACTURA_EN_CR_OFFICIAL_RATE_MISMATCH");
+function officialRate(o: FacturaEnCrOfficialRateSnapshot|null, exchangeRate:string|null, issueDate:string, allowHistoricalReferenceRate:boolean):string {
+  const effectiveDate=dateOnly(o?.effectiveDate??null,"FACTURA_EN_CR_OFFICIAL_RATE_MISMATCH");
+  if (!o?.id || o.countryCode!=="CR" || o.foreignCurrencyCode!=="USD" || o.localCurrencyCode!=="CRC" || o.rateType!=="REFERENCE_SELL" || (!allowHistoricalReferenceRate&&effectiveDate!==issueDate) || o.sourceAuthority!=="BCCR" || o.sourceIndicatorCode!=="318" || !/^[a-f0-9]{64}$/.test(o.responseHash??"")) fail("FACTURA_EN_CR_OFFICIAL_RATE_MISMATCH");
   const value=decimal(o.value,30,12,true,"FACTURA_EN_CR_OFFICIAL_RATE_MISMATCH").canonical, persisted=decimal(exchangeRate,30,12,true,"FACTURA_EN_CR_OFFICIAL_RATE_MISMATCH").canonical;
-  const identity={countryCode:"CR",foreignCurrencyCode:"USD",localCurrencyCode:"CRC",rateType:"REFERENCE_SELL" as const,effectiveDate:issueDate,sourceAuthority:"BCCR",sourceIndicatorCode:"318"};
+  const identity={countryCode:"CR",foreignCurrencyCode:"USD",localCurrencyCode:"CRC",rateType:"REFERENCE_SELL" as const,effectiveDate,sourceAuthority:"BCCR",sourceIndicatorCode:"318"};
   if(value!==persisted || o.requestIdentity!==buildRequestIdentity(identity) || o.responseHash!==buildResponseHash(identity,value)) fail("FACTURA_EN_CR_OFFICIAL_RATE_MISMATCH"); return value;
 }
 function mapReceiver(r:FacturaEnCrReceiverSnapshot|null,type:string):Json|null {

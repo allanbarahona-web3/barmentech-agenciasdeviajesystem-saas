@@ -463,6 +463,118 @@ describe("PrismaBillingDocumentRepository fiscal allocation", () => {
     expect(tx.$queryRaw).toHaveBeenCalledTimes(2);
     expect(tx.billingDocument.update).toHaveBeenCalledTimes(1);
   });
+
+  it("accepts a reason-02 monetary partial credit when synthetic quantity matches the original", async () => {
+    const { repository, tx } = setupCreditNoteAllocation({
+      creditLine: creditLine({ grossAmount: "44.24779", taxAmount: "5.75221", lineTotal: "50" }),
+      reasonCode: "02",
+    });
+
+    await expect(repository.requestElectronicIssuance("tenant-a", "credit-a", "user-a", crcPreparation())).resolves.toMatchObject({
+      billingDocumentId: "credit-a",
+      newlyAllocated: true,
+    });
+    expect(tx.billingDocumentNumberSequence.findUnique).toHaveBeenCalledTimes(1);
+  });
+
+  it("accepts a true full monetary reproduction only with reason 01", async () => {
+    const { repository } = setupCreditNoteAllocation({
+      creditLine: creditLine({ grossAmount: "442.47788", taxAmount: "57.52212", lineTotal: "500" }),
+      reasonCode: "01",
+    });
+
+    await expect(repository.requestElectronicIssuance("tenant-a", "credit-a", "user-a", crcPreparation())).resolves.toMatchObject({
+      billingDocumentId: "credit-a",
+      newlyAllocated: true,
+    });
+  });
+
+  it.each([
+    ["01", creditLine({ grossAmount: "44.24779", taxAmount: "5.75221", lineTotal: "50" })],
+    ["02", creditLine({ grossAmount: "442.47788", taxAmount: "57.52212", lineTotal: "500" })],
+  ] as const)("rejects reason %s when persisted monetary equivalence does not match its full state", async (reasonCode, line) => {
+    const { repository, tx } = setupCreditNoteAllocation({ creditLine: line, reasonCode });
+
+    await expectCode(
+      repository.requestElectronicIssuance("tenant-a", "credit-a", "user-a", crcPreparation()),
+      "BILLING_CREDIT_NOTE_INPUT_INVALID",
+    );
+    expect(tx.billingDocumentNumberSequence.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("enforces accepted monetary final-total capacity for a type-03 draft", async () => {
+    const { repository, tx } = setupCreditNoteAllocation({
+      creditLine: creditLine({ grossAmount: "44.24779", taxAmount: "5.75221", lineTotal: "50" }),
+      reasonCode: "02",
+      acceptedLines: [{
+        sourceBillingDocumentLineId: "source-line-a",
+        quantity: d("1"),
+        unitPrice: d("398.23009"),
+        grossAmount: d("398.23009"),
+        lineTotal: d("450.00001"),
+      }],
+    });
+
+    await expectCode(
+      repository.requestElectronicIssuance("tenant-a", "credit-a", "user-a", crcPreparation()),
+      "BILLING_CREDIT_NOTE_CREDIT_CAP_EXCEEDED",
+    );
+    expect(tx.billingDocumentNumberSequence.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("does not treat an accepted synthetic monetary quantity as quantity capacity", async () => {
+    const { repository } = setupCreditNoteAllocation({
+      creditLine: creditLine({ quantity: "0.5", unitPrice: "442.47788", grossAmount: "221.23894", taxAmount: "28.76106", lineTotal: "250" }),
+      reasonCode: "02",
+      acceptedLines: [{
+        sourceBillingDocumentLineId: "source-line-a",
+        quantity: d("1"),
+        unitPrice: d("44.24779"),
+        grossAmount: d("44.24779"),
+        lineTotal: d("50"),
+      }],
+    });
+
+    await expect(repository.requestElectronicIssuance("tenant-a", "credit-a", "user-a", crcPreparation())).resolves.toMatchObject({
+      billingDocumentId: "credit-a",
+      newlyAllocated: true,
+    });
+  });
+
+  it("accepts a type-03 USD preparation with the original's historical frozen FX date", async () => {
+    const { repository, tx } = setupCreditNoteAllocation({
+      creditLine: creditLine({ grossAmount: "44.24779", taxAmount: "5.75221", lineTotal: "50" }),
+      reasonCode: "02",
+      inheritedUsdSnapshot: true,
+    });
+
+    await expect(repository.requestElectronicIssuance("tenant-a", "credit-a", "user-a", inheritedUsdPreparation())).resolves.toMatchObject({
+      billingDocumentId: "credit-a",
+      newlyAllocated: true,
+    });
+    expect(tx.billingDocument.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        exchangeRate: d("526.340000000001"),
+        officialExchangeRateObservationId: "original-observation",
+        fiscalExchangeRateEffectiveDate: new Date("2026-08-21T00:00:00.000Z"),
+      }),
+    }));
+  });
+
+  it("rejects a type-03 USD FX snapshot that differs from its accepted original", async () => {
+    const { repository, tx } = setupCreditNoteAllocation({
+      creditLine: creditLine({ grossAmount: "44.24779", taxAmount: "5.75221", lineTotal: "50" }),
+      reasonCode: "02",
+      inheritedUsdSnapshot: true,
+      mismatchedUsdSnapshot: true,
+    });
+
+    await expectCode(
+      repository.requestElectronicIssuance("tenant-a", "credit-a", "user-a", inheritedUsdPreparation()),
+      "BILLING_DOCUMENT_OFFICIAL_RATE_MISMATCH",
+    );
+    expect(tx.billingDocumentNumberSequence.findUnique).not.toHaveBeenCalled();
+  });
 });
 
 function setupNewAllocation(options: {
@@ -532,6 +644,64 @@ function setupExistingAllocation(document: ReturnType<typeof readyDocument>) {
     tx,
     repository: new PrismaBillingDocumentRepository(prisma as never),
   };
+}
+
+function setupCreditNoteAllocation(input: {
+  creditLine: ReturnType<typeof creditLine>;
+  reasonCode: "01" | "02";
+  acceptedLines?: Array<{
+    sourceBillingDocumentLineId: string;
+    quantity: Prisma.Decimal;
+    unitPrice: Prisma.Decimal;
+    grossAmount: Prisma.Decimal;
+    lineTotal: Prisma.Decimal;
+  }>;
+  inheritedUsdSnapshot?: boolean;
+  mismatchedUsdSnapshot?: boolean;
+}) {
+  const original = originalCreditSource();
+  const credit = creditNoteDraft(input.creditLine, input.reasonCode, original);
+  if (input.inheritedUsdSnapshot) {
+    const snapshot = {
+      currencyCode: "USD",
+      exchangeRate: d("526.340000000001"),
+      officialExchangeRateObservationId: "original-observation",
+      fiscalExchangeRateEffectiveDate: new Date("2026-08-21T00:00:00.000Z"),
+      fiscalExchangeRateSourceAuthority: "BCCR",
+      fiscalExchangeRateIndicatorCode: "318",
+    };
+    Object.assign(original, snapshot);
+    Object.assign(credit, input.mismatchedUsdSnapshot
+      ? { ...snapshot, exchangeRate: d("527.000000000000") }
+      : snapshot);
+  }
+  const context = setupNewAllocation({
+    documentId: "credit-a",
+    documentTypeCode: "03",
+    document: credit,
+  });
+  context.tx.billingDocument.findUnique
+    .mockResolvedValueOnce(credit)
+    .mockResolvedValueOnce(original);
+  context.tx.$queryRaw.mockReset()
+    .mockResolvedValueOnce([{ id: "credit-a" }])
+    .mockResolvedValueOnce([{ referenceEmissionAt: original.fiscalEmissionAt }])
+    .mockResolvedValueOnce([{ id: original.id }])
+    .mockResolvedValueOnce([{
+      sourceBillingDocumentLineId: "source-line-a",
+      quantity: input.creditLine.quantity,
+      unitPrice: input.creditLine.unitPrice,
+      grossAmount: input.creditLine.grossAmount,
+      lineTotal: input.creditLine.lineTotal,
+    }])
+    .mockResolvedValueOnce(input.acceptedLines ?? [])
+    .mockResolvedValueOnce([{ id: "sequence-a", allocatedSequenceNumber: 225n }]);
+  if (input.inheritedUsdSnapshot) {
+    context.tx.officialExchangeRateObservation.findUnique.mockResolvedValue(
+      inheritedUsdObservationRow(),
+    );
+  }
+  return context;
 }
 
 function transactionMock() {
@@ -636,6 +806,110 @@ function readyDocument(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function d(value: string) {
+  return new Prisma.Decimal(value);
+}
+
+function creditLine(input: {
+  quantity?: string;
+  unitPrice?: string;
+  grossAmount: string;
+  taxAmount: string;
+  lineTotal: string;
+}) {
+  const quantity = d(input.quantity ?? "1");
+  const grossAmount = d(input.grossAmount);
+  const taxAmount = d(input.taxAmount);
+  return {
+    id: "credit-line-a",
+    lineNumber: 1,
+    description: "Servicio original",
+    unitOfMeasureCode: "Sp",
+    quantity,
+    unitPrice: d(input.unitPrice ?? input.grossAmount),
+    grossAmount,
+    discountAmount: d("0"),
+    discountCode: null,
+    discountReason: null,
+    taxableBase: grossAmount,
+    taxAmount,
+    exoneratedTaxAmount: d("0"),
+    netTaxAmount: taxAmount,
+    lineSubtotal: grossAmount,
+    lineTotal: d(input.lineTotal),
+    taxes: [{
+      taxOrder: 1,
+      taxCode: "01",
+      rateCode: "08",
+      ratePercentage: d("13"),
+      taxableBase: grossAmount,
+      taxAmount,
+      calculationFactor: null,
+      netTaxAmount: taxAmount,
+      exemption: null,
+    }],
+  };
+}
+
+function originalCreditSource() {
+  const fiscalIssueDate = new Date("2026-08-21T00:00:00.000Z");
+  const fiscalEmissionAt = new Date("2026-08-21T12:00:00.000Z");
+  return {
+    id: "original-a",
+    tenantId: "tenant-a",
+    documentTypeCode: "01",
+    currencyCode: "CRC",
+    taxAuthorityStatus: "ACCEPTED",
+    haciendaKey: "5".repeat(50),
+    fiscalNumber: "00100001010000000042",
+    fiscalIssueDate,
+    fiscalEmissionAt,
+    exchangeRate: null,
+    officialExchangeRateObservationId: null,
+    fiscalExchangeRateEffectiveDate: null,
+    fiscalExchangeRateSourceAuthority: null,
+    fiscalExchangeRateIndicatorCode: null,
+    lines: [{
+      id: "source-line-a",
+      quantity: d("1"),
+      unitPrice: d("442.47788"),
+      grossAmount: d("442.47788"),
+      lineTotal: d("500"),
+    }],
+  };
+}
+
+function creditNoteDraft(
+  line: ReturnType<typeof creditLine>,
+  reasonCode: "01" | "02",
+  original: ReturnType<typeof originalCreditSource>,
+) {
+  return readyDocument({
+    id: "credit-a",
+    documentTypeCode: "03",
+    grossSubtotal: line.grossAmount,
+    discountTotal: d("0"),
+    taxableTotal: line.taxableBase,
+    exemptTotal: d("0"),
+    exoneratedTotal: d("0"),
+    grossTaxTotal: line.taxAmount,
+    exoneratedTaxTotal: d("0"),
+    netTaxTotal: line.netTaxAmount,
+    total: line.lineTotal,
+    lines: [line],
+    references: [{
+      id: "reference-a",
+      referencedDocumentTypeCode: "01",
+      referencedBillingDocumentId: original.id,
+      externalDocumentKey: original.haciendaKey,
+      externalDocumentNumber: original.fiscalNumber,
+      reasonCode,
+      reasonDescription: "Corrección parcial",
+      referenceDate: original.fiscalIssueDate,
+    }],
+  });
+}
+
 function rawSql(mock: jest.Mock, call: number) {
   return (mock.mock.calls[call][0] as TemplateStringsArray).join("?");
 }
@@ -676,6 +950,42 @@ function usdPreparation() {
       sourceAuthority: "BCCR",
       sourceIndicatorCode: "318",
     },
+  };
+}
+
+function inheritedUsdPreparation() {
+  return {
+    expectedCurrencyCode: "USD" as const,
+    fiscalEmissionAt: new Date("2026-08-22T06:00:00.456Z"),
+    fiscalIssueDate: "2026-08-22",
+    officialRate: {
+      observationId: "original-observation",
+      value: "526.340000000001",
+      effectiveDate: "2026-08-21",
+      sourceAuthority: "BCCR",
+      sourceIndicatorCode: "318",
+      inheritedFromReference: true as const,
+    },
+  };
+}
+
+function inheritedUsdObservationRow() {
+  const identity = {
+    countryCode: "CR",
+    foreignCurrencyCode: "USD",
+    localCurrencyCode: "CRC",
+    rateType: "REFERENCE_SELL" as const,
+    effectiveDate: "2026-08-21",
+    sourceAuthority: "BCCR",
+    sourceIndicatorCode: "318",
+  };
+  return {
+    id: "original-observation",
+    ...identity,
+    effectiveDate: new Date("2026-08-21T00:00:00.000Z"),
+    value: d("526.340000000001"),
+    requestIdentity: buildRequestIdentity(identity),
+    responseHash: buildResponseHash(identity, "526.340000000001"),
   };
 }
 

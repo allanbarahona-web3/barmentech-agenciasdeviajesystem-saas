@@ -438,6 +438,50 @@ describe("BillingDocumentService generic core", () => {
     );
   });
 
+  it("reuses a type-03 USD draft's inherited reference snapshot without resolving today's rate", async () => {
+    const historicalEffectiveDate = new Date("2026-09-15T00:00:00.000Z");
+    const repository = {
+      findIssuancePreflight: jest.fn().mockResolvedValue(preflight({
+        documentTypeCode: "03",
+        currencyCode: "USD",
+        exchangeRate: "526.340000000001",
+        officialExchangeRateObservationId: "observation-original",
+        fiscalExchangeRateEffectiveDate: historicalEffectiveDate,
+        fiscalExchangeRateSourceAuthority: "BCCR",
+        fiscalExchangeRateIndicatorCode: "318",
+      })),
+      requestElectronicIssuance: jest.fn().mockResolvedValue({ newlyAllocated: true }),
+    };
+    const resolver = { resolveExactObservation: jest.fn() };
+    const instant = new Date("2026-10-08T06:00:00.000Z");
+    const service = new BillingDocumentService(
+      repository as never,
+      resolver as never,
+      { now: jest.fn().mockReturnValue(instant) } as never,
+    );
+
+    await service.requestElectronicIssuance("tenant-a", "credit-a", "user-a");
+
+    expect(resolver.resolveExactObservation).not.toHaveBeenCalled();
+    expect(repository.requestElectronicIssuance).toHaveBeenCalledWith(
+      "tenant-a",
+      "credit-a",
+      "user-a",
+      expect.objectContaining({
+        expectedCurrencyCode: "USD",
+        fiscalIssueDate: "2026-10-08",
+        officialRate: {
+          observationId: "observation-original",
+          value: "526.340000000001",
+          effectiveDate: "2026-09-15",
+          sourceAuthority: "BCCR",
+          sourceIndicatorCode: "318",
+          inheritedFromReference: true,
+        },
+      }),
+    );
+  });
+
   it("bypasses the resolver for an existing complete allocation", async () => {
     const repository = {
       findIssuancePreflight: jest.fn().mockResolvedValue(preflight({
