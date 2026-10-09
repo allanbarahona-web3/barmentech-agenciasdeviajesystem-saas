@@ -229,6 +229,22 @@ describe("OperationalRequirementsService", () => {
     expect(c.tx.travelPackageParticipant.findMany).not.toHaveBeenCalled();
   });
 
+  it("displays a historical confirmed Custom Quotation service as fulfilled", async () => {
+    const c = context();
+    c.tx.operationalRequirement.findFirst.mockResolvedValue(requirement({
+      scopeType: "STANDALONE_CUSTOMER",
+      travelPackageId: null,
+      customerId: "customer-a",
+      customer: { id: "customer-a", fullName: "Ada Customer" },
+      passengers: [],
+      sourceType: "CUSTOM_QUOTATION_LINE",
+      status: "IN_PROGRESS",
+    }));
+    c.tx.operationalFulfillment.findMany.mockResolvedValue([{ id: "fulfillment-a", status: "CONFIRMED", _count: { purchases: 1 } }]);
+
+    await expect(c.service.findStandalone(tenantId, requirementId)).resolves.toMatchObject({ status: "FULFILLED" });
+  });
+
   it("filters the standalone queue by tenant-safe customer and generic source identity", async () => {
     const c = context();
     c.tx.operationalRequirement.findMany.mockResolvedValue([]);
@@ -364,6 +380,163 @@ describe("OperationalRequirementsService", () => {
     await expect(c.service.listStandaloneCustomQuotationGroups(tenantId, {})).resolves.toMatchObject({ items: [{ status: "COMPLETED" }] });
   });
 
+  it("projects confirmed Custom Quotation services as fulfilled while active siblings keep the group in progress", async () => {
+    const c = context();
+    c.tx.operationalRequirement.groupBy.mockResolvedValue([{ sourceId: "version-a" }]);
+    c.tx.$queryRaw.mockResolvedValue([{ total: 1 }]);
+    c.tx.operationalRequirement.findMany.mockResolvedValue([
+      customQuotationRequirement({ id: "requirement-confirmed", status: "FULFILLED" }),
+      customQuotationRequirement({ id: "requirement-active", sourceLineId: "line-b", status: "IN_PROGRESS" }),
+    ]);
+    c.tx.customQuotationVersion.findMany.mockResolvedValue([{ id: "version-a", customQuotation: { quotationNumber: "CQ-001" }, salesOrder: null }]);
+
+    await expect(c.service.listStandaloneCustomQuotationGroups(tenantId, {})).resolves.toMatchObject({
+      items: [{
+        status: "IN_PROGRESS",
+        requirements: [
+          { requirementId: "requirement-confirmed", status: "FULFILLED" },
+          { requirementId: "requirement-active", status: "IN_PROGRESS" },
+        ],
+      }],
+    });
+  });
+
+  it("projects a historical confirmed fulfillment as completed in its group line", async () => {
+    const c = context();
+    c.tx.operationalRequirement.groupBy.mockResolvedValue([{ sourceId: "version-a" }]);
+    c.tx.$queryRaw.mockResolvedValue([{ total: 1 }]);
+    c.tx.operationalRequirement.findMany.mockResolvedValue([
+      customQuotationRequirement({ id: "requirement-confirmed", status: "IN_PROGRESS", fulfillments: [{ id: "fulfillment-confirmed" }] }),
+      customQuotationRequirement({ id: "requirement-active", sourceLineId: "line-b", status: "IN_PROGRESS" }),
+    ]);
+    c.tx.customQuotationVersion.findMany.mockResolvedValue([{ id: "version-a", customQuotation: { quotationNumber: "CQ-001" }, salesOrder: null }]);
+
+    await expect(c.service.listStandaloneCustomQuotationGroups(tenantId, {})).resolves.toMatchObject({
+      items: [{
+        status: "IN_PROGRESS",
+        requirements: [
+          { requirementId: "requirement-confirmed", status: "FULFILLED" },
+          { requirementId: "requirement-active", status: "IN_PROGRESS" },
+        ],
+      }],
+    });
+  });
+
+  it("projects an all-fulfilled Custom Quotation group as completed", async () => {
+    const c = context();
+    c.tx.operationalRequirement.groupBy.mockResolvedValue([{ sourceId: "version-a" }]);
+    c.tx.$queryRaw.mockResolvedValue([{ total: 1 }]);
+    c.tx.operationalRequirement.findMany.mockResolvedValue([
+      customQuotationRequirement({ id: "requirement-a", status: "FULFILLED" }),
+      customQuotationRequirement({ id: "requirement-b", sourceLineId: "line-b", status: "FULFILLED" }),
+    ]);
+    c.tx.customQuotationVersion.findMany.mockResolvedValue([{ id: "version-a", customQuotation: { quotationNumber: "CQ-001" }, salesOrder: null }]);
+
+    await expect(c.service.listStandaloneCustomQuotationGroups(tenantId, {})).resolves.toMatchObject({ items: [{ status: "COMPLETED" }] });
+  });
+
+  it("keeps only active Custom Quotation requirements in the queue query", async () => {
+    const c = context();
+    c.tx.operationalRequirement.groupBy.mockResolvedValue([]);
+    c.tx.$queryRaw.mockResolvedValue([{ total: 0 }]);
+
+    await c.service.listStandaloneCustomQuotationGroups(tenantId, {});
+
+    expect(c.tx.operationalRequirement.groupBy).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        tenantId,
+        status: { in: ["PENDING", "IN_PROGRESS"] },
+        NOT: { fulfillments: { some: { status: { in: ["CONFIRMED", "CANCELLED"] } } } },
+      }),
+    }));
+  });
+
+  it("returns confirmed and cancelled Custom Quotation purchases as bounded immutable history rows", async () => {
+    const c = context();
+    c.tx.operationalFulfillment.findMany.mockResolvedValue([
+      customQuotationHistoryFulfillment(),
+      customQuotationHistoryFulfillment({ id: "fulfillment-cancelled", status: "CANCELLED", confirmationReference: null, purchases: [] }),
+    ]);
+    c.tx.operationalFulfillment.count.mockResolvedValue(2);
+    c.tx.customQuotationVersion.findMany.mockResolvedValue([{ id: "version-a", customQuotation: { quotationNumber: "CQ-001" }, salesOrder: { id: "sales-a", orderNumber: "SO-001" } }]);
+    c.tx.billingDocument.findMany.mockResolvedValue([acceptedBillingDocument()]);
+
+    await expect(c.service.listStandaloneCustomQuotationHistory(tenantId, { page: 1 })).resolves.toMatchObject({
+      total: 2,
+      dateAuthority: "FULFILLMENT_FINALIZED_AT",
+      items: [
+        { fulfillmentId: "fulfillment-a", finalStatus: "CONFIRMED", quotationNumber: "CQ-001", purchase: { providerName: "Proveedor Uno", amount: "25", evidenceCount: 1 } },
+        { fulfillmentId: "fulfillment-cancelled", finalStatus: "CANCELLED", purchase: null },
+      ],
+    });
+    expect(c.tx.operationalFulfillment.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ tenantId, status: { in: ["CONFIRMED", "CANCELLED"] } }),
+      take: 20,
+      orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
+    }));
+    expect(c.tx.operationalFulfillment.findMany).toHaveBeenCalledTimes(1);
+    expect(c.tx.customQuotationVersion.findMany).toHaveBeenCalledTimes(1);
+    expect(c.tx.billingDocument.findMany).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["customer name", "Ada", { fullName: { contains: "Ada", mode: "insensitive" } }],
+    ["identification", "1-0001", { idNumber: { contains: "1-0001", mode: "insensitive" } }],
+    ["email", "ada@example.com", { email: { contains: "ada@example.com", mode: "insensitive" } }],
+  ])("filters Custom Quotation history by %s without losing tenant scope", async (_label, search, expectedCustomerFilter) => {
+    const c = context();
+    c.tx.operationalFulfillment.findMany.mockResolvedValue([]);
+    c.tx.operationalFulfillment.count.mockResolvedValue(0);
+    c.tx.billingDocument.findMany.mockResolvedValue([]);
+
+    await c.service.listStandaloneCustomQuotationHistory(tenantId, { search });
+
+    const where = c.tx.operationalFulfillment.findMany.mock.calls[0][0].where;
+    expect(where).toMatchObject({ tenantId, status: { in: ["CONFIRMED", "CANCELLED"] } });
+    expect(JSON.stringify(where)).toContain(JSON.stringify(expectedCustomerFilter));
+  });
+
+  it("filters Custom Quotation history by fiscal document number through tenant-safe bulk reads", async () => {
+    const c = context();
+    c.tx.billingDocument.findMany.mockResolvedValueOnce([{ sourceId: "sales-a" }]).mockResolvedValueOnce([]);
+    c.tx.customQuotationVersion.findMany.mockResolvedValueOnce([{ id: "version-a" }]);
+    c.tx.operationalFulfillment.findMany.mockResolvedValue([]);
+    c.tx.operationalFulfillment.count.mockResolvedValue(0);
+
+    await c.service.listStandaloneCustomQuotationHistory(tenantId, { search: "00100001010000000001" });
+
+    expect(c.tx.billingDocument.findMany.mock.calls[0][0]).toMatchObject({ where: { tenantId, sourceType: "SALES_ORDER", sourceRole: "PRIMARY", fiscalNumber: { contains: "00100001010000000001", mode: "insensitive" } } });
+    expect(c.tx.customQuotationVersion.findMany.mock.calls[0][0]).toMatchObject({ where: { tenantId, salesOrderId: { in: ["sales-a"] } } });
+    expect(c.tx.operationalFulfillment.findMany.mock.calls[0][0].where).toMatchObject({ tenantId, AND: expect.arrayContaining([expect.objectContaining({ OR: expect.any(Array) })]) });
+  });
+
+  it.each([
+    ["TODAY", "2026-10-09T06:00:00.000Z", "2026-10-09T06:00:00.000Z", "2026-10-10T06:00:00.000Z"],
+    ["LAST_7_DAYS", "2026-10-03T06:00:00.000Z", "2026-10-09T06:00:00.000Z", "2026-10-10T06:00:00.000Z"],
+    ["LAST_15_DAYS", "2026-09-25T06:00:00.000Z", "2026-10-09T06:00:00.000Z", "2026-10-10T06:00:00.000Z"],
+    ["LAST_MONTH", "2026-09-10T06:00:00.000Z", "2026-10-09T06:00:00.000Z", "2026-10-10T06:00:00.000Z"],
+  ] as const)("applies the %s history date preset in the tenant timezone", async (preset, expectedStart, _today, expectedEnd) => {
+    jest.useFakeTimers().setSystemTime(new Date("2026-10-09T18:00:00.000Z"));
+    const c = context();
+    c.tx.operationalFulfillment.findMany.mockResolvedValue([]);
+    c.tx.operationalFulfillment.count.mockResolvedValue(0);
+    await c.service.listStandaloneCustomQuotationHistory(tenantId, { datePreset: preset });
+    const range = c.tx.operationalFulfillment.findMany.mock.calls[0][0].where.updatedAt;
+    expect(range.gte.toISOString()).toBe(expectedStart);
+    expect(range.lt.toISOString()).toBe(expectedEnd);
+    jest.useRealTimers();
+  });
+
+  it("applies a custom tenant-calendar date range without browser date conversion", async () => {
+    const c = context();
+    c.tx.operationalFulfillment.findMany.mockResolvedValue([]);
+    c.tx.operationalFulfillment.count.mockResolvedValue(0);
+    await c.service.listStandaloneCustomQuotationHistory(tenantId, { datePreset: "CUSTOM", dateFrom: "2026-10-01", dateTo: "2026-10-02" });
+    const range = c.tx.operationalFulfillment.findMany.mock.calls[0][0].where.updatedAt;
+    expect(range.gte.toISOString()).toBe("2026-10-01T06:00:00.000Z");
+    expect(range.lt.toISOString()).toBe("2026-10-03T06:00:00.000Z");
+  });
+
   it("rejects standalone passenger assignment explicitly", async () => {
     const c = context();
     c.tx.operationalRequirement.findFirst.mockResolvedValue({ id: requirementId, status: "PENDING" });
@@ -392,7 +565,8 @@ function context() {
     operationalRequirement: { create: jest.fn(), findFirst: jest.fn(), findMany: jest.fn(), count: jest.fn(), updateMany: jest.fn(), groupBy: jest.fn() },
     operationalRequirementPassenger: { createMany: jest.fn(), findMany: jest.fn(), deleteMany: jest.fn() },
     operationalFulfillmentPassenger: { findMany: jest.fn() },
-    operationalFulfillment: { findMany: jest.fn() },
+    operationalFulfillment: { findMany: jest.fn(), count: jest.fn() },
+    tenantBillingConfiguration: { findUnique: jest.fn().mockResolvedValue({ fiscalTimezone: "America/Costa_Rica" }) },
     customQuotationVersion: { findMany: jest.fn() },
     billingDocument: { findMany: jest.fn() },
   };
@@ -411,6 +585,37 @@ function customQuotationRequirement(overrides: Record<string, unknown> = {}) {
     soldCurrency: "USD",
     createdAt: new Date("2026-10-01T00:00:00.000Z"),
     customer: { id: "customer-a", fullName: "Ada Customer", idType: "01", idNumber: "1-0001-0001" },
+    fulfillments: [],
+    ...overrides,
+  };
+}
+
+function customQuotationHistoryFulfillment(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "fulfillment-a",
+    status: "CONFIRMED",
+    confirmationReference: "CONF-001",
+    updatedAt: new Date("2026-10-09T18:00:00.000Z"),
+    operationalRequirement: {
+      id: "requirement-a",
+      status: "FULFILLED",
+      description: "Alimentación: Todo incluido",
+      sourceId: "version-a",
+      customer: { id: "customer-a", fullName: "Ada Customer", idType: "01", idNumber: "1-0001-0001", email: "ada@example.com" },
+    },
+    purchases: [{
+      id: "purchase-a",
+      providerName: "Proveedor Uno",
+      supplierReference: "PROV-001",
+      amount: new Prisma.Decimal("25.00000"),
+      currency: "USD",
+      taxAmount: new Prisma.Decimal("3.25000"),
+      purchasedAt: new Date("2026-10-08T18:00:00.000Z"),
+      supplierInvoiceNumber: "FACT-001",
+      notes: "Compra histórica",
+      evidence: [{ id: "evidence-a", originalFilename: "factura.pdf", mimeType: "application/pdf", byteSize: 100, createdAt: new Date("2026-10-08T18:00:00.000Z") }],
+      _count: { evidence: 1 },
+    }],
     ...overrides,
   };
 }

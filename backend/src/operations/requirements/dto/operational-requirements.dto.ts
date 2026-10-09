@@ -42,6 +42,7 @@ export const OPERATIONAL_REQUIREMENT_STATUSES = [
   "CANCELLED",
   "NOT_APPLICABLE",
 ] as const;
+export const CUSTOM_QUOTATION_HISTORY_DATE_PRESETS = ["TODAY", "LAST_7_DAYS", "LAST_15_DAYS", "LAST_MONTH", "CUSTOM"] as const;
 
 class RequirementSourceGroupSnapshotDto {
   @IsOptional()
@@ -267,6 +268,40 @@ export class ListOperationalRequirementsDto {
   @MaxLength(80)
   @Matches(/\S/)
   sourceType?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(25)
+  pageSize?: number;
+}
+
+export class ListCustomQuotationOperationsHistoryDto {
+  @IsOptional()
+  @Transform(trim)
+  @IsString()
+  @MaxLength(100)
+  @Matches(/\S/)
+  search?: string;
+
+  @IsOptional()
+  @IsIn(CUSTOM_QUOTATION_HISTORY_DATE_PRESETS)
+  datePreset?: (typeof CUSTOM_QUOTATION_HISTORY_DATE_PRESETS)[number];
+
+  @IsOptional()
+  @IsDateString()
+  dateFrom?: string;
+
+  @IsOptional()
+  @IsDateString()
+  dateTo?: string;
 
   @IsOptional()
   @Type(() => Number)

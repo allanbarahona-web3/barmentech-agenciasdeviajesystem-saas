@@ -81,16 +81,19 @@ test('Custom Quotation purchase uses standalone endpoints without passenger call
   assert.match(apiText, /function standaloneEvidencePath/);
 });
 
-test('Custom Quotation purchase entry is canonical for every fulfillment state', () => {
+test('Custom Quotation purchase entry is canonical when no purchase exists', () => {
   const text = workspace();
   const drawer = read('../src/components/operations/operational-purchase-drawer.tsx');
   assert.match(text, /<h2 className="font-semibold">Compras<\/h2>/);
-  assert.match(text, /<Button type="button" size="sm" disabled=\{!canProcess\}[^>]*onClick=\{openPurchase\}>.*Registrar compra/s);
+  assert.match(text, /const hasPurchase = fulfillments\.some\(\(fulfillment\) => fulfillment\.purchaseCount > 0 \|\| fulfillment\.status === 'PURCHASED'\)/);
+  assert.match(text, /const terminalFulfillment = fulfillments\.some\(\(fulfillment\) => fulfillment\.status === 'CONFIRMED' \|\| fulfillment\.status === 'CANCELLED'\)/);
+  assert.match(text, /const canRegisterPurchase = !hasPurchase && !terminalFulfillment/);
+  assert.match(text, /canRegisterPurchase \? <Button type="button" size="sm" disabled=\{!canProcess\}[^>]*onClick=\{openPurchase\}>.*Registrar compra/s);
   assert.match(text, /fulfillments\.map\(\(fulfillment\) => <Card key=\{fulfillment\.id\}>/);
-  assert.match(text, /fulfillment\.status === 'PURCHASED' \? <Button[^>]*onClick=\{\(\) => openConfirmation\(fulfillment\)\}>Confirmar<\/Button>/);
+  assert.match(text, /fulfillment\.status === 'PURCHASED' && fulfillment\.purchaseCount > 0 \? <Button[^>]*onClick=\{\(\) => openConfirmation\(fulfillment\)\}>Confirmar<\/Button>/);
   assert.match(text, /<OperationalPurchaseDrawer open onOpenChange=/);
   assert.match(text, /fulfillmentId=\{purchaseFulfillmentId\} ensureFulfillment=\{ensurePurchaseFulfillment\}/);
-  for (const status of ['DRAFT', 'RESERVED', 'PURCHASED']) assert.match(text, new RegExp(`fulfillment\\.status === '${status}'`));
+  for (const status of ['PURCHASED', 'CONFIRMED', 'CANCELLED']) assert.match(text, new RegExp(`fulfillment\\.status === '${status}'`));
   assert.match(drawer, /setForm\(\{ \.\.\.emptyPurchase\(preferredCurrency\), providerName: providerName \?\? '' \}\)/);
   assert.match(drawer, /setForm\(\(value\) => \(\{ \.\.\.value, providerName: event\.target\.value \}\)\)/);
   assert.match(text, /createStandaloneOperationalFulfillment\(requirementId, \{\}\)/);
@@ -98,6 +101,23 @@ test('Custom Quotation purchase entry is canonical for every fulfillment state',
   assert.match(text, /fulfillmentLabels\[fulfillment\.status\]/);
   for (const label of ['Proveedor', 'Referencia del proveedor', 'Monto', 'Moneda', 'Impuesto', 'Fecha de compra', 'Número de factura del proveedor', 'Notas', 'Documento de respaldo \\(opcional\\)']) assert.match(drawer, new RegExp(label));
   assert.match(drawer, /await uploadStandaloneOperationalEvidence\(requirementId, effectiveFulfillmentId, \{ evidenceType: 'OTHER', operationalPurchaseId: purchase\.id, file: evidenceFile \}\)/);
+});
+
+test('Custom Quotation existing purchases use their persisted snapshot and expose no duplicate purchase action', () => {
+  const text = workspace();
+  const apiText = api();
+  assert.match(apiText, /evidenceCount: number; evidence: \{ id: string; originalFilename: string; mimeType: string \} \| null/);
+  assert.match(text, /function PurchaseSummary/);
+  assert.match(text, /purchase\.providerName/);
+  assert.match(text, /purchase\.amount, purchase\.currency/);
+  assert.match(text, /formatDateTime\(purchase\.purchasedAt\)/);
+  for (const label of ['Referencia del proveedor', 'Factura del proveedor', 'Impuesto', 'Documento', 'Notas:']) assert.match(text, new RegExp(label));
+  assert.doesNotMatch(text, /Proveedor pendiente/);
+  assert.doesNotMatch(text, /Registrar otra compra|Editar compra/);
+  assert.match(text, /fulfillment\.purchase \? <PurchaseSummary purchase=\{fulfillment\.purchase\}/);
+  assert.match(text, /getStandaloneOperationalEvidenceAccess\(requirementId, evidenceViewer\.fulfillmentId, attachment\.id\)/);
+  assert.match(text, /<AttachmentViewer attachments=\{\[evidenceViewer\.attachment\]\} resolveAttachmentUrl=\{resolveEvidenceUrl\}/);
+  assert.match(text, /Ver documento/);
 });
 
 test('all Custom Quotation records use the canonical purchase path and legacy management has no references', () => {
@@ -128,4 +148,39 @@ test('Custom Quotation confirmation still persists its reference before confirmi
   assert.ok(saveContextAt >= 0, 'confirmation reference is persisted');
   assert.ok(transitionAt > saveContextAt, 'CONFIRMED transition follows persisted context');
   assert.match(text, /setConfirmError\(confirmationErrorMessage\(reason\)\)/);
+});
+
+test('confirmed Custom Quotation work refreshes the parent group without a browser reload', () => {
+  const text = workspace();
+  assert.match(text, /async function refreshSelectedGroup\(sourceId: string\)/);
+  assert.match(text, /listCustomQuotationOperationsGroups\(\{ page, search: search \|\| undefined \}\)/);
+  assert.match(text, /setSelectedGroup\(\(current\) => current\?\.sourceId === sourceId \? response\.items\.find\(\(item\) => item\.sourceId === sourceId\) \?\? current : current\)/);
+  assert.match(text, /onChanged=\{\(\) => refreshSelectedGroup\(selectedGroup\.sourceId\)\}/);
+  assert.match(text, /onClose=\{\(\) => setSelectedRequirement\(null\)\} onChanged=\{onChanged\}/);
+  assert.match(text, /await transitionStandaloneOperationalFulfillment\(requirementId, confirmationFulfillment\.id, 'CONFIRMED'\);\s*setConfirmationFulfillment\(null\); setConfirmationReference\(''\);\s*await load\(\); await onChanged\(\);/);
+});
+
+test('Custom Quotation history is terminal, read-only, and delegates filters to the backend', () => {
+  const text = workspace();
+  const apiText = api();
+  const historyStart = text.indexOf('function CustomQuotationHistory()');
+  const historyEnd = text.indexOf('function CustomQuotationGroupDetail');
+  const history = text.slice(historyStart, historyEnd);
+  assert.ok(historyStart >= 0 && historyEnd > historyStart, 'history is isolated from active workflow controls');
+  assert.match(text, /Activas/);
+  assert.match(text, /Historial/);
+  assert.match(history, /listCustomQuotationOperationsHistory/);
+  assert.match(apiText, /custom-quotation-history/);
+  assert.match(apiText, /dateAuthority: 'FULFILLMENT_FINALIZED_AT'/);
+  for (const preset of ['TODAY', 'LAST_7_DAYS', 'LAST_15_DAYS', 'LAST_MONTH', 'CUSTOM']) assert.match(history, new RegExp(preset));
+  assert.match(history, /datePreset: datePreset \|\| undefined/);
+  assert.match(history, /dateFrom: datePreset === 'CUSTOM' \? dateFrom \|\| undefined : undefined/);
+  assert.match(history, /dateTo: datePreset === 'CUSTOM' \? dateTo \|\| undefined : undefined/);
+  assert.match(history, /item\.finalStatus/);
+  assert.match(history, /historyStatusLabel/);
+  assert.match(history, /getStandaloneOperationalEvidenceAccess\(item\.requirementId, item\.fulfillmentId, attachment\.id\)/);
+  assert.match(history, /Ver documento fiscal/);
+  assert.match(history, /formatDateTime\(item\.finalizedAt\)/);
+  assert.match(history, /money\(item\.purchase\.amount, item\.purchase\.currency\)/);
+  for (const forbidden of ['Registrar compra', 'Confirmar', 'Editar compra', 'cancelStandalone', 'createStandalone']) assert.doesNotMatch(history, new RegExp(forbidden));
 });

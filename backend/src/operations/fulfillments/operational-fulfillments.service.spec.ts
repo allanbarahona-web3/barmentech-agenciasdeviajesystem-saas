@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, NotFoundException } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import { OperationalFulfillmentsService } from "./operational-fulfillments.service";
 
 const tenantId = "tenant-a";
@@ -80,6 +81,24 @@ describe("OperationalFulfillmentsService", () => {
       data: expect.objectContaining({ providerName: "Provider B", assignedToName: "Operator B", updatedByUserId: actor.userId }),
     }));
     expect(c.tx.operationalFulfillment.updateMany.mock.calls[0][0].data).not.toHaveProperty("servicePurposeCode");
+    expect(c.tx.operationalFulfillment.updateMany.mock.calls[0][0].data).not.toHaveProperty("detailPayload");
+    expect(c.tx.operationalFulfillment.updateMany.mock.calls[0][0].data).not.toHaveProperty("detailVersion");
+  });
+
+  it("uses database NULL when an explicit detail reset is valid", async () => {
+    const c = context();
+    c.tx.operationalRequirement.findFirst.mockResolvedValue(requirement());
+    c.tx.travelPackageParticipant.findMany.mockResolvedValue([{ id: "participant-a" }]);
+    c.tx.operationalRequirementPassenger.findMany.mockResolvedValue([{ travelPackageParticipantId: "participant-a" }]);
+    c.tx.operationalFulfillment.create.mockResolvedValue({ id: fulfillmentId });
+    c.tx.operationalFulfillmentPassenger.createMany.mockResolvedValue({ count: 1 });
+    c.tx.operationalRequirement.updateMany.mockResolvedValue({ count: 1 });
+    c.tx.operationalFulfillment.findFirst.mockResolvedValue(fulfillment());
+
+    await c.service.create(tenantId, travelPackageId, requirementId, createInput({ detailPayload: null, detailVersion: null }), actor);
+
+    expect(c.tx.operationalFulfillment.create.mock.calls[0][0].data.detailPayload).toBe(Prisma.DbNull);
+    expect(c.tx.operationalFulfillment.create.mock.calls[0][0].data.detailVersion).toBeNull();
   });
 
   it.each([
@@ -189,6 +208,7 @@ describe("OperationalFulfillmentsService", () => {
     await expect(c.service.transitionStatus(tenantId, travelPackageId, requirementId, fulfillmentId, { targetStatus }, actor))
       .resolves.toMatchObject({ status: targetStatus });
     expect(c.finance.readMany).not.toHaveBeenCalled();
+    expect(c.tx.operationalRequirement.updateMany).not.toHaveBeenCalled();
   });
 
   it("blocks finance-ineligible transitions and enforces confirmation references and terminal states", async () => {
@@ -211,16 +231,35 @@ describe("OperationalFulfillmentsService", () => {
   it("lists a bounded deterministic page and returns detail only under tenant/package/Requirement scope", async () => {
     const c = context();
     c.tx.operationalRequirement.findFirst.mockResolvedValue(requirement());
-    c.tx.operationalFulfillment.findMany.mockResolvedValue([{ ...fulfillment(), _count: { passengers: 1, purchases: 2 } }]);
+    c.tx.operationalFulfillment.findMany.mockResolvedValue([{
+      ...fulfillment(),
+      _count: { passengers: 1, purchases: 2 },
+      purchases: [{
+        id: "purchase-a",
+        providerName: "Proveedor A",
+        supplierReference: "REF-1",
+        amount: new Prisma.Decimal("25.50000"),
+        currency: "USD",
+        taxAmount: new Prisma.Decimal("3.31500"),
+        purchasedAt: new Date("2026-10-01T10:00:00.000Z"),
+        supplierInvoiceNumber: "FAC-1",
+        notes: "Snapshot note",
+        evidence: [{ id: "evidence-a", originalFilename: "factura.pdf", mimeType: "application/pdf" }],
+        _count: { evidence: 1 },
+      }],
+    }]);
     c.tx.operationalFulfillment.count.mockResolvedValue(21);
     await expect(c.service.list(tenantId, travelPackageId, requirementId, { page: 1, pageSize: 20, status: "DRAFT" }))
-      .resolves.toMatchObject({ total: 21, totalPages: 2, items: [{ passengerCount: 1, passengerPreview: ["Ada Lovelace"], purchaseCount: 2 }] });
+      .resolves.toMatchObject({ total: 21, totalPages: 2, items: [{ passengerCount: 1, passengerPreview: ["Ada Lovelace"], purchaseCount: 2, purchase: { providerName: "Proveedor A", amount: "25.5", currency: "USD", taxAmount: "3.315", evidenceCount: 1, evidence: { id: "evidence-a", originalFilename: "factura.pdf", mimeType: "application/pdf" } } }] });
     expect(c.tx.operationalFulfillment.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({ tenantId, travelPackageId, operationalRequirementId: requirementId, status: "DRAFT" }),
       orderBy: [{ createdAt: "asc" }, { id: "asc" }], take: 20,
     }));
     expect(c.tx.operationalFulfillment.findMany.mock.calls[0][0].select).toMatchObject({
       passengers: { take: 2 }, _count: { select: { passengers: true, purchases: true } },
+    });
+    expect(c.tx.operationalFulfillment.findMany.mock.calls[0][0].select.purchases).toMatchObject({
+      take: 1, orderBy: [{ purchasedAt: "desc" }, { id: "asc" }], select: { evidence: { take: 1 } },
     });
 
     c.tx.operationalFulfillment.findFirst.mockResolvedValue(fulfillment());
@@ -250,6 +289,59 @@ describe("OperationalFulfillmentsService", () => {
     const c = context();
     c.tx.operationalFulfillment.findFirst.mockResolvedValue(fulfillmentState({ travelPackageId: null, operationalRequirement: requirement({ scopeType: "STANDALONE_CUSTOMER", travelPackageId: null }) }));
     await expect(c.service.rejectStandalonePassengerAssignment(tenantId, requirementId, fulfillmentId)).rejects.toMatchObject({ response: expect.objectContaining({ message: "OPERATIONAL_STANDALONE_PASSENGERS_UNSUPPORTED" }) });
+  });
+
+  it("confirms a historical compatible Custom Quotation fulfillment without rewriting its absent detail pair", async () => {
+    const c = context();
+    const source = requirement({
+      scopeType: "STANDALONE_CUSTOMER",
+      customerId: "customer-a",
+      travelPackageId: null,
+      sourceType: "CUSTOM_QUOTATION_LINE",
+      sourceId: "version-a",
+      sourceLineId: "line-a",
+    });
+    const purchased = fulfillmentState({
+      travelPackageId: null,
+      status: "PURCHASED",
+      detailPayload: null,
+      detailVersion: null,
+      operationalRequirement: source,
+    });
+    const purchasedWithConfirmation = { ...purchased, confirmationReference: "CQ-CONF-1" };
+    c.tx.operationalFulfillment.findFirst
+      .mockResolvedValueOnce(purchased)
+      .mockResolvedValueOnce(fulfillment({ ...purchasedWithConfirmation, passengers: [] }))
+      .mockResolvedValueOnce(purchasedWithConfirmation)
+      .mockResolvedValueOnce(purchasedWithConfirmation)
+      .mockResolvedValueOnce(fulfillment({ ...purchasedWithConfirmation, status: "CONFIRMED", passengers: [] }));
+    c.tx.operationalFulfillment.updateMany.mockResolvedValue({ count: 1 });
+    c.tx.operationalRequirement.updateMany.mockResolvedValue({ count: 1 });
+    c.finance.readMany.mockResolvedValue([{ eligibility: "ELIGIBLE", reason: "SETTLED" }]);
+
+    await expect(c.service.updateStandalone(tenantId, requirementId, fulfillmentId, { confirmationReference: "CQ-CONF-1" }, actor))
+      .resolves.toMatchObject({ status: "PURCHASED", confirmationReference: "CQ-CONF-1", travelPackageId: null });
+    expect(c.tx.operationalFulfillment.updateMany.mock.calls[0][0].data).toEqual(expect.objectContaining({ confirmationReference: "CQ-CONF-1" }));
+    expect(c.tx.operationalFulfillment.updateMany.mock.calls[0][0].data).not.toHaveProperty("detailPayload");
+    expect(c.tx.operationalFulfillment.updateMany.mock.calls[0][0].data).not.toHaveProperty("detailVersion");
+
+    await expect(c.service.transitionStandaloneStatus(tenantId, requirementId, fulfillmentId, { targetStatus: "CONFIRMED" }, actor))
+      .resolves.toMatchObject({ status: "CONFIRMED", confirmationReference: "CQ-CONF-1", travelPackageId: null });
+    expect(c.tx.operationalFulfillment.updateMany.mock.calls[1][0]).toMatchObject({
+      where: expect.objectContaining({ tenantId, travelPackageId: null, operationalRequirementId: requirementId, status: "PURCHASED" }),
+      data: expect.objectContaining({ status: "CONFIRMED" }),
+    });
+    expect(c.tx.operationalRequirement.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: requirementId,
+        tenantId,
+        scopeType: "STANDALONE_CUSTOMER",
+        travelPackageId: null,
+        sourceType: "CUSTOM_QUOTATION_LINE",
+        status: { in: ["PENDING", "IN_PROGRESS"] },
+      },
+      data: { status: "FULFILLED", updatedByUserId: actor.userId, updatedByName: actor.name },
+    });
   });
 
   it("uses Finance eligibility for spend-committing standalone Custom Quotation fulfillment transitions", async () => {

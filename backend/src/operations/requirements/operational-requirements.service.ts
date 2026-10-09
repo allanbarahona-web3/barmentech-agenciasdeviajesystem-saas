@@ -2,9 +2,11 @@ import { BadRequestException, ConflictException, Inject, Injectable, NotFoundExc
 import { Prisma } from "@prisma/client";
 import { FINANCE_ELIGIBILITY_READER, type CommercialSourceRef, type FinanceEligibilityReader, type FinanceEligibilityResult } from "../../finance/eligibility-read/finance-eligibility-reader.port";
 import { PrismaService } from "../../prisma/prisma.service";
+import { DEFAULT_FISCAL_TIMEZONE, nextTenantCalendarDate, tenantCalendarDateStartAsUtc } from "../../finance/tenant-fiscal-date";
 import { runTenantTransaction } from "../../tenant/tenant-transaction";
 import {
   CreateOperationalRequirementDto,
+  type ListCustomQuotationOperationsHistoryDto,
   ListOperationalRequirementsDto,
   OperationalRequirementPassengersDto,
   OPERATIONAL_REQUIREMENT_STATUSES,
@@ -28,6 +30,7 @@ type OperationsTransaction = {
   operationalFulfillment: Record<string, (...args: any[]) => Promise<any>>;
   customQuotationVersion: Record<string, (...args: any[]) => Promise<any>>;
   billingDocument: Record<string, (...args: any[]) => Promise<any>>;
+  tenantBillingConfiguration: Record<string, (...args: any[]) => Promise<any>>;
 };
 
 type OperationsDatabase = {
@@ -88,6 +91,7 @@ type CustomQuotationGroupChildRecord = {
   soldCurrency: string | null;
   createdAt: Date;
   customer: { id: string; fullName: string; idType: string | null; idNumber: string } | null;
+  fulfillments: Array<{ id: string }>;
 };
 type CustomQuotationVersionRecord = {
   id: string;
@@ -103,6 +107,34 @@ type PrimaryBillingDocumentRecord = {
   currencyCode: string;
   total: Prisma.Decimal;
   taxAuthorityStatus: string;
+};
+type CustomQuotationHistoryEvidenceRecord = { id: string; originalFilename: string; mimeType: string; byteSize: number; createdAt: Date };
+type CustomQuotationHistoryPurchaseRecord = {
+  id: string;
+  providerName: string;
+  supplierReference: string | null;
+  amount: Prisma.Decimal;
+  currency: string;
+  taxAmount: Prisma.Decimal | null;
+  purchasedAt: Date;
+  supplierInvoiceNumber: string | null;
+  notes: string | null;
+  evidence: CustomQuotationHistoryEvidenceRecord[];
+  _count: { evidence: number };
+};
+type CustomQuotationHistoryFulfillmentRecord = {
+  id: string;
+  status: "CONFIRMED" | "CANCELLED";
+  confirmationReference: string | null;
+  updatedAt: Date;
+  operationalRequirement: {
+    id: string;
+    status: RequirementStatus;
+    description: string;
+    sourceId: string | null;
+    customer: { id: string; fullName: string; idType: string | null; idNumber: string; email: string | null } | null;
+  };
+  purchases: CustomQuotationHistoryPurchaseRecord[];
 };
 type CustomQuotationFinanceEligibilityStatus =
   | "PENDIENTE_FACTURACION"
@@ -196,6 +228,43 @@ const CUSTOM_QUOTATION_GROUP_CHILD_SELECT = {
   soldCurrency: true,
   createdAt: true,
   customer: { select: { id: true, fullName: true, idType: true, idNumber: true } },
+} as const;
+
+const CUSTOM_QUOTATION_HISTORY_FULFILLMENT_SELECT = {
+  id: true,
+  status: true,
+  confirmationReference: true,
+  updatedAt: true,
+  operationalRequirement: {
+    select: {
+      id: true,
+      status: true,
+      description: true,
+      sourceId: true,
+      customer: { select: { id: true, fullName: true, idType: true, idNumber: true, email: true } },
+    },
+  },
+  purchases: {
+    take: 1,
+    orderBy: [{ purchasedAt: "desc" }, { id: "asc" }],
+    select: {
+      id: true,
+      providerName: true,
+      supplierReference: true,
+      amount: true,
+      currency: true,
+      taxAmount: true,
+      purchasedAt: true,
+      supplierInvoiceNumber: true,
+      notes: true,
+      evidence: {
+        take: 25,
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        select: { id: true, originalFilename: true, mimeType: true, byteSize: true, createdAt: true },
+      },
+      _count: { select: { evidence: true } },
+    },
+  },
 } as const;
 
 const STATUS_TRANSITIONS: Readonly<Record<RequirementStatus, readonly RequirementStatus[]>> = {
@@ -508,7 +577,7 @@ export class OperationalRequirementsService {
   async listStandaloneCustomQuotationGroups(tenantId: string, input: ListOperationalRequirementsDto) {
     const page = normalizePage(input.page);
     const pageSize = normalizePageSize(input.pageSize);
-    const where = customQuotationGroupWhere(tenantId, input);
+    const where = customQuotationActiveWhere(tenantId, input);
     const pageResult = await this.withTenantTransaction(tenantId, async (tx) => {
       const [groups, totalRows] = await Promise.all([
         tx.operationalRequirement.groupBy({
@@ -519,7 +588,7 @@ export class OperationalRequirementsService {
           skip: (page - 1) * pageSize,
           take: pageSize,
         }) as Promise<Array<{ sourceId: string | null }>>,
-        countCustomQuotationGroups(tx, tenantId, optionalText(input.search)),
+        countActiveCustomQuotationGroups(tx, tenantId, optionalText(input.search)),
       ]);
       const sourceIds = groups.map((group) => group.sourceId).filter((value): value is string => Boolean(value));
       if (sourceIds.length === 0) {
@@ -528,8 +597,15 @@ export class OperationalRequirementsService {
       }
       const [requirements, versions] = await Promise.all([
         tx.operationalRequirement.findMany({
-          where: { ...customQuotationGroupWhere(tenantId, {}), sourceId: { in: sourceIds } },
-          select: CUSTOM_QUOTATION_GROUP_CHILD_SELECT,
+          where: { ...customQuotationActiveWhere(tenantId, {}), sourceId: { in: sourceIds } },
+          select: {
+            ...CUSTOM_QUOTATION_GROUP_CHILD_SELECT,
+            fulfillments: {
+              where: { tenantId, travelPackageId: null, status: "CONFIRMED" },
+              select: { id: true },
+              take: 1,
+            },
+          },
           orderBy: [{ sourceId: "asc" }, { createdAt: "asc" }, { id: "asc" }],
         }) as Promise<CustomQuotationGroupChildRecord[]>,
         tx.customQuotationVersion.findMany({
@@ -620,6 +696,84 @@ export class OperationalRequirementsService {
     };
   }
 
+  /**
+   * Read-only terminal history. `finalizedAt` is the fulfillment `updatedAt`
+   * written by the terminal CONFIRMED/CANCELLED transition; no client date is
+   * used as an authority.
+   */
+  async listStandaloneCustomQuotationHistory(tenantId: string, input: ListCustomQuotationOperationsHistoryDto) {
+    const page = normalizePage(input.page);
+    const pageSize = normalizePageSize(input.pageSize);
+    return this.withTenantTransaction(tenantId, async (tx) => {
+      const configuration = await tx.tenantBillingConfiguration.findUnique({
+        where: { tenantId }, select: { fiscalTimezone: true },
+      }) as { fiscalTimezone: string } | null;
+      const finalizationRange = customQuotationHistoryDateRange(input, configuration?.fiscalTimezone ?? DEFAULT_FISCAL_TIMEZONE);
+      const search = optionalText(input.search);
+      const fiscalVersionIds = search
+        ? await customQuotationFiscalSearchVersionIds(tx, tenantId, search)
+        : [];
+      const where = customQuotationHistoryWhere(tenantId, finalizationRange, search, fiscalVersionIds);
+      const [rows, total] = await Promise.all([
+        tx.operationalFulfillment.findMany({
+          where,
+          select: CUSTOM_QUOTATION_HISTORY_FULFILLMENT_SELECT,
+          orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
+          skip: (page - 1) * pageSize,
+          take: pageSize,
+        }) as Promise<CustomQuotationHistoryFulfillmentRecord[]>,
+        tx.operationalFulfillment.count({ where }) as Promise<number>,
+      ]);
+      const sourceIds = [...new Set(rows.map((row) => row.operationalRequirement.sourceId).filter((value): value is string => Boolean(value)))];
+      const versions = sourceIds.length === 0 ? [] : await tx.customQuotationVersion.findMany({
+        where: { tenantId, id: { in: sourceIds } },
+        select: {
+          id: true,
+          customQuotation: { select: { quotationNumber: true } },
+          salesOrder: { select: { id: true, orderNumber: true } },
+        },
+      }) as CustomQuotationVersionRecord[];
+      const salesOrderIds = versions.flatMap((version) => version.salesOrder ? [version.salesOrder.id] : []);
+      const billingDocuments = salesOrderIds.length === 0 ? [] : await tx.billingDocument.findMany({
+        where: { tenantId, sourceType: "SALES_ORDER", sourceId: { in: salesOrderIds }, sourceRole: "PRIMARY" },
+        select: {
+          id: true,
+          sourceId: true,
+          documentTypeCode: true,
+          fiscalNumber: true,
+          haciendaKey: true,
+          currencyCode: true,
+          total: true,
+          taxAuthorityStatus: true,
+        },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      }) as PrimaryBillingDocumentRecord[];
+      const versionById = new Map(versions.map((version) => [version.id, version]));
+      const billingDocumentsBySalesOrderId = new Map<string, PrimaryBillingDocumentRecord[]>();
+      for (const document of billingDocuments) {
+        if (!document.sourceId) continue;
+        const items = billingDocumentsBySalesOrderId.get(document.sourceId) ?? [];
+        items.push(document);
+        billingDocumentsBySalesOrderId.set(document.sourceId, items);
+      }
+      return {
+        items: rows.map((row) => {
+          const version = versionById.get(row.operationalRequirement.sourceId ?? "");
+          return toCustomQuotationHistoryRow(
+            row,
+            version,
+            version?.salesOrder ? billingDocumentsBySalesOrderId.get(version.salesOrder.id) ?? [] : [],
+          );
+        }),
+        total,
+        page,
+        pageSize,
+        totalPages: total === 0 ? 0 : Math.ceil(total / pageSize),
+        dateAuthority: "FULFILLMENT_FINALIZED_AT",
+      };
+    });
+  }
+
   async findStandalone(tenantId: string, requirementId: string) {
     return this.withTenantTransaction(tenantId, async (tx) => {
       const requirement = await this.findStandaloneRequirement(tx, tenantId, requirementId);
@@ -629,8 +783,16 @@ export class OperationalRequirementsService {
         select: { id: true, status: true, _count: { select: { purchases: true } } },
         orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       }) as Array<{ id: string; status: string; _count: { purchases: number } }>;
+      const displayRequirement = {
+        ...requirement,
+        status: customQuotationDisplayStatus(
+          requirement.status,
+          requirement.sourceType,
+          fulfillments.some((fulfillment) => fulfillment.status === "CONFIRMED"),
+        ),
+      };
       return {
-        ...toDetail(requirement),
+        ...toDetail(displayRequirement),
         confirmedPassengerIds: [], coverage: { fulfilledPassengerCount: 0, totalPassengerCount: 0 },
         workflow: { fulfillmentCount: fulfillments.length, purchaseCount: fulfillments.reduce((total, fulfillment) => total + fulfillment._count.purchases, 0), fulfillmentStatuses: fulfillments.map((fulfillment) => ({ id: fulfillment.id, status: fulfillment.status })) },
       };
@@ -847,7 +1009,7 @@ function requirementListWhere(tenantId: string, travelPackageId: string | null, 
   };
 }
 
-function customQuotationGroupWhere(tenantId: string, input: Pick<ListOperationalRequirementsDto, "search">) {
+function customQuotationActiveWhere(tenantId: string, input: Pick<ListOperationalRequirementsDto, "search">) {
   const search = optionalText(input.search);
   return {
     tenantId,
@@ -856,6 +1018,8 @@ function customQuotationGroupWhere(tenantId: string, input: Pick<ListOperational
     customerId: { not: null },
     sourceType: "CUSTOM_QUOTATION_LINE",
     sourceId: { not: null },
+    status: { in: ["PENDING", "IN_PROGRESS"] },
+    NOT: { fulfillments: { some: { status: { in: ["CONFIRMED", "CANCELLED"] } } } },
     ...(search ? {
       OR: [
         { description: { contains: search, mode: "insensitive" } },
@@ -865,7 +1029,7 @@ function customQuotationGroupWhere(tenantId: string, input: Pick<ListOperational
   };
 }
 
-function countCustomQuotationGroups(tx: OperationsTransaction, tenantId: string, search: string | null) {
+function countActiveCustomQuotationGroups(tx: OperationsTransaction, tenantId: string, search: string | null) {
   const searchClause = search
     ? Prisma.sql`AND (requirement."description" ILIKE ${`%${search}%`} OR customer."fullName" ILIKE ${`%${search}%`})`
     : Prisma.empty;
@@ -879,8 +1043,168 @@ function countCustomQuotationGroups(tx: OperationsTransaction, tenantId: string,
       AND requirement."travelPackageId" IS NULL
       AND requirement."sourceType" = 'CUSTOM_QUOTATION_LINE'
       AND requirement."sourceId" IS NOT NULL
+      AND requirement."status" IN ('PENDING', 'IN_PROGRESS')
+      AND NOT EXISTS (
+        SELECT 1
+        FROM "operational_fulfillments" fulfillment
+        WHERE fulfillment."tenantId" = requirement."tenantId"
+          AND fulfillment."travelPackageId" IS NULL
+          AND fulfillment."operationalRequirementId" = requirement."id"
+          AND fulfillment."status" IN ('CONFIRMED', 'CANCELLED')
+      )
       ${searchClause}
   `;
+}
+
+function customQuotationHistoryWhere(
+  tenantId: string,
+  finalizedAt: { gte: Date; lt: Date } | undefined,
+  search: string | null,
+  fiscalVersionIds: string[],
+) {
+  const customerSearch = search ? {
+    operationalRequirement: {
+      is: {
+        customer: {
+          is: {
+            OR: [
+              { fullName: { contains: search, mode: "insensitive" } },
+              { idNumber: { contains: search, mode: "insensitive" } },
+              { email: { contains: search, mode: "insensitive" } },
+            ],
+          },
+        },
+      },
+    },
+  } : null;
+  const fiscalSearch = fiscalVersionIds.length > 0 ? {
+    operationalRequirement: { is: { sourceId: { in: fiscalVersionIds } } },
+  } : null;
+  return {
+    tenantId,
+    travelPackageId: null,
+    status: { in: ["CONFIRMED", "CANCELLED"] },
+    ...(finalizedAt ? { updatedAt: finalizedAt } : {}),
+    AND: [
+      {
+        operationalRequirement: {
+          is: {
+            tenantId,
+            scopeType: "STANDALONE_CUSTOMER",
+            travelPackageId: null,
+            customerId: { not: null },
+            sourceType: "CUSTOM_QUOTATION_LINE",
+            sourceId: { not: null },
+          },
+        },
+      },
+      ...(customerSearch || fiscalSearch ? [{ OR: [customerSearch, fiscalSearch].filter(Boolean) }] : []),
+    ],
+  };
+}
+
+async function customQuotationFiscalSearchVersionIds(tx: OperationsTransaction, tenantId: string, search: string) {
+  const documents = await tx.billingDocument.findMany({
+    where: {
+      tenantId,
+      sourceType: "SALES_ORDER",
+      sourceRole: "PRIMARY",
+      fiscalNumber: { contains: search, mode: "insensitive" },
+    },
+    select: { sourceId: true },
+  }) as Array<{ sourceId: string | null }>;
+  const salesOrderIds = documents.map((document) => document.sourceId).filter((value): value is string => Boolean(value));
+  if (salesOrderIds.length === 0) return [];
+  const versions = await tx.customQuotationVersion.findMany({
+    where: { tenantId, salesOrderId: { in: salesOrderIds } },
+    select: { id: true },
+  }) as Array<{ id: string }>;
+  return versions.map((version) => version.id);
+}
+
+function customQuotationHistoryDateRange(
+  input: ListCustomQuotationOperationsHistoryDto,
+  timezone: string,
+  now = new Date(),
+): { gte: Date; lt: Date } | undefined {
+  const preset = input.datePreset ?? ((input.dateFrom || input.dateTo) ? "CUSTOM" : undefined);
+  if (!preset) return undefined;
+  let from: string;
+  let to: string;
+  if (preset === "CUSTOM") {
+    if (!input.dateFrom || !input.dateTo || input.dateFrom > input.dateTo) {
+      throw new BadRequestException("OPERATIONAL_CUSTOM_QUOTATION_HISTORY_DATE_RANGE_INVALID");
+    }
+    from = input.dateFrom;
+    to = input.dateTo;
+  } else {
+    const today = tenantCalendarDate(now, timezone);
+    const days = preset === "TODAY" ? 0 : preset === "LAST_7_DAYS" ? 6 : preset === "LAST_15_DAYS" ? 14 : 29;
+    from = shiftCalendarDate(today, -days);
+    to = today;
+  }
+  return {
+    gte: tenantCalendarDateStartAsUtc(from, timezone),
+    lt: tenantCalendarDateStartAsUtc(nextTenantCalendarDate(to), timezone),
+  };
+}
+
+function tenantCalendarDate(value: Date, timezone: string) {
+  try {
+    const parts = new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(value);
+    const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value;
+    const year = part("year"), month = part("month"), day = part("day");
+    if (!year || !month || !day) throw new Error("missing date part");
+    return `${year}-${month}-${day}`;
+  } catch {
+    throw new BadRequestException("OPERATIONAL_CUSTOM_QUOTATION_HISTORY_TIMEZONE_INVALID");
+  }
+}
+
+function shiftCalendarDate(value: string, days: number) {
+  const shifted = tenantCalendarDateStartAsUtc(value, "UTC");
+  shifted.setUTCDate(shifted.getUTCDate() + days);
+  return shifted.toISOString().slice(0, 10);
+}
+
+function toCustomQuotationHistoryRow(
+  fulfillment: CustomQuotationHistoryFulfillmentRecord,
+  version: CustomQuotationVersionRecord | undefined,
+  billingDocuments: PrimaryBillingDocumentRecord[],
+) {
+  const purchase = fulfillment.purchases[0] ?? null;
+  const billingDocument = billingDocuments.find((document) => document.taxAuthorityStatus === "ACCEPTED") ?? billingDocuments[0] ?? null;
+  return {
+    fulfillmentId: fulfillment.id,
+    requirementId: fulfillment.operationalRequirement.id,
+    finalStatus: fulfillment.status,
+    requirementStatus: fulfillment.operationalRequirement.status,
+    finalizedAt: fulfillment.updatedAt,
+    confirmationReference: fulfillment.confirmationReference,
+    cancellationContext: null,
+    customer: fulfillment.operationalRequirement.customer,
+    quotationNumber: version?.customQuotation.quotationNumber ?? null,
+    salesOrderNumber: version?.salesOrder?.orderNumber ?? null,
+    fiscalDocument: billingDocument ? {
+      id: billingDocument.id,
+      type: billingDocument.documentTypeCode,
+      number: billingDocument.fiscalNumber,
+    } : null,
+    serviceDescription: fulfillment.operationalRequirement.description,
+    purchase: purchase ? {
+      id: purchase.id,
+      providerName: purchase.providerName,
+      amount: purchase.amount.toFixed(),
+      currency: purchase.currency,
+      purchasedAt: purchase.purchasedAt,
+      supplierReference: purchase.supplierReference,
+      supplierInvoiceNumber: purchase.supplierInvoiceNumber,
+      taxAmount: purchase.taxAmount?.toFixed() ?? null,
+      notes: purchase.notes,
+      evidenceCount: purchase._count.evidence,
+      evidence: purchase.evidence,
+    } : null,
+  };
 }
 
 function toCustomQuotationGroup(
@@ -889,16 +1213,20 @@ function toCustomQuotationGroup(
   version: CustomQuotationVersionRecord | undefined,
   billingDocuments: PrimaryBillingDocumentRecord[],
 ) {
+  const displayRequirements = requirements.map((requirement) => ({
+    ...requirement,
+    status: customQuotationDisplayStatus(requirement.status, "CUSTOM_QUOTATION_LINE", requirement.fulfillments.length > 0),
+  }));
   const billingDocument = billingDocuments.find((document) => document.taxAuthorityStatus === "ACCEPTED");
   const fiscalDocumentState: "MISSING" | "PENDING" | "ACCEPTED" = billingDocuments.length === 0
     ? "MISSING"
     : billingDocument ? "ACCEPTED" : "PENDING";
-  const first = requirements[0];
-  const currencies = [...new Set(requirements.map((requirement) => requirement.soldCurrency).filter((value): value is string => Boolean(value)))];
+  const first = displayRequirements[0];
+  const currencies = [...new Set(displayRequirements.map((requirement) => requirement.soldCurrency).filter((value): value is string => Boolean(value)))];
   const currency = currencies.length === 1 ? currencies[0] : null;
-  const hasCompleteValues = Boolean(currency) && requirements.every((requirement) => requirement.soldAmount !== null && requirement.soldCurrency === currency);
+  const hasCompleteValues = Boolean(currency) && displayRequirements.every((requirement) => requirement.soldAmount !== null && requirement.soldCurrency === currency);
   const total = hasCompleteValues
-    ? requirements.reduce((sum, requirement) => sum.plus(requirement.soldAmount!), new Prisma.Decimal(0)).toFixed()
+    ? displayRequirements.reduce((sum, requirement) => sum.plus(requirement.soldAmount!), new Prisma.Decimal(0)).toFixed()
     : null;
   return {
     sourceType: "CUSTOM_QUOTATION_LINE",
@@ -918,12 +1246,12 @@ function toCustomQuotationGroup(
       : null,
     fiscalStatus: billingDocument?.taxAuthorityStatus ?? null,
     fiscalDocumentState,
-    createdAt: requirements.reduce<Date | null>((earliest, requirement) => !earliest || requirement.createdAt < earliest ? requirement.createdAt : earliest, null),
-    status: customQuotationGroupStatus(requirements.map((requirement) => requirement.status)),
+    createdAt: displayRequirements.reduce<Date | null>((earliest, requirement) => !earliest || requirement.createdAt < earliest ? requirement.createdAt : earliest, null),
+    status: customQuotationGroupStatus(displayRequirements.map((requirement) => requirement.status)),
     currency,
     commercialValue: { amount: total, currency },
-    serviceCount: requirements.length,
-    requirements: requirements.map((requirement) => ({
+    serviceCount: displayRequirements.length,
+    requirements: displayRequirements.map((requirement) => ({
       requirementId: requirement.id,
       sourceLineId: requirement.sourceLineId,
       description: requirement.description,
@@ -982,6 +1310,18 @@ function customQuotationGroupStatus(statuses: RequirementStatus[]) {
   if (statuses.every((status) => status === "CANCELLED")) return "CANCELLED" as const;
   if (statuses.every((status) => status === "NOT_APPLICABLE")) return "NOT_APPLICABLE" as const;
   return "COMPLETED" as const;
+}
+
+function customQuotationDisplayStatus(
+  status: RequirementStatus,
+  sourceType: string,
+  hasConfirmedFulfillment: boolean,
+): RequirementStatus {
+  return sourceType === "CUSTOM_QUOTATION_LINE"
+    && hasConfirmedFulfillment
+    && (status === "PENDING" || status === "IN_PROGRESS")
+    ? "FULFILLED"
+    : status;
 }
 
 function numberValue(value: bigint | number | undefined) {

@@ -3,7 +3,7 @@ import { UserRole } from "@prisma/client";
 import { JwtAuthGuard } from "../../auth/guards/jwt-auth.guard";
 import { Roles } from "../../auth/roles.decorator";
 import { RolesGuard } from "../../auth/roles.guard";
-import { ListOperationalRequirementsDto, TransitionOperationalRequirementDto, UpdateOperationalRequirementDto } from "./dto/operational-requirements.dto";
+import { ListCustomQuotationOperationsHistoryDto, ListOperationalRequirementsDto, TransitionOperationalRequirementDto, UpdateOperationalRequirementDto } from "./dto/operational-requirements.dto";
 import { OperationalRequirementsService } from "./operational-requirements.service";
 
 type OperationsRequest = { user: { id: string; fullName: string; tenantId: string } };
@@ -22,6 +22,11 @@ export class OperationalStandaloneRequirementsController {
   @Get("custom-quotation-groups")
   listCustomQuotationGroups(@Req() request: OperationsRequest, @Query() query: ListOperationalRequirementsDto) {
     return this.service.listStandaloneCustomQuotationGroups(request.user.tenantId, query);
+  }
+
+  @Get("custom-quotation-history")
+  listCustomQuotationHistory(@Req() request: OperationsRequest, @Query() query: ListCustomQuotationOperationsHistoryDto) {
+    return this.service.listStandaloneCustomQuotationHistory(request.user.tenantId, query);
   }
 
   @Get(":requirementId")

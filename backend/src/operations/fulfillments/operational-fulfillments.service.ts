@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from "@nestjs/common";
+import { Prisma } from "@prisma/client";
 import {
   FINANCE_ELIGIBILITY_READER,
   type FinanceEligibilityReader,
@@ -53,6 +54,19 @@ type FulfillmentPassengerRecord = {
     client: { fullName: string };
   };
 };
+type PurchaseSummaryRecord = {
+  id: string;
+  providerName: string;
+  supplierReference: string | null;
+  amount: Prisma.Decimal;
+  currency: string;
+  taxAmount: Prisma.Decimal | null;
+  purchasedAt: Date;
+  supplierInvoiceNumber: string | null;
+  notes: string | null;
+  evidence: Array<{ id: string; originalFilename: string; mimeType: string }>;
+  _count: { evidence: number };
+};
 type FulfillmentRecord = {
   id: string;
   travelPackageId: string | null;
@@ -80,7 +94,10 @@ type FulfillmentRecord = {
   _count: { purchases: number };
 };
 type FulfillmentState = Omit<FulfillmentRecord, "passengers" | "_count">;
-type FulfillmentSummaryRecord = Omit<FulfillmentRecord, "operationalRequirement"> & { _count: { passengers: number; purchases: number } };
+type FulfillmentSummaryRecord = Omit<FulfillmentRecord, "operationalRequirement"> & {
+  _count: { passengers: number; purchases: number };
+  purchases?: PurchaseSummaryRecord[];
+};
 
 const DETAIL_SELECT = {
   id: true,
@@ -193,6 +210,27 @@ const SUMMARY_SELECT = {
       travelPackageParticipant: {
         select: { id: true, clientId: true, role: true, client: { select: { fullName: true } } },
       },
+    },
+  },
+  purchases: {
+    take: 1,
+    orderBy: [{ purchasedAt: "desc" }, { id: "asc" }],
+    select: {
+      id: true,
+      providerName: true,
+      supplierReference: true,
+      amount: true,
+      currency: true,
+      taxAmount: true,
+      purchasedAt: true,
+      supplierInvoiceNumber: true,
+      notes: true,
+      evidence: {
+        take: 1,
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        select: { id: true, originalFilename: true, mimeType: true },
+      },
+      _count: { select: { evidence: true } },
     },
   },
   _count: { select: { passengers: true, purchases: true } },
@@ -488,6 +526,22 @@ export class OperationalFulfillmentsService {
         data: { status: target, updatedByUserId: actor.userId, updatedByName: actor.name },
       });
       if (updated.count !== 1) throw new ConflictException("OPERATIONAL_FULFILLMENT_STATUS_TRANSITION_CONFLICT");
+      if (target === "CONFIRMED" && current.operationalRequirement.sourceType === "CUSTOM_QUOTATION_LINE") {
+        const requirementUpdated = await tx.operationalRequirement.updateMany({
+          where: {
+            id: requirementId,
+            tenantId,
+            scopeType: "STANDALONE_CUSTOMER",
+            travelPackageId: null,
+            sourceType: "CUSTOM_QUOTATION_LINE",
+            status: { in: ["PENDING", "IN_PROGRESS"] },
+          },
+          data: { status: "FULFILLED", updatedByUserId: actor.userId, updatedByName: actor.name },
+        });
+        if (requirementUpdated.count !== 1 && current.operationalRequirement.status !== "FULFILLED") {
+          throw new ConflictException("OPERATIONAL_CUSTOM_QUOTATION_REQUIREMENT_STATUS_TRANSITION_CONFLICT");
+        }
+      }
       const fulfillment = await this.findStandaloneFulfillment(tx, tenantId, requirementId, fulfillmentId);
       if (!fulfillment) throw new NotFoundException("OPERATIONAL_STANDALONE_FULFILLMENT_NOT_FOUND");
       return toDetail(fulfillment);
@@ -646,14 +700,23 @@ function createFields(input: CreateOperationalFulfillmentDto | CreateStandaloneO
   const fields = commonFields(input);
   validateDateRange(fields.serviceStartAt, fields.serviceEndAt);
   validateDetail(fields.detailPayload, fields.detailVersion);
-  return fields;
+  return { ...fields, detailPayload: persistDetailPayload(fields.detailPayload) };
 }
 
 function updateFields(input: UpdateOperationalFulfillmentDto, current: FulfillmentState) {
   const fields = commonFields(input, current);
   validateDateRange(fields.serviceStartAt, fields.serviceEndAt);
   validateDetail(fields.detailPayload, fields.detailVersion);
-  return omitUndefined(fields);
+  const detailProvided = input.detailPayload !== undefined || input.detailVersion !== undefined;
+  return omitUndefined({
+    ...fields,
+    detailPayload: detailProvided ? persistDetailPayload(fields.detailPayload) : undefined,
+    detailVersion: detailProvided ? fields.detailVersion : undefined,
+  });
+}
+
+function persistDetailPayload(value: unknown) {
+  return value === null ? Prisma.DbNull : value;
 }
 
 function commonFields(input: CreateOperationalFulfillmentDto | CreateStandaloneOperationalFulfillmentDto | UpdateOperationalFulfillmentDto, current?: FulfillmentState) {
@@ -779,6 +842,7 @@ function pageSizeNumber(value: number | undefined) {
 }
 
 function toSummary(fulfillment: FulfillmentSummaryRecord) {
+  const purchase = fulfillment.purchases?.[0] ?? null;
   return {
     id: fulfillment.id,
     requirementId: fulfillment.operationalRequirementId,
@@ -795,6 +859,19 @@ function toSummary(fulfillment: FulfillmentSummaryRecord) {
     passengerCount: fulfillment._count.passengers,
     passengerPreview: fulfillment.passengers.map((passenger) => passenger.travelPackageParticipant.client.fullName),
     purchaseCount: fulfillment._count.purchases,
+    purchase: purchase ? {
+      id: purchase.id,
+      providerName: purchase.providerName,
+      supplierReference: purchase.supplierReference,
+      amount: purchase.amount.toFixed(),
+      currency: purchase.currency,
+      taxAmount: purchase.taxAmount?.toFixed() ?? null,
+      purchasedAt: purchase.purchasedAt,
+      supplierInvoiceNumber: purchase.supplierInvoiceNumber,
+      notes: purchase.notes,
+      evidenceCount: purchase._count.evidence,
+      evidence: purchase.evidence[0] ?? null,
+    } : null,
     createdAt: fulfillment.createdAt,
     updatedAt: fulfillment.updatedAt,
   };

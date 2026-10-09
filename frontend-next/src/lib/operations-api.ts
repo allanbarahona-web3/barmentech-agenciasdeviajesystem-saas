@@ -110,7 +110,7 @@ export interface OperationalWorkItemsInput { page?: number; active?: boolean; st
 export interface OperationalWorkItem { id: string; travelPackageId: string; servicePurposeCode: string; servicePurposeName: string; description: string; status: OperationalRequirementStatus; critical: boolean; operationalDeadlineAt: string | null; assignedTo: { userId: string; name: string | null } | null; sourceType: string | null; sourceCategory: OperationalWorkItemSourceCategory; passengers: { total: number; preview: Array<{ travelPackageParticipantId: string; clientId: string; fullName: string; role: string }> }; sourceGroup: { id: string | null; name: string } | null; coverage: OperationalRequirementCoverage; participantCoverageStatus: 'FULFILLED' | 'PENDING' | null; soldContext: { scope: OperationalSoldValueScope; amount: string | null; currency: string | null }; finance: { state: 'ELIGIBLE' | 'BLOCKED' | 'UNAVAILABLE'; reason: string | null }; management: { fulfillmentCount: number; confirmedFulfillmentCount: number; purchaseCount: number; evidenceCount: number }; createdAt: string; updatedAt: string; }
 export interface OperationalWorkItemsPage { items: OperationalWorkItem[]; total: number; page: number; pageSize: number; totalPages: number; }
 export type OperationalFulfillmentStatus = 'DRAFT' | 'RESERVED' | 'PURCHASED' | 'CONFIRMED' | 'CANCELLED';
-export interface OperationalFulfillmentSummary { id: string; requirementId: string; travelPackageId: string; servicePurposeCode: string; servicePurposeName: string; providerName: string | null; reservationCode: string | null; confirmationReference: string | null; status: OperationalFulfillmentStatus; serviceStartAt: string | null; serviceEndAt: string | null; assignedTo: { userId: string; name: string | null } | null; passengerCount: number; passengerPreview: string[]; purchaseCount: number; createdAt: string; updatedAt: string; }
+export interface OperationalFulfillmentSummary { id: string; requirementId: string; travelPackageId: string; servicePurposeCode: string; servicePurposeName: string; providerName: string | null; reservationCode: string | null; confirmationReference: string | null; status: OperationalFulfillmentStatus; serviceStartAt: string | null; serviceEndAt: string | null; assignedTo: { userId: string; name: string | null } | null; passengerCount: number; passengerPreview: string[]; purchaseCount: number; purchase: { id: string; providerName: string; supplierReference: string | null; amount: string; currency: string; taxAmount: string | null; purchasedAt: string; supplierInvoiceNumber: string | null; notes: string | null; evidenceCount: number; evidence: { id: string; originalFilename: string; mimeType: string } | null } | null; createdAt: string; updatedAt: string; }
 export interface OperationalFulfillmentDetail extends OperationalFulfillmentSummary { providerReference: string | null; voucherReference: string | null; ticketReference: string | null; detailPayload: Record<string, unknown> | null; detailVersion: number | null; confirmationNotes: string | null; passengers: Array<{ travelPackageParticipantId: string; clientId: string; fullName: string; role: string }>; }
 export interface OperationalFulfillmentsPage { items: OperationalFulfillmentSummary[]; total: number; page: number; pageSize: number; totalPages: number; }
 export interface FulfillmentInput { participantIds?: string[]; providerName?: string | null; providerReference?: string | null; reservationCode?: string | null; confirmationReference?: string | null; voucherReference?: string | null; ticketReference?: string | null; serviceStartAt?: string | null; serviceEndAt?: string | null; confirmationNotes?: string | null; }
@@ -261,6 +261,23 @@ export interface CustomQuotationOperationsGroup {
   }>;
 }
 export interface CustomQuotationOperationsGroupsPage { items: CustomQuotationOperationsGroup[]; total: number; page: number; pageSize: number; totalPages: number; }
+export type CustomQuotationHistoryDatePreset = 'TODAY' | 'LAST_7_DAYS' | 'LAST_15_DAYS' | 'LAST_MONTH' | 'CUSTOM';
+export interface CustomQuotationOperationsHistoryRow {
+  fulfillmentId: string;
+  requirementId: string;
+  finalStatus: 'CONFIRMED' | 'CANCELLED';
+  requirementStatus: OperationalRequirementStatus;
+  finalizedAt: string;
+  confirmationReference: string | null;
+  cancellationContext: string | null;
+  customer: { id: string; fullName: string; idType: string | null; idNumber: string; email: string | null } | null;
+  quotationNumber: string | null;
+  salesOrderNumber: string | null;
+  fiscalDocument: { id: string; type: string; number: string | null } | null;
+  serviceDescription: string;
+  purchase: { id: string; providerName: string; amount: string; currency: string; purchasedAt: string; supplierReference: string | null; supplierInvoiceNumber: string | null; taxAmount: string | null; notes: string | null; evidenceCount: number; evidence: Array<{ id: string; originalFilename: string; mimeType: string; byteSize: number; createdAt: string }> } | null;
+}
+export interface CustomQuotationOperationsHistoryPage { items: CustomQuotationOperationsHistoryRow[]; total: number; page: number; pageSize: number; totalPages: number; dateAuthority: 'FULFILLMENT_FINALIZED_AT'; }
 export type StandaloneOperationalFulfillmentSummary = Omit<OperationalFulfillmentSummary, 'travelPackageId' | 'passengerCount' | 'passengerPreview'> & { travelPackageId: null; passengerCount: 0; passengerPreview: []; };
 export type StandaloneOperationalFulfillmentDetail = Omit<OperationalFulfillmentDetail, 'travelPackageId' | 'passengerCount' | 'passengerPreview' | 'passengers'> & { travelPackageId: null; passengerCount: 0; passengerPreview: []; passengers: []; };
 export interface StandaloneOperationalFulfillmentsPage { items: StandaloneOperationalFulfillmentSummary[]; total: number; page: number; pageSize: number; totalPages: number; }
@@ -286,6 +303,14 @@ export function listCustomQuotationOperationsGroups(input: { page?: number; sear
   const params = new URLSearchParams({ page: String(input.page ?? 1), pageSize: '20' });
   if (input.search?.trim()) params.set('search', input.search.trim());
   return operationsRequest(`${customQuotationGroupsPath()}?${params}`, 'GET');
+}
+export function listCustomQuotationOperationsHistory(input: { page?: number; search?: string; datePreset?: CustomQuotationHistoryDatePreset; dateFrom?: string; dateTo?: string } = {}): Promise<CustomQuotationOperationsHistoryPage> {
+  const params = new URLSearchParams({ page: String(input.page ?? 1), pageSize: '20' });
+  if (input.search?.trim()) params.set('search', input.search.trim());
+  if (input.datePreset) params.set('datePreset', input.datePreset);
+  if (input.dateFrom) params.set('dateFrom', input.dateFrom);
+  if (input.dateTo) params.set('dateTo', input.dateTo);
+  return operationsRequest(`${standaloneRequirementsPath('/custom-quotation-history')}?${params}`, 'GET');
 }
 export function getStandaloneOperationalRequirement(requirementId: string): Promise<StandaloneOperationalRequirementDetail> { return operationsRequest(standaloneRequirementsPath(`/${encodeURIComponent(requirementId)}`), 'GET'); }
 export function listStandaloneOperationalFulfillments(requirementId: string, page = 1): Promise<StandaloneOperationalFulfillmentsPage> { return operationsRequest(`${standaloneFulfillmentsPath(requirementId)}?${new URLSearchParams({ page: String(page), pageSize: '20' })}`, 'GET'); }
