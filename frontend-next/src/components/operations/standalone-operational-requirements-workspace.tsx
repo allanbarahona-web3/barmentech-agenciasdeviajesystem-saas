@@ -2,26 +2,20 @@
 
 import Link from 'next/link';
 import { type FormEvent, useEffect, useState } from 'react';
-import { ClipboardList, FileUp, Loader2, Plus, ShoppingCart } from 'lucide-react';
+import { ClipboardList, Loader2, ShoppingCart } from 'lucide-react';
 import {
   createStandaloneOperationalFulfillment,
-  getStandaloneOperationalEvidenceAccess,
   getStandaloneOperationalRequirement,
-  listStandaloneOperationalEvidence,
   listStandaloneOperationalFulfillments,
-  listStandaloneOperationalPurchases,
   listCustomQuotationOperationsGroups,
   operationsErrorMessage,
   type OperationalRequirementStatus,
   transitionStandaloneOperationalFulfillment,
   updateStandaloneOperationalFulfillment,
-  uploadStandaloneOperationalEvidence,
-  type OperationalEvidenceType,
   type OperationalFulfillmentStatus,
   type CustomQuotationFinanceEligibilityStatus,
   type CustomQuotationOperationsGroup,
   type StandaloneOperationalFulfillmentSummary,
-  type StandaloneOperationalPurchase,
   type StandaloneOperationalRequirementDetail,
 } from '@/lib/operations-api';
 import { OperationalPurchaseDrawer } from '@/components/operations/operational-purchase-drawer';
@@ -33,13 +27,11 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { Select } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 const requirementLabels = { PENDING: 'Pendiente', IN_PROGRESS: 'En curso', FULFILLED: 'Completado', CANCELLED: 'Cancelado', NOT_APPLICABLE: 'No aplica' } as const;
 const groupLabels = { PENDING: 'Pendiente', IN_PROGRESS: 'En curso', COMPLETED: 'Completada', CANCELLED: 'Cancelada', NOT_APPLICABLE: 'No aplica' } as const;
 const fulfillmentLabels: Record<OperationalFulfillmentStatus, string> = { DRAFT: 'Preparando', RESERVED: 'Reservado', PURCHASED: 'Comprado', CONFIRMED: 'Confirmado', CANCELLED: 'Cancelado' };
-const evidenceLabels: Record<OperationalEvidenceType, string> = { SUPPLIER_QUOTE: 'Cotización del proveedor', BOOKING_CONFIRMATION: 'Confirmación de reserva', TICKET: 'Boleto', VOUCHER: 'Voucher', SUPPLIER_INVOICE: 'Factura del proveedor', RECEIPT: 'Recibo', INSURANCE_CERTIFICATE: 'Certificado de seguro', SCREENSHOT: 'Captura de pantalla', OTHER: 'Otro' };
 const financeEligibilityLabels: Record<CustomQuotationFinanceEligibilityStatus, string> = {
   PENDIENTE_FACTURACION: 'Pendiente de facturación',
   PENDIENTE_ACEPTACION_FISCAL: 'Pendiente de aceptación fiscal',
@@ -131,92 +123,55 @@ function StandaloneRequirementDetail({ requirementId, financeEligibility, onClos
   const formatDateTime = useTenantDateTimeFormatter();
   const [requirement, setRequirement] = useState<StandaloneOperationalRequirementDetail | null>(null);
   const [fulfillments, setFulfillments] = useState<StandaloneOperationalFulfillmentSummary[]>([]);
-  const [selectedFulfillmentId, setSelectedFulfillmentId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [createOpen, setCreateOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [directPurchaseOpen, setDirectPurchaseOpen] = useState(false);
-  const [directPurchaseFulfillmentId, setDirectPurchaseFulfillmentId] = useState<string | null>(null);
+  const [purchaseOpen, setPurchaseOpen] = useState(false);
+  const [purchaseFulfillmentId, setPurchaseFulfillmentId] = useState<string | null>(null);
+  const [confirmationFulfillment, setConfirmationFulfillment] = useState<StandaloneOperationalFulfillmentSummary | null>(null);
+  const [confirmationReference, setConfirmationReference] = useState('');
+  const [confirming, setConfirming] = useState(false);
+  const [confirmError, setConfirmError] = useState<string | null>(null);
 
   async function load() {
     setLoading(true); setError(null);
-    try { const [nextRequirement, nextFulfillments] = await Promise.all([getStandaloneOperationalRequirement(requirementId), listStandaloneOperationalFulfillments(requirementId)]); setRequirement(nextRequirement); setFulfillments(nextFulfillments.items); setSelectedFulfillmentId((current) => current && nextFulfillments.items.some((item) => item.id === current) ? current : (nextFulfillments.items[0]?.id ?? null)); }
+    try { const [nextRequirement, nextFulfillments] = await Promise.all([getStandaloneOperationalRequirement(requirementId), listStandaloneOperationalFulfillments(requirementId)]); setRequirement(nextRequirement); setFulfillments(nextFulfillments.items); }
     catch (reason) { setError(errorMessage(reason, 'No se pudo cargar el servicio de la cotización personalizada.')); }
     finally { setLoading(false); }
   }
   useEffect(() => { void load(); }, [requirementId]);
-  async function createFulfillment(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setSaving(true); setError(null); try { await createStandaloneOperationalFulfillment(requirementId, {}); setCreateOpen(false); await load(); } catch (reason) { setError(errorMessage(reason, 'No se pudo crear la gestión.')); } finally { setSaving(false); } }
-  function openDirectPurchase() { setError(null); setDirectPurchaseFulfillmentId(null); setDirectPurchaseOpen(true); }
-  async function ensureDirectFulfillment() {
-    if (directPurchaseFulfillmentId) return { id: directPurchaseFulfillmentId, created: false };
-    const existing = fulfillments[0];
-    if (existing) { setDirectPurchaseFulfillmentId(existing.id); return { id: existing.id, created: false }; }
+  function openPurchase() { setError(null); setPurchaseFulfillmentId(null); setPurchaseOpen(true); }
+  async function ensurePurchaseFulfillment() {
+    if (purchaseFulfillmentId) return { id: purchaseFulfillmentId, created: false };
+    const existing = fulfillments.find((fulfillment) => fulfillment.status === 'DRAFT' || fulfillment.status === 'RESERVED');
+    if (existing) { setPurchaseFulfillmentId(existing.id); return { id: existing.id, created: false }; }
     const created = await createStandaloneOperationalFulfillment(requirementId, {});
-    setDirectPurchaseFulfillmentId(created.id);
+    setPurchaseFulfillmentId(created.id);
     await load();
     return { id: created.id, created: true };
+  }
+  function openConfirmation(fulfillment: StandaloneOperationalFulfillmentSummary) { setConfirmationFulfillment(fulfillment); setConfirmationReference(''); setConfirmError(null); }
+  async function confirmFulfillment(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const reference = confirmationReference.trim();
+    if (!confirmationFulfillment || !reference) { setConfirmError('Ingrese la referencia de confirmación.'); return; }
+    setConfirming(true); setConfirmError(null);
+    try {
+      await updateStandaloneOperationalFulfillment(requirementId, confirmationFulfillment.id, { confirmationReference: reference });
+      await transitionStandaloneOperationalFulfillment(requirementId, confirmationFulfillment.id, 'CONFIRMED');
+      setConfirmationFulfillment(null); setConfirmationReference('');
+      await load();
+    } catch (reason) { setConfirmError(confirmationErrorMessage(reason)); }
+    finally { setConfirming(false); }
   }
 
   const canProcess = financeEligibility.eligibilityStatus === 'LISTO_PARA_PROCESAR';
   const financeMessage = financeEligibilityMessages[financeEligibility.eligibilityStatus];
   return <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}><DialogContent className="max-w-5xl"><DialogHeader><DialogTitle>Servicio de cotización personalizada</DialogTitle><DialogDescription>Contexto operativo del cliente, sin viaje ni pasajeros.</DialogDescription></DialogHeader>{error ? <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert> : null}{loading ? <div className="flex items-center gap-2 py-10 text-sm text-muted-foreground"><Loader2 className="animate-spin" size={16} /> Cargando servicio...</div> : requirement ? <div className="space-y-5"><section className="grid gap-4 rounded-lg border bg-muted/30 p-4 md:grid-cols-3"><Info label="Cliente" value={requirement.customer.fullName} /><Info label="Fuente" value={`${sourceLabel(requirement.source.type)}${requirement.source.reference ? ` · ${requirement.source.reference}` : ''}`} /><Info label="Valor comercial" value={money(requirement.soldValue.amount, requirement.soldValue.currency)} /><Info label="Servicio" value={requirement.servicePurposeName} /><Info label="Estado" value={requirementLabels[requirement.status]} /><div><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Elegibilidad financiera</p><div className="mt-1"><FinanceEligibilityBadge status={financeEligibility.eligibilityStatus} /></div></div><Info label="Ingreso" value={formatDateTime(requirement.createdAt)} /><div className="md:col-span-3"><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Descripción inmutable</p><p className="mt-1 text-sm">{requirement.description}</p></div></section>
-    <section><div className="mb-3 flex items-center justify-between"><div><h2 className="font-semibold">Gestiones</h2><p className="text-sm text-muted-foreground">Este servicio no asigna pasajeros.</p></div>{fulfillments.length > 0 ? <Button type="button" size="sm" variant="outline" onClick={() => setCreateOpen(true)}><Plus aria-hidden="true" size={16} /> Nueva gestión</Button> : null}</div>{!canProcess ? <Alert><AlertDescription>{financeMessage}</AlertDescription></Alert> : null}<div className="mt-2 space-y-2">{fulfillments.length === 0 ? <Card><CardContent className="flex flex-wrap items-center justify-between gap-3 py-5 text-sm text-muted-foreground"><span>No hay gestiones creadas para este servicio.</span><Button type="button" size="sm" disabled={!canProcess} title={financeMessage} onClick={openDirectPurchase}><ShoppingCart aria-hidden="true" size={16} /> Registrar compra</Button></CardContent></Card> : fulfillments.map((fulfillment) => <button type="button" key={fulfillment.id} onClick={() => setSelectedFulfillmentId(fulfillment.id)} className={`flex w-full items-center justify-between rounded-lg border p-3 text-left transition-colors ${selectedFulfillmentId === fulfillment.id ? 'border-primary bg-primary/5' : 'hover:bg-muted/50'}`}><span><span className="font-medium">{fulfillment.providerName ?? 'Gestión sin proveedor'}</span><span className="ml-2 text-sm text-muted-foreground">{fulfillment.purchaseCount} compra(s)</span></span><Badge variant={statusVariant(fulfillment.status)}>{fulfillmentLabels[fulfillment.status]}</Badge></button>)}</div></section>
-    {selectedFulfillmentId ? <StandaloneFulfillmentWorkflow requirementId={requirement.id} fulfillment={fulfillments.find((item) => item.id === selectedFulfillmentId) ?? null} soldValue={requirement.soldValue} canProcess={canProcess} financeMessage={financeMessage} onChanged={() => void load()} /> : null}
+    <section><div className="mb-3 flex flex-wrap items-center justify-between gap-3"><div><h2 className="font-semibold">Compras</h2><p className="text-sm text-muted-foreground">Registre la compra del proveedor; la gestión se crea internamente solo cuando es necesaria.</p></div><Button type="button" size="sm" disabled={!canProcess} title={financeMessage} onClick={openPurchase}><ShoppingCart aria-hidden="true" size={16} /> Registrar compra</Button></div>{!canProcess ? <Alert><AlertDescription>{financeMessage}</AlertDescription></Alert> : null}<div className="mt-2 space-y-2">{fulfillments.length === 0 ? <Card><CardContent className="py-5 text-sm text-muted-foreground">No hay compras registradas para este servicio.</CardContent></Card> : fulfillments.map((fulfillment) => <Card key={fulfillment.id}><CardContent className="flex flex-wrap items-center justify-between gap-3 py-3"><div><p className="font-medium">{fulfillment.providerName ?? 'Proveedor pendiente'}</p><p className="text-sm text-muted-foreground">{fulfillment.purchaseCount} {fulfillment.purchaseCount === 1 ? 'compra registrada' : 'compras registradas'}</p></div><div className="flex items-center gap-2"><Badge variant={statusVariant(fulfillment.status)}>{fulfillmentLabels[fulfillment.status]}</Badge>{fulfillment.status === 'PURCHASED' ? <Button type="button" size="sm" onClick={() => openConfirmation(fulfillment)}>Confirmar</Button> : null}</div></CardContent></Card>)}</div></section>
   </div> : null}<DialogFooter><Button type="button" variant="outline" onClick={onClose}>Cerrar</Button></DialogFooter>
-  <Dialog open={createOpen} onOpenChange={setCreateOpen}><DialogContent><DialogHeader><DialogTitle>Nueva gestión</DialogTitle><DialogDescription>La gestión se crea sin asignaciones de pasajeros. El proveedor se registra al crear la compra.</DialogDescription></DialogHeader><form onSubmit={createFulfillment} className="space-y-4"><DialogFooter><Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>Cancelar</Button><Button type="submit" disabled={saving}>{saving ? 'Guardando...' : 'Crear gestión'}</Button></DialogFooter></form></DialogContent></Dialog>
-  {directPurchaseOpen && requirement ? <OperationalPurchaseDrawer open onOpenChange={(open) => { if (!open) { setDirectPurchaseOpen(false); setDirectPurchaseFulfillmentId(null); } }} requirementId={requirement.id} fulfillmentId={directPurchaseFulfillmentId} ensureFulfillment={ensureDirectFulfillment} soldValue={requirement.soldValue} onCreated={async ({ evidenceUploadFailed }) => { setDirectPurchaseOpen(false); setDirectPurchaseFulfillmentId(null); setError(evidenceUploadFailed ? 'Compra registrada correctamente, pero no se pudo cargar el documento. Puedes reintentarlo desde Evidencia.' : null); await load(); }} /> : null}
+  {purchaseOpen && requirement ? <OperationalPurchaseDrawer open onOpenChange={(open) => { if (!open) { setPurchaseOpen(false); setPurchaseFulfillmentId(null); } }} requirementId={requirement.id} fulfillmentId={purchaseFulfillmentId} ensureFulfillment={ensurePurchaseFulfillment} soldValue={requirement.soldValue} onCreated={async ({ evidenceUploadFailed }) => { setPurchaseOpen(false); setPurchaseFulfillmentId(null); setError(evidenceUploadFailed ? 'Compra registrada correctamente, pero no se pudo cargar el documento.' : null); await load(); }} /> : null}
+  <Dialog open={Boolean(confirmationFulfillment)} onOpenChange={(open) => { if (!open && !confirming) { setConfirmationFulfillment(null); setConfirmError(null); } }}><DialogContent><DialogHeader><DialogTitle>Confirmar gestión</DialogTitle><DialogDescription>Registre la referencia entregada por el proveedor antes de confirmar.</DialogDescription></DialogHeader><form onSubmit={confirmFulfillment} className="space-y-3"><label className="grid gap-2 text-sm font-medium">Referencia de confirmación<Input required autoFocus value={confirmationReference} onChange={(event) => setConfirmationReference(event.target.value)} placeholder="Código o número de confirmación" /></label><p className="text-sm text-muted-foreground">Código, número de confirmación, reserva, voucher o referencia entregada por el proveedor.</p>{confirmError ? <Alert variant="destructive"><AlertDescription>{confirmError}</AlertDescription></Alert> : null}<DialogFooter><Button type="button" variant="outline" disabled={confirming} onClick={() => { setConfirmationFulfillment(null); setConfirmError(null); }}>Cancelar</Button><Button type="submit" disabled={confirming || !confirmationReference.trim()}>{confirming ? 'Confirmando...' : 'Confirmar gestión'}</Button></DialogFooter></form></DialogContent></Dialog>
   </DialogContent></Dialog>;
-}
-
-function StandaloneFulfillmentWorkflow({ requirementId, fulfillment, soldValue, canProcess, financeMessage, onChanged }: { requirementId: string; fulfillment: StandaloneOperationalFulfillmentSummary | null; soldValue: StandaloneOperationalRequirementDetail['soldValue']; canProcess: boolean; financeMessage: string; onChanged: () => void }) {
-  const formatDateTime = useTenantDateTimeFormatter();
-  const fulfillmentId = fulfillment?.id ?? '';
-  const [purchases, setPurchases] = useState<StandaloneOperationalPurchase[]>([]);
-  const [evidence, setEvidence] = useState<Array<{ id: string; evidenceType: OperationalEvidenceType; originalFilename: string; createdAt: string }>>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [purchaseOpen, setPurchaseOpen] = useState(false);
-  const [editingProvider, setEditingProvider] = useState(false);
-  const [providerName, setProviderName] = useState('');
-  const [file, setFile] = useState<File | null>(null);
-  const [evidenceType, setEvidenceType] = useState<OperationalEvidenceType>('OTHER');
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const [confirmationReference, setConfirmationReference] = useState('');
-  const [confirming, setConfirming] = useState(false);
-  const [confirmError, setConfirmError] = useState<string | null>(null);
-  async function load() { try { const [nextPurchases, nextEvidence] = await Promise.all([listStandaloneOperationalPurchases(requirementId, fulfillmentId), listStandaloneOperationalEvidence(requirementId, fulfillmentId)]); setPurchases(nextPurchases.items); setEvidence(nextEvidence.items); } catch (reason) { setError(errorMessage(reason, 'No se pudieron cargar compras o documentos.')); } }
-  useEffect(() => { void load(); }, [requirementId, fulfillmentId]);
-  useEffect(() => { setProviderName(fulfillment?.providerName ?? ''); setEditingProvider(false); }, [fulfillment?.id, fulfillment?.providerName]);
-  async function transition(targetStatus: OperationalFulfillmentStatus) { setError(null); try { await transitionStandaloneOperationalFulfillment(requirementId, fulfillmentId, targetStatus); onChanged(); } catch (reason) { setError(errorMessage(reason, 'No se pudo actualizar el estado de la gestión.')); } }
-  function openConfirmation() { setConfirmationReference(''); setConfirmError(null); setConfirmOpen(true); }
-  async function confirmFulfillment(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const reference = confirmationReference.trim();
-    if (!reference) { setConfirmError('Ingrese la referencia de confirmación.'); return; }
-    setConfirming(true); setConfirmError(null);
-    try {
-      await updateStandaloneOperationalFulfillment(requirementId, fulfillmentId, { confirmationReference: reference });
-      await transitionStandaloneOperationalFulfillment(requirementId, fulfillmentId, 'CONFIRMED');
-      setConfirmOpen(false); setConfirmationReference('');
-      await load(); onChanged();
-    } catch (reason) { setConfirmError(confirmationErrorMessage(reason)); }
-    finally { setConfirming(false); }
-  }
-  async function saveProvider(event: FormEvent<HTMLFormElement>) { event.preventDefault(); setError(null); try { await updateStandaloneOperationalFulfillment(requirementId, fulfillmentId, { providerName: providerName.trim() || null }); setEditingProvider(false); onChanged(); } catch (reason) { setError(errorMessage(reason, 'No se pudo actualizar la gestión.')); } }
-  async function upload(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (!file) { setError('Seleccione un archivo.'); return; } setError(null); try { await uploadStandaloneOperationalEvidence(requirementId, fulfillmentId, { evidenceType, file }); setFile(null); await load(); } catch (reason) { setError(errorMessage(reason, 'No se pudo subir el documento.')); } }
-  async function openEvidence(evidenceId: string) { try { window.open((await getStandaloneOperationalEvidenceAccess(requirementId, fulfillmentId, evidenceId)).url, '_blank', 'noopener,noreferrer'); } catch (reason) { setError(errorMessage(reason, 'No se pudo abrir el documento.')); } }
-  if (!fulfillment) return null;
-  const transitions = fulfillment.status === 'DRAFT' ? ['RESERVED', 'CANCELLED'] as const : fulfillment.status === 'RESERVED' ? ['CANCELLED'] as const : fulfillment.status === 'PURCHASED' ? ['CONFIRMED', 'CANCELLED'] as const : [];
-  const canRegisterPurchase = fulfillment.status === 'DRAFT' || fulfillment.status === 'RESERVED';
-  return <section className="space-y-4 rounded-lg border p-4">
-    <div className="flex flex-wrap items-center justify-between gap-2"><div><h2 className="font-semibold">Compra y documentos</h2><p className="text-sm text-muted-foreground">Las compras siguen la autorización financiera vigente.</p></div><div className="flex flex-wrap gap-2">{canRegisterPurchase ? <Button type="button" size="sm" disabled={!canProcess} title={financeMessage} onClick={() => setPurchaseOpen(true)}><ShoppingCart aria-hidden="true" size={16} /> Registrar compra</Button> : null}{transitions.map((target) => { const financeGated = target === 'RESERVED' || target === 'CONFIRMED'; return <Button key={target} type="button" size="sm" variant={target === 'CANCELLED' ? 'outline' : 'default'} disabled={financeGated && !canProcess} title={financeGated ? financeMessage : undefined} onClick={() => target === 'CONFIRMED' && fulfillment.status === 'PURCHASED' ? openConfirmation() : void transition(target)}>{fulfillmentLabels[target]}</Button>; })}</div></div>
-    {editingProvider ? <form onSubmit={saveProvider} className="flex gap-2"><Input value={providerName} onChange={(event) => setProviderName(event.target.value)} placeholder="Proveedor" /><Button type="submit" size="sm">Guardar</Button><Button type="button" size="sm" variant="outline" onClick={() => setEditingProvider(false)}>Cancelar</Button></form> : <div className="flex items-center justify-between rounded border p-2 text-sm"><span>Proveedor: {fulfillment.providerName ?? 'Sin definir'}</span><Button type="button" size="sm" variant="ghost" onClick={() => setEditingProvider(true)}>Editar</Button></div>}
-    {error ? <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert> : null}{notice ? <Alert><AlertDescription>{notice}</AlertDescription></Alert> : null}
-    <div className="grid gap-4 md:grid-cols-2"><Card><CardHeader><CardTitle className="text-base">Compras</CardTitle></CardHeader><CardContent className="space-y-2">{purchases.length === 0 ? <p className="text-sm text-muted-foreground">Sin compras registradas.</p> : purchases.map((purchase) => <div key={purchase.id} className="rounded border p-2 text-sm"><p className="font-medium">{purchase.providerName} · {purchase.currency} {purchase.amount}</p>{purchase.taxAmount ? <p className="text-muted-foreground">Impuesto: {purchase.currency} {purchase.taxAmount}</p> : null}{purchase.supplierReference || purchase.supplierInvoiceNumber ? <p className="text-muted-foreground">{purchase.supplierReference ?? 'Sin referencia'}{purchase.supplierInvoiceNumber ? ` · Factura ${purchase.supplierInvoiceNumber}` : ''}</p> : null}{purchase.notes ? <p className="text-muted-foreground">{purchase.notes}</p> : null}<p className="text-muted-foreground">{formatDateTime(purchase.purchasedAt)}</p></div>)}</CardContent></Card><Card><CardHeader><CardTitle className="text-base">Evidencia</CardTitle></CardHeader><CardContent className="space-y-3"><form onSubmit={upload} className="space-y-2"><Select value={evidenceType} onChange={(event) => setEvidenceType(event.target.value as OperationalEvidenceType)}>{Object.entries(evidenceLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select><Input type="file" onChange={(event) => setFile(event.target.files?.[0] ?? null)} /><Button type="submit" size="sm" variant="outline"><FileUp aria-hidden="true" size={16} /> Subir evidencia</Button></form>{evidence.map((item) => <button type="button" key={item.id} onClick={() => void openEvidence(item.id)} className="block w-full rounded border p-2 text-left text-sm hover:bg-muted/50"><p className="font-medium">{item.originalFilename}</p><p className="text-muted-foreground">{evidenceLabels[item.evidenceType]} · {formatDateTime(item.createdAt)}</p></button>)}</CardContent></Card></div>
-    <Dialog open={confirmOpen} onOpenChange={(open) => { if (!open && !confirming) { setConfirmOpen(false); setConfirmError(null); } }}><DialogContent><DialogHeader><DialogTitle>Confirmar gestión</DialogTitle><DialogDescription>Registre la referencia entregada por el proveedor antes de confirmar.</DialogDescription></DialogHeader><form onSubmit={confirmFulfillment} className="space-y-3"><label className="grid gap-2 text-sm font-medium">Referencia de confirmación<Input required autoFocus value={confirmationReference} onChange={(event) => setConfirmationReference(event.target.value)} placeholder="Código o número de confirmación" /></label><p className="text-sm text-muted-foreground">Código, número de confirmación, reserva, voucher o referencia entregada por el proveedor.</p>{confirmError ? <Alert variant="destructive"><AlertDescription>{confirmError}</AlertDescription></Alert> : null}<DialogFooter><Button type="button" variant="outline" disabled={confirming} onClick={() => { setConfirmOpen(false); setConfirmError(null); }}>Cancelar</Button><Button type="submit" disabled={confirming || !confirmationReference.trim()}>{confirming ? 'Confirmando...' : 'Confirmar gestión'}</Button></DialogFooter></form></DialogContent></Dialog>
-    <OperationalPurchaseDrawer open={purchaseOpen} onOpenChange={setPurchaseOpen} requirementId={requirementId} fulfillmentId={fulfillmentId} providerName={fulfillment.providerName} soldValue={soldValue} onCreated={async ({ evidenceUploadFailed }) => { setNotice(evidenceUploadFailed ? 'Compra registrada correctamente, pero no se pudo cargar el documento. Puedes reintentarlo desde Evidencia.' : 'Compra registrada correctamente.'); await load(); onChanged(); }} />
-  </section>;
 }
 
 function Info({ label, value }: { label: string; value: string }) { return <div><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p><p className="mt-1 text-sm">{value}</p></div>; }
