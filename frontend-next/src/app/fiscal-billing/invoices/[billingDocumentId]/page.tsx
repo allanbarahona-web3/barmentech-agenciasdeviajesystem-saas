@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, Download, LoaderCircle, Mail, Plus, X } from 'lucide-react';
+import { FiscalCreditNoteDraftDialog } from './fiscal-credit-note-draft-dialog';
 import { LoadingSpinner } from '@/components/loading-spinner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -30,6 +31,7 @@ import styles from '../../fiscal-billing.module.css';
 
 const DOCUMENT_TYPES: Record<string, string> = {
   '01': 'Factura electrónica',
+  '03': 'Nota de crédito electrónica',
   '04': 'Tiquete electrónico',
 };
 
@@ -122,6 +124,8 @@ export default function AcceptedInvoicePage() {
   const emailRequestInFlight = useRef(false);
   const [emailError, setEmailError] = useState<string | null>(null);
   const [emailQueued, setEmailQueued] = useState(false);
+  const [creditNoteOpen, setCreditNoteOpen] = useState(false);
+  const createCreditNoteIntent = searchParams.get('createCreditNote') === '1';
 
   useEffect(() => {
     const session = getStoredSession();
@@ -140,6 +144,13 @@ export default function AcceptedInvoicePage() {
   const viewerRole = String(getStoredSession()?.user?.role ?? '').toUpperCase();
   const customerScopedReadOnly = viewerRole === 'AGENT' && Boolean(customerId);
   const readOnlyViewer = customerScopedReadOnly || viewerRole === 'OPERACIONES';
+  const canCreateCreditNote = Boolean(
+    invoice &&
+    !readOnlyViewer &&
+    invoice.lifecycleStatus === 'SUBMITTED' &&
+    invoice.taxAuthorityStatus === 'ACCEPTED' &&
+    (invoice.documentTypeCode === '01' || invoice.documentTypeCode === '04'),
+  );
 
   useEffect(() => {
     if (!authorized) return;
@@ -173,6 +184,10 @@ export default function AcceptedInvoicePage() {
     window.addEventListener('keydown', closeOnEscape);
     return () => window.removeEventListener('keydown', closeOnEscape);
   }, [emailDialogOpen, emailSubmitting]);
+
+  useEffect(() => {
+    if (authorized && createCreditNoteIntent && canCreateCreditNote) setCreditNoteOpen(true);
+  }, [authorized, canCreateCreditNote, createCreditNoteIntent]);
 
   useEffect(() => {
     if (!authorized) return;
@@ -361,6 +376,13 @@ export default function AcceptedInvoicePage() {
             <Badge variant="outline" className={styles.documentTypeBadge}>{invoice.currencyCode}</Badge>
           </div>
         </header>
+
+        {canCreateCreditNote ? <div className={styles.workspaceActions}>
+          <Button type="button" className={styles.primaryAction} onClick={() => setCreditNoteOpen(true)}>
+            <Plus aria-hidden="true" />
+            Crear nota de crédito
+          </Button>
+        </div> : null}
 
         <div className={styles.grid}>
           <section className={`${styles.card} ${styles.section}`}>
@@ -611,6 +633,13 @@ export default function AcceptedInvoicePage() {
           </section>
         </div>
       )}
+      {canCreateCreditNote ? <FiscalCreditNoteDraftDialog
+        open={creditNoteOpen}
+        originalBillingDocumentId={invoice.billingDocumentId}
+        currencyCode={invoice.currencyCode}
+        onOpenChange={setCreditNoteOpen}
+        onCreated={(draft) => router.push(`/fiscal-billing/documents/${encodeURIComponent(draft.billingDocumentId)}`)}
+      /> : null}
     </main>
   );
 }

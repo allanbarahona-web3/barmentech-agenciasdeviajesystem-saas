@@ -165,6 +165,30 @@ export type CreateBillingDraftInput = {
   paymentMethodCodes: string[];
 };
 
+export type FiscalCreditNoteLineSelectionInput = {
+  sourceBillingDocumentLineId: string;
+  creditedQuantity?: string;
+  creditedGrossAmount?: string;
+  creditedTotalAmount?: string;
+};
+
+export type CreateFiscalCreditNoteDraftInput = {
+  originalBillingDocumentId: string;
+  referenceReasonCode: '01' | '02';
+  referenceReasonDescription: string;
+  fullDocument: boolean;
+  lines?: FiscalCreditNoteLineSelectionInput[];
+};
+
+export type FiscalCreditNoteDraft = {
+  billingDocumentId: string;
+  internalNumber: string;
+  documentTypeCode: '03';
+  lifecycleStatus: string;
+  originalBillingDocumentId: string;
+  total: string;
+};
+
 export type BillingDocumentWorkspaceTaxExemption = {
   id: string; documentTypeCode: string; documentNumber: string;
   legalArticle: string | null; legalSection: string | null;
@@ -345,6 +369,17 @@ const ERROR_MESSAGES: Record<string, string> = {
   BILLING_PAYMENT_METHOD_INVALID: 'Seleccione entre uno y cuatro métodos de pago válidos.',
   BILLING_DRAFT_CONFLICT: 'No fue posible crear el borrador porque existe un documento en conflicto.',
   BILLING_DRAFT_ALREADY_ADVANCED: 'El documento fiscal existente ya avanzó y solo puede consultarse.',
+  BILLING_CREDIT_NOTE_ORIGINAL_NOT_FOUND: 'El documento fiscal original no fue encontrado.',
+  BILLING_CREDIT_NOTE_ORIGINAL_NOT_ACCEPTED: 'La nota de crédito solo puede crearse desde un documento aceptado por Hacienda.',
+  BILLING_CREDIT_NOTE_ORIGINAL_TYPE_UNSUPPORTED: 'Solo se pueden acreditar facturas electrónicas o tiquetes electrónicos.',
+  BILLING_CREDIT_NOTE_ORIGINAL_FISCAL_IDENTITY_INVALID: 'El documento original no conserva una identidad fiscal válida para crear la nota de crédito.',
+  BILLING_CREDIT_NOTE_INPUT_INVALID: 'Revise el motivo y la selección de líneas de la nota de crédito.',
+  BILLING_CREDIT_NOTE_SOURCE_LINE_INVALID: 'Una línea seleccionada no pertenece al documento fiscal original.',
+  BILLING_CREDIT_NOTE_SOURCE_LINE_UNSUPPORTED: 'Una línea seleccionada no permite una corrección parcial.',
+  BILLING_CREDIT_NOTE_SOURCE_LINE_DISCOUNT_UNSUPPORTED: 'Una línea con descuento no permite este tipo de corrección parcial.',
+  BILLING_CREDIT_NOTE_TOTAL_AMOUNT_UNRECONCILABLE: 'El monto a acreditar no puede representarse exactamente con la tarifa fiscal de la línea.',
+  BILLING_CREDIT_NOTE_CREDIT_CAP_EXCEEDED: 'El importe solicitado supera el saldo disponible para acreditar.',
+  BILLING_CREDIT_NOTE_DRAFT_PERSISTENCE_FAILED: 'No se pudo guardar el borrador de la nota de crédito.',
   BILLING_DOCUMENT_NOT_FOUND: 'El documento fiscal no fue encontrado.',
   BILLING_DOCUMENT_INVOICE_NOT_AVAILABLE: 'La factura aceptada todavía no está disponible.',
   BILLING_DOCUMENT_INVOICE_PDF_CONFLICT: 'El PDF persistido está en conflicto y no puede descargarse de forma segura.',
@@ -446,6 +481,10 @@ export function getFiscalPreparation(salesOrderId: string, signal?: AbortSignal)
 
 export function createOrResumeBillingDraft(salesOrderId: string, input: CreateBillingDraftInput) {
   return post<BillingDocumentWorkspace>(`/fiscal-billing/sales-orders/${encodeURIComponent(salesOrderId)}/draft`, input);
+}
+
+export function createFiscalCreditNoteDraft(input: CreateFiscalCreditNoteDraftInput) {
+  return post<FiscalCreditNoteDraft>('/fiscal-billing/credit-notes/draft', input);
 }
 
 export function getBillingDocumentWorkspace(billingDocumentId: string, signal?: AbortSignal) {
