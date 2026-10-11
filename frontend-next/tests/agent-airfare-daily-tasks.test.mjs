@@ -20,14 +20,28 @@ test("only shows the AIRFARE priority card when the bounded status reports pendi
 test("uses the compact backend task model for both travel source types without per-row component requests", () => {
   assert.match(api, /\/travel-costing\/airfare\/daily-tasks/);
   assert.match(api, /pageSize: 20/);
-  assert.match(tasks, /task\.sourceTravelType === "TRAVEL_PACKAGE" \? "Paquete turístico" : "Viaje interno"/);
+  assert.match(tasks, /group\.sourceTravelType === "TRAVEL_PACKAGE" \? "Paquete turístico" : "Viaje interno"/);
+  assert.match(tasks, /groupAirfareDailyTasks/);
+  assert.match(tasks, /<AirfareTripCard key=\{group\.key\} group=\{group\} onReview=\{setSelectedTask\}/);
+  assert.match(tasks, /key=\{task\.costComponentId\}/);
   assert.match(tasks, /origin.*destination/);
+  assert.match(tasks, /detailText\(task, "departureDate"\)/);
+  assert.match(tasks, /Salida del tramo: \{departureDate\}/);
+  assert.doesNotMatch(tasks, /Salida del tramo: \{formatBusinessDate\(task\.startDate\)\}/);
   assert.match(tasks, /task\.currentSnapshot\.amount/);
   assert.doesNotMatch(tasks, /getCostComponent\(/);
   assert.doesNotMatch(tasks, /getComponentHistory\(/);
   assert.doesNotMatch(tasks, /listCostEvidence\(/);
-  assert.match(tasks, /key=\{task\.costComponentId\}/);
   assert.match(tasks, /registerAgentAirfareDailyAuthority\(task\.costComponentId/);
+});
+
+test("groups by immutable source type and trip ID while preserving daily component actions", () => {
+  const groups = readSource("../src/features/cost-engine/airfare-daily-task-groups.ts");
+  assert.match(groups, /\$\{task\.sourceTravelType\}:\$\{task\.sourceTravelId\}/);
+  assert.doesNotMatch(groups, /travelName.*key|key.*travelName/);
+  assert.match(tasks, /Registra la tarifa observada para cada tramo aéreo pendiente de hoy\./);
+  assert.match(tasks, /markAirfareDailyTaskUpdated\(current, completedTask\.costComponentId\)/);
+  assert.match(tasks, /updatedCount === group\.tasks\.length/);
 });
 
 test("shows bounded previous fare context and source without exposing prior evidence", () => {
@@ -44,7 +58,8 @@ test("renders the AGENT previous-fare timestamp in the tenant timezone and keeps
   assert.match(tasks, /useTenantDateTimeFormatter/);
   assert.match(tasks, /const formatTenantDateTime = useTenantDateTimeFormatter\(\)/);
   assert.match(tasks, /formatTenantDateTime\(task\.currentSnapshot\.capturedAt\)/);
-  assert.match(tasks, /formatBusinessDate\(task\.startDate\)/);
+  assert.match(tasks, /formatBusinessDate\(group\.startDate\)/);
+  assert.match(tasks, /formatBusinessDate\(departureDate\)/);
   assert.doesNotMatch(tasks, /new Intl\.DateTimeFormat\("es-CR", \{ dateStyle: "medium", timeStyle: "short" \}\)/);
   assert.doesNotMatch(tasks, /function dateOnly\(/);
 });

@@ -17,6 +17,12 @@ import {
   registerAgentAirfareDailyAuthority,
   retryAgentAirfareEvidence,
 } from "@/lib/cost-engine-api";
+import {
+  completedAirfareTaskCount,
+  groupAirfareDailyTasks,
+  markAirfareDailyTaskUpdated,
+  type AirfareDailyTaskGroup,
+} from "./airfare-daily-task-groups";
 
 const MONEY_PATTERN = /^\d+(?:\.\d{1,5})?$/;
 
@@ -29,17 +35,19 @@ type Props = {
 
 export function AirfareDailyTaskDialog({ isOpen, status, onClose, onChanged }: Props) {
   const [tasks, setTasks] = useState<AirfareDailyTask[]>([]);
+  const [taskGroups, setTaskGroups] = useState<AirfareDailyTaskGroup[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState("");
   const [selectedTask, setSelectedTask] = useState<AirfareDailyTask | null>(null);
   const [notice, setNotice] = useState("");
 
-  const refreshTasks = useCallback(async () => {
+  const refreshTasks = useCallback(async (initializeGroups = false) => {
     setLoading(true);
     setLoadError("");
     try {
       const response = await listAgentAirfareDailyTasks(1, 20);
       setTasks(response.tasks);
+      if (initializeGroups) setTaskGroups(groupAirfareDailyTasks(response.tasks));
       return response.tasks;
     } catch (error) {
       setLoadError(message(error, "No se pudieron cargar las tarifas pendientes."));
@@ -53,9 +61,10 @@ export function AirfareDailyTaskDialog({ isOpen, status, onClose, onChanged }: P
     if (!isOpen) {
       setSelectedTask(null);
       setNotice("");
+      setTaskGroups([]);
       return;
     }
-    void refreshTasks();
+    void refreshTasks(true);
   }, [isOpen, refreshTasks]);
 
   const close = () => {
@@ -69,7 +78,7 @@ export function AirfareDailyTaskDialog({ isOpen, status, onClose, onChanged }: P
         <DialogHeader>
           <DialogTitle>Actualización de tarifas aéreas</DialogTitle>
           <DialogDescription>
-            Registra la primera tarifa observada para cada viaje pendiente de hoy.
+            Registra la tarifa observada para cada tramo aéreo pendiente de hoy.
           </DialogDescription>
         </DialogHeader>
 
@@ -83,10 +92,10 @@ export function AirfareDailyTaskDialog({ isOpen, status, onClose, onChanged }: P
 
         <div className="max-h-[52vh] space-y-2 overflow-y-auto pr-1">
           {loading ? <p className="py-8 text-center text-sm text-muted-foreground">Cargando tarifas pendientes…</p> : null}
-          {!loading && !loadError && tasks.length === 0 ? (
+          {!loading && !loadError && taskGroups.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">No hay tarifas aéreas pendientes de revisar hoy.</p>
           ) : null}
-          {!loading && tasks.map((task) => <AirfareTaskRow key={task.costComponentId} task={task} onReview={() => setSelectedTask(task)} />)}
+          {!loading && taskGroups.map((group) => <AirfareTripCard key={group.key} group={group} onReview={setSelectedTask} />)}
         </div>
 
         <DialogFooter>
@@ -98,7 +107,8 @@ export function AirfareDailyTaskDialog({ isOpen, status, onClose, onChanged }: P
       <AirfareRegistrationDialog
         task={selectedTask}
         onClose={() => setSelectedTask(null)}
-        onRegistered={async (continueToNext) => {
+        onRegistered={async (completedTask, continueToNext) => {
+          setTaskGroups((current) => markAirfareDailyTaskUpdated(current, completedTask.costComponentId));
           const nextTasks = await refreshTasks();
           await onChanged();
           if (continueToNext && nextTasks?.length) {
@@ -107,8 +117,9 @@ export function AirfareDailyTaskDialog({ isOpen, status, onClose, onChanged }: P
             setSelectedTask(null);
           }
         }}
-        onAlreadyRegistered={async () => {
+        onAlreadyRegistered={async (completedTask) => {
           setNotice("Esta tarifa ya fue registrada hoy.");
+          setTaskGroups((current) => markAirfareDailyTaskUpdated(current, completedTask.costComponentId));
           setSelectedTask(null);
           await Promise.all([refreshTasks(), onChanged()]);
         }}
@@ -117,35 +128,58 @@ export function AirfareDailyTaskDialog({ isOpen, status, onClose, onChanged }: P
   );
 }
 
-function AirfareTaskRow({ task, onReview }: { task: AirfareDailyTask; onReview: () => void }) {
-  const route = routeLabel(task);
-  const airline = detailText(task, "airline");
-  const cabinClass = detailText(task, "cabinClass");
+function AirfareTripCard({ group, onReview }: { group: AirfareDailyTaskGroup; onReview: (task: AirfareDailyTask) => void }) {
+  const updatedCount = completedAirfareTaskCount(group);
+  const pendingCount = group.tasks.length - updatedCount;
+  const isUpdated = updatedCount === group.tasks.length;
+
   return (
     <Card className="shadow-none">
-      <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0 space-y-1">
-          <div className="flex flex-wrap items-center gap-2"><p className="font-medium">{task.travelName}</p><Badge variant="warning">Pendiente</Badge></div>
-          <p className="text-sm text-muted-foreground">{route} · Salida: {formatBusinessDate(task.startDate)}</p>
-          <p className="text-xs text-muted-foreground">
-            {task.sourceTravelType === "TRAVEL_PACKAGE" ? "Paquete turístico" : "Viaje interno"} · {flightTypeLabel(task)}
-            {airline ? ` · ${airline}` : ""}{cabinClass ? ` · ${cabinClass}` : ""}
-          </p>
+      <CardContent className="space-y-4 p-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0 space-y-1">
+            <div className="flex flex-wrap items-center gap-2"><p className="font-medium">{group.travelName}</p><Badge variant={isUpdated ? "success" : "warning"}>{isUpdated ? "Actualizado hoy" : "Pendiente"}</Badge></div>
+            <p className="text-sm text-muted-foreground">Salida del viaje: {formatBusinessDate(group.startDate)}</p>
+            <p className="text-xs text-muted-foreground">{group.sourceTravelType === "TRAVEL_PACKAGE" ? "Paquete turístico" : "Viaje interno"} · {pendingCount} {pendingCount === 1 ? "tramo aéreo pendiente" : "tramos aéreos pendientes"}</p>
+          </div>
+          <p className="shrink-0 text-sm font-medium text-muted-foreground">{updatedCount} de {group.tasks.length} actualizados</p>
         </div>
-        <div className="flex shrink-0 items-center gap-3 sm:text-right">
-          <div><p className="text-sm font-semibold">{task.currentSnapshot ? `${task.currentSnapshot.amount} ${task.currentSnapshot.currency ?? task.baseCurrency}` : "Sin costo actual"}</p><p className="text-xs text-muted-foreground">Moneda base: {task.baseCurrency}</p></div>
-          <Button type="button" size="sm" onClick={onReview}>Revisar</Button>
+        <div className="space-y-2">
+          {group.tasks.map(({ task, completed }) => <AirfareTaskRow key={task.costComponentId} task={task} completed={completed} onReview={() => onReview(task)} />)}
         </div>
       </CardContent>
     </Card>
   );
 }
 
+function AirfareTaskRow({ task, completed, onReview }: { task: AirfareDailyTask; completed: boolean; onReview: () => void }) {
+  const route = routeLabel(task);
+  const airline = detailText(task, "airline");
+  const cabinClass = detailText(task, "cabinClass");
+  const departureDate = componentDepartureDate(task);
+  return (
+    <div className="flex flex-col gap-3 rounded-lg border border-border p-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0 space-y-1">
+          <div className="flex flex-wrap items-center gap-2"><p className="font-medium">{route}</p><Badge variant={completed ? "success" : "warning"}>{completed ? "Actualizada hoy" : "Pendiente"}</Badge></div>
+          <p className="text-sm text-muted-foreground">Salida del tramo: {departureDate}</p>
+          <p className="text-xs text-muted-foreground">
+            {flightTypeLabel(task)}
+            {airline ? ` · ${airline}` : ""}{cabinClass ? ` · ${cabinClass}` : ""}
+          </p>
+        </div>
+        <div className="flex shrink-0 items-center gap-3 sm:text-right">
+          <div><p className="text-sm font-semibold">{task.currentSnapshot ? `${task.currentSnapshot.amount} ${task.currentSnapshot.currency ?? task.baseCurrency}` : "Sin costo actual"}</p><p className="text-xs text-muted-foreground">Moneda base: {task.baseCurrency}</p></div>
+          <Button type="button" size="sm" onClick={onReview} disabled={completed}>{completed ? "Actualizada" : "Revisar"}</Button>
+        </div>
+    </div>
+  );
+}
+
 function AirfareRegistrationDialog({ task, onClose, onRegistered, onAlreadyRegistered }: {
   task: AirfareDailyTask | null;
   onClose: () => void;
-  onRegistered: (continueToNext: boolean) => Promise<void>;
-  onAlreadyRegistered: () => Promise<void>;
+  onRegistered: (task: AirfareDailyTask, continueToNext: boolean) => Promise<void>;
+  onAlreadyRegistered: (task: AirfareDailyTask) => Promise<void>;
 }) {
   const formatTenantDateTime = useTenantDateTimeFormatter();
   const [observedAmount, setObservedAmount] = useState("");
@@ -192,10 +226,10 @@ function AirfareRegistrationDialog({ task, onClose, onRegistered, onAlreadyRegis
         setError(result.evidenceUploadError ?? "La tarifa fue registrada, pero falta adjuntar el comprobante.");
         return;
       }
-      await onRegistered(continueToNext);
+      await onRegistered(task, continueToNext);
     } catch (caught) {
       if (message(caught, "").includes("AIRFARE_DAILY_AUTHORITY_ALREADY_REGISTERED")) {
-        await onAlreadyRegistered();
+        await onAlreadyRegistered(task);
         return;
       }
       setError(message(caught, "No se pudo registrar la tarifa."));
@@ -213,7 +247,7 @@ function AirfareRegistrationDialog({ task, onClose, onRegistered, onAlreadyRegis
     setError("");
     try {
       await retryAgentAirfareEvidence(pendingEvidence.snapshotId, evidenceFile);
-      await onRegistered(pendingEvidence.continueToNext);
+      if (task) await onRegistered(task, pendingEvidence.continueToNext);
     } catch (caught) {
       setError(message(caught, "No se pudo adjuntar el comprobante."));
     } finally {
@@ -232,7 +266,7 @@ function AirfareRegistrationDialog({ task, onClose, onRegistered, onAlreadyRegis
           <div className="space-y-4">
             <div className="rounded-lg border border-border bg-muted/30 p-3 text-sm">
               <p className="font-medium">{task.travelName}</p>
-              <p className="mt-1 text-muted-foreground">{routeLabel(task)} · Salida: {formatBusinessDate(task.startDate)} · {flightTypeLabel(task)}</p>
+              <p className="mt-1 text-muted-foreground">{routeLabel(task)} · Salida del tramo: {componentDepartureDate(task)} · {flightTypeLabel(task)}</p>
             </div>
             <section className="rounded-lg border border-border bg-muted/30 p-3 text-sm">
               <p className="font-medium">Última tarifa registrada</p>
@@ -262,6 +296,11 @@ function routeLabel(task: AirfareDailyTask) {
   const origin = detailText(task, "origin") ?? "Origen pendiente";
   const destination = detailText(task, "destination") ?? "Destino pendiente";
   return `${origin} → ${destination}`;
+}
+
+function componentDepartureDate(task: AirfareDailyTask) {
+  const departureDate = detailText(task, "departureDate");
+  return departureDate ? formatBusinessDate(departureDate) : "Fecha pendiente";
 }
 
 function flightTypeLabel(task: AirfareDailyTask) { return detailText(task, "flightType") === "DOMESTIC" ? "Interno" : "Internacional"; }
