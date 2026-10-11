@@ -16,6 +16,6 @@ import { TravelPackageCostComponentOperationsIntakeProducer } from "./travel-pac
   imports: [StorageModule, JobDispatcherModule],
   controllers: [CostEngineController, AirfareDailyAuthorityController],
   providers: [CostEngineRepository, CostEngineService, CostEvidenceService, TravelCostingProjectResolverService, AirfareDailyAuthorityService, TenantBusinessDateResolver, CostingProjectCurrentCostReader, TravelPackageCostComponentOperationsIntakeProducer],
-  exports: [CostEngineService, CostEvidenceService, CostingProjectCurrentCostReader],
+  exports: [CostEngineService, CostEvidenceService, CostingProjectCurrentCostReader, TravelPackageCostComponentOperationsIntakeProducer],
 })
 export class CostEngineModule {}

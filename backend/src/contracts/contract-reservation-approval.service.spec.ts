@@ -75,6 +75,15 @@ describe("ContractReservationApprovalService", () => {
     }));
     expect(c.commercialSnapshots.freezeInTransaction.mock.invocationCallOrder[0])
       .toBeLessThan(c.tx.contract.updateMany.mock.invocationCallOrder[0]);
+    expect(c.baseOperationsIntake.reconcileAfterContractedRoster).toHaveBeenCalledWith(
+      c.tx,
+      "tenant-1",
+      "package-1",
+    );
+    expect(c.commercialSnapshots.freezeInTransaction.mock.invocationCallOrder[0])
+      .toBeLessThan(c.baseOperationsIntake.reconcileAfterContractedRoster.mock.invocationCallOrder[0]);
+    expect(c.baseOperationsIntake.reconcileAfterContractedRoster.mock.invocationCallOrder[0])
+      .toBeLessThan(c.tx.contract.updateMany.mock.invocationCallOrder[0]);
   });
 
   it("preserves internal-trip capacity effects without creating an international roster", async () => {
@@ -398,12 +407,16 @@ function context(overrides: Record<string, unknown> = {}) {
   const commercialSnapshots = {
     freezeInTransaction: jest.fn().mockResolvedValue(null),
   };
+  const baseOperationsIntake = {
+    reconcileAfterContractedRoster: jest.fn().mockResolvedValue({ eligibleComponents: 0, eventsCreated: 0, eventsRequeued: 0 }),
+  };
   return {
-    service: Reflect.construct(ContractReservationApprovalService, [participants, commercialObligations, commercialSnapshots]),
+    service: Reflect.construct(ContractReservationApprovalService, [participants, commercialObligations, commercialSnapshots, baseOperationsIntake]),
     tx,
     participants,
     commercialObligations,
     commercialSnapshots,
+    baseOperationsIntake,
   };
 }
 

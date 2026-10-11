@@ -2,11 +2,12 @@ import { Module } from "@nestjs/common";
 import { TravelPackagesModule } from "../travel-packages/travel-packages.module";
 import { CommercialObligationModule } from "../finance/commercial-obligation.module";
 import { TravelPricingModule } from "../travel-pricing/travel-pricing.module";
+import { CostEngineModule } from "../cost-engine/cost-engine.module";
 import { ContractCommercialSnapshotService } from "./contract-commercial-snapshot.service";
 import { ContractReservationApprovalService } from "./contract-reservation-approval.service";
 
 @Module({
-  imports: [TravelPackagesModule, CommercialObligationModule, TravelPricingModule],
+  imports: [TravelPackagesModule, CommercialObligationModule, TravelPricingModule, CostEngineModule],
   providers: [ContractReservationApprovalService, ContractCommercialSnapshotService],
   exports: [ContractReservationApprovalService],
 })

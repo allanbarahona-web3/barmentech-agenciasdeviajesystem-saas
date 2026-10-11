@@ -157,6 +157,40 @@ describe("OperationalWorkMaterializer", () => {
     expect(c.rosterReader.readContractedRoster).toHaveBeenCalledWith({ tenantId: "tenant-a", travelPackageId: "travel-a", cursor: undefined, limit: 25 });
   });
 
+  it("materializes separate requirements for two base CostComponent identities on the same TravelPackage", async () => {
+    const first = baseSource();
+    const second: TravelPackageOperationalWorkSourceItem = {
+      ...baseSource(),
+      sourceLineId: "component-b",
+      sourceVersionId: "snapshot-b",
+      sourceSnapshot: {
+        ...baseSource().sourceSnapshot!,
+        costComponentId: "component-b",
+        currentCostSnapshotId: "snapshot-b",
+      },
+    };
+    const c = context(first);
+    c.sourceReader.readSourceItem.mockResolvedValueOnce(first).mockResolvedValueOnce(second);
+    c.rosterReader.readContractedRoster.mockResolvedValue({ participants: [{ id: "participant-a", clientId: "client-a" }], nextCursor: null });
+    c.tx.operationalRequirement.findFirst.mockResolvedValue(null);
+    c.tx.travelPackage.findFirst.mockResolvedValue({ id: "travel-a" });
+    c.tx.travelPackageParticipant.findMany.mockResolvedValue([{ id: "participant-a", clientId: "client-a" }]);
+    c.tx.operationalRequirement.create
+      .mockResolvedValueOnce({ id: "requirement-a" })
+      .mockResolvedValueOnce({ id: "requirement-b" });
+
+    await expect(c.materializer.materialize(baseReference())).resolves.toEqual({ status: "CREATED", operationalRequirementId: "requirement-a" });
+    await expect(c.materializer.materialize({ ...baseReference(), sourceLineId: "component-b" })).resolves.toEqual({ status: "CREATED", operationalRequirementId: "requirement-b" });
+
+    expect(c.tx.operationalRequirement.create).toHaveBeenCalledTimes(2);
+    expect(c.tx.operationalRequirement.create).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      data: expect.objectContaining({ sourceLineId: "component-a" }),
+    }));
+    expect(c.tx.operationalRequirement.create).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      data: expect.objectContaining({ sourceLineId: "component-b" }),
+    }));
+  });
+
   it("adds only newly contracted base participants on replay without rewriting the requirement or execution", async () => {
     const c = context(baseSource());
     c.rosterReader.readContractedRoster.mockResolvedValue({
@@ -225,13 +259,15 @@ describe("OperationalWorkMaterializer", () => {
     expect(create.data).not.toHaveProperty("sourceSnapshot");
   });
 
-  it("returns retryable not-ready when a valid base component has no contracted roster", async () => {
+  it("defers a valid base component when no contracted roster exists", async () => {
     const c = context(baseSource());
     c.rosterReader.readContractedRoster.mockResolvedValue({ participants: [], nextCursor: null });
-    c.tx.operationalRequirement.findFirst.mockResolvedValue(null);
-    c.tx.travelPackage.findFirst.mockResolvedValue({ id: "travel-a" });
-    c.tx.travelPackageParticipant.findMany.mockResolvedValue([]);
-    await expect(c.materializer.materialize(baseReference())).rejects.toMatchObject({ code: "PARTICIPANT_NOT_FOUND", retryable: true });
+    await expect(c.materializer.materialize(baseReference())).resolves.toEqual({
+      status: "DEFERRED_NO_CONTRACTED_ROSTER",
+      operationalRequirementId: null,
+    });
+    expect(c.tx.operationalRequirement.findFirst).not.toHaveBeenCalled();
+    expect(c.tx.travelPackage.findFirst).not.toHaveBeenCalled();
     expect(c.tx.operationalRequirement.create).not.toHaveBeenCalled();
     expect(c.tx.operationalRequirementPassenger.createMany).not.toHaveBeenCalled();
   });

@@ -30,10 +30,15 @@ type OperationsDatabase = {
   $transaction<T>(work: (transaction: OperationsTransaction) => Promise<T>): Promise<T>;
 };
 
-export type OperationalWorkMaterializationResult = {
-  status: "CREATED" | "ALREADY_MATERIALIZED";
-  operationalRequirementId: string;
-};
+export type OperationalWorkMaterializationResult =
+  | {
+    status: "CREATED" | "ALREADY_MATERIALIZED";
+    operationalRequirementId: string;
+  }
+  | {
+    status: "DEFERRED_NO_CONTRACTED_ROSTER";
+    operationalRequirementId: null;
+  };
 
 const PARTICIPANT_BATCH_SIZE = 25;
 
@@ -61,6 +66,11 @@ export class OperationalWorkMaterializer {
     const baseParticipantIds = source.participantScope === "ALL_CONTRACTED_TRAVEL_PACKAGE_PARTICIPANTS"
       ? await this.readAllContractedParticipantIds(source)
       : null;
+    // A base component can legitimately be published before any contract exists.
+    // Reservation approval requeues this source when it establishes the roster.
+    if (baseParticipantIds !== null && baseParticipantIds.length === 0) {
+      return { status: "DEFERRED_NO_CONTRACTED_ROSTER", operationalRequirementId: null };
+    }
     const clientIds = uniqueClientIds(source.participantClientIds);
     if (baseParticipantIds === null && clientIds.length === 0) {
       throw new OperationalWorkMaterializationError("PARTICIPANT_NOT_FOUND", true, { sourceId: source.sourceId, sourceLineId: source.sourceLineId, participantCount: 0 });

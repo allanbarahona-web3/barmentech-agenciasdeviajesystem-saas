@@ -52,6 +52,16 @@ describe("OperationsIntakeOutboxWorkerService", () => {
     });
   });
 
+  it("marks a pre-contract base component deferred without scheduling a roster retry", async () => {
+    const c = context([event({ sourceType: "TRAVEL_PACKAGE_COST_COMPONENT", sourceId: "project-a", sourceLineId: "component-a" })]);
+    c.materialize.mockResolvedValue({ status: "DEFERRED_NO_CONTRACTED_ROSTER", operationalRequirementId: null });
+
+    await expect(c.worker.processAvailableBatch("tenant-a")).resolves.toMatchObject({ processed: 1, retried: 0, failed: 0 });
+    expect(c.tx.operationsIntakeOutboxEvent.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: "PROCESSED", lastError: null }),
+    }));
+  });
+
   it("routes a standalone Custom Quotation line through the same materializer", async () => {
     const c = context([event({ sourceType: "CUSTOM_QUOTATION_LINE", sourceId: "version-a", sourceLineId: "line-a", scopeType: "STANDALONE_CUSTOMER", travelPackageId: null, customerId: "customer-a" })]);
     c.materialize.mockResolvedValue({ status: "CREATED", operationalRequirementId: "requirement-standalone" });
@@ -109,12 +119,12 @@ describe("OperationsIntakeOutboxWorkerService", () => {
     }));
   });
 
-  it("keeps a base component pending after the normal limit while the contracted roster is absent", async () => {
+  it("keeps base component failures bounded after the normal retry limit", async () => {
     const c = context([event({ sourceType: "TRAVEL_PACKAGE_COST_COMPONENT", sourceId: "project-a", sourceLineId: "component-a", attemptCount: 5, maximumAttempts: 5 })]);
     c.materialize.mockRejectedValue(new OperationalWorkMaterializationError("PARTICIPANT_NOT_FOUND", true, { participantCount: 0 }));
-    await expect(c.worker.processAvailableBatch("tenant-a")).resolves.toMatchObject({ retried: 1, failed: 0 });
+    await expect(c.worker.processAvailableBatch("tenant-a")).resolves.toMatchObject({ retried: 0, failed: 1 });
     expect(c.tx.operationsIntakeOutboxEvent.updateMany).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({ status: "PENDING", lastError: "PARTICIPANT_NOT_FOUND: 0 participant(s) missing" }),
+      data: expect.objectContaining({ status: "FAILED", lastError: "PARTICIPANT_NOT_FOUND: 0 participant(s) missing" }),
     }));
   });
 

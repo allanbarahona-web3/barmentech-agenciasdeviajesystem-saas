@@ -20,6 +20,7 @@ import {
   ContractCommercialSnapshotService,
   type ContractCommercialSnapshotPassengerInput,
 } from "./contract-commercial-snapshot.service";
+import { TravelPackageCostComponentOperationsIntakeProducer } from "../cost-engine/travel-package-cost-component-operations-intake.producer";
 
 const APPROVABLE_CONTRACT_STATUSES = ["PENDING_PAYMENT_RESERVE", "RESERVE_IN_REVIEW"];
 const PARTICIPANT_ALREADY_ASSIGNED = "CONTRACT_RESERVATION_PARTICIPANT_ALREADY_ASSIGNED";
@@ -33,6 +34,7 @@ export class ContractReservationApprovalService {
     private readonly participantsRepository: TravelPackageParticipantsRepository,
     private readonly commercialObligations: CommercialObligationService,
     private readonly commercialSnapshots: ContractCommercialSnapshotService,
+    private readonly baseOperationsIntake: TravelPackageCostComponentOperationsIntakeProducer,
   ) {}
 
   async approveInTransaction(
@@ -165,6 +167,11 @@ export class ContractReservationApprovalService {
         passengers: rosterPassengers,
         actor,
       });
+      await this.baseOperationsIntake.reconcileAfterContractedRoster(
+        tx,
+        contract.tenantId,
+        contract.travelPackageId,
+      );
     }
 
     const transitioned = await tx.contract.updateMany({

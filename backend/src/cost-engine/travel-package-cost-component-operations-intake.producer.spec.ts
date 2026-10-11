@@ -56,8 +56,139 @@ describe("TravelPackageCostComponentOperationsIntakeProducer", () => {
     c.tx.travelPackageCostingProjectLink.findMany.mockResolvedValue([link()]);
     c.tx.operationsIntakeOutboxEvent.createMany.mockResolvedValue({ count: 1 });
     await c.producer.persistEligibleComponent(c.tx as never, "tenant-a", "component-a");
-    expect((c.tx as Record<string, unknown>).travelPackageParticipant).toBeUndefined();
+    expect(c.tx.travelPackageParticipant.findMany).not.toHaveBeenCalled();
     expect((c.tx as Record<string, unknown>).commercialObligation).toBeUndefined();
+  });
+
+  it("queues a pre-existing eligible component after reservation approval makes a contracted roster available", async () => {
+    const c = context();
+    c.tx.travelPackageParticipant.findMany.mockResolvedValue([{ id: "participant-a" }]);
+    c.tx.costComponent.findMany
+      .mockResolvedValueOnce([component()])
+      .mockResolvedValueOnce([component()]);
+    c.tx.travelPackageCostingProjectLink.findMany.mockResolvedValue([link()]);
+    c.tx.operationsIntakeOutboxEvent.createMany.mockResolvedValue({ count: 1 });
+    c.tx.operationsIntakeOutboxEvent.findMany.mockResolvedValue([]);
+    c.tx.operationalRequirement.findMany.mockResolvedValue([]);
+
+    await expect(c.producer.reconcileAfterContractedRoster(c.tx as never, "tenant-a", "travel-a"))
+      .resolves.toEqual({ eligibleComponents: 1, eventsCreated: 1, eventsRequeued: 0 });
+
+    expect(c.tx.operationsIntakeOutboxEvent.createMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: [expect.objectContaining({
+        travelPackageId: "travel-a",
+        sourceType: "TRAVEL_PACKAGE_COST_COMPONENT",
+        sourceId: "project-a",
+        sourceLineId: "component-a",
+      })],
+    }));
+    expect((c.tx as Record<string, unknown>).billingDocument).toBeUndefined();
+    expect((c.tx as Record<string, unknown>).operationalRequirement).toBeDefined();
+  });
+
+  it("queues every eligible AIRFARE component for the newly contracted roster", async () => {
+    const c = context();
+    c.tx.travelPackageParticipant.findMany.mockResolvedValue([{ id: "participant-a" }]);
+    c.tx.costComponent.findMany
+      .mockResolvedValueOnce([component(), component({ id: "component-b", currentSnapshot: { id: "snapshot-b", currency: "USD", capturedAt: new Date("2026-10-04T12:00:00.000Z") } })])
+      .mockResolvedValueOnce([component(), component({ id: "component-b", currentSnapshot: { id: "snapshot-b", currency: "USD", capturedAt: new Date("2026-10-04T12:00:00.000Z") } })]);
+    c.tx.travelPackageCostingProjectLink.findMany.mockResolvedValue([link()]);
+    c.tx.operationsIntakeOutboxEvent.createMany.mockResolvedValue({ count: 2 });
+    c.tx.operationsIntakeOutboxEvent.findMany.mockResolvedValue([]);
+    c.tx.operationalRequirement.findMany.mockResolvedValue([]);
+
+    await expect(c.producer.reconcileAfterContractedRoster(c.tx as never, "tenant-a", "travel-a"))
+      .resolves.toEqual({ eligibleComponents: 2, eventsCreated: 2, eventsRequeued: 0 });
+
+    expect(c.tx.operationsIntakeOutboxEvent.createMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.arrayContaining([
+        expect.objectContaining({ sourceLineId: "component-a" }),
+        expect.objectContaining({ sourceLineId: "component-b" }),
+      ]),
+    }));
+  });
+
+  it("requeues a processed source only when the contracted roster has a missing requirement assignment", async () => {
+    const c = context();
+    c.tx.travelPackageParticipant.findMany.mockResolvedValue([{ id: "participant-a" }, { id: "participant-b" }]);
+    c.tx.costComponent.findMany
+      .mockResolvedValueOnce([component()])
+      .mockResolvedValueOnce([component()]);
+    c.tx.travelPackageCostingProjectLink.findMany.mockResolvedValue([link()]);
+    c.tx.operationsIntakeOutboxEvent.createMany.mockResolvedValue({ count: 0 });
+    c.tx.operationsIntakeOutboxEvent.findMany.mockResolvedValue([{ id: "event-a", sourceId: "project-a", sourceLineId: "component-a", status: "PROCESSED", lastError: null }]);
+    c.tx.operationalRequirement.findMany.mockResolvedValue([{ id: "requirement-a", sourceId: "project-a", sourceLineId: "component-a" }]);
+    c.tx.operationalRequirementPassenger.findMany.mockResolvedValue([{ operationalRequirementId: "requirement-a", travelPackageParticipantId: "participant-a" }]);
+    c.tx.operationsIntakeOutboxEvent.updateMany.mockResolvedValue({ count: 1 });
+
+    await expect(c.producer.reconcileAfterContractedRoster(c.tx as never, "tenant-a", "travel-a"))
+      .resolves.toEqual({ eligibleComponents: 1, eventsCreated: 0, eventsRequeued: 1 });
+
+    expect(c.tx.operationsIntakeOutboxEvent.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: { in: ["event-a"] }, OR: expect.any(Array) }),
+      data: expect.objectContaining({ status: "PENDING", attemptCount: 0 }),
+    }));
+    expect((c.tx as Record<string, unknown>).operationalRequirementPassenger).toBeDefined();
+    expect((c.tx as Record<string, unknown>).operationalFulfillment).toBeUndefined();
+    expect((c.tx as Record<string, unknown>).operationalPurchase).toBeUndefined();
+    expect((c.tx as Record<string, unknown>).operationalEvidence).toBeUndefined();
+  });
+
+  it("does not replay a processed event when every contracted participant is already assigned", async () => {
+    const c = context();
+    c.tx.travelPackageParticipant.findMany.mockResolvedValue([{ id: "participant-a" }, { id: "participant-b" }]);
+    c.tx.costComponent.findMany
+      .mockResolvedValueOnce([component()])
+      .mockResolvedValueOnce([component()]);
+    c.tx.travelPackageCostingProjectLink.findMany.mockResolvedValue([link()]);
+    c.tx.operationsIntakeOutboxEvent.createMany.mockResolvedValue({ count: 0 });
+    c.tx.operationsIntakeOutboxEvent.findMany.mockResolvedValue([{ id: "event-a", sourceId: "project-a", sourceLineId: "component-a", status: "PROCESSED", lastError: null }]);
+    c.tx.operationalRequirement.findMany.mockResolvedValue([{ id: "requirement-a", sourceId: "project-a", sourceLineId: "component-a" }]);
+    c.tx.operationalRequirementPassenger.findMany.mockResolvedValue([
+      { operationalRequirementId: "requirement-a", travelPackageParticipantId: "participant-a" },
+      { operationalRequirementId: "requirement-a", travelPackageParticipantId: "participant-b" },
+    ]);
+
+    await expect(c.producer.reconcileAfterContractedRoster(c.tx as never, "tenant-a", "travel-a"))
+      .resolves.toEqual({ eligibleComponents: 1, eventsCreated: 0, eventsRequeued: 0 });
+
+    expect(c.tx.operationsIntakeOutboxEvent.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("requeues a legacy pending roster retry immediately after the roster exists", async () => {
+    const c = context();
+    c.tx.travelPackageParticipant.findMany.mockResolvedValue([{ id: "participant-a" }, { id: "participant-b" }]);
+    c.tx.costComponent.findMany
+      .mockResolvedValueOnce([component()])
+      .mockResolvedValueOnce([component()]);
+    c.tx.travelPackageCostingProjectLink.findMany.mockResolvedValue([link()]);
+    c.tx.operationsIntakeOutboxEvent.createMany.mockResolvedValue({ count: 0 });
+    c.tx.operationsIntakeOutboxEvent.findMany.mockResolvedValue([{
+      id: "event-a", sourceId: "project-a", sourceLineId: "component-a", status: "PENDING", lastError: "PARTICIPANT_NOT_FOUND: 0 participant(s) missing",
+    }]);
+    c.tx.operationalRequirement.findMany.mockResolvedValue([{ id: "requirement-a", sourceId: "project-a", sourceLineId: "component-a" }]);
+    c.tx.operationalRequirementPassenger.findMany.mockResolvedValue([{ operationalRequirementId: "requirement-a", travelPackageParticipantId: "participant-a" }]);
+    c.tx.operationsIntakeOutboxEvent.updateMany.mockResolvedValue({ count: 1 });
+
+    await expect(c.producer.reconcileAfterContractedRoster(c.tx as never, "tenant-a", "travel-a"))
+      .resolves.toEqual({ eligibleComponents: 1, eventsCreated: 0, eventsRequeued: 1 });
+
+    expect(c.tx.operationsIntakeOutboxEvent.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ id: { in: ["event-a"] }, OR: expect.any(Array) }),
+      data: expect.objectContaining({ status: "PENDING", attemptCount: 0, lastError: null }),
+    }));
+  });
+
+  it("does not enqueue inactive components during roster reconciliation", async () => {
+    const c = context();
+    c.tx.travelPackageParticipant.findMany.mockResolvedValue([{ id: "participant-a" }]);
+    c.tx.costComponent.findMany.mockResolvedValue([]);
+
+    await expect(c.producer.reconcileAfterContractedRoster(c.tx as never, "tenant-a", "travel-a"))
+      .resolves.toEqual({ eligibleComponents: 0, eventsCreated: 0, eventsRequeued: 0 });
+
+    expect(c.tx.operationsIntakeOutboxEvent.createMany).not.toHaveBeenCalled();
+    expect(c.tx.operationsIntakeOutboxEvent.updateMany).not.toHaveBeenCalled();
   });
 });
 
@@ -65,7 +196,10 @@ function context() {
   const tx = {
     costComponent: { findMany: jest.fn() },
     travelPackageCostingProjectLink: { findMany: jest.fn() },
-    operationsIntakeOutboxEvent: { createMany: jest.fn() },
+    travelPackageParticipant: { findMany: jest.fn() },
+    operationalRequirement: { findMany: jest.fn() },
+    operationalRequirementPassenger: { findMany: jest.fn() },
+    operationsIntakeOutboxEvent: { createMany: jest.fn(), findMany: jest.fn(), updateMany: jest.fn() },
   };
   return { tx, producer: new TravelPackageCostComponentOperationsIntakeProducer() };
 }
