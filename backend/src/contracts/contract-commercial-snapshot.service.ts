@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Injectable } from "@nestjs/common";
-import { Prisma, TravelPackageParticipantRole } from "@prisma/client";
+import { Prisma, PricingCalculationComponentLine, TravelPackageParticipantRole } from "@prisma/client";
 import { pricingAmountsEqual } from "../pricing/pricing-v1-calculator";
 import {
   TravelPackagePublishedPricingReader,
@@ -71,7 +71,7 @@ export class ContractCommercialSnapshotService {
       throw new ConflictException("CONTRACT_COMMERCIAL_SNAPSHOT_PRICING_INVALID");
     }
 
-    const componentLines = await database.pricingCalculationComponentLine.findMany({
+    const componentLines: PricingCalculationComponentLine[] = await database.pricingCalculationComponentLine.findMany({
       where: {
         tenantId: input.tenantId,
         pricingCalculationVersionId: version.id,
@@ -82,13 +82,13 @@ export class ContractCommercialSnapshotService {
     if (componentLines.length === 0) {
       throw new ConflictException("CONTRACT_COMMERCIAL_SNAPSHOT_COMPONENT_LINES_UNAVAILABLE");
     }
-    if (componentLines.some((line: any) => line.currency !== published.currency)) {
+    if (componentLines.some((line) => line.currency !== published.currency)) {
       throw new ConflictException("CONTRACT_COMMERCIAL_SNAPSHOT_COMPONENT_CURRENCY_INVALID");
     }
 
     const perPersonSellingPrice = new Prisma.Decimal(published.perPersonSellingPrice);
     const componentTotal = componentLines.reduce(
-      (total: Prisma.Decimal, line: any) => total.plus(line.effectiveSellingValue),
+      (total: Prisma.Decimal, line) => total.plus(line.effectiveSellingValue),
       new Prisma.Decimal(0),
     );
     if (
@@ -106,8 +106,7 @@ export class ContractCommercialSnapshotService {
       throw new ConflictException("CONTRACT_COMMERCIAL_PRICE_STALE");
     }
 
-    const snapshot = await database.contractCommercialSnapshot.create({
-      data: {
+    const createData: Prisma.ContractCommercialSnapshotUncheckedCreateInput = {
         tenantId: input.tenantId,
         contractId: input.contract.id,
         travelPackageId: input.contract.travelPackageId,
@@ -123,8 +122,6 @@ export class ContractCommercialSnapshotService {
         frozenByName: input.actor.name,
         passengers: {
           create: input.passengers.map((passenger) => ({
-            tenantId: input.tenantId,
-            travelPackageId: input.contract.travelPackageId,
             travelPackageParticipantId: passenger.travelPackageParticipantId,
             clientId: passenger.clientId,
             role: passenger.role,
@@ -133,8 +130,7 @@ export class ContractCommercialSnapshotService {
           })),
         },
         componentLines: {
-          create: componentLines.map((line: any) => ({
-            tenantId: input.tenantId,
+          create: componentLines.map((line) => ({
             costingProjectId: line.costingProjectId,
             costComponentId: line.costComponentId,
             costSnapshotId: line.costSnapshotId,
@@ -157,7 +153,10 @@ export class ContractCommercialSnapshotService {
             effectiveSellingValue: line.effectiveSellingValue,
           })),
         },
-      },
+    };
+
+    const snapshot = await database.contractCommercialSnapshot.create({
+      data: createData,
       select: { id: true },
     });
     return { snapshotId: snapshot.id };

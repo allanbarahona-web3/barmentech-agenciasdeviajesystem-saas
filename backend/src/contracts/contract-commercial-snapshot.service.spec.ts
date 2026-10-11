@@ -57,6 +57,26 @@ describe("ContractCommercialSnapshotService", () => {
       expect.objectContaining({ costComponentId: "component-flight", costSnapshotId: "snapshot-flight", effectiveSellingValue: new Prisma.Decimal("300.00000") }),
       expect.objectContaining({ costComponentId: "component-hotel", costSnapshotId: "snapshot-hotel", effectiveSellingValue: new Prisma.Decimal("200.00000") }),
     ]));
+    expect(data.tenantId).toBe("tenant-1");
+    for (const passenger of data.passengers.create) {
+      expect(passenger).not.toHaveProperty("tenantId");
+      expect(passenger).not.toHaveProperty("travelPackageId");
+      expect(passenger).not.toHaveProperty("contractCommercialSnapshotId");
+      expect(passenger).toEqual(expect.objectContaining({
+        travelPackageParticipantId: expect.any(String),
+        clientId: expect.any(String),
+        role: expect.any(String),
+      }));
+    }
+    for (const componentLine of data.componentLines.create) {
+      expect(componentLine).not.toHaveProperty("tenantId");
+      expect(componentLine).not.toHaveProperty("contractCommercialSnapshotId");
+      expect(componentLine).toEqual(expect.objectContaining({
+        costingProjectId: "project-1",
+        costComponentId: expect.any(String),
+        costSnapshotId: expect.any(String),
+      }));
+    }
   });
 
   it("uses retained Contract Pricing authority after a later publication changes the current price", async () => {
