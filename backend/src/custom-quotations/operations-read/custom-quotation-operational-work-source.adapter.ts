@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import { runTenantTransaction } from "../../tenant/tenant-transaction";
 import { CUSTOM_QUOTATION_LINE_SOURCE } from "../../operations/intake/operations-intake-outbox.constants";
+import { resolveOperationalServicePurpose } from "../../operations/service-details/operational-service-detail-contracts";
 import {
   OperationalWorkMaterializationError,
   type OperationalWorkSourceItem,
@@ -10,9 +11,6 @@ import {
 } from "../../operations/intake/operational-work-source-reader.port";
 
 export { CUSTOM_QUOTATION_LINE_SOURCE };
-
-const SERVICE_PURPOSE_CODE = "CUSTOM_QUOTATION";
-const SERVICE_PURPOSE_NAME = "Cotización personalizada";
 
 /**
  * Operations-facing read adapter for an accepted immutable Custom Quotation
@@ -42,6 +40,10 @@ export class CustomQuotationOperationalWorkSourceAdapter implements OperationalW
           id: true,
           soldAmount: true,
           description: true,
+          pricingCalculationComponentLineId: true,
+          pricingCalculationComponentLine: {
+            select: { id: true, costCategoryCode: true, costCategoryDisplayName: true },
+          },
           customQuotationVersion: {
             select: {
               id: true,
@@ -80,6 +82,9 @@ export class CustomQuotationOperationalWorkSourceAdapter implements OperationalW
           sourceLineId: reference.sourceLineId,
         });
       }
+      // This is immutable Pricing lineage captured by the accepted CQ version.
+      // Never use a mutable CostComponent or free text to determine purpose.
+      const purpose = resolveOperationalServicePurpose(line.pricingCalculationComponentLine?.costCategoryCode);
 
       return {
         ...reference,
@@ -87,8 +92,8 @@ export class CustomQuotationOperationalWorkSourceAdapter implements OperationalW
         sourceVersionId: version.id,
         sourceReference: null,
         sourceAcceptedAt: version.acceptedAt,
-        servicePurposeCode: SERVICE_PURPOSE_CODE,
-        servicePurposeName: SERVICE_PURPOSE_NAME,
+        servicePurposeCode: purpose.code,
+        servicePurposeName: purpose.name,
         description: line.description.trim(),
         sourceSnapshot: {
           customQuotationVersionId: version.id,
@@ -96,6 +101,9 @@ export class CustomQuotationOperationalWorkSourceAdapter implements OperationalW
           description: line.description.trim(),
           soldAmount: String(line.soldAmount),
           currency: String(version.currency),
+          pricingCalculationComponentLineId: line.pricingCalculationComponentLineId,
+          pricingCostCategoryCode: line.pricingCalculationComponentLine?.costCategoryCode ?? null,
+          pricingCostCategoryDisplayName: line.pricingCalculationComponentLine?.costCategoryDisplayName ?? null,
         },
         soldValueScope: "EXACT_SERVICE_LINE",
         soldValue: {

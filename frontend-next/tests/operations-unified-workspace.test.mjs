@@ -5,11 +5,14 @@ import test from 'node:test';
 const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
 const source = () => read('../src/components/operations/operational-unified-workspace.tsx');
 
-test('Operación defaults to passenger navigation and keeps group and global modes local', () => {
+test('Operaciones defaults to passenger navigation and keeps group and global modes local', () => {
   const text = source();
   assert.match(text, /useState<Mode>\('passenger'\)/);
+  assert.match(text, /aria-label="Operaciones"/);
+  assert.match(text, /Vistas de operaciones/);
   for (const label of ['Por pasajero', 'Por grupo', 'Todos los trabajos']) assert.match(text, new RegExp(label));
   assert.match(text, /OperationalRequirementsWorkspace/);
+  assert.doesNotMatch(text, /WorkspaceView|OperationalTravelHistory|>Activas<\/Button>|>Historial<\/Button>/);
 });
 
 test('Passenger workspace uses bounded roster and participant-filtered work without per-card detail reads', () => {

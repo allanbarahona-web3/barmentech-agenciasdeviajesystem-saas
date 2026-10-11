@@ -18,7 +18,7 @@ type PurchaseForm = { providerName: string; supplierReference: string; amount: s
 type ResolvedFulfillment = { id: string; created: boolean };
 const emptyPurchase = (currency = ''): PurchaseForm => ({ providerName: '', supplierReference: '', amount: '', currency, taxAmount: '', purchasedAt: '', supplierInvoiceNumber: '', notes: '' });
 
-export function OperationalPurchaseDrawer({ open, travelPackageId, requirementId, fulfillmentId, ensureFulfillment, providerName, soldValue, onOpenChange, onCreated }: { open: boolean; travelPackageId?: string | null; requirementId: string; fulfillmentId?: string | null; ensureFulfillment?: () => Promise<ResolvedFulfillment>; providerName?: string | null; soldValue?: OperationalRequirementDetail['soldValue'] | StandaloneOperationalRequirementDetail['soldValue']; onOpenChange: (open: boolean) => void; onCreated: (result: { evidenceUploadFailed: boolean }) => Promise<void> | void }) {
+export function OperationalPurchaseDrawer({ open, travelPackageId, requirementId, fulfillmentId, ensureFulfillment, providerName, providerReference, soldValue, onOpenChange, onCreated }: { open: boolean; travelPackageId?: string | null; requirementId: string; fulfillmentId?: string | null; ensureFulfillment?: () => Promise<ResolvedFulfillment>; providerName?: string | null; providerReference?: string | null; soldValue?: OperationalRequirementDetail['soldValue'] | StandaloneOperationalRequirementDetail['soldValue']; onOpenChange: (open: boolean) => void; onCreated: (result: { evidenceUploadFailed: boolean }) => Promise<void> | void }) {
   const { timeZone, preferredCurrency } = useTenantRegional();
   const [form, setForm] = useState<PurchaseForm>(emptyPurchase());
   const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
@@ -28,11 +28,11 @@ export function OperationalPurchaseDrawer({ open, travelPackageId, requirementId
 
   useEffect(() => {
     if (open) {
-      setForm({ ...emptyPurchase(preferredCurrency), providerName: providerName ?? '' });
+      setForm({ ...emptyPurchase(preferredCurrency), providerName: providerName ?? '', supplierReference: providerReference ?? '' });
       setEvidenceFile(null);
       setError(null);
     }
-  }, [open, fulfillmentId, preferredCurrency, providerName]);
+  }, [open, fulfillmentId, preferredCurrency, providerName, providerReference]);
 
   async function savePurchase(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

@@ -7,6 +7,7 @@ import {
 import { PrismaService } from "../../prisma/prisma.service";
 import { runTenantTransaction } from "../../tenant/tenant-transaction";
 import { procurementAuthorizationForRequirement } from "../operational-procurement-authorization";
+import { validateOperationalDetail } from "../service-details/operational-service-detail-contracts";
 import {
   CreateOperationalFulfillmentDto,
   CreateStandaloneOperationalFulfillmentDto,
@@ -93,7 +94,7 @@ type FulfillmentRecord = {
   passengers: FulfillmentPassengerRecord[];
   _count: { purchases: number };
 };
-type FulfillmentState = Omit<FulfillmentRecord, "passengers" | "_count">;
+type FulfillmentState = Omit<FulfillmentRecord, "passengers">;
 type FulfillmentSummaryRecord = Omit<FulfillmentRecord, "operationalRequirement"> & {
   _count: { passengers: number; purchases: number };
   purchases?: PurchaseSummaryRecord[];
@@ -181,6 +182,7 @@ const STATE_SELECT = {
       sourceVersionId: true,
     },
   },
+  _count: { select: { purchases: true } },
 } as const;
 
 const SUMMARY_SELECT = {
@@ -244,8 +246,6 @@ const STATUS_TRANSITIONS: Readonly<Record<FulfillmentStatus, readonly Fulfillmen
   CANCELLED: [],
 };
 const SPEND_COMMITTING_STATUSES = new Set<FulfillmentStatus>(["RESERVED", "PURCHASED", "CONFIRMED"]);
-const MAX_DETAIL_PAYLOAD_BYTES = 64 * 1024;
-
 @Injectable()
 export class OperationalFulfillmentsService {
   private readonly database: OperationsDatabase;
@@ -293,9 +293,10 @@ export class OperationalFulfillmentsService {
     actor: OperationalFulfillmentsActor,
   ) {
     const participantIds = uniqueParticipantIds(input.participantIds);
-    const fields = createFields(input);
+    prevalidateWriteFields(input);
     return this.withTenantTransaction(tenantId, async (tx) => {
       const requirement = await this.requireMutableRequirement(tx, tenantId, travelPackageId, requirementId);
+      const fields = createFields(input, requirement.servicePurposeCode);
       await this.requireRequirementParticipants(tx, tenantId, travelPackageId, requirementId, participantIds);
       await this.requireUncoveredParticipants(tx, tenantId, travelPackageId, requirementId, participantIds);
       const assignee = await this.resolveAssignee(tx, tenantId, input.assignedToUserId);
@@ -337,6 +338,72 @@ export class OperationalFulfillmentsService {
     });
   }
 
+  /** Resolves the one mutable fulfillment eligible for a purchase attempt. */
+  async ensureForPurchase(
+    tenantId: string,
+    travelPackageId: string,
+    requirementId: string,
+    input: OperationalFulfillmentPassengersDto,
+    actor: OperationalFulfillmentsActor,
+  ) {
+    const participantIds = uniqueParticipantIds(input.participantIds);
+    return this.withTenantTransaction(tenantId, async (tx) => {
+      await this.lockRequirementForEnsure(tx, tenantId, travelPackageId, requirementId);
+      const requirement = await this.requireMutableRequirement(tx, tenantId, travelPackageId, requirementId);
+      if (!isPurchaseAuthoritativeTripSource(requirement.sourceType)) {
+        throw new ConflictException("OPERATIONAL_FULFILLMENT_ENSURE_PURCHASE_SOURCE_UNSUPPORTED");
+      }
+      await this.requireRequirementParticipants(tx, tenantId, travelPackageId, requirementId, participantIds);
+      await this.requireUncoveredParticipants(tx, tenantId, travelPackageId, requirementId, participantIds);
+
+      const candidates = await tx.operationalFulfillment.findMany({
+        where: {
+          tenantId,
+          travelPackageId,
+          operationalRequirementId: requirementId,
+          status: { in: ["DRAFT", "RESERVED"] },
+        },
+        select: DETAIL_SELECT,
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      }) as FulfillmentRecord[];
+      const reusable = candidates.find((fulfillment) => hasExactParticipantScope(fulfillment, participantIds));
+      if (reusable) return { created: false, fulfillment: toDetail(reusable) };
+
+      const created = await tx.operationalFulfillment.create({
+        data: {
+          tenantId,
+          travelPackageId,
+          operationalRequirementId: requirementId,
+          servicePurposeCode: requirement.servicePurposeCode,
+          servicePurposeName: requirement.servicePurposeName,
+          status: "DRAFT",
+          createdByUserId: actor.userId,
+          createdByName: actor.name,
+        },
+        select: { id: true },
+      }) as { id: string };
+      await tx.operationalFulfillmentPassenger.createMany({
+        data: participantIds.map((travelPackageParticipantId) => ({
+          tenantId,
+          travelPackageId,
+          operationalFulfillmentId: created.id,
+          travelPackageParticipantId,
+          createdByUserId: actor.userId,
+          createdByName: actor.name,
+        })),
+      });
+      if (requirement.status === "PENDING") {
+        await tx.operationalRequirement.updateMany({
+          where: { id: requirementId, tenantId, travelPackageId, status: "PENDING" },
+          data: { status: "IN_PROGRESS", updatedByUserId: actor.userId, updatedByName: actor.name },
+        });
+      }
+      const fulfillment = await this.findFulfillment(tx, tenantId, travelPackageId, requirementId, created.id);
+      if (!fulfillment) throw new NotFoundException("OPERATIONAL_FULFILLMENT_NOT_FOUND");
+      return { created: true, fulfillment: toDetail(fulfillment) };
+    });
+  }
+
   async update(
     tenantId: string,
     travelPackageId: string,
@@ -348,7 +415,7 @@ export class OperationalFulfillmentsService {
     if (!hasUpdate(input)) throw new BadRequestException("OPERATIONAL_FULFILLMENT_UPDATE_EMPTY");
     return this.withTenantTransaction(tenantId, async (tx) => {
       const fulfillment = await this.requireMutableFulfillment(tx, tenantId, travelPackageId, requirementId, fulfillmentId);
-      const fields = updateFields(input, fulfillment);
+      const fields = updateFields(input, fulfillment, fulfillment.servicePurposeCode);
       const assignee = input.assignedToUserId === undefined ? undefined : await this.resolveAssignee(tx, tenantId, input.assignedToUserId);
       const updated = await tx.operationalFulfillment.updateMany({
         where: { id: fulfillmentId, tenantId, travelPackageId, operationalRequirementId: requirementId },
@@ -472,9 +539,10 @@ export class OperationalFulfillmentsService {
   }
 
   async createStandalone(tenantId: string, requirementId: string, input: CreateStandaloneOperationalFulfillmentDto, actor: OperationalFulfillmentsActor) {
-    const fields = createFields(input);
+    prevalidateWriteFields(input);
     return this.withTenantTransaction(tenantId, async (tx) => {
       const requirement = await this.requireMutableStandaloneRequirement(tx, tenantId, requirementId);
+      const fields = createFields(input, requirement.servicePurposeCode);
       const assignee = await this.resolveAssignee(tx, tenantId, input.assignedToUserId);
       const created = await tx.operationalFulfillment.create({
         data: {
@@ -500,7 +568,7 @@ export class OperationalFulfillmentsService {
     if (!hasUpdate(input)) throw new BadRequestException("OPERATIONAL_FULFILLMENT_UPDATE_EMPTY");
     return this.withTenantTransaction(tenantId, async (tx) => {
       const fulfillment = await this.requireMutableStandaloneFulfillment(tx, tenantId, requirementId, fulfillmentId);
-      const fields = updateFields(input, fulfillment);
+      const fields = updateFields(input, fulfillment, fulfillment.servicePurposeCode);
       const assignee = input.assignedToUserId === undefined ? undefined : await this.resolveAssignee(tx, tenantId, input.assignedToUserId);
       const updated = await tx.operationalFulfillment.updateMany({
         where: { id: fulfillmentId, tenantId, travelPackageId: null, operationalRequirementId: requirementId },
@@ -562,6 +630,17 @@ export class OperationalFulfillmentsService {
     }) as RequirementState | null;
     if (!requirement) throw new NotFoundException("OPERATIONAL_REQUIREMENT_NOT_FOUND");
     return requirement;
+  }
+
+  private async lockRequirementForEnsure(tx: OperationsTransaction, tenantId: string, travelPackageId: string, requirementId: string) {
+    await tx.$executeRaw`
+      SELECT 1
+      FROM "operational_requirements"
+      WHERE "id" = ${requirementId}
+        AND "tenantId" = ${tenantId}
+        AND "travelPackageId" = ${travelPackageId}
+      FOR UPDATE
+    `;
   }
 
   private async requireStandaloneRequirement(tx: OperationsTransaction, tenantId: string, requirementId: string): Promise<RequirementState> {
@@ -696,22 +775,25 @@ export class OperationalFulfillmentsService {
   }
 }
 
-function createFields(input: CreateOperationalFulfillmentDto | CreateStandaloneOperationalFulfillmentDto) {
+function createFields(input: CreateOperationalFulfillmentDto | CreateStandaloneOperationalFulfillmentDto, servicePurposeCode: string) {
   const fields = commonFields(input);
   validateDateRange(fields.serviceStartAt, fields.serviceEndAt);
-  validateDetail(fields.detailPayload, fields.detailVersion);
-  return { ...fields, detailPayload: persistDetailPayload(fields.detailPayload) };
+  const detail = validateDetailPair(input.detailPayload, input.detailVersion, servicePurposeCode);
+  return {
+    ...fields,
+    detailPayload: detail.provided ? persistDetailPayload(detail.payload) : undefined,
+    detailVersion: detail.provided ? detail.version : undefined,
+  };
 }
 
-function updateFields(input: UpdateOperationalFulfillmentDto, current: FulfillmentState) {
+function updateFields(input: UpdateOperationalFulfillmentDto, current: FulfillmentState, servicePurposeCode: string) {
   const fields = commonFields(input, current);
   validateDateRange(fields.serviceStartAt, fields.serviceEndAt);
-  validateDetail(fields.detailPayload, fields.detailVersion);
-  const detailProvided = input.detailPayload !== undefined || input.detailVersion !== undefined;
+  const detail = validateDetailPair(input.detailPayload, input.detailVersion, servicePurposeCode);
   return omitUndefined({
     ...fields,
-    detailPayload: detailProvided ? persistDetailPayload(fields.detailPayload) : undefined,
-    detailVersion: detailProvided ? fields.detailVersion : undefined,
+    detailPayload: detail.provided ? persistDetailPayload(detail.payload) : undefined,
+    detailVersion: detail.provided ? detail.version : undefined,
   });
 }
 
@@ -779,22 +861,41 @@ function validateDateRange(start: Date | null | undefined, end: Date | null | un
   }
 }
 
-function validateDetail(payload: unknown, version: unknown) {
-  if (payload === undefined && version === undefined) return;
+function validateDetailPair(payload: unknown, version: unknown, servicePurposeCode: string) {
+  if (payload === undefined && version === undefined) return { provided: false as const, payload: undefined, version: undefined };
   if (payload === undefined || version === undefined) {
     throw new BadRequestException("OPERATIONAL_FULFILLMENT_DETAIL_INVALID");
   }
-  if (payload === null && version === null) return;
-  if (!isJsonObject(payload) || !Number.isInteger(version) || (version as number) < 1) {
+  if (payload === null && version === null) return { provided: true as const, payload: null, version: null };
+  if (payload === null || version === null) {
     throw new BadRequestException("OPERATIONAL_FULFILLMENT_DETAIL_INVALID");
   }
-  if (Buffer.byteLength(JSON.stringify(payload), "utf8") > MAX_DETAIL_PAYLOAD_BYTES) {
-    throw new BadRequestException("OPERATIONAL_FULFILLMENT_DETAIL_TOO_LARGE");
-  }
+  return {
+    provided: true as const,
+    payload: validateOperationalDetail(servicePurposeCode, payload, version),
+    version: version as number,
+  };
 }
 
-function isJsonObject(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
+/** Reject shape/version errors before a source lookup; purpose validation follows the authoritative requirement snapshot. */
+function prevalidateWriteFields(input: CreateOperationalFulfillmentDto | CreateStandaloneOperationalFulfillmentDto) {
+  validateDateRange(
+    parsedDate(input.serviceStartAt, "OPERATIONAL_FULFILLMENT_SERVICE_DATE_INVALID"),
+    parsedDate(input.serviceEndAt, "OPERATIONAL_FULFILLMENT_SERVICE_DATE_INVALID"),
+  );
+  const payload = input.detailPayload;
+  const version = input.detailVersion;
+  if (payload === undefined && version === undefined) return;
+  if (payload === undefined || version === undefined || (payload === null) !== (version === null)) {
+    throw new BadRequestException("OPERATIONAL_FULFILLMENT_DETAIL_INVALID");
+  }
+  if (payload === null) return;
+  if (payload === null || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new BadRequestException("OPERATIONAL_FULFILLMENT_DETAIL_INVALID");
+  }
+  if (!Number.isInteger(version) || version !== 1) {
+    throw new BadRequestException("OPERATIONAL_FULFILLMENT_DETAIL_VERSION_UNSUPPORTED");
+  }
 }
 
 function omitUndefined<T extends Record<string, unknown>>(value: T) {
@@ -804,6 +905,12 @@ function omitUndefined<T extends Record<string, unknown>>(value: T) {
 function assertTransition(fulfillment: FulfillmentState, target: FulfillmentStatus) {
   if (!OPERATIONAL_FULFILLMENT_STATUSES.includes(target)) throw new BadRequestException("OPERATIONAL_FULFILLMENT_STATUS_INVALID");
   if (!STATUS_TRANSITIONS[fulfillment.status].includes(target)) throw new ConflictException("OPERATIONAL_FULFILLMENT_STATUS_TRANSITION_INVALID");
+  if (isPurchaseAuthoritativeTripSource(fulfillment.operationalRequirement.sourceType) && target === "PURCHASED" && !hasPurchase(fulfillment)) {
+    throw new ConflictException("OPERATIONAL_FULFILLMENT_PURCHASE_REQUIRED_FOR_PURCHASED_STATUS");
+  }
+  if (isPurchaseAuthoritativeTripSource(fulfillment.operationalRequirement.sourceType) && target === "CONFIRMED" && !hasPurchase(fulfillment)) {
+    throw new ConflictException("OPERATIONAL_FULFILLMENT_PURCHASE_REQUIRED_FOR_CONFIRMATION");
+  }
   if (target === "RESERVED" && !hasOperationalReference(fulfillment)) {
     throw new ConflictException("OPERATIONAL_FULFILLMENT_RESERVATION_CONTEXT_REQUIRED");
   }
@@ -818,6 +925,20 @@ function hasOperationalReference(fulfillment: FulfillmentState) {
 
 function hasConfirmationReference(fulfillment: FulfillmentState) {
   return Boolean(fulfillment.confirmationReference || fulfillment.reservationCode || fulfillment.ticketReference || fulfillment.voucherReference);
+}
+
+function hasPurchase(fulfillment: FulfillmentState) {
+  return fulfillment._count?.purchases > 0;
+}
+
+function isPurchaseAuthoritativeTripSource(sourceType: string | null | undefined) {
+  return sourceType === "TRAVEL_PACKAGE_COST_COMPONENT" || sourceType === "ADDITIONAL_SERVICE_ORDER_LINE";
+}
+
+function hasExactParticipantScope(fulfillment: FulfillmentRecord, participantIds: readonly string[]) {
+  if (fulfillment.passengers.length !== participantIds.length) return false;
+  const intended = new Set(participantIds);
+  return fulfillment.passengers.every((passenger) => intended.has(passenger.travelPackageParticipantId));
 }
 
 function listWhere(tenantId: string, travelPackageId: string | null, requirementId: string, input: ListOperationalFulfillmentsDto) {

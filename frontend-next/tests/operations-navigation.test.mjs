@@ -72,7 +72,8 @@ test('Operations readiness labels are explicit and the selected-trip workspace u
   assert.match(list, /NOT_READY: \{ label: 'No listo'/);
   assert.match(list, /NO_CRITICAL_REQUIREMENTS: \{ label: 'Sin críticos definidos'/);
   assert.match(shell, /Resumen/);
-  assert.match(shell, /Operación/);
+  assert.match(shell, /Operaciones/);
+  assert.match(shell, /Historial/);
   assert.doesNotMatch(shell, /Trabajo operativo/);
   assert.doesNotMatch(shell, /Pasajeros/);
   assert.match(shell, /OperationalUnifiedWorkspace/);

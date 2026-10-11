@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { PrismaService } from "../../prisma/prisma.service";
 import { runTenantTransaction } from "../../tenant/tenant-transaction";
 import { TRAVEL_PACKAGE_COST_COMPONENT_SOURCE } from "./operations-intake-outbox.constants";
+import { resolveOperationalServicePurpose } from "../service-details/operational-service-detail-contracts";
 import {
   OperationalWorkMaterializationError,
   type OperationalWorkSourceReader,
@@ -133,13 +134,14 @@ export function travelPackageCostComponentSourceItem(
   reference: Extract<OperationalWorkSourceReference, { scopeType: "TRAVEL_PACKAGE" }>,
   component: any,
 ): TravelPackageOperationalWorkSourceItem {
+  const purpose = resolveOperationalServicePurpose(component.costCategory.code);
   return {
     ...reference,
     sourceVersionId: component.currentSnapshot.id,
     sourceReference: null,
     sourceAcceptedAt: null,
-    servicePurposeCode: component.costCategory.code,
-    servicePurposeName: component.costCategory.displayName,
+    servicePurposeCode: purpose.code,
+    servicePurposeName: purpose.name,
     description: sourceDescription(component.title, component.description),
     // Base applicability is deliberately resolved later from stable
     // TravelPackageParticipant IDs, not client/name matching.

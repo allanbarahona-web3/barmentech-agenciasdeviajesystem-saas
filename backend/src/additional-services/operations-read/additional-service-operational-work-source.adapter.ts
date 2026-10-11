@@ -9,6 +9,7 @@ import {
 } from "../../operations/intake/operational-work-source-reader.port";
 import { ADDITIONAL_SERVICE_ORDER_LINE_SOURCE } from "../../operations/intake/operations-intake-outbox.constants";
 import { operationalAdditionalServicePresentation } from "./additional-service-operational-presentation";
+import { resolveOperationalServicePurpose } from "../../operations/service-details/operational-service-detail-contracts";
 
 export const ADDITIONAL_SERVICE_ORDER_LINE_SOURCE_TYPE = ADDITIONAL_SERVICE_ORDER_LINE_SOURCE;
 
@@ -89,13 +90,14 @@ export class AdditionalServiceOperationalWorkSourceAdapter implements Operationa
         });
       }
       const presentation = operationalAdditionalServicePresentation(line.serviceCode, line.serviceName, line.serviceDetails);
+      const purpose = resolveOperationalServicePurpose(line.serviceCode);
       return {
         ...reference,
         sourceVersionId: line.serviceDetailsVersion === null ? null : String(line.serviceDetailsVersion),
         sourceReference: null,
         sourceAcceptedAt: order.proposalApprovedAt,
-        servicePurposeCode: line.serviceCode,
-        servicePurposeName: line.serviceName,
+        servicePurposeCode: purpose.code,
+        servicePurposeName: purpose.name,
         description: descriptionFromPresentation(line.serviceName, presentation),
         participantClientIds: clientIds,
         sourceSnapshot: null,

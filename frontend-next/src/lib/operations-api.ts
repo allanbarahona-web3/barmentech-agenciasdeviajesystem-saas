@@ -90,7 +90,7 @@ export interface OperationalPassengerCommercialContext {
 export type OperationalRequirementStatus = 'PENDING' | 'IN_PROGRESS' | 'FULFILLED' | 'CANCELLED' | 'NOT_APPLICABLE';
 export type OperationalWorkSourceCategory = 'ALL' | 'BASE_TRIP' | 'ADDITIONAL_SERVICES';
 export type OperationalWorkItemSourceCategory = Exclude<OperationalWorkSourceCategory, 'ALL'> | null;
-export type OperationalRequirementSourceType = 'MANUAL' | 'CONTRACT' | 'CUSTOM_QUOTATION';
+export type OperationalRequirementSourceType = 'MANUAL' | 'CONTRACT' | 'CUSTOM_QUOTATION' | 'TRAVEL_PACKAGE_COST_COMPONENT' | 'ADDITIONAL_SERVICE_ORDER_LINE';
 export type OperationalSoldValueScope = 'EXACT_SERVICE_LINE' | 'ORDER_TOTAL' | 'QUOTATION_TOTAL' | 'CONTRACT_TOTAL' | 'PACKAGE_REFERENCE' | 'NONE';
 export interface OperationalRequirementCoverage { fulfilledPassengerCount: number; totalPassengerCount: number; }
 export interface OperationalRequirementSummary {
@@ -109,10 +109,32 @@ export interface OperationalRequirementDetail extends OperationalRequirementSumm
 export interface OperationalWorkItemsInput { page?: number; active?: boolean; status?: OperationalRequirementStatus; servicePurposeCode?: string; participantId?: string; passengerGroupId?: string; critical?: boolean; deadlineState?: 'OVERDUE' | 'DUE_SOON' | 'FUTURE' | 'NONE'; sourceCategory?: OperationalWorkSourceCategory; search?: string; }
 export interface OperationalWorkItem { id: string; travelPackageId: string; servicePurposeCode: string; servicePurposeName: string; description: string; status: OperationalRequirementStatus; critical: boolean; operationalDeadlineAt: string | null; assignedTo: { userId: string; name: string | null } | null; sourceType: string | null; sourceCategory: OperationalWorkItemSourceCategory; passengers: { total: number; preview: Array<{ travelPackageParticipantId: string; clientId: string; fullName: string; role: string }> }; sourceGroup: { id: string | null; name: string } | null; coverage: OperationalRequirementCoverage; participantCoverageStatus: 'FULFILLED' | 'PENDING' | null; soldContext: { scope: OperationalSoldValueScope; amount: string | null; currency: string | null }; finance: { state: 'ELIGIBLE' | 'BLOCKED' | 'UNAVAILABLE'; reason: string | null }; management: { fulfillmentCount: number; confirmedFulfillmentCount: number; purchaseCount: number; evidenceCount: number }; createdAt: string; updatedAt: string; }
 export interface OperationalWorkItemsPage { items: OperationalWorkItem[]; total: number; page: number; pageSize: number; totalPages: number; }
+export type OperationalTravelHistoryDatePreset = 'TODAY' | 'LAST_7_DAYS' | 'LAST_30_DAYS' | 'CUSTOM';
+export type OperationalTravelHistoryStatus = 'ALL' | 'CONFIRMED' | 'CANCELLED';
+export interface OperationalTravelHistoryEvidence { evidenceId: string; purchaseId: string | null; evidenceType: OperationalEvidenceType; originalFilename: string; mimeType: string; byteSize: number; uploadedBy: { userId: string; name: string }; createdAt: string; }
+export interface OperationalTravelHistoryPurchase { purchaseId: string; providerName: string; supplierReference: string | null; amount: string; currency: string; taxAmount: string | null; purchasedAt: string; supplierInvoiceNumber: string | null; notes: string | null; }
+export interface OperationalTravelHistoryItem {
+  fulfillmentId: string; requirementId: string; sourceType: string | null; sourceCategory: Exclude<OperationalWorkSourceCategory, 'ALL'> | null;
+  terminalStatus: 'CONFIRMED' | 'CANCELLED'; terminalAt: string;
+  trip: { travelPackageId: string; packageCode: string | null; name: string | null; departureDate: string | null; returnDate: string | null };
+  requirement: { servicePurposeCode: string; servicePurposeName: string; description: string | null; sourceId: string | null; sourceLineId: string | null; sourceReference: string | null; };
+  passengers: Array<{ travelPackageParticipantId: string; clientId: string; fullName: string; role: string }>;
+  passengerCount: number;
+  reservation: { providerName: string | null; providerReference: string | null; reservationCode: string | null; serviceStartAt: string | null; serviceEndAt: string | null; };
+  purchase: OperationalTravelHistoryPurchase | null;
+  purchaseCount: number;
+  terminalContext: { confirmationReference: string | null; voucherReference: string | null; ticketReference: string | null; confirmationNotes: string | null; };
+  evidenceCount: number;
+  evidence: OperationalTravelHistoryEvidence[];
+}
+export interface OperationalTravelHistoryDetail extends OperationalTravelHistoryItem { detailPayload: Record<string, unknown> | null; purchases: OperationalTravelHistoryPurchase[]; }
+export interface OperationalTravelHistoryPage { items: OperationalTravelHistoryItem[]; total: number; page: number; pageSize: number; totalPages: number; dateAuthority: 'FULFILLMENT_TERMINAL_UPDATED_AT'; }
+export interface OperationalTravelHistoryInput { page?: number; travelPackageId?: string; travelPackageParticipantId?: string; sourceCategory?: OperationalWorkSourceCategory; terminalStatus?: OperationalTravelHistoryStatus; datePreset?: OperationalTravelHistoryDatePreset; dateFrom?: string; dateTo?: string; }
 export type OperationalFulfillmentStatus = 'DRAFT' | 'RESERVED' | 'PURCHASED' | 'CONFIRMED' | 'CANCELLED';
 export interface OperationalFulfillmentSummary { id: string; requirementId: string; travelPackageId: string; servicePurposeCode: string; servicePurposeName: string; providerName: string | null; reservationCode: string | null; confirmationReference: string | null; status: OperationalFulfillmentStatus; serviceStartAt: string | null; serviceEndAt: string | null; assignedTo: { userId: string; name: string | null } | null; passengerCount: number; passengerPreview: string[]; purchaseCount: number; purchase: { id: string; providerName: string; supplierReference: string | null; amount: string; currency: string; taxAmount: string | null; purchasedAt: string; supplierInvoiceNumber: string | null; notes: string | null; evidenceCount: number; evidence: { id: string; originalFilename: string; mimeType: string } | null } | null; createdAt: string; updatedAt: string; }
 export interface OperationalFulfillmentDetail extends OperationalFulfillmentSummary { providerReference: string | null; voucherReference: string | null; ticketReference: string | null; detailPayload: Record<string, unknown> | null; detailVersion: number | null; confirmationNotes: string | null; passengers: Array<{ travelPackageParticipantId: string; clientId: string; fullName: string; role: string }>; }
 export interface OperationalFulfillmentsPage { items: OperationalFulfillmentSummary[]; total: number; page: number; pageSize: number; totalPages: number; }
+export interface EnsureOperationalFulfillmentResult { created: boolean; fulfillment: OperationalFulfillmentDetail; }
 export interface FulfillmentInput { participantIds?: string[]; providerName?: string | null; providerReference?: string | null; reservationCode?: string | null; confirmationReference?: string | null; voucherReference?: string | null; ticketReference?: string | null; serviceStartAt?: string | null; serviceEndAt?: string | null; confirmationNotes?: string | null; }
 export interface OperationalPurchase {
   id: string; fulfillmentId: string; travelPackageId: string; providerName: string; supplierReference: string | null;
@@ -173,6 +195,22 @@ export function getOperationalPassengerCommercialContext(travelPackageId: string
   return operationsRequest(`/operations/travel-packages/${encodeURIComponent(travelPackageId)}/passengers/${encodeURIComponent(participantId)}/commercial-context`, 'GET');
 }
 
+export function listOperationalTravelHistory(input: OperationalTravelHistoryInput = {}): Promise<OperationalTravelHistoryPage> {
+  const params = new URLSearchParams({ page: String(input.page ?? 1) });
+  if (input.travelPackageId) params.set('travelPackageId', input.travelPackageId);
+  if (input.travelPackageParticipantId) params.set('travelPackageParticipantId', input.travelPackageParticipantId);
+  if (input.sourceCategory && input.sourceCategory !== 'ALL') params.set('sourceCategory', input.sourceCategory);
+  if (input.terminalStatus && input.terminalStatus !== 'ALL') params.set('terminalStatus', input.terminalStatus);
+  if (input.datePreset) params.set('datePreset', input.datePreset);
+  if (input.datePreset === 'CUSTOM' && input.dateFrom) params.set('dateFrom', input.dateFrom);
+  if (input.datePreset === 'CUSTOM' && input.dateTo) params.set('dateTo', input.dateTo);
+  return operationsRequest(`/operations/travel-packages/history?${params.toString()}`, 'GET');
+}
+
+export function getOperationalTravelHistoryDetail(fulfillmentId: string): Promise<OperationalTravelHistoryDetail> {
+  return operationsRequest(`/operations/travel-packages/history/${encodeURIComponent(fulfillmentId)}`, 'GET');
+}
+
 async function operationsRequest<T>(path: string, method: 'GET' | 'POST' | 'PATCH' | 'DELETE', body?: unknown): Promise<T> {
   const response = await fetchApi(path, { method, body: body === undefined ? undefined : JSON.stringify(body) });
   if (!response.ok) { const error = await response.json().catch(() => ({})); throw new Error(error.message || `API Error: ${response.statusText}`); }
@@ -189,7 +227,7 @@ export function getOperationalRequirement(travelPackageId: string, requirementId
 function fulfillmentsPath(travelPackageId: string, requirementId: string, suffix = '') { return `${requirementsPath(travelPackageId, `/${encodeURIComponent(requirementId)}/fulfillments`)}${suffix}`; }
 export function listOperationalFulfillments(travelPackageId: string, requirementId: string, page = 1): Promise<OperationalFulfillmentsPage> { return operationsRequest(`${fulfillmentsPath(travelPackageId, requirementId)}?${new URLSearchParams({ page: String(page), pageSize: '20' })}`, 'GET'); }
 export function getOperationalFulfillment(travelPackageId: string, requirementId: string, fulfillmentId: string): Promise<OperationalFulfillmentDetail> { return operationsRequest(fulfillmentsPath(travelPackageId, requirementId, `/${encodeURIComponent(fulfillmentId)}`), 'GET'); }
-export function createOperationalFulfillment(travelPackageId: string, requirementId: string, input: FulfillmentInput & { participantIds: string[] }): Promise<OperationalFulfillmentDetail> { return operationsRequest(fulfillmentsPath(travelPackageId, requirementId), 'POST', input); }
+export function ensureOperationalFulfillment(travelPackageId: string, requirementId: string, participantIds: string[]): Promise<EnsureOperationalFulfillmentResult> { return operationsRequest(fulfillmentsPath(travelPackageId, requirementId, '/ensure'), 'POST', { participantIds }); }
 export function updateOperationalFulfillment(travelPackageId: string, requirementId: string, fulfillmentId: string, input: FulfillmentInput): Promise<OperationalFulfillmentDetail> { return operationsRequest(fulfillmentsPath(travelPackageId, requirementId, `/${encodeURIComponent(fulfillmentId)}`), 'PATCH', input); }
 export function addOperationalFulfillmentPassengers(travelPackageId: string, requirementId: string, fulfillmentId: string, participantIds: string[]): Promise<OperationalFulfillmentDetail> { return operationsRequest(fulfillmentsPath(travelPackageId, requirementId, `/${encodeURIComponent(fulfillmentId)}/passengers`), 'POST', { participantIds }); }
 export function removeOperationalFulfillmentPassengers(travelPackageId: string, requirementId: string, fulfillmentId: string, participantIds: string[]): Promise<OperationalFulfillmentDetail> { return operationsRequest(fulfillmentsPath(travelPackageId, requirementId, `/${encodeURIComponent(fulfillmentId)}/passengers`), 'DELETE', { participantIds }); }

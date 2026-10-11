@@ -6,11 +6,12 @@ const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
 const shell = () => read('../src/components/operations/operations-trip-shell.tsx');
 const workspace = () => read('../src/components/operations/operational-unified-workspace.tsx');
 
-test('selected-trip context header is composed above both Resumen and Operación content', () => {
+test('selected-trip context header is composed above Resumen, Operaciones, and Historial content', () => {
   const source = shell();
   assert.match(source, /<OperationsTimingProfiler id="operations-trip-header"><TripContextHeader trip=\{tripContext\} \/><\/OperationsTimingProfiler><WorkspaceNav/);
   assert.match(source, /hidden=\{section !== 'summary'\}/);
   assert.match(source, /<OperationalUnifiedWorkspace travelPackageId=\{travelPackageId\}/);
+  assert.match(source, /<OperationalTravelHistory travelPackageId=\{travelPackageId\} \/>/);
 });
 
 test('context header is persistent through passenger, group, global queue, and management composition', () => {
@@ -31,7 +32,8 @@ test('context uses one lightweight travel-package read and never the passenger o
 test('switching workspace sections keeps visited views mounted and preserves selected-trip request ownership', () => {
   const source = shell();
   assert.match(source, /useState\(false\)/);
-  assert.match(source, /operationVisited \? <div hidden=\{section !== 'operation'\}>/);
+  assert.match(source, /operationsVisited \? <div hidden=\{section !== 'operations'\}>/);
+  assert.match(source, /historyVisited \? <div hidden=\{section !== 'history'\}>/);
   assert.match(source, /<div hidden=\{section !== 'summary'\}><OperationsTimingProfiler id="operations-readiness-dashboard"><OperationalReadinessDashboard/);
-  assert.match(source, /const selectSection = \(next: Section\) => \{ if \(next === 'operation'\) setOperationVisited\(true\); setSection\(next\); \}/);
+  assert.match(source, /const selectSection = \(next: Section\) => \{ if \(next === 'operations'\) setOperationsVisited\(true\); if \(next === 'history'\) setHistoryVisited\(true\); setSection\(next\); \}/);
 });

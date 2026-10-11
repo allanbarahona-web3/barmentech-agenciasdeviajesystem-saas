@@ -14,6 +14,8 @@ import { OperationalPassengerRosterController } from "./operational-passenger-ro
 import { OperationalPassengerRosterService } from "./operational-passenger-roster.service";
 import { OperationalPassengerCommercialContextController } from "./operational-passenger-commercial-context.controller";
 import { OperationalPassengerCommercialContextService } from "./operational-passenger-commercial-context.service";
+import { OperationalTravelHistoryController } from "./operational-travel-history.controller";
+import { OperationalTravelHistoryService } from "./operational-travel-history.service";
 
-@Module({ imports: [ContractsModule, FinanceModule, AdditionalServicesModule], controllers: [OperationalReadinessController, OperationalTravelPackageSummariesController, OperationalPassengerOverviewController, OperationalPassengerRosterController, OperationalPassengerCommercialContextController, OperationalWorkItemsController], providers: [OperationalReadinessService, OperationalTravelPackageSummariesService, OperationalPassengerOverviewService, OperationalPassengerRosterService, OperationalPassengerCommercialContextService, OperationalWorkItemsService] })
+@Module({ imports: [ContractsModule, FinanceModule, AdditionalServicesModule], controllers: [OperationalReadinessController, OperationalTravelPackageSummariesController, OperationalPassengerOverviewController, OperationalPassengerRosterController, OperationalPassengerCommercialContextController, OperationalWorkItemsController, OperationalTravelHistoryController], providers: [OperationalReadinessService, OperationalTravelPackageSummariesService, OperationalPassengerOverviewService, OperationalPassengerRosterService, OperationalPassengerCommercialContextService, OperationalWorkItemsService, OperationalTravelHistoryService] })
 export class OperationalReadinessModule {}

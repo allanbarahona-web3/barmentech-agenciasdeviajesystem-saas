@@ -1,11 +1,107 @@
-import assert from 'node:assert/strict'; import { readFileSync } from 'node:fs'; import test from 'node:test';
-const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8'); const source = () => read('../src/components/operations/operational-fulfillments-workspace.tsx'); const drawer = () => read('../src/components/operations/operational-purchase-drawer.tsx');
-test('Service management remains need-scoped and operationally executable', () => { const text = source(); for (const label of ['Gestión del servicio', 'No hay reservas o gestiones creadas para esta necesidad operativa.', 'Nueva gestión', 'Confirmado']) assert.match(text, new RegExp(label)); assert.match(text, /getOperationalRequirement\(travelPackageId, requirementId\)/); assert.match(text, /listOperationalFulfillments\(travelPackageId, requirementId, page\)/); });
-test('Fulfillment creation remains Requirement-scoped without a management-row passenger mutation action', () => { const text = source(); assert.match(text, /passengers=\{requirement\?\.passengers/); assert.match(text, /Seleccione al menos un pasajero/); assert.doesNotMatch(text, /addOperationalFulfillmentPassengers|removeOperationalFulfillmentPassengers|Guardar pasajeros|Pasajeros de la gestión/); assert.doesNotMatch(text, /status:\s*['"]DRAFT['"]/); });
-test('Fulfillment UI has no Operations assignee control or assignee mutation', () => { const text = source(); assert.doesNotMatch(text, /Responsable|assignedToUserId|listTenantUsers|assignedTo\?\./); });
-test('Management shows scoped passenger names and purchase-aware row actions', () => { const text = source(); for (const label of ['Pasajeros', 'Reservar', 'Registrar compra', 'Confirmar', '¿Cancelar gestión?', 'solo este intento de reserva o proveedor', 'compra registrada']) assert.match(text, new RegExp(label)); assert.match(text, /passengerNames\(item\.passengerPreview, item\.passengerCount\)/); assert.match(text, /passengerNames\(requirement\.passengers\.map/); assert.match(text, /Grupo: \{requirement\.source\.passengerGroup\.name\}/); assert.match(text, /item\.purchaseCount === 0/); assert.match(text, /item\.status === 'DRAFT' \|\| item\.status === 'RESERVED'/); assert.match(text, /const purchased = item\.status === 'PURCHASED'/); assert.match(text, /variant=\{purchased \? 'default' : 'outline'\}/); assert.match(text, /OperationalPurchaseDrawer/); assert.match(text, /onRegisterPurchase=\{\(\) => openDirectPurchase\(item\)\}/); assert.match(text, /fulfillmentId=\{directPurchaseTarget\.id\}/); assert.match(text, /await load\(\)/); assert.doesNotMatch(text, /openPurchaseOnLoad|openPurchaseDirect|setPurchasesFulfillment\(detail\).*Registrar compra/); assert.doesNotMatch(text, />Comprado</); assert.doesNotMatch(text, /createOperationalPurchase|createOperationalEvidence|uploadEvidence/); assert.match(drawer(), /onOpenChange\(false\);[\s\S]*await onCreated/); });
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import test from 'node:test';
 
-test('Management keeps multiple Purchase creation in Ver while terminal rows expose no spend action', () => { const text = source(); assert.match(text, /onPurchases=\{\(\) => setPurchasesFulfillment\(item\)\}/); assert.match(text, />Ver</); assert.doesNotMatch(text, /Ver compras y documentos|>Pasajeros<\/Button>|onPassengers|passengerTarget/); assert.match(text, /item\.status !== 'CONFIRMED' && item\.status !== 'CANCELLED'/); assert.match(text, /item\.status === 'RESERVED' \|\| purchased/); });
-test('Management row opens Purchases/Documents directly without a repeated detail modal or extra fetch', () => { const text = source(); assert.match(text, /onPurchases=\{\(\) => setPurchasesFulfillment\(item\)\}/); assert.match(text, /if \(purchasesFulfillment\) return <OperationalPurchasesEvidenceWorkspace/); assert.match(text, /onBack=\{\(\) => setPurchasesFulfillment\(null\)\}/); assert.doesNotMatch(text, /Ver detalle|Detalle de gestión|detailTarget|onDetail/); assert.doesNotMatch(text, /getOperationalFulfillment\(travelPackageId, requirementId, item\.id\)\.then\(setPurchasesFulfillment\)/); });
-test('Fully covered work closes ordinary management while partial coverage preselects only uncovered passengers', () => { const text = source(); assert.match(text, /completeCoverage\(requirement\.coverage\)/); assert.match(text, /!requirement\.confirmedPassengerIds\.includes/); assert.match(text, /\{!executionComplete \? <Button[^>]*>.*Nueva gestión/); assert.match(text, /!terminalRequirement\(requirement\) && !executionComplete/); });
-test('Confirmation and cancellation notify mounted read models, while terminal rows retain only Ver', () => { const text = source(); assert.match(text, /if \(target === 'CONFIRMED' \|\| target === 'CANCELLED'\) onCoverageChanged\?\.\(\)/); assert.match(text, /const mutable = item\.status !== 'CONFIRMED' && item\.status !== 'CANCELLED'/); assert.match(text, /item\.status === 'RESERVED' \|\| purchased/); assert.match(text, /purchased \? <Button[^>]*>Ver<\/Button>/); assert.match(text, /!purchased \? <Button[^>]*>Ver<\/Button>/); });
+const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
+const workspace = () => read('../src/components/operations/operational-fulfillments-workspace.tsx');
+const drawer = () => read('../src/components/operations/operational-purchase-drawer.tsx');
+const api = () => read('../src/lib/operations-api.ts');
+
+test('Travel and Additional requirements receive the linear execution entry with no legacy creation controls', () => {
+  const text = workspace();
+  assert.match(text, /TRAVEL_PACKAGE_COST_COMPONENT/);
+  assert.match(text, /ADDITIONAL_SERVICE_ORDER_LINE/);
+  assert.match(text, /function isLinearPurchaseSource/);
+  for (const label of ['Reservar', 'Registrar compra']) assert.match(text, new RegExp(label));
+  assert.match(text, /canStartExecution && linearExecution \? <div className="flex flex-wrap gap-2"><Button type="button" variant="outline" onClick=\{openNewReservation\}>Reservar/);
+  assert.match(text, /onClick=\{\(\) => void openDirectPurchase\(\)\}>Registrar compra/);
+  assert.doesNotMatch(text, /Nueva gestión|Crear gestión|openCreate|createOperationalFulfillment/);
+  assert.doesNotMatch(api(), /export function createOperationalFulfillment/);
+});
+
+test('Direct purchase ensures an exact uncovered participant scope and retains the resolved fulfillment for retry', () => {
+  const text = workspace();
+  const client = api();
+  assert.match(text, /!requirement\.confirmedPassengerIds\.includes/);
+  assert.match(text, /const \[purchaseTarget, setPurchaseTarget\]/);
+  assert.match(text, /const \[purchaseScope, setPurchaseScope\]/);
+  assert.match(text, /async function ensurePurchaseFulfillment\(\)/);
+  assert.match(text, /ensureOperationalFulfillment\(travelPackageId, requirementId, purchaseScope\)/);
+  assert.match(text, /setPurchaseTarget\(result\.fulfillment\)/);
+  assert.match(text, /fulfillmentId=\{purchaseTarget\?\.id\} ensureFulfillment=\{purchaseTarget \? undefined : ensurePurchaseFulfillment\}/);
+  assert.match(client, /export function ensureOperationalFulfillment/);
+  assert.match(client, /fulfillmentsPath\(travelPackageId, requirementId, '\/ensure'\)/);
+  assert.match(client, /\{ participantIds \}/);
+});
+
+test('Reservation uses ensure/reuse, preserves selected identities, and does not create a purchase', () => {
+  const text = workspace();
+  assert.match(text, /formMode === 'reserve'/);
+  assert.match(text, /ensureOperationalFulfillment\(travelPackageId, requirementId, \[\.\.\.selected\]\)/);
+  assert.match(text, /updateOperationalFulfillment\(travelPackageId, requirementId, fulfillment\.id, input\)/);
+  assert.match(text, /transitionOperationalFulfillment\(travelPackageId, requirementId, updated\.id, 'RESERVED'\)/);
+  assert.match(text, /formMode === 'reserve' && !editing/);
+  assert.match(text, /La reserva es una intención operativa; no registra una compra\./);
+  assert.doesNotMatch(text, /createOperationalPurchase|uploadOperationalEvidence/);
+});
+
+test('Reserved purchases reuse fulfillment context and prefill the supplier reference safely', () => {
+  const text = workspace();
+  const purchaseDrawer = drawer();
+  assert.match(text, /getOperationalFulfillment\(travelPackageId, requirementId, item\.id\)/);
+  assert.match(text, /providerName=\{purchaseTarget\?\.providerName\}/);
+  assert.match(text, /providerReference=\{purchaseTarget\?\.providerReference\}/);
+  assert.match(purchaseDrawer, /providerReference\?: string \| null/);
+  assert.match(purchaseDrawer, /supplierReference: providerReference \?\? ''/);
+  assert.doesNotMatch(purchaseDrawer, /reservationNotes/);
+});
+
+test('Purchased work is summarized, confirms through persisted context, and exposes no regular duplicate purchase action', () => {
+  const text = workspace();
+  assert.match(text, /Pendiente de compra/);
+  assert.match(text, /Pendiente de confirmación/);
+  assert.match(text, /item\.purchase\.supplierInvoiceNumber/);
+  assert.match(text, /item\.purchase\.evidenceCount/);
+  assert.match(text, /formatDateTime\(item\.purchase\.purchasedAt\)/);
+  assert.match(text, /const canRegisterPurchase = \(item\.status === 'DRAFT' \|\| item\.status === 'RESERVED'\) && item\.purchaseCount === 0/);
+  assert.match(text, /const canConfirm = linearExecution \? purchased/);
+  assert.match(text, /title="Confirmar gestión"/);
+  assert.match(text, /updateOperationalFulfillment\(travelPackageId, requirementId, confirmationTarget\.id, \{ confirmationReference: reference \}\)/);
+  assert.match(text, /transitionOperationalFulfillment\(travelPackageId, requirementId, confirmationTarget\.id, 'CONFIRMED'\)/);
+  assert.match(text, /onCoverageChanged\?\.\(\)/);
+});
+
+test('Management remains need-scoped, keeps passenger labels, cancellation, view, and reservation-only editing', () => {
+  const text = workspace();
+  for (const label of ['Gestión del servicio', 'No hay reservas o gestiones creadas para esta necesidad operativa.', 'Pasajeros', '¿Cancelar gestión?', 'Cancelar gestión', 'Ver']) assert.match(text, new RegExp(label));
+  assert.match(text, /getOperationalRequirement\(travelPackageId, requirementId\)/);
+  assert.match(text, /listOperationalFulfillments\(travelPackageId, requirementId, page\)/);
+  assert.match(text, /passengerNames\(item\.passengerPreview, item\.passengerCount\)/);
+  assert.match(text, /passengerNames\(requirement\.passengers\.map/);
+  assert.match(text, /onPurchases=\{\(\) => setPurchasesFulfillment\(item\)\}/);
+  assert.match(text, /if \(purchasesFulfillment\) return <OperationalPurchasesEvidenceWorkspace/);
+  assert.match(text, />Editar reserva<\/Button>/);
+  assert.doesNotMatch(text, />Editar<\/Button>/);
+  assert.match(text, /onClick=\{\(\) => linearExecution \? onReserve\(\) : onMove\('RESERVED'\)\}/);
+  assert.doesNotMatch(text, /addOperationalFulfillmentPassengers|removeOperationalFulfillmentPassengers|assignedToUserId|listTenantUsers/);
+});
+
+test('Travel and Additional action and fulfillment status semantics use shared design-system variants', () => {
+  const text = workspace();
+  const purchasesEvidence = read('../src/components/operations/operational-purchases-evidence-workspace.tsx');
+  assert.match(text, /<Button size="sm" variant="outline" onClick=\{\(\) => linearExecution \? onReserve\(\) : onMove\('RESERVED'\)\}/);
+  assert.match(text, /<Button type="submit" variant="outline" form="fulfillment-form"/);
+  assert.match(text, /<Button size="sm" onClick=\{onRegisterPurchase\}/);
+  assert.match(text, /<Button size="sm" variant="success" onClick=\{\(\) => linearExecution \? onConfirm\(\) : onMove\('CONFIRMED'\)\}/);
+  assert.match(text, /<Button size="sm" variant="destructive" onClick=\{onCancel\}/);
+  assert.match(text, /<Button size="sm" variant="ghost" onClick=\{onEditReservation\}/);
+  assert.match(text, /status === 'CANCELLED' \? 'destructive' : status === 'RESERVED' \? 'warning' : status === 'PURCHASED' \|\| status === 'CONFIRMED' \? 'success' : 'outline'/);
+  assert.match(purchasesEvidence, /function fulfillmentStatusVariant\(status: OperationalFulfillmentDetail\['status'\]\) \{ return status === 'CANCELLED' \? 'destructive' : status === 'RESERVED' \? 'warning' : status === 'PURCHASED' \|\| status === 'CONFIRMED' \? 'success' : 'outline'; \}/);
+});
+
+test('Standalone Custom Quotation uses the same drawer without changing its standalone flow', () => {
+  const standalone = read('../src/components/operations/standalone-operational-requirements-workspace.tsx');
+  assert.match(standalone, /createStandaloneOperationalFulfillment/);
+  assert.match(standalone, /<OperationalPurchaseDrawer open/);
+  assert.doesNotMatch(standalone, /ensureOperationalFulfillment/);
+});

@@ -1392,6 +1392,7 @@ model OperationalFulfillment {
   @@unique([id, tenantId], map: "operational_fulfillments_id_tenant_key")
   @@unique([id, tenantId, travelPackageId], map: "operational_fulfillments_id_tenant_travel_key")
   @@index([tenantId, travelPackageId, operationalRequirementId, status, createdAt, id], map: "operational_fulfillments_travel_requirement_status_created_idx")
+  @@index([tenantId, travelPackageId, status, updatedAt(sort: Desc), id], map: "operational_fulfillments_travel_status_updated_id_idx")
   @@map("operational_fulfillments")
 }
 
@@ -1410,6 +1411,7 @@ model OperationalFulfillmentPassenger {
 
   @@unique([tenantId, operationalFulfillmentId, travelPackageParticipantId], map: "ofp_tenant_fulfillment_participant_key")
   @@index([tenantId, travelPackageId, travelPackageParticipantId, operationalFulfillmentId], map: "ofp_tenant_travel_participant_fulfillment_idx")
+  @@index([tenantId, travelPackageParticipantId, operationalFulfillmentId], map: "ofp_tenant_participant_fulfillment_idx")
   @@map("operational_fulfillment_passengers")
 }
 

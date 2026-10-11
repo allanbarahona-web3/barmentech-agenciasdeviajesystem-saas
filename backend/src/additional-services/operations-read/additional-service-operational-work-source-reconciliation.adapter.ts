@@ -10,6 +10,7 @@ import {
 } from "../../operations/intake/operational-work-source-reconciliation.port";
 import type { TravelPackageOperationalWorkSourceItem, TravelPackageOperationalWorkSourceReference } from "../../operations/intake/operational-work-source-reader.port";
 import { operationalAdditionalServicePresentation } from "./additional-service-operational-presentation";
+import { resolveOperationalServicePurpose } from "../../operations/service-details/operational-service-detail-contracts";
 
 @Injectable()
 export class AdditionalServiceOperationalWorkSourceReconciliationAdapter implements OperationalWorkSourceReconciliationReader {
@@ -90,6 +91,7 @@ function lineSelect() {
 
 function sourceItem(line: any): TravelPackageOperationalWorkSourceItem {
   const presentation = operationalAdditionalServicePresentation(line.serviceCode, line.serviceName, line.serviceDetails);
+  const purpose = resolveOperationalServicePurpose(line.serviceCode);
   const participantClientIds = [...new Set(
     line.participants
       .map((participant: { clientId: unknown }) => typeof participant.clientId === "string" ? participant.clientId.trim() : "")
@@ -105,8 +107,8 @@ function sourceItem(line: any): TravelPackageOperationalWorkSourceItem {
     sourceVersionId: line.serviceDetailsVersion === null ? null : String(line.serviceDetailsVersion),
     sourceReference: null,
     sourceAcceptedAt: line.order.proposalApprovedAt,
-    servicePurposeCode: line.serviceCode,
-    servicePurposeName: line.serviceName,
+    servicePurposeCode: purpose.code,
+    servicePurposeName: purpose.name,
     description: descriptionFromPresentation(line.serviceName, presentation),
     participantClientIds,
     sourceSnapshot: null,

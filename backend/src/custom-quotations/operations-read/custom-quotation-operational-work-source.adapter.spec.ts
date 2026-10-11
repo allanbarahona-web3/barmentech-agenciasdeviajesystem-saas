@@ -11,7 +11,7 @@ describe("CustomQuotationOperationalWorkSourceAdapter", () => {
     sourceLineId: "version-line-a",
   };
 
-  it("resolves one accepted immutable version line with exact source identity and commercial value", async () => {
+  it("resolves AIRFARE from immutable Pricing lineage with exact source identity and commercial value", async () => {
     const c = context();
     c.tx.customQuotationVersionLine.findFirst.mockResolvedValue(line());
 
@@ -20,8 +20,8 @@ describe("CustomQuotationOperationalWorkSourceAdapter", () => {
       sourceVersionId: "version-a",
       sourceReference: null,
       sourceAcceptedAt: new Date("2026-10-01T12:00:00.000Z"),
-      servicePurposeCode: "CUSTOM_QUOTATION",
-      servicePurposeName: "Cotización personalizada",
+      servicePurposeCode: "AIRFARE",
+      servicePurposeName: "Airfare",
       description: "Traslado privado",
       sourceSnapshot: {
         customQuotationVersionId: "version-a",
@@ -29,13 +29,16 @@ describe("CustomQuotationOperationalWorkSourceAdapter", () => {
         description: "Traslado privado",
         soldAmount: "700.00000",
         currency: "USD",
+        pricingCalculationComponentLineId: "pricing-line-a",
+        pricingCostCategoryCode: "AIRFARE",
+        pricingCostCategoryDisplayName: "Airfare",
       },
       soldValueScope: "EXACT_SERVICE_LINE",
       soldValue: { scope: "EXACT_SERVICE_LINE", amount: "700.00000", currency: "USD" },
     });
     expect(c.tx.customQuotationVersionLine.findFirst).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: "version-line-a", tenantId: "tenant-a", customQuotationVersionId: "version-a" },
-      select: expect.not.objectContaining({ customQuotationLine: expect.anything() }),
+      select: expect.objectContaining({ pricingCalculationComponentLine: expect.anything() }),
     }));
     expect((c.tx as Record<string, unknown>).customQuotationLine).toBeUndefined();
   });
@@ -76,6 +79,29 @@ describe("CustomQuotationOperationalWorkSourceAdapter", () => {
     });
     expect(unsupported.tx.customQuotationVersionLine.findFirst).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ["LODGING", "LODGING"],
+    ["TOUR", "TOUR_ACTIVITY"],
+    ["TRANSPORTATION", "TRANSPORTATION"],
+    ["OTHER", "GENERIC"],
+  ])("maps immutable Pricing category %s to %s", async (category, expectedPurpose) => {
+    const c = context();
+    c.tx.customQuotationVersionLine.findFirst.mockResolvedValue(line({
+      pricingCalculationComponentLine: { id: "pricing-line-a", costCategoryCode: category, costCategoryDisplayName: category },
+    }));
+    await expect(c.adapter.readSourceItem(reference)).resolves.toMatchObject({ servicePurposeCode: expectedPurpose });
+  });
+
+  it("falls back to GENERIC when immutable Pricing lineage is missing and never infers description", async () => {
+    const c = context();
+    c.tx.customQuotationVersionLine.findFirst.mockResolvedValue(line({
+      description: "Vuelo AIRFARE a Madrid",
+      pricingCalculationComponentLineId: null,
+      pricingCalculationComponentLine: null,
+    }));
+    await expect(c.adapter.readSourceItem(reference)).resolves.toMatchObject({ servicePurposeCode: "GENERIC" });
+  });
 });
 
 function context() {
@@ -89,6 +115,8 @@ function line(overrides: Record<string, unknown> = {}) {
     id: "version-line-a",
     soldAmount: "700.00000",
     description: "Traslado privado",
+    pricingCalculationComponentLineId: "pricing-line-a",
+    pricingCalculationComponentLine: { id: "pricing-line-a", costCategoryCode: "AIRFARE", costCategoryDisplayName: "Airfare" },
     customQuotationVersion: version(),
     ...overrides,
   };

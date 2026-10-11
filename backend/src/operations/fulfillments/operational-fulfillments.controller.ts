@@ -36,6 +36,12 @@ export class OperationalFulfillmentsController {
     return this.service.create(request.user.tenantId, travelPackageId, requirementId, body, actor(request));
   }
 
+  @Post("ensure")
+  @Roles(UserRole.ADMIN, UserRole.OPERACIONES)
+  ensureForPurchase(@Req() request: OperationsRequest, @Param("travelPackageId") travelPackageId: string, @Param("requirementId") requirementId: string, @Body() body: OperationalFulfillmentPassengersDto) {
+    return this.service.ensureForPurchase(request.user.tenantId, travelPackageId, requirementId, body, actor(request));
+  }
+
   @Patch(":fulfillmentId")
   @Roles(UserRole.ADMIN, UserRole.OPERACIONES)
   update(@Req() request: OperationsRequest, @Param("travelPackageId") travelPackageId: string, @Param("requirementId") requirementId: string, @Param("fulfillmentId") fulfillmentId: string, @Body() body: UpdateOperationalFulfillmentDto) {

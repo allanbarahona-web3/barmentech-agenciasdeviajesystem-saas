@@ -101,6 +101,32 @@ describe("OperationalFulfillmentsService", () => {
     expect(c.tx.operationalFulfillment.create.mock.calls[0][0].data.detailVersion).toBeNull();
   });
 
+  it("persists only a service-purpose-compatible typed detail pair", async () => {
+    const c = context();
+    c.tx.operationalRequirement.findFirst.mockResolvedValue(requirement());
+    c.tx.travelPackageParticipant.findMany.mockResolvedValue([{ id: "participant-a" }]);
+    c.tx.operationalRequirementPassenger.findMany.mockResolvedValue([{ travelPackageParticipantId: "participant-a" }]);
+    c.tx.operationalFulfillment.create.mockResolvedValue({ id: fulfillmentId });
+    c.tx.operationalFulfillmentPassenger.createMany.mockResolvedValue({ count: 1 });
+    c.tx.operationalRequirement.updateMany.mockResolvedValue({ count: 1 });
+    c.tx.operationalFulfillment.findFirst.mockResolvedValue(fulfillment());
+
+    await c.service.create(tenantId, travelPackageId, requirementId, createInput({
+      detailPayload: { propertyName: " Hotel Central ", roomCount: 2 }, detailVersion: 1,
+    }), actor);
+    expect(c.tx.operationalFulfillment.create.mock.calls[0][0].data).toMatchObject({
+      detailPayload: { propertyName: "Hotel Central", roomCount: 2 }, detailVersion: 1,
+    });
+
+    const mismatch = context();
+    mismatch.tx.operationalRequirement.findFirst.mockResolvedValue(requirement());
+    await expect(mismatch.service.create(tenantId, travelPackageId, requirementId, createInput({
+      detailPayload: { flightNumber: "CM123" }, detailVersion: 1,
+    }), actor)).rejects.toMatchObject({
+      response: expect.objectContaining({ message: "OPERATIONAL_FULFILLMENT_DETAIL_PURPOSE_MISMATCH" }),
+    });
+  });
+
   it.each([
     [createInput({ detailPayload: { booking: "A" }, detailVersion: null }), "OPERATIONAL_FULFILLMENT_DETAIL_INVALID"],
     [createInput({ detailPayload: { booking: "A" } }), "OPERATIONAL_FULFILLMENT_DETAIL_INVALID"],
@@ -179,36 +205,157 @@ describe("OperationalFulfillmentsService", () => {
     expect(c.tx.operationalFulfillment.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ status: "DRAFT" }), data: expect.objectContaining({ status: "RESERVED" }) }));
   });
 
-  it.each(["RESERVED", "PURCHASED", "CONFIRMED"] as const)("uses the exact Additional Service source for %s transitions", async (targetStatus) => {
+  it("allows DRAFT → RESERVED for Additional Service with reservation context", async () => {
     const c = context();
-    const initialStatus = targetStatus === "RESERVED" ? "DRAFT" : targetStatus === "PURCHASED" ? "RESERVED" : "PURCHASED";
-    const transitionContext = targetStatus === "CONFIRMED" ? { confirmationReference: "C-1" } : { reservationCode: "R-1" };
     const source = requirement({ sourceType: "ADDITIONAL_SERVICE_ORDER_LINE", sourceId: "order-a", sourceLineId: "line-a" });
     c.tx.operationalFulfillment.findFirst
-      .mockResolvedValueOnce(fulfillmentState({ status: initialStatus, ...transitionContext, operationalRequirement: source }))
-      .mockResolvedValueOnce(fulfillmentState({ status: initialStatus, ...transitionContext, operationalRequirement: source }))
-      .mockResolvedValueOnce(fulfillment({ status: targetStatus, ...transitionContext, operationalRequirement: source }));
+      .mockResolvedValueOnce(fulfillmentState({ reservationCode: "R-1", operationalRequirement: source }))
+      .mockResolvedValueOnce(fulfillmentState({ reservationCode: "R-1", operationalRequirement: source }))
+      .mockResolvedValueOnce(fulfillment({ status: "RESERVED", reservationCode: "R-1", operationalRequirement: source }));
     c.finance.readMany.mockResolvedValue([{ eligibility: "ELIGIBLE", reason: "SETTLED" }]);
     c.tx.operationalFulfillment.updateMany.mockResolvedValue({ count: 1 });
 
-    await expect(c.service.transitionStatus(tenantId, travelPackageId, requirementId, fulfillmentId, { targetStatus }, actor)).resolves.toMatchObject({ status: targetStatus });
+    await expect(c.service.transitionStatus(tenantId, travelPackageId, requirementId, fulfillmentId, { targetStatus: "RESERVED" }, actor)).resolves.toMatchObject({ status: "RESERVED" });
     expect(c.finance.readMany).toHaveBeenCalledWith({ tenantId, sources: [{ sourceType: "ADDITIONAL_SERVICE_ORDER_LINE", sourceId: "order-a", sourceLineId: "line-a", travelPackageId }] });
   });
 
-  it.each(["RESERVED", "PURCHASED", "CONFIRMED"] as const)("progresses base work to %s without Finance", async (targetStatus) => {
+  it("allows DRAFT → RESERVED for a base component without Finance", async () => {
     const c = context();
     const source = requirement({ sourceType: "TRAVEL_PACKAGE_COST_COMPONENT", sourceId: "project-a", sourceLineId: "component-a", sourceVersionId: "snapshot-a" });
-    const initialStatus = targetStatus === "RESERVED" ? "DRAFT" : targetStatus === "PURCHASED" ? "RESERVED" : "PURCHASED";
-    const transitionContext = targetStatus === "CONFIRMED" ? { confirmationReference: "C-1" } : { reservationCode: "R-1" };
     c.tx.operationalFulfillment.findFirst
-      .mockResolvedValueOnce(fulfillmentState({ status: initialStatus, ...transitionContext, operationalRequirement: source }))
-      .mockResolvedValueOnce(fulfillmentState({ status: initialStatus, ...transitionContext, operationalRequirement: source }))
-      .mockResolvedValueOnce(fulfillment({ status: targetStatus, ...transitionContext, operationalRequirement: source }));
+      .mockResolvedValueOnce(fulfillmentState({ reservationCode: "R-1", operationalRequirement: source }))
+      .mockResolvedValueOnce(fulfillmentState({ reservationCode: "R-1", operationalRequirement: source }))
+      .mockResolvedValueOnce(fulfillment({ status: "RESERVED", reservationCode: "R-1", operationalRequirement: source }));
     c.tx.operationalFulfillment.updateMany.mockResolvedValue({ count: 1 });
-    await expect(c.service.transitionStatus(tenantId, travelPackageId, requirementId, fulfillmentId, { targetStatus }, actor))
-      .resolves.toMatchObject({ status: targetStatus });
+    await expect(c.service.transitionStatus(tenantId, travelPackageId, requirementId, fulfillmentId, { targetStatus: "RESERVED" }, actor))
+      .resolves.toMatchObject({ status: "RESERVED" });
     expect(c.finance.readMany).not.toHaveBeenCalled();
     expect(c.tx.operationalRequirement.updateMany).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["TRAVEL_PACKAGE_COST_COMPONENT", "project-a", "component-a"],
+    ["ADDITIONAL_SERVICE_ORDER_LINE", "order-a", "line-a"],
+  ])("rejects generic DRAFT/RESERVED → PURCHASED without an OperationalPurchase for %s", async (sourceType, sourceId, sourceLineId) => {
+    for (const status of ["DRAFT", "RESERVED"] as const) {
+      const c = context();
+      c.tx.operationalFulfillment.findFirst.mockResolvedValue(fulfillmentState({
+        status,
+        reservationCode: status === "RESERVED" ? "R-1" : null,
+        operationalRequirement: requirement({ sourceType, sourceId, sourceLineId }),
+      }));
+      await expect(c.service.transitionStatus(tenantId, travelPackageId, requirementId, fulfillmentId, { targetStatus: "PURCHASED" }, actor))
+        .rejects.toMatchObject({ response: expect.objectContaining({ message: "OPERATIONAL_FULFILLMENT_PURCHASE_REQUIRED_FOR_PURCHASED_STATUS" }) });
+      expect(c.tx.operationalFulfillment.updateMany).not.toHaveBeenCalled();
+    }
+  });
+
+  it.each([
+    ["TRAVEL_PACKAGE_COST_COMPONENT", "project-a", "component-a"],
+    ["ADDITIONAL_SERVICE_ORDER_LINE", "order-a", "line-a"],
+  ])("rejects RESERVED → CONFIRMED without an OperationalPurchase for %s", async (sourceType, sourceId, sourceLineId) => {
+    const c = context();
+    c.tx.operationalFulfillment.findFirst.mockResolvedValue(fulfillmentState({
+      status: "RESERVED",
+      confirmationReference: "C-1",
+      operationalRequirement: requirement({ sourceType, sourceId, sourceLineId }),
+    }));
+    await expect(c.service.transitionStatus(tenantId, travelPackageId, requirementId, fulfillmentId, { targetStatus: "CONFIRMED" }, actor))
+      .rejects.toMatchObject({ response: expect.objectContaining({ message: "OPERATIONAL_FULFILLMENT_PURCHASE_REQUIRED_FOR_CONFIRMATION" }) });
+    expect(c.tx.operationalFulfillment.updateMany).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["TRAVEL_PACKAGE_COST_COMPONENT", "project-a", "component-a", false],
+    ["ADDITIONAL_SERVICE_ORDER_LINE", "order-a", "line-a", true],
+  ])("confirms purchased %s work only when a real purchase exists", async (sourceType, sourceId, sourceLineId, requiresFinance) => {
+    const c = context();
+    const source = requirement({ sourceType, sourceId, sourceLineId });
+    const purchased = fulfillmentState({ status: "PURCHASED", confirmationReference: "C-1", operationalRequirement: source, _count: { purchases: 1 } });
+    c.tx.operationalFulfillment.findFirst
+      .mockResolvedValueOnce(purchased)
+      .mockResolvedValueOnce(purchased)
+      .mockResolvedValueOnce(fulfillment({ status: "CONFIRMED", confirmationReference: "C-1", operationalRequirement: source, _count: { purchases: 1 } }));
+    c.tx.operationalFulfillment.updateMany.mockResolvedValue({ count: 1 });
+    if (requiresFinance) c.finance.readMany.mockResolvedValue([{ eligibility: "ELIGIBLE", reason: "SETTLED" }]);
+
+    await expect(c.service.transitionStatus(tenantId, travelPackageId, requirementId, fulfillmentId, { targetStatus: "CONFIRMED" }, actor))
+      .resolves.toMatchObject({ status: "CONFIRMED" });
+  });
+
+  it("ensures a new exact DRAFT for a base component purchase attempt", async () => {
+    const c = context();
+    const source = requirement({ sourceType: "TRAVEL_PACKAGE_COST_COMPONENT", sourceId: "project-a", sourceLineId: "component-a" });
+    c.tx.operationalRequirement.findFirst.mockResolvedValue(source);
+    c.tx.travelPackageParticipant.findMany.mockResolvedValue([{ id: "participant-a" }, { id: "participant-b" }]);
+    c.tx.operationalRequirementPassenger.findMany.mockResolvedValue([{ travelPackageParticipantId: "participant-a" }, { travelPackageParticipantId: "participant-b" }]);
+    c.tx.operationalFulfillment.findMany.mockResolvedValue([]);
+    c.tx.operationalFulfillment.create.mockResolvedValue({ id: fulfillmentId });
+    c.tx.operationalFulfillmentPassenger.createMany.mockResolvedValue({ count: 2 });
+    c.tx.operationalRequirement.updateMany.mockResolvedValue({ count: 1 });
+    c.tx.operationalFulfillment.findFirst.mockResolvedValue(fulfillment({ operationalRequirement: source, passengers: [passenger("participant-a"), passenger("participant-b")] }));
+
+    await expect(c.service.ensureForPurchase(tenantId, travelPackageId, requirementId, { participantIds: ["participant-a", "participant-b"] }, actor))
+      .resolves.toMatchObject({ created: true, fulfillment: { status: "DRAFT", passengers: [{ travelPackageParticipantId: "participant-a" }, { travelPackageParticipantId: "participant-b" }] } });
+    expect(c.tx.operationalFulfillmentPassenger.createMany.mock.calls[0][0].data.map((row: { travelPackageParticipantId: string }) => row.travelPackageParticipantId))
+      .toEqual(["participant-a", "participant-b"]);
+  });
+
+  it.each(["DRAFT", "RESERVED"] as const)("reuses an exact compatible %s fulfillment for an Additional Service purchase", async (status) => {
+    const c = context();
+    const source = requirement({ status: "IN_PROGRESS", sourceType: "ADDITIONAL_SERVICE_ORDER_LINE", sourceId: "order-a", sourceLineId: "line-a" });
+    c.tx.operationalRequirement.findFirst.mockResolvedValue(source);
+    c.tx.travelPackageParticipant.findMany.mockResolvedValue([{ id: "participant-a" }]);
+    c.tx.operationalRequirementPassenger.findMany.mockResolvedValue([{ travelPackageParticipantId: "participant-a" }]);
+    c.tx.operationalFulfillment.findMany.mockResolvedValue([fulfillment({ status, operationalRequirement: source, passengers: [passenger()] })]);
+
+    await expect(c.service.ensureForPurchase(tenantId, travelPackageId, requirementId, { participantIds: ["participant-a"] }, actor))
+      .resolves.toMatchObject({ created: false, fulfillment: { status } });
+    expect(c.tx.operationalFulfillment.create).not.toHaveBeenCalled();
+  });
+
+  it("does not reuse an incompatible passenger scope and rejects passengers outside the Additional Service requirement", async () => {
+    const c = context();
+    const source = requirement({ sourceType: "ADDITIONAL_SERVICE_ORDER_LINE", sourceId: "order-a", sourceLineId: "line-a" });
+    c.tx.operationalRequirement.findFirst.mockResolvedValue(source);
+    c.tx.travelPackageParticipant.findMany.mockResolvedValue([{ id: "participant-a" }, { id: "participant-b" }]);
+    c.tx.operationalRequirementPassenger.findMany.mockResolvedValue([{ travelPackageParticipantId: "participant-a" }, { travelPackageParticipantId: "participant-b" }]);
+    c.tx.operationalFulfillment.findMany.mockResolvedValue([fulfillment({ operationalRequirement: source, passengers: [passenger("participant-a")] })]);
+    c.tx.operationalFulfillment.create.mockResolvedValue({ id: "fulfillment-b" });
+    c.tx.operationalFulfillmentPassenger.createMany.mockResolvedValue({ count: 2 });
+    c.tx.operationalRequirement.updateMany.mockResolvedValue({ count: 1 });
+    c.tx.operationalFulfillment.findFirst.mockResolvedValue(fulfillment({ id: "fulfillment-b", operationalRequirement: source, passengers: [passenger("participant-a"), passenger("participant-b")] }));
+
+    await expect(c.service.ensureForPurchase(tenantId, travelPackageId, requirementId, { participantIds: ["participant-a", "participant-b"] }, actor))
+      .resolves.toMatchObject({ created: true });
+    expect(c.tx.operationalFulfillment.create).toHaveBeenCalledTimes(1);
+
+    const outside = context();
+    outside.tx.operationalRequirement.findFirst.mockResolvedValue(source);
+    outside.tx.travelPackageParticipant.findMany.mockResolvedValue([{ id: "participant-b" }]);
+    outside.tx.operationalRequirementPassenger.findMany.mockResolvedValue([]);
+    await expect(outside.service.ensureForPurchase(tenantId, travelPackageId, requirementId, { participantIds: ["participant-b"] }, actor))
+      .rejects.toMatchObject({ response: expect.objectContaining({ message: "OPERATIONAL_FULFILLMENT_PARTICIPANT_OUTSIDE_REQUIREMENT" }) });
+  });
+
+  it("serial retry reuses the DRAFT created by the first ensure request", async () => {
+    const c = context();
+    const first = requirement({ sourceType: "TRAVEL_PACKAGE_COST_COMPONENT", sourceId: "project-a", sourceLineId: "component-a" });
+    const second = requirement({ ...first, status: "IN_PROGRESS" });
+    const created = fulfillment({ operationalRequirement: second, passengers: [passenger()] });
+    c.tx.operationalRequirement.findFirst.mockResolvedValueOnce(first).mockResolvedValueOnce(second);
+    c.tx.travelPackageParticipant.findMany.mockResolvedValue([{ id: "participant-a" }]);
+    c.tx.operationalRequirementPassenger.findMany.mockResolvedValue([{ travelPackageParticipantId: "participant-a" }]);
+    c.tx.operationalFulfillment.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([created]);
+    c.tx.operationalFulfillment.create.mockResolvedValue({ id: fulfillmentId });
+    c.tx.operationalFulfillmentPassenger.createMany.mockResolvedValue({ count: 1 });
+    c.tx.operationalRequirement.updateMany.mockResolvedValue({ count: 1 });
+    c.tx.operationalFulfillment.findFirst.mockResolvedValue(created);
+
+    await c.service.ensureForPurchase(tenantId, travelPackageId, requirementId, { participantIds: ["participant-a"] }, actor);
+    await expect(c.service.ensureForPurchase(tenantId, travelPackageId, requirementId, { participantIds: ["participant-a"] }, actor))
+      .resolves.toMatchObject({ created: false, fulfillment: { id: fulfillmentId } });
+    expect(c.tx.operationalFulfillment.create).toHaveBeenCalledTimes(1);
   });
 
   it("blocks finance-ineligible transitions and enforces confirmation references and terminal states", async () => {
@@ -289,6 +436,29 @@ describe("OperationalFulfillmentsService", () => {
     const c = context();
     c.tx.operationalFulfillment.findFirst.mockResolvedValue(fulfillmentState({ travelPackageId: null, operationalRequirement: requirement({ scopeType: "STANDALONE_CUSTOMER", travelPackageId: null }) }));
     await expect(c.service.rejectStandalonePassengerAssignment(tenantId, requirementId, fulfillmentId)).rejects.toMatchObject({ response: expect.objectContaining({ message: "OPERATIONAL_STANDALONE_PASSENGERS_UNSUPPORTED" }) });
+  });
+
+  it("reads historical null and untyped detail payloads without rewriting them", async () => {
+    const c = context();
+    c.tx.operationalFulfillment.findFirst.mockResolvedValue(fulfillment({
+      detailPayload: { historical: "untyped" }, detailVersion: null,
+    }));
+    await expect(c.service.find(tenantId, travelPackageId, requirementId, fulfillmentId))
+      .resolves.toMatchObject({ detailPayload: { historical: "untyped" }, detailVersion: null });
+  });
+
+  it("reads a historical CUSTOM_QUOTATION requirement without changing its purpose snapshot", async () => {
+    const c = context();
+    const historical = requirement({
+      scopeType: "STANDALONE_CUSTOMER", travelPackageId: null, customerId: "customer-a",
+      sourceType: "CUSTOM_QUOTATION_LINE", servicePurposeCode: "CUSTOM_QUOTATION", servicePurposeName: "Cotización personalizada",
+    });
+    c.tx.operationalFulfillment.findFirst.mockResolvedValue(fulfillment({
+      travelPackageId: null, servicePurposeCode: "CUSTOM_QUOTATION", servicePurposeName: "Cotización personalizada",
+      operationalRequirement: historical, passengers: [], detailPayload: { legacy: true }, detailVersion: null,
+    }));
+    await expect(c.service.findStandalone(tenantId, requirementId, fulfillmentId))
+      .resolves.toMatchObject({ servicePurposeCode: "CUSTOM_QUOTATION", detailPayload: { legacy: true }, detailVersion: null });
   });
 
   it("confirms a historical compatible Custom Quotation fulfillment without rewriting its absent detail pair", async () => {
@@ -421,7 +591,7 @@ function fulfillmentState(overrides: Record<string, unknown> = {}) {
     serviceStartAt: null, serviceEndAt: null, detailPayload: null, detailVersion: null,
     status: "DRAFT", assignedToUserId: null, assignedToName: null, confirmationNotes: null,
     createdAt: new Date("2026-09-30T10:00:00.000Z"), updatedAt: new Date("2026-09-30T10:00:00.000Z"),
-    operationalRequirement: requirement(), ...overrides,
+    operationalRequirement: requirement(), _count: { purchases: 0 }, ...overrides,
   };
 }
 

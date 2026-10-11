@@ -94,7 +94,7 @@ test('Custom Quotation purchase entry is canonical when no purchase exists', () 
   assert.match(text, /<OperationalPurchaseDrawer open onOpenChange=/);
   assert.match(text, /fulfillmentId=\{purchaseFulfillmentId\} ensureFulfillment=\{ensurePurchaseFulfillment\}/);
   for (const status of ['PURCHASED', 'CONFIRMED', 'CANCELLED']) assert.match(text, new RegExp(`fulfillment\\.status === '${status}'`));
-  assert.match(drawer, /setForm\(\{ \.\.\.emptyPurchase\(preferredCurrency\), providerName: providerName \?\? '' \}\)/);
+  assert.match(drawer, /setForm\(\{ \.\.\.emptyPurchase\(preferredCurrency\), providerName: providerName \?\? '', supplierReference: providerReference \?\? '' \}\)/);
   assert.match(drawer, /setForm\(\(value\) => \(\{ \.\.\.value, providerName: event\.target\.value \}\)\)/);
   assert.match(text, /createStandaloneOperationalFulfillment\(requirementId, \{\}\)/);
   assert.match(text, /Compra registrada correctamente/);

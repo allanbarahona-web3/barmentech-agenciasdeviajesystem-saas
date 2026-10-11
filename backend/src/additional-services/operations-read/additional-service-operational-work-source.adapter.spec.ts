@@ -19,7 +19,7 @@ describe("AdditionalServiceOperationalWorkSourceAdapter", () => {
       ...reference,
       sourceVersionId: "2",
       servicePurposeCode: "LODGING",
-      servicePurposeName: "Hospedaje",
+      servicePurposeName: "Lodging",
       participantClientIds: ["client-a", "client-b"],
       soldValue: { scope: "EXACT_SERVICE_LINE", amount: "432.7300", currency: "USD" },
     });
@@ -31,6 +31,14 @@ describe("AdditionalServiceOperationalWorkSourceAdapter", () => {
       where: expect.objectContaining({ id: "order-a", tenantId: "tenant-a" }),
     }));
     expect(c.tx.$executeRaw).toHaveBeenCalledTimes(2);
+  });
+
+  it("resolves an Additional Service AIRFARE code to the shared AIRFARE purpose", async () => {
+    const c = context();
+    c.tx.additionalServiceOrder.findFirst.mockResolvedValue(order({
+      lines: [{ ...order().lines[0], serviceCode: "AIRFARE", serviceName: "Flight" }],
+    }));
+    await expect(c.adapter.readSourceItem(reference)).resolves.toMatchObject({ servicePurposeCode: "AIRFARE" });
   });
 
   it.each([

@@ -46,6 +46,14 @@ describe("TravelPackageCostComponentOperationalWorkSourceAdapter", () => {
     expect(c.tx.costComponent.findFirst).toHaveBeenCalledTimes(1);
   });
 
+  it("resolves a base AIRFARE category to the shared AIRFARE purpose", async () => {
+    const c = context();
+    c.tx.travelPackage.findFirst.mockResolvedValue(travelPackage());
+    c.tx.costComponent.findFirst.mockResolvedValue(component({ costCategory: { code: "AIRFARE", displayName: "Airfare" } }));
+    c.tx.costingProject.findFirst.mockResolvedValue({ id: "project-a", baseCurrency: "USD" });
+    await expect(c.adapter.readSourceItem(reference)).resolves.toMatchObject({ servicePurposeCode: "AIRFARE" });
+  });
+
   it.each([
     ["missing tenant package", null, component(), { id: "project-a", baseCurrency: "USD" }, "SOURCE_NOT_FOUND"],
     ["wrong package/project link", travelPackage({ costingProjectLinks: [] }), component(), { id: "project-a", baseCurrency: "USD" }, "PACKAGE_MISMATCH"],
