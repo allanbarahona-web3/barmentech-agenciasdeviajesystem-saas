@@ -23,6 +23,7 @@ import {
 import { JobDispatcherService } from "../infrastructure/job-dispatcher";
 import { PLATFORM_QUEUE_KEYS } from "../infrastructure/queue";
 import { TravelPackagesService } from "../travel-packages/travel-packages.service";
+import { TravelCapacityValidationService } from "../travel-packages/travel-capacity-validation.service";
 import { InternalToursService } from "../internal-tourism/internal-tours.service";
 import { formatDateForClient, formatDateTimeForClient } from "../common/request-context";
 import { ApplyCreditNoteDto } from "./dto/apply-credit-note.dto";
@@ -53,82 +54,11 @@ export class BillingService {
     private readonly configService: ConfigService,
     private readonly jobDispatcher: JobDispatcherService,
     private readonly travelPackagesService: TravelPackagesService,
+    private readonly travelCapacityValidation: TravelCapacityValidationService,
     private readonly contractReservationApprovals: ContractReservationApprovalService,
     private readonly internalToursService: InternalToursService,
     private readonly storageService: StorageService,
   ) {}
-
-  /**
-   * Valida que existe capacidad disponible para el número de participantes solicitados.
-   * NO modifica occupiedSlots, solo valida y lanza excepción si no hay capacidad.
-   * 
-   * @param travelPackageId - ID del paquete de viaje internacional (opcional)
-   * @param internalTripId - ID del viaje interno (opcional)
-   * @param participantCount - Número de participantes que requieren cupos
-   * @param context - Nombre del método que llama (para logs)
-   * @throws NotFoundException si el viaje no existe
-   * @throws BadRequestException si no hay capacidad suficiente
-   */
-  async validateTripCapacity(
-    travelPackageId: string | null,
-    internalTripId: string | null,
-    participantCount: number,
-    context: string,
-  ): Promise<void> {
-    // Validar viajes internacionales
-    if (travelPackageId) {
-      const travelPackage = await (this.prisma as any).travelPackage.findUnique({
-        where: { id: travelPackageId },
-        select: { capacity: true, occupiedSlots: true, name: true },
-      });
-
-      if (!travelPackage) {
-        throw new NotFoundException(`Paquete de viaje ${travelPackageId} no encontrado.`);
-      }
-
-      const availableSlots = travelPackage.capacity - travelPackage.occupiedSlots;
-
-      if (participantCount > availableSlots) {
-        this.logger.warn(
-          `[${context}] ⚠️ Capacidad insuficiente: "${travelPackage.name}" tiene ${availableSlots} cupos disponibles, se solicitan ${participantCount}`
-        );
-        throw new BadRequestException(
-          `Capacidad insuficiente. El viaje "${travelPackage.name}" solo tiene ${availableSlots} cupos disponibles de ${travelPackage.capacity} totales. No se puede procesar la solicitud para ${participantCount} personas.`
-        );
-      }
-
-      this.logger.log(
-        `[${context}] ✅ Validación de capacidad OK: ${participantCount} cupos solicitados, ${availableSlots} disponibles en "${travelPackage.name}"`
-      );
-    }
-
-    // Validar viajes internos
-    if (internalTripId) {
-      const internalTrip = await (this.prisma as any).internalTrip.findUnique({
-        where: { id: internalTripId },
-        select: { capacity: true, occupiedSlots: true, name: true },
-      });
-
-      if (!internalTrip) {
-        throw new NotFoundException(`Viaje interno ${internalTripId} no encontrado.`);
-      }
-
-      const availableSlots = internalTrip.capacity - internalTrip.occupiedSlots;
-
-      if (participantCount > availableSlots) {
-        this.logger.warn(
-          `[${context}] ⚠️ Capacidad insuficiente: "${internalTrip.name}" tiene ${availableSlots} cupos disponibles, se solicitan ${participantCount}`
-        );
-        throw new BadRequestException(
-          `Capacidad insuficiente. El viaje "${internalTrip.name}" solo tiene ${availableSlots} cupos disponibles de ${internalTrip.capacity} totales. No se puede procesar la solicitud para ${participantCount} personas.`
-        );
-      }
-
-      this.logger.log(
-        `[${context}] ✅ Validación de capacidad OK: ${participantCount} cupos solicitados, ${availableSlots} disponibles en "${internalTrip.name}"`
-      );
-    }
-  }
 
   /**
    * Obtiene el tenant desde el contractId para poder acceder a sus assets
@@ -2854,7 +2784,8 @@ export class BillingService {
       // ✅ VALIDACIÓN DE CAPACIDAD PREVENTIVA (Capa 2 - Backend)
       // Rechaza reservas imposibles antes de crear la factura.
       const participantCount = contract.participantCount || 1;
-      await this.validateTripCapacity(
+      await this.travelCapacityValidation.validateTripCapacity(
+        contract.tenantId,
         contract.travelPackageId,
         contract.internalTripId,
         participantCount,

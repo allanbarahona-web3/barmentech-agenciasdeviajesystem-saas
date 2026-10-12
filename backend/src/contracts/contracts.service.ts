@@ -10,7 +10,7 @@ import { randomBytes } from "crypto";
 import { PdfRenderService } from "./pdf-render.service";
 import { PrismaService } from "../prisma/prisma.service";
 import { StorageService } from "../storage/storage.service";
-import { BillingService } from "../billing/billing.service";
+import { TravelCapacityValidationService } from "../travel-packages/travel-capacity-validation.service";
 import { ContractsEmailsService } from "./contracts-emails.service";
 import { CustomerDocumentsService } from "../customers/documents/customer-documents.service";
 import {
@@ -102,7 +102,7 @@ export class ContractsService {
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
     private readonly pdfRenderService: PdfRenderService,
-    private readonly billingService: BillingService,
+    private readonly travelCapacityValidation: TravelCapacityValidationService,
     private readonly contractsEmailsService: ContractsEmailsService,
     private readonly customerDocumentsService: CustomerDocumentsService,
     private readonly documentSigningService: DocumentSigningService,
@@ -1718,7 +1718,8 @@ export class ContractsService {
 
     // ✅ VALIDACIÓN DE CAPACIDAD (Capa 2 - Backend)
     // Valida ANTES de crear el contrato para evitar reservas imposibles
-    await this.billingService.validateTripCapacity(
+    await this.travelCapacityValidation.validateTripCapacity(
+      user.tenantId,
       travelPackageId,
       internalTripId,
       participantCount,

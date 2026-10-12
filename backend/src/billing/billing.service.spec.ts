@@ -13,7 +13,7 @@ describe("BillingService autoIssueAndSendInvoiceToTitular", () => {
       billingInvoice,
     };
     const service = new BillingService(
-      prisma as never, {} as never, {} as never, {} as never, {} as never, {} as never, {} as never,
+      prisma as never, {} as never, {} as never, {} as never, {} as never, {} as never, {} as never, {} as never,
     );
 
     await expect(service.autoIssueAndSendInvoiceToTitular({

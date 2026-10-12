@@ -1,10 +1,10 @@
 import { Module } from "@nestjs/common";
-import { BillingModule } from "../billing/billing.module";
 import { EmailModule } from "../email/email.module";
 import { CustomersModule } from "../customers/customers.module";
 import { DocumentsModule } from "../documents/documents.module";
 import { StorageModule } from "../storage/storage.module";
 import { TravelPricingModule } from "../travel-pricing/travel-pricing.module";
+import { TravelPackagesModule } from "../travel-packages/travel-packages.module";
 import { ContractsController } from "./contracts.controller";
 import { ContractsService } from "./contracts.service";
 import { ContractsEmailsService } from "./contracts-emails.service";
@@ -23,7 +23,7 @@ import {
 } from "./jobs";
 
 @Module({
-  imports: [BillingModule, EmailModule, CustomersModule, DocumentsModule, StorageModule, TravelPricingModule],
+  imports: [EmailModule, CustomersModule, DocumentsModule, StorageModule, TravelPricingModule, TravelPackagesModule],
   controllers: [ContractsController],
   providers: [
     ContractsService,

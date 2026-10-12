@@ -157,7 +157,7 @@ function createArchiveService(records: CustomerRecord[]) {
       findFirst: jest.fn(({ where }: any) =>
         Promise.resolve(
           where.id === "internal-trip-1" && where.tenantId === "tenant-1"
-            ? { id: "internal-trip-1", currency: "CRC", price: 100 }
+            ? { id: "internal-trip-1", currency: "CRC", price: 100, capacity: 10, occupiedSlots: 0, name: "Internal trip" }
             : null,
         ),
       ),
@@ -166,7 +166,7 @@ function createArchiveService(records: CustomerRecord[]) {
       findFirst: jest.fn(({ where }: any) =>
         Promise.resolve(
           where.id === "package-1" && where.tenantId === "tenant-1"
-            ? { id: "package-1", priceCurrency: "USD", packagePrice: 100 }
+            ? { id: "package-1", priceCurrency: "USD", packagePrice: 100, capacity: 10, occupiedSlots: 0, name: "Travel package" }
             : null,
         ),
       ),
@@ -180,7 +180,7 @@ function createArchiveService(records: CustomerRecord[]) {
     },
     $transaction: jest.fn(async (work: (tx: typeof noteTransaction) => unknown) => work(noteTransaction)),
   };
-  const billing = {
+  const travelCapacityValidation = {
     validateTripCapacity: jest.fn().mockResolvedValue(undefined),
   };
   const jobDispatcher = {
@@ -203,7 +203,7 @@ function createArchiveService(records: CustomerRecord[]) {
     prisma,
     { get: jest.fn((_key: string, fallback: unknown) => fallback) },
     {},
-    billing,
+    travelCapacityValidation,
     {},
     {},
     {},
@@ -229,6 +229,7 @@ function createArchiveService(records: CustomerRecord[]) {
     customerUpdate,
     internalTripFindFirst: prisma.internalTrip.findFirst,
     travelPackageFindFirst: prisma.travelPackage.findFirst,
+    travelCapacityValidation,
     publishedTravelPackagePricing,
     commercialObligationCreateMany,
     contractNoteCreateMany,
@@ -537,6 +538,7 @@ describe("ContractsService archive customer identity resolution", () => {
       customerCreate,
       customerUpdate,
       internalTripFindFirst,
+      travelCapacityValidation,
       commercialObligationCreateMany,
     } = createArchiveService([holder, companionOne, minor]);
     const companion = companionPayload(companionOne);
@@ -613,6 +615,13 @@ describe("ContractsService archive customer identity resolution", () => {
       where: { id: "internal-trip-1", tenantId: "tenant-1" },
       select: { id: true, currency: true, price: true },
     });
+    expect(travelCapacityValidation.validateTripCapacity).toHaveBeenCalledWith(
+      "tenant-1",
+      null,
+      "internal-trip-1",
+      3,
+      "archiveContract",
+    );
     expect(customerCreate).not.toHaveBeenCalled();
     expect(customerUpdate).not.toHaveBeenCalled();
     expect(commercialObligationCreateMany).not.toHaveBeenCalled();
