@@ -1,15 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { AlertCircle, FileText, RefreshCw } from "lucide-react";
+import { AlertCircle, ChevronDown, Download, FileText, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { LoadingSpinner } from "@/components/loading-spinner";
-import { getAccountingCostsReport, type AccountingCostsReport } from "@/lib/accounting-costs-reporting-api";
+import { downloadAccountingCostsExport, getAccountingCostsReport, type AccountingCostsReport } from "@/lib/accounting-costs-reporting-api";
 import { AccountingCostsFilters, type CostFilterState } from "./accounting-costs-filters";
 import type { AccountingCostsMonetaryView } from "./accounting-costs-monetary-view";
 import { AccountingCostsSummary } from "./accounting-costs-summary";
 import { AccountingCostsTable } from "./accounting-costs-table";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 const initial: CostFilterState = { periodPreset: "CURRENT_MONTH", dateFrom: "", dateTo: "", supplier: "", currency: "ALL", purpose: "ALL", status: "ALL" };
 
@@ -18,13 +19,14 @@ export function OperationalCostsReport({ refreshToken, monetaryView, onBaseCurre
   const [page, setPage] = useState(1);
   const [report, setReport] = useState<AccountingCostsReport | null>(null);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const customIncomplete = filters.periodPreset === "CUSTOM" && (!filters.dateFrom || !filters.dateTo);
   const load = useCallback(async (signal: AbortSignal) => {
     if (customIncomplete) { setLoading(false); setReport(null); setError(null); return; }
     setLoading(true); setError(null);
     try {
-      const next = await getAccountingCostsReport({ sourceType: "OPERATIONAL_PURCHASE", periodPreset: filters.periodPreset, dateFrom: filters.periodPreset === "CUSTOM" ? filters.dateFrom : undefined, dateTo: filters.periodPreset === "CUSTOM" ? filters.dateTo : undefined, counterpartySearch: filters.supplier || undefined, currency: filters.currency === "ALL" ? undefined : filters.currency, servicePurposeCode: filters.purpose === "ALL" ? undefined : filters.purpose, status: filters.status === "ALL" ? undefined : filters.status, page, pageSize: 20 }, signal);
+      const next = await getAccountingCostsReport({ ...query(), page, pageSize: 20 }, signal);
       setReport(next); onBaseCurrencyChange(next.accountingCurrencyCode);
     } catch (reason) {
       if (!signal.aborted) { setReport(null); setError(reason instanceof Error ? reason.message : "No se pudo cargar el reporte de costos reales."); }
@@ -32,6 +34,8 @@ export function OperationalCostsReport({ refreshToken, monetaryView, onBaseCurre
   }, [customIncomplete, filters, onBaseCurrencyChange, page, refreshToken]);
   useEffect(() => { const controller = new AbortController(); void load(controller.signal); return () => controller.abort(); }, [load]);
   function change(next: CostFilterState) { setFilters(next); setPage(1); }
+  function query() { return { sourceType: "OPERATIONAL_PURCHASE" as const, periodPreset: filters.periodPreset, dateFrom: filters.periodPreset === "CUSTOM" ? filters.dateFrom : undefined, dateTo: filters.periodPreset === "CUSTOM" ? filters.dateTo : undefined, counterpartySearch: filters.supplier || undefined, currency: filters.currency === "ALL" ? undefined : filters.currency, servicePurposeCode: filters.purpose === "ALL" ? undefined : filters.purpose, status: filters.status === "ALL" ? undefined : filters.status }; }
+  async function exportReport(format: "PDF" | "XLSX" | "CSV") { setExporting(true); setError(null); try { const file = await downloadAccountingCostsExport(format, { ...query(), projectionMode: monetaryView }); const url = URL.createObjectURL(file.blob); const link = document.createElement("a"); link.href = url; link.download = file.fileName; link.click(); URL.revokeObjectURL(url); } catch (reason) { setError(reason instanceof Error ? reason.message : "No se pudo exportar el reporte de costos reales."); } finally { setExporting(false); } }
   const currencies = report?.summaries.byCurrency.map((value) => value.currency) ?? [];
-  return <><Card><CardContent><AccountingCostsFilters value={filters} currencies={currencies} onChange={change} /></CardContent></Card>{customIncomplete ? <Card><CardContent className="py-10 text-center text-sm text-muted-foreground">Seleccione Desde y Hasta para consultar un período personalizado.</CardContent></Card> : null}{loading && !customIncomplete ? <Card><CardContent className="grid min-h-[260px] place-items-center"><LoadingSpinner message="Cargando costos reales…" /></CardContent></Card> : null}{error ? <Card className="border-destructive/40"><CardContent className="flex min-h-[220px] flex-col items-center justify-center gap-3 text-center"><AlertCircle className="size-8 text-destructive" /><div><h2 className="font-semibold">No se pudo cargar el reporte</h2><p className="mt-1 text-sm text-muted-foreground">{error}</p></div><Button type="button" variant="outline" onClick={() => { const controller = new AbortController(); void load(controller.signal); }}><RefreshCw />Intentar nuevamente</Button></CardContent></Card> : null}{!loading && !error && report && report.rows.length === 0 ? <Card><CardContent className="flex min-h-[260px] flex-col items-center justify-center gap-3 text-center"><FileText className="size-8 text-muted-foreground" /><p className="text-sm text-muted-foreground">No hay compras para los filtros seleccionados.</p></CardContent></Card> : null}{!loading && !error && report && report.rows.length > 0 ? <div className="space-y-6"><AccountingCostsSummary summaries={report.summaries} monetaryView={monetaryView} /><AccountingCostsTable report={report} loading={loading} monetaryView={monetaryView} onPage={setPage} /></div> : null}</>;
+  return <><Card><CardContent><div className="flex justify-end pt-5"><DropdownMenu><DropdownMenuTrigger asChild><Button type="button" variant="outline" disabled={exporting || customIncomplete}><Download aria-hidden="true" />{exporting ? "Exportando…" : "Exportar"}<ChevronDown aria-hidden="true" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onSelect={() => void exportReport("PDF")}>PDF</DropdownMenuItem><DropdownMenuItem onSelect={() => void exportReport("XLSX")}>Excel</DropdownMenuItem><DropdownMenuItem onSelect={() => void exportReport("CSV")}>CSV</DropdownMenuItem></DropdownMenuContent></DropdownMenu></div><AccountingCostsFilters value={filters} currencies={currencies} onChange={change} /></CardContent></Card>{customIncomplete ? <Card><CardContent className="py-10 text-center text-sm text-muted-foreground">Seleccione Desde y Hasta para consultar un período personalizado.</CardContent></Card> : null}{loading && !customIncomplete ? <Card><CardContent className="grid min-h-[260px] place-items-center"><LoadingSpinner message="Cargando costos reales…" /></CardContent></Card> : null}{error ? <Card className="border-destructive/40"><CardContent className="flex min-h-[220px] flex-col items-center justify-center gap-3 text-center"><AlertCircle className="size-8 text-destructive" /><div><h2 className="font-semibold">No se pudo cargar el reporte</h2><p className="mt-1 text-sm text-muted-foreground">{error}</p></div><Button type="button" variant="outline" onClick={() => { const controller = new AbortController(); void load(controller.signal); }}><RefreshCw />Intentar nuevamente</Button></CardContent></Card> : null}{!loading && !error && report && report.rows.length === 0 ? <Card><CardContent className="flex min-h-[260px] flex-col items-center justify-center gap-3 text-center"><FileText className="size-8 text-muted-foreground" /><p className="text-sm text-muted-foreground">No hay compras para los filtros seleccionados.</p></CardContent></Card> : null}{!loading && !error && report && report.rows.length > 0 ? <div className="space-y-6"><AccountingCostsSummary summaries={report.summaries} monetaryView={monetaryView} /><AccountingCostsTable report={report} loading={loading} monetaryView={monetaryView} onPage={setPage} /></div> : null}</>;
 }

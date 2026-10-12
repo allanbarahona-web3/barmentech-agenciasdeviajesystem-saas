@@ -7,6 +7,9 @@ import type { AuthenticatedSalesTaxReportRequest } from "../sales-tax/reporting-
 import { ReportingSalesTaxApplicationService } from "../sales-tax/reporting-sales-tax-application.service";
 import type { AuthenticatedReceivablesReportRequest } from "../receivables/reporting-receivables-application.service";
 import { ReportingReceivablesApplicationService } from "../receivables/reporting-receivables-application.service";
+import type { AuthenticatedAccountingCostsRequest } from "../accounting-costs/accounting-costs.service";
+import { AccountingCostsService } from "../accounting-costs/accounting-costs.service";
+import { renderAccountingCostsExport, type AccountingCostsExportProjection } from "./accounting-costs-export.renderer";
 
 export type ReportingExportFormat = "PDF" | "XLSX" | "CSV";
 export type ReportingExport = { bytes: Buffer; mimeType: string; fileName: string };
@@ -15,7 +18,7 @@ const MAX_EXPORT_ROWS = 10_000;
 /** Presentation-only adapters over the existing authorized report datasets. */
 @Injectable()
 export class ReportingExportService {
-  constructor(private readonly sales: ReportingSalesApplicationService, private readonly salesTax: ReportingSalesTaxApplicationService, private readonly receivables: ReportingReceivablesApplicationService = {} as ReportingReceivablesApplicationService) {}
+  constructor(private readonly sales: ReportingSalesApplicationService, private readonly salesTax: ReportingSalesTaxApplicationService, private readonly receivables: ReportingReceivablesApplicationService = {} as ReportingReceivablesApplicationService, private readonly accountingCosts: AccountingCostsService = {} as AccountingCostsService) {}
 
   async exportSales(request: AuthenticatedSalesReportRequest, format: ReportingExportFormat): Promise<ReportingExport> {
     const report = await this.sales.execute({ ...request, page: 1, pageSize: MAX_EXPORT_ROWS });
@@ -33,6 +36,12 @@ export class ReportingExportService {
     const report = await this.receivables.execute({ ...request, page: 1, pageSize: MAX_EXPORT_ROWS });
     assertExportBound(report.pagination.totalItems);
     return renderReceivables(report, request, format);
+  }
+
+  async exportAccountingCosts(request: AuthenticatedAccountingCostsRequest & { projectionMode: AccountingCostsExportProjection }, format: ReportingExportFormat): Promise<ReportingExport> {
+    const report = await this.accountingCosts.execute({ ...request, read: { ...request.read, page: 1, pageSize: MAX_EXPORT_ROWS } });
+    assertExportBound(report.pagination.totalItems);
+    return renderAccountingCostsExport(report, request.projectionMode, format);
   }
 }
 

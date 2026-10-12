@@ -35,7 +35,7 @@ export class AccountingCostsService {
     const rows = projected.slice(0, sourcePage.items.length);
     const summaryConversions = projected.slice(sourcePage.items.length);
     return {
-      reportKey: "ACCOUNTING_COSTS" as const, period, generatedAt: new Date().toISOString(), accountingCurrencyCode, rows,
+      reportKey: "ACCOUNTING_COSTS" as const, period, generatedAt: new Date().toISOString(), timezone, accountingCurrencyCode, rows,
       summaries: summaries(summaryRows, summaryConversions, accountingCurrencyCode),
       pagination: { page: request.read.page, pageSize: request.read.pageSize, totalItems: sourcePage.totalItems, totalPages: sourcePage.totalItems === 0 ? 0 : Math.ceil(sourcePage.totalItems / request.read.pageSize) },
     };

@@ -9,6 +9,7 @@ import { ReportingSalesTaxApplicationService } from "./sales-tax/reporting-sales
 import { ReportingExportService, type ReportingExportFormat } from "./exports/reporting-export.service";
 import { parseReceivablesReportQuery, ReceivablesReportQueryDto } from "./dto/receivables-report-query.dto";
 import { ReportingReceivablesApplicationService } from "./receivables/reporting-receivables-application.service";
+import { AccountingCostsExportQueryDto, parseAccountingCostsExportQuery } from "./accounting-costs/accounting-costs.dto";
 import type { Response } from "express";
 
 type ReportingRequest = { user: { id: string; tenantId: string; role: UserRole } };
@@ -22,6 +23,14 @@ export class ReportingController {
     private readonly exports: ReportingExportService = {} as ReportingExportService,
     private readonly receivables: ReportingReceivablesApplicationService = {} as ReportingReceivablesApplicationService,
   ) {}
+
+  @Get("accounting-costs/export")
+  @Roles(UserRole.ADMIN, UserRole.CONTADOR)
+  async exportAccountingCosts(@Req() request: ReportingRequest, @Query() query: AccountingCostsExportQueryDto, @Res() response: Response) {
+    if (!query.format) throw new BadRequestException("REPORTING_EXPORT_FORMAT_REQUIRED");
+    const parsed = parseAccountingCostsExportQuery(query); const exported = await this.exports.exportAccountingCosts({ tenantId: request.user.tenantId, actorUserId: request.user.id, role: request.user.role, ...parsed }, query.format as ReportingExportFormat);
+    return send(response, exported);
+  }
 
   @Get("sales/export")
   @Roles(UserRole.ADMIN, UserRole.CONTADOR)

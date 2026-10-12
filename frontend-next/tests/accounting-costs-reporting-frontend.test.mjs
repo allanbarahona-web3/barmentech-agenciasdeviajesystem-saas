@@ -56,11 +56,21 @@ test("base rows retain missing-FX diagnostics and compact original context", () 
   assert.match(summary, /snapshot de TC inválido/);
 });
 
-test("refresh refetches current state and there is no export control", () => {
+test("Operaciones exports the server-generated full filtered result using the current monetary view", () => {
   assert.match(page, /setRefreshToken\(\(value\) => value \+ 1\)/);
   assert.match(report, /\[customIncomplete, filters, onBaseCurrencyChange, page, refreshToken\]/);
   assert.match(page, /<Link href="\/reports">Volver a reportes<\/Link>/);
   assert.match(table, /AccountingCostEvidenceDialog/);
   assert.match(api, /\/evidence/);
-  assert.doesNotMatch(page + report + table + summary + api, /Exportar|downloadReportingExport|upload|delete/);
+  assert.match(report, /downloadAccountingCostsExport/);
+  assert.match(api, /"\/reporting\/accounting-costs\/export"/);
+  assert.match(report, /projectionMode: monetaryView/);
+  assert.match(report, /counterpartySearch: filters\.supplier/);
+  assert.match(report, /servicePurposeCode: filters\.purpose/);
+  assert.match(report, /status: filters\.status/);
+  assert.match(report, /DropdownMenuItem onSelect=\{\(\) => void exportReport\("PDF"\)\}/);
+  assert.match(report, /DropdownMenuItem onSelect=\{\(\) => void exportReport\("XLSX"\)\}/);
+  assert.match(report, /DropdownMenuItem onSelect=\{\(\) => void exportReport\("CSV"\)\}/);
+  assert.match(report, /URL\.createObjectURL\(file\.blob\)/);
+  assert.doesNotMatch(read("features/reporting/accounting-costs/accounting-costs-tabs.tsx"), /Exportar/);
 });

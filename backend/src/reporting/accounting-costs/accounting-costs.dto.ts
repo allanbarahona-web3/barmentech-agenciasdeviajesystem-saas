@@ -20,6 +20,11 @@ export class AccountingCostsQueryDto {
   @IsOptional() @IsString() @Matches(/^\d+$/) pageSize?: string;
 }
 
+export class AccountingCostsExportQueryDto extends AccountingCostsQueryDto {
+  @IsOptional() @IsString() @IsIn(["ORIGINAL", "BASE"]) projectionMode?: string;
+  @IsOptional() @IsString() @IsIn(["PDF", "XLSX", "CSV"]) format?: string;
+}
+
 export class AccountingCostEvidenceQueryDto {
   @IsOptional() @IsString() @Matches(/^\d+$/) page?: string;
   @IsOptional() @IsString() @Matches(/^\d+$/) pageSize?: string;
@@ -40,6 +45,10 @@ export function parseAccountingCostsQuery(query: AccountingCostsQueryDto): { per
     ...(query.customerId?.trim() ? { customerId: query.customerId.trim() } : {}),
   };
   return { period, read: { page: positive(query.page, 1, 25), pageSize: positive(query.pageSize, 20, 25), ...(Object.keys(filter).length ? { filter } : {}), ...(Object.keys(operational).length ? { operational } : {}) } };
+}
+
+export function parseAccountingCostsExportQuery(query: AccountingCostsExportQueryDto) {
+  return { ...parseAccountingCostsQuery(query), projectionMode: query.projectionMode === "BASE" ? "BASE" as const : "ORIGINAL" as const };
 }
 
 export function parseEvidencePagination(query: AccountingCostEvidenceQueryDto) { return { page: positive(query.page, 1, 25), pageSize: positive(query.pageSize, 20, 25) }; }

@@ -12,5 +12,6 @@ import { OperationalPurchaseAccountingCostAdapter } from "./operational-purchase
   imports: [ReportingModule, ExchangeRateModule, StorageModule],
   controllers: [AccountingCostsController],
   providers: [AccountingCostsService, OperationalPurchaseAccountingCostAdapter, AccountingCostFxProjector, AccountingCostEvidenceService],
+  exports: [AccountingCostsService],
 })
 export class AccountingCostsModule {}

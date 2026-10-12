@@ -4,6 +4,7 @@ import { UserRole } from "@prisma/client";
 import { ROLES_KEY } from "../auth/roles.decorator";
 import { ReportingQueryDto } from "./dto/sales-report-query.dto";
 import { ReceivablesReportQueryDto } from "./dto/receivables-report-query.dto";
+import { AccountingCostsExportQueryDto } from "./accounting-costs/accounting-costs.dto";
 import { ReportingController } from "./reporting.controller";
 
 describe("ReportingController query validation", () => {
@@ -78,14 +79,24 @@ describe("ReportingController query validation", () => {
     expect(receivables.execute).toHaveBeenCalledWith(expect.objectContaining({ dueDate: { preset: "ALL" } }));
   });
 
+  it("forwards Accounting Costs export filters and Base view through the restricted export endpoint", async () => {
+    const exports = { exportAccountingCosts: jest.fn().mockResolvedValue({ bytes: Buffer.from("report"), mimeType: "text/csv", fileName: "costs.csv" }) };
+    const response = { set: jest.fn(), send: jest.fn() };
+    const query = await accountingExportValid({ periodPreset: "CUSTOM", dateFrom: "2026-10-01", dateTo: "2026-10-12", counterpartySearch: "Proveedor", currency: "usd", servicePurposeCode: "AIRFARE", status: "CANCELLED", travelPackageId: "trip-a", customerId: "customer-a", projectionMode: "BASE", format: "CSV" });
+    await new ReportingController({} as never, {} as never, exports as never).exportAccountingCosts(request(), query, response as never);
+    expect(exports.exportAccountingCosts).toHaveBeenCalledWith(expect.objectContaining({ tenantId: "tenant-a", role: "ADMIN", period: { kind: "CUSTOM", startOn: "2026-10-01", endOn: "2026-10-12" }, projectionMode: "BASE", read: expect.objectContaining({ filter: { counterpartySearch: "Proveedor", currency: "USD", servicePurposeCode: "AIRFARE", status: "CANCELLED" }, operational: { travelPackageId: "trip-a", customerId: "customer-a" } }) }), "CSV");
+    expect(response.set).toHaveBeenCalledWith(expect.objectContaining({ "Content-Disposition": 'attachment; filename="costs.csv"' }));
+  });
+
   it("keeps Receivables reads and exports restricted to ADMIN and CONTADOR", () => {
-    for (const handler of [ReportingController.prototype.salesReport, ReportingController.prototype.salesTaxReport, ReportingController.prototype.receivablesReport, ReportingController.prototype.exportReceivables]) {
+    for (const handler of [ReportingController.prototype.salesReport, ReportingController.prototype.salesTaxReport, ReportingController.prototype.receivablesReport, ReportingController.prototype.exportReceivables, ReportingController.prototype.exportAccountingCosts]) {
       expect(Reflect.getMetadata(ROLES_KEY, handler)).toEqual([UserRole.ADMIN, UserRole.CONTADOR]);
     }
     expect(Reflect.getMetadata(PATH_METADATA, ReportingController.prototype.salesReport)).toBe("sales");
     expect(Reflect.getMetadata(PATH_METADATA, ReportingController.prototype.salesTaxReport)).toBe("sales-tax");
     expect(Reflect.getMetadata(PATH_METADATA, ReportingController.prototype.receivablesReport)).toBe("receivables");
     expect(Reflect.getMetadata(PATH_METADATA, ReportingController.prototype.exportReceivables)).toBe("receivables/export");
+    expect(Reflect.getMetadata(PATH_METADATA, ReportingController.prototype.exportAccountingCosts)).toBe("accounting-costs/export");
   });
 
   function valid(value: Record<string, string>) {
@@ -94,6 +105,10 @@ describe("ReportingController query validation", () => {
 
   function receivablesValid(value: Record<string, string>) {
     return pipe.transform(value, { type: "query", metatype: ReceivablesReportQueryDto });
+  }
+
+  function accountingExportValid(value: Record<string, string>) {
+    return pipe.transform(value, { type: "query", metatype: AccountingCostsExportQueryDto });
   }
 
   function request() {
