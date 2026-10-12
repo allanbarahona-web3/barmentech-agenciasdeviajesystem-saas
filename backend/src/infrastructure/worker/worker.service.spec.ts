@@ -131,7 +131,7 @@ describe("WorkerService production queue ownership", () => {
     const receipt = jest.fn().mockResolvedValue("receipt");
     const email = jest.fn().mockResolvedValue("email");
     context.service.registerWorker("receipt", PLATFORM_QUEUE_KEYS.BILLING, receipt, {
-      jobNames: ["billing-process-verified-payment-receipt", "billing-bootstrap-contract"],
+      jobNames: ["billing-process-verified-payment-receipt", "billing-legacy-email"],
     });
     context.service.registerWorker("email", PLATFORM_QUEUE_KEYS.EMAIL, email, {
       jobNames: ["auth-welcome-email", "contract-review-email"],
@@ -142,7 +142,7 @@ describe("WorkerService production queue ownership", () => {
     expectWorker(0, "billing", 7);
     expectWorker(1, "email", 7);
     await processor(0)(job("billing-process-verified-payment-receipt"));
-    await processor(0)(job("billing-bootstrap-contract"));
+    await processor(0)(job("billing-legacy-email"));
     await processor(1)(job("auth-welcome-email"));
     await processor(1)(job("contract-review-email"));
     expect(receipt).toHaveBeenCalledTimes(2);

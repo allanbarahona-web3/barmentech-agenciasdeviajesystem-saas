@@ -1,6 +1,10 @@
 import { ReceiptProcessingWorker } from "../../billing/jobs/receipt-processing.worker";
-import { BILLING_BOOTSTRAP_JOB_NAME } from "../../billing/jobs/billing-bootstrap-job.constants";
 import { RECEIPT_PROCESSING_JOB_NAME } from "../../billing/jobs/receipt-processing-job.constants";
+import { ContractReservationPaymentSubmissionWorker } from "../../contracts/jobs/contract-reservation-payment-submission.worker";
+import {
+  CONTRACT_RESERVATION_PAYMENT_SUBMISSION_JOB_NAME,
+  CONTRACT_RESERVATION_PAYMENT_SUBMISSION_WORKER_REGISTRATION_KEY,
+} from "../../contracts/jobs/contract-reservation-payment-submission-job.constants";
 import { AuthEmailWorker } from "../../email/jobs/auth-email.worker";
 import { AUTH_EMAIL_JOB_NAMES } from "../../email/jobs/auth-email-job.constants";
 import { BILLING_FINANCIAL_EMAIL_JOB_NAMES } from "../../email/jobs/billing-financial-email-job.constants";
@@ -8,13 +12,11 @@ import { CONTRACTS_EMAIL_JOB_NAMES } from "../../email/jobs/contracts-email-job.
 import { SIGNED_DOCUMENT_EMAIL_JOB_NAMES } from "../../email/jobs/signed-document-email-job.constants";
 import { PLATFORM_QUEUE_KEYS } from "../queue";
 
-describe("non-fiscal multi-name worker registration", () => {
-  it("keeps receipt processing and bootstrap on one billing registration", () => {
+describe("non-fiscal worker registration", () => {
+  it("keeps legacy receipt processing on the Billing queue only", () => {
     const registerWorker = jest.fn();
     const worker = new ReceiptProcessingWorker(
       { registerWorker } as never,
-      {} as never,
-      {} as never,
       {} as never,
     );
 
@@ -24,7 +26,25 @@ describe("non-fiscal multi-name worker registration", () => {
       "billing-receipt-processing-worker",
       PLATFORM_QUEUE_KEYS.BILLING,
       expect.any(Function),
-      { jobNames: [RECEIPT_PROCESSING_JOB_NAME, BILLING_BOOTSTRAP_JOB_NAME] },
+      { jobNames: RECEIPT_PROCESSING_JOB_NAME },
+    );
+  });
+
+  it("registers modern reservation submission on its Contracts queue", () => {
+    const registerWorker = jest.fn();
+    const worker = new ContractReservationPaymentSubmissionWorker(
+      { registerWorker } as never,
+      {} as never,
+      {} as never,
+    );
+
+    worker.onModuleInit();
+
+    expect(registerWorker).toHaveBeenCalledWith(
+      CONTRACT_RESERVATION_PAYMENT_SUBMISSION_WORKER_REGISTRATION_KEY,
+      PLATFORM_QUEUE_KEYS.CONTRACT_RESERVATION_PAYMENT_SUBMISSION,
+      expect.any(Function),
+      { jobNames: CONTRACT_RESERVATION_PAYMENT_SUBMISSION_JOB_NAME },
     );
   });
 

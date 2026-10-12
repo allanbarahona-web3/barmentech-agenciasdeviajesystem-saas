@@ -7,17 +7,18 @@ import {
 import { PLATFORM_QUEUE_KEYS } from "../../infrastructure/queue";
 import { WorkerService } from "../../infrastructure/worker";
 import { PrismaService } from "../../prisma/prisma.service";
-import {
-  BILLING_BOOTSTRAP_JOB_NAME,
-  BILLING_BOOTSTRAP_JOB_OPTIONS,
-} from "../../billing/jobs/billing-bootstrap-job.constants";
-import type { BillingBootstrapJobPayload } from "../../billing/jobs/billing-bootstrap-job.types";
 import { ContractsService } from "../contracts.service";
 import {
   ARCHIVE_PROCESSING_JOB_NAME,
   ARCHIVE_PROCESSING_WORKER_REGISTRATION_KEY,
 } from "./archive-processing-job.constants";
 import { ArchiveProcessingJobPayload } from "./archive-processing-job.types";
+import {
+  CONTRACT_RESERVATION_PAYMENT_SUBMISSION_JOB_NAME,
+  CONTRACT_RESERVATION_PAYMENT_SUBMISSION_JOB_OPTIONS,
+  getContractReservationPaymentSubmissionJobId,
+} from "./contract-reservation-payment-submission-job.constants";
+import type { ContractReservationPaymentSubmissionJobPayload } from "./contract-reservation-payment-submission-job.types";
 
 @Injectable()
 export class ArchiveProcessingWorker implements OnModuleInit {
@@ -89,14 +90,14 @@ export class ArchiveProcessingWorker implements OnModuleInit {
       contract,
     );
 
-    await this.jobDispatcher.dispatch<BillingBootstrapJobPayload>({
-      queueKey: PLATFORM_QUEUE_KEYS.BILLING,
-      jobName: BILLING_BOOTSTRAP_JOB_NAME,
+    await this.jobDispatcher.dispatch<ContractReservationPaymentSubmissionJobPayload>({
+      queueKey: PLATFORM_QUEUE_KEYS.CONTRACT_RESERVATION_PAYMENT_SUBMISSION,
+      jobName: CONTRACT_RESERVATION_PAYMENT_SUBMISSION_JOB_NAME,
       payload: { contractId: contract.id },
       metadata: { tenantId: contract.tenantId },
       options: {
-        ...BILLING_BOOTSTRAP_JOB_OPTIONS,
-        jobId: `billing-bootstrap-contract-${contract.id}`,
+        ...CONTRACT_RESERVATION_PAYMENT_SUBMISSION_JOB_OPTIONS,
+        jobId: getContractReservationPaymentSubmissionJobId(contract.id),
       },
     });
 

@@ -5,6 +5,7 @@ import { DocumentsModule } from "../documents/documents.module";
 import { StorageModule } from "../storage/storage.module";
 import { TravelPricingModule } from "../travel-pricing/travel-pricing.module";
 import { TravelPackagesModule } from "../travel-packages/travel-packages.module";
+import { FinanceModule } from "../finance/finance.module";
 import { ContractsController } from "./contracts.controller";
 import { ContractsService } from "./contracts.service";
 import { ContractsEmailsService } from "./contracts-emails.service";
@@ -18,12 +19,13 @@ import { PARTICIPANT_SOURCE_READER } from "./operations-read/participant-source-
 import { OPERATIONAL_PASSENGER_CONTRACT_CONTEXT_READER } from "./operations-read/operational-passenger-contract-context-reader.port";
 import {
   ArchiveProcessingWorker,
+  ContractReservationPaymentSubmissionWorker,
   PackageCompletedDispatcher,
   PackageCompletedWorker,
 } from "./jobs";
 
 @Module({
-  imports: [EmailModule, CustomersModule, DocumentsModule, StorageModule, TravelPricingModule, TravelPackagesModule],
+  imports: [EmailModule, CustomersModule, DocumentsModule, StorageModule, TravelPricingModule, TravelPackagesModule, FinanceModule],
   controllers: [ContractsController],
   providers: [
     ContractsService,
@@ -37,6 +39,7 @@ import {
     { provide: OPERATIONAL_PASSENGER_NOTE_READER, useExisting: ContractTravelOperationsReadAdapter },
     { provide: OPERATIONAL_PASSENGER_CONTRACT_CONTEXT_READER, useExisting: ContractTravelOperationsReadAdapter },
     ArchiveProcessingWorker,
+    ContractReservationPaymentSubmissionWorker,
     PackageCompletedDispatcher,
     PackageCompletedWorker,
   ],

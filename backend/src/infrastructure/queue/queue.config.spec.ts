@@ -30,6 +30,7 @@ describe("queue configuration", () => {
       FISCAL_ARTIFACT_RETRIEVAL: "fiscal-artifact-retrieval",
       FISCAL_INVOICE_AUTO_DELIVERY: "fiscal-invoice-auto-delivery",
       CONTRACT_PAYMENT_FISCALIZATION: "contract-payment-fiscalization",
+      CONTRACT_RESERVATION_PAYMENT_SUBMISSION: "contract-reservation-payment-submission",
       PDF: "pdf",
       NOTIFICATION: "notification",
       PACKAGE_COMPLETED: "package-completed",
@@ -48,6 +49,7 @@ describe("queue configuration", () => {
       "fiscal-artifact-retrieval": "fiscal-artifact-retrieval",
       "fiscal-invoice-auto-delivery": "fiscal-invoice-auto-delivery",
       "contract-payment-fiscalization": "contract-payment-fiscalization",
+      "contract-reservation-payment-submission": "contract-reservation-payment-submission",
       pdf: "pdf",
       notification: "notification",
       "package-completed": "package-completed",
@@ -74,6 +76,7 @@ describe("queue configuration", () => {
     expect(getQueueConfig(configService()).queueNames[PLATFORM_QUEUE_KEYS.FISCAL_ARTIFACT_RETRIEVAL]).toBe("fiscal-artifact-retrieval");
     expect(getQueueConfig(configService()).queueNames[PLATFORM_QUEUE_KEYS.FISCAL_INVOICE_AUTO_DELIVERY]).toBe("fiscal-invoice-auto-delivery");
     expect(getQueueConfig(configService()).queueNames[PLATFORM_QUEUE_KEYS.CONTRACT_PAYMENT_FISCALIZATION]).toBe("contract-payment-fiscalization");
+    expect(getQueueConfig(configService()).queueNames[PLATFORM_QUEUE_KEYS.CONTRACT_RESERVATION_PAYMENT_SUBMISSION]).toBe("contract-reservation-payment-submission");
     expect(getQueueConfig(configService()).queueNames[PLATFORM_QUEUE_KEYS.AIRFARE_PRICING]).toBe("airfare-pricing");
   });
 
@@ -152,6 +155,14 @@ describe("queue configuration", () => {
     expect(QUEUE_NAME_ENV_KEYS[PLATFORM_QUEUE_KEYS.CONTRACT_PAYMENT_FISCALIZATION]).toBe(
       "BULLMQ_CONTRACT_PAYMENT_FISCALIZATION_QUEUE_NAME",
     );
+  });
+
+  it("uses a dedicated queue for Contract reservation payment submission", () => {
+    expect(
+      QUEUE_NAME_ENV_KEYS[
+        PLATFORM_QUEUE_KEYS.CONTRACT_RESERVATION_PAYMENT_SUBMISSION
+      ],
+    ).toBe("BULLMQ_CONTRACT_RESERVATION_PAYMENT_SUBMISSION_QUEUE_NAME");
   });
 });
 
