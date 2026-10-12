@@ -6,7 +6,6 @@ export const BILLING_FINANCIAL_EMAIL_JOB_NAMES = {
   MANUAL_RESERVATION_RECEIPT: "billing-manual-reservation-receipt-email",
   MANUAL_PAYMENT_RECEIPT: "billing-manual-payment-receipt-email",
   MANUAL_CREDIT_NOTE: "billing-manual-credit-note-email",
-  AUTOMATIC_INITIAL_INVOICE: "billing-automatic-initial-invoice-email",
   MANUAL_STATEMENT: "billing-manual-statement-email",
 } as const;
 

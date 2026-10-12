@@ -89,7 +89,6 @@ export type EmailTemplate =
   | 'credit-note-approved'
   | 'contract-account-statement'
   | 'receipt-approved'
-  | 'invoice-initial'
   
   // Contracts
   | 'contract-pdf-attachment'

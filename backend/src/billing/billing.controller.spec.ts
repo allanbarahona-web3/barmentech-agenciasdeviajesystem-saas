@@ -6,7 +6,6 @@ import { BillingController } from "./billing.controller";
 
 describe("BillingController readonly accountant authorization", () => {
   const legacyMutationHandlers = [
-    "bootstrapContractBilling",
     "sendAccountStatementEmail",
     "reportPayment",
     "markPaymentInReview",
@@ -74,6 +73,10 @@ describe("BillingController readonly accountant authorization", () => {
     }
     expect(BillingController.prototype).toHaveProperty("getCreditNotePdfUrl");
     expect(BillingController.prototype).toHaveProperty("sendCreditNoteEmail");
+  });
+
+  it("removes the orphan legacy contract bootstrap endpoint", () => {
+    expect(BillingController.prototype).not.toHaveProperty("bootstrapContractBilling");
   });
 
   function canActivate(role: UserRole, handler: keyof BillingController) {

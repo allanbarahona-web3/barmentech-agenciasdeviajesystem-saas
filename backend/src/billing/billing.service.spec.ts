@@ -1,33 +1,5 @@
-import { BillingService } from "./billing.service";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-
-describe("BillingService autoIssueAndSendInvoiceToTitular", () => {
-  it("does not recreate a legacy invoice when the contract reservation is managed by Finance", async () => {
-    const billingInvoice = { findUnique: jest.fn() };
-    const prisma = {
-      contract: {
-        findUnique: jest.fn().mockResolvedValue({
-          id: "contract-1", tenantId: "tenant-1", status: "SIGNED", billingInvoice: null,
-        }),
-      },
-      payment: { findFirst: jest.fn().mockResolvedValue({ id: "payment-1" }) },
-      billingInvoice,
-    };
-    const service = new BillingService(
-      prisma as never, {} as never, {} as never, {} as never, {} as never, {} as never, {} as never, {} as never,
-    );
-
-    await expect(service.autoIssueAndSendInvoiceToTitular({
-      contractId: "contract-1", actorUserId: "agent-1", actorEmail: "agent@example.com", actorName: "Agent",
-    })).resolves.toMatchObject({ skipped: true, paymentId: "payment-1" });
-
-    expect(prisma.payment.findFirst).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({ contractId: "contract-1", purpose: "CONTRACT_RESERVATION" }),
-    }));
-    expect(billingInvoice.findUnique).not.toHaveBeenCalled();
-  });
-});
 
 describe("BillingService legacy credit-note retirement", () => {
   it("keeps historical PDF reads while removing legacy NC writers", () => {
@@ -39,5 +11,29 @@ describe("BillingService legacy credit-note retirement", () => {
     expect(source).not.toContain("billingCreditNote.create");
     expect(source).not.toContain("billingClientBalance.upsert");
     expect(source).not.toContain('status: "NC_PENDIENTE_APROBACION"');
+  });
+});
+
+describe("BillingService legacy bootstrap retirement", () => {
+  it("removes the orphan bootstrap and auto-issue paths without changing temporary payment or receipt flows", () => {
+    const serviceSource = readFileSync(join(__dirname, "billing.service.ts"), "utf8");
+    const emailJobSource = readFileSync(
+      join(__dirname, "..", "email", "jobs", "billing-financial-email-job.constants.ts"),
+      "utf8",
+    );
+    const emailTemplateSource = readFileSync(
+      join(__dirname, "..", "email", "interfaces", "email-options.interface.ts"),
+      "utf8",
+    );
+
+    expect(serviceSource).not.toContain("autoIssueAndSendInvoiceToTitular");
+    expect(serviceSource).not.toContain("bootstrapContractBilling");
+    expect(emailJobSource).not.toContain("AUTOMATIC_INITIAL_INVOICE");
+    expect(emailTemplateSource).not.toContain("invoice-initial");
+
+    expect(serviceSource).toContain("async reportPayment(");
+    expect(serviceSource).toContain("async verifyPayment(");
+    expect(serviceSource).toContain("async rejectPayment(");
+    expect(serviceSource).toContain("async processVerifiedPaymentReceiptJob(");
   });
 });

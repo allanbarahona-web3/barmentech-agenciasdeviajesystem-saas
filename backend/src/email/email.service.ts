@@ -21,7 +21,6 @@ import { passwordResetByAdminTemplate } from './templates/password-reset-by-admi
 import { creditNoteApprovedTemplate } from './templates/credit-note-approved.template';
 import { contractAccountStatementTemplate } from './templates/contract-account-statement.template';
 import { receiptApprovedTemplate } from './templates/receipt-approved.template';
-import { invoiceInitialTemplate } from './templates/invoice-initial.template';
 import { businessDocumentAttachmentTemplate } from './templates/business-document-attachment.template';
 
 // Contract templates
@@ -391,9 +390,6 @@ export class EmailService {
 
       case 'receipt-approved':
         return receiptApprovedTemplate(data as any);
-
-      case 'invoice-initial':
-        return invoiceInitialTemplate(data as any);
 
       case 'contract-pdf-attachment':
         return contractPdfAttachmentTemplate(data as any);

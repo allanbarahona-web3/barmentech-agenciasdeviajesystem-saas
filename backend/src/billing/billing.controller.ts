@@ -31,24 +31,6 @@ const BILLING_OPERATION_ROLES = LEGACY_BILLING_ACCESS_ROLES;
 export class BillingController {
   constructor(private readonly billingService: BillingService) {}
 
-  @Post("contracts/:contractId/bootstrap")
-  @Roles(...BILLING_OPERATION_ROLES)
-  @UseGuards(RolesGuard)
-  bootstrapContractBilling(
-    @Req()
-    req: {
-      user: { id: string; email: string; fullName: string };
-      ip?: string;
-      headers?: Record<string, string | string[] | undefined>;
-    },
-    @Param("contractId") contractId: string,
-  ) {
-    const userAgentHeader = req.headers?.["user-agent"];
-    const userAgent = Array.isArray(userAgentHeader) ? userAgentHeader[0] : userAgentHeader;
-
-    return this.billingService.bootstrapContractBilling(req.user, contractId, req.ip || null, userAgent || null);
-  }
-
   @Get("contracts")
   listContracts(
     @Req()
