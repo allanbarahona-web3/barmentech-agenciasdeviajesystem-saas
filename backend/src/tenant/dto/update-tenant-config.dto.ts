@@ -1,6 +1,14 @@
-import { IsOptional, IsString, MaxLength, IsEmail, ValidateIf } from 'class-validator';
+import { Transform } from 'class-transformer';
+import { IsOptional, IsString, MaxLength, IsEmail, Matches, ValidateIf } from 'class-validator';
 
 export class UpdateTenantConfigDto {
+  @IsOptional()
+  @ValidateIf((o) => o.accountingCurrencyCode !== null)
+  @Transform(({ value }) => typeof value === 'string' ? value.trim().toUpperCase() : value)
+  @IsString()
+  @Matches(/^[A-Z]{3}$/, { message: 'La moneda contable debe tener exactamente 3 letras mayúsculas.' })
+  accountingCurrencyCode?: string | null;
+
   @IsOptional()
   @IsString()
   @MaxLength(7)

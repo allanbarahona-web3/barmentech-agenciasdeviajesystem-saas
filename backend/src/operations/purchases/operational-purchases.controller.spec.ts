@@ -20,6 +20,7 @@ describe("OperationalPurchasesController", () => {
     const meta = { type: "body" as const, data: "" };
     await expect(pipe.transform({ providerName: " Provider A ", amount: "1.00", currency: "usd", purchasedAt: "2026-10-01T12:00:00.000Z" }, { ...meta, metatype: CreateOperationalPurchaseDto })).resolves.toMatchObject({ providerName: "Provider A" });
     await expect(pipe.transform({ providerName: "Provider A", amount: "1", currency: "USD", purchasedAt: "2026-10-01T12:00:00.000Z", tenantId: "forged", fulfillmentId: "forged" }, { ...meta, metatype: CreateOperationalPurchaseDto })).rejects.toThrow();
+    await expect(pipe.transform({ notes: "metadata", exchangeRate: "1", accountingCurrencyCode: "CRC", exchangeRateOperation: "MULTIPLY" }, { ...meta, metatype: UpdateOperationalPurchaseDto })).rejects.toThrow();
     await expect(pipe.transform({ amount: "2" }, { ...meta, metatype: UpdateOperationalPurchaseDto })).rejects.toThrow();
   });
 });

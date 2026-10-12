@@ -12,7 +12,7 @@ export class PrismaFiscalBillingAdminRepository
   findConfiguration(tenantId: string): Promise<TenantBillingConfigurationRecord | null> {
     return this.prisma.tenantBillingConfiguration.findUnique({
       where: { tenantId },
-    }) as Promise<TenantBillingConfigurationRecord | null>;
+    }) as unknown as Promise<TenantBillingConfigurationRecord | null>;
   }
 
   upsertConfiguration(
@@ -23,6 +23,6 @@ export class PrismaFiscalBillingAdminRepository
       where: { tenantId },
       create: { tenantId, ...input },
       update: input,
-    }) as Promise<TenantBillingConfigurationRecord>;
+    }) as unknown as Promise<TenantBillingConfigurationRecord>;
   }
 }

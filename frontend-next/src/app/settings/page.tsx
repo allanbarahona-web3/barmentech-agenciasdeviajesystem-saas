@@ -68,6 +68,7 @@ export default function SettingsPage() {
   const [representativeMaritalStatus, setRepresentativeMaritalStatus] = useState("");
   const [representativeAddress, setRepresentativeAddress] = useState("");
   const [representativePowers, setRepresentativePowers] = useState("");
+  const [accountingCurrencyCode, setAccountingCurrencyCode] = useState("");
 
   useEffect(() => {
     // Verificar autenticación y rol ADMIN
@@ -104,6 +105,7 @@ export default function SettingsPage() {
       setRepresentativeMaritalStatus(data.representativeMaritalStatus || "");
       setRepresentativeAddress(data.representativeAddress || "");
       setRepresentativePowers(data.representativePowers || "");
+      setAccountingCurrencyCode(data.accountingCurrencyCode || "");
     } catch (err) {
       console.error("Error al cargar configuración:", err);
       setError(err instanceof Error ? err.message : "Error al cargar configuración");
@@ -296,6 +298,12 @@ export default function SettingsPage() {
       setError("");
       setSuccess("");
 
+      const normalizedAccountingCurrencyCode = accountingCurrencyCode.trim().toUpperCase();
+      if (normalizedAccountingCurrencyCode && !/^[A-Z]{3}$/.test(normalizedAccountingCurrencyCode)) {
+        setError("La moneda contable debe tener exactamente 3 letras mayúsculas.");
+        return;
+      }
+
       // Normalizar websiteUrl: agregar https:// si no tiene protocolo
       let normalizedWebsiteUrl = websiteUrl.trim();
       if (normalizedWebsiteUrl && !normalizedWebsiteUrl.match(/^https?:\/\//i)) {
@@ -308,6 +316,7 @@ export default function SettingsPage() {
         (replyToEmail.trim() !== (config?.replyToEmail || ""));
 
       await updateTenantConfigAdmin({
+        accountingCurrencyCode: normalizedAccountingCurrencyCode || null,
         primaryColor,
         secondaryColor,
         fromEmail: fromEmail.trim() || undefined,
@@ -542,6 +551,27 @@ export default function SettingsPage() {
 
         {/* Formulario de Configuración */}
         <form onSubmit={handleSaveConfig} className="bg-white rounded-lg shadow-md p-6">
+          <section className="mb-8 rounded-lg border border-gray-200 p-4">
+            <h2 className="text-xl font-bold text-gray-900 mb-2">Configuración financiera</h2>
+            <div className="max-w-sm">
+              <label htmlFor="accounting-currency-code" className="block text-sm font-medium text-gray-700 mb-2">
+                Moneda contable / de reportes
+              </label>
+              <input
+                id="accounting-currency-code"
+                type="text"
+                value={accountingCurrencyCode}
+                onChange={(event) => setAccountingCurrencyCode(event.target.value.toUpperCase())}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md uppercase"
+                placeholder="CRC"
+                maxLength={3}
+                pattern="[A-Z]{3}"
+                aria-describedby="accounting-currency-help"
+              />
+              <p id="accounting-currency-help" className="mt-2 text-xs text-gray-500">Moneda utilizada para consolidar reportes financieros y contables. Es independiente de la moneda predeterminada para documentos nuevos.</p>
+              {!accountingCurrencyCode.trim() ? <p className="mt-1 text-xs text-amber-700">Sin configurar. Algunos reportes contables pueden no tener una moneda de consolidación definida.</p> : null}
+            </div>
+          </section>
           <h2 className="text-xl font-bold text-gray-900 mb-4">🎨 Colores de Marca</h2>
           
           <div className="grid md:grid-cols-2 gap-6 mb-8">

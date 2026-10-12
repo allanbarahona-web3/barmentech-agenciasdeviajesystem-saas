@@ -989,9 +989,11 @@ export type TenantConfigResponse = {
   representativeMaritalStatus: string | null;
   representativeAddress: string | null;
   representativePowers: string | null;
+  accountingCurrencyCode: string | null;
 };
 
 export type UpdateTenantConfigDto = {
+  accountingCurrencyCode?: string | null;
   primaryColor?: string;
   secondaryColor?: string;
   contactPhone?: string;

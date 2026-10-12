@@ -92,14 +92,17 @@ export class DailyExchangeRateResolver {
   async resolvePersistedDailyExchangeRates(input: {
     tenantId: string;
     requests: readonly PersistedDailyExchangeRateRequest[];
+    /** A reporting consumer may use a configured consolidation currency instead of document default. */
+    baseCurrencyCode?: string;
   }): Promise<Map<string, DailyExchangeRateResolution>> {
     const configuration = await this.configuration(input.tenantId);
+    const baseCurrencyCode = input.baseCurrencyCode?.toUpperCase() || configuration.defaultCurrencyCode;
     const requests = [...new Map(input.requests.map((request) => {
       const currencyCode = request.currencyCode.toUpperCase();
       return [`${currencyCode}\u0000${request.effectiveDate}`, { currencyCode, effectiveDate: request.effectiveDate }];
     })).values()];
     const result = new Map<string, DailyExchangeRateResolution>();
-    const foreign = requests.filter((request) => request.currencyCode !== configuration.defaultCurrencyCode);
+    const foreign = requests.filter((request) => request.currencyCode !== baseCurrencyCode);
     const dates = [...new Set(foreign.map((request) => request.effectiveDate))];
 
     const manual = configuration.exchangeRateSource === "MANUAL" && dates.length
@@ -123,18 +126,18 @@ export class DailyExchangeRateResolver {
 
     for (const request of requests) {
       const key = `${request.currencyCode}\u0000${request.effectiveDate}`;
-      if (request.currencyCode === configuration.defaultCurrencyCode) {
-        result.set(key, { baseCurrencyCode: configuration.defaultCurrencyCode, source: configuration.exchangeRateSource, effectiveDate: request.effectiveDate, status: "NOT_REQUIRED" });
+      if (request.currencyCode === baseCurrencyCode) {
+        result.set(key, { baseCurrencyCode, source: configuration.exchangeRateSource, effectiveDate: request.effectiveDate, status: "NOT_REQUIRED" });
         continue;
       }
-      if (!supportsUsdCrc(configuration.defaultCurrencyCode, [request.currencyCode])) {
-        result.set(key, { baseCurrencyCode: configuration.defaultCurrencyCode, source: configuration.exchangeRateSource, effectiveDate: request.effectiveDate, status: "MISSING" });
+      if (!supportsUsdCrc(baseCurrencyCode, [request.currencyCode])) {
+        result.set(key, { baseCurrencyCode, source: configuration.exchangeRateSource, effectiveDate: request.effectiveDate, status: "MISSING" });
         continue;
       }
       const rate = configuration.exchangeRateSource === "MANUAL" ? manualByDate.get(request.effectiveDate) : officialByDate.get(request.effectiveDate);
       result.set(key, rate && positive(rate)
-        ? { baseCurrencyCode: configuration.defaultCurrencyCode, source: configuration.exchangeRateSource, effectiveDate: request.effectiveDate, status: "AVAILABLE", rate }
-        : { baseCurrencyCode: configuration.defaultCurrencyCode, source: configuration.exchangeRateSource, effectiveDate: request.effectiveDate, status: "MISSING" });
+        ? { baseCurrencyCode, source: configuration.exchangeRateSource, effectiveDate: request.effectiveDate, status: "AVAILABLE", rate }
+        : { baseCurrencyCode, source: configuration.exchangeRateSource, effectiveDate: request.effectiveDate, status: "MISSING" });
     }
     return result;
   }

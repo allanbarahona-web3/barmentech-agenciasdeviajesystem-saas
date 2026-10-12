@@ -4,7 +4,7 @@ import type { ReportExecutionContext, ResolvedReportingPeriod } from "../contrac
 export const ACCOUNTING_COST_SOURCE_TYPES = ["OPERATIONAL_PURCHASE"] as const;
 export type AccountingCostSourceType = typeof ACCOUNTING_COST_SOURCE_TYPES[number];
 export type AccountingCostCounterpartyKind = "SUPPLIER" | "EMPLOYEE" | "INSTITUTION" | "OTHER";
-export type AccountingCostConversionStatus = "IDENTITY" | "AVAILABLE" | "FX_MISSING";
+export type AccountingCostConversionStatus = "IDENTITY" | "AVAILABLE" | "FX_MISSING" | "FX_SNAPSHOT_INVALID";
 
 export type AccountingCostFilter = {
   sourceType?: AccountingCostSourceType;
@@ -49,6 +49,17 @@ export type AccountingCostConversion = {
   operation: "IDENTITY" | "MULTIPLY" | "DIVIDE" | null;
 };
 
+/** Internal source projection only; it is consumed and removed by the FX projector. */
+export type AccountingCostFxSnapshot = {
+  accountingCurrencyCode: string | null;
+  exchangeRate: Prisma.Decimal | null;
+  exchangeRateAuthority: string | null;
+  exchangeRateEffectiveDate: Date | null;
+  exchangeRateObservationId: string | null;
+  exchangeRateIndicator: string | null;
+  exchangeRateOperation: string | null;
+};
+
 export type AccountingCostRow = {
   sourceType: AccountingCostSourceType;
   sourceId: string;
@@ -65,6 +76,7 @@ export type AccountingCostRow = {
   status: string;
   cancelled: boolean;
   context: AccountingCostSourceContext;
+  fxSnapshot?: AccountingCostFxSnapshot;
 };
 
 export type AccountingCostSummaryRow = {
@@ -73,6 +85,7 @@ export type AccountingCostSummaryRow = {
   count: number;
   subtotal: Prisma.Decimal;
   tax: Prisma.Decimal;
+  fxSnapshot: AccountingCostFxSnapshot;
 };
 
 export type AccountingCostSourcePage = { items: readonly AccountingCostRow[]; totalItems: number };

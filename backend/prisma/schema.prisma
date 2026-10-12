@@ -278,68 +278,68 @@ model ContractNumber {
 }
 
 model Contract {
-  id                     String                                   @id @default(cuid())
-  contractNumber         String                                   @unique
-  destination            String
-  generatedByUserId      String
-  generatedByEmail       String
-  generatedByName        String
-  issuedAt               DateTime?
-  startDate              DateTime?
-  endDate                DateTime?
-  payload                Json
-  pdfObjectKey           String?
-  pdfFileName            String?
-  pdfMimeType            String?
-  pdfSize                Int?
-  createdAt              DateTime                                 @default(now())
-  updatedAt              DateTime                                 @updatedAt
-  clientId               String
-  status                 String                                   @default("PENDING_SIGNATURE")
-  signedPdfObjectKey     String?
-  signedPdfFileName      String?
-  signedPdfMimeType      String?
-  signedPdfSize          Int?
-  signedByName           String?
-  signedAt               DateTime?
-  signedClientIp         String?
-  signedUserAgent        String?
-  cancelledAt            DateTime?
-  htmlObjectKey          String?
-  signaturePngObjectKey  String?
-  viewedAt               DateTime?
-  paymentReference       String                                   @unique
-  contractType           String                                   @default("CUSTOM")
-  travelPackageId        String?
-  participantCount       Int                                      @default(1)
-  source                 ContractSource                           @default(SCHEDULED_TRIP)
-  commercialTotal        Decimal?                                 @db.Decimal(19, 5)
-  commercialCurrency     Currency?
-  commercialPricingPublicationId String?
-  commercialPublishedPricePerPerson Decimal?                      @db.Decimal(19, 5)
-  paymentConditionType   PaymentConditionType?
-  paymentDueDate         DateTime?                                @db.Date
-  commercialTaxTreatment PriceTaxTreatment?
-  tenantId               String
-  internalTripId         String?
-  billingCreditNotes     BillingCreditNote[]
-  billingInvoice         BillingInvoice?
-  billingPayments        BillingPayment[]
-  billingReceipts        BillingReceipt[]
-  client                 Client                                   @relation(fields: [clientId], references: [id])
-  internalTrip           InternalTrip?                            @relation(fields: [internalTripId], references: [id])
-  tenant                 Tenant                                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  travelPackage          TravelPackage?                           @relation(fields: [travelPackageId], references: [id])
-  commercialPricingPublication TravelPackagePricingPublication?   @relation("ContractCommercialPricingPublication", fields: [commercialPricingPublicationId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "Contract_commercial_pricing_publication_tenant_fkey")
-  documents              ContractDocument[]
-  signatureEvents        ContractSignatureEvent[]
-  usedTokens             ContractUsedToken[]
-  signingSessions        DocumentSigningSession[]
-  notes                  ContractNote[]
-  participantSources     TravelPackageParticipantContractSource[] @relation("ContractTravelPackageParticipantSource")
-  financePayments        Payment[]                                @relation("ContractFinancePayments")
-  fiscalSnapshot         ContractFiscalSnapshot?
-  commercialSnapshot     ContractCommercialSnapshot?
+  id                                String                                   @id @default(cuid())
+  contractNumber                    String                                   @unique
+  destination                       String
+  generatedByUserId                 String
+  generatedByEmail                  String
+  generatedByName                   String
+  issuedAt                          DateTime?
+  startDate                         DateTime?
+  endDate                           DateTime?
+  payload                           Json
+  pdfObjectKey                      String?
+  pdfFileName                       String?
+  pdfMimeType                       String?
+  pdfSize                           Int?
+  createdAt                         DateTime                                 @default(now())
+  updatedAt                         DateTime                                 @updatedAt
+  clientId                          String
+  status                            String                                   @default("PENDING_SIGNATURE")
+  signedPdfObjectKey                String?
+  signedPdfFileName                 String?
+  signedPdfMimeType                 String?
+  signedPdfSize                     Int?
+  signedByName                      String?
+  signedAt                          DateTime?
+  signedClientIp                    String?
+  signedUserAgent                   String?
+  cancelledAt                       DateTime?
+  htmlObjectKey                     String?
+  signaturePngObjectKey             String?
+  viewedAt                          DateTime?
+  paymentReference                  String                                   @unique
+  contractType                      String                                   @default("CUSTOM")
+  travelPackageId                   String?
+  participantCount                  Int                                      @default(1)
+  source                            ContractSource                           @default(SCHEDULED_TRIP)
+  commercialTotal                   Decimal?                                 @db.Decimal(19, 5)
+  commercialCurrency                Currency?
+  commercialPricingPublicationId    String?
+  commercialPublishedPricePerPerson Decimal?                                 @db.Decimal(19, 5)
+  paymentConditionType              PaymentConditionType?
+  paymentDueDate                    DateTime?                                @db.Date
+  commercialTaxTreatment            PriceTaxTreatment?
+  tenantId                          String
+  internalTripId                    String?
+  billingCreditNotes                BillingCreditNote[]
+  billingInvoice                    BillingInvoice?
+  billingPayments                   BillingPayment[]
+  billingReceipts                   BillingReceipt[]
+  client                            Client                                   @relation(fields: [clientId], references: [id])
+  internalTrip                      InternalTrip?                            @relation(fields: [internalTripId], references: [id])
+  tenant                            Tenant                                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  travelPackage                     TravelPackage?                           @relation(fields: [travelPackageId], references: [id])
+  commercialPricingPublication      TravelPackagePricingPublication?         @relation("ContractCommercialPricingPublication", fields: [commercialPricingPublicationId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "Contract_commercial_pricing_publication_tenant_fkey")
+  documents                         ContractDocument[]
+  signatureEvents                   ContractSignatureEvent[]
+  usedTokens                        ContractUsedToken[]
+  signingSessions                   DocumentSigningSession[]
+  notes                             ContractNote[]
+  participantSources                TravelPackageParticipantContractSource[] @relation("ContractTravelPackageParticipantSource")
+  financePayments                   Payment[]                                @relation("ContractFinancePayments")
+  fiscalSnapshot                    ContractFiscalSnapshot?
+  commercialSnapshot                ContractCommercialSnapshot?
 
   @@unique([id, tenantId], map: "Contract_id_tenantId_key")
   @@unique([id, tenantId, travelPackageId], map: "Contract_id_tenantId_travelPackageId_key")
@@ -1419,28 +1419,38 @@ model OperationalFulfillmentPassenger {
 }
 
 model OperationalPurchase {
-  id                       String                 @id @default(cuid())
-  tenantId                 String
-  travelPackageId          String?
-  operationalFulfillmentId String
-  providerName             String
-  supplierReference        String?
-  amount                   Decimal                @db.Decimal(19, 5)
-  currency                 String                 @db.VarChar(3)
-  taxAmount                Decimal?               @db.Decimal(19, 5)
-  purchasedAt              DateTime
-  supplierInvoiceNumber    String?
-  notes                    String?
-  createdByUserId          String
-  createdByName            String
-  updatedByUserId          String?
-  updatedByName            String?
-  createdAt                DateTime               @default(now())
-  updatedAt                DateTime               @updatedAt
-  tenant                   Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  travelPackage            TravelPackage?         @relation(fields: [travelPackageId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "operational_purchases_travel_tenant_fkey")
-  operationalFulfillment   OperationalFulfillment @relation(fields: [operationalFulfillmentId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "operational_purchases_fulfillment_tenant_fkey")
-  evidence                 OperationalEvidence[]  @relation("OperationalPurchaseEvidence")
+  id                        String                           @id @default(cuid())
+  tenantId                  String
+  travelPackageId           String?
+  operationalFulfillmentId  String
+  providerName              String
+  supplierReference         String?
+  amount                    Decimal                          @db.Decimal(19, 5)
+  currency                  String                           @db.VarChar(3)
+  /// Immutable accounting FX snapshot captured for newly registered purchases.
+  /// Null preserves historical purchases until a separately authorized backfill.
+  accountingCurrencyCode    String?                          @db.VarChar(3)
+  exchangeRate              Decimal?                         @db.Decimal(30, 12)
+  exchangeRateAuthority     String?                          @db.VarChar(100)
+  exchangeRateEffectiveDate DateTime?                        @db.Date
+  exchangeRateObservationId String?
+  exchangeRateIndicator     String?                          @db.VarChar(100)
+  exchangeRateOperation     AccountingExchangeRateOperation?
+  taxAmount                 Decimal?                         @db.Decimal(19, 5)
+  purchasedAt               DateTime
+  supplierInvoiceNumber     String?
+  notes                     String?
+  createdByUserId           String
+  createdByName             String
+  updatedByUserId           String?
+  updatedByName             String?
+  createdAt                 DateTime                         @default(now())
+  updatedAt                 DateTime                         @updatedAt
+  tenant                    Tenant                           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  travelPackage             TravelPackage?                   @relation(fields: [travelPackageId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "operational_purchases_travel_tenant_fkey")
+  operationalFulfillment    OperationalFulfillment           @relation(fields: [operationalFulfillmentId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "operational_purchases_fulfillment_tenant_fkey")
+  exchangeRateObservation   OfficialExchangeRateObservation? @relation("OperationalPurchaseOfficialExchangeRate", fields: [exchangeRateObservationId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "operational_purchases_accounting_fx_observation_fkey")
+  evidence                  OperationalEvidence[]            @relation("OperationalPurchaseEvidence")
 
   @@unique([id, tenantId], map: "operational_purchases_id_tenant_key")
   @@unique([id, tenantId, operationalFulfillmentId], map: "operational_purchases_id_tenant_fulfillment_key")
@@ -1450,6 +1460,7 @@ model OperationalPurchase {
   @@index([tenantId, travelPackageId, purchasedAt, id], map: "operational_purchases_travel_purchased_idx")
   @@index([tenantId, purchasedAt(sort: Desc), id(sort: Desc)], map: "operational_purchases_tenant_purchased_id_desc_idx")
   @@index([tenantId, currency, purchasedAt(sort: Desc), id(sort: Desc)], map: "operational_purchases_tenant_currency_purchased_id_desc_idx")
+  @@index([exchangeRateObservationId], map: "operational_purchases_accounting_fx_observation_idx")
   @@map("operational_purchases")
 }
 
@@ -2516,6 +2527,12 @@ enum TenantExchangeRateSource {
   BCCR
 }
 
+enum AccountingExchangeRateOperation {
+  IDENTITY
+  MULTIPLY
+  DIVIDE
+}
+
 enum OfficialExchangeRateType {
   REFERENCE_BUY
   REFERENCE_SELL
@@ -3324,103 +3341,103 @@ enum BillingDocumentArtifactStatus {
 }
 
 model BillingDocument {
-  id                                String                           @id @default(cuid())
-  tenantId                          String
-  documentTypeCode                  String                           @db.VarChar(4)
-  billingMode                       BillingMode
-  internalNumber                    String                           @db.VarChar(50)
-  fiscalNumber                      String?                          @db.VarChar(50)
-  haciendaKey                       String?                          @db.VarChar(50)
-  haciendaRejectionDetail           String?                          @db.Text
-  customerId                        String?
-  sourceType                        String?                          @db.VarChar(50)
-  sourceId                          String?                          @db.VarChar(100)
-  sourceNumber                      String?                          @db.VarChar(100)
-  sourceRole                        BillingDocumentSourceRole        @default(PRIMARY)
-  creationDeduplicationKey          String?                          @db.VarChar(200)
-  fiscalIssuerId                    String?
-  billingDocumentNumberSequenceId   String?
-  allocatedSequenceNumber           BigInt?
-  issuanceIdempotencyKey            String?                          @db.VarChar(100)
-  providerDocumentId                String?                          @db.VarChar(255)
-  providerEnvironment               BillingProviderEnvironment?
-  providerRequestHash               String?                          @db.VarChar(64)
-  providerLastAttemptAt             DateTime?
-  providerLastErrorCode             String?                          @db.VarChar(100)
-  providerLastErrorAt               DateTime?
-  providerReconciliationRequired    Boolean                          @default(false)
-  providerStatusCheckAttempts       Int                              @default(0)
-  providerLastStatusCheckAt         DateTime?
-  providerNextStatusCheckAt         DateTime?
-  providerStatusCheckLockOwner      String?                          @db.VarChar(100)
-  providerStatusCheckLeaseUntil     DateTime?
-  providerRefreshAttempts           Int                              @default(0)
-  providerLastRefreshAt             DateTime?
-  providerNextRefreshAt             DateTime?
-  providerRefreshLockOwner          String?                          @db.VarChar(100)
-  providerRefreshLeaseUntil         DateTime?
-  schemaVersion                     String                           @db.VarChar(20)
-  fiscalCalculationPolicyVersion    String?                          @db.VarChar(100)
-  countryCode                       String                           @default("CR") @db.VarChar(2)
-  currencyCode                      String                           @db.VarChar(3)
-  exchangeRate                      Decimal?                         @db.Decimal(30, 12)
-  fiscalEmissionAt                  DateTime?
-  fiscalIssueDate                   DateTime?                        @db.Date
-  officialExchangeRateObservationId String?
-  fiscalExchangeRateEffectiveDate   DateTime?                        @db.Date
-  fiscalExchangeRateSourceAuthority String?                          @db.VarChar(100)
-  fiscalExchangeRateIndicatorCode   String?                          @db.VarChar(100)
-  issuedAt                          DateTime?
-  paymentConditionCode              String?                          @db.VarChar(4)
-  creditTermDays                    Int?
-  dueDate                           DateTime?                        @db.Date
-  lifecycleStatus                   BillingDocumentLifecycleStatus   @default(DRAFT)
-  providerStatus                    BillingProviderStatus            @default(NOT_SUBMITTED)
-  taxAuthorityStatus                BillingTaxAuthorityStatus        @default(NOT_SUBMITTED)
-  taxAuthorityFinalizedAt           DateTime?                        @db.Timestamptz(6)
-  artifactStatus                    BillingArtifactStatus            @default(NOT_GENERATED)
-  issuerName                        String
-  issuerIdentificationType          String                           @db.VarChar(4)
-  issuerIdentification              String                           @db.VarChar(30)
-  issuerEconomicActivityCode        String?                          @db.VarChar(10)
-  issuerEstablishmentCode           String?                          @db.VarChar(3)
-  issuerTerminalCode                String?                          @db.VarChar(5)
-  issuerEmail                       String?
-  issuerPhone                       String?
-  issuerAddressSnapshot             Json?
-  receiverName                      String?
-  receiverIdentificationType        String?                          @db.VarChar(4)
-  receiverIdentification            String?                          @db.VarChar(30)
-  receiverEconomicActivityCode      String?                          @db.VarChar(10)
-  receiverEmail                     String?
-  receiverPhone                     String?
-  receiverAddressSnapshot           Json?
-  grossSubtotal                     Decimal                          @db.Decimal(19, 5)
-  discountTotal                     Decimal                          @db.Decimal(19, 5)
-  taxableTotal                      Decimal                          @db.Decimal(19, 5)
-  exemptTotal                       Decimal                          @db.Decimal(19, 5)
-  exoneratedTotal                   Decimal                          @db.Decimal(19, 5)
-  grossTaxTotal                     Decimal                          @db.Decimal(19, 5)
-  exoneratedTaxTotal                Decimal                          @db.Decimal(19, 5)
-  netTaxTotal                       Decimal                          @db.Decimal(19, 5)
-  total                             Decimal                          @db.Decimal(19, 5)
-  confirmedAt                       DateTime?
-  submittedAt                       DateTime?
-  createdBy                         String?
-  createdAt                         DateTime                         @default(now())
-  updatedAt                         DateTime                         @updatedAt
-  tenant                            Tenant                           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  customer                          Client?                          @relation("BillingDocumentCustomer", fields: [customerId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "billing_documents_customer_tenant_fkey")
-  fiscalIssuer                      FiscalIssuer?                    @relation("BillingDocumentFiscalIssuer", fields: [fiscalIssuerId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "billing_documents_fiscal_issuer_tenant_fkey")
-  billingDocumentNumberSequence     BillingDocumentNumberSequence?   @relation("BillingDocumentAllocatedNumberSequence", fields: [billingDocumentNumberSequenceId, tenantId, fiscalIssuerId, issuerEstablishmentCode, issuerTerminalCode, documentTypeCode], references: [id, tenantId, fiscalIssuerId, establishmentCode, terminalCode, documentTypeCode], onDelete: Restrict, map: "billing_documents_number_sequence_scope_fkey")
-  artifacts                         BillingDocumentArtifact[]
-  lines                             BillingDocumentLine[]
-  references                        BillingDocumentReference[]       @relation("BillingDocumentReferences")
-  referencedBy                      BillingDocumentReference[]       @relation("ReferencedBillingDocuments")
-  paymentMethods                    BillingDocumentPaymentMethod[]
-  fiscalCreditNoteFinanceEffects    FiscalCreditNoteFinanceEffect[] @relation("FiscalCreditNoteFinanceEffectCreditNote")
-  referencedByCreditNoteFinanceEffects FiscalCreditNoteFinanceEffect[] @relation("FiscalCreditNoteFinanceEffectReferencedDocument")
-  officialExchangeRateObservation   OfficialExchangeRateObservation? @relation("BillingDocumentOfficialExchangeRate", fields: [officialExchangeRateObservationId, fiscalExchangeRateEffectiveDate, fiscalExchangeRateSourceAuthority, fiscalExchangeRateIndicatorCode], references: [id, effectiveDate, sourceAuthority, sourceIndicatorCode], onDelete: Restrict, onUpdate: Restrict, map: "billing_documents_official_fx_snapshot_fkey")
+  id                                   String                           @id @default(cuid())
+  tenantId                             String
+  documentTypeCode                     String                           @db.VarChar(4)
+  billingMode                          BillingMode
+  internalNumber                       String                           @db.VarChar(50)
+  fiscalNumber                         String?                          @db.VarChar(50)
+  haciendaKey                          String?                          @db.VarChar(50)
+  haciendaRejectionDetail              String?                          @db.Text
+  customerId                           String?
+  sourceType                           String?                          @db.VarChar(50)
+  sourceId                             String?                          @db.VarChar(100)
+  sourceNumber                         String?                          @db.VarChar(100)
+  sourceRole                           BillingDocumentSourceRole        @default(PRIMARY)
+  creationDeduplicationKey             String?                          @db.VarChar(200)
+  fiscalIssuerId                       String?
+  billingDocumentNumberSequenceId      String?
+  allocatedSequenceNumber              BigInt?
+  issuanceIdempotencyKey               String?                          @db.VarChar(100)
+  providerDocumentId                   String?                          @db.VarChar(255)
+  providerEnvironment                  BillingProviderEnvironment?
+  providerRequestHash                  String?                          @db.VarChar(64)
+  providerLastAttemptAt                DateTime?
+  providerLastErrorCode                String?                          @db.VarChar(100)
+  providerLastErrorAt                  DateTime?
+  providerReconciliationRequired       Boolean                          @default(false)
+  providerStatusCheckAttempts          Int                              @default(0)
+  providerLastStatusCheckAt            DateTime?
+  providerNextStatusCheckAt            DateTime?
+  providerStatusCheckLockOwner         String?                          @db.VarChar(100)
+  providerStatusCheckLeaseUntil        DateTime?
+  providerRefreshAttempts              Int                              @default(0)
+  providerLastRefreshAt                DateTime?
+  providerNextRefreshAt                DateTime?
+  providerRefreshLockOwner             String?                          @db.VarChar(100)
+  providerRefreshLeaseUntil            DateTime?
+  schemaVersion                        String                           @db.VarChar(20)
+  fiscalCalculationPolicyVersion       String?                          @db.VarChar(100)
+  countryCode                          String                           @default("CR") @db.VarChar(2)
+  currencyCode                         String                           @db.VarChar(3)
+  exchangeRate                         Decimal?                         @db.Decimal(30, 12)
+  fiscalEmissionAt                     DateTime?
+  fiscalIssueDate                      DateTime?                        @db.Date
+  officialExchangeRateObservationId    String?
+  fiscalExchangeRateEffectiveDate      DateTime?                        @db.Date
+  fiscalExchangeRateSourceAuthority    String?                          @db.VarChar(100)
+  fiscalExchangeRateIndicatorCode      String?                          @db.VarChar(100)
+  issuedAt                             DateTime?
+  paymentConditionCode                 String?                          @db.VarChar(4)
+  creditTermDays                       Int?
+  dueDate                              DateTime?                        @db.Date
+  lifecycleStatus                      BillingDocumentLifecycleStatus   @default(DRAFT)
+  providerStatus                       BillingProviderStatus            @default(NOT_SUBMITTED)
+  taxAuthorityStatus                   BillingTaxAuthorityStatus        @default(NOT_SUBMITTED)
+  taxAuthorityFinalizedAt              DateTime?                        @db.Timestamptz(6)
+  artifactStatus                       BillingArtifactStatus            @default(NOT_GENERATED)
+  issuerName                           String
+  issuerIdentificationType             String                           @db.VarChar(4)
+  issuerIdentification                 String                           @db.VarChar(30)
+  issuerEconomicActivityCode           String?                          @db.VarChar(10)
+  issuerEstablishmentCode              String?                          @db.VarChar(3)
+  issuerTerminalCode                   String?                          @db.VarChar(5)
+  issuerEmail                          String?
+  issuerPhone                          String?
+  issuerAddressSnapshot                Json?
+  receiverName                         String?
+  receiverIdentificationType           String?                          @db.VarChar(4)
+  receiverIdentification               String?                          @db.VarChar(30)
+  receiverEconomicActivityCode         String?                          @db.VarChar(10)
+  receiverEmail                        String?
+  receiverPhone                        String?
+  receiverAddressSnapshot              Json?
+  grossSubtotal                        Decimal                          @db.Decimal(19, 5)
+  discountTotal                        Decimal                          @db.Decimal(19, 5)
+  taxableTotal                         Decimal                          @db.Decimal(19, 5)
+  exemptTotal                          Decimal                          @db.Decimal(19, 5)
+  exoneratedTotal                      Decimal                          @db.Decimal(19, 5)
+  grossTaxTotal                        Decimal                          @db.Decimal(19, 5)
+  exoneratedTaxTotal                   Decimal                          @db.Decimal(19, 5)
+  netTaxTotal                          Decimal                          @db.Decimal(19, 5)
+  total                                Decimal                          @db.Decimal(19, 5)
+  confirmedAt                          DateTime?
+  submittedAt                          DateTime?
+  createdBy                            String?
+  createdAt                            DateTime                         @default(now())
+  updatedAt                            DateTime                         @updatedAt
+  tenant                               Tenant                           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer                             Client?                          @relation("BillingDocumentCustomer", fields: [customerId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "billing_documents_customer_tenant_fkey")
+  fiscalIssuer                         FiscalIssuer?                    @relation("BillingDocumentFiscalIssuer", fields: [fiscalIssuerId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "billing_documents_fiscal_issuer_tenant_fkey")
+  billingDocumentNumberSequence        BillingDocumentNumberSequence?   @relation("BillingDocumentAllocatedNumberSequence", fields: [billingDocumentNumberSequenceId, tenantId, fiscalIssuerId, issuerEstablishmentCode, issuerTerminalCode, documentTypeCode], references: [id, tenantId, fiscalIssuerId, establishmentCode, terminalCode, documentTypeCode], onDelete: Restrict, map: "billing_documents_number_sequence_scope_fkey")
+  artifacts                            BillingDocumentArtifact[]
+  lines                                BillingDocumentLine[]
+  references                           BillingDocumentReference[]       @relation("BillingDocumentReferences")
+  referencedBy                         BillingDocumentReference[]       @relation("ReferencedBillingDocuments")
+  paymentMethods                       BillingDocumentPaymentMethod[]
+  fiscalCreditNoteFinanceEffects       FiscalCreditNoteFinanceEffect[]  @relation("FiscalCreditNoteFinanceEffectCreditNote")
+  referencedByCreditNoteFinanceEffects FiscalCreditNoteFinanceEffect[]  @relation("FiscalCreditNoteFinanceEffectReferencedDocument")
+  officialExchangeRateObservation      OfficialExchangeRateObservation? @relation("BillingDocumentOfficialExchangeRate", fields: [officialExchangeRateObservationId, fiscalExchangeRateEffectiveDate, fiscalExchangeRateSourceAuthority, fiscalExchangeRateIndicatorCode], references: [id, effectiveDate, sourceAuthority, sourceIndicatorCode], onDelete: Restrict, onUpdate: Restrict, map: "billing_documents_official_fx_snapshot_fkey")
 
   @@unique([tenantId, internalNumber])
   @@unique([tenantId, fiscalNumber])
@@ -3478,21 +3495,22 @@ model BillingDocumentArtifact {
 }
 
 model OfficialExchangeRateObservation {
-  id                  String                   @id @default(cuid())
-  countryCode         String                   @db.VarChar(2)
-  foreignCurrencyCode String                   @db.VarChar(3)
-  localCurrencyCode   String                   @db.VarChar(3)
-  rateType            OfficialExchangeRateType
-  effectiveDate       DateTime                 @db.Date
-  value               Decimal                  @db.Decimal(30, 12)
-  sourceAuthority     String                   @db.VarChar(100)
-  sourceIndicatorCode String                   @db.VarChar(100)
-  retrievedAt         DateTime
-  sourcePublishedAt   DateTime?
-  requestIdentity     String                   @db.VarChar(200)
-  responseHash        String?                  @db.VarChar(64)
-  createdAt           DateTime                 @default(now())
-  billingDocuments    BillingDocument[]        @relation("BillingDocumentOfficialExchangeRate")
+  id                   String                   @id @default(cuid())
+  countryCode          String                   @db.VarChar(2)
+  foreignCurrencyCode  String                   @db.VarChar(3)
+  localCurrencyCode    String                   @db.VarChar(3)
+  rateType             OfficialExchangeRateType
+  effectiveDate        DateTime                 @db.Date
+  value                Decimal                  @db.Decimal(30, 12)
+  sourceAuthority      String                   @db.VarChar(100)
+  sourceIndicatorCode  String                   @db.VarChar(100)
+  retrievedAt          DateTime
+  sourcePublishedAt    DateTime?
+  requestIdentity      String                   @db.VarChar(200)
+  responseHash         String?                  @db.VarChar(64)
+  createdAt            DateTime                 @default(now())
+  billingDocuments     BillingDocument[]        @relation("BillingDocumentOfficialExchangeRate")
+  operationalPurchases OperationalPurchase[]    @relation("OperationalPurchaseOfficialExchangeRate")
 
   @@unique([countryCode, foreignCurrencyCode, localCurrencyCode, rateType, effectiveDate, sourceAuthority, sourceIndicatorCode], map: "official_fx_obs_authoritative_identity_key")
   @@unique([requestIdentity], map: "official_fx_obs_request_identity_key")
@@ -3640,6 +3658,8 @@ model TenantBillingConfiguration {
   electronicIssuanceEnabled   Boolean                  @default(false)
   countryCode                 String                   @default("CR") @db.VarChar(2)
   defaultCurrencyCode         String                   @default("CRC") @db.VarChar(3)
+  /// Reporting/consolidation currency; this is not the document-default currency.
+  accountingCurrencyCode      String?                  @db.VarChar(3)
   exchangeRateSource          TenantExchangeRateSource @default(MANUAL)
   fiscalTimezone              String                   @default("America/Costa_Rica") @db.VarChar(100)
   fiscalSchemaVersion         String                   @default("4.4") @db.VarChar(20)
@@ -3807,31 +3827,31 @@ model CommercialObligation {
 }
 
 model AccountReceivable {
-  id                         String                  @id @default(cuid())
-  tenantId                   String
-  sourceType                 String                  @db.VarChar(100)
-  sourceId                   String                  @db.VarChar(100)
-  sourceNumber               String?                 @db.VarChar(100)
-  sourceDocumentType         String?                 @db.VarChar(50)
-  customerId                 String?
-  debtorDisplayName          String
-  debtorIdentificationType   String?                 @db.VarChar(4)
-  debtorIdentificationNumber String?                 @db.VarChar(30)
-  currencyCode               String                  @db.VarChar(3)
-  originalAmount             Decimal                 @db.Decimal(19, 5)
-  outstandingAmount          Decimal                 @db.Decimal(19, 5)
-  dueDate                    DateTime                @db.Date
-  paymentTermDays            Int?
-  status                     AccountReceivableStatus @default(OPEN)
-  recognizedAt               DateTime                @default(now())
-  settledAt                  DateTime?
-  cancelledAt                DateTime?
-  createdAt                  DateTime                @default(now())
-  updatedAt                  DateTime                @updatedAt
-  tenant                     Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  paymentAllocations         PaymentAllocation[]
-  fiscalCreditNoteFinanceEffects FiscalCreditNoteFinanceEffect[] @relation("FiscalCreditNoteAffectedReceivable")
-  fiscalCreditNoteArAdjustments FiscalCreditNoteArAdjustment[]
+  id                                 String                              @id @default(cuid())
+  tenantId                           String
+  sourceType                         String                              @db.VarChar(100)
+  sourceId                           String                              @db.VarChar(100)
+  sourceNumber                       String?                             @db.VarChar(100)
+  sourceDocumentType                 String?                             @db.VarChar(50)
+  customerId                         String?
+  debtorDisplayName                  String
+  debtorIdentificationType           String?                             @db.VarChar(4)
+  debtorIdentificationNumber         String?                             @db.VarChar(30)
+  currencyCode                       String                              @db.VarChar(3)
+  originalAmount                     Decimal                             @db.Decimal(19, 5)
+  outstandingAmount                  Decimal                             @db.Decimal(19, 5)
+  dueDate                            DateTime                            @db.Date
+  paymentTermDays                    Int?
+  status                             AccountReceivableStatus             @default(OPEN)
+  recognizedAt                       DateTime                            @default(now())
+  settledAt                          DateTime?
+  cancelledAt                        DateTime?
+  createdAt                          DateTime                            @default(now())
+  updatedAt                          DateTime                            @updatedAt
+  tenant                             Tenant                              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  paymentAllocations                 PaymentAllocation[]
+  fiscalCreditNoteFinanceEffects     FiscalCreditNoteFinanceEffect[]     @relation("FiscalCreditNoteAffectedReceivable")
+  fiscalCreditNoteArAdjustments      FiscalCreditNoteArAdjustment[]
   fiscalCreditNoteCreditApplications FiscalCreditNoteCreditApplication[]
 
   @@unique([tenantId, sourceType, sourceId])
@@ -4019,26 +4039,26 @@ model PaymentAllocationReversal {
 /// Immutable financial consequence of an ACCEPTED fiscal credit note. It is
 /// intentionally independent from Payment because a fiscal NC is not cash.
 model FiscalCreditNoteFinanceEffect {
-  id                          String   @id @default(cuid())
+  id                          String                              @id @default(cuid())
   tenantId                    String
   customerId                  String
-  currencyCode                String   @db.VarChar(3)
+  currencyCode                String                              @db.VarChar(3)
   creditNoteBillingDocumentId String
   referencedBillingDocumentId String
   affectedAccountReceivableId String?
-  totalCreditAmount           Decimal  @db.Decimal(19, 5)
-  amountAppliedToAr           Decimal  @db.Decimal(19, 5)
-  availableCreditAmount       Decimal  @db.Decimal(19, 5)
-  effectiveAt                 DateTime @db.Timestamptz(6)
-  createdBySystem             Boolean  @default(true)
-  createdByUserId             String?  @db.VarChar(191)
-  idempotencyKey              String   @db.VarChar(200)
-  createdAt                   DateTime @default(now())
-  tenant                      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  customer                    Client   @relation(fields: [customerId, tenantId], references: [id, tenantId], onDelete: Restrict)
-  creditNoteBillingDocument   BillingDocument @relation("FiscalCreditNoteFinanceEffectCreditNote", fields: [creditNoteBillingDocumentId, tenantId], references: [id, tenantId], onDelete: Restrict)
-  referencedBillingDocument   BillingDocument @relation("FiscalCreditNoteFinanceEffectReferencedDocument", fields: [referencedBillingDocumentId, tenantId], references: [id, tenantId], onDelete: Restrict)
-  affectedAccountReceivable   AccountReceivable? @relation("FiscalCreditNoteAffectedReceivable", fields: [affectedAccountReceivableId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  totalCreditAmount           Decimal                             @db.Decimal(19, 5)
+  amountAppliedToAr           Decimal                             @db.Decimal(19, 5)
+  availableCreditAmount       Decimal                             @db.Decimal(19, 5)
+  effectiveAt                 DateTime                            @db.Timestamptz(6)
+  createdBySystem             Boolean                             @default(true)
+  createdByUserId             String?                             @db.VarChar(191)
+  idempotencyKey              String                              @db.VarChar(200)
+  createdAt                   DateTime                            @default(now())
+  tenant                      Tenant                              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer                    Client                              @relation(fields: [customerId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  creditNoteBillingDocument   BillingDocument                     @relation("FiscalCreditNoteFinanceEffectCreditNote", fields: [creditNoteBillingDocumentId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  referencedBillingDocument   BillingDocument                     @relation("FiscalCreditNoteFinanceEffectReferencedDocument", fields: [referencedBillingDocumentId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  affectedAccountReceivable   AccountReceivable?                  @relation("FiscalCreditNoteAffectedReceivable", fields: [affectedAccountReceivableId, tenantId], references: [id, tenantId], onDelete: Restrict)
   arAdjustment                FiscalCreditNoteArAdjustment?
   creditApplications          FiscalCreditNoteCreditApplication[]
 
@@ -4053,17 +4073,17 @@ model FiscalCreditNoteFinanceEffect {
 
 /// Append-only source-aware reduction of an AR caused by a fiscal NC.
 model FiscalCreditNoteArAdjustment {
-  id                       String   @id @default(cuid())
+  id                       String                        @id @default(cuid())
   tenantId                 String
   fiscalCreditNoteEffectId String
   accountReceivableId      String
-  amount                   Decimal  @db.Decimal(19, 5)
-  appliedAt                DateTime @db.Timestamptz(6)
-  idempotencyKey           String   @db.VarChar(200)
-  createdAt                DateTime @default(now())
-  tenant                   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  amount                   Decimal                       @db.Decimal(19, 5)
+  appliedAt                DateTime                      @db.Timestamptz(6)
+  idempotencyKey           String                        @db.VarChar(200)
+  createdAt                DateTime                      @default(now())
+  tenant                   Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   fiscalCreditNoteEffect   FiscalCreditNoteFinanceEffect @relation(fields: [fiscalCreditNoteEffectId, tenantId], references: [id, tenantId], onDelete: Restrict)
-  accountReceivable        AccountReceivable @relation(fields: [accountReceivableId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  accountReceivable        AccountReceivable             @relation(fields: [accountReceivableId, tenantId], references: [id, tenantId], onDelete: Restrict)
 
   @@unique([tenantId, fiscalCreditNoteEffectId])
   @@unique([fiscalCreditNoteEffectId, tenantId])
@@ -4081,20 +4101,20 @@ enum FiscalCreditNoteCreditApplicationStatus {
 /// Reserved append-only foundation for future consumption or external refund
 /// disposition of available NC credit. C3 does not create these records.
 model FiscalCreditNoteCreditApplication {
-  id                       String   @id @default(cuid())
+  id                       String                                  @id @default(cuid())
   tenantId                 String
   fiscalCreditNoteEffectId String
   accountReceivableId      String?
-  amount                   Decimal  @db.Decimal(19, 5)
+  amount                   Decimal                                 @db.Decimal(19, 5)
   status                   FiscalCreditNoteCreditApplicationStatus @default(ACTIVE)
-  appliedAt                DateTime @db.Timestamptz(6)
-  reversedAt               DateTime? @db.Timestamptz(6)
-  reversalReason           String?  @db.VarChar(500)
-  idempotencyKey           String   @db.VarChar(200)
-  createdAt                DateTime @default(now())
-  tenant                   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  fiscalCreditNoteEffect   FiscalCreditNoteFinanceEffect @relation(fields: [fiscalCreditNoteEffectId, tenantId], references: [id, tenantId], onDelete: Restrict)
-  accountReceivable        AccountReceivable? @relation(fields: [accountReceivableId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  appliedAt                DateTime                                @db.Timestamptz(6)
+  reversedAt               DateTime?                               @db.Timestamptz(6)
+  reversalReason           String?                                 @db.VarChar(500)
+  idempotencyKey           String                                  @db.VarChar(200)
+  createdAt                DateTime                                @default(now())
+  tenant                   Tenant                                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  fiscalCreditNoteEffect   FiscalCreditNoteFinanceEffect           @relation(fields: [fiscalCreditNoteEffectId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  accountReceivable        AccountReceivable?                      @relation(fields: [accountReceivableId, tenantId], references: [id, tenantId], onDelete: Restrict)
 
   @@unique([tenantId, idempotencyKey])
   @@unique([id, tenantId])

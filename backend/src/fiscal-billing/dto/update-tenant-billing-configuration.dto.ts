@@ -40,6 +40,14 @@ export class UpdateTenantBillingConfigurationDto {
   defaultCurrencyCode?: string;
 
   @IsOptional()
+  @IsString()
+  @Matches(/^[A-Z]{3}$/, {
+    message:
+      "accountingCurrencyCode debe contener exactamente tres letras ASCII mayúsculas.",
+  })
+  accountingCurrencyCode?: string;
+
+  @IsOptional()
   @IsIn(["MANUAL", "BCCR"])
   exchangeRateSource?: "MANUAL" | "BCCR";
 

@@ -72,6 +72,18 @@ describe("DailyExchangeRateResolver", () => {
     expect(officialRates.resolveExactObservation).not.toHaveBeenCalled();
   });
 
+  it("honors an explicit reporting consolidation currency instead of document default for persisted reads", async () => {
+    const { resolver, prisma, officialRates } = subject({ defaultCurrencyCode: "USD", exchangeRateSource: "BCCR" });
+    prisma.officialExchangeRateObservation.findMany.mockResolvedValue([{ effectiveDate: new Date("2026-09-12T00:00:00.000Z"), value: decimal("500.25") }]);
+
+    const result = await resolver.resolvePersistedDailyExchangeRates({
+      tenantId: "tenant-a", baseCurrencyCode: "CRC", requests: [{ currencyCode: "USD", effectiveDate: "2026-09-12" }],
+    });
+
+    expect(result.get("USD\u00002026-09-12")).toMatchObject({ baseCurrencyCode: "CRC", status: "AVAILABLE", rate: decimal("500.25") });
+    expect(officialRates.resolveExactObservation).not.toHaveBeenCalled();
+  });
+
   it("converts USD to CRC and CRC to USD with Decimal arithmetic", () => {
     const crcRate = resolution({ baseCurrencyCode: "CRC", rate: decimal("500.25") });
     const usdRate = resolution({ baseCurrencyCode: "USD", rate: decimal("500.25") });
@@ -125,6 +137,8 @@ describe("DailyExchangeRateResolver", () => {
 function subject(configuration: { defaultCurrencyCode?: string; exchangeRateSource?: string }) {
   const prisma = {
     tenantBillingConfiguration: { findUnique: jest.fn().mockResolvedValue({ defaultCurrencyCode: "CRC", ...configuration }) },
+    officialExchangeRateObservation: { findMany: jest.fn() },
+    exchangeRate: { findMany: jest.fn() },
   };
   const manualRates = { findExactDailyRate: jest.fn() };
   const officialRates = { resolveExactObservation: jest.fn() };

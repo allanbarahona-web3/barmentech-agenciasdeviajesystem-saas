@@ -4,6 +4,7 @@ import { FINANCE_ELIGIBILITY_READER, type FinanceEligibilityReader } from "../..
 import { PrismaService } from "../../prisma/prisma.service";
 import { runTenantTransaction } from "../../tenant/tenant-transaction";
 import { procurementAuthorizationForRequirement } from "../operational-procurement-authorization";
+import { OperationalPurchaseAccountingFxSnapshotService } from "./operational-purchase-accounting-fx-snapshot.service";
 import { CreateOperationalPurchaseDto, ListOperationalPurchasesDto, UpdateOperationalPurchaseDto } from "./dto/operational-purchases.dto";
 
 export type OperationalPurchasesActor = { userId: string; name: string };
@@ -12,6 +13,8 @@ type Tx = {
   operationalRequirement: Record<string, (...args: any[]) => Promise<any>>;
   operationalFulfillment: Record<string, (...args: any[]) => Promise<any>>;
   operationalPurchase: Record<string, (...args: any[]) => Promise<any>>;
+  tenantBillingConfiguration: { findUnique(input: unknown): Promise<any> };
+  exchangeRate: { findUnique(input: unknown): Promise<any> };
 };
 type Database = { $transaction<T>(work: (tx: Tx) => Promise<T>): Promise<T> };
 type Requirement = { id: string; travelPackageId: string | null; status: string; sourceType: string; sourceId: string | null; sourceLineId: string | null; sourceVersionId: string | null };
@@ -27,7 +30,11 @@ const PURCHASE_SELECT = { id: true, travelPackageId: true, operationalFulfillmen
 @Injectable()
 export class OperationalPurchasesService {
   private readonly database: Database;
-  constructor(prisma: PrismaService, @Inject(FINANCE_ELIGIBILITY_READER) private readonly financeEligibility: FinanceEligibilityReader) {
+  constructor(
+    prisma: PrismaService,
+    @Inject(FINANCE_ELIGIBILITY_READER) private readonly financeEligibility: FinanceEligibilityReader,
+    private readonly accountingFx: OperationalPurchaseAccountingFxSnapshotService,
+  ) {
     this.database = prisma as unknown as Database;
   }
 
@@ -62,6 +69,7 @@ export class OperationalPurchasesService {
     await this.requireProcurementAuthorization(tenantId, initial.requirement);
     return this.withTransaction(tenantId, async (tx) => {
       const parent = await this.requireMutableParent(tx, tenantId, travelPackageId, requirementId, fulfillmentId);
+      const accountingFx = await this.accountingFx.resolve({ tx, tenantId, purchaseCurrency: fields.currency, purchasedAt: fields.purchasedAt });
       const requirementLocked = await tx.operationalRequirement.updateMany({
         where: { id: requirementId, tenantId, travelPackageId, status: parent.requirement.status },
         data: { status: parent.requirement.status, updatedByUserId: actor.userId, updatedByName: actor.name },
@@ -82,7 +90,7 @@ export class OperationalPurchasesService {
         throw new ConflictException("OPERATIONAL_PURCHASE_FULFILLMENT_STATE_CONFLICT");
       }
       const created = await tx.operationalPurchase.create({
-        data: { tenantId, travelPackageId, operationalFulfillmentId: fulfillmentId, ...fields, createdByUserId: actor.userId, createdByName: actor.name },
+        data: { tenantId, travelPackageId, operationalFulfillmentId: fulfillmentId, ...fields, ...accountingFx, createdByUserId: actor.userId, createdByName: actor.name },
         select: PURCHASE_SELECT,
       }) as Purchase;
       return toResponse(created);
@@ -142,6 +150,7 @@ export class OperationalPurchasesService {
     await this.requireProcurementAuthorization(tenantId, initial.requirement);
     return this.withTransaction(tenantId, async (tx) => {
       const parent = await this.requireMutableStandaloneParent(tx, tenantId, requirementId, fulfillmentId);
+      const accountingFx = await this.accountingFx.resolve({ tx, tenantId, purchaseCurrency: fields.currency, purchasedAt: fields.purchasedAt });
       const requirementLocked = await tx.operationalRequirement.updateMany({
         where: { id: requirementId, tenantId, scopeType: "STANDALONE_CUSTOMER", travelPackageId: null, status: parent.requirement.status },
         data: { status: parent.requirement.status, updatedByUserId: actor.userId, updatedByName: actor.name },
@@ -154,7 +163,7 @@ export class OperationalPurchasesService {
       });
       if (locked.count !== 1) throw new ConflictException("OPERATIONAL_PURCHASE_FULFILLMENT_STATE_CONFLICT");
       const created = await tx.operationalPurchase.create({
-        data: { tenantId, travelPackageId: null, operationalFulfillmentId: fulfillmentId, ...fields, createdByUserId: actor.userId, createdByName: actor.name }, select: PURCHASE_SELECT,
+        data: { tenantId, travelPackageId: null, operationalFulfillmentId: fulfillmentId, ...fields, ...accountingFx, createdByUserId: actor.userId, createdByName: actor.name }, select: PURCHASE_SELECT,
       }) as Purchase;
       return toResponse(created);
     });

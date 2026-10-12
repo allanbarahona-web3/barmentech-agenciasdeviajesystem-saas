@@ -13,8 +13,32 @@ describe("OperationalPurchasesService", () => {
     c.finance.readMany.mockResolvedValue([{ eligibility: "ELIGIBLE", reason: "SETTLED" }]);
     await expect(c.service.create(tenantId, travelPackageId, requirementId, fulfillmentId, input(), actor)).resolves.toMatchObject({ amount: "100.25", currency: "USD", providerName: "Provider A" });
     expect(c.tx.operationalPurchase.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ travelPackageId, operationalFulfillmentId: fulfillmentId, amount: expect.any(Prisma.Decimal), currency: "USD", providerName: "Provider A" }) }));
+    expect(c.tx.operationalPurchase.create.mock.calls[0][0].data).not.toHaveProperty("baseSubtotal");
+    expect(c.tx.operationalPurchase.create.mock.calls[0][0].data).not.toHaveProperty("baseTax");
+    expect(c.tx.operationalPurchase.create.mock.calls[0][0].data).not.toHaveProperty("baseTotal");
+    expect(c.accountingFx.resolve).toHaveBeenCalledWith(expect.objectContaining({ tenantId, purchaseCurrency: "USD", purchasedAt: new Date("2026-10-01T12:00:00.000Z") }));
     expect(c.tx.operationalFulfillment.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "PURCHASED" }) }));
     expect(c.finance.readMany).toHaveBeenCalledWith({ tenantId, sources: [{ sourceType: "CONTRACT", sourceId: "contract-a" }] });
+  });
+
+  it("persists the resolved accounting rate authority without persisting converted amounts", async () => {
+    const c = context(requirement(), fulfillment());
+    c.tx.operationalPurchase.create.mockResolvedValue(purchase());
+    c.tx.operationalFulfillment.updateMany.mockResolvedValue({ count: 1 });
+    c.finance.readMany.mockResolvedValue([{ eligibility: "ELIGIBLE", reason: "SETTLED" }]);
+    c.accountingFx.resolve.mockResolvedValue({
+      accountingCurrencyCode: "CRC", exchangeRate: new Prisma.Decimal("501.1234"),
+      exchangeRateAuthority: "MANUAL_SELL", exchangeRateEffectiveDate: new Date("2026-10-01T00:00:00.000Z"),
+      exchangeRateObservationId: null, exchangeRateIndicator: null, exchangeRateOperation: "MULTIPLY",
+    });
+
+    await c.service.create(tenantId, travelPackageId, requirementId, fulfillmentId, input(), actor);
+
+    expect(c.tx.operationalPurchase.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
+      accountingCurrencyCode: "CRC", exchangeRate: new Prisma.Decimal("501.1234"), exchangeRateAuthority: "MANUAL_SELL",
+      exchangeRateOperation: "MULTIPLY",
+    }) }));
+    expect(c.tx.operationalPurchase.create.mock.calls[0][0].data).not.toHaveProperty("baseTotal");
   });
 
   it("allows multiple purchases while PURCHASED but closes purchase creation after confirmation", async () => {
@@ -62,6 +86,7 @@ describe("OperationalPurchasesService", () => {
     eligible.tx.operationalFulfillment.updateMany.mockResolvedValue({ count: 1 });
     await expect(eligible.service.create(tenantId, travelPackageId, requirementId, fulfillmentId, input(), actor)).resolves.toMatchObject({ id: purchaseId });
     expect(eligible.finance.readMany).toHaveBeenCalledWith({ tenantId, sources: [{ sourceType: "ADDITIONAL_SERVICE_ORDER_LINE", sourceId: "order-a", sourceLineId: "line-a", travelPackageId }] });
+    expect(eligible.accountingFx.resolve).toHaveBeenCalledWith(expect.objectContaining({ purchaseCurrency: "USD" }));
 
     const blocked = context(requirement({ sourceType: "ADDITIONAL_SERVICE_ORDER_LINE", sourceId: "order-a", sourceLineId: "line-a" }), fulfillment());
     blocked.finance.readMany.mockResolvedValue([{ eligibility: "BLOCKED", reason: "OUTSTANDING_BALANCE" }]);
@@ -109,6 +134,8 @@ describe("OperationalPurchasesService", () => {
     await c.service.update(tenantId, travelPackageId, requirementId, fulfillmentId, purchaseId, { supplierReference: "SUP-2", notes: "Corrected note" }, actor);
     expect(c.tx.operationalPurchase.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ supplierReference: "SUP-2", notes: "Corrected note" }) }));
     expect(c.tx.operationalPurchase.updateMany.mock.calls[0][0].data).not.toHaveProperty("amount");
+    expect(c.tx.operationalPurchase.updateMany.mock.calls[0][0].data).not.toHaveProperty("exchangeRate");
+    expect(c.tx.operationalPurchase.updateMany.mock.calls[0][0].data).not.toHaveProperty("accountingCurrencyCode");
     expect((c.service as any).delete).toBeUndefined();
   });
 
@@ -155,6 +182,7 @@ describe("OperationalPurchasesService", () => {
     expect(c.tx.operationalPurchase.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ travelPackageId: null, operationalFulfillmentId: fulfillmentId }),
     }));
+    expect(c.accountingFx.resolve).toHaveBeenCalledWith(expect.objectContaining({ purchaseCurrency: "USD" }));
 
     const blocked = context(standalone, fulfillment(), [standalone], [fulfillment()]);
     blocked.finance.readMany.mockResolvedValue([{ eligibility: "BLOCKED", reason: "OUTSTANDING_BALANCE" }]);
@@ -173,12 +201,13 @@ describe("OperationalPurchasesService", () => {
 });
 
 function context(req = requirement(), full = fulfillment(), reqs = [req, req], fulls = [full, full]) {
-  const tx = { $executeRaw: jest.fn(), operationalRequirement: { findFirst: jest.fn(), updateMany: jest.fn().mockResolvedValue({ count: 1 }) }, operationalFulfillment: { findFirst: jest.fn(), updateMany: jest.fn() }, operationalPurchase: { create: jest.fn(), findMany: jest.fn(), count: jest.fn(), findFirst: jest.fn(), updateMany: jest.fn() } };
+  const tx = { $executeRaw: jest.fn(), operationalRequirement: { findFirst: jest.fn(), updateMany: jest.fn().mockResolvedValue({ count: 1 }) }, operationalFulfillment: { findFirst: jest.fn(), updateMany: jest.fn() }, operationalPurchase: { create: jest.fn(), findMany: jest.fn(), count: jest.fn(), findFirst: jest.fn(), updateMany: jest.fn() }, tenantBillingConfiguration: { findUnique: jest.fn() }, exchangeRate: { findUnique: jest.fn() } };
   reqs.forEach((item) => tx.operationalRequirement.findFirst.mockResolvedValueOnce(item));
   fulls.forEach((item) => tx.operationalFulfillment.findFirst.mockResolvedValueOnce(item));
   const prisma = { $transaction: jest.fn(async (work: (transaction: typeof tx) => Promise<unknown>) => work(tx)) };
   const finance = { readMany: jest.fn() };
-  return { tx, finance, service: new OperationalPurchasesService(prisma as never, finance) };
+  const accountingFx = { resolve: jest.fn().mockResolvedValue(undefined) };
+  return { tx, finance, accountingFx, service: new OperationalPurchasesService(prisma as never, finance, accountingFx as never) };
 }
 function input(overrides: Record<string, unknown> = {}) { return { providerName: "Provider A", amount: "100.25000", currency: "usd", taxAmount: "0", purchasedAt: "2026-10-01T12:00:00.000Z", ...overrides } as any; }
 function requirement(overrides: Record<string, unknown> = {}) { return { id: requirementId, travelPackageId, status: "IN_PROGRESS", sourceType: "CONTRACT", sourceId: "contract-a", sourceLineId: null, sourceVersionId: null, ...overrides }; }

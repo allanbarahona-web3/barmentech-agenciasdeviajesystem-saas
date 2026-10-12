@@ -6,6 +6,22 @@ export type TenantCalendarDate = {
   day: number;
 };
 
+/** Projects a UTC instant onto the tenant's fiscal calendar without using server or browser time. */
+export function tenantCalendarDateForInstant(instant: Date, timezone: string): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(instant);
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value;
+  const year = part("year");
+  const month = part("month");
+  const day = part("day");
+  if (!year || !month || !day) throw new Error("FINANCE_TENANT_CALENDAR_DATE_INVALID");
+  return `${year}-${month}-${day}`;
+}
+
 export function tenantCalendarDateStartAsUtc(calendarDate: string, timezone: string): Date {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(calendarDate);
   if (!match) throw new Error("FINANCE_TENANT_CALENDAR_DATE_INVALID");

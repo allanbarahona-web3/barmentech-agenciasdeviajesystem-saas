@@ -7,6 +7,7 @@ export type TenantBillingConfiguration = {
   electronicIssuanceEnabled: boolean;
   countryCode: string;
   defaultCurrencyCode: string;
+  accountingCurrencyCode?: string | null;
   exchangeRateSource: 'MANUAL' | 'BCCR';
   fiscalTimezone: string;
   fiscalSchemaVersion: string;
@@ -26,6 +27,7 @@ export type UpdateTenantBillingConfiguration = Pick<
   | 'electronicIssuanceEnabled'
   | 'countryCode'
   | 'defaultCurrencyCode'
+  | 'accountingCurrencyCode'
   | 'exchangeRateSource'
   | 'fiscalTimezone'
   | 'fiscalSchemaVersion'

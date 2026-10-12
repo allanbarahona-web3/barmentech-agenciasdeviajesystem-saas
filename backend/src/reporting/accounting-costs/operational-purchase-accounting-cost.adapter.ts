@@ -41,23 +41,36 @@ export class OperationalPurchaseAccountingCostAdapter implements AccountingCostS
   async readSummary(context: ReportExecutionContext, period: ResolvedReportingPeriod, request: AccountingCostReadRequest): Promise<readonly AccountingCostSummaryRow[]> {
     const { start, end } = periodBounds(period, context.timezone);
     const clauses = sqlFilters(context, request, start, end);
-    const rows = await this.prisma.$queryRaw<Array<{ currency: string; effectiveOn: string; count: bigint; subtotal: Prisma.Decimal; tax: Prisma.Decimal | null }>>(Prisma.sql`
+    const rows = await this.prisma.$queryRaw<Array<{
+      currency: string; effectiveOn: string; count: bigint; subtotal: Prisma.Decimal; tax: Prisma.Decimal | null;
+      accountingCurrencyCode: string | null; exchangeRate: Prisma.Decimal | null; exchangeRateAuthority: string | null;
+      exchangeRateEffectiveDate: Date | null; exchangeRateObservationId: string | null; exchangeRateIndicator: string | null; exchangeRateOperation: string | null;
+    }>>(Prisma.sql`
       SELECT p."currency" AS "currency",
         to_char((p."purchasedAt" AT TIME ZONE 'UTC') AT TIME ZONE ${context.timezone}, 'YYYY-MM-DD') AS "effectiveOn",
+        p."accountingCurrencyCode" AS "accountingCurrencyCode", p."exchangeRate" AS "exchangeRate",
+        p."exchangeRateAuthority" AS "exchangeRateAuthority", p."exchangeRateEffectiveDate" AS "exchangeRateEffectiveDate",
+        p."exchangeRateObservationId" AS "exchangeRateObservationId", p."exchangeRateIndicator" AS "exchangeRateIndicator",
+        p."exchangeRateOperation"::text AS "exchangeRateOperation",
         COUNT(*)::bigint AS "count", SUM(p."amount") AS "subtotal", SUM(COALESCE(p."taxAmount", 0)) AS "tax"
       FROM "operational_purchases" p
       INNER JOIN "operational_fulfillments" f ON f."id" = p."operationalFulfillmentId" AND f."tenantId" = p."tenantId"
       INNER JOIN "operational_requirements" r ON r."id" = f."operationalRequirementId" AND r."tenantId" = f."tenantId"
       WHERE ${Prisma.join(clauses, " AND ")}
-      GROUP BY p."currency", "effectiveOn"
-      ORDER BY p."currency" ASC, "effectiveOn" ASC
+      GROUP BY p."currency", "effectiveOn", p."accountingCurrencyCode", p."exchangeRate", p."exchangeRateAuthority",
+        p."exchangeRateEffectiveDate", p."exchangeRateObservationId", p."exchangeRateIndicator", p."exchangeRateOperation"
+      ORDER BY p."currency" ASC, "effectiveOn" ASC, p."accountingCurrencyCode" ASC NULLS FIRST
     `);
-    return rows.map((value) => ({ currency: value.currency, effectiveOn: value.effectiveOn, count: safeCount(value.count), subtotal: value.subtotal, tax: value.tax ?? new Prisma.Decimal(0) }));
+    return rows.map((value) => ({
+      currency: value.currency, effectiveOn: value.effectiveOn, count: safeCount(value.count), subtotal: value.subtotal, tax: value.tax ?? new Prisma.Decimal(0),
+      fxSnapshot: snapshot(value),
+    }));
   }
 }
 
 const purchaseSelect = {
   id: true, purchasedAt: true, providerName: true, supplierReference: true, supplierInvoiceNumber: true, amount: true, taxAmount: true, currency: true,
+  accountingCurrencyCode: true, exchangeRate: true, exchangeRateAuthority: true, exchangeRateEffectiveDate: true, exchangeRateObservationId: true, exchangeRateIndicator: true, exchangeRateOperation: true,
   _count: { select: { evidence: true } },
   operationalFulfillment: { select: {
     status: true,
@@ -112,8 +125,18 @@ function row(purchase: any, quotation: { id: string; versionNumber: number; cust
     sourceType: SOURCE_TYPE, sourceId: purchase.id, sourceDate: purchase.purchasedAt, description: requirement.description,
     counterparty: { kind: "SUPPLIER", name: purchase.providerName }, subtotal: subtotal.toFixed(), tax: tax.toFixed(), total: subtotal.plus(tax).toFixed(), currency: purchase.currency,
     conversion: { status: "FX_MISSING", baseCurrency: "", exchangeRate: null, subtotal: null, tax: null, total: null, authority: null, effectiveOn: "", operation: null },
+    fxSnapshot: snapshot(purchase),
     reference: { supplierReference: purchase.supplierReference, documentNumber: purchase.supplierInvoiceNumber }, evidence: { available: purchase._count.evidence > 0, count: purchase._count.evidence },
     status: purchase.operationalFulfillment.status, cancelled: purchase.operationalFulfillment.status === "CANCELLED", context: sourceContext(requirement, quotation),
+  };
+}
+
+function snapshot(value: any) {
+  return {
+    accountingCurrencyCode: value.accountingCurrencyCode ?? null, exchangeRate: value.exchangeRate === null || value.exchangeRate === undefined ? null : new Prisma.Decimal(value.exchangeRate),
+    exchangeRateAuthority: value.exchangeRateAuthority ?? null, exchangeRateEffectiveDate: value.exchangeRateEffectiveDate ?? null,
+    exchangeRateObservationId: value.exchangeRateObservationId ?? null, exchangeRateIndicator: value.exchangeRateIndicator ?? null,
+    exchangeRateOperation: value.exchangeRateOperation ?? null,
   };
 }
 

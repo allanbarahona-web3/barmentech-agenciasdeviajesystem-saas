@@ -39,6 +39,15 @@ export interface ResolvedTenant {
   preferredCurrency: string;
 }
 
+function normalizeAccountingCurrencyCode(value: string | null | undefined): string | null {
+  if (value === undefined || value === null || value.trim() === '') return null;
+  const normalized = value.trim().toUpperCase();
+  if (!/^[A-Z]{3}$/.test(normalized)) {
+    throw new BadRequestException('TENANT_ACCOUNTING_CURRENCY_INVALID');
+  }
+  return normalized;
+}
+
 @Injectable()
 export class TenantService {
   private readonly logger = new Logger(TenantService.name);
@@ -204,43 +213,49 @@ export class TenantService {
    * 📋 Obtener configuración del tenant (para ADMIN)
    */
   async getTenantConfig(tenantId: string) {
-    const tenant = await this.prisma.tenant.findUnique({
-      where: { id: tenantId },
-      select: {
-        id: true,
-        name: true,
-        subdomain: true,
-        customDomain: true,
-        contractPrefix: true,
-        logoUrl: true,
-        signatureUrl: true,
-        emailLogoUrl: true,
-        fromEmail: true,
-        replyToEmail: true,
-        emailVerified: true,
-        primaryColor: true,
-        secondaryColor: true,
-        contactPhone: true,
-        contactWhatsApp: true,
-        contactEmail: true,
-        businessAddress: true,
-        websiteUrl: true,
-        legalName: true,
-        legalId: true,
-        representativeName: true,
-        representativeId: true,
-        representativeTitle: true,
-        representativeMaritalStatus: true,
-        representativeAddress: true,
-        representativePowers: true,
-      },
-    });
+    const [tenant, billingConfiguration] = await Promise.all([
+      this.prisma.tenant.findUnique({
+        where: { id: tenantId },
+        select: {
+          id: true,
+          name: true,
+          subdomain: true,
+          customDomain: true,
+          contractPrefix: true,
+          logoUrl: true,
+          signatureUrl: true,
+          emailLogoUrl: true,
+          fromEmail: true,
+          replyToEmail: true,
+          emailVerified: true,
+          primaryColor: true,
+          secondaryColor: true,
+          contactPhone: true,
+          contactWhatsApp: true,
+          contactEmail: true,
+          businessAddress: true,
+          websiteUrl: true,
+          legalName: true,
+          legalId: true,
+          representativeName: true,
+          representativeId: true,
+          representativeTitle: true,
+          representativeMaritalStatus: true,
+          representativeAddress: true,
+          representativePowers: true,
+        },
+      }),
+      this.accountingConfiguration().findUnique({
+        where: { tenantId },
+        select: { accountingCurrencyCode: true },
+      }),
+    ]);
 
     if (!tenant) {
       throw new NotFoundException('Tenant no encontrado');
     }
 
-    return tenant;
+    return { ...tenant, accountingCurrencyCode: billingConfiguration?.accountingCurrencyCode ?? null };
   }
 
   /**
@@ -248,7 +263,7 @@ export class TenantService {
    */
   async updateTenantConfig(tenantId: string, dto: UpdateTenantConfigDto) {
     // Extraer campos de email
-    const { fromEmail, replyToEmail, ...otherFields } = dto;
+    const { fromEmail, replyToEmail, accountingCurrencyCode } = dto;
 
     // � Validar que no sean emails genéricos
     this.validateBusinessEmail(fromEmail);
@@ -329,6 +344,15 @@ export class TenantService {
       },
     });
 
+    const normalizedAccountingCurrencyCode = normalizeAccountingCurrencyCode(accountingCurrencyCode);
+    if (accountingCurrencyCode !== undefined) {
+      await this.accountingConfiguration().upsert({
+        where: { tenantId },
+        create: { tenantId, accountingCurrencyCode: normalizedAccountingCurrencyCode },
+        update: { accountingCurrencyCode: normalizedAccountingCurrencyCode },
+      });
+    }
+
     if (shouldInvalidateVerification) {
       this.logger.log(
         `🔓 Verificación invalidada para tenant: ${updated.name}. Requiere nueva aprobación del super admin.`,
@@ -336,7 +360,15 @@ export class TenantService {
     }
 
     this.logger.log(`✅ Configuración actualizada para tenant: ${updated.name}`);
-    return updated;
+    return { ...updated, accountingCurrencyCode: accountingCurrencyCode === undefined ? undefined : normalizedAccountingCurrencyCode };
+  }
+
+  /** Isolates generated-client compatibility for the additive accounting setting. */
+  private accountingConfiguration() {
+    return this.prisma.tenantBillingConfiguration as unknown as {
+      findUnique(input: unknown): Promise<{ accountingCurrencyCode: string | null } | null>;
+      upsert(input: unknown): Promise<unknown>;
+    };
   }
 
   /**
