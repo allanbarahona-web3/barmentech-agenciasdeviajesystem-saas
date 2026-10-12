@@ -1,0 +1,11 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import test from "node:test";
+const registry = readFileSync(new URL("../src/features/reporting/report-registry.ts", import.meta.url), "utf8");
+const page = readFileSync(new URL("../src/features/reporting/accounting-costs/accounting-costs-page.tsx", import.meta.url), "utf8");
+const report = readFileSync(new URL("../src/features/reporting/accounting-costs/operational-costs-report.tsx", import.meta.url), "utf8");
+const table = readFileSync(new URL("../src/features/reporting/accounting-costs/accounting-costs-table.tsx", import.meta.url), "utf8");
+const api = readFileSync(new URL("../src/lib/accounting-costs-reporting-api.ts", import.meta.url), "utf8");
+test("Costos reales is an ADMIN/CONTADOR report card and guarded route", () => { assert.match(registry, /key: "ACCOUNTING_COSTS"[\s\S]*?href: "\/reports\/accounting-costs"[\s\S]*?allowedRoles: \["ADMIN", "CONTADOR"\]/); assert.match(page, /<ReportRouteGuard reportKey="ACCOUNTING_COSTS">/); assert.doesNotMatch(registry, /ACCOUNTING_COSTS[\s\S]*?"AGENT"/); });
+test("only Operaciones requests backend; future tabs are disabled", () => { const tabs = readFileSync(new URL("../src/features/reporting/accounting-costs/accounting-costs-tabs.tsx", import.meta.url), "utf8"); assert.match(page, /<AccountingCostsTabs \/>/); assert.match(report, /sourceType: "OPERATIONAL_PURCHASE"/); assert.match(api, /fetchApi\("\/reporting\/accounting-costs"/); assert.match(tabs, /Payroll · Próximamente/); assert.match(tabs, /Gastos · Próximamente/); assert.equal((tabs.match(/disabled/g) ?? []).length, 2); });
+test("Costos reales preserves backend summaries, FX diagnostics, cancellation and readonly evidence", () => { assert.match(report, /pageSize: 20/); assert.match(table, /TC no disponible/); assert.match(table, /Compra registrada; gestión posteriormente cancelada/); assert.match(table, /AccountingCostEvidenceDialog/); assert.match(api, /\/evidence/); assert.doesNotMatch(page + report + table + api, /Exportar|upload|delete/); });

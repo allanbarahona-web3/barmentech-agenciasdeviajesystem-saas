@@ -17,6 +17,8 @@ export type DailyExchangeRateResolution = {
   rate?: Prisma.Decimal;
 };
 
+export type PersistedDailyExchangeRateRequest = { currencyCode: string; effectiveDate: string };
+
 /**
  * The non-persistent settlement result shared by invoice-payment approval and
  * its read-only preview. Persistence of this value remains the approval
@@ -81,6 +83,60 @@ export class DailyExchangeRateResolver {
     } catch {
       return { baseCurrencyCode, source, effectiveDate, status: "MISSING" };
     }
+  }
+
+  /**
+   * Read-only historical lookup for reporting. Unlike resolveDailyExchangeRate,
+   * this method never calls the BCCR provider and never creates an observation.
+   */
+  async resolvePersistedDailyExchangeRates(input: {
+    tenantId: string;
+    requests: readonly PersistedDailyExchangeRateRequest[];
+  }): Promise<Map<string, DailyExchangeRateResolution>> {
+    const configuration = await this.configuration(input.tenantId);
+    const requests = [...new Map(input.requests.map((request) => {
+      const currencyCode = request.currencyCode.toUpperCase();
+      return [`${currencyCode}\u0000${request.effectiveDate}`, { currencyCode, effectiveDate: request.effectiveDate }];
+    })).values()];
+    const result = new Map<string, DailyExchangeRateResolution>();
+    const foreign = requests.filter((request) => request.currencyCode !== configuration.defaultCurrencyCode);
+    const dates = [...new Set(foreign.map((request) => request.effectiveDate))];
+
+    const manual = configuration.exchangeRateSource === "MANUAL" && dates.length
+      ? await (this.prisma.exchangeRate as any).findMany({
+        where: { tenantId: input.tenantId, date: { in: dates.map(localDate) } },
+        select: { date: true, sellRate: true },
+      })
+      : [];
+    const official = configuration.exchangeRateSource === "BCCR" && dates.length
+      ? await this.prisma.officialExchangeRateObservation.findMany({
+        where: {
+          countryCode: "CR", foreignCurrencyCode: "USD", localCurrencyCode: "CRC",
+          rateType: "REFERENCE_SELL", sourceAuthority: "BCCR", sourceIndicatorCode: "318",
+          effectiveDate: { in: dates.map(utcDate) },
+        },
+        select: { effectiveDate: true, value: true },
+      })
+      : [];
+    const manualByDate = new Map<string, Prisma.Decimal>(manual.map((rate: any) => [localDateKey(rate.date), rate.sellRate as Prisma.Decimal]));
+    const officialByDate = new Map<string, Prisma.Decimal>(official.map((rate) => [utcDateKey(rate.effectiveDate), rate.value]));
+
+    for (const request of requests) {
+      const key = `${request.currencyCode}\u0000${request.effectiveDate}`;
+      if (request.currencyCode === configuration.defaultCurrencyCode) {
+        result.set(key, { baseCurrencyCode: configuration.defaultCurrencyCode, source: configuration.exchangeRateSource, effectiveDate: request.effectiveDate, status: "NOT_REQUIRED" });
+        continue;
+      }
+      if (!supportsUsdCrc(configuration.defaultCurrencyCode, [request.currencyCode])) {
+        result.set(key, { baseCurrencyCode: configuration.defaultCurrencyCode, source: configuration.exchangeRateSource, effectiveDate: request.effectiveDate, status: "MISSING" });
+        continue;
+      }
+      const rate = configuration.exchangeRateSource === "MANUAL" ? manualByDate.get(request.effectiveDate) : officialByDate.get(request.effectiveDate);
+      result.set(key, rate && positive(rate)
+        ? { baseCurrencyCode: configuration.defaultCurrencyCode, source: configuration.exchangeRateSource, effectiveDate: request.effectiveDate, status: "AVAILABLE", rate }
+        : { baseCurrencyCode: configuration.defaultCurrencyCode, source: configuration.exchangeRateSource, effectiveDate: request.effectiveDate, status: "MISSING" });
+    }
+    return result;
   }
 
   private async configuration(tenantId: string): Promise<{
@@ -196,3 +252,8 @@ function supportsUsdCrc(baseCurrencyCode: string, foreignCurrencies: readonly st
 function positive(value: Prisma.Decimal): boolean {
   return value.isFinite() && value.greaterThan(0);
 }
+
+function utcDate(value: string): Date { return new Date(`${value}T00:00:00.000Z`); }
+function localDate(value: string): Date { const [year, month, day] = value.split("-").map(Number); return new Date(year, month - 1, day); }
+function localDateKey(value: Date): string { return [value.getFullYear(), String(value.getMonth() + 1).padStart(2, "0"), String(value.getDate()).padStart(2, "0")].join("-"); }
+function utcDateKey(value: Date): string { return [value.getUTCFullYear(), String(value.getUTCMonth() + 1).padStart(2, "0"), String(value.getUTCDate()).padStart(2, "0")].join("-"); }

@@ -1,6 +1,6 @@
 /** Generic, persistence- and country-agnostic reporting contracts. */
 
-export type ReportKey = "SALES" | "SALES_TAX" | "RECEIVABLES";
+export type ReportKey = "SALES" | "SALES_TAX" | "RECEIVABLES" | "ACCOUNTING_COSTS";
 
 export type ReportDocumentEffect = "INCREASE" | "DECREASE";
 

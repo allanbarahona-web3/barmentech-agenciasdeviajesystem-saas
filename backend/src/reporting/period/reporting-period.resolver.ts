@@ -36,7 +36,8 @@ export class ReportingPeriodResolver {
   }
 }
 
-function calendarDateInTimezone(instant: Date, timezone: string): string {
+/** Shared tenant-calendar projection for report readers; input remains a UTC instant. */
+export function calendarDateInTimezone(instant: Date, timezone: string): string {
   try {
     const parts = new Intl.DateTimeFormat("en-CA", {
       timeZone: timezone,

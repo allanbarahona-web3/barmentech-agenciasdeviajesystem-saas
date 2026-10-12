@@ -13,6 +13,7 @@ const READ_ACCESS: Readonly<Record<ReportKey, readonly UserRole[]>> = {
   SALES: [UserRole.ADMIN, UserRole.CONTADOR],
   SALES_TAX: [UserRole.ADMIN, UserRole.CONTADOR],
   RECEIVABLES: [UserRole.ADMIN, UserRole.CONTADOR],
+  ACCOUNTING_COSTS: [UserRole.ADMIN, UserRole.CONTADOR],
 };
 
 /** ERP role policy. Reporting Core deliberately does not import this policy. */

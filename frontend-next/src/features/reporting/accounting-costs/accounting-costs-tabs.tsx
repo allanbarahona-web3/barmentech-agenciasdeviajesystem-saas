@@ -1,0 +1,2 @@
+import { Button } from "@/components/ui/button";
+export function AccountingCostsTabs() { return <nav className="flex flex-wrap gap-2" aria-label="Fuentes de costos reales"><Button type="button" size="sm">Operaciones</Button><Button type="button" size="sm" variant="outline" disabled>Payroll · Próximamente</Button><Button type="button" size="sm" variant="outline" disabled>Gastos · Próximamente</Button></nav>; }

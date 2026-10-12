@@ -1,4 +1,4 @@
-export const REPORT_KEYS = ["SALES", "SALES_TAX", "RECEIVABLES"] as const;
+export const REPORT_KEYS = ["SALES", "SALES_TAX", "RECEIVABLES", "ACCOUNTING_COSTS"] as const;
 
 export type ReportKey = typeof REPORT_KEYS[number];
 
@@ -34,6 +34,14 @@ export const REPORT_REGISTRY: readonly ReportPresentation[] = [
     title: "Cuentas por cobrar",
     description: "CxC facturada y proyección contractual de cobros futuros.",
     href: "/reports/receivables",
+    available: true,
+    allowedRoles: ["ADMIN", "CONTADOR"],
+  },
+  {
+    key: "ACCOUNTING_COSTS",
+    title: "Costos reales",
+    description: "Compras y egresos reales por fuente.",
+    href: "/reports/accounting-costs",
     available: true,
     allowedRoles: ["ADMIN", "CONTADOR"],
   },

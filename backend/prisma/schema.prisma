@@ -1333,6 +1333,8 @@ model OperationalRequirement {
   @@index([tenantId, travelPackageId, status, operationalDeadlineAt, id], map: "operational_requirements_travel_status_deadline_idx")
   @@index([tenantId, travelPackageId, servicePurposeCode, status, id], map: "operational_requirements_travel_purpose_status_idx")
   @@index([tenantId, assignedToUserId, status, operationalDeadlineAt, id], map: "operational_requirements_assignee_status_deadline_idx")
+  @@index([tenantId, customerId, id], map: "operational_requirements_customer_id_idx")
+  @@index([tenantId, servicePurposeCode, id], map: "operational_requirements_purpose_id_idx")
   @@map("operational_requirements")
 }
 
@@ -1393,6 +1395,7 @@ model OperationalFulfillment {
   @@unique([id, tenantId, travelPackageId], map: "operational_fulfillments_id_tenant_travel_key")
   @@index([tenantId, travelPackageId, operationalRequirementId, status, createdAt, id], map: "operational_fulfillments_travel_requirement_status_created_idx")
   @@index([tenantId, travelPackageId, status, updatedAt(sort: Desc), id], map: "operational_fulfillments_travel_status_updated_id_idx")
+  @@index([tenantId, operationalRequirementId, id], map: "operational_fulfillments_requirement_id_idx")
   @@map("operational_fulfillments")
 }
 
@@ -1445,6 +1448,8 @@ model OperationalPurchase {
   @@unique([id, tenantId, travelPackageId, operationalFulfillmentId], map: "operational_purchases_id_tenant_travel_fulfillment_key")
   @@index([tenantId, operationalFulfillmentId, purchasedAt, id], map: "operational_purchases_fulfillment_purchased_idx")
   @@index([tenantId, travelPackageId, purchasedAt, id], map: "operational_purchases_travel_purchased_idx")
+  @@index([tenantId, purchasedAt(sort: Desc), id(sort: Desc)], map: "operational_purchases_tenant_purchased_id_desc_idx")
+  @@index([tenantId, currency, purchasedAt(sort: Desc), id(sort: Desc)], map: "operational_purchases_tenant_currency_purchased_id_desc_idx")
   @@map("operational_purchases")
 }
 
