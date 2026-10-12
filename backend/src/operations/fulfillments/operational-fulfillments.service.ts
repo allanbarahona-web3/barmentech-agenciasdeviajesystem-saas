@@ -973,6 +973,8 @@ function toSummary(fulfillment: FulfillmentSummaryRecord) {
     providerName: fulfillment.providerName,
     reservationCode: fulfillment.reservationCode,
     confirmationReference: fulfillment.confirmationReference,
+    voucherReference: fulfillment.voucherReference,
+    ticketReference: fulfillment.ticketReference,
     status: fulfillment.status,
     serviceStartAt: fulfillment.serviceStartAt,
     serviceEndAt: fulfillment.serviceEndAt,

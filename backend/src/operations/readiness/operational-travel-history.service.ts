@@ -79,6 +79,7 @@ export class OperationalTravelHistoryService {
       return {
         ...item,
         detailPayload: fulfillment.detailPayload ?? null,
+        detailVersion: fulfillment.detailVersion ?? null,
         purchases: (context.purchasesByFulfillmentId.get(fulfillment.id) ?? []).map(toPurchase),
       };
     });

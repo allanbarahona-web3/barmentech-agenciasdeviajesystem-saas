@@ -28,6 +28,8 @@ type OperationsTransaction = {
   operationalRequirementPassenger: Record<string, (...args: any[]) => Promise<any>>;
   operationalFulfillmentPassenger: Record<string, (...args: any[]) => Promise<any>>;
   operationalFulfillment: Record<string, (...args: any[]) => Promise<any>>;
+  operationalPurchase: Record<string, (...args: any[]) => Promise<any>>;
+  operationalEvidence: Record<string, (...args: any[]) => Promise<any>>;
   customQuotationVersion: Record<string, (...args: any[]) => Promise<any>>;
   billingDocument: Record<string, (...args: any[]) => Promise<any>>;
   tenantBillingConfiguration: Record<string, (...args: any[]) => Promise<any>>;
@@ -126,6 +128,7 @@ type CustomQuotationHistoryFulfillmentRecord = {
   id: string;
   status: "CONFIRMED" | "CANCELLED";
   confirmationReference: string | null;
+  servicePurposeCode: string;
   updatedAt: Date;
   operationalRequirement: {
     id: string;
@@ -135,6 +138,33 @@ type CustomQuotationHistoryFulfillmentRecord = {
     customer: { id: string; fullName: string; idType: string | null; idNumber: string; email: string | null } | null;
   };
   purchases: CustomQuotationHistoryPurchaseRecord[];
+};
+
+type CustomQuotationHistoryDetailRecord = {
+  id: string;
+  status: "CONFIRMED" | "CANCELLED";
+  updatedAt: Date;
+  servicePurposeCode: string;
+  servicePurposeName: string;
+  providerName: string | null;
+  providerReference: string | null;
+  reservationCode: string | null;
+  confirmationReference: string | null;
+  voucherReference: string | null;
+  ticketReference: string | null;
+  serviceStartAt: Date | null;
+  serviceEndAt: Date | null;
+  detailPayload: Prisma.JsonValue | null;
+  detailVersion: number | null;
+  confirmationNotes: string | null;
+  operationalRequirement: {
+    id: string;
+    sourceType: string | null;
+    sourceId: string | null;
+    sourceLineId: string | null;
+    description: string;
+    customer: { id: string; fullName: string; idType: string | null; idNumber: string; email: string | null } | null;
+  };
 };
 type CustomQuotationFinanceEligibilityStatus =
   | "PENDIENTE_FACTURACION"
@@ -234,6 +264,7 @@ const CUSTOM_QUOTATION_HISTORY_FULFILLMENT_SELECT = {
   id: true,
   status: true,
   confirmationReference: true,
+  servicePurposeCode: true,
   updatedAt: true,
   operationalRequirement: {
     select: {
@@ -257,14 +288,32 @@ const CUSTOM_QUOTATION_HISTORY_FULFILLMENT_SELECT = {
       purchasedAt: true,
       supplierInvoiceNumber: true,
       notes: true,
-      evidence: {
-        take: 25,
-        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
-        select: { id: true, originalFilename: true, mimeType: true, byteSize: true, createdAt: true },
-      },
       _count: { select: { evidence: true } },
     },
   },
+} as const;
+
+const CUSTOM_QUOTATION_HISTORY_DETAIL_SELECT = {
+  id: true,
+  status: true,
+  updatedAt: true,
+  servicePurposeCode: true,
+  servicePurposeName: true,
+  providerName: true,
+  providerReference: true,
+  reservationCode: true,
+  confirmationReference: true,
+  voucherReference: true,
+  ticketReference: true,
+  serviceStartAt: true,
+  serviceEndAt: true,
+  detailPayload: true,
+  detailVersion: true,
+  confirmationNotes: true,
+  operationalRequirement: { select: {
+    id: true, sourceType: true, sourceId: true, sourceLineId: true, description: true,
+    customer: { select: { id: true, fullName: true, idType: true, idNumber: true, email: true } },
+  } },
 } as const;
 
 const STATUS_TRANSITIONS: Readonly<Record<RequirementStatus, readonly RequirementStatus[]>> = {
@@ -774,6 +823,82 @@ export class OperationalRequirementsService {
     });
   }
 
+  /** Bounded, read-only terminal-detail projection for the Custom Quotation history. */
+  async findStandaloneCustomQuotationHistory(tenantId: string, fulfillmentId: string) {
+    return this.withTenantTransaction(tenantId, async (tx) => {
+      const fulfillment = await tx.operationalFulfillment.findFirst({
+        where: { ...customQuotationHistoryWhere(tenantId, undefined, null, []), id: fulfillmentId },
+        select: CUSTOM_QUOTATION_HISTORY_DETAIL_SELECT,
+      }) as CustomQuotationHistoryDetailRecord | null;
+      if (!fulfillment) throw new NotFoundException("OPERATIONAL_CUSTOM_QUOTATION_HISTORY_FULFILLMENT_NOT_FOUND");
+
+      const [version, purchases, evidence] = await Promise.all([
+        fulfillment.operationalRequirement.sourceId ? tx.customQuotationVersion.findFirst({
+          where: { tenantId, id: fulfillment.operationalRequirement.sourceId },
+          select: { id: true, customQuotation: { select: { quotationNumber: true } }, salesOrder: { select: { id: true, orderNumber: true } } },
+        }) : null,
+        tx.operationalPurchase.findMany({
+          where: { tenantId, operationalFulfillmentId: fulfillment.id },
+          select: { id: true, providerName: true, supplierReference: true, amount: true, currency: true, taxAmount: true, purchasedAt: true, supplierInvoiceNumber: true, notes: true },
+          orderBy: [{ purchasedAt: "desc" }, { id: "desc" }],
+        }),
+        tx.operationalEvidence.findMany({
+          where: { tenantId, operationalFulfillmentId: fulfillment.id },
+          select: { id: true, operationalPurchaseId: true, evidenceType: true, originalFilename: true, mimeType: true, byteSize: true, uploadedByUserId: true, uploadedByName: true, createdAt: true },
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        }),
+      ]);
+      const fiscalDocuments = version?.salesOrder ? await tx.billingDocument.findMany({
+        where: { tenantId, sourceType: "SALES_ORDER", sourceId: version.salesOrder.id, sourceRole: "PRIMARY" },
+        select: { id: true, documentTypeCode: true, fiscalNumber: true, taxAuthorityStatus: true },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      }) : [];
+      const fiscalDocument = fiscalDocuments.find((document: any) => document.taxAuthorityStatus === "ACCEPTED") ?? fiscalDocuments[0] ?? null;
+      return {
+        fulfillmentId: fulfillment.id,
+        requirementId: fulfillment.operationalRequirement.id,
+        sourceType: fulfillment.operationalRequirement.sourceType,
+        sourceId: fulfillment.operationalRequirement.sourceId,
+        sourceLineId: fulfillment.operationalRequirement.sourceLineId,
+        servicePurposeCode: fulfillment.servicePurposeCode,
+        servicePurposeName: fulfillment.servicePurposeName,
+        terminalStatus: fulfillment.status,
+        terminalAt: fulfillment.updatedAt,
+        customer: fulfillment.operationalRequirement.customer,
+        quotationVersionId: fulfillment.operationalRequirement.sourceId,
+        quotationNumber: version?.customQuotation.quotationNumber ?? null,
+        salesOrderNumber: version?.salesOrder?.orderNumber ?? null,
+        fiscalDocument: fiscalDocument ? { id: fiscalDocument.id, type: fiscalDocument.documentTypeCode, number: fiscalDocument.fiscalNumber } : null,
+        serviceDescription: fulfillment.operationalRequirement.description,
+        fulfillment: {
+          providerName: fulfillment.providerName,
+          providerReference: fulfillment.providerReference,
+          reservationCode: fulfillment.reservationCode,
+          confirmationReference: fulfillment.confirmationReference,
+          voucherReference: fulfillment.voucherReference,
+          ticketReference: fulfillment.ticketReference,
+          serviceStartAt: fulfillment.serviceStartAt,
+          serviceEndAt: fulfillment.serviceEndAt,
+          confirmationNotes: fulfillment.confirmationNotes,
+        },
+        detailPayload: fulfillment.detailPayload,
+        detailVersion: fulfillment.detailVersion,
+        purchase: purchases[0] ? toCustomQuotationHistoryPurchase(purchases[0]) : null,
+        purchases: purchases.map(toCustomQuotationHistoryPurchase),
+        evidence: evidence.map((item: any) => ({
+          evidenceId: item.id,
+          purchaseId: item.operationalPurchaseId,
+          evidenceType: item.evidenceType,
+          originalFilename: item.originalFilename,
+          mimeType: item.mimeType,
+          byteSize: item.byteSize,
+          uploadedBy: { userId: item.uploadedByUserId, name: item.uploadedByName },
+          createdAt: item.createdAt,
+        })),
+      };
+    });
+  }
+
   async findStandalone(tenantId: string, requirementId: string) {
     return this.withTenantTransaction(tenantId, async (tx) => {
       const requirement = await this.findStandaloneRequirement(tx, tenantId, requirementId);
@@ -1181,6 +1306,7 @@ function toCustomQuotationHistoryRow(
     requirementStatus: fulfillment.operationalRequirement.status,
     finalizedAt: fulfillment.updatedAt,
     confirmationReference: fulfillment.confirmationReference,
+    servicePurposeCode: fulfillment.servicePurposeCode,
     cancellationContext: null,
     customer: fulfillment.operationalRequirement.customer,
     quotationNumber: version?.customQuotation.quotationNumber ?? null,
@@ -1202,8 +1328,21 @@ function toCustomQuotationHistoryRow(
       taxAmount: purchase.taxAmount?.toFixed() ?? null,
       notes: purchase.notes,
       evidenceCount: purchase._count.evidence,
-      evidence: purchase.evidence,
     } : null,
+  };
+}
+
+function toCustomQuotationHistoryPurchase(purchase: any) {
+  return {
+    id: purchase.id,
+    providerName: purchase.providerName,
+    supplierReference: purchase.supplierReference,
+    amount: purchase.amount.toFixed(),
+    currency: purchase.currency,
+    taxAmount: purchase.taxAmount?.toFixed() ?? null,
+    purchasedAt: purchase.purchasedAt,
+    supplierInvoiceNumber: purchase.supplierInvoiceNumber,
+    notes: purchase.notes,
   };
 }
 

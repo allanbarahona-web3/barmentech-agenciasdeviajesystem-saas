@@ -66,7 +66,8 @@ test('Purchased work is summarized, confirms through persisted context, and expo
   assert.match(text, /const canRegisterPurchase = \(item\.status === 'DRAFT' \|\| item\.status === 'RESERVED'\) && item\.purchaseCount === 0/);
   assert.match(text, /const canConfirm = linearExecution \? purchased/);
   assert.match(text, /title="Confirmar gestión"/);
-  assert.match(text, /updateOperationalFulfillment\(travelPackageId, requirementId, confirmationTarget\.id, \{ confirmationReference: reference \}\)/);
+  assert.match(text, /const input: FulfillmentInput = .*confirmationDetailChanged/s);
+  assert.match(text, /updateOperationalFulfillment\(travelPackageId, requirementId, confirmationTarget\.id, input\)/);
   assert.match(text, /transitionOperationalFulfillment\(travelPackageId, requirementId, confirmationTarget\.id, 'CONFIRMED'\)/);
   assert.match(text, /onCoverageChanged\?\.\(\)/);
 });

@@ -127,15 +127,15 @@ export interface OperationalTravelHistoryItem {
   evidenceCount: number;
   evidence: OperationalTravelHistoryEvidence[];
 }
-export interface OperationalTravelHistoryDetail extends OperationalTravelHistoryItem { detailPayload: Record<string, unknown> | null; purchases: OperationalTravelHistoryPurchase[]; }
+export interface OperationalTravelHistoryDetail extends OperationalTravelHistoryItem { detailPayload: Record<string, unknown> | null; detailVersion: number | null; purchases: OperationalTravelHistoryPurchase[]; }
 export interface OperationalTravelHistoryPage { items: OperationalTravelHistoryItem[]; total: number; page: number; pageSize: number; totalPages: number; dateAuthority: 'FULFILLMENT_TERMINAL_UPDATED_AT'; }
 export interface OperationalTravelHistoryInput { page?: number; travelPackageId?: string; travelPackageParticipantId?: string; sourceCategory?: OperationalWorkSourceCategory; terminalStatus?: OperationalTravelHistoryStatus; datePreset?: OperationalTravelHistoryDatePreset; dateFrom?: string; dateTo?: string; }
 export type OperationalFulfillmentStatus = 'DRAFT' | 'RESERVED' | 'PURCHASED' | 'CONFIRMED' | 'CANCELLED';
-export interface OperationalFulfillmentSummary { id: string; requirementId: string; travelPackageId: string; servicePurposeCode: string; servicePurposeName: string; providerName: string | null; reservationCode: string | null; confirmationReference: string | null; status: OperationalFulfillmentStatus; serviceStartAt: string | null; serviceEndAt: string | null; assignedTo: { userId: string; name: string | null } | null; passengerCount: number; passengerPreview: string[]; purchaseCount: number; purchase: { id: string; providerName: string; supplierReference: string | null; amount: string; currency: string; taxAmount: string | null; purchasedAt: string; supplierInvoiceNumber: string | null; notes: string | null; evidenceCount: number; evidence: { id: string; originalFilename: string; mimeType: string } | null } | null; createdAt: string; updatedAt: string; }
+export interface OperationalFulfillmentSummary { id: string; requirementId: string; travelPackageId: string; servicePurposeCode: string; servicePurposeName: string; providerName: string | null; reservationCode: string | null; confirmationReference: string | null; voucherReference: string | null; ticketReference: string | null; status: OperationalFulfillmentStatus; serviceStartAt: string | null; serviceEndAt: string | null; assignedTo: { userId: string; name: string | null } | null; passengerCount: number; passengerPreview: string[]; purchaseCount: number; purchase: { id: string; providerName: string; supplierReference: string | null; amount: string; currency: string; taxAmount: string | null; purchasedAt: string; supplierInvoiceNumber: string | null; notes: string | null; evidenceCount: number; evidence: { id: string; originalFilename: string; mimeType: string } | null } | null; createdAt: string; updatedAt: string; }
 export interface OperationalFulfillmentDetail extends OperationalFulfillmentSummary { providerReference: string | null; voucherReference: string | null; ticketReference: string | null; detailPayload: Record<string, unknown> | null; detailVersion: number | null; confirmationNotes: string | null; passengers: Array<{ travelPackageParticipantId: string; clientId: string; fullName: string; role: string }>; }
 export interface OperationalFulfillmentsPage { items: OperationalFulfillmentSummary[]; total: number; page: number; pageSize: number; totalPages: number; }
 export interface EnsureOperationalFulfillmentResult { created: boolean; fulfillment: OperationalFulfillmentDetail; }
-export interface FulfillmentInput { participantIds?: string[]; providerName?: string | null; providerReference?: string | null; reservationCode?: string | null; confirmationReference?: string | null; voucherReference?: string | null; ticketReference?: string | null; serviceStartAt?: string | null; serviceEndAt?: string | null; confirmationNotes?: string | null; }
+export interface FulfillmentInput { participantIds?: string[]; providerName?: string | null; providerReference?: string | null; reservationCode?: string | null; confirmationReference?: string | null; voucherReference?: string | null; ticketReference?: string | null; serviceStartAt?: string | null; serviceEndAt?: string | null; confirmationNotes?: string | null; detailPayload?: Record<string, unknown> | null; detailVersion?: number | null; }
 export interface OperationalPurchase {
   id: string; fulfillmentId: string; travelPackageId: string; providerName: string; supplierReference: string | null;
   amount: string; currency: string; taxAmount: string | null; purchasedAt: string; supplierInvoiceNumber: string | null;
@@ -307,14 +307,26 @@ export interface CustomQuotationOperationsHistoryRow {
   requirementStatus: OperationalRequirementStatus;
   finalizedAt: string;
   confirmationReference: string | null;
+  servicePurposeCode: string;
   cancellationContext: string | null;
   customer: { id: string; fullName: string; idType: string | null; idNumber: string; email: string | null } | null;
   quotationNumber: string | null;
   salesOrderNumber: string | null;
   fiscalDocument: { id: string; type: string; number: string | null } | null;
   serviceDescription: string;
-  purchase: { id: string; providerName: string; amount: string; currency: string; purchasedAt: string; supplierReference: string | null; supplierInvoiceNumber: string | null; taxAmount: string | null; notes: string | null; evidenceCount: number; evidence: Array<{ id: string; originalFilename: string; mimeType: string; byteSize: number; createdAt: string }> } | null;
+  purchase: { id: string; providerName: string; amount: string; currency: string; purchasedAt: string; supplierReference: string | null; supplierInvoiceNumber: string | null; taxAmount: string | null; notes: string | null; evidenceCount: number } | null;
 }
+export interface CustomQuotationOperationsHistoryDetail {
+  fulfillmentId: string; requirementId: string; sourceType: string | null; sourceId: string | null; sourceLineId: string | null;
+  servicePurposeCode: string; servicePurposeName: string; terminalStatus: 'CONFIRMED' | 'CANCELLED'; terminalAt: string;
+  customer: { id: string; fullName: string; idType: string | null; idNumber: string; email: string | null } | null;
+  quotationVersionId: string | null; quotationNumber: string | null; salesOrderNumber: string | null; fiscalDocument: { id: string; type: string; number: string | null } | null; serviceDescription: string;
+  fulfillment: { providerName: string | null; providerReference: string | null; reservationCode: string | null; confirmationReference: string | null; voucherReference: string | null; ticketReference: string | null; serviceStartAt: string | null; serviceEndAt: string | null; confirmationNotes: string | null; };
+  detailPayload: Record<string, unknown> | null; detailVersion: number | null;
+  purchase: CustomQuotationHistoryPurchase | null; purchases: CustomQuotationHistoryPurchase[];
+  evidence: OperationalTravelHistoryEvidence[];
+}
+export interface CustomQuotationHistoryPurchase { id: string; providerName: string; supplierReference: string | null; amount: string; currency: string; taxAmount: string | null; purchasedAt: string; supplierInvoiceNumber: string | null; notes: string | null; }
 export interface CustomQuotationOperationsHistoryPage { items: CustomQuotationOperationsHistoryRow[]; total: number; page: number; pageSize: number; totalPages: number; dateAuthority: 'FULFILLMENT_FINALIZED_AT'; }
 export type StandaloneOperationalFulfillmentSummary = Omit<OperationalFulfillmentSummary, 'travelPackageId' | 'passengerCount' | 'passengerPreview'> & { travelPackageId: null; passengerCount: 0; passengerPreview: []; };
 export type StandaloneOperationalFulfillmentDetail = Omit<OperationalFulfillmentDetail, 'travelPackageId' | 'passengerCount' | 'passengerPreview' | 'passengers'> & { travelPackageId: null; passengerCount: 0; passengerPreview: []; passengers: []; };
@@ -350,8 +362,10 @@ export function listCustomQuotationOperationsHistory(input: { page?: number; sea
   if (input.dateTo) params.set('dateTo', input.dateTo);
   return operationsRequest(`${standaloneRequirementsPath('/custom-quotation-history')}?${params}`, 'GET');
 }
+export function getCustomQuotationOperationsHistoryDetail(fulfillmentId: string): Promise<CustomQuotationOperationsHistoryDetail> { return operationsRequest(standaloneRequirementsPath(`/custom-quotation-history/${encodeURIComponent(fulfillmentId)}`), 'GET'); }
 export function getStandaloneOperationalRequirement(requirementId: string): Promise<StandaloneOperationalRequirementDetail> { return operationsRequest(standaloneRequirementsPath(`/${encodeURIComponent(requirementId)}`), 'GET'); }
 export function listStandaloneOperationalFulfillments(requirementId: string, page = 1): Promise<StandaloneOperationalFulfillmentsPage> { return operationsRequest(`${standaloneFulfillmentsPath(requirementId)}?${new URLSearchParams({ page: String(page), pageSize: '20' })}`, 'GET'); }
+export function getStandaloneOperationalFulfillment(requirementId: string, fulfillmentId: string): Promise<StandaloneOperationalFulfillmentDetail> { return operationsRequest(standaloneFulfillmentsPath(requirementId, `/${encodeURIComponent(fulfillmentId)}`), 'GET'); }
 export function createStandaloneOperationalFulfillment(requirementId: string, input: Omit<FulfillmentInput, 'participantIds'>): Promise<StandaloneOperationalFulfillmentDetail> { return operationsRequest(standaloneFulfillmentsPath(requirementId), 'POST', input); }
 export function updateStandaloneOperationalFulfillment(requirementId: string, fulfillmentId: string, input: Omit<FulfillmentInput, 'participantIds'>): Promise<StandaloneOperationalFulfillmentDetail> { return operationsRequest(standaloneFulfillmentsPath(requirementId, `/${encodeURIComponent(fulfillmentId)}`), 'PATCH', input); }
 export function transitionStandaloneOperationalFulfillment(requirementId: string, fulfillmentId: string, targetStatus: OperationalFulfillmentStatus): Promise<StandaloneOperationalFulfillmentDetail> { return operationsRequest(standaloneFulfillmentsPath(requirementId, `/${encodeURIComponent(fulfillmentId)}/status`), 'POST', { targetStatus }); }

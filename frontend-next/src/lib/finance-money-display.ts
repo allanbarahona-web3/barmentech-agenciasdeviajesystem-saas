@@ -10,6 +10,25 @@ export function formatFinanceMoneyDisplay(value: string, currency: string): stri
   return `${currency} ${match[1]}${whole.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}.${cents}`;
 }
 
+/** Adds decimal strings exactly for display-only totals; persisted purchase amounts remain authoritative. */
+export function addFinanceMoneyDisplayValues(left: string, right: string | null): string {
+  const [leftWhole, leftFraction = ''] = left.split('.');
+  const [rightWhole, rightFraction = ''] = (right ?? '0').split('.');
+  const scale = Math.max(leftFraction.length, rightFraction.length);
+  const digits = addDigits(`${leftWhole}${leftFraction.padEnd(scale, '0')}`, `${rightWhole}${rightFraction.padEnd(scale, '0')}`);
+  return scale === 0 ? digits : `${digits.slice(0, -scale) || '0'}.${digits.slice(-scale)}`;
+}
+
+function addDigits(left: string, right: string): string {
+  let carry = 0, result = '';
+  const width = Math.max(left.length, right.length);
+  for (let index = 0; index < width; index += 1) {
+    const sum = Number(left[left.length - 1 - index] ?? '0') + Number(right[right.length - 1 - index] ?? '0') + carry;
+    result = `${sum % 10}${result}`; carry = Math.floor(sum / 10);
+  }
+  return `${carry || ''}${result}`.replace(/^0+(?=\d)/, '');
+}
+
 function incrementDigits(value: string): string {
   const digits = value.split('');
   for (let index = digits.length - 1; index >= 0; index -= 1) {

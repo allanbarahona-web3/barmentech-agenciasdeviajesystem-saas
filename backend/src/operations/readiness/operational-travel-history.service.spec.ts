@@ -138,6 +138,7 @@ describe("OperationalTravelHistoryService", () => {
     await expect(c.service.find(tenantId, "confirmed-a")).resolves.toMatchObject({
       fulfillmentId: "confirmed-a",
       detailPayload: { roomType: "double" },
+      detailVersion: 1,
       purchases: [{ purchaseId: "purchase-a" }, { purchaseId: "purchase-old" }],
       evidence: [{ evidenceId: "evidence-a", mimeType: "application/pdf" }],
     });

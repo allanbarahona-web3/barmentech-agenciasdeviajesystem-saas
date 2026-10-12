@@ -29,6 +29,11 @@ export class OperationalStandaloneRequirementsController {
     return this.service.listStandaloneCustomQuotationHistory(request.user.tenantId, query);
   }
 
+  @Get("custom-quotation-history/:fulfillmentId")
+  findCustomQuotationHistory(@Req() request: OperationsRequest, @Param("fulfillmentId") fulfillmentId: string) {
+    return this.service.findStandaloneCustomQuotationHistory(request.user.tenantId, fulfillmentId);
+  }
+
   @Get(":requirementId")
   find(@Req() request: OperationsRequest, @Param("requirementId") requirementId: string) {
     return this.service.findStandalone(request.user.tenantId, requirementId);

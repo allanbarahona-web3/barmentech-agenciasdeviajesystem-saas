@@ -479,6 +479,33 @@ describe("OperationalRequirementsService", () => {
     expect(c.tx.billingDocument.findMany).toHaveBeenCalledTimes(1);
   });
 
+  it("loads one terminal CQ detail with typed data, strong references, purchase metadata, and evidence in a fixed query set", async () => {
+    const c = context();
+    c.tx.operationalFulfillment.findFirst.mockResolvedValue({
+      ...customQuotationHistoryFulfillment(),
+      servicePurposeCode: "AIRFARE", servicePurposeName: "Airfare", providerName: "Air Uno", providerReference: "PROV-001",
+      reservationCode: "RES-001", voucherReference: "VOUCHER-001", ticketReference: "TICKET-001",
+      serviceStartAt: new Date("2026-11-01T10:00:00.000Z"), serviceEndAt: new Date("2026-11-01T13:00:00.000Z"),
+      detailPayload: { bookingLocator: "ABC123", flightNumber: "CM123" }, detailVersion: 1, confirmationNotes: "Terminal A",
+      operationalRequirement: { ...customQuotationHistoryFulfillment().operationalRequirement, sourceType: "CUSTOM_QUOTATION_LINE", sourceLineId: "line-a" },
+    });
+    c.tx.customQuotationVersion.findFirst.mockResolvedValue({ id: "version-a", customQuotation: { quotationNumber: "CQ-001" }, salesOrder: { id: "sales-a", orderNumber: "SO-001" } });
+    c.tx.operationalPurchase.findMany.mockResolvedValue(customQuotationHistoryFulfillment().purchases);
+    c.tx.operationalEvidence.findMany.mockResolvedValue([{ id: "evidence-a", operationalPurchaseId: "purchase-a", evidenceType: "SUPPLIER_INVOICE", originalFilename: "factura.pdf", mimeType: "application/pdf", byteSize: 100, uploadedByUserId: "user-a", uploadedByName: "Ada", createdAt: new Date("2026-10-08T18:00:00.000Z") }]);
+    c.tx.billingDocument.findMany.mockResolvedValue([acceptedBillingDocument()]);
+
+    await expect(c.service.findStandaloneCustomQuotationHistory(tenantId, "fulfillment-a")).resolves.toMatchObject({
+      fulfillmentId: "fulfillment-a", servicePurposeCode: "AIRFARE", detailVersion: 1,
+      fulfillment: { reservationCode: "RES-001", voucherReference: "VOUCHER-001", ticketReference: "TICKET-001" },
+      detailPayload: { bookingLocator: "ABC123" }, purchases: [{ amount: "25", taxAmount: "3.25" }], evidence: [{ purchaseId: "purchase-a" }],
+    });
+    expect(c.tx.operationalFulfillment.findFirst).toHaveBeenCalledTimes(1);
+    expect(c.tx.customQuotationVersion.findFirst).toHaveBeenCalledTimes(1);
+    expect(c.tx.operationalPurchase.findMany).toHaveBeenCalledTimes(1);
+    expect(c.tx.operationalEvidence.findMany).toHaveBeenCalledTimes(1);
+    expect(c.tx.billingDocument.findMany).toHaveBeenCalledTimes(1);
+  });
+
   it.each([
     ["customer name", "Ada", { fullName: { contains: "Ada", mode: "insensitive" } }],
     ["identification", "1-0001", { idNumber: { contains: "1-0001", mode: "insensitive" } }],
@@ -565,9 +592,11 @@ function context() {
     operationalRequirement: { create: jest.fn(), findFirst: jest.fn(), findMany: jest.fn(), count: jest.fn(), updateMany: jest.fn(), groupBy: jest.fn() },
     operationalRequirementPassenger: { createMany: jest.fn(), findMany: jest.fn(), deleteMany: jest.fn() },
     operationalFulfillmentPassenger: { findMany: jest.fn() },
-    operationalFulfillment: { findMany: jest.fn(), count: jest.fn() },
+    operationalFulfillment: { findMany: jest.fn(), count: jest.fn(), findFirst: jest.fn() },
+    operationalPurchase: { findMany: jest.fn() },
+    operationalEvidence: { findMany: jest.fn() },
     tenantBillingConfiguration: { findUnique: jest.fn().mockResolvedValue({ fiscalTimezone: "America/Costa_Rica" }) },
-    customQuotationVersion: { findMany: jest.fn() },
+    customQuotationVersion: { findMany: jest.fn(), findFirst: jest.fn() },
     billingDocument: { findMany: jest.fn() },
   };
   const prisma = { $transaction: jest.fn(async (work: (transaction: typeof tx) => Promise<unknown>) => work(tx)) };

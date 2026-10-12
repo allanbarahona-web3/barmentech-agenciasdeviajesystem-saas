@@ -1,7 +1,8 @@
 'use client';
 
 import { type FormEvent, useEffect, useState } from 'react';
-import { createOperationalPurchase, createStandaloneOperationalPurchase, operationsErrorMessage, uploadOperationalEvidence, uploadStandaloneOperationalEvidence, type CreateOperationalPurchaseInput, type OperationalRequirementDetail, type StandaloneOperationalRequirementDetail } from '@/lib/operations-api';
+import { createOperationalPurchase, createStandaloneOperationalPurchase, operationsErrorMessage, uploadOperationalEvidence, uploadStandaloneOperationalEvidence, type CreateOperationalPurchaseInput, type FulfillmentInput, type OperationalRequirementDetail, type StandaloneOperationalRequirementDetail } from '@/lib/operations-api';
+import { OperationalServiceDetailFields, typedOperationalDetail, type OperationalServiceDetailPayload } from '@/components/operations/operational-service-detail-fields';
 import { tenantDateTimeInputToUtc } from '@/shared/regional';
 import { useTenantRegional } from '@/shared/regional/tenant-regional-provider';
 import { Button } from '@/components/ui/button';
@@ -15,15 +16,18 @@ const allowedMimeTypes = new Set(['application/pdf', 'image/jpeg', 'image/png', 
 const maxEvidenceBytes = 10 * 1024 * 1024;
 
 type PurchaseForm = { providerName: string; supplierReference: string; amount: string; currency: string; taxAmount: string; purchasedAt: string; supplierInvoiceNumber: string; notes: string };
-type ResolvedFulfillment = { id: string; created: boolean };
+type ResolvedFulfillment = { id: string; created: boolean; detailPayload?: Record<string, unknown> | null };
 const emptyPurchase = (currency = ''): PurchaseForm => ({ providerName: '', supplierReference: '', amount: '', currency, taxAmount: '', purchasedAt: '', supplierInvoiceNumber: '', notes: '' });
 
-export function OperationalPurchaseDrawer({ open, travelPackageId, requirementId, fulfillmentId, ensureFulfillment, providerName, providerReference, soldValue, onOpenChange, onCreated }: { open: boolean; travelPackageId?: string | null; requirementId: string; fulfillmentId?: string | null; ensureFulfillment?: () => Promise<ResolvedFulfillment>; providerName?: string | null; providerReference?: string | null; soldValue?: OperationalRequirementDetail['soldValue'] | StandaloneOperationalRequirementDetail['soldValue']; onOpenChange: (open: boolean) => void; onCreated: (result: { evidenceUploadFailed: boolean }) => Promise<void> | void }) {
+export function OperationalPurchaseDrawer({ open, travelPackageId, requirementId, fulfillmentId, ensureFulfillment, providerName, providerReference, servicePurposeCode, detailVersion, detailPayload, onUpdateFulfillmentDetails, soldValue, onOpenChange, onCreated }: { open: boolean; travelPackageId?: string | null; requirementId: string; fulfillmentId?: string | null; ensureFulfillment?: () => Promise<ResolvedFulfillment>; providerName?: string | null; providerReference?: string | null; servicePurposeCode?: string | null; detailVersion?: number | null; detailPayload?: Record<string, unknown> | null; onUpdateFulfillmentDetails?: (fulfillmentId: string, input: FulfillmentInput) => Promise<unknown>; soldValue?: OperationalRequirementDetail['soldValue'] | StandaloneOperationalRequirementDetail['soldValue']; onOpenChange: (open: boolean) => void; onCreated: (result: { evidenceUploadFailed: boolean }) => Promise<void> | void }) {
   const { timeZone, preferredCurrency } = useTenantRegional();
   const [form, setForm] = useState<PurchaseForm>(emptyPurchase());
   const [evidenceFile, setEvidenceFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [serviceDetails, setServiceDetails] = useState<OperationalServiceDetailPayload>({});
+  const [serviceDetailsChanged, setServiceDetailsChanged] = useState(false);
+  const [changedServiceDetailKeys, setChangedServiceDetailKeys] = useState<Set<string>>(new Set());
   const exactSoldValue = soldValue?.scope === 'EXACT_SERVICE_LINE' && soldValue.amount && soldValue.currency ? `${soldValue.currency} ${soldValue.amount}` : null;
 
   useEffect(() => {
@@ -31,8 +35,11 @@ export function OperationalPurchaseDrawer({ open, travelPackageId, requirementId
       setForm({ ...emptyPurchase(preferredCurrency), providerName: providerName ?? '', supplierReference: providerReference ?? '' });
       setEvidenceFile(null);
       setError(null);
+      setServiceDetails(typedOperationalDetail(detailPayload, servicePurposeCode));
+      setServiceDetailsChanged(false);
+      setChangedServiceDetailKeys(new Set());
     }
-  }, [open, fulfillmentId, preferredCurrency, providerName, providerReference]);
+  }, [open, fulfillmentId, preferredCurrency, providerName, providerReference, detailPayload, servicePurposeCode]);
 
   async function savePurchase(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -47,6 +54,15 @@ export function OperationalPurchaseDrawer({ open, travelPackageId, requirementId
       if (!resolvedFulfillment) throw new Error('OPERATIONAL_FULFILLMENT_REQUIRED');
       createdFulfillment = resolvedFulfillment.created;
       const effectiveFulfillmentId = resolvedFulfillment.id;
+      if (serviceDetailsChanged && onUpdateFulfillmentDetails) {
+        const baseDetails = typedOperationalDetail(fulfillmentId ? detailPayload : resolvedFulfillment.detailPayload, servicePurposeCode);
+        const enrichedDetails = { ...baseDetails };
+        for (const key of changedServiceDetailKeys) {
+          if (serviceDetails[key] === undefined) delete enrichedDetails[key];
+          else enrichedDetails[key] = serviceDetails[key];
+        }
+        await onUpdateFulfillmentDetails(effectiveFulfillmentId, { detailPayload: enrichedDetails, detailVersion: 1 });
+      }
       const purchase = travelPackageId
         ? await createOperationalPurchase(travelPackageId, requirementId, effectiveFulfillmentId, input)
         : await createStandaloneOperationalPurchase(requirementId, effectiveFulfillmentId, input);
@@ -77,6 +93,7 @@ export function OperationalPurchaseDrawer({ open, travelPackageId, requirementId
       <div className="grid gap-3 sm:grid-cols-3"><FormField htmlFor="purchase-amount" label="Monto" required><Input id="purchase-amount" inputMode="decimal" value={form.amount} onChange={(event) => setForm((value) => ({ ...value, amount: event.target.value }))} required /></FormField><FormField htmlFor="purchase-currency" label="Moneda" required><Select id="purchase-currency" value={form.currency} onChange={(event) => setForm((value) => ({ ...value, currency: event.target.value }))} required><option value={preferredCurrency}>{preferredCurrency}</option>{preferredCurrency !== 'USD' ? <option value="USD">USD</option> : null}</Select></FormField><FormField htmlFor="purchase-tax" label="Impuesto"><Input id="purchase-tax" inputMode="decimal" value={form.taxAmount} onChange={(event) => setForm((value) => ({ ...value, taxAmount: event.target.value }))} /></FormField></div>
       <FormField htmlFor="purchase-date" label="Fecha de compra" required><Input id="purchase-date" type="datetime-local" value={form.purchasedAt} onChange={(event) => setForm((value) => ({ ...value, purchasedAt: event.target.value }))} required /></FormField>
       <FormField htmlFor="purchase-invoice" label="Número de factura del proveedor"><Input id="purchase-invoice" value={form.supplierInvoiceNumber} onChange={(event) => setForm((value) => ({ ...value, supplierInvoiceNumber: event.target.value }))} maxLength={191} /></FormField>
+      <OperationalServiceDetailFields servicePurposeCode={servicePurposeCode} detailVersion={detailVersion} value={serviceDetails} onChange={(value) => { setChangedServiceDetailKeys((keys) => new Set([...keys, ...new Set([...Object.keys(serviceDetails), ...Object.keys(value)].filter((key) => serviceDetails[key] !== value[key]))])); setServiceDetails(value); setServiceDetailsChanged(true); }} idPrefix="purchase-detail" />
       <FormField htmlFor="purchase-evidence" label="Documento de respaldo (opcional)"><Input id="purchase-evidence" type="file" accept="application/pdf,image/jpeg,image/png,image/webp" onChange={(event) => { const file = event.target.files?.[0] ?? null; const fileError = file ? validateFile(file) : null; if (fileError) { setEvidenceFile(null); setError(fileError); return; } setEvidenceFile(file); }} /></FormField>
       <FormField htmlFor="purchase-notes" label="Notas"><Textarea id="purchase-notes" value={form.notes} onChange={(event) => setForm((value) => ({ ...value, notes: event.target.value }))} maxLength={4000} /></FormField>
     </form>

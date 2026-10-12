@@ -123,11 +123,12 @@ test('Custom Quotation existing purchases use their persisted snapshot and expos
 test('all Custom Quotation records use the canonical purchase path and legacy management has no references', () => {
   const text = workspace();
   const drawer = read('../src/components/operations/operational-purchase-drawer.tsx');
-  assert.match(text, /function openPurchase\(\) \{ setError\(null\); setPurchaseFulfillmentId\(null\); setPurchaseOpen\(true\); \}/);
-  assert.match(text, /if \(purchaseFulfillmentId\) return \{ id: purchaseFulfillmentId, created: false \}/);
+  assert.match(text, /async function openPurchase\(\)/);
+  assert.match(text, /getStandaloneOperationalFulfillment\(requirementId, existing\.id\)/);
+  assert.match(text, /if \(purchaseFulfillmentId\) return \{ id: purchaseFulfillmentId, created: false, detailPayload: purchaseFulfillment\?\.detailPayload \}/);
   assert.match(text, /fulfillments\.find\(\(fulfillment\) => fulfillment\.status === 'DRAFT' \|\| fulfillment\.status === 'RESERVED'\)/);
   assert.match(text, /const created = await createStandaloneOperationalFulfillment\(requirementId, \{\}\);/);
-  assert.match(text, /setPurchaseFulfillmentId\(created\.id\);\s*await load\(\);\s*return \{ id: created\.id, created: true \}/);
+  assert.match(text, /setPurchaseFulfillmentId\(created\.id\); setPurchaseFulfillment\(created\);\s*await load\(\);\s*return \{ id: created\.id, created: true, detailPayload: created\.detailPayload \}/);
   assert.match(text, /fulfillmentId=\{purchaseFulfillmentId\} ensureFulfillment=\{ensurePurchaseFulfillment\}/);
   assert.match(drawer, /const resolvedFulfillment = fulfillmentId \? \{ id: fulfillmentId, created: false \} : await ensureFulfillment\?\.\(\)/);
   assert.match(drawer, /const effectiveFulfillmentId = resolvedFulfillment\.id/);
@@ -143,7 +144,7 @@ test('Custom Quotation confirmation still persists its reference before confirmi
   assert.match(text, /Referencia de confirmación/);
   assert.match(text, /disabled=\{confirming \|\| !confirmationReference\.trim\(\)\}/);
   assert.match(text, /OPERATIONAL_FULFILLMENT_CONFIRMATION_CONTEXT_REQUIRED/);
-  const saveContextAt = text.indexOf('await updateStandaloneOperationalFulfillment(requirementId, confirmationFulfillment.id, { confirmationReference: reference })');
+  const saveContextAt = text.indexOf('await updateStandaloneOperationalFulfillment(requirementId, confirmationFulfillment.id, { confirmationReference: reference, ...(confirmationDetailsChanged');
   const transitionAt = text.indexOf("await transitionStandaloneOperationalFulfillment(requirementId, confirmationFulfillment.id, 'CONFIRMED')");
   assert.ok(saveContextAt >= 0, 'confirmation reference is persisted');
   assert.ok(transitionAt > saveContextAt, 'CONFIRMED transition follows persisted context');
@@ -178,9 +179,10 @@ test('Custom Quotation history is terminal, read-only, and delegates filters to 
   assert.match(history, /dateTo: datePreset === 'CUSTOM' \? dateTo \|\| undefined : undefined/);
   assert.match(history, /item\.finalStatus/);
   assert.match(history, /historyStatusLabel/);
-  assert.match(history, /getStandaloneOperationalEvidenceAccess\(item\.requirementId, item\.fulfillmentId, attachment\.id\)/);
+  assert.match(history, /getCustomQuotationOperationsHistoryDetail\(fulfillmentId\)/);
+  assert.match(history, /getStandaloneOperationalEvidenceAccess\(detail\.requirementId, detail\.fulfillmentId, attachment\.id\)/);
   assert.match(history, /Ver documento fiscal/);
   assert.match(history, /formatDateTime\(item\.finalizedAt\)/);
-  assert.match(history, /money\(item\.purchase\.amount, item\.purchase\.currency\)/);
+  assert.match(history, /money\(addFinanceMoneyDisplayValues\(item\.purchase\.amount, item\.purchase\.taxAmount\), item\.purchase\.currency\)/);
   for (const forbidden of ['Registrar compra', 'Confirmar', 'Editar compra', 'cancelStandalone', 'createStandalone']) assert.doesNotMatch(history, new RegExp(forbidden));
 });
