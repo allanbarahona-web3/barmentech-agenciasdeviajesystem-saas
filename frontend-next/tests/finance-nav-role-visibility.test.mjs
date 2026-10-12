@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const nav = readFileSync(new URL('../src/components/vertical-nav.tsx', import.meta.url), 'utf8');
@@ -61,4 +61,18 @@ test('ADMIN navigation remains available for Dashboard, Finance, Reports, audit,
     assert.match(nav, new RegExp(`href: "${href.replaceAll('/', '\\/')}"`));
   }
   assert.doesNotMatch(nav, /billing\/admin\/reports/);
+});
+
+test('legacy credit-note mutations and pending queue are absent while historical NC reads remain', () => {
+  const billingApi = readFileSync(new URL('../src/lib/billing-api.ts', import.meta.url), 'utf8');
+  const header = readFileSync(new URL('../src/components/app-shell-header.tsx', import.meta.url), 'utf8');
+  assert.equal(existsSync(new URL('../src/app/admin/pending-credit-notes/page.tsx', import.meta.url)), false);
+  for (const source of [nav, dashboardPage, header, billingApi, billingDetailPage]) {
+    assert.doesNotMatch(source, /pending-credit-notes/);
+  }
+  assert.doesNotMatch(billingApi, /createBillingCreditNote|applyBillingCreditNote|listBillingPendingCreditNotes|approveBillingCreditNote|rejectBillingCreditNote/);
+  assert.doesNotMatch(billingDetailPage, /Generar nota de credito|setModalMode\("CREDIT_NOTE"\)|onCreateCreditNote/);
+  assert.match(billingDetailPage, /account\.creditNotes\.map/);
+  assert.match(billingDetailPage, /getBillingCreditNotePdfUrl/);
+  assert.match(billingDetailPage, /sendBillingCreditNoteEmail/);
 });

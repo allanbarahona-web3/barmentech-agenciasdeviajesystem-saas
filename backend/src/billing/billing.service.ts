@@ -26,8 +26,6 @@ import { TravelPackagesService } from "../travel-packages/travel-packages.servic
 import { TravelCapacityValidationService } from "../travel-packages/travel-capacity-validation.service";
 import { InternalToursService } from "../internal-tourism/internal-tours.service";
 import { formatDateForClient, formatDateTimeForClient } from "../common/request-context";
-import { ApplyCreditNoteDto } from "./dto/apply-credit-note.dto";
-import { CreateCreditNoteDto } from "./dto/create-credit-note.dto";
 import { ListBillingContractsDto } from "./dto/list-billing-contracts.dto";
 import { ReportPaymentDto } from "./dto/report-payment.dto";
 import {
@@ -189,18 +187,6 @@ export class BillingService {
     const nextNumber = count + 1;
     const paddedNumber = String(nextNumber).padStart(8, "0");
     return `RCPT-${paddedNumber}`;
-  }
-
-  private buildCreditNoteNumber(contractNumber: string) {
-    const now = new Date();
-    const yyyy = now.getFullYear();
-    const mm = String(now.getMonth() + 1).padStart(2, "0");
-    const dd = String(now.getDate()).padStart(2, "0");
-    const hh = String(now.getHours()).padStart(2, "0");
-    const min = String(now.getMinutes()).padStart(2, "0");
-    const ss = String(now.getSeconds()).padStart(2, "0");
-    const ms = String(now.getMilliseconds()).padStart(3, "0");
-    return `NC-${contractNumber}-${yyyy}${mm}${dd}${hh}${min}${ss}${ms}`;
   }
 
   private getCompanyProfile(contract: any) {
@@ -4230,322 +4216,6 @@ this.logger.log(
     }
   }
 
-  async createCreditNote(
-    user: { id: string; email: string; fullName: string },
-    contractId: string,
-    dto: CreateCreditNoteDto,
-    sourceIp?: string | null,
-    userAgent?: string | null,
-  ) {
-    const invoice = await (this.prisma as any).billingInvoice.findUnique({
-      where: { contractId },
-      include: { client: true },
-    });
-
-    if (!invoice) {
-      throw new NotFoundException("No existe expediente de cobro para este contrato.");
-    }
-
-    if (String(invoice.status || "") === "FACTURA_ANULADA") {
-      throw new BadRequestException("No se pueden emitir notas de credito para facturas anuladas.");
-    }
-
-    const amount = this.toNumber(dto.amount, NaN);
-    if (!Number.isFinite(amount) || amount <= 0) {
-      throw new BadRequestException("El monto de la nota de credito debe ser mayor a 0.");
-    }
-
-    const pendingBalance = this.toNumber(invoice.balanceAmount, 0);
-    if (amount > pendingBalance) {
-      throw new BadRequestException("La nota de credito no puede ser mayor al saldo pendiente del contrato.");
-    }
-
-    const normalizedReason = String(dto.reason || "").trim();
-    if (!normalizedReason) {
-      throw new BadRequestException("Debes indicar el motivo de la nota de credito.");
-    }
-
-    const creditNote = await (this.prisma as any).billingCreditNote.create({
-      data: {
-        creditNoteNumber: this.buildCreditNoteNumber(invoice.contractNumber),
-        contractId,
-        invoiceId: invoice.id,
-        tenantId: invoice.tenantId,
-        contractNumber: invoice.contractNumber,
-        reason: normalizedReason,
-        amount: this.toDecimalString(amount),
-        status: "NC_PENDIENTE_APROBACION",
-        sourceDocumentType: String(dto.sourceDocumentType || "INVOICE"),
-        sourceDocumentId: String(dto.sourceDocumentId || invoice.id),
-        issuedByUserId: user.id,
-        issuedByName: user.fullName,
-      },
-    });
-
-    await this.ensureCreditNotePdf(creditNote.id);
-
-    await this.logAudit({
-      tenantId: creditNote.tenantId,
-      entityType: "CREDIT_NOTE",
-      entityId: creditNote.id,
-      action: "CREATE",
-      actorUserId: user.id,
-      actorName: user.fullName,
-      afterJson: {
-        creditNoteNumber: creditNote.creditNoteNumber,
-        amount: creditNote.amount,
-        reason: creditNote.reason,
-        status: creditNote.status,
-      },
-      sourceIp,
-      userAgent,
-    });
-
-    return {
-      ok: true,
-      creditNoteId: creditNote.id,
-      creditNoteNumber: creditNote.creditNoteNumber,
-      status: creditNote.status,
-    };
-  }
-
-  async applyCreditNote(
-    user: { id: string; email: string; fullName: string },
-    creditNoteId: string,
-    dto: ApplyCreditNoteDto,
-    sourceIp?: string | null,
-    userAgent?: string | null,
-  ) {
-    return this.approveCreditNote(user, creditNoteId, dto, sourceIp, userAgent);
-  }
-
-  async listPendingCreditNotes(
-    _user: { id: string; email: string; fullName: string },
-    query: { q?: string; limit?: number } = {},
-  ) {
-    const q = String(query.q || "").trim();
-    const limit = Math.min(Math.max(Number(query.limit || 80), 1), 200);
-
-    const where: Record<string, unknown> = {
-      status: "NC_PENDIENTE_APROBACION",
-    };
-
-    if (q) {
-      where.OR = [
-        { creditNoteNumber: { contains: q, mode: "insensitive" } },
-        { contractNumber: { contains: q, mode: "insensitive" } },
-        { reason: { contains: q, mode: "insensitive" } },
-        { invoice: { is: { client: { is: { fullName: { contains: q, mode: "insensitive" } } } } } },
-      ];
-    }
-
-    const items = await (this.prisma as any).billingCreditNote.findMany({
-      where,
-      orderBy: { issuedAt: "desc" },
-      take: limit,
-      include: {
-        invoice: {
-          include: {
-            client: true,
-          },
-        },
-      },
-    });
-
-    return {
-      items: (items || []).map((item: any) => ({
-        id: item.id,
-        creditNoteNumber: item.creditNoteNumber,
-        contractId: item.contractId,
-        invoiceId: item.invoiceId,
-        contractNumber: item.contractNumber,
-        status: item.status,
-        reason: item.reason,
-        amount: this.toNumber(item.amount),
-        issuedAt: item.issuedAt,
-        requestedBy: {
-          id: item.issuedByUserId,
-          name: item.issuedByName,
-        },
-        client: {
-          id: item.invoice?.client?.id,
-          fullName: item.invoice?.client?.fullName || "-",
-          idNumber: item.invoice?.client?.idNumber || "-",
-          email: item.invoice?.client?.email || "-",
-        },
-      })),
-    };
-  }
-
-  async approveCreditNote(
-    user: { id: string; email: string; fullName: string },
-    creditNoteId: string,
-    dto: ApplyCreditNoteDto,
-    sourceIp?: string | null,
-    userAgent?: string | null,
-  ) {
-    const creditNote = await (this.prisma as any).billingCreditNote.findUnique({
-      where: { id: creditNoteId },
-      include: { invoice: true },
-    });
-
-    if (!creditNote) {
-      throw new NotFoundException("Nota de credito no encontrada.");
-    }
-
-    if (String(creditNote.status || "") !== "NC_PENDIENTE_APROBACION") {
-      throw new BadRequestException("Solo se pueden aprobar notas de credito pendientes de aprobacion.");
-    }
-
-    const creditAmount = this.toNumber(creditNote.amount, 0);
-    const invoiceTotal = this.toNumber(creditNote.invoice?.totalAmount, 0);
-    const nextTotal = Math.max(0, invoiceTotal - creditAmount);
-
-    const now = new Date();
-
-    await (this.prisma as any).$transaction(async (tx: any) => {
-      await tx.billingCreditNote.update({
-        where: { id: creditNote.id },
-        data: {
-          status: "NC_APLICADA",
-          appliedAt: now,
-          appliedByUserId: user.id,
-          appliedByName: user.fullName,
-        },
-      });
-
-      await tx.billingInvoice.update({
-        where: { id: creditNote.invoiceId },
-        data: {
-          totalAmount: this.toDecimalString(nextTotal),
-        },
-      });
-
-      const existingBalance = await tx.billingClientBalance.findUnique({
-        where: { clientId: creditNote.invoice.clientId },
-      });const nextCredit = this.toNumber(existingBalance?.availableCreditAmount, 0) + creditAmount;
-
-await tx.billingClientBalance.upsert({
-  where: { clientId: creditNote.invoice.clientId },
-  create: {
-    client: {
-      connect: {
-        id: creditNote.invoice.clientId,
-      },
-    },
-    tenant: {
-      connect: {
-        id: creditNote.tenantId,
-      },
-    },
-    availableCreditAmount: this.toDecimalString(nextCredit),
-    currency: creditNote.invoice.currency,
-  },
-  update: {
-    availableCreditAmount: this.toDecimalString(nextCredit),
-  },
-});
-    });
-
-    const updatedInvoice = await this.recalcInvoiceAmounts(creditNote.invoiceId);
-
-    await this.logAudit({
-      tenantId: creditNote.tenantId,
-      entityType: "CREDIT_NOTE",
-      entityId: creditNote.id,
-      action: "APPROVE_AND_APPLY",
-      actorUserId: user.id,
-      actorName: user.fullName,
-      beforeJson: { status: creditNote.status },
-      afterJson: {
-        status: "NC_APLICADA",
-        notes: String(dto.notes || ""),
-        invoiceTotalBefore: invoiceTotal,
-        invoiceTotalAfter: nextTotal,
-      },
-      sourceIp,
-      userAgent,
-    });
-
-    if (updatedInvoice) {
-      await this.logAudit({
-        tenantId: creditNote.tenantId,
-        entityType: "INVOICE",
-        entityId: updatedInvoice.id,
-        action: "UPDATE_TOTAL_BY_CREDIT_NOTE",
-        actorUserId: user.id,
-        actorName: user.fullName,
-        beforeJson: { totalAmount: this.toDecimalString(invoiceTotal) },
-        afterJson: {
-          totalAmount: updatedInvoice.totalAmount,
-          status: updatedInvoice.status,
-          balanceAmount: updatedInvoice.balanceAmount,
-        },
-        sourceIp,
-        userAgent,
-      });
-    }
-
-    return {
-      ok: true,
-      creditNoteId: creditNote.id,
-      status: "NC_APLICADA",
-      invoiceId: creditNote.invoiceId,
-    };
-  }
-
-  async rejectCreditNote(
-    user: { id: string; email: string; fullName: string },
-    creditNoteId: string,
-    reason: string,
-    sourceIp?: string | null,
-    userAgent?: string | null,
-  ) {
-    const normalizedReason = String(reason || "").trim();
-    if (!normalizedReason) {
-      throw new BadRequestException("Debes indicar motivo de rechazo.");
-    }
-
-    const creditNote = await (this.prisma as any).billingCreditNote.findUnique({
-      where: { id: creditNoteId },
-      select: { id: true, status: true, tenantId: true },
-    });
-
-    if (!creditNote) {
-      throw new NotFoundException("Nota de credito no encontrada.");
-    }
-
-    if (String(creditNote.status || "") !== "NC_PENDIENTE_APROBACION") {
-      throw new BadRequestException("Solo se pueden rechazar notas de credito pendientes.");
-    }
-
-    const updated = await (this.prisma as any).billingCreditNote.update({
-      where: { id: creditNoteId },
-      data: {
-        status: "NC_RECHAZADA",
-      },
-    });
-
-    await this.logAudit({
-      tenantId: creditNote.tenantId,
-      entityType: "CREDIT_NOTE",
-      entityId: creditNoteId,
-      action: "REJECT",
-      actorUserId: user.id,
-      actorName: user.fullName,
-      beforeJson: { status: creditNote.status },
-      afterJson: { status: updated.status, reason: normalizedReason },
-      sourceIp,
-      userAgent,
-    });
-
-    return {
-      ok: true,
-      creditNoteId: updated.id,
-      status: updated.status,
-    };
-  }
-
   async approveAndSendReceipt(
     user: { id: string; email: string; fullName: string; role?: string },
     receiptId: string,
@@ -4722,14 +4392,6 @@ await tx.billingClientBalance.upsert({
     });
   }
 
-  async getPendingCreditNotesCount(): Promise<number> {
-    return this.prisma.billingCreditNote.count({
-      where: {
-        status: "NC_PENDIENTE_APROBACION",
-      },
-    });
-  }
-
   async getPendingSignatureContractsCount(): Promise<number> {
     return (this.prisma as any).contract.count({
       where: {
@@ -4803,13 +4465,6 @@ await tx.billingClientBalance.upsert({
     const pendingReceipts = await (this.prisma as any).billingReceipt.count({
       where: {
         status: "RECIBO_PENDIENTE_VERIFICACION",
-      },
-    });
-
-    // Contar notas de crédito pendientes
-    const pendingCreditNotes = await (this.prisma as any).billingCreditNote.count({
-      where: {
-        status: "NC_PENDIENTE_APROBACION",
       },
     });
 
@@ -4900,8 +4555,7 @@ await tx.billingClientBalance.upsert({
         pendingTasks: {
           payments: pendingPayments,
           receipts: pendingReceipts,
-          creditNotes: pendingCreditNotes,
-          total: pendingPayments + pendingReceipts + pendingCreditNotes,
+          total: pendingPayments + pendingReceipts,
         },
         period: {
           invoicesCount: invoicesInPeriod._count.id || 0,

@@ -15,11 +15,8 @@ import { FileFieldsInterceptor } from "@nestjs/platform-express";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { Roles } from "../auth/roles.decorator";
 import { RolesGuard } from "../auth/roles.guard";
-import { ApplyCreditNoteDto } from "./dto/apply-credit-note.dto";
 import { ApproveReceiptDto } from "./dto/approve-receipt.dto";
-import { CreateCreditNoteDto } from "./dto/create-credit-note.dto";
 import { ListBillingContractsDto } from "./dto/list-billing-contracts.dto";
-import { RejectCreditNoteDto } from "./dto/reject-credit-note.dto";
 import { RejectPaymentDto } from "./dto/reject-payment.dto";
 import { ReportPaymentDto } from "./dto/report-payment.dto";
 import { SendAccountStatementDto } from "./dto/send-account-statement.dto";
@@ -319,81 +316,16 @@ export class BillingController {
     );
   }
 
-  @Post("contracts/:contractId/credit-notes")
-  @Roles(...BILLING_OPERATION_ROLES)
-  @UseGuards(RolesGuard)
-  createCreditNote(
-    @Req()
-    req: {
-      user: { id: string; email: string; fullName: string };
-      ip?: string;
-      headers?: Record<string, string | string[] | undefined>;
-    },
-    @Param("contractId") contractId: string,
-    @Body() dto: CreateCreditNoteDto,
-  ) {
-    const userAgentHeader = req.headers?.["user-agent"];
-    const userAgent = Array.isArray(userAgentHeader) ? userAgentHeader[0] : userAgentHeader;
-
-    return this.billingService.createCreditNote(
-      req.user,
-      contractId,
-      dto,
-      req.ip || null,
-      userAgent || null,
-    );
-  }
-
-  @Post("credit-notes/:creditNoteId/apply")
-  @Roles("ADMIN")
-  @UseGuards(RolesGuard)
-  applyCreditNote(
-    @Req()
-    req: {
-      user: { id: string; email: string; fullName: string };
-      ip?: string;
-      headers?: Record<string, string | string[] | undefined>;
-    },
-    @Param("creditNoteId") creditNoteId: string,
-    @Body() dto: ApplyCreditNoteDto,
-  ) {
-    const userAgentHeader = req.headers?.["user-agent"];
-    const userAgent = Array.isArray(userAgentHeader) ? userAgentHeader[0] : userAgentHeader;
-
-    return this.billingService.applyCreditNote(
-      req.user,
-      creditNoteId,
-      dto,
-      req.ip || null,
-      userAgent || null,
-    );
-  }
-
-  @Get("admin/credit-notes/pending")
-  @Roles("ADMIN")
-  @UseGuards(RolesGuard)
-  listPendingCreditNotes(
-    @Req()
-    req: {
-      user: { id: string; email: string; fullName: string; role: string };
-    },
-    @Query("q") q?: string,
-    @Query("limit") limit?: string,
-  ) {
-    return this.billingService.listPendingCreditNotes(req.user, {
-      q: String(q || "").trim() || undefined,
-      limit: limit ? Number(limit) : undefined,
-    });
-  }
-
   @Get("admin/pending-counts")
   @Roles("ADMIN", "CONTADOR", "AGENT", "FACTURACION_COBROS")
   @UseGuards(RolesGuard)
-  async getPendingCounts(): Promise<{ pendingReceipts: number; pendingCreditNotes: number; contractsPendingSignature: number }> {
+  async getPendingCounts(): Promise<{
+    pendingReceipts: number;
+    contractsPendingSignature: number;
+  }> {
     const pendingReceipts = await this.billingService.getPendingPaymentsCount();
-    const pendingCreditNotes = await this.billingService.getPendingCreditNotesCount();
     const contractsPendingSignature = await this.billingService.getPendingSignatureContractsCount();
-    return { pendingReceipts, pendingCreditNotes, contractsPendingSignature };
+    return { pendingReceipts, contractsPendingSignature };
   }
 
   @Get("admin/dashboard-metrics")
@@ -413,56 +345,6 @@ export class BillingController {
       from,
       to,
     });
-  }
-
-  @Post("admin/credit-notes/:creditNoteId/approve")
-  @Roles("ADMIN")
-  @UseGuards(RolesGuard)
-  approveCreditNote(
-    @Req()
-    req: {
-      user: { id: string; email: string; fullName: string; role: string };
-      ip?: string;
-      headers?: Record<string, string | string[] | undefined>;
-    },
-    @Param("creditNoteId") creditNoteId: string,
-    @Body() dto: ApplyCreditNoteDto,
-  ) {
-    const userAgentHeader = req.headers?.["user-agent"];
-    const userAgent = Array.isArray(userAgentHeader) ? userAgentHeader[0] : userAgentHeader;
-
-    return this.billingService.approveCreditNote(
-      req.user,
-      creditNoteId,
-      dto,
-      req.ip || null,
-      userAgent || null,
-    );
-  }
-
-  @Post("admin/credit-notes/:creditNoteId/reject")
-  @Roles("ADMIN")
-  @UseGuards(RolesGuard)
-  rejectCreditNote(
-    @Req()
-    req: {
-      user: { id: string; email: string; fullName: string; role: string };
-      ip?: string;
-      headers?: Record<string, string | string[] | undefined>;
-    },
-    @Param("creditNoteId") creditNoteId: string,
-    @Body() dto: RejectCreditNoteDto,
-  ) {
-    const userAgentHeader = req.headers?.["user-agent"];
-    const userAgent = Array.isArray(userAgentHeader) ? userAgentHeader[0] : userAgentHeader;
-
-    return this.billingService.rejectCreditNote(
-      req.user,
-      creditNoteId,
-      dto.reason,
-      req.ip || null,
-      userAgent || null,
-    );
   }
 
   @Get("credit-notes/:creditNoteId/pdf")

@@ -1962,8 +1962,10 @@ function workspaceFiscalIdentityReady(document:WorkspaceRow):boolean{
   const emissionEmpty=document.fiscalEmissionAt===null&&document.fiscalIssueDate===null;
   const emissionComplete=validWorkspaceDate(document.fiscalEmissionAt)&&validWorkspaceDate(document.fiscalIssueDate);
   const rateEmpty=document.exchangeRate===null&&document.officialExchangeRateObservationId===null&&document.fiscalExchangeRateEffectiveDate===null&&document.fiscalExchangeRateSourceAuthority===null&&document.fiscalExchangeRateIndicatorCode===null;
-  const rateComplete=document.exchangeRate!==null&&document.exchangeRate.greaterThan(0)&&typeof document.officialExchangeRateObservationId==="string"&&document.officialExchangeRateObservationId.length>0&&validWorkspaceDate(document.fiscalExchangeRateEffectiveDate)&&document.fiscalExchangeRateSourceAuthority==="BCCR"&&document.fiscalExchangeRateIndicatorCode==="318"&&validWorkspaceDate(document.fiscalIssueDate)&&(document.documentTypeCode==="03"||document.fiscalExchangeRateEffectiveDate!.getTime()===document.fiscalIssueDate!.getTime());
-  if(!allocated)return emissionEmpty&&rateEmpty;
+  const frozenRateComplete=document.exchangeRate!==null&&document.exchangeRate.greaterThan(0)&&typeof document.officialExchangeRateObservationId==="string"&&document.officialExchangeRateObservationId.length>0&&validWorkspaceDate(document.fiscalExchangeRateEffectiveDate)&&document.fiscalExchangeRateSourceAuthority==="BCCR"&&document.fiscalExchangeRateIndicatorCode==="318";
+  const inheritedCreditNoteRateComplete=document.documentTypeCode==="03"&&document.currencyCode==="USD"&&frozenRateComplete;
+  const rateComplete=frozenRateComplete&&validWorkspaceDate(document.fiscalIssueDate)&&(document.documentTypeCode==="03"||document.fiscalExchangeRateEffectiveDate!.getTime()===document.fiscalIssueDate!.getTime());
+  if(!allocated)return emissionEmpty&&(rateEmpty||inheritedCreditNoteRateComplete);
   return emissionComplete&&(document.currencyCode==="CRC"?rateEmpty:rateComplete);
 }
 function validWorkspaceDate(value:Date|null):value is Date{return value instanceof Date&&Number.isFinite(value.getTime());}

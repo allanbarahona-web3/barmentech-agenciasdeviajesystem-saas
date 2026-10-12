@@ -121,7 +121,7 @@ export class FiscalCreditNoteDraftService {
             sourceType: "FISCAL_CREDIT_NOTE",
             sourceId: original.id,
             sourceNumber: original.fiscalNumber,
-            sourceRole: "PRIMARY",
+            sourceRole: "ADJUSTMENT",
             creationDeduplicationKey: null,
             fiscalIssuerId: original.fiscalIssuerId,
             schemaVersion: original.schemaVersion,

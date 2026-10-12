@@ -43,7 +43,7 @@ export function VerticalNav() {
   pathname.startsWith("/reset-password");
   const [showCalculator, setShowCalculator] = useState(false);
   const [showSupportModal, setShowSupportModal] = useState(false);
-  const [pendingCounts, setPendingCounts] = useState<PendingCounts>({ pendingReceipts: 0, pendingCreditNotes: 0, contractsPendingSignature: 0 });
+  const [pendingCounts, setPendingCounts] = useState<PendingCounts>({ pendingReceipts: 0, contractsPendingSignature: 0 });
   const [mounted, setMounted] = useState(false);
   const [exchangeRate, setExchangeRate] = useState<CurrentExchangeRate | null>(null);
   const [token, setToken] = useState<string | null>(null);
@@ -318,17 +318,6 @@ export function VerticalNav() {
                     icon: "⏳",
                     adminOnly: true,
                   }]
-                : []),
-              ...(isAdmin
-                ? [
-                    {
-                      href: "/admin/pending-credit-notes",
-                      label: "Notas de Crédito",
-                      icon: "📋",
-                      badge: pendingCounts.pendingCreditNotes || 0,
-                      adminOnly: true,
-                    },
-                  ]
                 : []),
             ],
           } as NavGroup,

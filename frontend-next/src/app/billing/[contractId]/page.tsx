@@ -5,7 +5,6 @@ export const dynamic = 'force-dynamic';
 import { getHomeRouteForRole, getStoredSession, getStoredToken, getTenantConfig } from "@/lib/auth-api";
 import {
   approveAndSendBillingReceipt,
-  createBillingCreditNote,
   getBillingAccountStatementPdfUrl,
   getBillingContractAccount,
   getBillingCreditNotePdfUrl,
@@ -25,7 +24,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState, Suspense } from "react";
 import { formatBusinessDate } from "@/shared/regional";
 
-type BillingModalMode = "RESERVATION" | "INSTALLMENT" | "CREDIT_NOTE" | "NONE";
+type BillingModalMode = "RESERVATION" | "INSTALLMENT" | "NONE";
 type DocumentEmailType = "RECEIPT" | "CREDIT_NOTE";
 
 const INVOICE_STATUS_LABELS: Record<string, string> = {
@@ -160,9 +159,6 @@ function BillingContractAccountContent() {
   const [notes, setNotes] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<string>(PAYMENT_METHOD_OPTIONS[0]);
   const [attachments, setAttachments] = useState<File[]>([]);
-
-  const [creditNoteReason, setCreditNoteReason] = useState("");
-  const [creditNoteAmount, setCreditNoteAmount] = useState("");
 
   const [rejectModalPaymentId, setRejectModalPaymentId] = useState("");
   const [rejectReason, setRejectReason] = useState("");
@@ -702,39 +698,6 @@ function BillingContractAccountContent() {
     }
   };
 
-  const onCreateCreditNote = async () => {
-    if (!canOperate) return;
-    if (!contractId || !creditNoteReason.trim() || !creditNoteAmount.trim()) {
-      setStatusText("Debes indicar motivo y monto para la nota de credito.");
-      return;
-    }
-
-    const amountValue = Number.parseFloat(String(creditNoteAmount || "").replace(",", "."));
-    const currentBalance = Number(account?.invoice?.amounts?.balance || 0);
-    if (Number.isFinite(amountValue) && amountValue > currentBalance) {
-      setStatusText("La nota de credito no puede ser mayor al saldo pendiente del contrato.");
-      return;
-    }
-
-    setActionBusy("credit-note:create");
-    try {
-      const result = await createBillingCreditNote({
-        contractId,
-        reason: creditNoteReason,
-        amount: creditNoteAmount,
-      });
-      setStatusText(`Exito: nota de credito enviada a aprobacion: ${result.creditNoteNumber}`);
-      setCreditNoteReason("");
-      setCreditNoteAmount("");
-      closeMainModal();
-      await load();
-    } catch (actionError) {
-      setStatusText(actionError instanceof Error ? actionError.message : "No se pudo emitir la nota de credito.");
-    } finally {
-      setActionBusy("");
-    }
-  };
-
   const onOpenCreditNotePdf = async (creditNoteId: string) => {
     setActionBusy(`credit-note:pdf:${creditNoteId}`);
     try {
@@ -1090,9 +1053,6 @@ function BillingContractAccountContent() {
               >
                 {actionBusy === "invoice:pdf" ? "Abriendo..." : "Abrir documento del contrato"}
               </button>
-              {canOperate ? <button type="button" className="rounded-xl px-4 py-2.5 bg-white text-blue-900 border border-blue-200 font-semibold transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md active:translate-y-0" onClick={() => setModalMode("CREDIT_NOTE")}>
-                Generar nota de credito
-              </button> : null}
             </section>
 
             <section className="billing-summary-grid">
@@ -1634,7 +1594,6 @@ function BillingContractAccountContent() {
             <div className="viewer-head">
               <h2>
                 {modalMode === "INSTALLMENT" ? "Registrar abono" : null}
-                {modalMode === "CREDIT_NOTE" ? "Generar nota de credito" : null}
               </h2>
               <button type="button" className="rounded-xl px-4 py-2.5 bg-white text-blue-900 border border-blue-200 font-semibold transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-none" onClick={closeMainModal}>Cerrar</button>
             </div>
@@ -1841,38 +1800,6 @@ function BillingContractAccountContent() {
                 </div>
               ) : null}
 
-              {modalMode === "CREDIT_NOTE" ? (
-                <>
-                  <label className="reject-modal-label">
-                    Motivo
-                    <textarea
-                      rows={4}
-                      value={creditNoteReason}
-                      onChange={(event) => setCreditNoteReason(event.target.value)}
-                      placeholder="Motivo de la nota de credito"
-                    />
-                  </label>
-                  <label className="reject-modal-label" style={{ marginTop: 10 }}>
-                    Monto
-                    <input
-                      value={creditNoteAmount}
-                      onChange={(event) => setCreditNoteAmount(event.target.value)}
-                      placeholder="Ej. 25000"
-                    />
-                  </label>
-
-                  <div className="actions" style={{ marginTop: 12 }}>
-                    <button
-                      type="button"
-                      className="rounded-xl px-4 py-3 bg-linear-to-b from-blue-500 to-blue-700 text-white font-bold shadow-lg shadow-blue-500/25 transition-all duration-150 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-blue-500/30 active:translate-y-0 active:saturate-75 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-lg"
-                      onClick={() => void onCreateCreditNote()}
-                      disabled={actionBusy === "credit-note:create"}
-                    >
-                      {actionBusy === "credit-note:create" ? "Guardando..." : "Enviar a aprobacion"}
-                    </button>
-                  </div>
-                </>
-              ) : null}
             </div>
           </div>
         </section>

@@ -11,7 +11,6 @@ describe("BillingController readonly accountant authorization", () => {
     "reportPayment",
     "markPaymentInReview",
     "sendCreditNoteEmail",
-    "createCreditNote",
     "verifyPayment",
     "rejectPayment",
     "approveAndSendReceipt",
@@ -61,6 +60,20 @@ describe("BillingController readonly accountant authorization", () => {
     for (const role of [UserRole.CONTADOR, UserRole.FACTURACION_COBROS, UserRole.AGENT]) {
       expect(() => canActivate(role, "listAudit")).toThrow(ForbiddenException);
     }
+  });
+
+  it("removes every legacy credit-note mutation and pending-queue handler", () => {
+    for (const handler of [
+      "createCreditNote",
+      "applyCreditNote",
+      "listPendingCreditNotes",
+      "approveCreditNote",
+      "rejectCreditNote",
+    ]) {
+      expect(BillingController.prototype).not.toHaveProperty(handler);
+    }
+    expect(BillingController.prototype).toHaveProperty("getCreditNotePdfUrl");
+    expect(BillingController.prototype).toHaveProperty("sendCreditNoteEmail");
   });
 
   function canActivate(role: UserRole, handler: keyof BillingController) {

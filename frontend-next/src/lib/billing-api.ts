@@ -140,28 +140,6 @@ export type BillingAuditItem = {
   createdAt: string;
 };
 
-export type BillingPendingCreditNoteItem = {
-  id: string;
-  creditNoteNumber: string;
-  contractId: string;
-  invoiceId: string;
-  contractNumber: string;
-  status: string;
-  reason: string;
-  amount: number;
-  issuedAt: string;
-  requestedBy: {
-    id: string;
-    name: string;
-  };
-  client: {
-    id: string;
-    fullName: string;
-    idNumber: string;
-    email: string;
-  };
-};
-
 export type DashboardMetrics = {
   period: string;
   startDate: string;
@@ -174,7 +152,6 @@ export type DashboardMetrics = {
     pendingTasks: {
       payments: number;
       receipts: number;
-      creditNotes: number;
       total: number;
     };
     period: {
@@ -401,44 +378,6 @@ export const getBillingReceiptPdfUrl = async (receiptId: string): Promise<{ file
     },
   );
 
-export const createBillingCreditNote = async (input: {
-  contractId: string;
-  reason: string;
-  amount: string;
-  sourceDocumentType?: string;
-  sourceDocumentId?: string;
-}): Promise<{ ok: boolean; creditNoteId: string; creditNoteNumber: string; status: string }> =>
-  apiFetchJson<{ ok: boolean; creditNoteId: string; creditNoteNumber: string; status: string }>(
-    `/billing/contracts/${encodeURIComponent(input.contractId)}/credit-notes`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        reason: input.reason,
-        amount: input.amount,
-        ...(input.sourceDocumentType ? { sourceDocumentType: input.sourceDocumentType } : {}),
-        ...(input.sourceDocumentId ? { sourceDocumentId: input.sourceDocumentId } : {}),
-      }),
-    },
-  );
-
-export const applyBillingCreditNote = async (
-  creditNoteId: string,
-  notes?: string,
-): Promise<{ ok: boolean; creditNoteId: string; status: string; invoiceId: string }> =>
-  apiFetchJson<{ ok: boolean; creditNoteId: string; status: string; invoiceId: string }>(
-    `/billing/credit-notes/${encodeURIComponent(creditNoteId)}/apply`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(notes ? { notes } : {}),
-    },
-  );
-
 export const getBillingCreditNotePdfUrl = async (creditNoteId: string): Promise<{ fileName: string; url: string }> =>
   apiFetchJson<{ fileName: string; url: string }>(
     `/billing/credit-notes/${encodeURIComponent(creditNoteId)}/pdf`,
@@ -449,7 +388,6 @@ export const getBillingCreditNotePdfUrl = async (creditNoteId: string): Promise<
 
 export type PendingCounts = {
   pendingReceipts: number;
-  pendingCreditNotes: number;
   contractsPendingSignature: number;
 };
 
@@ -460,7 +398,7 @@ export const getPendingApprovalsCount = async (): Promise<PendingCounts> => {
     });
     return data;
   } catch {
-    return { pendingReceipts: 0, pendingCreditNotes: 0, contractsPendingSignature: 0 };
+    return { pendingReceipts: 0, contractsPendingSignature: 0 };
   }
 };
 
@@ -501,54 +439,6 @@ export const listBillingAudit = async (params: {
 
   return Array.isArray(payload.items) ? payload.items : [];
 };
-
-export const listBillingPendingCreditNotes = async (params: {
-  q?: string;
-  limit?: number;
-} = {}): Promise<BillingPendingCreditNoteItem[]> => {
-  const query = new URLSearchParams();
-  if (params.q) query.set("q", String(params.q));
-  query.set("limit", String(params.limit || 120));
-
-  const payload = await apiFetchJson<{ items?: BillingPendingCreditNoteItem[] }>(
-    `/billing/admin/credit-notes/pending?${query.toString()}`,
-    {
-      method: "GET",
-    },
-  );
-
-  return Array.isArray(payload.items) ? payload.items : [];
-};
-
-export const approveBillingCreditNote = async (
-  creditNoteId: string,
-  notes?: string,
-): Promise<{ ok: boolean; creditNoteId: string; status: string; invoiceId: string }> =>
-  apiFetchJson<{ ok: boolean; creditNoteId: string; status: string; invoiceId: string }>(
-    `/billing/admin/credit-notes/${encodeURIComponent(creditNoteId)}/approve`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(notes ? { notes } : {}),
-    },
-  );
-
-export const rejectBillingCreditNote = async (
-  creditNoteId: string,
-  reason: string,
-): Promise<{ ok: boolean; creditNoteId: string; status: string }> =>
-  apiFetchJson<{ ok: boolean; creditNoteId: string; status: string }>(
-    `/billing/admin/credit-notes/${encodeURIComponent(creditNoteId)}/reject`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ reason }),
-    },
-  );
 
 export const getBillingDashboardMetrics = async (params: { period?: string; from?: string; to?: string } = {}): Promise<DashboardMetrics> => {
   const query = new URLSearchParams();

@@ -19,6 +19,21 @@ describe("FiscalCreditNoteDraftService", () => {
     expect(data.customerId).toBe("customer-a");
     expect(data.currencyCode).toBe("USD");
     expect(data.receiverName).toBe("Customer A");
+    expect(data).toMatchObject({ sourceType: "FISCAL_CREDIT_NOTE", sourceId: "original-a", sourceNumber: "00100001010000000042", sourceRole: "ADJUSTMENT" });
+  });
+
+  it("allows successive partial credit-note drafts with adjustment source identity and original lineage", async () => {
+    const context = fixture(original());
+
+    await context.service.createDraft("tenant-a", "user-a", partialInput({ creditedQuantity: "1" }));
+    await context.service.createDraft("tenant-a", "user-a", partialInput({ creditedQuantity: "1" }));
+
+    expect(context.create).toHaveBeenCalledTimes(2);
+    for (const { data } of context.create.mock.calls.map(([input]) => input)) {
+      expect(data).toMatchObject({ sourceType: "FISCAL_CREDIT_NOTE", sourceId: "original-a", sourceNumber: "00100001010000000042", sourceRole: "ADJUSTMENT" });
+      expect(data.references.create).toMatchObject({ referencedBillingDocumentId: "original-a" });
+    }
+    expect(context.executeRaw.mock.calls.filter(([, sourceLineId]) => sourceLineId === "line-a")).toHaveLength(2);
   });
 
   it("copies the accepted USD original's frozen fiscal FX snapshot exactly", async () => {
@@ -329,11 +344,7 @@ describe("FiscalCreditNoteDraftService", () => {
 });
 
 function fixture(source: any, usage: Array<{ sourceLineId: string; creditedQuantity: Prisma.Decimal; creditedGrossAmount: Prisma.Decimal; creditedLineTotal: Prisma.Decimal }> = []) {
-  const queryRaw = jest.fn()
-    .mockResolvedValueOnce([])
-    .mockResolvedValueOnce([])
-    .mockResolvedValueOnce([])
-    .mockResolvedValueOnce(usage);
+  const queryRaw = jest.fn(async (strings: TemplateStringsArray) => String(strings).includes('GROUP BY line."sourceBillingDocumentLineId"') ? usage : []);
   const executeRaw = jest.fn().mockResolvedValue(1);
   const create = jest.fn().mockResolvedValue({
     id: "credit-a",

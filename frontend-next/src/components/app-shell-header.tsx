@@ -20,7 +20,6 @@ const AGENT_LINKS: HeaderLink[] = [
 const ADMIN_LINKS: HeaderLink[] = [
   { href: "/billing", label: "Estados de cuenta" },
   { href: "/reports", label: "Reportes" },
-  { href: "/admin/pending-credit-notes", label: "Notas de Crédito" },
   { href: "/billing/audit", label: "Auditoria" },
   { href: "/admin/exchange-rate", label: "Tipo de Cambio" },
   { href: "/admin/users", label: "Admin usuarios" },
