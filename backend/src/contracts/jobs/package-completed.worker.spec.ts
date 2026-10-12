@@ -9,7 +9,10 @@ import { PackageCompletedJobPayload } from "./package-completed-job.types";
 import { PackageCompletedWorker } from "./package-completed.worker";
 
 describe("PackageCompletedWorker", () => {
-  it("registers once and reloads the authoritative signing session", async () => {
+  it.each([
+    ["CONTRACT_RESERVATION", "CREDIT"],
+    ["CONTRACT_PAYMENT", "CASH"],
+  ])("delivers the completed package without legacy billing for %s / %s", async () => {
     let processor: Processor | undefined;
     const workerService = {
       registerWorker: jest.fn(
@@ -30,12 +33,9 @@ describe("PackageCompletedWorker", () => {
         generatedByName: "Agent",
       },
     });
-    const autoIssueAndSendInvoiceToTitular = jest.fn().mockResolvedValue({});
     const deliver = jest.fn().mockResolvedValue(undefined);
     const worker = new PackageCompletedWorker(workerService as never, {
       documentSigningSession: { findUnique },
-    } as never, {
-      autoIssueAndSendInvoiceToTitular,
     } as never, {
       deliver,
     } as never);
@@ -83,15 +83,6 @@ describe("PackageCompletedWorker", () => {
         },
       },
     });
-    expect(autoIssueAndSendInvoiceToTitular).toHaveBeenCalledWith({
-      contractId: "contract-1",
-      actorUserId: "user-1",
-      actorEmail: "agent@example.com",
-      actorName: "Agent",
-    });
     expect(deliver).toHaveBeenCalledWith("contract-1");
-    expect(
-      autoIssueAndSendInvoiceToTitular.mock.invocationCallOrder[0],
-    ).toBeLessThan(deliver.mock.invocationCallOrder[0]);
   });
 });

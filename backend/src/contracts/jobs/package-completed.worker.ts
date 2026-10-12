@@ -4,7 +4,6 @@ import { JobEnvelope } from "../../infrastructure/job-dispatcher";
 import { PLATFORM_QUEUE_KEYS } from "../../infrastructure/queue";
 import { WorkerService } from "../../infrastructure/worker";
 import { PrismaService } from "../../prisma/prisma.service";
-import { BillingService } from "../../billing/billing.service";
 import { PackageCompletedDeliveryService } from "../../documents/package-completed-delivery.service";
 import {
   PACKAGE_COMPLETED_JOB_NAME,
@@ -19,7 +18,6 @@ export class PackageCompletedWorker implements OnModuleInit {
   constructor(
     private readonly workerService: WorkerService,
     private readonly prisma: PrismaService,
-    private readonly billingService: BillingService,
     private readonly packageCompletedDeliveryService: PackageCompletedDeliveryService,
   ) {}
 
@@ -70,15 +68,8 @@ export class PackageCompletedWorker implements OnModuleInit {
       );
     }
 
-    await this.billingService.autoIssueAndSendInvoiceToTitular({
-      contractId: payload.contractId,
-      actorUserId: payload.actorUserId,
-      actorEmail: String(
-        session.contract.generatedByEmail || "system@local",
-      ),
-      actorName: String(session.contract.generatedByName || "Sistema"),
-    });
-
+    // Financial/fiscal authority is established by the Contract Finance flow.
+    // Package completion only delivers the completed contract artifacts.
     await this.packageCompletedDeliveryService.deliver(payload.contractId);
 
     this.logger.log(

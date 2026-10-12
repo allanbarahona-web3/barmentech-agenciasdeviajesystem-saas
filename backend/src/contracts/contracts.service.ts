@@ -2793,7 +2793,7 @@ export class ContractsService {
       });
     }
 
-    // Post-signing Billing and Delivery are handled by PackageCompletedWorker.
+    // Post-signing document delivery is handled by PackageCompletedWorker.
     let billingInvoiceAutoEmail: {
       ok: boolean;
       alreadySent?: boolean;
