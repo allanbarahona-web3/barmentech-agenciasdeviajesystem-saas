@@ -3,7 +3,7 @@
 import { type FormEvent, useEffect, useState } from 'react';
 import { createOperationalPurchase, createStandaloneOperationalPurchase, operationsErrorMessage, uploadOperationalEvidence, uploadStandaloneOperationalEvidence, type CreateOperationalPurchaseInput, type FulfillmentInput, type OperationalRequirementDetail, type StandaloneOperationalRequirementDetail } from '@/lib/operations-api';
 import { OperationalServiceDetailFields, typedOperationalDetail, type OperationalServiceDetailPayload } from '@/components/operations/operational-service-detail-fields';
-import { tenantDateTimeInputToUtc } from '@/shared/regional';
+import { formatTenantDateTimeInput, tenantDateTimeInputToUtc } from '@/shared/regional';
 import { useTenantRegional } from '@/shared/regional/tenant-regional-provider';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -29,6 +29,7 @@ export function OperationalPurchaseDrawer({ open, travelPackageId, requirementId
   const [serviceDetailsChanged, setServiceDetailsChanged] = useState(false);
   const [changedServiceDetailKeys, setChangedServiceDetailKeys] = useState<Set<string>>(new Set());
   const exactSoldValue = soldValue?.scope === 'EXACT_SERVICE_LINE' && soldValue.amount && soldValue.currency ? `${soldValue.currency} ${soldValue.amount}` : null;
+  const purchaseAtMax = formatTenantDateTimeInput(new Date().toISOString(), timeZone);
 
   useEffect(() => {
     if (open) {
@@ -44,7 +45,7 @@ export function OperationalPurchaseDrawer({ open, travelPackageId, requirementId
   async function savePurchase(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
-    const validation = validatePurchase(form);
+    const validation = validatePurchase(form, timeZone);
     if (validation) { setError(validation); return; }
     setSaving(true);
     let createdFulfillment = false;
@@ -91,7 +92,7 @@ export function OperationalPurchaseDrawer({ open, travelPackageId, requirementId
       <FormField htmlFor="purchase-provider" label="Proveedor" required><Input id="purchase-provider" value={form.providerName} onChange={(event) => setForm((value) => ({ ...value, providerName: event.target.value }))} required maxLength={500} /></FormField>
       <FormField htmlFor="purchase-provider-reference" label="Referencia del proveedor"><Input id="purchase-provider-reference" value={form.supplierReference} onChange={(event) => setForm((value) => ({ ...value, supplierReference: event.target.value }))} maxLength={500} /></FormField>
       <div className="grid gap-3 sm:grid-cols-3"><FormField htmlFor="purchase-amount" label="Monto" required><Input id="purchase-amount" inputMode="decimal" value={form.amount} onChange={(event) => setForm((value) => ({ ...value, amount: event.target.value }))} required /></FormField><FormField htmlFor="purchase-currency" label="Moneda" required><Select id="purchase-currency" value={form.currency} onChange={(event) => setForm((value) => ({ ...value, currency: event.target.value }))} required><option value={preferredCurrency}>{preferredCurrency}</option>{preferredCurrency !== 'USD' ? <option value="USD">USD</option> : null}</Select></FormField><FormField htmlFor="purchase-tax" label="Impuesto"><Input id="purchase-tax" inputMode="decimal" value={form.taxAmount} onChange={(event) => setForm((value) => ({ ...value, taxAmount: event.target.value }))} /></FormField></div>
-      <FormField htmlFor="purchase-date" label="Fecha de compra" required><Input id="purchase-date" type="datetime-local" value={form.purchasedAt} onChange={(event) => setForm((value) => ({ ...value, purchasedAt: event.target.value }))} required /></FormField>
+      <FormField htmlFor="purchase-date" label="Fecha de compra" required><Input id="purchase-date" type="datetime-local" max={purchaseAtMax} value={form.purchasedAt} onChange={(event) => setForm((value) => ({ ...value, purchasedAt: event.target.value }))} required /></FormField>
       <FormField htmlFor="purchase-invoice" label="Número de factura del proveedor"><Input id="purchase-invoice" value={form.supplierInvoiceNumber} onChange={(event) => setForm((value) => ({ ...value, supplierInvoiceNumber: event.target.value }))} maxLength={191} /></FormField>
       <OperationalServiceDetailFields servicePurposeCode={servicePurposeCode} detailVersion={detailVersion} value={serviceDetails} onChange={(value) => { setChangedServiceDetailKeys((keys) => new Set([...keys, ...new Set([...Object.keys(serviceDetails), ...Object.keys(value)].filter((key) => serviceDetails[key] !== value[key]))])); setServiceDetails(value); setServiceDetailsChanged(true); }} idPrefix="purchase-detail" />
       <FormField htmlFor="purchase-evidence" label="Documento de respaldo (opcional)"><Input id="purchase-evidence" type="file" accept="application/pdf,image/jpeg,image/png,image/webp" onChange={(event) => { const file = event.target.files?.[0] ?? null; const fileError = file ? validateFile(file) : null; if (fileError) { setEvidenceFile(null); setError(fileError); return; } setEvidenceFile(file); }} /></FormField>
@@ -101,9 +102,9 @@ export function OperationalPurchaseDrawer({ open, travelPackageId, requirementId
 }
 
 function purchaseInput(form: PurchaseForm, timeZone: string): CreateOperationalPurchaseInput { return { providerName: form.providerName.trim(), supplierReference: textOrNull(form.supplierReference), amount: form.amount.trim(), currency: form.currency.trim().toUpperCase(), taxAmount: form.taxAmount.trim() || null, purchasedAt: tenantDateTimeInputToUtc(form.purchasedAt, timeZone)!, supplierInvoiceNumber: textOrNull(form.supplierInvoiceNumber), notes: textOrNull(form.notes) }; }
-function validatePurchase(form: PurchaseForm) { if (!form.providerName.trim()) return 'Indique el proveedor.'; if (!isMoney(form.amount) || !isPositiveMoney(form.amount)) return 'El monto debe ser un decimal mayor que cero, con hasta cinco decimales.'; if (form.taxAmount.trim() && !isMoney(form.taxAmount)) return 'El impuesto debe ser un decimal igual o mayor que cero, con hasta cinco decimales.'; if (!/^[A-Za-z]{3}$/.test(form.currency.trim())) return 'La moneda debe tener tres letras.'; if (!form.purchasedAt) return 'Indique la fecha de compra.'; return null; }
+function validatePurchase(form: PurchaseForm, timeZone: string) { if (!form.providerName.trim()) return 'Indique el proveedor.'; if (!isMoney(form.amount) || !isPositiveMoney(form.amount)) return 'El monto debe ser un decimal mayor que cero, con hasta cinco decimales.'; if (form.taxAmount.trim() && !isMoney(form.taxAmount)) return 'El impuesto debe ser un decimal igual o mayor que cero, con hasta cinco decimales.'; if (!/^[A-Za-z]{3}$/.test(form.currency.trim())) return 'La moneda debe tener tres letras.'; if (!form.purchasedAt) return 'Indique la fecha de compra.'; const purchasedAt = tenantDateTimeInputToUtc(form.purchasedAt, timeZone); if (!purchasedAt || new Date(purchasedAt).getTime() > Date.now()) return 'La fecha de compra no puede estar en el futuro.'; return null; }
 function isMoney(value: string) { return /^\d+(?:\.\d{1,5})?$/.test(value.trim()); }
 function isPositiveMoney(value: string) { return value.replace(/[.0]/g, '').length > 0; }
 function textOrNull(value: string) { return value.trim() || null; }
 function validateFile(file: File) { if (file.size < 1) return 'El archivo está vacío.'; if (!allowedMimeTypes.has(file.type)) return 'Solo se permiten archivos PDF, JPEG, PNG o WebP.'; if (file.size > maxEvidenceBytes) return 'El archivo no puede superar 10 MiB.'; return null; }
-function message(reason: unknown, fallback: string) { const value = reason instanceof Error ? reason.message : ''; if (value.includes('FINANCIAL_ELIGIBILITY_BLOCKED')) return 'Esta compra no puede registrarse porque la fuente comercial aún no está habilitada financieramente.'; if (value.includes('FINANCIAL_ELIGIBILITY_UNAVAILABLE')) return 'No existe información financiera suficiente para autorizar esta compra.'; if (value.includes('FULFILLMENT_CANCELLED')) return 'La gestión está cancelada y no admite nuevas compras.'; return operationsErrorMessage(reason, fallback); }
+function message(reason: unknown, fallback: string) { const value = reason instanceof Error ? reason.message : ''; if (value.includes('OPERATIONAL_PURCHASE_DATE_IN_FUTURE')) return 'La fecha de compra no puede estar en el futuro.'; if (value.includes('FINANCIAL_ELIGIBILITY_BLOCKED')) return 'Esta compra no puede registrarse porque la fuente comercial aún no está habilitada financieramente.'; if (value.includes('FINANCIAL_ELIGIBILITY_UNAVAILABLE')) return 'No existe información financiera suficiente para autorizar esta compra.'; if (value.includes('FULFILLMENT_CANCELLED')) return 'La gestión está cancelada y no admite nuevas compras.'; return operationsErrorMessage(reason, fallback); }

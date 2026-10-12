@@ -270,6 +270,7 @@ function createFields(input: CreateOperationalPurchaseDto) {
   const currency = typeof input.currency === "string" ? input.currency.trim().toUpperCase() : "";
   if (!/^[A-Z]{3}$/.test(currency)) throw new BadRequestException("OPERATIONAL_PURCHASE_CURRENCY_INVALID");
   const purchasedAt = date(input.purchasedAt, "OPERATIONAL_PURCHASE_PURCHASED_AT_INVALID");
+  if (purchasedAt.getTime() > Date.now()) throw new BadRequestException("OPERATIONAL_PURCHASE_DATE_IN_FUTURE");
   return { providerName, supplierReference: textOrNull(input.supplierReference, "OPERATIONAL_PURCHASE_SUPPLIER_REFERENCE_INVALID"), amount, currency, taxAmount, purchasedAt, supplierInvoiceNumber: textOrNull(input.supplierInvoiceNumber, "OPERATIONAL_PURCHASE_INVOICE_INVALID"), notes: textOrNull(input.notes, "OPERATIONAL_PURCHASE_NOTES_INVALID") };
 }
 function text(value: unknown, code: string) { const normalized = typeof value === "string" ? value.trim() : ""; if (!normalized) throw new BadRequestException(code); return normalized; }

@@ -42,6 +42,16 @@ test('Purchase create keeps decimal strings, validates money and currency, and p
   assert.doesNotMatch(source, /parseFloat\(.*amount|Number\(.*amount/);
 });
 
+test('Shared purchase drawer prevents future purchase instants and clearly maps backend rejections', () => {
+  const source = drawer();
+  assert.match(source, /formatTenantDateTimeInput\(new Date\(\)\.toISOString\(\), timeZone\)/);
+  assert.match(source, /type="datetime-local" max=\{purchaseAtMax\}/);
+  assert.match(source, /validatePurchase\(form, timeZone\)/);
+  assert.match(source, /new Date\(purchasedAt\)\.getTime\(\) > Date\.now\(\)/);
+  assert.match(source, /La fecha de compra no puede estar en el futuro\./);
+  assert.match(source, /OPERATIONAL_PURCHASE_DATE_IN_FUTURE/);
+});
+
 test('Purchase form can persist an optional linked document after the Purchase succeeds', () => {
   const source = drawer();
   for (const text of ['Número de factura del proveedor', 'evidenceFile']) assert.match(source, new RegExp(text));

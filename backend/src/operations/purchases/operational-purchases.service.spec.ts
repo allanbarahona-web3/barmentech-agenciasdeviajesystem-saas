@@ -127,6 +127,58 @@ describe("OperationalPurchasesService", () => {
     await expect(c.service.create(tenantId, travelPackageId, requirementId, fulfillmentId, body, actor)).rejects.toMatchObject({ response: expect.objectContaining({ message: code }) });
   });
 
+  it.each([
+    ["Base Travel", requirement({ sourceType: "TRAVEL_PACKAGE_COST_COMPONENT", sourceId: "project-a", sourceLineId: "component-a" }), false],
+    ["Additional Service", requirement({ sourceType: "ADDITIONAL_SERVICE_ORDER_LINE", sourceId: "order-a", sourceLineId: "line-a" }), false],
+    ["Custom Quotation", requirement({ travelPackageId: null, sourceType: "CUSTOM_QUOTATION_LINE", sourceId: "version-a", sourceLineId: "line-a" }), true],
+  ] as const)("accepts the current server instant for %s purchases", async (_source, req, standalone) => {
+    jest.useFakeTimers().setSystemTime(new Date("2026-10-12T18:00:00.000Z"));
+    try {
+      const c = context(req, fulfillment(), [req, req], [fulfillment(), fulfillment()]);
+      c.tx.operationalPurchase.create.mockResolvedValue(purchase({ travelPackageId: standalone ? null : travelPackageId }));
+      c.tx.operationalFulfillment.updateMany.mockResolvedValue({ count: 1 });
+      if (req.sourceType !== "TRAVEL_PACKAGE_COST_COMPONENT") c.finance.readMany.mockResolvedValue([{ eligibility: "ELIGIBLE", reason: "SETTLED" }]);
+      const result = standalone
+        ? await c.service.createStandalone(tenantId, requirementId, fulfillmentId, input({ purchasedAt: "2026-10-12T18:00:00.000Z" }), actor)
+        : await c.service.create(tenantId, travelPackageId, requirementId, fulfillmentId, input({ purchasedAt: "2026-10-12T18:00:00.000Z" }), actor);
+      expect(result).toMatchObject({ id: purchaseId });
+      expect(c.tx.operationalPurchase.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ purchasedAt: new Date("2026-10-12T18:00:00.000Z") }) }));
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it("accepts historical purchase instants", async () => {
+    jest.useFakeTimers().setSystemTime(new Date("2026-10-12T18:00:00.000Z"));
+    try {
+      const req = requirement({ sourceType: "TRAVEL_PACKAGE_COST_COMPONENT", sourceId: "project-a", sourceLineId: "component-a" });
+      const c = context(req, fulfillment(), [req, req], [fulfillment(), fulfillment()]);
+      c.tx.operationalPurchase.create.mockResolvedValue(purchase());
+      c.tx.operationalFulfillment.updateMany.mockResolvedValue({ count: 1 });
+      await expect(c.service.create(tenantId, travelPackageId, requirementId, fulfillmentId, input({ purchasedAt: "2026-10-12T17:59:59.999Z" }), actor)).resolves.toMatchObject({ id: purchaseId });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it.each([
+    ["Base Travel", requirement({ sourceType: "TRAVEL_PACKAGE_COST_COMPONENT", sourceId: "project-a", sourceLineId: "component-a" }), false],
+    ["Additional Service", requirement({ sourceType: "ADDITIONAL_SERVICE_ORDER_LINE", sourceId: "order-a", sourceLineId: "line-a" }), false],
+    ["Custom Quotation", requirement({ travelPackageId: null, sourceType: "CUSTOM_QUOTATION_LINE", sourceId: "version-a", sourceLineId: "line-a" }), true],
+  ] as const)("rejects a future purchase instant for %s", async (_source, req, standalone) => {
+    jest.useFakeTimers().setSystemTime(new Date("2026-10-12T18:00:00.000Z"));
+    try {
+      const c = context(req, fulfillment(), [req, req], [fulfillment(), fulfillment()]);
+      const creation = standalone
+        ? c.service.createStandalone(tenantId, requirementId, fulfillmentId, input({ purchasedAt: "2026-10-12T18:00:00.001Z" }), actor)
+        : c.service.create(tenantId, travelPackageId, requirementId, fulfillmentId, input({ purchasedAt: "2026-10-12T18:00:00.001Z" }), actor);
+      await expect(creation).rejects.toMatchObject({ response: expect.objectContaining({ message: "OPERATIONAL_PURCHASE_DATE_IN_FUTURE" }) });
+      expect(c.tx.operationalPurchase.create).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it("updates only safe metadata and has no delete operation", async () => {
     const c = context(requirement(), fulfillment());
     c.tx.operationalPurchase.findFirst.mockResolvedValue(purchase());
@@ -158,6 +210,16 @@ describe("OperationalPurchasesService", () => {
 
     const hidden = context(requirement(), fulfillment()); hidden.tx.operationalPurchase.findFirst.mockResolvedValue(null);
     await expect(hidden.service.find("tenant-b", travelPackageId, requirementId, fulfillmentId, purchaseId)).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it("keeps pre-existing future-dated purchases readable as history", async () => {
+    const c = context(requirement(), fulfillment());
+    const futurePurchase = purchase({ purchasedAt: new Date("2099-01-01T00:00:00.000Z") });
+    c.tx.operationalPurchase.findMany.mockResolvedValue([futurePurchase]);
+    c.tx.operationalPurchase.count.mockResolvedValue(1);
+    await expect(c.service.list(tenantId, travelPackageId, requirementId, fulfillmentId, {})).resolves.toMatchObject({
+      items: [{ id: purchaseId, purchasedAt: futurePurchase.purchasedAt }],
+    });
   });
 
   it("revalidates the parent inside the write transaction after eligibility", async () => {
