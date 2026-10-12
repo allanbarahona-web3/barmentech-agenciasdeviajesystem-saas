@@ -31,17 +31,17 @@ test('trip history delegates terminal filtering and pagination to the bounded hi
   for (const preset of ['TODAY', 'LAST_7_DAYS', 'LAST_30_DAYS', 'CUSTOM']) assert.match(text, new RegExp(preset));
   assert.match(client, /\/operations\/travel-packages\/history\?/);
   assert.match(client, /input\.datePreset === 'CUSTOM'/);
-  assert.match(text, /Página \{page\} de \{totalPages\}/);
+  assert.match(text, /HistoryPagination total=\{total\}/);
   assert.match(text, /void load\(page - 1\)/);
   assert.match(text, /void load\(page \+ 1\)/);
+  assert.match(read('../src/components/operations/operations-history-presentation.tsx'), /Página \{page\} de \{totalPages\}/);
 });
 
 test('history list keeps passenger visibility and maps source and terminal labels without raw enums', () => {
   const text = history();
   assert.match(text, /BASE_TRIP: 'Viaje base'/);
   assert.match(text, /ADDITIONAL_SERVICES: 'Servicio adicional'/);
-  assert.match(text, /CONFIRMED: 'Confirmado'/);
-  assert.match(text, /CANCELLED: 'Cancelado'/);
+  assert.match(text, /<TerminalStatusBadge status=\{item\.terminalStatus\}/);
   assert.doesNotMatch(text, /PURCHASED/);
   assert.match(text, /item\.passengers\.map\(\(passenger\) => passenger\.fullName\)/);
   assert.match(text, /item\.passengerCount/);
@@ -75,9 +75,12 @@ test('history detail is a read-only terminal view with safe existing evidence ac
   for (const forbidden of ['Reservar', 'Registrar compra', 'Confirmar', 'Cancelar', 'Editar']) assert.doesNotMatch(text, new RegExp(forbidden));
 });
 
-test('Custom Quotation history remains separate and unchanged', () => {
+test('Custom Quotation history remains separate while using shared presentation primitives', () => {
   const standalone = read('../src/components/operations/standalone-operational-requirements-workspace.tsx');
-  assert.match(standalone, /function CustomQuotationHistory\(\)/);
+  const shared = read('../src/components/operations/operations-history-presentation.tsx');
+  assert.match(standalone, /function CustomQuotationOperationsHistory\(\)/);
   assert.match(standalone, /listCustomQuotationOperationsHistory/);
   assert.doesNotMatch(standalone, /OperationalTravelHistory/);
+  assert.match(standalone, /HistoryTableShell/);
+  assert.match(shared, /function TerminalStatusBadge/);
 });

@@ -5,7 +5,8 @@ export type FiscalPollerName =
   | "FiscalArtifactRetrievalPublisher"
   | "AccountReceivableRecognitionPublisher"
   | "FiscalOutboxPublisherService"
-  | "FiscalTerminalArtifactFanoutCoordinatorService";
+  | "FiscalTerminalArtifactFanoutCoordinatorService"
+  | "FiscalCreditNoteFinanceEffectPublisher";
 
 type SafeLogger = {
   error(message: string): unknown;

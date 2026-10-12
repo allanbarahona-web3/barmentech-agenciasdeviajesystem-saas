@@ -164,7 +164,7 @@ test('confirmed Custom Quotation work refreshes the parent group without a brows
 test('Custom Quotation history is terminal, read-only, and delegates filters to the backend', () => {
   const text = workspace();
   const apiText = api();
-  const historyStart = text.indexOf('function CustomQuotationHistory()');
+  const historyStart = text.indexOf('function CustomQuotationOperationsHistory()');
   const historyEnd = text.indexOf('function CustomQuotationGroupDetail');
   const history = text.slice(historyStart, historyEnd);
   assert.ok(historyStart >= 0 && historyEnd > historyStart, 'history is isolated from active workflow controls');
@@ -178,11 +178,17 @@ test('Custom Quotation history is terminal, read-only, and delegates filters to 
   assert.match(history, /dateFrom: datePreset === 'CUSTOM' \? dateFrom \|\| undefined : undefined/);
   assert.match(history, /dateTo: datePreset === 'CUSTOM' \? dateTo \|\| undefined : undefined/);
   assert.match(history, /item\.finalStatus/);
-  assert.match(history, /historyStatusLabel/);
+  assert.match(history, /TerminalStatusBadge/);
   assert.match(history, /getCustomQuotationOperationsHistoryDetail\(fulfillmentId\)/);
   assert.match(history, /getStandaloneOperationalEvidenceAccess\(detail\.requirementId, detail\.fulfillmentId, attachment\.id\)/);
   assert.match(history, /Ver documento fiscal/);
   assert.match(history, /formatDateTime\(item\.finalizedAt\)/);
   assert.match(history, /money\(addFinanceMoneyDisplayValues\(item\.purchase\.amount, item\.purchase\.taxAmount\), item\.purchase\.currency\)/);
+  assert.match(history, /HistoryFilterBar/);
+  assert.match(history, /HistoryTableShell/);
+  assert.match(history, /HistoryPagination/);
+  assert.match(history, /event\.key === 'Enter' \|\| event\.key === ' '/);
+  const listRequest = history.slice(history.indexOf('listCustomQuotationOperationsHistory({'), history.indexOf('});', history.indexOf('listCustomQuotationOperationsHistory({')));
+  assert.doesNotMatch(listRequest, /terminalStatus/);
   for (const forbidden of ['Registrar compra', 'Confirmar', 'Editar compra', 'cancelStandalone', 'createStandalone']) assert.doesNotMatch(history, new RegExp(forbidden));
 });
