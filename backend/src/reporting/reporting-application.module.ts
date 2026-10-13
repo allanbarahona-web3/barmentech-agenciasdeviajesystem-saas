@@ -11,9 +11,10 @@ import { ReportingExportService } from "./exports/reporting-export.service";
 import { ReportingReceivablesApplicationService } from "./receivables/reporting-receivables-application.service";
 import { ReceivablesReportService } from "./receivables/receivables-report.service";
 import { AccountingCostsModule } from "./accounting-costs/accounting-costs.module";
+import { AdminDashboardModule } from "./admin-dashboard/admin-dashboard.module";
 
 @Module({
-  imports: [ReportingModule, FiscalBillingReportingModule, FinanceReportingModule, AccountingCostsModule],
+  imports: [ReportingModule, FiscalBillingReportingModule, FinanceReportingModule, AccountingCostsModule, AdminDashboardModule],
   controllers: [ReportingController],
   providers: [ReportingSalesApplicationService, SalesReportService, ReportingSalesTaxApplicationService, SalesTaxReportService, ReportingExportService, ReportingReceivablesApplicationService, ReceivablesReportService],
 })

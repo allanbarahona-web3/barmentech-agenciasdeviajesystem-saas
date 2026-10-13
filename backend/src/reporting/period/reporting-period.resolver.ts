@@ -2,7 +2,7 @@ import { Injectable } from "@nestjs/common";
 import type { ResolvedReportingPeriod } from "../contracts/reporting.contracts";
 
 export type ReportingPeriodSelection =
-  | { kind: "TODAY" | "LAST_7_DAYS" | "LAST_15_DAYS" | "CURRENT_MONTH" | "PREVIOUS_MONTH" }
+  | { kind: "TODAY" | "LAST_7_DAYS" | "LAST_15_DAYS" | "LAST_30_DAYS" | "CURRENT_MONTH" | "PREVIOUS_MONTH" }
   | { kind: "CUSTOM"; startOn: string; endOn: string };
 
 @Injectable()
@@ -21,6 +21,8 @@ export class ReportingPeriodResolver {
         return { startOn: addDays(today, -6), endOn: today };
       case "LAST_15_DAYS":
         return { startOn: addDays(today, -14), endOn: today };
+      case "LAST_30_DAYS":
+        return { startOn: addDays(today, -29), endOn: today };
       case "CURRENT_MONTH":
         return { startOn: `${today.slice(0, 7)}-01`, endOn: endOfMonth(today.slice(0, 7)) };
       case "PREVIOUS_MONTH": {
