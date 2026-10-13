@@ -31,7 +31,8 @@ describe("BillingService legacy bootstrap retirement", () => {
     expect(emailJobSource).not.toContain("AUTOMATIC_INITIAL_INVOICE");
     expect(emailTemplateSource).not.toContain("invoice-initial");
 
-    expect(serviceSource).toContain("async reportPayment(");
+    expect(serviceSource).not.toContain("async reportPayment(");
+    expect(serviceSource).not.toContain("async markPaymentInReview(");
     expect(serviceSource).toContain("async verifyPayment(");
     expect(serviceSource).toContain("async rejectPayment(");
     expect(serviceSource).toContain("async processVerifiedPaymentReceiptJob(");

@@ -7,12 +7,9 @@ import { BillingController } from "./billing.controller";
 describe("BillingController readonly accountant authorization", () => {
   const legacyMutationHandlers = [
     "sendAccountStatementEmail",
-    "reportPayment",
-    "markPaymentInReview",
     "sendCreditNoteEmail",
     "verifyPayment",
     "rejectPayment",
-    "approveAndSendReceipt",
   ] as const;
 
   const legacyReadHandlers = [
@@ -34,8 +31,7 @@ describe("BillingController readonly accountant authorization", () => {
       expect(canActivate(UserRole.ADMIN, handler)).toBe(true);
       expect(() => canActivate(UserRole.FACTURACION_COBROS, handler)).toThrow(ForbiddenException);
     }
-    expect(canActivate(UserRole.AGENT, "reportPayment")).toBe(true);
-    expect(canActivate(UserRole.AGENT, "approveAndSendReceipt")).toBe(true);
+    expect(canActivate(UserRole.AGENT, "sendAccountStatementEmail")).toBe(true);
   });
 
   it("blocks CONTADOR and FACTURACION_COBROS from direct legacy account-statement reads", () => {
@@ -77,6 +73,15 @@ describe("BillingController readonly accountant authorization", () => {
 
   it("removes the orphan legacy contract bootstrap endpoint", () => {
     expect(BillingController.prototype).not.toHaveProperty("bootstrapContractBilling");
+  });
+
+  it("removes legacy contract payment reporting, review, and manual receipt delivery handlers", () => {
+    for (const handler of ["reportPayment", "markPaymentInReview", "approveAndSendReceipt"]) {
+      expect(BillingController.prototype).not.toHaveProperty(handler);
+    }
+    expect(BillingController.prototype).toHaveProperty("getContractAccount");
+    expect(BillingController.prototype).toHaveProperty("getPaymentAttachment");
+    expect(BillingController.prototype).toHaveProperty("getReceiptPdfUrl");
   });
 
   function canActivate(role: UserRole, handler: keyof BillingController) {

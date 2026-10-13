@@ -2,30 +2,22 @@
 
 export const dynamic = 'force-dynamic';
 
-import { getHomeRouteForRole, getStoredSession, getStoredToken, getTenantConfig } from "@/lib/auth-api";
+import { getHomeRouteForRole, getStoredSession, getStoredToken } from "@/lib/auth-api";
 import {
-  approveAndSendBillingReceipt,
   getBillingAccountStatementPdfUrl,
   getBillingContractAccount,
   getBillingCreditNotePdfUrl,
   getBillingInvoicePdfUrl,
   getBillingReceiptPdfUrl,
-  rejectBillingPayment,
-  reportBillingPayment,
   sendBillingCreditNoteEmail,
   sendBillingAccountStatementEmail,
-  verifyBillingPayment,
   type BillingAccount,
 } from "@/lib/billing-api";
-import { ReceiptProcessor } from "@/components/receipt-processor";
-import { LoadingModal } from "@/components/loading-modal";
-import type { ExtractedPaymentData } from "@/lib/payment-verification-api";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, Suspense } from "react";
 import { formatBusinessDate } from "@/shared/regional";
 
-type BillingModalMode = "RESERVATION" | "INSTALLMENT" | "NONE";
-type DocumentEmailType = "RECEIPT" | "CREDIT_NOTE";
+type DocumentEmailType = "CREDIT_NOTE";
 
 const INVOICE_STATUS_LABELS: Record<string, string> = {
   FACTURA_EMITIDA: "Emitida",
@@ -47,13 +39,6 @@ const CREDIT_NOTE_STATUS_LABELS: Record<string, string> = {
   NC_APLICADA: "Aprobada",
   NC_RECHAZADA: "Rechazada",
 };
-
-const PAYMENT_METHOD_OPTIONS = [
-  "TRANSFERENCIA_BANCARIA",
-  "EFECTIVO",
-  "SINPE_MOVIL",
-  "TARJETA",
-] as const;
 
 const labelStatus = (value?: string | null, labels?: Record<string, string>): string => {
   const raw = String(value || "").trim().toUpperCase();
@@ -133,35 +118,14 @@ const getContractSourceBadge = (source?: string | null): { label: string; color:
 
 function BillingContractAccountContent() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const params = useParams<{ contractId: string }>();
   const contractId = String(params?.contractId || "").trim();
 
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [actionBusy, setActionBusy] = useState("");
   const [error, setError] = useState("");
   const [statusText, setStatusText] = useState("");
-  const [criticalAlert, setCriticalAlert] = useState<{ title: string; message: string; details?: string } | null>(null);
   const [account, setAccount] = useState<BillingAccount | null>(null);
-  const [tenantDisplayName, setTenantDisplayName] = useState("la empresa");
-
-  const [modalMode, setModalMode] = useState<BillingModalMode>("NONE");
-
-  const [amount, setAmount] = useState("");
-  const [paymentDate, setPaymentDate] = useState("");
-  const [bankReference, setBankReference] = useState("");
-  const [payerName, setPayerName] = useState("");
-  const [paymentReference, setPaymentReference] = useState("");
-  const [originBank, setOriginBank] = useState("");
-  const [destinationBank, setDestinationBank] = useState("");
-  const [destinationAccount, setDestinationAccount] = useState("");
-  const [notes, setNotes] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState<string>(PAYMENT_METHOD_OPTIONS[0]);
-  const [attachments, setAttachments] = useState<File[]>([]);
-
-  const [rejectModalPaymentId, setRejectModalPaymentId] = useState("");
-  const [rejectReason, setRejectReason] = useState("");
   const [statementModalOpen, setStatementModalOpen] = useState(false);
   const [statementEmailTo, setStatementEmailTo] = useState("");
   const [statementEmailCc, setStatementEmailCc] = useState("");
@@ -178,12 +142,6 @@ function BillingContractAccountContent() {
   const [documentEmailCc, setDocumentEmailCc] = useState("");
   const [documentEmailError, setDocumentEmailError] = useState("");
   const [documentEmailSuccess, setDocumentEmailSuccess] = useState("");
-
-  // Estados para LoadingModal
-  const [loadingModalOpen, setLoadingModalOpen] = useState(false);
-  const [loadingModalState, setLoadingModalState] = useState<"loading" | "success" | "error">("loading");
-  const [loadingModalMessage, setLoadingModalMessage] = useState("");
-  const [loadingModalSuccessMsg, setLoadingModalSuccessMsg] = useState("");
 
   const role = String(getStoredSession()?.user?.role || "").toUpperCase();
   const isAdmin = role === "ADMIN" || role === "FACTURACION_COBROS";
@@ -203,18 +161,6 @@ function BillingContractAccountContent() {
     }
   };
 
-  const loadTenantDisplayName = async () => {
-    try {
-      const config = await getTenantConfig();
-      const tenantName = String(config?.name || "").trim();
-      if (tenantName) {
-        setTenantDisplayName(tenantName);
-      }
-    } catch {
-      // Keep fallback label when tenant config is unavailable.
-    }
-  };
-
   useEffect(() => {
     const token = getStoredToken();
     if (!token) {
@@ -226,23 +172,9 @@ function BillingContractAccountContent() {
       router.replace(getHomeRouteForRole(role));
       return;
     }
-    void loadTenantDisplayName();
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router, contractId]);
-
-  // Auto-abrir modal de reserva si se llegó desde el formulario de creación de contrato
-  useEffect(() => {
-    const autoModal = searchParams?.get("autoModal");
-    if (canOperate && autoModal === "RESERVATION" && !loading && account) {
-      setModalMode("RESERVATION");
-      // Limpiar el query param para que no vuelva a abrir el modal al refrescar
-      const url = new URL(window.location.href);
-      url.searchParams.delete("autoModal");
-      window.history.replaceState({}, "", url.toString());
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, account, canOperate]);
 
   // Auto-refresh cada 30 segundos para agentes
   useEffect(() => {
@@ -255,7 +187,7 @@ function BillingContractAccountContent() {
       // 2. No hay modales abiertos
       // 3. No está cargando actualmente
       const isPageVisible = document.visibilityState === "visible";
-      const hasOpenModals = modalMode !== "NONE" || loadingModalOpen || statementModalOpen;
+      const hasOpenModals = Boolean(documentEmailModal) || statementModalOpen;
       
       if (isPageVisible && !hasOpenModals && !loading) {
         void load();
@@ -264,7 +196,7 @@ function BillingContractAccountContent() {
 
     return () => clearInterval(intervalId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAdmin, modalMode, loadingModalOpen, statementModalOpen, loading]);
+  }, [isAdmin, documentEmailModal, statementModalOpen, loading]);
 
   // Helper: Detecta si un pago fue aprobado recientemente (últimos 5 minutos)
   const isRecentlyApproved = (verifiedAt?: string | null, status?: string | null): boolean => {
@@ -365,237 +297,6 @@ function BillingContractAccountContent() {
     }).reverse();
   }, [account]);
 
-  const resetPaymentForm = () => {
-    setAmount("");
-    setPaymentDate(new Date().toISOString().slice(0, 10));
-    setBankReference("");
-    setPayerName("");
-    setPaymentReference("");
-    setOriginBank("");
-    setDestinationBank("");
-    setDestinationAccount("");
-    setNotes("");
-    setPaymentMethod(PAYMENT_METHOD_OPTIONS[0]);
-    setAttachments([]);
-    console.log("🔄 Formulario de pago reseteado");
-  };
-
-  const handleReceiptDataExtracted = (data: ExtractedPaymentData) => {
-    // Pre-llenar campos del formulario con datos extraídos del comprobante
-    if (data.amount) {
-      // Redondear a 2 decimales
-      setAmount(data.amount.toFixed(2));
-    }
-    
-    if (data.date) {
-      // Convertir fecha ISO a formato YYYY-MM-DD
-      const dateOnly = data.date.split('T')[0];
-      setPaymentDate(dateOnly);
-    }
-    
-    if (data.reference) {
-      setBankReference(data.reference);
-    }
-    
-    if (data.payerName) {
-      setPayerName(data.payerName);
-    }
-    
-    if (data.paymentCode) {
-      setPaymentReference(data.paymentCode.toUpperCase());
-    }
-    
-    if (data.originBank) {
-      setOriginBank(data.originBank);
-    }
-    
-    if (data.destinationBank) {
-      setDestinationBank(data.destinationBank);
-    }
-    
-    if (data.destinationAccount) {
-      setDestinationAccount(data.destinationAccount);
-    }
-    
-    if (data.notes) {
-      setNotes(data.notes);
-    }
-
-    // Mostrar mensaje de éxito con información de conversión si aplica
-    let successMessage = "✅ Datos extraídos exitosamente";
-    if (data.conversionApplied && data.originalAmount && data.originalCurrency && data.usedExchangeRate) {
-      successMessage += ` | 💱 Conversión automática: ₡${data.originalAmount.toFixed(2)} → $${data.amount?.toFixed(2)} (TC: ₡${data.usedExchangeRate.toFixed(2)})`;
-    }
-    setStatusText(successMessage);
-    setTimeout(() => setStatusText(""), 6000);
-  };
-
-  const openInstallmentModal = () => {
-    resetPaymentForm();
-    setAmount(String(Number(account?.invoice?.amounts?.balance || 0).toFixed(2)));
-    setModalMode("INSTALLMENT");
-  };
-
-  const setInstallmentToFullBalance = () => {
-    setAmount(String(Number(account?.invoice?.amounts?.balance || 0).toFixed(2)));
-  };
-
-  const closeMainModal = () => {
-    setModalMode("NONE");
-  };
-
-  const onReportPayment = async (type: "RESERVATION" | "INSTALLMENT") => {
-    if (!canOperate) return;
-    if (!contractId || !amount.trim()) {
-      setStatusText("Debes ingresar monto para continuar.");
-      return;
-    }
-
-    const amountValue = Number.parseFloat(String(amount || "").replace(",", "."));
-    const currentBalance = Number(account?.invoice?.amounts?.balance || 0);
-    if (Number.isFinite(amountValue) && amountValue > currentBalance) {
-      setStatusText("El abono no puede ser mayor al saldo pendiente del contrato.");
-      return;
-    }
-
-    // Validar código de pago si fue proporcionado
-    const trimmedPaymentRef = paymentReference.trim().toUpperCase();
-    const expectedPaymentRef = String(account?.invoice?.paymentReference || "").trim().toUpperCase();
-    
-    if (trimmedPaymentRef) {
-      // Validar que sea alfanumérico mixto (al menos 1 letra Y 1 número)
-      const hasLetter = /[A-Z]/.test(trimmedPaymentRef);
-      const hasNumber = /[0-9]/.test(trimmedPaymentRef);
-      
-      if (!hasLetter || !hasNumber) {
-        setStatusText(`❌ El código de pago debe contener al menos 1 letra y 1 número (Ej: A3B7K9). Recibido: "${trimmedPaymentRef}"`);
-        return;
-      }
-      
-      if (trimmedPaymentRef.length !== 6) {
-        setStatusText(`❌ El código de pago debe tener exactamente 6 caracteres. Recibido: "${trimmedPaymentRef}" (${trimmedPaymentRef.length} caracteres)`);
-        return;
-      }
-      
-      if (expectedPaymentRef && trimmedPaymentRef !== expectedPaymentRef) {
-        setStatusText(`❌ El código de pago "${trimmedPaymentRef}" no coincide con el esperado "${expectedPaymentRef}". Verifica e intenta nuevamente.`);
-        return;
-      }
-    }
-
-    setSaving(true);
-    setStatusText("");
-    
-    // Abrir modal de loading
-    setLoadingModalMessage("Guardando abono...");
-    setLoadingModalState("loading");
-    setLoadingModalOpen(true);
-
-    try {
-      const methodLabel = paymentMethod
-        .split("_")
-        .map((part) => part.charAt(0) + part.slice(1).toLowerCase())
-        .join(" ");
-      const composedNotes = [
-        `Metodo de pago: ${methodLabel}`,
-        String(notes || "").trim(),
-      ]
-        .filter(Boolean)
-        .join("\n");
-
-      const result = await reportBillingPayment({
-        contractId,
-        type,
-        amount,
-        paymentDate,
-        bankReference,
-        payerName,
-        originBank: originBank.trim() || undefined,
-        destinationBank: destinationBank.trim() || undefined,
-        destinationAccount: destinationAccount.trim() || undefined,
-        paymentReference: paymentReference.trim() || undefined,
-        notes: composedNotes,
-        attachments,
-      });
-
-      // Cambiar a estado de éxito
-      setLoadingModalState("success");
-      setLoadingModalSuccessMsg(`✅ Abono registrado | Recibo: ${result.receiptNumber} | Monto: $${amount}`);
-      
-      // Cerrar modal de formulario y recargar datos
-      closeMainModal();
-      resetPaymentForm();
-      await load();
-      
-    } catch (reportError) {
-      const errorMsg = reportError instanceof Error ? reportError.message : "No se pudo registrar el pago.";
-      
-      // Cambiar a estado de error
-      setLoadingModalState("error");
-      setLoadingModalSuccessMsg(errorMsg);
-      
-      // Detectar errores críticos y mostrarlos en modal rojo adicional
-      if (errorMsg.toLowerCase().includes("duplicado") || 
-          errorMsg.toLowerCase().includes("ya existe")) {
-        setCriticalAlert({
-          title: "⚠️ Pago Duplicado Detectado",
-          message: "Ya existe un pago con la misma información en el sistema.",
-          details: errorMsg
-        });
-      } else if (errorMsg.toLowerCase().includes("cuenta destino no registrada") || 
-                 errorMsg.toLowerCase().includes("cuenta destino inactiva")) {
-        setCriticalAlert({
-          title: "🚨 Pago Rechazado - Cuenta No Registrada",
-          message: `La cuenta destino no está registrada en el sistema de ${tenantDisplayName}.`,
-          details: errorMsg
-        });
-      } else {
-        // Otros errores mostrar en statusText
-        setStatusText(`❌ ${errorMsg}`);
-      }
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const onVerify = async (paymentId: string) => {
-    if (!canOperate) return;
-    setActionBusy(`verify:${paymentId}`);
-    try {
-      await verifyBillingPayment(paymentId);
-      setStatusText("Abono aprobado por banco.");
-      await load();
-    } catch (actionError) {
-      setStatusText(actionError instanceof Error ? actionError.message : "No se pudo verificar el abono.");
-    } finally {
-      setActionBusy("");
-    }
-  };
-
-  const onReject = async () => {
-    if (!canOperate) return;
-    const paymentId = String(rejectModalPaymentId || "").trim();
-    const reason = String(rejectReason || "").trim();
-    if (!paymentId) return;
-    if (!reason) {
-      setStatusText("Debes indicar el motivo del rechazo.");
-      return;
-    }
-
-    setActionBusy(`reject:${paymentId}`);
-    try {
-      await rejectBillingPayment(paymentId, reason);
-      setStatusText("Abono rechazado y recibo anulado.");
-      setRejectModalPaymentId("");
-      setRejectReason("");
-      await load();
-    } catch (actionError) {
-      setStatusText(actionError instanceof Error ? actionError.message : "No se pudo rechazar el abono.");
-    } finally {
-      setActionBusy("");
-    }
-  };
-
   const openDocumentEmailModal = (input: {
     type: DocumentEmailType;
     id: string;
@@ -630,17 +331,10 @@ function BillingContractAccountContent() {
     setDocumentEmailError("");
     setDocumentEmailSuccess("");
     try {
-      if (documentEmailModal.type === "RECEIPT") {
-        const result = await approveAndSendBillingReceipt(documentEmailModal.id, toEmail, documentEmailCc);
-        const ccText = result.ccEmail ? ` (CC: ${result.ccEmail})` : "";
-        setDocumentEmailSuccess(`Recibo ${result.receiptNumber} enviado a ${result.sentToEmail}${ccText}.`);
-        setStatusText(`Recibo ${result.receiptNumber} enviado a ${result.sentToEmail}${ccText}.`);
-      } else {
-        const result = await sendBillingCreditNoteEmail(documentEmailModal.id, toEmail, documentEmailCc);
-        const ccText = result.ccEmail ? ` (CC: ${result.ccEmail})` : "";
-        setDocumentEmailSuccess(`Nota de credito ${result.creditNoteNumber} enviada a ${result.sentToEmail}${ccText}.`);
-        setStatusText(`Nota de credito ${result.creditNoteNumber} enviada a ${result.sentToEmail}${ccText}.`);
-      }
+      const result = await sendBillingCreditNoteEmail(documentEmailModal.id, toEmail, documentEmailCc);
+      const ccText = result.ccEmail ? ` (CC: ${result.ccEmail})` : "";
+      setDocumentEmailSuccess(`Nota de credito ${result.creditNoteNumber} enviada a ${result.sentToEmail}${ccText}.`);
+      setStatusText(`Nota de credito ${result.creditNoteNumber} enviada a ${result.sentToEmail}${ccText}.`);
 
       await load();
       window.setTimeout(() => {
@@ -675,24 +369,6 @@ function BillingContractAccountContent() {
       window.open(result.url, "_blank", "noopener,noreferrer");
     } catch (actionError) {
       setStatusText(actionError instanceof Error ? actionError.message : "No se pudo abrir el recibo PDF.");
-    } finally {
-      setActionBusy("");
-    }
-  };
-
-  const onShareReceiptWhatsApp = async (receiptId: string) => {
-    setActionBusy(`receipt-wa:${receiptId}`);
-    try {
-      const result = await getBillingReceiptPdfUrl(receiptId);
-      const text = [
-        `Recibo de contrato ${account?.invoice.contractNumber || "-"}`,
-        `Cliente: ${account?.client.fullName || "-"}`,
-        `Documento: ${result.url}`,
-      ].join("\n");
-      window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
-      setStatusText("Recibo preparado para compartir por WhatsApp.");
-    } catch (actionError) {
-      setStatusText(actionError instanceof Error ? actionError.message : "No se pudo compartir el recibo.");
     } finally {
       setActionBusy("");
     }
@@ -1039,9 +715,6 @@ function BillingContractAccountContent() {
             ) : null}
 
             <section className="billing-actions-row">
-              {canOperate ? <button type="button" className="rounded-xl px-4 py-2.5 bg-white text-blue-900 border border-blue-200 font-semibold transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md active:translate-y-0" onClick={openInstallmentModal}>
-                Generar abono
-              </button> : null}
               <button type="button" className="rounded-xl px-4 py-2.5 bg-white text-blue-900 border border-blue-200 font-semibold transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md active:translate-y-0" onClick={openStatement}>
                 Estado de cuenta
               </button>
@@ -1070,11 +743,8 @@ function BillingContractAccountContent() {
                 <p>Aprobacion bancaria: <strong>manual (admin)</strong></p>
               </article>
               <article className="billing-summary-card">
-                <h3>Flujo operativo</h3>
-                <p>1) Agente registra abono o solicita nota de credito.</p>
-                <p>2) Admin revisa y define estado: <strong>Aprobado</strong> o <strong>Rechazado</strong>.</p>
-                <p>3) Cuando queda <strong>Aprobado</strong>, se habilitan PDF, WhatsApp y correo.</p>
-                <p>4) En rol Agente, correo se usa como <strong>reenvio</strong> solo despues del primer envio de Admin.</p>
+                <h3>Consulta histórica</h3>
+                <p>Este espacio conserva pagos, recibos, comprobantes y movimientos históricos del contrato.</p>
               </article>
             </section>
 
@@ -1183,68 +853,7 @@ function BillingContractAccountContent() {
                       </td>
                       <td>
                         <div className="history-actions">
-                          {isAdmin && (payment.status === "ABONO_REPORTADO" || payment.status === "ABONO_EN_REVISION") ? (
-                            <button
-                              type="button"
-                              className="rounded-xl px-4 py-2.5 bg-white text-blue-900 border border-blue-200 font-semibold transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-none"
-                              onClick={() => void onVerify(payment.id)}
-                              disabled={actionBusy === `verify:${payment.id}`}
-                            >
-                              {actionBusy === `verify:${payment.id}` ? "..." : "Aprobar banco (manual)"}
-                            </button>
-                          ) : null}
-
-                          {isAdmin && (payment.status === "ABONO_REPORTADO" || payment.status === "ABONO_EN_REVISION") ? (
-                            <button
-                              type="button"
-                              className="rounded-xl px-4 py-2.5 bg-white text-blue-900 border border-blue-200 font-semibold transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-none"
-                              onClick={() => {
-                                setRejectModalPaymentId(payment.id);
-                                setRejectReason("");
-                              }}
-                              disabled={actionBusy === `reject:${payment.id}`}
-                            >
-                              {actionBusy === `reject:${payment.id}` ? "..." : "Rechazar"}
-                            </button>
-                          ) : null}
-
-                          {isAdmin && payment.status === "ABONO_VERIFICADO" && payment.receipt && payment.receipt.status !== "RECIBO_ANULADO" ? (
-                            <button
-                              type="button"
-                              className="rounded-xl px-4 py-3 bg-linear-to-b from-blue-500 to-blue-700 text-white font-bold shadow-lg shadow-blue-500/25 transition-all duration-150 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-blue-500/30 active:translate-y-0 active:saturate-75 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-lg"
-                              onClick={() =>
-                                openDocumentEmailModal({
-                                  type: "RECEIPT",
-                                  id: payment.receipt!.id,
-                                  number: payment.receipt!.receiptNumber,
-                                  mode: payment.receipt?.status === "RECIBO_APROBADO_ENVIADO" ? "RESEND" : "SEND",
-                                })
-                              }
-                              disabled={actionBusy === "document:email"}
-                            >
-                              {payment.receipt?.status === "RECIBO_APROBADO_ENVIADO" ? "Reenviar por correo" : "Enviar por correo"}
-                            </button>
-                          ) : null}
-
-                          {canOperate && !isAdmin && payment.status === "ABONO_VERIFICADO" && payment.receipt?.status === "RECIBO_APROBADO_ENVIADO" ? (
-                            <button
-                              type="button"
-                              className="rounded-xl px-4 py-3 bg-linear-to-b from-blue-500 to-blue-700 text-white font-bold shadow-lg shadow-blue-500/25 transition-all duration-150 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-blue-500/30 active:translate-y-0 active:saturate-75 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-lg"
-                              onClick={() =>
-                                openDocumentEmailModal({
-                                  type: "RECEIPT",
-                                  id: payment.receipt!.id,
-                                  number: payment.receipt!.receiptNumber,
-                                  mode: "RESEND",
-                                })
-                              }
-                              disabled={actionBusy === "document:email"}
-                            >
-                              Reenviar por correo
-                            </button>
-                          ) : null}
-
-                          {payment.receipt && payment.status === "ABONO_VERIFICADO" ? (
+                          {payment.receipt ? (
                             <button
                               type="button"
                               className="rounded-xl px-4 py-2.5 bg-white text-blue-900 border border-blue-200 font-semibold transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-none"
@@ -1255,24 +864,7 @@ function BillingContractAccountContent() {
                             </button>
                           ) : null}
 
-                          {payment.receipt && payment.status === "ABONO_VERIFICADO" ? (
-                            <button
-                              type="button"
-                              className="rounded-xl px-4 py-2.5 bg-white text-blue-900 border border-blue-200 font-semibold transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-none"
-                              onClick={() => void onShareReceiptWhatsApp(payment.receipt!.id)}
-                              disabled={actionBusy === `receipt-wa:${payment.receipt.id}`}
-                            >
-                              {actionBusy === `receipt-wa:${payment.receipt.id}` ? "..." : "Compartir WhatsApp"}
-                            </button>
-                          ) : null}
-
-                          {!isAdmin && payment.status !== "ABONO_VERIFICADO" ? (
-                            <span className="history-col-muted">En espera de aprobacion admin</span>
-                          ) : null}
-
-                          {!isAdmin && payment.status === "ABONO_VERIFICADO" && payment.receipt?.status !== "RECIBO_APROBADO_ENVIADO" ? (
-                            <span className="history-col-muted">Recibo aprobado. Pendiente de envio por admin.</span>
-                          ) : null}
+                          {!payment.receipt ? <span className="history-col-muted">Sin recibo histórico.</span> : null}
                         </div>
                       </td>
                     </tr>
@@ -1540,7 +1132,7 @@ function BillingContractAccountContent() {
 
             <div className="viewer-body">
               <p className="m-0 text-[#4b6790] text-sm">
-                Documento: <strong>{documentEmailModal.type === "RECEIPT" ? "Recibo" : "Nota de credito"}</strong> · Numero: <strong>{documentEmailModal.number}</strong>
+                Documento: <strong>Nota de credito</strong> · Numero: <strong>{documentEmailModal.number}</strong>
               </p>
 
               {documentEmailSuccess ? <p className="form-success">{documentEmailSuccess}</p> : null}
@@ -1581,394 +1173,6 @@ function BillingContractAccountContent() {
         </section>
       ) : null}
 
-      {canOperate && modalMode !== "NONE" ? (
-        <section
-          className="viewer-modal"
-          onClick={(event) => {
-            if (event.target === event.currentTarget) {
-              closeMainModal();
-            }
-          }}
-        >
-          <div className="viewer-panel reject-modal-panel" onClick={(event) => event.stopPropagation()}>
-            <div className="viewer-head">
-              <h2>
-                {modalMode === "INSTALLMENT" ? "Registrar abono" : null}
-              </h2>
-              <button type="button" className="rounded-xl px-4 py-2.5 bg-white text-blue-900 border border-blue-200 font-semibold transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-none" onClick={closeMainModal}>Cerrar</button>
-            </div>
-
-            <div className="viewer-body">
-              {modalMode === "INSTALLMENT" ? (
-                <div className="payment-modal-layout">
-                  {/* Columna izquierda: Procesador de comprobantes */}
-                  <div className="payment-modal-receipt">
-                    <ReceiptProcessor 
-                      onDataExtracted={handleReceiptDataExtracted}
-                      onFileSelected={(file) => {
-                        // Guardar el archivo en el estado de attachments
-                        setAttachments([file]);
-                        console.log("📎 Archivo adjunto agregado:", file.name, "("+file.size+" bytes)");
-                      }}
-                      onError={(error) => {
-                        // Detectar error de cuenta destino no registrada
-                        const errorMsg = String(error || "").toLowerCase();
-                        if (errorMsg.includes("cuenta destino no registrada") || errorMsg.includes("cuenta destino inactiva")) {
-                          setCriticalAlert({
-                            title: "🚨 Pago Rechazado - Cuenta No Registrada",
-                            message: `La cuenta destino detectada en el comprobante NO está registrada en el sistema de ${tenantDisplayName}.`,
-                            details: error
-                          });
-                        } else {
-                          setStatusText(`❌ ${error}`);
-                        }
-                      }}
-                    />
-                  </div>
-
-                  {/* Columna derecha: Información y formulario */}
-                  <div className="payment-modal-form">
-                    <p className="m-0 text-[#4b6790] text-[0.8rem] leading-tight">
-                      Contrato: <strong>{account?.invoice.contractNumber || "-"}</strong> · Saldo: <strong>{formatMoney(account?.invoice.amounts.balance || 0)}</strong>
-                    </p>
-
-                    <p className="m-0 text-[#64748b] text-[0.75rem] mb-3 leading-tight">
-                      El sistema guarda fecha/hora y usuario responsable automáticamente.
-                    </p>
-
-                    <div className="contracts-grid">
-                      <label>
-                        <span style={{ 
-                        color: amount.trim() ? '#10b981' : '#dc2626',
-                        fontWeight: '600',
-                        transition: 'color 0.3s ease'
-                      }}>
-                        Monto
-                      </span>
-                      {modalMode === "INSTALLMENT" ? (
-                        <div className="grid grid-cols-[1fr_auto] gap-2">
-                          <input value={amount} onChange={(event) => setAmount(event.target.value)} />
-                          <button type="button" className="rounded-xl px-4 py-2.5 bg-white text-blue-900 border border-blue-200 font-semibold transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-none" onClick={setInstallmentToFullBalance}>
-                            Saldo total
-                          </button>
-                        </div>
-                      ) : (
-                        <input value={amount} onChange={(event) => setAmount(event.target.value)} />
-                      )}
-                    </label>
-
-                    <label>
-                      <span style={{ 
-                        color: paymentMethod.trim() ? '#10b981' : '#dc2626',
-                        fontWeight: '600',
-                        transition: 'color 0.3s ease'
-                      }}>
-                        Metodo de pago
-                      </span>
-                      <select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}>
-                        {PAYMENT_METHOD_OPTIONS.map((method) => (
-                          <option key={method} value={method}>
-                            {method === "TRANSFERENCIA_BANCARIA" ? "Transferencia Bancaria" : null}
-                            {method === "EFECTIVO" ? "Efectivo" : null}
-                            {method === "SINPE_MOVIL" ? "Sinpe Movil" : null}
-                            {method === "TARJETA" ? "Tarjeta" : null}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-
-                    <label>
-                      <span style={{ 
-                        color: paymentDate.trim() ? '#10b981' : '#dc2626',
-                        fontWeight: '600',
-                        transition: 'color 0.3s ease'
-                      }}>
-                        Fecha del comprobante
-                      </span>
-                      <input type="date" value={paymentDate} onChange={(event) => setPaymentDate(event.target.value)} />
-                    </label>
-
-                    <label>
-                      <span style={{ 
-                        color: bankReference.trim() ? '#10b981' : '#dc2626',
-                        fontWeight: '600',
-                        transition: 'color 0.3s ease'
-                      }}>
-                        Referencia bancaria
-                      </span>
-                      <input value={bankReference} onChange={(event) => setBankReference(event.target.value)} />
-                    </label>
-
-                    <label>
-                      <span style={{ 
-                        color: payerName.trim() ? '#10b981' : '#dc2626',
-                        fontWeight: '600',
-                        transition: 'color 0.3s ease'
-                      }}>
-                        Nombre del pagador
-                      </span>
-                      <input value={payerName} onChange={(event) => setPayerName(event.target.value)} />
-                    </label>
-
-                    <label>
-                      <span style={{ 
-                        color: paymentReference.trim() ? '#10b981' : '#94a3b8',
-                        fontWeight: '600',
-                        transition: 'color 0.3s ease'
-                      }}>
-                        Código de pago (opcional)
-                      </span>
-                      <input 
-                        value={paymentReference} 
-                        onChange={(event) => setPaymentReference(event.target.value.toUpperCase())} 
-                        maxLength={6}
-                        style={{ fontFamily: 'Monaco, Consolas, monospace', letterSpacing: '1px' }}
-                      />
-                      <small style={{ display: 'block', marginTop: '4px', color: '#64748b', fontSize: '12px' }}>
-                        {account?.invoice.paymentReference ? (
-                          <>Código esperado: <strong>{account.invoice.paymentReference}</strong></>
-                        ) : null}
-                      </small>
-                    </label>
-
-                    <label>
-                      <span style={{ 
-                        color: originBank.trim() ? '#10b981' : '#dc2626',
-                        fontWeight: '600',
-                        transition: 'color 0.3s ease'
-                      }}>
-                        Banco origen
-                      </span>
-                      <input 
-                        value={originBank} 
-                        onChange={(event) => setOriginBank(event.target.value)} 
-                      />
-                    </label>
-
-                    <label>
-                      <span style={{ 
-                        color: destinationBank.trim() ? '#10b981' : '#dc2626',
-                        fontWeight: '600',
-                        transition: 'color 0.3s ease'
-                      }}>
-                        Banco destino
-                      </span>
-                      <input 
-                        value={destinationBank} 
-                        onChange={(event) => setDestinationBank(event.target.value)} 
-                      />
-                    </label>
-
-                    <label>
-                      <span style={{ 
-                        color: destinationAccount.trim() ? '#10b981' : '#dc2626',
-                        fontWeight: '600',
-                        transition: 'color 0.3s ease'
-                      }}>
-                        Cuenta destino
-                      </span>
-                      <input 
-                        value={destinationAccount} 
-                        onChange={(event) => setDestinationAccount(event.target.value)} 
-                      />
-                    </label>
-
-                    <label className="col-span-full">
-                      <span style={{ 
-                        color: notes.trim() ? '#10b981' : '#dc2626',
-                        fontWeight: '600',
-                        transition: 'color 0.3s ease'
-                      }}>
-                        Notas
-                      </span>
-                      <textarea rows={3} value={notes} onChange={(event) => setNotes(event.target.value)} />
-                    </label>
-                  </div>
-
-                  <div className="actions" style={{ marginTop: 16 }}>
-                    <button
-                      type="button"
-                      className="rounded-xl px-4 py-3 bg-linear-to-b from-blue-500 to-blue-700 text-white font-bold shadow-lg shadow-blue-500/25 transition-all duration-150 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-blue-500/30 active:translate-y-0 active:saturate-75 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-lg"
-                      onClick={() => void onReportPayment("INSTALLMENT")}
-                      disabled={saving}
-                    >
-                      {saving ? "Guardando..." : "Confirmar abono"}
-                    </button>
-                  </div>
-                </div>
-
-                </div>
-              ) : null}
-
-            </div>
-          </div>
-        </section>
-      ) : null}
-
-      {canOperate && rejectModalPaymentId ? (
-        <section
-          className="viewer-modal"
-          onClick={(event) => {
-            if (event.target === event.currentTarget) {
-              setRejectModalPaymentId("");
-            }
-          }}
-        >
-          <div className="viewer-panel reject-modal-panel" onClick={(event) => event.stopPropagation()}>
-            <div className="viewer-head">
-              <h2>Rechazar abono</h2>
-              <button type="button" className="rounded-xl px-4 py-2.5 bg-white text-blue-900 border border-blue-200 font-semibold transition-all duration-150 hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-none" onClick={() => setRejectModalPaymentId("")}>Cerrar</button>
-            </div>
-
-            <div className="viewer-body">
-              <label className="reject-modal-label">
-                Motivo del rechazo
-                <textarea
-                  rows={5}
-                  value={rejectReason}
-                  onChange={(event) => setRejectReason(event.target.value)}
-                  placeholder="Describe por que el abono no coincide con la verificacion bancaria"
-                />
-              </label>
-
-              <div className="actions" style={{ marginTop: 12 }}>
-                <button
-                  type="button"
-                  className="rounded-xl px-4 py-3 bg-linear-to-b from-blue-500 to-blue-700 text-white font-bold shadow-lg shadow-blue-500/25 transition-all duration-150 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-blue-500/30 active:translate-y-0 active:saturate-75 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-lg"
-                  onClick={() => void onReject()}
-                  disabled={actionBusy === `reject:${rejectModalPaymentId}`}
-                >
-                  {actionBusy === `reject:${rejectModalPaymentId}` ? "Guardando..." : "Confirmar rechazo"}
-                </button>
-              </div>
-            </div>
-          </div>
-        </section>
-      ) : null}
-
-      {/* Modal de alerta crítica para cuenta no registrada */}
-      {criticalAlert ? (
-        <section
-          className="viewer-modal"
-          onClick={(event) => {
-            if (event.target === event.currentTarget) {
-              setCriticalAlert(null);
-            }
-          }}
-          style={{ zIndex: 10000 }}
-        >
-          <div 
-            className="viewer-panel reject-modal-panel" 
-            onClick={(event) => event.stopPropagation()}
-            style={{
-              maxWidth: '550px',
-              border: '3px solid #dc2626',
-              boxShadow: '0 20px 25px -5px rgba(220, 38, 38, 0.3)'
-            }}
-          >
-            <div className="viewer-head" style={{ background: '#dc2626', color: 'white' }}>
-              <h2 style={{ color: 'white', margin: 0 }}>{criticalAlert.title}</h2>
-              <button 
-                type="button" 
-                className="rounded-xl px-4 py-3 bg-linear-to-b from-blue-500 to-blue-700 text-white font-bold shadow-lg shadow-blue-500/25 transition-all duration-150 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-blue-500/30 active:translate-y-0 active:saturate-75 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-lg" 
-                onClick={() => setCriticalAlert(null)}
-                style={{ background: 'white', color: '#dc2626' }}
-              >
-                Cerrar
-              </button>
-            </div>
-
-            <div className="viewer-body" style={{ padding: '24px' }}>
-              <div style={{
-                background: '#fef2f2',
-                border: '1px solid #fecaca',
-                borderRadius: '8px',
-                padding: '16px',
-                marginBottom: '16px'
-              }}>
-                <p style={{ 
-                  fontSize: '16px', 
-                  fontWeight: '600', 
-                  color: '#991b1b',
-                  marginBottom: '12px',
-                  lineHeight: '1.5'
-                }}>
-                  {criticalAlert.message}
-                </p>
-                <p style={{ 
-                  fontSize: '14px', 
-                  color: '#7f1d1d',
-                  marginBottom: '12px',
-                  lineHeight: '1.6'
-                }}>
-                  <strong>⚠️ Acción requerida:</strong> Por favor, verifique con el administrador que esta cuenta bancaria esté registrada en el sistema antes de procesar este pago.
-                </p>
-                <p style={{ 
-                  fontSize: '14px', 
-                  color: '#7f1d1d',
-                  marginBottom: '0',
-                  lineHeight: '1.6'
-                }}>
-                  <strong>🔒 Razón de seguridad:</strong> Solo se aceptan pagos a cuentas verificadas de {tenantDisplayName} para prevenir fraudes.
-                </p>
-              </div>
-
-              {criticalAlert.details ? (
-                <details style={{ 
-                  background: '#f9fafb', 
-                  border: '1px solid #e5e7eb',
-                  borderRadius: '6px',
-                  padding: '12px',
-                  fontSize: '13px',
-                  color: '#6b7280'
-                }}>
-                  <summary style={{ cursor: 'pointer', fontWeight: '500', marginBottom: '8px' }}>
-                    Ver detalles técnicos
-                  </summary>
-                  <pre style={{ 
-                    whiteSpace: 'pre-wrap', 
-                    wordBreak: 'break-word',
-                    fontSize: '12px',
-                    fontFamily: 'Monaco, Consolas, monospace',
-                    margin: '0',
-                    color: '#374151'
-                  }}>
-                    {criticalAlert.details}
-                  </pre>
-                </details>
-              ) : null}
-
-              <div className="actions" style={{ marginTop: '20px' }}>
-                <button
-                  type="button"
-                  className="rounded-xl px-4 py-3 bg-linear-to-b from-blue-500 to-blue-700 text-white font-bold shadow-lg shadow-blue-500/25 transition-all duration-150 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-blue-500/30 active:translate-y-0 active:saturate-75 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:shadow-lg"
-                  onClick={() => setCriticalAlert(null)}
-                  style={{ 
-                    width: '100%',
-                    background: '#dc2626',
-                    color: 'white',
-                    fontSize: '15px',
-                    padding: '12px'
-                  }}
-                >
-                  Entendido - Verificar con Admin
-                </button>
-              </div>
-            </div>
-          </div>
-        </section>
-      ) : null}
-
-      {/* Loading Modal Animado */}
-      <LoadingModal
-        isOpen={loadingModalOpen}
-        state={loadingModalState}
-        loadingMessage={loadingModalMessage}
-        successMessage={loadingModalSuccessMsg}
-        errorMessage={loadingModalSuccessMsg}
-        onClose={() => setLoadingModalOpen(false)}
-        autoCloseDelay={2000}
-      />
     </main>
   );
 }

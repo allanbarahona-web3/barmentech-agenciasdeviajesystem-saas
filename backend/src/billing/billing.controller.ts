@@ -7,18 +7,14 @@ import {
   Query,
   Req,
   Res,
-  UploadedFiles,
   UseGuards,
-  UseInterceptors,
 } from "@nestjs/common";
-import { FileFieldsInterceptor } from "@nestjs/platform-express";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { Roles } from "../auth/roles.decorator";
 import { RolesGuard } from "../auth/roles.guard";
 import { ApproveReceiptDto } from "./dto/approve-receipt.dto";
 import { ListBillingContractsDto } from "./dto/list-billing-contracts.dto";
 import { RejectPaymentDto } from "./dto/reject-payment.dto";
-import { ReportPaymentDto } from "./dto/report-payment.dto";
 import { SendAccountStatementDto } from "./dto/send-account-statement.dto";
 import { BillingService } from "./billing.service";
 
@@ -122,64 +118,6 @@ export class BillingController {
     );
   }
 
-  @Post("contracts/:contractId/payments/report")
-  @Roles(...BILLING_OPERATION_ROLES)
-  @UseGuards(RolesGuard)
-  @UseInterceptors(
-    FileFieldsInterceptor([
-      { name: "attachments", maxCount: 10 },
-    ]),
-  )
-  reportPayment(
-    @Req()
-    req: {
-      user: { id: string; email: string; fullName: string };
-      ip?: string;
-      headers?: Record<string, string | string[] | undefined>;
-    },
-    @Param("contractId") contractId: string,
-    @Body() dto: ReportPaymentDto,
-    @UploadedFiles()
-    files: {
-      attachments?: Array<{
-        buffer: Buffer;
-        mimetype: string;
-        originalname: string;
-        size: number;
-      }>;
-    },
-  ) {
-    const userAgentHeader = req.headers?.["user-agent"];
-    const userAgent = Array.isArray(userAgentHeader) ? userAgentHeader[0] : userAgentHeader;
-
-    return this.billingService.reportPayment(
-      req.user,
-      contractId,
-      dto,
-      files?.attachments || [],
-      req.ip || null,
-      userAgent || null,
-    );
-  }
-
-  @Post("payments/:paymentId/review")
-  @Roles(...BILLING_OPERATION_ROLES)
-  @UseGuards(RolesGuard)
-  markPaymentInReview(
-    @Req()
-    req: {
-      user: { id: string; email: string; fullName: string };
-      ip?: string;
-      headers?: Record<string, string | string[] | undefined>;
-    },
-    @Param("paymentId") paymentId: string,
-  ) {
-    const userAgentHeader = req.headers?.["user-agent"];
-    const userAgent = Array.isArray(userAgentHeader) ? userAgentHeader[0] : userAgentHeader;
-
-    return this.billingService.markPaymentInReview(req.user, paymentId, req.ip || null, userAgent || null);
-  }
-
   @Post("payments/:paymentId/verify")
   @Roles("ADMIN")
   @UseGuards(RolesGuard)
@@ -233,32 +171,6 @@ export class BillingController {
     });
     
     res.send(file.buffer);
-  }
-
-  @Post("receipts/:receiptId/approve-send")
-  @Roles("ADMIN", "AGENT")
-  @UseGuards(RolesGuard)
-  approveAndSendReceipt(
-    @Req()
-    req: {
-      user: { id: string; email: string; fullName: string; role: string };
-      ip?: string;
-      headers?: Record<string, string | string[] | undefined>;
-    },
-    @Param("receiptId") receiptId: string,
-    @Body() dto: ApproveReceiptDto,
-  ) {
-    const userAgentHeader = req.headers?.["user-agent"];
-    const userAgent = Array.isArray(userAgentHeader) ? userAgentHeader[0] : userAgentHeader;
-
-    return this.billingService.approveAndSendReceipt(
-      req.user,
-      receiptId,
-      dto.toEmail,
-      dto.ccEmail,
-      req.ip || null,
-      userAgent || null,
-    );
   }
 
   @Get("receipts/:receiptId/pdf")
