@@ -80,16 +80,4 @@ export class BillingController {
     return this.billingService.rejectPayment(req.user, paymentId, dto.reason, req.ip || null, userAgent || null);
   }
 
-  @Get("admin/pending-counts")
-  @Roles("ADMIN", "CONTADOR", "AGENT", "FACTURACION_COBROS")
-  @UseGuards(RolesGuard)
-  async getPendingCounts(): Promise<{
-    pendingReceipts: number;
-    contractsPendingSignature: number;
-  }> {
-    const pendingReceipts = await this.billingService.getPendingPaymentsCount();
-    const contractsPendingSignature = await this.billingService.getPendingSignatureContractsCount();
-    return { pendingReceipts, contractsPendingSignature };
-  }
-
 }

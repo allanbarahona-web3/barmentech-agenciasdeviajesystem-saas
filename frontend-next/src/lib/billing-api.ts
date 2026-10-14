@@ -58,22 +58,6 @@ const apiFetchJson = async <T>(path: string, init?: RequestInit): Promise<T> => 
   return payload as T;
 };
 
-export type PendingCounts = {
-  pendingReceipts: number;
-  contractsPendingSignature: number;
-};
-
-export const getPendingApprovalsCount = async (): Promise<PendingCounts> => {
-  try {
-    const data = await apiFetchJson<PendingCounts>("/billing/admin/pending-counts", {
-      method: "GET",
-    });
-    return data;
-  } catch {
-    return { pendingReceipts: 0, contractsPendingSignature: 0 };
-  }
-};
-
 export const listBillingAudit = async (params: {
   contractId?: string;
   entityType?: string;

@@ -37,3 +37,13 @@ test("removes retired Estados de cuenta navigation and redirects to existing Fin
   assert.match(agentStart, /getHomeRouteForRole\(role\)/);
   assert.match(agentDashboard, /getHomeRouteForRole\(role\)/);
 });
+
+test("retires legacy Billing pending-count polling and its history badge", () => {
+  const nav = source("../src/components/vertical-nav.tsx");
+  const api = source("../src/lib/billing-api.ts");
+
+  assert.doesNotMatch(nav, /getPendingApprovalsCount|pendingCounts|contractsPendingSignature/);
+  assert.doesNotMatch(api, /pending-counts|PendingCounts|getPendingApprovalsCount/);
+  assert.match(nav, /href: "\/history"/);
+  assert.match(nav, /href: "\/admin\/pending-payments"/);
+});

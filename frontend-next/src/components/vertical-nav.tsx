@@ -3,7 +3,6 @@
 import { clearStoredToken, getStoredSession, getStoredToken, logout } from "@/lib/auth-api";
 import { getAttendanceStatus } from "@/lib/attendance-api";
 import { usesAttendance } from "@/lib/attendance-permissions";
-import { getPendingApprovalsCount, type PendingCounts } from "@/lib/billing-api";
 import { CURRENT_EXCHANGE_RATE_CHANGED_EVENT, getCurrentExchangeRate, type CurrentExchangeRate } from "@/lib/exchange-rate-api";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -43,7 +42,6 @@ export function VerticalNav() {
   pathname.startsWith("/reset-password");
   const [showCalculator, setShowCalculator] = useState(false);
   const [showSupportModal, setShowSupportModal] = useState(false);
-  const [pendingCounts, setPendingCounts] = useState<PendingCounts>({ pendingReceipts: 0, contractsPendingSignature: 0 });
   const [mounted, setMounted] = useState(false);
   const [exchangeRate, setExchangeRate] = useState<CurrentExchangeRate | null>(null);
   const [token, setToken] = useState<string | null>(null);
@@ -72,27 +70,6 @@ export function VerticalNav() {
     setSession(getStoredSession());
     setNavOpen(false); // Cerrar nav al cambiar de ruta (mobile)
   }, [pathname]);
-
-  useEffect(() => {
-    if (!token) return;
-
-    // Skip data loading for SUPER_ADMIN
-    if (session?.user?.role === "SUPER_ADMIN") return;
-
-    const loadPendingCounts = async () => {
-      try {
-        const counts = await getPendingApprovalsCount();
-        console.log("[VerticalNav] Pending counts:", counts);
-        setPendingCounts(counts);
-      } catch (error) {
-        console.error("[VerticalNav] Error loading pending counts:", error);
-      }
-    };
-
-    void loadPendingCounts();
-    const interval = window.setInterval(() => void loadPendingCounts(), 30000); // Refresh every 30s
-    return () => window.clearInterval(interval);
-  }, [token, session]);
 
   useEffect(() => {
     if (!token) return;
@@ -515,19 +492,10 @@ export function VerticalNav() {
             href: "/history",
             label: "Historial",
             icon: "📅",
-            badge: !isAdminOrContador ? (pendingCounts.contractsPendingSignature || 0) : 0,
           },
         ]
       : []),
   ];
-
-  // Debug: Log navElements para ver badges
-  console.log("[VerticalNav] Role:", role, "isAdminOrContador:", isAdminOrContador);
-  console.log("[VerticalNav] Pending counts:", pendingCounts);
-  const historialItem = navElements.find(item => !isNavGroup(item) && item.href === "/history") as NavItem | undefined;
-  if (historialItem) {
-    console.log("[VerticalNav] Historial badge:", historialItem.badge);
-  }
 
   return (
     <>

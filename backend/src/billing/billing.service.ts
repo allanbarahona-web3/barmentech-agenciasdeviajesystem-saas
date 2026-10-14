@@ -20,7 +20,6 @@ import {
 } from "../email/jobs";
 import { JobDispatcherService } from "../infrastructure/job-dispatcher";
 import { PLATFORM_QUEUE_KEYS } from "../infrastructure/queue";
-import { InternalToursService } from "../internal-tourism/internal-tours.service";
 import { formatDateForClient, formatDateTimeForClient } from "../common/request-context";
 import {
   RECEIPT_PROCESSING_JOB_NAME,
@@ -37,7 +36,6 @@ export class BillingService {
     private readonly configService: ConfigService,
     private readonly jobDispatcher: JobDispatcherService,
     private readonly contractReservationApprovals: ContractReservationApprovalService,
-    private readonly internalToursService: InternalToursService,
     private readonly storageService: StorageService,
   ) {}
 
@@ -108,23 +106,6 @@ export class BillingService {
     }
 
     return null;
-  }
-
-  private async loadCompanyLogoEmailSrc(tenant?: { emailLogoUrl: string | null; logoUrl: string | null } | null): Promise<string | null> {
-    // Prioridad 1: Usar emailLogoUrl del tenant, si no está, usar logoUrl del tenant
-    const configuredUrl = tenant?.emailLogoUrl || tenant?.logoUrl || this.configService.get<string>("COMPANY_LOGO_EMAIL_URL", "").trim();
-    if (configuredUrl) {
-      return configuredUrl;
-    }
-
-    const logo = await this.loadCompanyLogo(tenant);
-    if (!logo) {
-      return null;
-    }
-
-    // Logo ya está convertido a PNG o JPG por loadCompanyLogo()
-    const mime = logo.format === "jpg" ? "image/jpeg" : "image/png";
-    return `data:${mime};base64,${logo.bytes.toString("base64")}`;
   }
 
   private toDateOrNull(value: unknown): Date | null {
@@ -2003,30 +1984,6 @@ this.logger.log(
       ccEmail: normalizedCc || null,
     };
 
-    /* CÓDIGO ANTIGUO COMENTADO PARA ROLLBACK:
-    const logoSrc = await this.loadCompanyLogoEmailSrc(tenant);
-    const resend = new Resend(apiKey);
-    await resend.emails.send({ ... html inline ...});
-    ... (HTML inline omitido - ver templates/receipt-approved.template.ts) ...
-    FIN CÓDIGO ANTIGUO */
-  }
-
-  async getPendingPaymentsCount(): Promise<number> {
-    return this.prisma.billingPayment.count({
-      where: {
-        status: {
-          in: ["ABONO_REPORTADO", "ABONO_EN_REVISION"],
-        },
-      },
-    });
-  }
-
-  async getPendingSignatureContractsCount(): Promise<number> {
-    return (this.prisma as any).contract.count({
-      where: {
-        status: "PENDING_SIGNATURE",
-      },
-    });
   }
 
   private async dispatchBillingFinancialEmail(

@@ -21,10 +21,11 @@ describe("BillingController after contract-account retirement", () => {
     }
   });
 
-  it("keeps the required verification, rejection, pending-count, and audit paths", () => {
-    for (const handler of ["verifyPayment", "rejectPayment", "getPendingCounts", "listAudit"] as const) {
+  it("keeps verification, rejection, and audit paths while removing pending counts", () => {
+    for (const handler of ["verifyPayment", "rejectPayment", "listAudit"] as const) {
       expect(BillingController.prototype).toHaveProperty(handler);
     }
+    expect(BillingController.prototype).not.toHaveProperty("getPendingCounts");
     expect(canActivate(UserRole.ADMIN, "verifyPayment")).toBe(true);
     expect(() => canActivate(UserRole.AGENT, "verifyPayment")).toThrow(ForbiddenException);
     expect(canActivate(UserRole.ADMIN, "listAudit")).toBe(true);

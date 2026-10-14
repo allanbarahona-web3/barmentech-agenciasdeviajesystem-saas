@@ -116,31 +116,6 @@ export interface CustomerContractItem {
   }>;
 }
 
-export interface CustomerFinancialSummary {
-  // Monetary amounts
-  totalContractedAmount: number;
-  totalInvoicedAmount: number;
-  totalPaidAmount: number;
-  outstandingBalance: number;
-  availableCredit: number;
-  
-  // Currency info - primary currency used for this customer's contracts/invoices
-  currency: string; // "USD" or "CRC"
-
-  // Last payment info
-  lastPaymentDate: string | null;
-  lastPaymentAmount: number | null;
-
-  // Last contract info
-  lastContractDate: string | null;
-  lastContractNumber: string | null;
-
-  // Record counts (kept for backward compatibility)
-  totalInvoices: number;
-  totalReceipts: number;
-  totalPayments: number;
-}
-
 export interface CustomerStatistics {
   totalContracts: number;
   totalTravels: number;
@@ -151,7 +126,6 @@ export interface CustomerStatistics {
 export interface CustomerProfile {
   customer: CustomerInfo;
   contracts: CustomerContractItem[];
-  financialSummary: CustomerFinancialSummary;
   statistics: CustomerStatistics;
   documents: CustomerDocument[];
   notes: CustomerNote[];

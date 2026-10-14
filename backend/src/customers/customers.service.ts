@@ -14,7 +14,6 @@ import { CustomerListItemDto } from "./dto/customer-list-item.dto";
 import { CustomerProfileDto } from "./dto/customer-profile.dto";
 import { CustomerInfoDto } from "./dto/customer-info.dto";
 import { CustomerContractItemDto } from "./dto/customer-contract-item.dto";
-import { CustomerFinancialSummaryDto } from "./dto/customer-financial-summary.dto";
 import { CustomerStatisticsDto } from "./dto/customer-statistics.dto";
 import { UpdateCustomerDto } from "./dto/update-customer.dto";
 import { ValidateCustomerIdentityDto } from "./dto/validate-customer-identity.dto";
@@ -636,141 +635,10 @@ export class CustomersService {
       (a, b) => b.createdAt.getTime() - a.createdAt.getTime()
     );
 
-    // Get contract IDs for financial queries
-    const contractIds = contracts.map((c) => c.id);
-
-    // Fetch financial data, documents, and notes in parallel
-    const [
-      invoices,
-      verifiedPayments,
-      lastPayment,
-      clientBalance,
-      totalInvoicesCount,
-      totalReceiptsCount,
-      totalPaymentsCount,
-      customerDocuments,
-      customerNotes,
-    ] = await Promise.all([
-      // Get all invoices for this client
-      this.prisma.billingInvoice.findMany({
-        where: {
-          clientId: customerId,
-          tenantId: tenantId,
-        },
-        select: {
-          totalAmount: true,
-          balanceAmount: true,
-        },
-      }),
-      // Get all verified payments for this client's contracts
-      contractIds.length > 0
-        ? this.prisma.billingPayment.findMany({
-            where: {
-              contractId: { in: contractIds },
-              tenantId: tenantId,
-              status: "ABONO_VERIFICADO",
-            },
-            select: {
-              amount: true,
-            },
-          })
-        : [],
-      // Get last payment
-      contractIds.length > 0
-        ? this.prisma.billingPayment.findFirst({
-            where: {
-              contractId: { in: contractIds },
-              tenantId: tenantId,
-              status: "ABONO_VERIFICADO",
-            },
-            select: {
-              amount: true,
-              verifiedAt: true,
-            },
-            orderBy: {
-              verifiedAt: "desc",
-            },
-          })
-        : null,
-      // Get client balance for available credit
-      this.prisma.billingClientBalance.findUnique({
-        where: {
-          clientId: customerId,
-        },
-        select: {
-          availableCreditAmount: true,
-        },
-      }),
-      // Counts for backward compatibility
-      this.prisma.billingInvoice.count({
-        where: {
-          clientId: customerId,
-          tenantId: tenantId,
-        },
-      }),
-      contractIds.length > 0
-        ? this.prisma.billingReceipt.count({
-            where: {
-              contractId: { in: contractIds },
-              tenantId: tenantId,
-            },
-          })
-        : 0,
-      contractIds.length > 0
-        ? this.prisma.billingPayment.count({
-            where: {
-              contractId: { in: contractIds },
-              tenantId: tenantId,
-            },
-          })
-        : 0,
-      // Get customer documents via CustomerDocumentsService
+    const [customerDocuments, customerNotes] = await Promise.all([
       this.customerDocumentsService.listCustomerDocuments(tenantId, customerId),
-      // Get customer notes via CustomerNotesService
       this.customerNotesService.listCustomerNotes(tenantId, customerId),
     ]);
-
-    // Calculate financial summary from aggregated data
-    const totalContractedAmount = contracts.reduce((sum, contract) => {
-      const payload = contract.payload as any;
-      const amount = payload?.totalAmount
-        ? parseFloat(String(payload.totalAmount))
-        : 0;
-      return sum + amount;
-    }, 0);
-
-    const totalInvoicedAmount = invoices.reduce((sum: number, invoice: any) => {
-      return sum + parseFloat(String(invoice.totalAmount));
-    }, 0);
-
-    const totalPaidAmount = verifiedPayments.reduce((sum: number, payment: any) => {
-      return sum + parseFloat(String(payment.amount));
-    }, 0);
-
-    const outstandingBalance = invoices.reduce((sum: number, invoice: any) => {
-      return sum + parseFloat(String(invoice.balanceAmount));
-    }, 0);
-
-    const availableCredit = clientBalance
-      ? parseFloat(String(clientBalance.availableCreditAmount))
-      : 0;
-
-    // Determine primary currency from invoices (most common currency)
-    // Default to USD if no invoices or no currency info
-    const currencyCount: Record<string, number> = {};
-    invoices.forEach((invoice: any) => {
-      const curr = String(invoice.currency || 'USD').toUpperCase();
-      currencyCount[curr] = (currencyCount[curr] || 0) + 1;
-    });
-    
-    let primaryCurrency = 'USD';
-    let maxCount = 0;
-    for (const [curr, count] of Object.entries(currencyCount)) {
-      if (count > maxCount) {
-        maxCount = count;
-        primaryCurrency = curr;
-      }
-    }
 
     // Map to DTOs
     const customerInfo: CustomerInfoDto = {
@@ -895,26 +763,6 @@ export class CustomersService {
       };
     }
 
-    const financialSummary: CustomerFinancialSummaryDto = {
-      totalContractedAmount,
-      totalInvoicedAmount,
-      totalPaidAmount,
-      outstandingBalance,
-      availableCredit,
-      currency: primaryCurrency,
-      lastPaymentDate: lastPayment?.verifiedAt?.toISOString() || null,
-      lastPaymentAmount: lastPayment
-        ? parseFloat(String(lastPayment.amount))
-        : null,
-      lastContractDate:
-        contracts.length > 0 ? contracts[0].createdAt.toISOString() : null,
-      lastContractNumber:
-        contracts.length > 0 ? contracts[0].contractNumber : null,
-      totalInvoices: totalInvoicesCount,
-      totalReceipts: totalReceiptsCount,
-      totalPayments: totalPaymentsCount,
-    };
-
     const statistics: CustomerStatisticsDto = {
       totalContracts: contracts.length,
       totalTravels: contracts.length, // At this stage, calculated from contracts
@@ -925,7 +773,6 @@ export class CustomersService {
     return {
       customer: customerInfo,
       contracts: contractDtos,
-      financialSummary,
       statistics,
       documents: customerDocuments,
       notes: customerNotes,

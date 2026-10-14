@@ -576,6 +576,25 @@ describe("CustomersService", () => {
     });
   });
 
+  it("keeps profile identity and contract data without legacy financial compatibility", async () => {
+    const customer = profileCustomer("customer-1", "Customer Example");
+    const { service, prisma } = profileService({
+      customer,
+      holderContracts: [profileContract({ clientId: customer.id })],
+      otherContracts: [],
+    });
+
+    const result = await service.getCustomerProfile("tenant-1", customer.id);
+
+    expect(result.customer).toMatchObject({ id: customer.id, fullName: customer.fullName });
+    expect(result.contracts).toHaveLength(1);
+    expect(result).not.toHaveProperty("financialSummary");
+    expect(prisma).not.toHaveProperty("billingClientBalance");
+    expect(prisma).not.toHaveProperty("billingInvoice");
+    expect(prisma).not.toHaveProperty("billingPayment");
+    expect(prisma).not.toHaveProperty("billingReceipt");
+  });
+
   it.each([
     {
       label: "Holder",
@@ -873,21 +892,6 @@ function profileService(params: {
         .fn()
         .mockResolvedValueOnce(params.holderContracts)
         .mockResolvedValueOnce(params.otherContracts),
-    },
-    billingInvoice: {
-      findMany: jest.fn().mockResolvedValue([]),
-      count: jest.fn().mockResolvedValue(0),
-    },
-    billingPayment: {
-      findMany: jest.fn().mockResolvedValue([]),
-      findFirst: jest.fn().mockResolvedValue(null),
-      count: jest.fn().mockResolvedValue(0),
-    },
-    billingClientBalance: {
-      findUnique: jest.fn().mockResolvedValue(null),
-    },
-    billingReceipt: {
-      count: jest.fn().mockResolvedValue(0),
     },
   };
   const service = new CustomersService(

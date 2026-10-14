@@ -10,6 +10,18 @@ const financeApiSource = readFileSync(
   new URL('../src/lib/finance-api.ts', import.meta.url),
   'utf8',
 );
+const customerApiSource = readFileSync(
+  new URL('../src/lib/customers-api.ts', import.meta.url),
+  'utf8',
+);
+const contractWizardSource = readFileSync(
+  new URL('../src/features/contracts-form/wizard/ContractsWizard.tsx', import.meta.url),
+  'utf8',
+);
+const companionsStepSource = readFileSync(
+  new URL('../src/features/contracts-form/wizard/steps/companions/CompanionsStep.tsx', import.meta.url),
+  'utf8',
+);
 const drawerSource = readFileSync(
   new URL('../src/features/contracts-finance/contract-finance-drawer.tsx', import.meta.url),
   'utf8',
@@ -33,6 +45,15 @@ test('Customer Profile reads the Finance customer summary and does not render le
   assert.match(financeApiSource, /\/finance\/customers\/\$\{encodeURIComponent\(customerId\)\}\/financial-summary/);
   assert.doesNotMatch(profileSource, /profile\.financialSummary/);
   assert.doesNotMatch(profileSource, /totalContractedAmount|totalInvoicedAmount|totalPaidAmount|outstandingBalance|availableCredit/);
+  assert.doesNotMatch(customerApiSource, /CustomerFinancialSummary|financialSummary/);
+});
+
+test('Contract wizard customer-profile consumers retain identity and document reads only', () => {
+  assert.match(contractWizardSource, /const customer = profile\.customer;/);
+  assert.match(contractWizardSource, /const documents = profile\.documents \|\| \[\];/);
+  assert.match(companionsStepSource, /const customerData = profile\.customer;/);
+  assert.doesNotMatch(contractWizardSource, /profile\.financialSummary/);
+  assert.doesNotMatch(companionsStepSource, /profile\.financialSummary/);
 });
 
 test('Customer Profile presents the backend consolidated base-currency value without frontend FX arithmetic', () => {
