@@ -18,8 +18,6 @@ import { exchangeRateHistoryTemplate } from './templates';
 import { welcomeUserTemplate } from './templates/welcome-user.template';
 import { passwordResetTemplate } from './templates/password-reset.template';
 import { passwordResetByAdminTemplate } from './templates/password-reset-by-admin.template';
-import { creditNoteApprovedTemplate } from './templates/credit-note-approved.template';
-import { contractAccountStatementTemplate } from './templates/contract-account-statement.template';
 import { receiptApprovedTemplate } from './templates/receipt-approved.template';
 import { businessDocumentAttachmentTemplate } from './templates/business-document-attachment.template';
 
@@ -381,12 +379,6 @@ export class EmailService {
 
       case 'password-reset-by-admin':
         return passwordResetByAdminTemplate(data as any);
-
-      case 'credit-note-approved':
-        return creditNoteApprovedTemplate(data as any);
-
-      case 'contract-account-statement':
-        return contractAccountStatementTemplate(data as any);
 
       case 'receipt-approved':
         return receiptApprovedTemplate(data as any);

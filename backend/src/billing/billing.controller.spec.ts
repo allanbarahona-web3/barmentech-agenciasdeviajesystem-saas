@@ -4,81 +4,35 @@ import { UserRole } from "@prisma/client";
 import { RolesGuard } from "../auth/roles.guard";
 import { BillingController } from "./billing.controller";
 
-describe("BillingController readonly accountant authorization", () => {
-  const legacyMutationHandlers = [
-    "sendAccountStatementEmail",
-    "sendCreditNoteEmail",
-    "verifyPayment",
-    "rejectPayment",
-  ] as const;
-
-  const legacyReadHandlers = [
-    "listContracts",
-    "getContractAccount",
-    "getInvoicePdfUrl",
-    "getAccountStatementPdfUrl",
-    "getPaymentAttachment",
-    "getReceiptPdfUrl",
-    "getCreditNotePdfUrl",
-  ] as const;
-
-  it.each(legacyMutationHandlers)("does not allow CONTADOR to %s", (handler) => {
-    expect(() => canActivate(UserRole.CONTADOR, handler)).toThrow(ForbiddenException);
-  });
-
-  it("keeps ADMIN legacy operations while removing the hidden legacy workspace from FACTURACION_COBROS", () => {
-    for (const handler of legacyMutationHandlers) {
-      expect(canActivate(UserRole.ADMIN, handler)).toBe(true);
-      expect(() => canActivate(UserRole.FACTURACION_COBROS, handler)).toThrow(ForbiddenException);
-    }
-    expect(canActivate(UserRole.AGENT, "sendAccountStatementEmail")).toBe(true);
-  });
-
-  it("blocks CONTADOR and FACTURACION_COBROS from direct legacy account-statement reads", () => {
-    for (const handler of legacyReadHandlers) {
-      expect(() => canActivate(UserRole.CONTADOR, handler)).toThrow(ForbiddenException);
-      expect(() => canActivate(UserRole.FACTURACION_COBROS, handler)).toThrow(ForbiddenException);
-      expect(canActivate(UserRole.ADMIN, handler)).toBe(true);
-      expect(canActivate(UserRole.AGENT, handler)).toBe(true);
-    }
-  });
-
-  it("removes the obsolete legacy dashboard-metrics handler", () => {
-    expect(BillingController.prototype).not.toHaveProperty("getDashboardMetrics");
-  });
-
-  it("keeps Billing audit ADMIN-only", () => {
-    expect(canActivate(UserRole.ADMIN, "listAudit")).toBe(true);
-    for (const role of [UserRole.CONTADOR, UserRole.FACTURACION_COBROS, UserRole.AGENT]) {
-      expect(() => canActivate(role, "listAudit")).toThrow(ForbiddenException);
-    }
-  });
-
-  it("removes every legacy credit-note mutation and pending-queue handler", () => {
+describe("BillingController after contract-account retirement", () => {
+  it("removes the legacy contract-account read and document handlers", () => {
     for (const handler of [
-      "createCreditNote",
-      "applyCreditNote",
-      "listPendingCreditNotes",
-      "approveCreditNote",
-      "rejectCreditNote",
+      "listContracts",
+      "getContractAccount",
+      "getInvoicePdfUrl",
+      "getAccountStatementPdfUrl",
+      "getPaymentAttachment",
+      "getReceiptPdfUrl",
+      "getCreditNotePdfUrl",
+      "sendAccountStatementEmail",
+      "sendCreditNoteEmail",
     ]) {
       expect(BillingController.prototype).not.toHaveProperty(handler);
     }
-    expect(BillingController.prototype).toHaveProperty("getCreditNotePdfUrl");
-    expect(BillingController.prototype).toHaveProperty("sendCreditNoteEmail");
   });
 
-  it("removes the orphan legacy contract bootstrap endpoint", () => {
-    expect(BillingController.prototype).not.toHaveProperty("bootstrapContractBilling");
-  });
-
-  it("removes legacy contract payment reporting, review, and manual receipt delivery handlers", () => {
-    for (const handler of ["reportPayment", "markPaymentInReview", "approveAndSendReceipt"]) {
-      expect(BillingController.prototype).not.toHaveProperty(handler);
+  it("keeps the required verification, rejection, pending-count, and audit paths", () => {
+    for (const handler of ["verifyPayment", "rejectPayment", "getPendingCounts", "listAudit"] as const) {
+      expect(BillingController.prototype).toHaveProperty(handler);
     }
-    expect(BillingController.prototype).toHaveProperty("getContractAccount");
-    expect(BillingController.prototype).toHaveProperty("getPaymentAttachment");
-    expect(BillingController.prototype).toHaveProperty("getReceiptPdfUrl");
+    expect(canActivate(UserRole.ADMIN, "verifyPayment")).toBe(true);
+    expect(() => canActivate(UserRole.AGENT, "verifyPayment")).toThrow(ForbiddenException);
+    expect(canActivate(UserRole.ADMIN, "listAudit")).toBe(true);
+    expect(() => canActivate(UserRole.AGENT, "listAudit")).toThrow(ForbiddenException);
+  });
+
+  it("keeps the obsolete dashboard-metrics handler removed", () => {
+    expect(BillingController.prototype).not.toHaveProperty("getDashboardMetrics");
   });
 
   function canActivate(role: UserRole, handler: keyof BillingController) {

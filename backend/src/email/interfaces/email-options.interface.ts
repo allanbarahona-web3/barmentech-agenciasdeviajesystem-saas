@@ -86,8 +86,6 @@ export type EmailTemplate =
   | 'password-reset-by-admin'
   
   // Billing
-  | 'credit-note-approved'
-  | 'contract-account-statement'
   | 'receipt-approved'
   
   // Contracts

@@ -1,31 +1,39 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 
 const source = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
 
-test("legacy contract billing keeps historical reads while removing payment and receipt mutations", () => {
-  const page = source("../src/app/billing/[contractId]/page.tsx");
+test("retires the legacy Billing contract-account pages and client surface", () => {
+  assert.equal(existsSync(new URL("../src/app/billing/page.tsx", import.meta.url)), false);
+  assert.equal(existsSync(new URL("../src/app/billing/[contractId]/page.tsx", import.meta.url)), false);
+
   const api = source("../src/lib/billing-api.ts");
+  for (const endpointClient of [
+    "listBillingContracts",
+    "getBillingContractAccount",
+    "getBillingInvoicePdfUrl",
+    "getBillingAccountStatementPdfUrl",
+    "getBillingReceiptPdfUrl",
+    "getBillingCreditNotePdfUrl",
+    "sendBillingAccountStatementEmail",
+    "sendBillingCreditNoteEmail",
+  ]) {
+    assert.doesNotMatch(api, new RegExp(endpointClient));
+  }
+});
 
-  assert.match(page, /getBillingContractAccount/);
-  assert.match(page, /getBillingReceiptPdfUrl/);
-  assert.match(page, /payment\.attachments/);
-  assert.match(page, /PDF recibo/);
-  assert.doesNotMatch(page, /Generar abono/);
-  assert.doesNotMatch(page, /Aprobar banco \(manual\)/);
-  assert.doesNotMatch(page, /Confirmar rechazo/);
-  assert.doesNotMatch(page, /onShareReceiptWhatsApp/);
-  assert.doesNotMatch(page, /approveAndSendBillingReceipt/);
-  assert.doesNotMatch(page, /reportBillingPayment/);
-  assert.doesNotMatch(page, /verifyBillingPayment/);
-  assert.doesNotMatch(page, /rejectBillingPayment/);
+test("removes retired Estados de cuenta navigation and redirects to existing Finance work", () => {
+  const nav = source("../src/components/vertical-nav.tsx");
+  const header = source("../src/components/app-shell-header.tsx");
+  const agentStart = source("../src/app/agent-start/page.tsx");
+  const agentDashboard = source("../src/app/agent-dashboard/page.tsx");
 
-  assert.match(api, /getBillingContractAccount/);
-  assert.match(api, /getBillingReceiptPdfUrl/);
-  assert.doesNotMatch(api, /reportBillingPayment/);
-  assert.doesNotMatch(api, /markBillingPaymentInReview/);
-  assert.doesNotMatch(api, /verifyBillingPayment/);
-  assert.doesNotMatch(api, /rejectBillingPayment/);
-  assert.doesNotMatch(api, /approveAndSendBillingReceipt/);
+  for (const value of [nav, header, agentStart, agentDashboard]) {
+    assert.doesNotMatch(value, /href: "\/billing"/);
+    assert.doesNotMatch(value, /router\.replace\("\/billing"/);
+  }
+  assert.match(header, /href: "\/admin\/pending-payments"/);
+  assert.match(agentStart, /getHomeRouteForRole\(role\)/);
+  assert.match(agentDashboard, /getHomeRouteForRole\(role\)/);
 });

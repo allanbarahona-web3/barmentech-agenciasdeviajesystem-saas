@@ -6,37 +6,21 @@ import {
   Post,
   Query,
   Req,
-  Res,
   UseGuards,
 } from "@nestjs/common";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { Roles } from "../auth/roles.decorator";
 import { RolesGuard } from "../auth/roles.guard";
-import { ApproveReceiptDto } from "./dto/approve-receipt.dto";
-import { ListBillingContractsDto } from "./dto/list-billing-contracts.dto";
 import { RejectPaymentDto } from "./dto/reject-payment.dto";
-import { SendAccountStatementDto } from "./dto/send-account-statement.dto";
 import { BillingService } from "./billing.service";
 
 const LEGACY_BILLING_ACCESS_ROLES = ["SUPER_ADMIN", "ADMIN", "VENTAS", "OPERACIONES", "AGENT"] as const;
-const BILLING_OPERATION_ROLES = LEGACY_BILLING_ACCESS_ROLES;
 
 @Controller("billing")
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(...LEGACY_BILLING_ACCESS_ROLES)
 export class BillingController {
   constructor(private readonly billingService: BillingService) {}
-
-  @Get("contracts")
-  listContracts(
-    @Req()
-    req: {
-      user: { id: string; email: string; fullName: string; tenantId: string };
-    },
-    @Query() query: ListBillingContractsDto,
-  ) {
-    return this.billingService.listBillingContracts(req.user, query);
-  }
 
   @Get("audit")
   @Roles("ADMIN")
@@ -57,65 +41,6 @@ export class BillingController {
       q: String(q || "").trim() || undefined,
       limit: limit ? Number(limit) : undefined,
     });
-  }
-
-  @Get("contracts/:contractId/account")
-  getContractAccount(
-    @Req()
-    req: {
-      user: { id: string; email: string; fullName: string };
-    },
-    @Param("contractId") contractId: string,
-  ) {
-    return this.billingService.getContractAccount(req.user, contractId);
-  }
-
-  @Get("contracts/:contractId/invoice/pdf")
-  getInvoicePdfUrl(
-    @Req()
-    req: {
-      user: { id: string; email: string; fullName: string };
-    },
-    @Param("contractId") contractId: string,
-  ) {
-    return this.billingService.getInvoicePdfUrl(req.user, contractId);
-  }
-
-  @Get("contracts/:contractId/account/pdf")
-  getAccountStatementPdfUrl(
-    @Req()
-    req: {
-      user: { id: string; email: string; fullName: string };
-    },
-    @Param("contractId") contractId: string,
-  ) {
-    return this.billingService.getAccountStatementPdfUrl(req.user, contractId);
-  }
-
-  @Post("contracts/:contractId/account/send-email")
-  @Roles(...BILLING_OPERATION_ROLES)
-  @UseGuards(RolesGuard)
-  sendAccountStatementEmail(
-    @Req()
-    req: {
-      user: { id: string; email: string; fullName: string };
-      ip?: string;
-      headers?: Record<string, string | string[] | undefined>;
-    },
-    @Param("contractId") contractId: string,
-    @Body() dto: SendAccountStatementDto,
-  ) {
-    const userAgentHeader = req.headers?.["user-agent"];
-    const userAgent = Array.isArray(userAgentHeader) ? userAgentHeader[0] : userAgentHeader;
-
-    return this.billingService.sendContractAccountStatementEmail(
-      req.user,
-      contractId,
-      dto.toEmail,
-      dto.ccEmail,
-      req.ip || null,
-      userAgent || null,
-    );
   }
 
   @Post("payments/:paymentId/verify")
@@ -155,61 +80,6 @@ export class BillingController {
     return this.billingService.rejectPayment(req.user, paymentId, dto.reason, req.ip || null, userAgent || null);
   }
 
-  @Get("payments/:paymentId/attachments/:attachmentId")
-  async getPaymentAttachment(
-    @Req() req: { user: { id: string; email: string; fullName: string; role: string } },
-    @Param("paymentId") paymentId: string,
-    @Param("attachmentId") attachmentId: string,
-    @Res() res: any,
-  ) {
-    const file = await this.billingService.getPaymentAttachment(req.user, paymentId, attachmentId);
-    
-    res.set({
-      "Content-Type": file.mimeType,
-      "Content-Disposition": `inline; filename="${encodeURIComponent(file.fileName)}"`,
-      "Content-Length": file.buffer.length,
-    });
-    
-    res.send(file.buffer);
-  }
-
-  @Get("receipts/:receiptId/pdf")
-  getReceiptPdfUrl(
-    @Req()
-    req: {
-      user: { id: string; email: string; fullName: string };
-    },
-    @Param("receiptId") receiptId: string,
-  ) {
-    return this.billingService.getReceiptPdfUrl(req.user, receiptId);
-  }
-
-  @Post("credit-notes/:creditNoteId/send-email")
-  @Roles(...BILLING_OPERATION_ROLES)
-  @UseGuards(RolesGuard)
-  sendCreditNoteEmail(
-    @Req()
-    req: {
-      user: { id: string; email: string; fullName: string; role: string };
-      ip?: string;
-      headers?: Record<string, string | string[] | undefined>;
-    },
-    @Param("creditNoteId") creditNoteId: string,
-    @Body() dto: ApproveReceiptDto,
-  ) {
-    const userAgentHeader = req.headers?.["user-agent"];
-    const userAgent = Array.isArray(userAgentHeader) ? userAgentHeader[0] : userAgentHeader;
-
-    return this.billingService.sendCreditNoteEmail(
-      req.user,
-      creditNoteId,
-      dto.toEmail,
-      dto.ccEmail,
-      req.ip || null,
-      userAgent || null,
-    );
-  }
-
   @Get("admin/pending-counts")
   @Roles("ADMIN", "CONTADOR", "AGENT", "FACTURACION_COBROS")
   @UseGuards(RolesGuard)
@@ -222,14 +92,4 @@ export class BillingController {
     return { pendingReceipts, contractsPendingSignature };
   }
 
-  @Get("credit-notes/:creditNoteId/pdf")
-  getCreditNotePdfUrl(
-    @Req()
-    req: {
-      user: { id: string; email: string; fullName: string };
-    },
-    @Param("creditNoteId") creditNoteId: string,
-  ) {
-    return this.billingService.getCreditNotePdfUrl(req.user, creditNoteId);
-  }
 }

@@ -306,11 +306,6 @@ export function VerticalNav() {
                 label: "Cuentas por cobrar",
                 icon: "📒",
               },
-              ...(isAdmin ? [{
-                href: "/billing",
-                label: "Estados de cuenta",
-                icon: "💰",
-              }] : []),
               ...(isAdmin || role === "FACTURACION_COBROS"
                 ? [{
                     href: "/admin/pending-payments",
@@ -322,14 +317,7 @@ export function VerticalNav() {
             ],
           } as NavGroup,
         ]
-      : [
-          // Para Agentes: solo Estados de cuenta directo
-          {
-            href: "/billing",
-            label: "Estados de cuenta",
-            icon: "💰",
-          },
-        ]),
+      : []),
     
     // Clientes (Admin/Agent/Facturacion)
     ...(isAdmin || role === "AGENT" || role === "FACTURACION_COBROS"

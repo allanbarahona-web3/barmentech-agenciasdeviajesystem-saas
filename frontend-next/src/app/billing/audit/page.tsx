@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { getStoredSession, getStoredToken } from "@/lib/auth-api";
+import { getHomeRouteForRole, getStoredSession, getStoredToken } from "@/lib/auth-api";
 import { listBillingAudit, type BillingAuditItem } from "@/lib/billing-api";
 import { ToastNotification, useToast } from "@/components/toast-notification";
 import { PageLoader } from "@/components/loading-spinner";
@@ -58,7 +58,7 @@ export default function BillingAuditPage() {
     const session = getStoredSession();
     const role = String(session?.user?.role || "").toUpperCase();
     if (role !== "ADMIN") {
-      router.replace("/billing");
+      router.replace(getHomeRouteForRole(role));
       return;
     }
     void load();

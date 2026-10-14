@@ -13,12 +13,10 @@ type HeaderLink = {
 
 const AGENT_LINKS: HeaderLink[] = [
   { href: "/contracts", label: "Formulario" },
-  { href: "/billing", label: "Estados de cuenta" },
   { href: "/history", label: "Historial" },
 ];
 
 const ADMIN_LINKS: HeaderLink[] = [
-  { href: "/billing", label: "Estados de cuenta" },
   { href: "/reports", label: "Reportes" },
   { href: "/billing/audit", label: "Auditoria" },
   { href: "/admin/exchange-rate", label: "Tipo de Cambio" },
@@ -27,7 +25,7 @@ const ADMIN_LINKS: HeaderLink[] = [
 ];
 
 const FACTURACION_COBROS_LINKS: HeaderLink[] = [
-  { href: "/billing", label: "Estados de cuenta" },
+  { href: "/admin/pending-payments", label: "Pagos pendientes" },
 ];
 
 // Roles sin vistas asignadas aún

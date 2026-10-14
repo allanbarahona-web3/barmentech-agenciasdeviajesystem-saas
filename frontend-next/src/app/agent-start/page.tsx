@@ -4,7 +4,7 @@ export const dynamic = 'force-dynamic';
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getStoredSession } from "@/lib/auth-api";
+import { getHomeRouteForRole, getStoredSession } from "@/lib/auth-api";
 import { usesAttendance } from "@/lib/attendance-permissions";
 import { attendanceCheckIn, getAttendanceStatus } from "@/lib/attendance-api";
 import { ShiftModal } from "@/components/shift-modal";
@@ -39,9 +39,7 @@ export default function AgentStartPage() {
         if (!active) return;
 
         if (attendance.currentState && attendance.currentState !== "OFF") {
-          router.replace(
-            role === "FACTURACION_COBROS" ? "/billing" : "/agent-dashboard",
-          );
+          router.replace(role === "FACTURACION_COBROS" ? getHomeRouteForRole(role) : "/agent-dashboard");
           return;
         }
 
@@ -83,7 +81,7 @@ export default function AgentStartPage() {
       const role = String(session?.user?.role || "").toUpperCase();
 
       if (role === "FACTURACION_COBROS") {
-        router.replace("/billing");
+        router.replace(getHomeRouteForRole(role));
       } else {
         router.replace("/agent-dashboard");
       }

@@ -8,7 +8,7 @@ import { ActionMenuModal } from "@/components/action-menu-modal";
 import { PageLoader } from "@/components/loading-spinner";
 import { getAttendanceStatus } from "@/lib/attendance-api";
 import { usesAttendance } from "@/lib/attendance-permissions";
-import { getStoredSession } from "@/lib/auth-api";
+import { getHomeRouteForRole, getStoredSession } from "@/lib/auth-api";
 import { AirfareDailyTaskDialog } from "@/features/cost-engine/airfare-daily-task-dialog";
 import { getAgentAirfareDailyStatus, type AirfareDailyStatus } from "@/lib/cost-engine-api";
 
@@ -37,7 +37,7 @@ export default function AgentDashboardPage() {
         return;
       }
       if (role === "FACTURACION_COBROS") {
-        router.replace("/billing");
+        router.replace(getHomeRouteForRole(role));
         return;
       }
 
