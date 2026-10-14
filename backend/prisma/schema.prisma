@@ -2948,6 +2948,11 @@ model AdditionalServiceOrderLine {
   supplierId                      String
   supplierName                    String
   supplierCostUrl                 String?
+  costEvidenceObjectKey           String?                             @unique
+  costEvidenceOriginalFilename    String?
+  costEvidenceMimeType            String?
+  costEvidenceByteSize            Int?
+  costEvidenceContentHash         String?
   supplierCost                    Decimal                             @db.Decimal(18, 4)
   supplierCostCurrency            AdditionalServiceCurrency
   quotationCurrency               AdditionalServiceCurrency

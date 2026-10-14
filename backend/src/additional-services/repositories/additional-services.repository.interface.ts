@@ -22,6 +22,10 @@ export interface AdditionalServiceOrderLineRecord {
   supplierId: string;
   supplierName: string;
   supplierCostUrl: string | null;
+  hasCostEvidence?: boolean;
+  costEvidenceOriginalFilename?: string | null;
+  costEvidenceMimeType?: string | null;
+  costEvidenceByteSize?: number | null;
   supplierCost: string;
   supplierCostCurrency: AdditionalServiceCurrency;
   quotationCurrency: AdditionalServiceCurrency;
@@ -328,6 +332,7 @@ export interface UpdateSupplierData {
 }
 
 export interface CreateAdditionalServiceOrderLineData {
+  id?: string;
   additionalServiceCatalogId: string;
   serviceCode: string;
   serviceName: string;
@@ -336,6 +341,11 @@ export interface CreateAdditionalServiceOrderLineData {
   supplierId: string;
   supplierName: string;
   supplierCostUrl?: string;
+  costEvidenceObjectKey?: string;
+  costEvidenceOriginalFilename?: string;
+  costEvidenceMimeType?: string;
+  costEvidenceByteSize?: number;
+  costEvidenceContentHash?: string;
   supplierCost: number;
   supplierCostCurrency: AdditionalServiceCurrency;
   quotationCurrency: AdditionalServiceCurrency;
@@ -367,6 +377,7 @@ export interface CreateAdditionalServiceOrderLineData {
 
 export interface CreateAdditionalServiceOrderData
   extends AdditionalServiceTravelReference {
+  id?: string;
   tenantId: string;
   orderNumber: string;
   idempotencyKey: string;

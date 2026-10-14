@@ -629,6 +629,7 @@ describe("AdditionalServicesService orders", () => {
                 expectedTravelDate: null,
               },
               supplierId: "supplier-1",
+              supplierCostUrl: "https://supplier.example/cost",
               supplierCost: 100,
               supplierCostCurrency: AdditionalServiceCurrency.USD,
               participantIds: ["client-1"],

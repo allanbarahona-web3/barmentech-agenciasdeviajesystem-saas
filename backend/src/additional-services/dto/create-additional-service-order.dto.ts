@@ -25,6 +25,13 @@ import {
 } from "../enums";
 
 export class CreateAdditionalServiceOrderLineDto {
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(100)
+  @Transform(({ value }) => (typeof value === "string" ? value.trim() : value))
+  temporaryLineKey?: string;
+
   @IsString()
   serviceCode!: string;
 
@@ -40,7 +47,10 @@ export class CreateAdditionalServiceOrderLineDto {
   supplierId!: string;
 
   @IsOptional()
-  @IsUrl()
+  @Transform(({ value }) =>
+    typeof value === "string" ? value.trim() || undefined : value,
+  )
+  @IsUrl({ protocols: ["http", "https"], require_protocol: true })
   supplierCostUrl?: string;
 
   @Type(() => Number)

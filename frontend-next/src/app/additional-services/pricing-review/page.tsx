@@ -25,6 +25,7 @@ import {
   getAdditionalServicesQuoteCustomerId,
   getAdditionalServicesWorkflowContext,
   getOrCreateAdditionalServiceOrderIdempotencyKey,
+  getTemporaryAdditionalServiceLineCostEvidence,
   getTemporaryAdditionalServiceLineId,
   getTemporaryAdditionalServiceLinePricing,
   getTemporaryAdditionalServiceLineSourcing,
@@ -32,6 +33,10 @@ import {
   resetAdditionalServicesWorkflow,
   type TemporaryAdditionalServiceLine,
 } from '@/lib/additional-services-temporary-store';
+import {
+  costSourceIndicator,
+  costSourceValidationMessage,
+} from '@/lib/additional-services-cost-evidence';
 import { getAdditionalServiceName } from '@/shared/additional-services';
 import styles from '../order-summary/order-summary.module.css';
 import reviewStyles from '@/components/additional-services-pricing-review.module.css';
@@ -193,6 +198,7 @@ export default function AdditionalServicesPricingReviewPage() {
 
       const sourcing =
         getTemporaryAdditionalServiceLineSourcing(line);
+      const evidence = getTemporaryAdditionalServiceLineCostEvidence(line);
 
       return [
         {
@@ -205,6 +211,7 @@ export default function AdditionalServicesPricingReviewPage() {
             (sourcing.supplierId
               ? supplierNames.get(sourcing.supplierId)
               : null) ?? 'Proveedor no disponible',
+          costSource: costSourceIndicator(sourcing.providerUrl, evidence),
           breakdown,
         },
       ];
@@ -229,8 +236,11 @@ export default function AdditionalServicesPricingReviewPage() {
         throw new Error('Seleccione el cliente de la cotización.');
       }
 
+      const evidenceFiles: Array<{ temporaryLineKey: string; file: File }> = [];
       const orderLines = lines.map((line) => {
         const sourcing = getTemporaryAdditionalServiceLineSourcing(line);
+        const temporaryLineKey = getTemporaryAdditionalServiceLineId(line);
+        const evidence = getTemporaryAdditionalServiceLineCostEvidence(line);
         if (
           !sourcing.supplierId ||
           sourcing.cost === null ||
@@ -240,8 +250,21 @@ export default function AdditionalServicesPricingReviewPage() {
             `La información comercial de ${getAdditionalServiceName(line)} está incompleta.`,
           );
         }
+        const sourceError = costSourceValidationMessage(
+          sourcing.providerUrl,
+          evidence,
+        );
+        if (sourceError) {
+          throw new Error(
+            `${getAdditionalServiceName(line)}: ${sourceError}`,
+          );
+        }
+        if (evidence) {
+          evidenceFiles.push({ temporaryLineKey, file: evidence });
+        }
 
         return {
+          temporaryLineKey,
           serviceCode: line.serviceType,
           serviceDetailsVersion: 1 as const,
           serviceDetails: getServiceDetails(line),
@@ -277,7 +300,7 @@ export default function AdditionalServicesPricingReviewPage() {
         commercialObservations:
           commercialConditions.commercialObservations.trim() || undefined,
         lines: orderLines,
-      });
+      }, evidenceFiles);
 
       if (!response.orderId) {
         throw new Error(

@@ -98,6 +98,7 @@
 .summaryCell,
 .commercialCell,
 .urlCell,
+.evidenceCell,
 .costCell,
 .currencyCell,
 .actionCell {
@@ -150,12 +151,16 @@
 }
 
 .urlCell {
-  width: 22%;
+  width: 17%;
+}
+
+.evidenceCell {
+  width: 14%;
 }
 
 .costCell,
 .currencyCell {
-  width: 10%;
+  width: 9%;
 }
 
 .commercialInput {
@@ -172,6 +177,63 @@
 .commercialInput:focus {
   border-color: #2563eb;
   outline: 2px solid rgba(37, 99, 235, 0.16);
+}
+
+.evidenceFileInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+
+.evidenceControls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.evidenceButton,
+.evidenceRemoveButton {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  padding: 5px 8px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.evidenceButton {
+  border: 1px solid #93c5fd;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.evidenceRemoveButton {
+  border: 1px solid #fecaca;
+  background: #fff1f2;
+  color: #b91c1c;
+}
+
+.evidenceName,
+.evidenceError {
+  margin: 6px 0 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
+.evidenceName {
+  color: #475569;
+}
+
+.evidenceError {
+  color: #b91c1c;
+  font-weight: 600;
 }
 
 .editButton,
@@ -317,6 +379,7 @@
   .summaryCell,
   .commercialCell,
   .urlCell,
+  .evidenceCell,
   .costCell,
   .currencyCell,
   .actionCell {
@@ -338,6 +401,7 @@
   .summaryCell,
   .commercialCell,
   .urlCell,
+  .evidenceCell,
   .costCell,
   .currencyCell,
   .actionCell {
@@ -352,6 +416,7 @@
   .summaryCell::before,
   .commercialCell::before,
   .urlCell::before,
+  .evidenceCell::before,
   .costCell::before,
   .currencyCell::before,
   .actionCell::before {

@@ -526,6 +526,67 @@
   white-space: nowrap;
 }
 
+.costSourceCell {
+  min-width: 190px;
+}
+
+.costSourceCell > a,
+.costSourceCell > span {
+  display: block;
+  color: #315f9b;
+}
+
+.costSourceCell > span {
+  color: #66758a;
+}
+
+.costEvidenceRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 7px;
+}
+
+.costEvidenceRow > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.evidenceViewerBackdrop {
+  position: fixed;
+  z-index: 80;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.68);
+}
+
+.evidenceViewer {
+  width: min(900px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  border-radius: 12px;
+  background: #fff;
+  padding: 16px;
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.35);
+}
+
+.evidenceViewer header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.evidenceViewer img {
+  display: block;
+  width: 100%;
+  max-height: calc(100vh - 140px);
+  object-fit: contain;
+}
+
 .summaryCard {
   position: sticky;
   top: 22px;

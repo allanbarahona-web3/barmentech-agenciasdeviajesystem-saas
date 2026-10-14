@@ -22,15 +22,22 @@ import {
 } from '@/components/ui/table';
 import {
   getAdditionalServicesWorkflowContext,
+  getTemporaryAdditionalServiceLineCostEvidence,
   getTemporaryAdditionalServiceLineId,
   getTemporaryAdditionalServiceLineSourcing,
   getTemporaryAdditionalServiceLines,
   removeTemporaryAdditionalServiceLine,
   startEditingTemporaryAdditionalServiceLine,
+  setTemporaryAdditionalServiceLineCostEvidence,
   updateTemporaryAdditionalServiceLineSourcing,
   type TemporaryAdditionalServiceLine,
   type TemporaryLineCurrency,
 } from '@/lib/additional-services-temporary-store';
+import {
+  costEvidenceFileError,
+  costSourceIndicator,
+  costSourceValidationMessage,
+} from '@/lib/additional-services-cost-evidence';
 import {
   getAdditionalServiceFormRoute,
   getAdditionalServiceName,
@@ -65,9 +72,14 @@ function CommercialFields({
   travelType: 'INTERNATIONAL' | 'INTERNAL' | null;
 }) {
   const requestFieldId = useId();
+  const evidenceFieldId = useId();
   const [sourcing, setSourcing] = useState(() =>
     getTemporaryAdditionalServiceLineSourcing(line),
   );
+  const [evidence, setEvidence] = useState(() =>
+    getTemporaryAdditionalServiceLineCostEvidence(line),
+  );
+  const [evidenceError, setEvidenceError] = useState<string | null>(null);
   const [requestModalOpen, setRequestModalOpen] = useState(false);
   const [requestComingSoonOpen, setRequestComingSoonOpen] = useState(false);
   const [requestedSupplierName, setRequestedSupplierName] = useState('');
@@ -84,6 +96,29 @@ function CommercialFields({
     updateTemporaryAdditionalServiceLineSourcing(line, changes);
     setSourcing((current) => ({ ...current, ...changes }));
   }
+
+  function updateEvidence(file: File | null) {
+    if (!file) return;
+    const error = costEvidenceFileError(file);
+    if (error) {
+      setEvidenceError(error);
+      return;
+    }
+    setTemporaryAdditionalServiceLineCostEvidence(line, file);
+    setEvidence(file);
+    setEvidenceError(null);
+  }
+
+  function removeEvidence() {
+    setTemporaryAdditionalServiceLineCostEvidence(line, null);
+    setEvidence(null);
+    setEvidenceError(null);
+  }
+
+  const costSourceError = costSourceValidationMessage(
+    sourcing.providerUrl,
+    evidence,
+  );
 
   function closeRequestModal() {
     if (requesting) {
@@ -190,6 +225,41 @@ function CommercialFields({
             updateSourcing({ providerUrl: event.target.value })
           }
         />
+      </TableCell>
+      <TableCell className={styles.evidenceCell} data-label="Evidencia">
+        <input
+          id={evidenceFieldId}
+          className={styles.evidenceFileInput}
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          aria-label="Adjuntar evidencia del costo"
+          onChange={(event) => {
+            updateEvidence(event.target.files?.[0] ?? null);
+            event.target.value = '';
+          }}
+        />
+        <div className={styles.evidenceControls}>
+          <label htmlFor={evidenceFieldId} className={styles.evidenceButton}>
+            {evidence ? 'Reemplazar' : 'Adjuntar'}
+          </label>
+          {evidence ? (
+            <button
+              type="button"
+              className={styles.evidenceRemoveButton}
+              onClick={removeEvidence}
+            >
+              Quitar
+            </button>
+          ) : null}
+        </div>
+        <p className={styles.evidenceName} title={evidence?.name}>
+          {evidence ? evidence.name : costSourceIndicator(sourcing.providerUrl, null)}
+        </p>
+        {evidenceError ?? costSourceError ? (
+          <p className={styles.evidenceError} role="alert">
+            {evidenceError ?? costSourceError}
+          </p>
+        ) : null}
       </TableCell>
       <TableCell className={styles.costCell} data-label="Costo">
         <input
@@ -470,6 +540,7 @@ export function AdditionalServicesLinesTable({
                       <HelpTooltip content="Aquí debe ir la URL de donde tomas el costo del adicional." />
                     </span>
                   </TableHead>
+                  <TableHead className={styles.tableHead}>Evidencia</TableHead>
                   <TableHead className={styles.tableHead}>
                     Costo <span aria-hidden="true">*</span>
                   </TableHead>

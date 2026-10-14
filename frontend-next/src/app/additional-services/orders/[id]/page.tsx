@@ -21,6 +21,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   getAdditionalServiceOrder,
+  getAdditionalServiceCostEvidenceAccess,
   getCommercialProposalPreview,
   generateCommercialProposal,
   approveCommercialProposalInPerson,
@@ -151,6 +152,12 @@ export default function AdditionalServiceOrderPreviewPage() {
   const [approvalModalOpen, setApprovalModalOpen] = useState(false);
   const [approvingInPerson, setApprovingInPerson] = useState(false);
   const [approvalError, setApprovalError] = useState<string | null>(null);
+  const [evidenceViewer, setEvidenceViewer] = useState<{
+    filename: string;
+    url: string;
+  } | null>(null);
+  const [evidenceLoadingLineId, setEvidenceLoadingLineId] = useState<string | null>(null);
+  const [evidenceError, setEvidenceError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -306,6 +313,27 @@ export default function AdditionalServiceOrderPreviewPage() {
     }
   }
 
+  async function viewCostEvidence(line: AdditionalServiceOrder['lines'][number]) {
+    if (evidenceLoadingLineId) return;
+    setEvidenceLoadingLineId(line.id);
+    setEvidenceError(null);
+    try {
+      const access = await getAdditionalServiceCostEvidenceAccess(orderId, line.id);
+      setEvidenceViewer({
+        filename: access.costEvidenceOriginalFilename,
+        url: access.signedUrl,
+      });
+    } catch (requestError) {
+      setEvidenceError(
+        requestError instanceof Error
+          ? requestError.message
+          : 'No se pudo abrir la evidencia del costo.',
+      );
+    } finally {
+      setEvidenceLoadingLineId(null);
+    }
+  }
+
   if (loading) {
     return (
       <main className="app-shell">
@@ -444,6 +472,11 @@ export default function AdditionalServiceOrderPreviewPage() {
         {proposalError && (
           <p className={styles.proposalError} role="status">
             {proposalError}
+          </p>
+        )}
+        {evidenceError && (
+          <p className={styles.proposalError} role="alert">
+            {evidenceError}
           </p>
         )}
         {deliveryMessage && (
@@ -672,6 +705,7 @@ export default function AdditionalServiceOrderPreviewPage() {
                   <tr>
                     <th>Servicio</th>
                     <th>Proveedor</th>
+                    <th>Respaldo de costo</th>
                     <th>Participantes asignados</th>
                     <th>Costo proveedor</th>
                     <th>Margen</th>
@@ -703,6 +737,41 @@ export default function AdditionalServiceOrderPreviewPage() {
                           )}
                         </td>
                         <td>{line.supplierName}</td>
+                        <td className={styles.costSourceCell}>
+                          {line.supplierCostUrl ? (
+                            <a
+                              href={line.supplierCostUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              URL del costo
+                            </a>
+                          ) : (
+                            <span>Sin URL registrada</span>
+                          )}
+                          {line.hasCostEvidence ? (
+                            <div className={styles.costEvidenceRow}>
+                              <span>
+                                {line.costEvidenceOriginalFilename ?? 'Evidencia adjunta'}
+                              </span>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => void viewCostEvidence(line)}
+                                disabled={evidenceLoadingLineId === line.id}
+                              >
+                                {evidenceLoadingLineId === line.id
+                                  ? 'Abriendo...'
+                                  : 'Ver evidencia'}
+                              </Button>
+                            </div>
+                          ) : line.supplierCostUrl ? (
+                            <span>Sin evidencia adjunta</span>
+                          ) : (
+                            <span>Sin respaldo registrado</span>
+                          )}
+                        </td>
                         <td>
                           {line.participants
                             .map((participant) => participant.fullName)
@@ -778,6 +847,29 @@ export default function AdditionalServiceOrderPreviewPage() {
           </aside>
         </div>
       </div>
+      {evidenceViewer ? (
+        <div
+          className={styles.evidenceViewerBackdrop}
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Evidencia: ${evidenceViewer.filename}`}
+        >
+          <section className={styles.evidenceViewer}>
+            <header>
+              <strong>{evidenceViewer.filename}</strong>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setEvidenceViewer(null)}
+              >
+                Cerrar
+              </Button>
+            </header>
+            <img src={evidenceViewer.url} alt={evidenceViewer.filename} />
+          </section>
+        </div>
+      ) : null}
     </main>
   );
 }

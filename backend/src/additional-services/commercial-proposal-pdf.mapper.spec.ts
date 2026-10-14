@@ -99,6 +99,11 @@ describe("CommercialProposalPdfMapper", () => {
       "marginType",
       "marginValue",
       "marginAmount",
+      "hasCostEvidence",
+      "costEvidenceObjectKey",
+      "costEvidenceOriginalFilename",
+      "costEvidenceMimeType",
+      "costEvidenceByteSize",
       "createdByUserId",
     ].forEach((field) => expect(serialized).not.toContain(`\"${field}\"`));
   });
@@ -194,6 +199,10 @@ function buildOrder(): AdditionalServiceOrderRecord {
         supplierId: "internal-supplier-id",
         supplierName: "Proveedor interno",
         supplierCostUrl: "https://internal.example/cost",
+        hasCostEvidence: true,
+        costEvidenceOriginalFilename: "internal-cost-source.webp",
+        costEvidenceMimeType: "image/webp",
+        costEvidenceByteSize: 42,
         supplierCost: "70.00",
         supplierCostCurrency: AdditionalServiceCurrency.USD,
         quotationCurrency: AdditionalServiceCurrency.USD,

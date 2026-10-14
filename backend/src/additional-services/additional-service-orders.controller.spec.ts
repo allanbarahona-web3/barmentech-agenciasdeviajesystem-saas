@@ -7,8 +7,60 @@ import { CommercialProposalStatus } from "./enums";
 import type { AdditionalServiceOrderRecord } from "./repositories";
 import { SalesOrderConversionService } from "../sales-orders/sales-order-conversion.service";
 import { CommercialProposalInPersonApprovalService } from "./commercial-proposal-in-person-approval.service";
+import { AdditionalServiceCommercialCostEvidenceService } from "./additional-service-commercial-cost-evidence.service";
 
 describe("AdditionalServiceOrdersController commercial proposals", () => {
+  it("accepts multipart creation evidence mapped by the transient line key", async () => {
+    const { controller, createOrder } = setup({
+      id: "order-1",
+      tenantId: "tenant-1",
+      commercialStatus: CommercialProposalStatus.DRAFT,
+    } as AdditionalServiceOrderRecord);
+
+    await expect(
+      controller.create(
+        request,
+        {
+          payload: JSON.stringify({
+            idempotencyKey: "workflow-1",
+            travelId: "travel-1",
+            travelType: "INTERNATIONAL",
+            quoteCustomerId: "client-1",
+            quotationCurrency: "USD",
+            lines: [
+              {
+                temporaryLineKey: "pricing-line-a",
+                serviceCode: "TOUR",
+                serviceDetailsVersion: 1,
+                serviceDetails: { serviceDate: "2026-10-20", tourName: "City Tour" },
+                supplierId: "supplier-1",
+                supplierCost: 100,
+                supplierCostCurrency: "USD",
+                participantIds: ["client-1"],
+              },
+            ],
+          }),
+        },
+        [
+          {
+            fieldname: "costEvidence.pricing-line-a",
+            buffer: Buffer.from("image"),
+            mimetype: "image/png",
+            originalname: "quote.png",
+            size: 5,
+          },
+        ],
+      ),
+    ).resolves.toEqual({ orderId: "order-1", status: CommercialProposalStatus.DRAFT });
+
+    expect(createOrder).toHaveBeenCalledWith(
+      "tenant-1",
+      { id: "user-1", fullName: "Agent One" },
+      expect.objectContaining({ lines: [expect.objectContaining({ temporaryLineKey: "pricing-line-a" })] }),
+      [expect.objectContaining({ temporaryLineKey: "pricing-line-a" })],
+    );
+  });
+
   it("loads the tenant-owned order and delegates generation to persist", async () => {
     const order = {
       id: "order-1",
@@ -91,6 +143,10 @@ const request = {
 
 function setup(order: AdditionalServiceOrderRecord) {
   const getOrder = jest.fn().mockResolvedValue(order);
+  const createOrder = jest.fn().mockResolvedValue({
+    id: "order-1",
+    status: CommercialProposalStatus.DRAFT,
+  });
   const persist = jest.fn().mockResolvedValue({
     id: "document-1",
     tenantId: "tenant-1",
@@ -99,11 +155,12 @@ function setup(order: AdditionalServiceOrderRecord) {
   const send = jest.fn();
   const approveInPerson = jest.fn();
   const controller = new AdditionalServiceOrdersController(
-    { getOrder } as unknown as AdditionalServicesService,
+    { getOrder, createOrder } as unknown as AdditionalServicesService,
     { persist } as unknown as CommercialProposalPdfService,
     { send } as unknown as CommercialProposalEmailService,
     {} as SalesOrderConversionService,
     { approve: approveInPerson } as unknown as CommercialProposalInPersonApprovalService,
+    {} as AdditionalServiceCommercialCostEvidenceService,
   );
-  return { controller, getOrder, persist, send, approveInPerson };
+  return { controller, getOrder, createOrder, persist, send, approveInPerson };
 }

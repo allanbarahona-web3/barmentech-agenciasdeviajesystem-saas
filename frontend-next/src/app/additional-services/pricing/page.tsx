@@ -18,6 +18,7 @@ import {
   getAdditionalServicesQuotationCurrency,
   getAdditionalServicesQuoteCustomerId,
   getAdditionalServicesWorkflowContext,
+  getTemporaryAdditionalServiceLineCostEvidence,
   getTemporaryAdditionalServiceLineSourcing,
   getTemporaryAdditionalServiceLineId,
   getTemporaryAdditionalServiceLines,
@@ -28,6 +29,7 @@ import {
   type AdditionalServicesCommercialConditions,
   type TemporaryLineCurrency,
 } from '@/lib/additional-services-temporary-store';
+import { costSourceValidationMessage } from '@/lib/additional-services-cost-evidence';
 import { getAdditionalServiceName } from '@/shared/additional-services';
 import styles from '../order-summary/order-summary.module.css';
 
@@ -56,38 +58,6 @@ function initialPaymentTermOption(
         option.unit === conditions.paymentTermUnit,
     )?.key ?? 'OTHER'
   );
-}
-
-function isValidOptionalSupplierCostUrl(value: string) {
-  const normalizedValue = value.trim();
-  if (!normalizedValue) {
-    return true;
-  }
-
-  try {
-    const url = new URL(normalizedValue);
-    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-      return false;
-    }
-
-    const hostname = url.hostname;
-    const isIpv4 =
-      /^\d{1,3}(?:\.\d{1,3}){3}$/.test(hostname) &&
-      hostname.split('.').every((part) => Number(part) <= 255);
-    const isIpv6 = hostname.startsWith('[') && hostname.endsWith(']');
-    const domainParts = hostname.split('.');
-    const isDomain =
-      domainParts.length >= 2 &&
-      domainParts.every(
-        (part) =>
-          /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i.test(part),
-      ) &&
-      domainParts[domainParts.length - 1].length >= 2;
-
-    return isIpv4 || isIpv6 || isDomain;
-  } catch {
-    return false;
-  }
 }
 
 export default function AdditionalServicesPricingPage() {
@@ -228,9 +198,13 @@ export default function AdditionalServicesPricingPage() {
       const batchLines = lines.map((line) => {
           const sourcing =
             getTemporaryAdditionalServiceLineSourcing(line);
-          if (!isValidOptionalSupplierCostUrl(sourcing.providerUrl)) {
+          const sourceError = costSourceValidationMessage(
+            sourcing.providerUrl,
+            getTemporaryAdditionalServiceLineCostEvidence(line),
+          );
+          if (sourceError) {
             const participant = participantNames.get(line.participantId) ?? line.participantId;
-            throw new Error(`${participant} · ${getAdditionalServiceName(line)}: La URL del costo debe ser una dirección HTTP o HTTPS válida, o dejarse vacía.`);
+            throw new Error(`${participant} · ${getAdditionalServiceName(line)}: ${sourceError}`);
           }
           return {
             lineId: getTemporaryAdditionalServiceLineId(line),

@@ -3,11 +3,12 @@ import {
   ConflictException,
   Inject,
   Injectable,
+  InternalServerErrorException,
   Logger,
   NotFoundException,
   Optional,
 } from "@nestjs/common";
-import { randomBytes } from "crypto";
+import { randomBytes, randomUUID } from "crypto";
 import { PricingEngineService } from "../pricing-engine";
 import {
   AdditionalServiceOrderDashboardResponseDto,
@@ -44,11 +45,21 @@ import {
   ADDITIONAL_SERVICE_CATALOG_USAGE_TYPES,
   AdditionalServiceCatalogUsageType,
 } from "./catalog-usage";
+import {
+  AdditionalServiceCommercialCostEvidenceFile,
+  AdditionalServiceCommercialCostEvidenceService,
+  PreparedAdditionalServiceCostEvidence,
+} from "./additional-service-commercial-cost-evidence.service";
 
 export interface AdditionalServiceOrderActor {
   id: string;
   fullName: string;
 }
+
+export type AdditionalServiceOrderCreationEvidence = {
+  temporaryLineKey: string;
+  file: AdditionalServiceCommercialCostEvidenceFile;
+};
 
 export interface AdditionalServiceCatalogAdminItem {
   id: string;
@@ -111,6 +122,8 @@ export class AdditionalServicesService {
     private readonly repository: AdditionalServicesRepository,
     private readonly pricingEngine: PricingEngineService,
     @Optional() private readonly fiscalCatalogService?: FiscalCatalogService,
+    @Optional()
+    private readonly commercialCostEvidenceService?: AdditionalServiceCommercialCostEvidenceService,
   ) {}
 
   private fiscalCatalog(): FiscalCatalogService {
@@ -676,6 +689,7 @@ export class AdditionalServicesService {
     tenantId: string,
     actor: AdditionalServiceOrderActor,
     dto: CreateAdditionalServiceOrderDto,
+    evidenceInputs: readonly AdditionalServiceOrderCreationEvidence[] = [],
   ): Promise<AdditionalServiceOrderRecord> {
     this.logger.debug("CREATE ORDER START");
     const idempotencyKey = dto.idempotencyKey.trim();
@@ -690,6 +704,11 @@ export class AdditionalServicesService {
       this.logger.debug("CREATE ORDER END");
       return existingOrder;
     }
+
+    const evidenceByTemporaryLineKey = this.validateCostEvidenceSources(
+      dto,
+      evidenceInputs,
+    );
 
     const travel = await this.validateTravelReference(
       this.repository,
@@ -730,9 +749,29 @@ export class AdditionalServicesService {
         participant,
       ]),
     );
+    const orderId = randomUUID();
+    const lineIds = dto.lines.map(() => randomUUID());
+    const preparedEvidence = await this.prepareCreationEvidence(
+      tenantId,
+      orderId,
+      lineIds,
+      dto.lines,
+      evidenceByTemporaryLineKey,
+    );
     const snapshotLines: CreateAdditionalServiceOrderLineData[] =
-      lines.map(({ participantClientIds, ...line }) => ({
+      lines.map(({ participantClientIds, ...line }, index) => ({
         ...line,
+        id: lineIds[index],
+        ...(preparedEvidence.get(index)
+          ? {
+              costEvidenceObjectKey: preparedEvidence.get(index)!.objectKey,
+              costEvidenceOriginalFilename:
+                preparedEvidence.get(index)!.originalFilename,
+              costEvidenceMimeType: preparedEvidence.get(index)!.mimeType,
+              costEvidenceByteSize: preparedEvidence.get(index)!.byteSize,
+              costEvidenceContentHash: preparedEvidence.get(index)!.contentHash,
+            }
+          : {}),
         participants: participantClientIds.map((clientId) => {
           const participant = participantById.get(clientId)!;
           return {
@@ -746,74 +785,248 @@ export class AdditionalServicesService {
         }),
       }));
 
-    for (
-      let attempt = 1;
-      attempt <= this.maxOrderNumberAttempts;
-      attempt += 1
-    ) {
-      try {
-        const order = await this.repository.executeInTransaction(
-          async (repository) => {
-            const existing = await repository.findByIdempotencyKey(
+    const uploadedEvidence = await this.uploadCreationEvidence(preparedEvidence);
+    try {
+      for (
+        let attempt = 1;
+        attempt <= this.maxOrderNumberAttempts;
+        attempt += 1
+      ) {
+        try {
+          const result = await this.repository.executeInTransaction(
+            async (repository) => {
+              const existing = await repository.findByIdempotencyKey(
+                tenantId,
+                idempotencyKey,
+              );
+              if (existing) {
+                return { order: existing, wasExisting: true };
+              }
+
+              return {
+                order: await repository.create(
+                  this.toCreateData(
+                    tenantId,
+                    actor,
+                    dto,
+                    travel,
+                    snapshotLines,
+                    this.buildOrderNumber(tenant.contractPrefix),
+                    orderId,
+                  ),
+                ),
+                wasExisting: false,
+              };
+            },
+          );
+
+          if (result.wasExisting) {
+            await this.cleanupUploadedCreationEvidence(uploadedEvidence);
+            this.logger.debug("CREATE ORDER END");
+            return result.order;
+          }
+
+          this.logger.log(
+            `Additional service order created: ${result.order.orderNumber}`,
+          );
+          this.logger.debug("CREATE ORDER END");
+          return result.order;
+        } catch (error) {
+          if (this.isIdempotencyCollision(error)) {
+            const existing = await this.repository.findByIdempotencyKey(
               tenantId,
-              idempotencyKey,
+              dto.idempotencyKey.trim(),
             );
             if (existing) {
+              await this.cleanupUploadedCreationEvidence(uploadedEvidence);
+              this.logger.debug("CREATE ORDER END");
               return existing;
             }
-
-            return repository.create(
-              this.toCreateData(
-                tenantId,
-                actor,
-                dto,
-                travel,
-                snapshotLines,
-                this.buildOrderNumber(tenant.contractPrefix),
-              ),
-            );
-          },
-        );
-
-        this.logger.log(
-          `Additional service order created: ${order.orderNumber}`,
-        );
-        this.logger.debug("CREATE ORDER END");
-        return order;
-      } catch (error) {
-        if (this.isIdempotencyCollision(error)) {
-          const existing = await this.repository.findByIdempotencyKey(
-            tenantId,
-            dto.idempotencyKey.trim(),
-          );
-          if (existing) {
-            this.logger.debug("CREATE ORDER END");
-            return existing;
           }
-        }
 
-        if (
-          this.isOrderNumberCollision(error) &&
-          attempt < this.maxOrderNumberAttempts
-        ) {
-          this.logger.warn(
-            `Additional service order number collision on attempt ${attempt}/${this.maxOrderNumberAttempts}. Retrying.`,
+          if (
+            this.isOrderNumberCollision(error) &&
+            attempt < this.maxOrderNumberAttempts
+          ) {
+            this.logger.warn(
+              `Additional service order number collision on attempt ${attempt}/${this.maxOrderNumberAttempts}. Retrying.`,
+            );
+            continue;
+          }
+
+          if (this.isOrderNumberCollision(error)) {
+            throw new ConflictException(
+              "No se pudo generar un número único para la orden de servicios adicionales.",
+            );
+          }
+
+          throw error;
+        }
+      }
+      throw new ConflictException(
+        "No se pudo generar un número único para la orden de servicios adicionales.",
+      );
+    } catch (error) {
+      await this.cleanupUploadedCreationEvidence(uploadedEvidence);
+      throw error;
+    }
+  }
+
+  private validateCostEvidenceSources(
+    dto: CreateAdditionalServiceOrderDto,
+    evidenceInputs: readonly AdditionalServiceOrderCreationEvidence[],
+  ): Map<string, AdditionalServiceCommercialCostEvidenceFile> {
+    const evidenceByTemporaryLineKey = new Map<
+      string,
+      AdditionalServiceCommercialCostEvidenceFile
+    >();
+    for (const evidence of evidenceInputs) {
+      const temporaryLineKey = this.toNullableText(evidence.temporaryLineKey);
+      if (!temporaryLineKey || evidenceByTemporaryLineKey.has(temporaryLineKey)) {
+        throw new BadRequestException(
+          "Cada evidencia de costo debe corresponder a una línea temporal única.",
+        );
+      }
+      evidenceByTemporaryLineKey.set(temporaryLineKey, evidence.file);
+    }
+
+    const lineKeys = new Set<string>();
+    dto.lines.forEach((line, index) => {
+      const temporaryLineKey = this.toNullableText(line.temporaryLineKey);
+      if (temporaryLineKey) {
+        if (lineKeys.has(temporaryLineKey)) {
+          throw new BadRequestException(
+            "Las líneas temporales de servicios adicionales no pueden repetirse.",
           );
-          continue;
         }
+        lineKeys.add(temporaryLineKey);
+      }
 
-        if (this.isOrderNumberCollision(error)) {
-          throw new ConflictException(
-            "No se pudo generar un número único para la orden de servicios adicionales.",
-          );
-        }
+      const supplierCostUrl = this.normalizeSupplierCostUrl(
+        line.supplierCostUrl,
+        index,
+      );
+      const hasEvidence =
+        temporaryLineKey !== null &&
+        evidenceByTemporaryLineKey.has(temporaryLineKey);
+      if (!supplierCostUrl && !hasEvidence) {
+        throw new BadRequestException(
+          `La línea ${index + 1} requiere una URL del costo o una imagen de evidencia del costo.`,
+        );
+      }
+    });
 
-        throw error;
+    for (const temporaryLineKey of evidenceByTemporaryLineKey.keys()) {
+      if (!lineKeys.has(temporaryLineKey)) {
+        throw new BadRequestException(
+          "La evidencia de costo no corresponde a una línea temporal de la orden.",
+        );
       }
     }
 
-    throw new ConflictException(
-      "No se pudo generar un número único para la orden de servicios adicionales.",
+    return evidenceByTemporaryLineKey;
+  }
+
+  private normalizeSupplierCostUrl(
+    value: string | undefined,
+    lineIndex: number,
+  ): string | null {
+    const normalized = this.toNullableText(value);
+    if (!normalized) return null;
+    try {
+      const parsed = new URL(normalized);
+      if (
+        (parsed.protocol !== "http:" && parsed.protocol !== "https:") ||
+        !parsed.hostname
+      ) {
+        throw new Error("invalid protocol");
+      }
+      return normalized;
+    } catch {
+      throw new BadRequestException(
+        `La URL del costo de la línea ${lineIndex + 1} debe ser una URL HTTP/HTTPS válida.`,
+      );
+    }
+  }
+
+  private async prepareCreationEvidence(
+    tenantId: string,
+    orderId: string,
+    lineIds: string[],
+    lines: CreateAdditionalServiceOrderDto["lines"],
+    evidenceByTemporaryLineKey: ReadonlyMap<
+      string,
+      AdditionalServiceCommercialCostEvidenceFile
+    >,
+  ): Promise<Map<number, PreparedAdditionalServiceCostEvidence>> {
+    if (evidenceByTemporaryLineKey.size === 0) return new Map();
+    if (!this.commercialCostEvidenceService) {
+      throw new InternalServerErrorException(
+        "ADDITIONAL_SERVICE_COST_EVIDENCE_SERVICE_UNAVAILABLE",
+      );
+    }
+
+    const prepared = new Map<number, PreparedAdditionalServiceCostEvidence>();
+    for (const [index, line] of lines.entries()) {
+      const temporaryLineKey = this.toNullableText(line.temporaryLineKey);
+      if (!temporaryLineKey) continue;
+      const file = evidenceByTemporaryLineKey.get(temporaryLineKey);
+      if (!file) continue;
+      prepared.set(
+        index,
+        await this.commercialCostEvidenceService.prepareForOrderCreation(
+          tenantId,
+          orderId,
+          lineIds[index],
+          file,
+        ),
+      );
+    }
+    return prepared;
+  }
+
+  private async uploadCreationEvidence(
+    preparedEvidence: ReadonlyMap<number, PreparedAdditionalServiceCostEvidence>,
+  ): Promise<PreparedAdditionalServiceCostEvidence[]> {
+    if (preparedEvidence.size === 0) return [];
+    if (!this.commercialCostEvidenceService) {
+      throw new InternalServerErrorException(
+        "ADDITIONAL_SERVICE_COST_EVIDENCE_SERVICE_UNAVAILABLE",
+      );
+    }
+
+    const uploaded: PreparedAdditionalServiceCostEvidence[] = [];
+    try {
+      for (const evidence of preparedEvidence.values()) {
+        await this.commercialCostEvidenceService.uploadPreparedForOrderCreation(
+          evidence,
+        );
+        uploaded.push(evidence);
+      }
+      return uploaded;
+    } catch (error) {
+      await this.cleanupUploadedCreationEvidence(uploaded);
+      throw error;
+    }
+  }
+
+  private async cleanupUploadedCreationEvidence(
+    evidence: readonly PreparedAdditionalServiceCostEvidence[],
+  ): Promise<void> {
+    if (!this.commercialCostEvidenceService) return;
+    await Promise.all(
+      evidence.map(async ({ objectKey }) => {
+        try {
+          await this.commercialCostEvidenceService!.cleanupPreparedForOrderCreation(
+            objectKey,
+          );
+        } catch (error) {
+          this.logger.error(
+            "Additional Service order cost-evidence cleanup failed",
+            error instanceof Error ? error.stack : undefined,
+          );
+        }
+      }),
     );
   }
 
@@ -1334,8 +1547,10 @@ export class AdditionalServicesService {
     },
     lines: CreateAdditionalServiceOrderLineData[],
     orderNumber: string,
+    orderId?: string,
   ): CreateAdditionalServiceOrderData {
     return {
+      ...(orderId ? { id: orderId } : {}),
       tenantId,
       orderNumber,
       idempotencyKey: dto.idempotencyKey.trim(),

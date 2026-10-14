@@ -1361,6 +1361,7 @@ export class PrismaAdditionalServicesRepository
     );
     const order = (await client.additionalServiceOrder.create({
       data: {
+        ...(data.id ? { id: data.id } : {}),
         tenantId: data.tenantId,
         orderNumber: data.orderNumber,
         idempotencyKey: data.idempotencyKey,
@@ -1387,7 +1388,7 @@ export class PrismaAdditionalServicesRepository
       "STEP 2 - Order INSERT",
     );
     const lines = data.lines.map((line) => ({
-      id: randomUUID(),
+      id: line.id ?? randomUUID(),
       tenantId: data.tenantId,
       orderId: order.id,
       additionalServiceCatalogId: line.additionalServiceCatalogId,
@@ -1398,6 +1399,11 @@ export class PrismaAdditionalServicesRepository
       supplierId: line.supplierId,
       supplierName: line.supplierName,
       supplierCostUrl: line.supplierCostUrl ?? null,
+      costEvidenceObjectKey: line.costEvidenceObjectKey ?? null,
+      costEvidenceOriginalFilename: line.costEvidenceOriginalFilename ?? null,
+      costEvidenceMimeType: line.costEvidenceMimeType ?? null,
+      costEvidenceByteSize: line.costEvidenceByteSize ?? null,
+      costEvidenceContentHash: line.costEvidenceContentHash ?? null,
       supplierCost: new Decimal(String(line.supplierCost)),
       supplierCostCurrency: line.supplierCostCurrency,
       quotationCurrency: line.quotationCurrency,
@@ -1965,6 +1971,15 @@ export class PrismaAdditionalServicesRepository
         supplierId: String(line.supplierId),
         supplierName: String(line.supplierName),
         supplierCostUrl: this.nullableString(line.supplierCostUrl),
+        hasCostEvidence: Boolean(line.costEvidenceObjectKey),
+        costEvidenceOriginalFilename: this.nullableString(
+          line.costEvidenceOriginalFilename,
+        ),
+        costEvidenceMimeType: this.nullableString(line.costEvidenceMimeType),
+        costEvidenceByteSize:
+          typeof line.costEvidenceByteSize === "number"
+            ? line.costEvidenceByteSize
+            : null,
         supplierCost: String(line.supplierCost),
         supplierCostCurrency:
           line.supplierCostCurrency as AdditionalServiceOrderRecord["lines"][number]["supplierCostCurrency"],

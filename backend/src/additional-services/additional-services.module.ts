@@ -30,6 +30,7 @@ import { AdditionalServiceOperationsIntakeOutboxProducer } from "./additional-se
 import { AdditionalServiceOperationalWorkSourceAdapter } from "./operations-read/additional-service-operational-work-source.adapter";
 import { OPERATIONAL_WORK_SOURCE_RECONCILIATION_READER } from "../operations/intake/operational-work-source-reconciliation.port";
 import { AdditionalServiceOperationalWorkSourceReconciliationAdapter } from "./operations-read/additional-service-operational-work-source-reconciliation.adapter";
+import { AdditionalServiceCommercialCostEvidenceService } from "./additional-service-commercial-cost-evidence.service";
 
 @Module({
   imports: [
@@ -55,6 +56,7 @@ import { AdditionalServiceOperationalWorkSourceReconciliationAdapter } from "./o
   providers: [
     AdditionalServicesService,
     AdditionalServicesPricingService,
+    AdditionalServiceCommercialCostEvidenceService,
     CatalogBootstrapService,
     SupplierRequestNotificationService,
     CommercialProposalPdfMapper,

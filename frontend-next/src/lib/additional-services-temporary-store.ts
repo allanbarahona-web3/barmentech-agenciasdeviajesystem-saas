@@ -238,6 +238,10 @@ let temporaryLineSourcing = new WeakMap<
   TemporaryAdditionalServiceLine,
   TemporaryLineSourcing
 >();
+let temporaryLineCostEvidence = new WeakMap<
+  TemporaryAdditionalServiceLine,
+  File
+>();
 let temporaryLinePricing = new Map<
   string,
   AdditionalServicePricingBreakdown
@@ -522,6 +526,10 @@ export function resetAdditionalServicesWorkflow() {
     TemporaryAdditionalServiceLine,
     TemporaryLineSourcing
   >();
+  temporaryLineCostEvidence = new WeakMap<
+    TemporaryAdditionalServiceLine,
+    File
+  >();
   temporaryLinePricing = new Map<
     string,
     AdditionalServicePricingBreakdown
@@ -562,6 +570,7 @@ export function removeTemporaryAdditionalServiceLine(
       if (temporaryLineBeingEdited === line) {
         temporaryLineBeingEdited = null;
       }
+      temporaryLineCostEvidence.delete(line);
       return;
     }
   }
@@ -607,6 +616,10 @@ export function replaceTemporaryAdditionalServiceLine(
       if (sourcing) {
         temporaryLineSourcing.set(updatedLine, sourcing);
       }
+      const costEvidence = temporaryLineCostEvidence.get(currentLine);
+      if (costEvidence) {
+        temporaryLineCostEvidence.set(updatedLine, costEvidence);
+      }
       temporaryLineBeingEdited = null;
       return;
     }
@@ -645,6 +658,24 @@ export function updateTemporaryAdditionalServiceLineSourcing(
     ...changes,
   });
   temporaryLinePricing.delete(getTemporaryAdditionalServiceLineId(line));
+}
+
+export function getTemporaryAdditionalServiceLineCostEvidence(
+  line: TemporaryAdditionalServiceLine,
+) {
+  return temporaryLineCostEvidence.get(line) ?? null;
+}
+
+export function setTemporaryAdditionalServiceLineCostEvidence(
+  line: TemporaryAdditionalServiceLine,
+  file: File | null,
+) {
+  orderIdempotencyKey = null;
+  if (file) {
+    temporaryLineCostEvidence.set(line, file);
+  } else {
+    temporaryLineCostEvidence.delete(line);
+  }
 }
 
 export function setTemporaryAdditionalServiceLinePricing(

@@ -67,6 +67,7 @@ export type AdditionalServiceDetails =
     };
 
 export interface CreateAdditionalServiceOrderLineInput {
+  temporaryLineKey: string;
   serviceCode: TemporaryAdditionalServiceLine['serviceType'];
   serviceDetailsVersion: 1;
   serviceDetails: AdditionalServiceDetails;
@@ -95,6 +96,11 @@ export interface CreateAdditionalServiceOrderInput {
 export interface CreateAdditionalServiceOrderResponse {
   orderId: string;
   status: 'DRAFT';
+}
+
+export interface AdditionalServiceOrderCostEvidenceInput {
+  temporaryLineKey: string;
+  file: File;
 }
 
 export type AdditionalServiceOrderParticipantRole =
@@ -186,6 +192,10 @@ export interface AdditionalServiceOrderLine {
   supplierId: string;
   supplierName: string;
   supplierCostUrl: string | null;
+  hasCostEvidence?: boolean;
+  costEvidenceOriginalFilename?: string | null;
+  costEvidenceMimeType?: string | null;
+  costEvidenceByteSize?: number | null;
   supplierCost: string;
   supplierCostCurrency: AdditionalServiceOrderCurrency;
   quotationCurrency: AdditionalServiceOrderCurrency;
@@ -273,13 +283,34 @@ export interface InPersonCommercialProposalApprovalResult {
   approvalMethod: 'IN_PERSON';
 }
 
-export function createAdditionalServiceOrder(
+export interface AdditionalServiceCostEvidenceAccess {
+  hasCostEvidence: true;
+  costEvidenceOriginalFilename: string;
+  costEvidenceMimeType: string;
+  costEvidenceByteSize: number;
+  signedUrl: string;
+  expiresInSeconds: number;
+}
+
+export async function createAdditionalServiceOrder(
   input: CreateAdditionalServiceOrderInput,
+  evidence: readonly AdditionalServiceOrderCostEvidenceInput[] = [],
 ): Promise<CreateAdditionalServiceOrderResponse> {
-  return apiPost<CreateAdditionalServiceOrderResponse>(
-    '/additional-services/orders',
-    input,
-  );
+  const formData = new FormData();
+  formData.append('payload', JSON.stringify(input));
+  evidence.forEach(({ temporaryLineKey, file }) => {
+    formData.append(`costEvidence.${temporaryLineKey}`, file);
+  });
+
+  const response = await fetchApi('/additional-services/orders', {
+    method: 'POST',
+    body: formData,
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.message || `API Error: ${response.statusText}`);
+  }
+  return response.json();
 }
 
 export function getAdditionalServiceOrders(
@@ -312,6 +343,21 @@ export function getAdditionalServiceOrder(
   return apiGet<AdditionalServiceOrder>(
     `/additional-services/orders/${encodeURIComponent(orderId)}`,
   );
+}
+
+export async function getAdditionalServiceCostEvidenceAccess(
+  orderId: string,
+  lineId: string,
+): Promise<AdditionalServiceCostEvidenceAccess> {
+  const response = await fetchApi(
+    `/additional-services/orders/${encodeURIComponent(orderId)}/lines/${encodeURIComponent(lineId)}/cost-evidence/access`,
+    { method: 'GET' },
+  );
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.message || `API Error: ${response.statusText}`);
+  }
+  return response.json();
 }
 
 export async function getCommercialProposalPreview(

@@ -7,6 +7,7 @@ export interface AdditionalServicePricingReviewEntry {
   participantName: string;
   serviceName: string;
   supplierName: string;
+  costSource: string;
   breakdown: AdditionalServicePricingBreakdown;
 }
 
@@ -98,6 +99,10 @@ export function AdditionalServicesPricingReview({
                   <div className={styles.fullRow}>
                     <dt>Proveedor</dt>
                     <dd>{entry.supplierName}</dd>
+                  </div>
+                  <div className={styles.fullRow}>
+                    <dt>Origen del costo</dt>
+                    <dd>{entry.costSource}</dd>
                   </div>
                   <div>
                     <dt>Costo del proveedor</dt>
