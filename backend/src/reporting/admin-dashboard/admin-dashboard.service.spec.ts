@@ -44,6 +44,14 @@ describe("AdminDashboardService", () => {
       receivedCount: 3,
       pendingVerificationCount: 4,
     });
+    expect(result.fiscal).toEqual({
+      submittedDocumentCount: 5,
+      acceptedDocumentCount: 3,
+      netSalesByCurrency: [
+        { currencyCode: "CRC", amount: "1000.00001" },
+        { currencyCode: "USD", amount: "137.62345" },
+      ],
+    });
     expect(result.dailyPayments).toEqual([
       { date: "2026-10-12", currencyCode: "CRC", amount: "1200", paymentCount: 1 },
       { date: "2026-10-12", currencyCode: "USD", amount: "17.25", paymentCount: 2 },
@@ -52,6 +60,31 @@ describe("AdminDashboardService", () => {
       orderCount: 3,
       totalByCurrency: [{ currencyCode: "CRC", amount: "10000", count: 1 }, { currencyCode: "USD", amount: "300", count: 2 }],
     });
+    expect(result.commercial).toEqual({
+      contractedSales: {
+        obligationCount: 4,
+        totalByCurrency: [{ currencyCode: "CRC", amount: "10000", count: 1 }, { currencyCode: "USD", amount: "100", count: 3 }],
+      },
+      averageContractTicketByCurrency: [
+        { currencyCode: "CRC", amount: "10000.00000", obligationCount: 1 },
+        { currencyCode: "USD", amount: "33.33333", obligationCount: 3 },
+      ],
+      passengerTrend: [
+        { month: "2025-11", passengerCount: 2 },
+        { month: "2025-12", passengerCount: 0 },
+        { month: "2026-01", passengerCount: 0 },
+        { month: "2026-02", passengerCount: 0 },
+        { month: "2026-03", passengerCount: 0 },
+        { month: "2026-04", passengerCount: 0 },
+        { month: "2026-05", passengerCount: 0 },
+        { month: "2026-06", passengerCount: 0 },
+        { month: "2026-07", passengerCount: 0 },
+        { month: "2026-08", passengerCount: 0 },
+        { month: "2026-09", passengerCount: 0 },
+        { month: "2026-10", passengerCount: 3 },
+      ],
+    });
+    expect(result.operations).toEqual({ activeTripsCount: 2, activePassengersCount: 4 });
     expect(result.topOverdueCustomers).toEqual([
       { customerId: "customer-a", customerName: "Ana", currencyCode: "USD", outstandingAmount: "12.5", receivableCount: 1, rank: 1 },
     ]);
@@ -66,16 +99,51 @@ describe("AdminDashboardService", () => {
     expect(prisma.payment.count).toHaveBeenCalledWith({ where: { tenantId: "tenant-a", status: "PENDING_VERIFICATION" } });
     expect(prisma.billingDocument.count).toHaveBeenNthCalledWith(1, { where: expect.objectContaining({ tenantId: "tenant-a", lifecycleStatus: "SUBMITTED" }) });
     expect(prisma.billingDocument.count).toHaveBeenNthCalledWith(2, { where: expect.objectContaining({ tenantId: "tenant-a", taxAuthorityStatus: "ACCEPTED" }) });
+    expect(prisma.billingDocument.groupBy).toHaveBeenCalledWith({
+      by: ["currencyCode", "documentTypeCode"],
+      where: {
+        tenantId: "tenant-a",
+        taxAuthorityStatus: "ACCEPTED",
+        fiscalIssueDate: { gte: new Date("2026-10-12T00:00:00.000Z"), lte: new Date("2026-10-12T00:00:00.000Z") },
+        documentTypeCode: { in: ["01", "03", "04"] },
+      },
+      _sum: { total: true },
+    });
     expect(prisma.salesOrder.groupBy).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ tenantId: "tenant-a" }) }));
     expect(costs.execute).toHaveBeenCalledWith(expect.objectContaining({ tenantId: "tenant-a", role: UserRole.ADMIN, period: { kind: "TODAY" }, read: { page: 1, pageSize: 1, filter: { sourceType: "OPERATIONAL_PURCHASE" } } }));
 
     const dailySql = prisma.$queryRaw.mock.calls[0][0] as { strings: readonly string[]; values: readonly unknown[] };
-    const topSql = prisma.$queryRaw.mock.calls[1][0] as { strings: readonly string[]; values: readonly unknown[] };
+    const contractedSalesSql = prisma.$queryRaw.mock.calls[1][0] as { strings: readonly string[]; values: readonly unknown[] };
+    const passengerTrendSql = prisma.$queryRaw.mock.calls[2][0] as { strings: readonly string[]; values: readonly unknown[] };
+    const activePassengersSql = prisma.$queryRaw.mock.calls[3][0] as { strings: readonly string[]; values: readonly unknown[] };
+    const topSql = prisma.$queryRaw.mock.calls[4][0] as { strings: readonly string[]; values: readonly unknown[] };
     expect(dailySql.strings.join(" ")).toContain("AT TIME ZONE");
     expect(dailySql.values).toContain("America/Costa_Rica");
     expect(dailySql.values).toContain("tenant-a");
     expect(topSql.values).toContain("tenant-a");
     expect(topSql.strings.join(" ")).toContain("PARTITION BY \"currencyCode\"");
+    expect(contractedSalesSql.values).toContain("tenant-a");
+    expect(contractedSalesSql.strings.join(" ")).toContain('obligation."sourceType" = \'CONTRACT\'');
+    expect(contractedSalesSql.strings.join(" ")).toContain('obligation."originalAmount"');
+    expect(contractedSalesSql.strings.join(" ")).toContain('contract."cancelledAt" IS NULL');
+    expect(contractedSalesSql.strings.join(" ")).toContain('contract."status" <> \'CANCELLED\'');
+    expect(contractedSalesSql.strings.join(" ")).not.toContain("SalesOrder");
+    expect(contractedSalesSql.strings.join(" ")).not.toContain("BillingDocument");
+    expect(passengerTrendSql.values).toContain("tenant-a");
+    expect(passengerTrendSql.values).toContain("America/Costa_Rica");
+    expect(passengerTrendSql.strings.join(" ")).toContain("COUNT(DISTINCT (source.\"contractId\", source.\"travelPackageParticipantId\"))");
+    expect(passengerTrendSql.strings.join(" ")).toContain("AT TIME ZONE");
+    expect(passengerTrendSql.strings.join(" ")).not.toContain('contract."cancelledAt"');
+    expect(passengerTrendSql.strings.join(" ")).not.toContain('source."sourceRole"');
+    expect(prisma.travelPackage.count).toHaveBeenCalledWith({ where: { tenantId: "tenant-a", status: "OPEN" } });
+    expect(activePassengersSql.values).toContain("tenant-a");
+    expect(activePassengersSql.strings.join(" ")).toContain('COUNT(DISTINCT participant."id")');
+    expect(activePassengersSql.strings.join(" ")).toContain('travel_package."status" = \'OPEN\'');
+    expect(activePassengersSql.strings.join(" ")).toContain('obligation."sourceType" = \'CONTRACT\'');
+    expect(activePassengersSql.strings.join(" ")).toContain('contract."cancelledAt" IS NULL');
+    expect(activePassengersSql.strings.join(" ")).not.toContain('participant."role"');
+    expect(activePassengersSql.strings.join(" ")).not.toContain("InternalTrip");
+    expect(activePassengersSql.strings.join(" ")).not.toContain("OperationalFulfillment");
   });
 
   it("keeps all tenant B values out of tenant A query predicates", async () => {
@@ -91,7 +159,12 @@ describe("AdminDashboardService", () => {
     for (const call of prisma.billingDocument.count.mock.calls) {
       expect(call[0].where.tenantId).toBe("tenant-a");
     }
+    expect(prisma.billingDocument.groupBy.mock.calls[0][0].where.tenantId).toBe("tenant-a");
     expect(prisma.salesOrder.groupBy.mock.calls[0][0].where.tenantId).toBe("tenant-a");
+    expect(prisma.travelPackage.count.mock.calls[0][0].where.tenantId).toBe("tenant-a");
+    for (const call of prisma.$queryRaw.mock.calls) {
+      expect((call[0] as { values: readonly unknown[] }).values).toContain("tenant-a");
+    }
     expect(costs.execute).toHaveBeenCalledWith(expect.objectContaining({ tenantId: "tenant-a" }));
   });
 
@@ -146,17 +219,37 @@ function dashboardPrisma() {
       ]),
       count: jest.fn().mockResolvedValue(4),
     },
-    billingDocument: { count: jest.fn().mockResolvedValueOnce(5).mockResolvedValueOnce(3) },
+    billingDocument: {
+      count: jest.fn().mockResolvedValueOnce(5).mockResolvedValueOnce(3),
+      groupBy: jest.fn().mockResolvedValue([
+        { currencyCode: "USD", documentTypeCode: "01", _sum: { total: decimal("100.12345") } },
+        { currencyCode: "USD", documentTypeCode: "04", _sum: { total: decimal("50") } },
+        { currencyCode: "USD", documentTypeCode: "03", _sum: { total: decimal("12.5") } },
+        { currencyCode: "CRC", documentTypeCode: "01", _sum: { total: decimal("1000.00001") } },
+      ]),
+    },
     salesOrder: {
       groupBy: jest.fn().mockResolvedValue([
         { currency: "USD", _sum: { total: decimal("300") }, _count: { id: 2 } },
         { currency: "CRC", _sum: { total: decimal("10000") }, _count: { id: 1 } },
       ]),
     },
+    travelPackage: { count: jest.fn().mockResolvedValue(2) },
     $queryRaw: jest.fn()
       .mockResolvedValueOnce([
         { date: "2026-10-12", currencyCode: "CRC", amount: decimal("1200"), paymentCount: 1n },
         { date: "2026-10-12", currencyCode: "USD", amount: decimal("17.25"), paymentCount: 2n },
+      ])
+      .mockResolvedValueOnce([
+        { currencyCode: "CRC", amount: decimal("10000"), obligationCount: 1n },
+        { currencyCode: "USD", amount: decimal("100"), obligationCount: 3n },
+      ])
+      .mockResolvedValueOnce([
+        { month: "2025-11", passengerCount: 2n },
+        { month: "2026-10", passengerCount: 3n },
+      ])
+      .mockResolvedValueOnce([
+        { activePassengersCount: 4n },
       ])
       .mockResolvedValueOnce([
         { customerId: "customer-a", customerName: "Ana", currencyCode: "USD", outstandingAmount: decimal("12.5"), receivableCount: 1n, rank: 1n },

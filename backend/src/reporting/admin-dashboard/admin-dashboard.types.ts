@@ -6,6 +6,12 @@ export type DashboardCurrencyAmount = {
   count: number;
 };
 
+export type DashboardAverageCurrencyAmount = {
+  currencyCode: string;
+  amount: string;
+  obligationCount: number;
+};
+
 export type AdminDashboardResponse = {
   period: {
     kind: AdminDashboardPeriodKind;
@@ -27,10 +33,29 @@ export type AdminDashboardResponse = {
   fiscal: {
     submittedDocumentCount: number;
     acceptedDocumentCount: number;
+    netSalesByCurrency: Array<{
+      currencyCode: string;
+      amount: string;
+    }>;
   };
   sales: {
     orderCount: number;
     totalByCurrency: DashboardCurrencyAmount[];
+  };
+  commercial: {
+    contractedSales: {
+      obligationCount: number;
+      totalByCurrency: DashboardCurrencyAmount[];
+    };
+    averageContractTicketByCurrency: DashboardAverageCurrencyAmount[];
+    passengerTrend: Array<{
+      month: string;
+      passengerCount: number;
+    }>;
+  };
+  operations: {
+    activeTripsCount: number;
+    activePassengersCount: number;
   };
   operationalCosts: {
     actualByCurrency: Array<{

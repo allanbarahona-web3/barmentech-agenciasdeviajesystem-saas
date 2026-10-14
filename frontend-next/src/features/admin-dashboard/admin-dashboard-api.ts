@@ -27,8 +27,18 @@ export type AdminDashboardResponse = {
     receivedCount: number;
     pendingVerificationCount: number;
   };
-  fiscal: { submittedDocumentCount: number; acceptedDocumentCount: number };
+  fiscal: {
+    submittedDocumentCount: number;
+    acceptedDocumentCount: number;
+    netSalesByCurrency: Array<{ currencyCode: string; amount: string }>;
+  };
   sales: { orderCount: number; totalByCurrency: DashboardCurrencyAmount[] };
+  commercial: {
+    contractedSales: { obligationCount: number; totalByCurrency: DashboardCurrencyAmount[] };
+    averageContractTicketByCurrency: Array<{ currencyCode: string; amount: string; obligationCount: number }>;
+    passengerTrend: Array<{ month: string; passengerCount: number }>;
+  };
+  operations: { activeTripsCount: number; activePassengersCount: number };
   operationalCosts: {
     actualByCurrency: Array<{ currencyCode: string; purchaseCount: number; subtotal: string; tax: string; total: string }>;
   };
