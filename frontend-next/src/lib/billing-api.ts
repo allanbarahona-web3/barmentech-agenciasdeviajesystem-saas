@@ -33,7 +33,6 @@ export type BillingListItem = {
     at: string;
   } | null;
 };
-
 export type BillingAccount = {
   invoice: {
     id: string;
@@ -138,47 +137,6 @@ export type BillingAuditItem = {
   sourceIp: string | null;
   userAgent: string | null;
   createdAt: string;
-};
-
-export type DashboardMetrics = {
-  period: string;
-  startDate: string;
-  currentDate: string;
-  summary: {
-    invoices: {
-      byStatus: Array<{ status: string; count: number }>;
-      overdue: number;
-    };
-    pendingTasks: {
-      payments: number;
-      receipts: number;
-      total: number;
-    };
-    period: {
-      invoicesCount: number;
-      invoicedAmount: number;
-      collectedAmount: number;
-      balanceAmount: number;
-      paymentsCount: number;
-      paymentsAmount: number;
-    };
-  };
-  charts: {
-    dailyPayments: Array<{
-      day: string;
-      total: number;
-      count: number;
-    }>;
-  };
-  alerts: {
-    topOverdueClients: Array<{
-      id: string;
-      fullName: string;
-      email: string;
-      totalBalance: number;
-      invoiceCount: number;
-    }>;
-  };
 };
 
 const parseErrorMessage = (payload: unknown, fallback: string): string => {
@@ -355,15 +313,4 @@ export const listBillingAudit = async (params: {
   });
 
   return Array.isArray(payload.items) ? payload.items : [];
-};
-
-export const getBillingDashboardMetrics = async (params: { period?: string; from?: string; to?: string } = {}): Promise<DashboardMetrics> => {
-  const query = new URLSearchParams();
-  if (params.period) query.set("period", params.period);
-  if (params.from) query.set("from", params.from);
-  if (params.to) query.set("to", params.to);
-
-  return apiFetchJson<DashboardMetrics>(`/billing/admin/dashboard-metrics?${query.toString()}`, {
-    method: "GET",
-  });
 };

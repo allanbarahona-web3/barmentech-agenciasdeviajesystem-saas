@@ -38,3 +38,13 @@ describe("BillingService legacy bootstrap retirement", () => {
     expect(serviceSource).toContain("async processVerifiedPaymentReceiptJob(");
   });
 });
+
+describe("BillingService legacy dashboard retirement", () => {
+  it("removes the obsolete unscoped dashboard aggregate without affecting historical billing reads", () => {
+    const serviceSource = readFileSync(join(__dirname, "billing.service.ts"), "utf8");
+
+    expect(serviceSource).not.toContain("async getDashboardMetrics(");
+    expect(serviceSource).toContain("async getContractAccount(");
+    expect(serviceSource).toContain("async getCreditNotePdfUrl(");
+  });
+});

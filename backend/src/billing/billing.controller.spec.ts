@@ -43,11 +43,8 @@ describe("BillingController readonly accountant authorization", () => {
     }
   });
 
-  it("keeps dashboard metrics ADMIN-only", () => {
-    expect(canActivate(UserRole.ADMIN, "getDashboardMetrics")).toBe(true);
-    for (const role of [UserRole.CONTADOR, UserRole.FACTURACION_COBROS, UserRole.AGENT]) {
-      expect(() => canActivate(role, "getDashboardMetrics")).toThrow(ForbiddenException);
-    }
+  it("removes the obsolete legacy dashboard-metrics handler", () => {
+    expect(BillingController.prototype).not.toHaveProperty("getDashboardMetrics");
   });
 
   it("keeps Billing audit ADMIN-only", () => {

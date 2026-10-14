@@ -222,25 +222,6 @@ export class BillingController {
     return { pendingReceipts, contractsPendingSignature };
   }
 
-  @Get("admin/dashboard-metrics")
-  @Roles("ADMIN")
-  @UseGuards(RolesGuard)
-  getDashboardMetrics(
-    @Req()
-    req: {
-      user: { id: string; email: string; fullName: string };
-    },
-    @Query("period") period?: string,
-    @Query("from") from?: string,
-    @Query("to") to?: string,
-  ) {
-    return this.billingService.getDashboardMetrics(req.user, { 
-      period: period || "month",
-      from,
-      to,
-    });
-  }
-
   @Get("credit-notes/:creditNoteId/pdf")
   getCreditNotePdfUrl(
     @Req()

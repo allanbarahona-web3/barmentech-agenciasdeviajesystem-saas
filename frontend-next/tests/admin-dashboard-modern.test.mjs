@@ -6,10 +6,11 @@ const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
 const page = () => read('../src/app/admin/dashboard/page.tsx');
 const dashboard = () => read('../src/features/admin-dashboard/admin-dashboard-content.tsx');
 const api = () => read('../src/features/admin-dashboard/admin-dashboard-api.ts');
+const billingApi = () => read('../src/lib/billing-api.ts');
 
 test('Admin Dashboard uses only the modern reporting endpoint', () => {
   assert.match(api(), /fetchApi\("\/reporting\/admin-dashboard"/);
-  assert.doesNotMatch(page() + dashboard(), /billing\/admin\/dashboard-metrics|getBillingDashboardMetrics/);
+  assert.doesNotMatch(page() + dashboard() + billingApi(), /billing\/admin\/dashboard-metrics|getBillingDashboardMetrics|DashboardMetrics/);
 });
 
 test('period selector maps only to the supported dashboard periods and custom dates', () => {
