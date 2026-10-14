@@ -35,7 +35,6 @@ import {
 } from '@/lib/additional-services-temporary-store';
 import {
   costEvidenceFileError,
-  costSourceIndicator,
   costSourceValidationMessage,
 } from '@/lib/additional-services-cost-evidence';
 import {
@@ -64,12 +63,14 @@ function CommercialFields({
   suppliersLoading,
   suppliersError,
   travelType,
+  costSourceValidationAttempt,
 }: {
   line: TemporaryAdditionalServiceLine;
   suppliers: AdditionalServiceSupplier[];
   suppliersLoading: boolean;
   suppliersError: string | null;
   travelType: 'INTERNATIONAL' | 'INTERNAL' | null;
+  costSourceValidationAttempt: number;
 }) {
   const requestFieldId = useId();
   const evidenceFieldId = useId();
@@ -80,6 +81,7 @@ function CommercialFields({
     getTemporaryAdditionalServiceLineCostEvidence(line),
   );
   const [evidenceError, setEvidenceError] = useState<string | null>(null);
+  const [showCostSourceError, setShowCostSourceError] = useState(false);
   const [requestModalOpen, setRequestModalOpen] = useState(false);
   const [requestComingSoonOpen, setRequestComingSoonOpen] = useState(false);
   const [requestedSupplierName, setRequestedSupplierName] = useState('');
@@ -95,6 +97,7 @@ function CommercialFields({
   ) {
     updateTemporaryAdditionalServiceLineSourcing(line, changes);
     setSourcing((current) => ({ ...current, ...changes }));
+    setShowCostSourceError(false);
   }
 
   function updateEvidence(file: File | null) {
@@ -102,23 +105,32 @@ function CommercialFields({
     const error = costEvidenceFileError(file);
     if (error) {
       setEvidenceError(error);
+      setShowCostSourceError(false);
       return;
     }
     setTemporaryAdditionalServiceLineCostEvidence(line, file);
     setEvidence(file);
     setEvidenceError(null);
+    setShowCostSourceError(false);
   }
 
   function removeEvidence() {
     setTemporaryAdditionalServiceLineCostEvidence(line, null);
     setEvidence(null);
     setEvidenceError(null);
+    setShowCostSourceError(false);
   }
 
-  const costSourceError = costSourceValidationMessage(
-    sourcing.providerUrl,
-    evidence,
-  );
+  useEffect(() => {
+    if (!costSourceValidationAttempt) return;
+    setShowCostSourceError(
+      Boolean(costSourceValidationMessage(sourcing.providerUrl, evidence)),
+    );
+  }, [costSourceValidationAttempt]);
+
+  const costSourceError = showCostSourceError
+    ? costSourceValidationMessage(sourcing.providerUrl, evidence)
+    : null;
 
   function closeRequestModal() {
     if (requesting) {
@@ -215,7 +227,9 @@ function CommercialFields({
       </TableCell>
       <TableCell className={styles.urlCell} data-label="URL del costo">
         <input
-          className={styles.commercialInput}
+          className={`${styles.commercialInput} ${
+            costSourceError ? styles.commercialInputError : ''
+          }`}
           type="url"
           inputMode="url"
           value={sourcing.providerUrl}
@@ -238,7 +252,11 @@ function CommercialFields({
             event.target.value = '';
           }}
         />
-        <div className={styles.evidenceControls}>
+        <div
+          className={`${styles.evidenceControls} ${
+            costSourceError ? styles.evidenceControlsError : ''
+          }`}
+        >
           <label htmlFor={evidenceFieldId} className={styles.evidenceButton}>
             {evidence ? 'Reemplazar' : 'Adjuntar'}
           </label>
@@ -253,7 +271,7 @@ function CommercialFields({
           ) : null}
         </div>
         <p className={styles.evidenceName} title={evidence?.name}>
-          {evidence ? evidence.name : costSourceIndicator(sourcing.providerUrl, null)}
+          {evidence ? evidence.name : 'Sin evidencia adjunta'}
         </p>
         {evidenceError ?? costSourceError ? (
           <p className={styles.evidenceError} role="alert">
@@ -420,8 +438,10 @@ function CommercialFields({
 
 export function AdditionalServicesLinesTable({
   mode,
+  costSourceValidationAttempt = 0,
 }: {
   mode: 'summary' | 'pricing';
+  costSourceValidationAttempt?: number;
 }) {
   const router = useRouter();
   const [lines, setLines] = useState(() =>
@@ -540,7 +560,18 @@ export function AdditionalServicesLinesTable({
                       <HelpTooltip content="Aquí debe ir la URL de donde tomas el costo del adicional." />
                     </span>
                   </TableHead>
-                  <TableHead className={styles.tableHead}>Evidencia</TableHead>
+                  <TableHead className={styles.tableHead}>
+                    <span
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                      }}
+                    >
+                      Evidencia
+                      <HelpTooltip content="Debe indicar una URL del costo o adjuntar una imagen como respaldo." />
+                    </span>
+                  </TableHead>
                   <TableHead className={styles.tableHead}>
                     Costo <span aria-hidden="true">*</span>
                   </TableHead>
@@ -602,6 +633,7 @@ export function AdditionalServicesLinesTable({
                     suppliersLoading={suppliersLoading}
                     suppliersError={suppliersError}
                     travelType={travelType}
+                    costSourceValidationAttempt={costSourceValidationAttempt}
                   />
                 )}
                 <TableCell className={styles.actionCell} data-label="Editar">

@@ -71,8 +71,26 @@ test('the pricing table provides compact evidence selection, replacement, and re
   assert.match(linesTable, /accept="image\/jpeg,image\/png,image\/webp"/);
   assert.match(linesTable, /Reemplazar/);
   assert.match(linesTable, /Quitar/);
+  assert.match(linesTable, /Sin evidencia adjunta/);
   assert.match(linesTable, /setTemporaryAdditionalServiceLineCostEvidence\(line, null\)/);
-  assert.match(linesTable, /Proveedor[\s\S]{0,900}URL del costo[\s\S]{0,300}Evidencia/);
+  assert.match(linesTable, /Proveedor[\s\S]{0,900}URL del costo[\s\S]{0,700}Evidencia/);
+});
+
+test('cost-source errors appear only after Continue and clear while the row is corrected', () => {
+  assert.match(pricingPage, /costSourceValidationAttempt/);
+  assert.match(
+    pricingPage,
+    /setCostSourceValidationAttempt\(\(attempt\) => attempt \+ 1\)/,
+  );
+  assert.match(linesTable, /const \[showCostSourceError, setShowCostSourceError\] = useState\(false\)/);
+  assert.match(linesTable, /if \(!costSourceValidationAttempt\) return/);
+  assert.match(linesTable, /setShowCostSourceError\(false\)/);
+  assert.match(linesTable, /costSourceError = showCostSourceError/);
+  assert.doesNotMatch(linesTable, /costSourceIndicator/);
+});
+
+test('the evidence header uses the existing help tooltip with source guidance', () => {
+  assert.match(linesTable, /Evidencia[\s\S]{0,250}<HelpTooltip content="Debe indicar una URL del costo o adjuntar una imagen como respaldo\."/);
 });
 
 test('the internal review shows safe source status without exposing object keys', () => {

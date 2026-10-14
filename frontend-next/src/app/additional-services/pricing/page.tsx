@@ -64,6 +64,8 @@ export default function AdditionalServicesPricingPage() {
   const router = useRouter();
   const [calculating, setCalculating] = useState(false);
   const [calculationError, setCalculationError] = useState<string | null>(null);
+  const [costSourceValidationAttempt, setCostSourceValidationAttempt] =
+    useState(0);
   const [unavailableServiceCodes, setUnavailableServiceCodes] = useState<Set<string> | null>(null);
 
   useEffect(() => {
@@ -166,6 +168,7 @@ export default function AdditionalServicesPricingPage() {
       return;
     }
 
+    setCostSourceValidationAttempt((attempt) => attempt + 1);
     setCalculating(true);
     setCalculationError(null);
 
@@ -646,7 +649,10 @@ export default function AdditionalServicesPricingPage() {
               </label>
             </div>
           </fieldset>
-          <AdditionalServicesLinesTable mode="pricing" />
+          <AdditionalServicesLinesTable
+            mode="pricing"
+            costSourceValidationAttempt={costSourceValidationAttempt}
+          />
           {unavailableServiceCodes && getTemporaryAdditionalServiceLines().some(
             (line) => unavailableServiceCodes.has(line.serviceType),
           ) && (

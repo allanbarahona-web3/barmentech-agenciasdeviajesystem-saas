@@ -179,6 +179,16 @@
   outline: 2px solid rgba(37, 99, 235, 0.16);
 }
 
+.commercialInputError {
+  border-color: #dc2626;
+  background: #fffafa;
+}
+
+.commercialInputError:focus {
+  border-color: #dc2626;
+  outline-color: rgba(220, 38, 38, 0.16);
+}
+
 .evidenceFileInput {
   position: absolute;
   width: 1px;
@@ -195,6 +205,11 @@
   gap: 6px;
 }
 
+.evidenceControlsError .evidenceButton {
+  border-color: #dc2626;
+  background: #fffafa;
+}
+
 .evidenceButton,
 .evidenceRemoveButton {
   display: inline-flex;
@@ -209,15 +224,15 @@
 }
 
 .evidenceButton {
-  border: 1px solid #93c5fd;
-  background: #eff6ff;
-  color: #1d4ed8;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #172554;
 }
 
 .evidenceRemoveButton {
-  border: 1px solid #fecaca;
-  background: #fff1f2;
-  color: #b91c1c;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #475569;
 }
 
 .evidenceName,
