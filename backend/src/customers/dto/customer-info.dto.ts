@@ -14,7 +14,8 @@ export class CustomerInfoDto {
   emergencyContactPhone!: string | null;
   createdAt!: Date;
   updatedAt!: Date;
-  dateOfBirth!: Date | null;
+  dateOfBirth!: string | null;
+  age!: number | null;
   nationality!: string | null;
   occupation!: string | null;
   maritalStatus!: string | null;

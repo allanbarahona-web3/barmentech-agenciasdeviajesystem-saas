@@ -12,6 +12,8 @@ import { formatFinanceMoneyDisplay } from '@/lib/finance-money-display';
 import { ContractFinanceDrawer } from '@/features/contracts-finance/contract-finance-drawer';
 import { CustomerAccountStatementModal } from '@/app/finance/accounts-receivable/customer-account-statement';
 import { CustomerEditModal, CustomerDocumentUploadModal } from '@/features/customers/components';
+import { getDuplicateIdentificationErrorPresentation } from '@/features/customers/customer-request-error';
+import { isMinorCustomerAge } from '@/features/customers/customer-age-presentation';
 import { CustomerContractPaymentIntakeSheet, CustomerInvoicePaymentIntakeSheet } from '@/features/finance/customer-invoice-payment-intake-sheet';
 import { CustomerPaymentsReceipts } from '@/features/finance/customer-payments-receipts';
 import AttachmentViewer from '@/components/attachment-viewer';
@@ -32,7 +34,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { FormField } from '@/components/patterns/form-field';
 import { PageHeader } from '@/components/patterns/page-header';
 import { SectionCard } from '@/components/patterns/section-card';
-import { ArrowLeft, ChevronDown, ClipboardList, Eye, FileText, FolderOpen, Info, Pencil, Plus, ReceiptText, RefreshCw, StickyNote, Trash2, UserRound, WalletCards } from 'lucide-react';
+import { ArrowLeft, Baby, ChevronDown, ClipboardList, Eye, FileText, FolderOpen, Info, Pencil, Plus, ReceiptText, RefreshCw, StickyNote, Trash2, UserRound, WalletCards } from 'lucide-react';
 
 export default function CustomerProfilePage() {
   const router = useRouter();
@@ -399,6 +401,8 @@ export default function CustomerProfilePage() {
     address: string;
     emergencyContactName: string;
     emergencyContactPhone: string;
+    emergencyContactRelationship?: string | null;
+    dateOfBirth?: string | null;
   }) {
     if (!profile) return;
 
@@ -418,6 +422,8 @@ export default function CustomerProfilePage() {
         address: formData.address.trim() || undefined,
         emergencyContactName: formData.emergencyContactName.trim() || undefined,
         emergencyContactPhone: formData.emergencyContactPhone.trim() || undefined,
+        emergencyContactRelationship: formData.emergencyContactRelationship ?? null,
+        dateOfBirth: formData.dateOfBirth ?? null,
       };
 
       const updatedProfile = await updateCustomer(customerId, updateData);
@@ -427,6 +433,10 @@ export default function CustomerProfilePage() {
       setLoadingModalState('success');
       setLoadingModalMessage('✅ Cliente actualizado exitosamente');
     } catch (err: unknown) {
+      if (getDuplicateIdentificationErrorPresentation(err)) {
+        setLoadingModalOpen(false);
+        throw err;
+      }
       const errorMessage = err instanceof Error ? err.message : 'Error al actualizar cliente';
       setLoadingModalState('error');
       setLoadingModalMessage(errorMessage);
@@ -770,6 +780,7 @@ export default function CustomerProfilePage() {
 
   const { customer, contracts, statistics, documents } = profile;
   const isMinor = profile.participationRole === 'MINOR';
+  const isCustomerMinor = isMinorCustomerAge(customer.age);
   const sessionRole = String(session?.user?.role ?? '').toUpperCase();
   const canViewAcceptedInvoice = ['ADMIN', 'FACTURACION_COBROS', 'CONTADOR', 'AGENT'].includes(sessionRole);
   const canViewInvoiceFinancialDetail = ['ADMIN', 'FACTURACION_COBROS', 'CONTADOR'].includes(sessionRole);
@@ -834,8 +845,7 @@ export default function CustomerProfilePage() {
       <PageHeader
         className="mb-6"
         eyebrow={isMinor ? 'Pasajero menor' : 'Perfil de cliente'}
-        title={<span className="flex items-center gap-3"><IconBadge tone="primary"><UserRound aria-hidden="true" /></IconBadge>{customer.fullName}</span>}
-        description={[customer.idNumber, customer.email].filter(Boolean).join(' · ')}
+        title={<span className="flex items-center gap-3"><IconBadge tone="primary"><UserRound aria-hidden="true" /></IconBadge><span className="flex min-w-0 flex-col"><span className="flex min-w-0 items-center gap-2"><span className="truncate">{customer.fullName}</span>{isCustomerMinor ? <Baby aria-hidden="true" className="size-4 shrink-0 text-purple-700" /> : null}</span>{customer.age != null ? <span className="text-sm font-normal text-muted-foreground">{customer.age} años</span> : null}</span></span>}
         meta={
           <div className="flex flex-wrap items-center gap-2">
             {isMinor ? <Badge variant="warning">Bajo responsabilidad de un adulto</Badge> : null}
@@ -884,16 +894,33 @@ export default function CustomerProfilePage() {
           title={<span className="flex items-center gap-2"><IconBadge tone="primary" size="sm"><UserRound aria-hidden="true" /></IconBadge>{isMinor ? 'Información del pasajero' : 'Información del cliente'}</span>}
           actions={<Button type="button" variant="outline" size="sm" onClick={handleEnterEditMode}><Pencil aria-hidden="true" />Editar</Button>}
         >
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
-            <div className="sm:col-span-2 lg:col-span-1"><p className="text-xs font-medium text-muted-foreground">Nombre completo</p><p className="mt-1 text-sm font-medium text-foreground">{customer.fullName}</p></div>
-            <div><p className="text-xs font-medium text-muted-foreground">Cédula/ID</p><p className="mt-1 text-sm text-foreground">{customer.idNumber}</p></div>
-            <div><p className="text-xs font-medium text-muted-foreground">Tipo de identificación</p><p className="mt-1 text-sm text-foreground">{getClientIdentificationTypeLabel(customer.idType)}</p></div>
-            <div className="sm:col-span-2 lg:col-span-1"><p className="text-xs font-medium text-muted-foreground">Email</p><p className="mt-1 break-words text-sm text-foreground">{customer.email || '-'}</p></div>
-            <div><p className="text-xs font-medium text-muted-foreground">Teléfono</p><p className="mt-1 text-sm text-foreground">{customer.phone || '-'}</p></div>
-            <div><p className="text-xs font-medium text-muted-foreground">Estado civil</p><p className="mt-1 text-sm text-foreground">{customer.maritalStatus || '-'}</p></div>
-            <div><p className="text-xs font-medium text-muted-foreground">Contacto de emergencia</p><p className="mt-1 text-sm text-foreground">{customer.emergencyContactName || '-'}</p></div>
-            <div><p className="text-xs font-medium text-muted-foreground">Teléfono de emergencia</p><p className="mt-1 text-sm text-foreground">{customer.emergencyContactPhone || '-'}</p></div>
-            <div><p className="text-xs font-medium text-muted-foreground">Cliente desde</p><p className="mt-1 text-sm text-foreground">{formatDate(customer.createdAt)}</p></div>
+          <div className="grid gap-6 md:grid-cols-2">
+            <section className="space-y-4">
+              <h3 className="text-sm font-semibold text-foreground">Identidad y perfil</h3>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="sm:col-span-2"><p className="text-xs font-medium text-muted-foreground">Nombre completo</p><p className="mt-1 text-sm font-medium text-foreground">{customer.fullName}{customer.age != null ? <span className="font-normal text-muted-foreground"> · {customer.age} años</span> : null}</p></div>
+                <div><p className="text-xs font-medium text-muted-foreground">Edad</p><p className="mt-1 text-sm text-foreground">{customer.age != null ? `${customer.age} años` : '-'}</p></div>
+                <div><p className="text-xs font-medium text-muted-foreground">Cédula/ID</p><p className="mt-1 text-sm text-foreground">{customer.idNumber}</p></div>
+                <div><p className="text-xs font-medium text-muted-foreground">Tipo de identificación</p><p className="mt-1 text-sm text-foreground">{getClientIdentificationTypeLabel(customer.idType)}</p></div>
+                <div><p className="text-xs font-medium text-muted-foreground">Fecha de nacimiento</p><p className="mt-1 text-sm text-foreground">{customer.dateOfBirth ? formatBusinessDate(customer.dateOfBirth) : '-'}</p></div>
+                <div><p className="text-xs font-medium text-muted-foreground">Estado civil</p><p className="mt-1 text-sm text-foreground">{customer.maritalStatus || '-'}</p></div>
+                <div><p className="text-xs font-medium text-muted-foreground">Nacionalidad</p><p className="mt-1 text-sm text-foreground">{customer.nationality || '-'}</p></div>
+                <div><p className="text-xs font-medium text-muted-foreground">Ocupación</p><p className="mt-1 text-sm text-foreground">{customer.occupation || '-'}</p></div>
+                <div><p className="text-xs font-medium text-muted-foreground">Cliente desde</p><p className="mt-1 text-sm text-foreground">{formatDate(customer.createdAt)}</p></div>
+              </div>
+            </section>
+            <section className="space-y-4">
+              <h3 className="text-sm font-semibold text-foreground">Contacto y emergencia</h3>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="sm:col-span-2"><p className="text-xs font-medium text-muted-foreground">Email</p><p className="mt-1 break-words text-sm text-foreground">{customer.email || '-'}</p></div>
+                <div><p className="text-xs font-medium text-muted-foreground">Teléfono</p><p className="mt-1 text-sm text-foreground">{customer.phone || '-'}</p></div>
+                <div className="sm:col-span-2"><p className="text-xs font-medium text-muted-foreground">Dirección</p><p className="mt-1 text-sm text-foreground">{customer.address || '-'}</p></div>
+                <div><p className="text-xs font-medium text-muted-foreground">Contacto de emergencia — nombre</p><p className="mt-1 text-sm text-foreground">{customer.emergencyContactName || '-'}</p></div>
+                <div><p className="text-xs font-medium text-muted-foreground">Contacto de emergencia — teléfono</p><p className="mt-1 text-sm text-foreground">{customer.emergencyContactPhone || '-'}</p></div>
+                <div className="sm:col-span-2"><p className="text-xs font-medium text-muted-foreground">Contacto de emergencia — parentesco</p><p className="mt-1 text-sm text-foreground">{customer.emergencyContactRelationship || '-'}</p></div>
+                <div><p className="text-xs font-medium text-muted-foreground">Estado del cliente</p><p className="mt-1 text-sm text-foreground">{customer.customerStatus || '-'}</p></div>
+              </div>
+            </section>
           </div>
         </SectionCard>
 
@@ -994,199 +1021,6 @@ export default function CustomerProfilePage() {
           </div>
         )}
       </SectionCard>
-
-      {/* Section 4: Additional Profile Information */}
-      {(customer.dateOfBirth || customer.nationality || customer.occupation || customer.address || 
-        customer.city || customer.country || customer.postalCode || customer.secondaryEmail || 
-        customer.secondaryPhone || customer.emergencyContactRelationship || customer.emergencyContactEmail || 
-        customer.leadSource || customer.lastContactDate || customer.nextFollowUpDate || 
-        customer.preferredLanguage || customer.tags || customer.bloodType || customer.allergies || 
-        customer.medicalConditions || customer.medications) && (
-        <SectionCard className="mb-6" title={<span className="flex items-center gap-2"><IconBadge tone="primary" size="sm"><UserRound aria-hidden="true" /></IconBadge>Información adicional del perfil</span>}>
-          <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
-            {/* Personal Information */}
-            {(customer.dateOfBirth || customer.nationality || customer.occupation || customer.preferredLanguage || customer.bloodType) && (
-              <div>
-                <h3 style={{ fontSize: '14px', fontWeight: '600', color: '#6b7280', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                  Información Personal
-                </h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {customer.dateOfBirth && (
-                    <div>
-                      <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '2px' }}>Fecha de Nacimiento</div>
-                      <div style={{ fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>{formatBusinessDate(customer.dateOfBirth)}</div>
-                    </div>
-                  )}
-                  {customer.nationality && (
-                    <div>
-                      <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '2px' }}>Nacionalidad</div>
-                      <div style={{ fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>{customer.nationality}</div>
-                    </div>
-                  )}
-                  {customer.occupation && (
-                    <div>
-                      <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '2px' }}>Ocupación</div>
-                      <div style={{ fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>{customer.occupation}</div>
-                    </div>
-                  )}
-                  {customer.preferredLanguage && (
-                    <div>
-                      <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '2px' }}>Idioma Preferido</div>
-                      <div style={{ fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>{customer.preferredLanguage}</div>
-                    </div>
-                  )}
-                  {customer.bloodType && (
-                    <div>
-                      <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '2px' }}>Tipo de Sangre</div>
-                      <div style={{ fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>{customer.bloodType}</div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Contact Information */}
-            {(customer.address || customer.city || customer.country || customer.postalCode || customer.secondaryEmail || customer.secondaryPhone) && (
-              <div>
-                <h3 style={{ fontSize: '14px', fontWeight: '600', color: '#6b7280', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                  Información de Contacto
-                </h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {customer.address && (
-                    <div>
-                      <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '2px' }}>Dirección</div>
-                      <div style={{ fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>{customer.address}</div>
-                    </div>
-                  )}
-                  {customer.city && (
-                    <div>
-                      <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '2px' }}>Ciudad</div>
-                      <div style={{ fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>{customer.city}</div>
-                    </div>
-                  )}
-                  {customer.country && (
-                    <div>
-                      <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '2px' }}>País</div>
-                      <div style={{ fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>{customer.country}</div>
-                    </div>
-                  )}
-                  {customer.postalCode && (
-                    <div>
-                      <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '2px' }}>Código Postal</div>
-                      <div style={{ fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>{customer.postalCode}</div>
-                    </div>
-                  )}
-                  {customer.secondaryEmail && (
-                    <div>
-                      <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '2px' }}>Email Secundario</div>
-                      <div style={{ fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>{customer.secondaryEmail}</div>
-                    </div>
-                  )}
-                  {customer.secondaryPhone && (
-                    <div>
-                      <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '2px' }}>Teléfono Secundario</div>
-                      <div style={{ fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>{customer.secondaryPhone}</div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Emergency Contact Additional */}
-            {(customer.emergencyContactRelationship || customer.emergencyContactEmail) && (
-              <div>
-                <h3 style={{ fontSize: '14px', fontWeight: '600', color: '#6b7280', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                  Contacto de Emergencia
-                </h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {customer.emergencyContactRelationship && (
-                    <div>
-                      <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '2px' }}>Relación</div>
-                      <div style={{ fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>{customer.emergencyContactRelationship}</div>
-                    </div>
-                  )}
-                  {customer.emergencyContactEmail && (
-                    <div>
-                      <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '2px' }}>Email</div>
-                      <div style={{ fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>{customer.emergencyContactEmail}</div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* CRM Information */}
-            {(customer.leadSource || customer.customerStatus || customer.lastContactDate || customer.nextFollowUpDate || customer.tags) && (
-              <div>
-                <h3 style={{ fontSize: '14px', fontWeight: '600', color: '#6b7280', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                  Información CRM
-                </h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {customer.leadSource && (
-                    <div>
-                      <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '2px' }}>Fuente de Lead</div>
-                      <div style={{ fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>{customer.leadSource}</div>
-                    </div>
-                  )}
-                  {customer.customerStatus && (
-                    <div>
-                      <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '2px' }}>Estado del Cliente</div>
-                      <div style={{ fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>{customer.customerStatus}</div>
-                    </div>
-                  )}
-                  {customer.lastContactDate && (
-                    <div>
-                      <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '2px' }}>Último Contacto</div>
-                      <div style={{ fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>{formatBusinessDate(customer.lastContactDate)}</div>
-                    </div>
-                  )}
-                  {customer.nextFollowUpDate && (
-                    <div>
-                      <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '2px' }}>Próximo Seguimiento</div>
-                      <div style={{ fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>{formatBusinessDate(customer.nextFollowUpDate)}</div>
-                    </div>
-                  )}
-                  {customer.tags && (
-                    <div>
-                      <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '2px' }}>Etiquetas</div>
-                      <div style={{ fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>{customer.tags}</div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Medical Information */}
-            {(customer.allergies || customer.medicalConditions || customer.medications) && (
-              <div>
-                <h3 style={{ fontSize: '14px', fontWeight: '600', color: '#6b7280', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                  Información Médica
-                </h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {customer.allergies && (
-                    <div>
-                      <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '2px' }}>Alergias</div>
-                      <div style={{ fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>{customer.allergies}</div>
-                    </div>
-                  )}
-                  {customer.medicalConditions && (
-                    <div>
-                      <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '2px' }}>Condiciones Médicas</div>
-                      <div style={{ fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>{customer.medicalConditions}</div>
-                    </div>
-                  )}
-                  {customer.medications && (
-                    <div>
-                      <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '2px' }}>Medicamentos</div>
-                      <div style={{ fontSize: '14px', color: '#1f2937', fontWeight: '500' }}>{customer.medications}</div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        </SectionCard>
-      )}
 
       {/* Customer Documents Section */}
       <div ref={documentsRef} className="mb-6">
@@ -1754,6 +1588,7 @@ export default function CustomerProfilePage() {
         isOpen={editModalOpen}
         customer={customer}
         presentation="foundation"
+        includePersonalDetails
         onClose={() => setEditModalOpen(false)}
         onSave={handleSaveEdit}
       />

@@ -187,6 +187,7 @@ export default function CustomersPage() {
       <CustomerCreateModal
         isOpen={showCreateModal}
         presentation="foundation"
+        includePersonalDetails
         onClose={() => setShowCreateModal(false)}
         onCustomerCreated={() => {
           void loadCustomers();

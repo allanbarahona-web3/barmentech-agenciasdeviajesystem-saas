@@ -69,6 +69,7 @@ export interface CustomerInfo {
   createdAt: string;
   updatedAt: string;
   dateOfBirth: string | null;
+  age: number | null;
   nationality: string | null;
   occupation: string | null;
   maritalStatus: string | null;
@@ -156,6 +157,8 @@ export interface UpdateCustomerDto {
   address?: string;
   emergencyContactName?: string;
   emergencyContactPhone?: string;
+  emergencyContactRelationship?: string | null;
+  dateOfBirth?: string | null;
 }
 
 export interface CreateCustomerDto {
@@ -166,6 +169,8 @@ export interface CreateCustomerDto {
   phone?: string;
   emergencyContactName?: string;
   emergencyContactPhone?: string;
+  emergencyContactRelationship?: string | null;
+  dateOfBirth?: string | null;
   nationality?: string;
   occupation?: string;
   maritalStatus?: string;

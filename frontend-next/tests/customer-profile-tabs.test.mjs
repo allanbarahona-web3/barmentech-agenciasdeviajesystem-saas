@@ -16,7 +16,9 @@ test('Customer Profile exposes Información and Finanzas with Información as th
 
 test('Información retains customer content while Finanzas owns Finance sections', () => {
   assert.match(profileSource, /Información del cliente/);
-  assert.match(profileSource, /Información adicional del perfil/);
+  assert.doesNotMatch(profileSource, /Información adicional del perfil/);
+  assert.match(profileSource, /Identidad y perfil/);
+  assert.match(profileSource, /Contacto y emergencia/);
   assert.match(profileSource, /Documentos \(\{documents\.length\}\)/);
   assert.match(profileSource, /Notas del cliente/);
   assert.match(profileSource, /hidden=\{activeTab !== 'finance'\}[\s\S]{0,1000}Resumen financiero/);

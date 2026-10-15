@@ -9,6 +9,15 @@ import {
   isClientIdentificationType,
   type ClientIdentificationType,
 } from '@/features/customers/client-identification';
+import {
+  EMERGENCY_CONTACT_RELATIONSHIP_OTHER,
+  getEmergencyContactRelationshipFormValue,
+  resolveEmergencyContactRelationship,
+} from '@/features/customers/emergency-contact-relationship';
+import {
+  getDuplicateIdentificationErrorPresentation,
+  type CustomerRequestErrorPresentation,
+} from '@/features/customers/customer-request-error';
 
 interface CustomerEditModalProps {
   isOpen: boolean;
@@ -20,6 +29,8 @@ interface CustomerEditModalProps {
     phone: string | null;
     emergencyContactName: string | null;
     emergencyContactPhone: string | null;
+    emergencyContactRelationship: string | null;
+    dateOfBirth: string | null;
     createdAt: string;
     nationality: string | null;
     occupation: string | null;
@@ -38,8 +49,11 @@ interface CustomerEditModalProps {
     address: string;
     emergencyContactName: string;
     emergencyContactPhone: string;
+    emergencyContactRelationship?: string | null;
+    dateOfBirth?: string | null;
   }) => Promise<void>;
   presentation?: 'legacy' | 'foundation';
+  includePersonalDetails?: boolean;
 }
 
 type CustomerEditFormState = {
@@ -53,9 +67,12 @@ type CustomerEditFormState = {
   address: string;
   emergencyContactName: string;
   emergencyContactPhone: string;
+  emergencyContactRelationshipOption: ReturnType<typeof getEmergencyContactRelationshipFormValue>['option'];
+  emergencyContactRelationshipCustom: string;
+  dateOfBirth: string;
 };
 
-export function CustomerEditModal({ isOpen, customer, onClose, onSave, presentation = 'legacy' }: CustomerEditModalProps) {
+export function CustomerEditModal({ isOpen, customer, onClose, onSave, presentation = 'legacy', includePersonalDetails = false }: CustomerEditModalProps) {
   const [editForm, setEditForm] = useState<CustomerEditFormState>({
     fullName: customer.fullName,
     idType: isClientIdentificationType(customer.idType) ? customer.idType : '',
@@ -67,10 +84,13 @@ export function CustomerEditModal({ isOpen, customer, onClose, onSave, presentat
     address: customer.address || '',
     emergencyContactName: customer.emergencyContactName || '',
     emergencyContactPhone: customer.emergencyContactPhone || '',
+    emergencyContactRelationshipOption: getEmergencyContactRelationshipFormValue(customer.emergencyContactRelationship).option,
+    emergencyContactRelationshipCustom: getEmergencyContactRelationshipFormValue(customer.emergencyContactRelationship).customValue,
+    dateOfBirth: customer.dateOfBirth || '',
   });
 
   const [isSaving, setIsSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<CustomerRequestErrorPresentation | null>(null);
 
   function handleEditFormChange(updates: Partial<typeof editForm>) {
     setEditForm((prev) => ({ ...prev, ...updates }));
@@ -78,16 +98,38 @@ export function CustomerEditModal({ isOpen, customer, onClose, onSave, presentat
 
   async function handleSave() {
     if (!isClientIdentificationType(editForm.idType)) {
-      setError('Seleccione un tipo de identificación canónico');
+      setError({ title: 'No se pudo actualizar el cliente', message: 'Seleccione un tipo de identificación canónico' });
       return;
     }
     setIsSaving(true);
     setError(null);
     try {
-      await onSave({ ...editForm, idType: editForm.idType });
+      const { dateOfBirth, emergencyContactRelationshipOption, emergencyContactRelationshipCustom, ...customerFormData } = editForm;
+      const emergencyContactRelationship = resolveEmergencyContactRelationship({
+        option: emergencyContactRelationshipOption,
+        customValue: emergencyContactRelationshipCustom,
+      });
+      if (includePersonalDetails && emergencyContactRelationshipOption === EMERGENCY_CONTACT_RELATIONSHIP_OTHER && !emergencyContactRelationship) {
+        setError({ title: 'No se pudo actualizar el cliente', message: 'Especifique parentesco para el contacto de emergencia' });
+        return;
+      }
+      await onSave({
+        ...customerFormData,
+        idType: editForm.idType,
+        ...(includePersonalDetails
+          ? {
+              dateOfBirth: dateOfBirth || null,
+              emergencyContactRelationship,
+            }
+          : {}),
+      });
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al actualizar cliente');
+      const genericError = {
+        title: 'No se pudo actualizar el cliente',
+        message: err instanceof Error ? err.message : 'Error al actualizar cliente',
+      };
+      setError(includePersonalDetails ? getDuplicateIdentificationErrorPresentation(err) ?? genericError : genericError);
     } finally {
       setIsSaving(false);
     }
@@ -107,6 +149,9 @@ export function CustomerEditModal({ isOpen, customer, onClose, onSave, presentat
       address: customer.address || '',
       emergencyContactName: customer.emergencyContactName || '',
       emergencyContactPhone: customer.emergencyContactPhone || '',
+      emergencyContactRelationshipOption: getEmergencyContactRelationshipFormValue(customer.emergencyContactRelationship).option,
+      emergencyContactRelationshipCustom: getEmergencyContactRelationshipFormValue(customer.emergencyContactRelationship).customValue,
+      dateOfBirth: customer.dateOfBirth || '',
     });
     setError(null);
     onClose();
@@ -134,8 +179,8 @@ export function CustomerEditModal({ isOpen, customer, onClose, onSave, presentat
       >
         {error ? (
           <Alert variant="destructive" className="mb-4">
-            <AlertTitle>No se pudo actualizar el cliente</AlertTitle>
-            <AlertDescription>{error}</AlertDescription>
+            <AlertTitle>{error.title}</AlertTitle>
+            <AlertDescription><p>{error.message}</p>{error.guidance ? <p className="mt-1">{error.guidance}</p> : null}</AlertDescription>
           </Alert>
         ) : null}
         <CustomerForm
@@ -147,6 +192,7 @@ export function CustomerEditModal({ isOpen, customer, onClose, onSave, presentat
           onEnterEditMode={() => {}}
           onCancelEdit={handleClose}
           onSaveEdit={handleSave}
+          includePersonalDetails={includePersonalDetails}
         />
       </FormSheet>
     );
@@ -218,7 +264,7 @@ export function CustomerEditModal({ isOpen, customer, onClose, onSave, presentat
         <div style={{ padding: '24px' }}>
           {error && (
             <div role="alert" style={{ marginBottom: '12px', color: '#991b1b' }}>
-              {error}
+              {error.message}
             </div>
           )}
           <CustomerForm
@@ -229,6 +275,7 @@ export function CustomerEditModal({ isOpen, customer, onClose, onSave, presentat
             onEnterEditMode={() => {}}
             onCancelEdit={handleClose}
             onSaveEdit={handleSave}
+            includePersonalDetails={includePersonalDetails}
           />
         </div>
       </div>

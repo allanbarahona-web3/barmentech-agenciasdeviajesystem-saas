@@ -1,10 +1,4 @@
-import {
-  IsDateString,
-  IsNotEmpty,
-  IsOptional,
-  IsString,
-  MaxLength,
-} from "class-validator";
+import { IsNotEmpty, IsOptional, IsString, Matches, MaxLength } from "class-validator";
 import type { ClientIdentificationType } from "../client-identification";
 
 export class ResolveMinorCustomerDto {
@@ -24,6 +18,7 @@ export class ResolveMinorCustomerDto {
   idNumber!: string;
 
   @IsOptional()
-  @IsDateString()
-  dateOfBirth?: string;
+  @IsString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: "dateOfBirth debe tener el formato YYYY-MM-DD." })
+  dateOfBirth?: string | null;
 }

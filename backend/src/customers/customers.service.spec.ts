@@ -1,7 +1,135 @@
 import { CustomersService } from "./customers.service";
-import { ConflictException } from "@nestjs/common";
+import { BadRequestException, ConflictException } from "@nestjs/common";
 
 describe("CustomersService", () => {
+  it("persists a valid date-only DOB and trimmed emergency relationship", async () => {
+    jest.useFakeTimers().setSystemTime(new Date("2026-10-14T18:00:00.000Z"));
+    const create = jest.fn().mockResolvedValue({ id: "customer-1" });
+    const service = new CustomersService({
+      client: { findFirst: jest.fn().mockResolvedValue(null), create },
+      tenantBillingConfiguration: {
+        findUnique: jest.fn().mockResolvedValue({ fiscalTimezone: "America/Costa_Rica" }),
+      },
+    } as any, {} as any, {} as any);
+
+    await service.createCustomer("tenant-1", {
+      fullName: "Ana Cliente",
+      idType: "CEDULA_FISICA",
+      idNumber: "1-2345-6789",
+      email: "ana@example.test",
+      dateOfBirth: "1992-02-29",
+      emergencyContactRelationship: "  Hermana  ",
+    });
+
+    expect(create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        dateOfBirth: new Date("1992-02-29T00:00:00.000Z"),
+        emergencyContactRelationship: "Hermana",
+      }),
+    });
+    jest.useRealTimers();
+  });
+
+  it.each(["1992-02-30", "not-a-date"])(
+    "rejects an invalid customer DOB %s",
+    async (dateOfBirth) => {
+      const service = new CustomersService({
+        client: { findFirst: jest.fn(), create: jest.fn() },
+        tenantBillingConfiguration: {
+          findUnique: jest.fn().mockResolvedValue({ fiscalTimezone: "America/Costa_Rica" }),
+        },
+      } as any, {} as any, {} as any);
+
+      await expect(service.createCustomer("tenant-1", {
+        fullName: "Ana Cliente",
+        idType: "CEDULA_FISICA",
+        idNumber: "1-2345-6789",
+        email: "ana@example.test",
+        dateOfBirth,
+      })).rejects.toBeInstanceOf(BadRequestException);
+    },
+  );
+
+  it("rejects a future customer DOB using the tenant calendar date", async () => {
+    jest.useFakeTimers().setSystemTime(new Date("2026-10-14T02:30:00.000Z")); // Oct 13 in Costa Rica
+    const service = new CustomersService({
+      client: { findFirst: jest.fn(), create: jest.fn() },
+      tenantBillingConfiguration: {
+        findUnique: jest.fn().mockResolvedValue({ fiscalTimezone: "America/Costa_Rica" }),
+      },
+    } as any, {} as any, {} as any);
+
+    await expect(service.createCustomer("tenant-1", {
+      fullName: "Ana Cliente",
+      idType: "CEDULA_FISICA",
+      idNumber: "1-2345-6789",
+      email: "ana@example.test",
+      dateOfBirth: "2026-10-14",
+    })).rejects.toBeInstanceOf(BadRequestException);
+    jest.useRealTimers();
+  });
+
+  it("updates and clears DOB and emergency relationship independently", async () => {
+    const update = jest.fn().mockResolvedValue({ id: "customer-1" });
+    const service = new CustomersService({
+      client: {
+        findFirst: jest.fn().mockResolvedValue({ id: "customer-1", idType: "CEDULA_FISICA", idNumber: "123456789" }),
+        update,
+      },
+      tenantBillingConfiguration: {
+        findUnique: jest.fn().mockResolvedValue({ fiscalTimezone: "America/Costa_Rica" }),
+      },
+    } as any, {} as any, {} as any);
+    jest.spyOn(service, "getCustomerProfile").mockResolvedValue({} as any);
+
+    await service.updateCustomer("tenant-1", "customer-1", {
+      dateOfBirth: "1992-02-29",
+      emergencyContactRelationship: "  Madre  ",
+    });
+    expect(update).toHaveBeenLastCalledWith({
+      where: { id: "customer-1" },
+      data: {
+        dateOfBirth: new Date("1992-02-29T00:00:00.000Z"),
+        emergencyContactRelationship: "Madre",
+      },
+    });
+
+    await service.updateCustomer("tenant-1", "customer-1", {
+      dateOfBirth: null,
+      emergencyContactRelationship: "   ",
+    });
+    expect(update).toHaveBeenLastCalledWith({
+      where: { id: "customer-1" },
+      data: {
+        dateOfBirth: null,
+        emergencyContactRelationship: null,
+      },
+    });
+  });
+
+  it("returns date-only DOB, relationship, and tenant-local derived age from the authenticated profile", async () => {
+    jest.useFakeTimers().setSystemTime(new Date("2026-03-01T18:00:00.000Z"));
+    const customer = {
+      ...profileCustomer("customer-1", "Ana Cliente"),
+      dateOfBirth: new Date("2000-02-29T00:00:00.000Z"),
+      emergencyContactRelationship: "Madre",
+    };
+    const { service, prisma } = profileService({ customer, holderContracts: [], otherContracts: [] });
+    prisma.tenantBillingConfiguration.findUnique.mockResolvedValue({ fiscalTimezone: "America/Costa_Rica" });
+
+    const result = await service.getCustomerProfile("tenant-1", customer.id);
+
+    expect(result.customer).toMatchObject({
+      dateOfBirth: "2000-02-29",
+      age: 26,
+      emergencyContactRelationship: "Madre",
+    });
+    expect(prisma.client.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: customer.id, tenantId: "tenant-1" },
+    }));
+    jest.useRealTimers();
+  });
+
   it("resolves Customer identity in a caller-owned transaction using canonical normalization and name conflicts", async () => {
     const transaction = {
       client: {
@@ -819,7 +947,7 @@ function profileCustomer(id: string, fullName: string) {
     emergencyContactPhone: null,
     createdAt: now,
     updatedAt: now,
-    dateOfBirth: null,
+    dateOfBirth: null as Date | null,
     nationality: null,
     occupation: null,
     maritalStatus: null,
@@ -829,7 +957,7 @@ function profileCustomer(id: string, fullName: string) {
     postalCode: null,
     secondaryEmail: null,
     secondaryPhone: null,
-    emergencyContactRelationship: null,
+    emergencyContactRelationship: null as string | null,
     emergencyContactEmail: null,
     leadSource: null,
     customerStatus: "ACTIVE",
@@ -892,6 +1020,9 @@ function profileService(params: {
         .fn()
         .mockResolvedValueOnce(params.holderContracts)
         .mockResolvedValueOnce(params.otherContracts),
+    },
+    tenantBillingConfiguration: {
+      findUnique: jest.fn().mockResolvedValue(null),
     },
   };
   const service = new CustomersService(

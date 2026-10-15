@@ -1,4 +1,5 @@
-import { IsEmail, IsNotEmpty, IsOptional, IsString, MaxLength } from "class-validator";
+import { IsEmail, IsNotEmpty, IsOptional, IsString, Matches, MaxLength } from "class-validator";
+import { Transform } from "class-transformer";
 import type { ClientIdentificationType } from "../client-identification";
 
 /**
@@ -41,6 +42,23 @@ export class CreateCustomerDto {
   @IsOptional()
   @MaxLength(20)
   emergencyContactPhone?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: "dateOfBirth debe tener el formato YYYY-MM-DD." })
+  dateOfBirth?: string | null;
+
+  @IsOptional()
+  @Transform(({ value }) =>
+    value === null || value === undefined
+      ? value
+      : typeof value === "string"
+        ? value.trim() || null
+        : value,
+  )
+  @IsString()
+  @MaxLength(100)
+  emergencyContactRelationship?: string | null;
 
   @IsString()
   @IsOptional()

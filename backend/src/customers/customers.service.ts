@@ -26,9 +26,35 @@ import {
   normalizeAndValidateClientIdentification,
 } from "./client-identification";
 import { resolveContractParticipation } from "../contracts/contract-participation";
+import {
+  calculateAge,
+  formatDateOnly,
+  normalizeDateOfBirthForPersistence,
+} from "./customer-date-of-birth";
+import {
+  DEFAULT_FISCAL_TIMEZONE,
+  tenantCalendarDateForInstant,
+} from "../finance/tenant-fiscal-date";
 
 export type CustomerIdentityTransaction = {
   client: Record<string, (...args: any[]) => Promise<any>>;
+  tenantBillingConfiguration?: {
+    findUnique(args: unknown): Promise<{ fiscalTimezone: string } | null>;
+  };
+};
+
+type TenantDateReader = {
+  tenantBillingConfiguration: {
+    findUnique(args: unknown): Promise<{ fiscalTimezone: string } | null>;
+  };
+};
+
+type NormalizedClientData = Omit<
+  CreateOrUpdateClientDto,
+  "dateOfBirth" | "emergencyContactRelationship"
+> & {
+  dateOfBirth?: Date | null;
+  emergencyContactRelationship?: string | null;
 };
 
 export type ResolvedCustomerIdentity = {
@@ -78,7 +104,7 @@ export class CustomersService {
    */
   async upsertClient(dto: CreateOrUpdateClientDto): Promise<Client> {
     // Step 1: Normalize all fields
-    const normalized = this.normalizeClientData(dto);
+    const normalized = await this.normalizeClientData(dto);
 
     // Step 2: Check if client already exists
     const existingClient = await this.prisma.client.findFirst({
@@ -123,6 +149,13 @@ export class CustomersService {
       }
       if (dto.address !== undefined) {
         updateData.address = normalized.address;
+      }
+      if (dto.dateOfBirth !== undefined) {
+        updateData.dateOfBirth = normalized.dateOfBirth;
+      }
+      if (dto.emergencyContactRelationship !== undefined) {
+        updateData.emergencyContactRelationship =
+          normalized.emergencyContactRelationship;
       }
 
       // Identity matches - update only mutable fields
@@ -183,7 +216,13 @@ export class CustomersService {
     tenantId: string,
     dto: CreateCustomerDto,
   ): Promise<ResolvedCustomerIdentity> {
-    const normalized = this.normalizeClientData({ ...dto, tenantId });
+    if (dto.dateOfBirth !== undefined && dto.dateOfBirth !== null && !tx.tenantBillingConfiguration) {
+      throw new BadRequestException("CUSTOMER_TENANT_TIMEZONE_READER_MISSING");
+    }
+    const normalized = await this.normalizeClientData(
+      { ...dto, tenantId },
+      tx.tenantBillingConfiguration ? tx as TenantDateReader : undefined,
+    );
     const existing = await tx.client.findFirst({
       where: {
         tenantId: normalized.tenantId,
@@ -244,6 +283,13 @@ export class CustomersService {
       return { id: existingCustomer.id };
     }
 
+    const dateOfBirth = dto.dateOfBirth === undefined || dto.dateOfBirth === null
+      ? null
+      : normalizeDateOfBirthForPersistence(
+          dto.dateOfBirth,
+          await this.getTenantCurrentCalendarDate(tenantId),
+        );
+
     try {
       const createdCustomer = await this.prisma.client.create({
         data: {
@@ -251,7 +297,7 @@ export class CustomersService {
           idType: normalizedIdType,
           idNumber: normalizedIdNumber,
           email: null,
-          dateOfBirth: dto.dateOfBirth ? new Date(dto.dateOfBirth) : null,
+          dateOfBirth,
           tenantId,
         },
         select: {
@@ -652,7 +698,15 @@ export class CustomersService {
       emergencyContactPhone: customer.emergencyContactPhone,
       createdAt: customer.createdAt,
       updatedAt: customer.updatedAt,
-      dateOfBirth: customer.dateOfBirth,
+      dateOfBirth: customer.dateOfBirth
+        ? formatDateOnly(customer.dateOfBirth)
+        : null,
+      age: customer.dateOfBirth
+        ? calculateAge(
+            customer.dateOfBirth,
+            await this.getTenantCurrentCalendarDate(tenantId),
+          )
+        : null,
       nationality: customer.nationality,
       occupation: customer.occupation,
       maritalStatus: customer.maritalStatus,
@@ -853,6 +907,20 @@ export class CustomersService {
     if (dto.emergencyContactPhone !== undefined) {
       updateData.emergencyContactPhone =
         String(dto.emergencyContactPhone || "").trim() || null;
+    }
+
+    if (dto.dateOfBirth !== undefined) {
+      updateData.dateOfBirth = dto.dateOfBirth === null
+        ? null
+        : normalizeDateOfBirthForPersistence(
+            dto.dateOfBirth,
+            await this.getTenantCurrentCalendarDate(tenantId),
+          );
+    }
+
+    if (dto.emergencyContactRelationship !== undefined) {
+      updateData.emergencyContactRelationship =
+        String(dto.emergencyContactRelationship || "").trim() || null;
     }
 
     if (dto.idType !== undefined || dto.idNumber !== undefined) {
@@ -1203,9 +1271,10 @@ export class CustomersService {
     return participants;
   }
 
-  private normalizeClientData(
-    dto: CreateOrUpdateClientDto
-  ): CreateOrUpdateClientDto {
+  private async normalizeClientData(
+    dto: CreateOrUpdateClientDto,
+    tenantDateReader?: TenantDateReader,
+  ): Promise<NormalizedClientData> {
     // Normalize idNumber based on idType
     const identity = requireClientIdentification(dto.idType, dto.idNumber);
     
@@ -1217,6 +1286,19 @@ export class CustomersService {
       phone: String(dto.phone || "").trim() || null,
       emergencyContactName: String(dto.emergencyContactName || "").trim() || null,
       emergencyContactPhone: String(dto.emergencyContactPhone || "").trim() || null,
+      dateOfBirth: dto.dateOfBirth === undefined || dto.dateOfBirth === null
+        ? dto.dateOfBirth
+        : normalizeDateOfBirthForPersistence(
+            dto.dateOfBirth,
+            await this.getTenantCurrentCalendarDate(
+              String(dto.tenantId || "").trim(),
+              tenantDateReader,
+            ),
+          ),
+      emergencyContactRelationship:
+        dto.emergencyContactRelationship === undefined
+          ? undefined
+          : String(dto.emergencyContactRelationship || "").trim() || null,
       nationality: String(dto.nationality || "").trim() || null,
       occupation: String(dto.occupation || "").trim() || null,
       maritalStatus: String(dto.maritalStatus || "").trim() || null,
@@ -1225,7 +1307,7 @@ export class CustomersService {
     };
   }
 
-  private clientCreateData(normalized: CreateOrUpdateClientDto): Prisma.ClientUncheckedCreateInput {
+  private clientCreateData(normalized: NormalizedClientData): Prisma.ClientUncheckedCreateInput {
     return {
       fullName: normalized.fullName,
       idNumber: normalized.idNumber,
@@ -1234,12 +1316,28 @@ export class CustomersService {
       phone: normalized.phone,
       emergencyContactName: normalized.emergencyContactName,
       emergencyContactPhone: normalized.emergencyContactPhone,
+      dateOfBirth: normalized.dateOfBirth,
+      emergencyContactRelationship: normalized.emergencyContactRelationship,
       nationality: normalized.nationality,
       occupation: normalized.occupation,
       maritalStatus: normalized.maritalStatus,
       address: normalized.address,
       tenantId: normalized.tenantId,
     };
+  }
+
+  private async getTenantCurrentCalendarDate(
+    tenantId: string,
+    reader: TenantDateReader = this.prisma,
+  ): Promise<string> {
+    const configuration = await reader.tenantBillingConfiguration.findUnique({
+      where: { tenantId },
+      select: { fiscalTimezone: true },
+    });
+    return tenantCalendarDateForInstant(
+      new Date(),
+      configuration?.fiscalTimezone ?? DEFAULT_FISCAL_TIMEZONE,
+    );
   }
 
   /**

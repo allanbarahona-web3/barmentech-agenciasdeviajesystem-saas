@@ -13,6 +13,16 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { FormField } from '@/components/patterns/form-field';
 import { FormSheet } from '@/components/patterns/form-sheet';
+import {
+  EMERGENCY_CONTACT_RELATIONSHIP_OPTIONS,
+  EMERGENCY_CONTACT_RELATIONSHIP_OTHER,
+  resolveEmergencyContactRelationship,
+  type EmergencyContactRelationshipOption,
+} from '@/features/customers/emergency-contact-relationship';
+import {
+  getDuplicateIdentificationErrorPresentation,
+  type CustomerRequestErrorPresentation,
+} from '@/features/customers/customer-request-error';
 
 interface CustomerCreateModalProps {
   isOpen: boolean;
@@ -24,6 +34,7 @@ interface CustomerCreateModalProps {
   title?: string;
   description?: string;
   submitLabel?: string;
+  includePersonalDetails?: boolean;
 }
 
 export function CustomerCreateModal({
@@ -36,15 +47,20 @@ export function CustomerCreateModal({
   title = 'Crear cliente',
   description = 'Registra la información de contacto y perfil del cliente.',
   submitLabel = 'Crear cliente',
+  includePersonalDetails = false,
 }: CustomerCreateModalProps) {
   const [formData, setFormData] = useState<CreateCustomerDto>(() => createCustomerForm(initialValues));
+  const [relationshipOption, setRelationshipOption] = useState<EmergencyContactRelationshipOption>('');
+  const [customRelationship, setCustomRelationship] = useState('');
 
   const [isSaving, setIsSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<CustomerRequestErrorPresentation | null>(null);
 
   useEffect(() => {
     if (isOpen) {
       setFormData(createCustomerForm(initialValues));
+      setRelationshipOption('');
+      setCustomRelationship('');
       setError(null);
     }
   }, [isOpen, initialValues?.email, initialValues?.fullName, initialValues?.phone]);
@@ -61,6 +77,8 @@ export function CustomerCreateModal({
 
   function resetAndClose() {
     setFormData(createCustomerForm());
+    setRelationshipOption('');
+    setCustomRelationship('');
     setError(null);
     onClose();
   }
@@ -68,19 +86,27 @@ export function CustomerCreateModal({
   async function handleSave() {
     // Validation
     if (!formData.fullName.trim()) {
-      setError('El nombre completo es requerido');
+      setError({ title: 'No se pudo crear el cliente', message: 'El nombre completo es requerido' });
       return;
     }
     if (!formData.idNumber.trim()) {
-      setError('El número de identificación es requerido');
+      setError({ title: 'No se pudo crear el cliente', message: 'El número de identificación es requerido' });
       return;
     }
     if (!formData.idType) {
-      setError('El tipo de identificación es requerido');
+      setError({ title: 'No se pudo crear el cliente', message: 'El tipo de identificación es requerido' });
       return;
     }
     if (!formData.email.trim()) {
-      setError('El email es requerido');
+      setError({ title: 'No se pudo crear el cliente', message: 'El email es requerido' });
+      return;
+    }
+    const emergencyContactRelationship = resolveEmergencyContactRelationship({
+      option: relationshipOption,
+      customValue: customRelationship,
+    });
+    if (includePersonalDetails && relationshipOption === EMERGENCY_CONTACT_RELATIONSHIP_OTHER && !emergencyContactRelationship) {
+      setError({ title: 'No se pudo crear el cliente', message: 'Especifique parentesco para el contacto de emergencia' });
       return;
     }
 
@@ -88,9 +114,16 @@ export function CustomerCreateModal({
     setError(null);
 
     try {
-      const customerInput = {
-        ...formData,
+      const { dateOfBirth, emergencyContactRelationship: _emergencyContactRelationship, ...customerFormData } = formData;
+      const customerInput: CreateCustomerDto = {
+        ...customerFormData,
         idNumber: formData.idNumber.trim(),
+        ...(includePersonalDetails
+          ? {
+              dateOfBirth: dateOfBirth || undefined,
+              emergencyContactRelationship: emergencyContactRelationship || undefined,
+            }
+          : {}),
       };
       if (onSubmitCustomer) {
         await onSubmitCustomer(customerInput);
@@ -100,8 +133,11 @@ export function CustomerCreateModal({
       }
       resetAndClose();
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Error al crear cliente';
-      setError(errorMessage);
+      const genericError = {
+        title: 'No se pudo crear el cliente',
+        message: err instanceof Error ? err.message : 'Error al crear cliente',
+      };
+      setError(includePersonalDetails ? getDuplicateIdentificationErrorPresentation(err) ?? genericError : genericError);
     } finally {
       setIsSaving(false);
     }
@@ -130,8 +166,8 @@ export function CustomerCreateModal({
         <div className="grid gap-4 sm:grid-cols-2">
           {error ? (
             <Alert variant="destructive" className="sm:col-span-2">
-              <AlertTitle>No se pudo crear el cliente</AlertTitle>
-              <AlertDescription>{error}</AlertDescription>
+              <AlertTitle>{error.title}</AlertTitle>
+              <AlertDescription><p>{error.message}</p>{error.guidance ? <p className="mt-1">{error.guidance}</p> : null}</AlertDescription>
             </Alert>
           ) : null}
           <FormField className="sm:col-span-2" htmlFor="customer-create-full-name" label="Nombre completo" required>
@@ -151,6 +187,11 @@ export function CustomerCreateModal({
           <FormField htmlFor="customer-create-phone" label="Teléfono">
             <Input id="customer-create-phone" value={formData.phone || ''} onChange={(event) => handleChange('phone', event.target.value)} disabled={isSaving} />
           </FormField>
+          {includePersonalDetails ? (
+            <FormField htmlFor="customer-create-date-of-birth" label="Fecha de nacimiento">
+              <Input id="customer-create-date-of-birth" type="date" value={formData.dateOfBirth || ''} onChange={(event) => handleChange('dateOfBirth', event.target.value)} disabled={isSaving} />
+            </FormField>
+          ) : null}
           <FormField htmlFor="customer-create-occupation" label="Ocupación">
             <Input id="customer-create-occupation" value={formData.occupation || ''} onChange={(event) => handleChange('occupation', event.target.value)} disabled={isSaving} />
           </FormField>
@@ -160,6 +201,21 @@ export function CustomerCreateModal({
           <FormField htmlFor="customer-create-emergency-phone" label="Contacto de emergencia — teléfono">
             <Input id="customer-create-emergency-phone" value={formData.emergencyContactPhone || ''} onChange={(event) => handleChange('emergencyContactPhone', event.target.value)} disabled={isSaving} />
           </FormField>
+          {includePersonalDetails ? (
+            <div className="grid gap-2">
+                <FormField htmlFor="customer-create-emergency-relationship" label="Parentesco">
+                  <Select id="customer-create-emergency-relationship" value={relationshipOption} onChange={(event) => { setRelationshipOption(event.target.value as EmergencyContactRelationshipOption); setCustomRelationship(''); setError(null); }} disabled={isSaving}>
+                    <option value="">Seleccionar…</option>
+                    {EMERGENCY_CONTACT_RELATIONSHIP_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+                  </Select>
+                </FormField>
+                {relationshipOption === EMERGENCY_CONTACT_RELATIONSHIP_OTHER ? (
+                  <FormField htmlFor="customer-create-emergency-relationship-custom" label="Especifique parentesco">
+                    <Input id="customer-create-emergency-relationship-custom" maxLength={100} value={customRelationship} onChange={(event) => { setCustomRelationship(event.target.value); setError(null); }} disabled={isSaving} />
+                  </FormField>
+                ) : null}
+            </div>
+          ) : null}
           <FormField htmlFor="customer-create-nationality" label="Nacionalidad">
             <Select id="customer-create-nationality" value={formData.nationality || ''} onChange={(event) => handleChange('nationality', event.target.value)} disabled={isSaving}>
               <option value="">Seleccionar…</option>
@@ -558,7 +614,7 @@ export function CustomerCreateModal({
                     fontSize: '14px',
                   }}
                 >
-                  {error}
+                  {error.message}
                 </div>
               )}
 
@@ -621,6 +677,8 @@ function createCustomerForm(initialValues?: Pick<CreateCustomerDto, 'fullName' |
     phone: initialValues?.phone ?? '',
     emergencyContactName: '',
     emergencyContactPhone: '',
+    emergencyContactRelationship: '',
+    dateOfBirth: '',
     nationality: '',
     occupation: '',
     maritalStatus: '',
