@@ -5,6 +5,7 @@ import { runTenantTransaction } from "../../tenant/tenant-transaction";
 import type {
   OperationalPassengerNote,
   OperationalPassengerNoteReader,
+  ReadOperationalPassengerNotesForParticipantRequest,
   ReadOperationalPassengerNotesRequest,
 } from "./operational-passenger-note-reader.port";
 import type {
@@ -87,48 +88,35 @@ export class ContractTravelOperationsReadAdapter
           },
           select: { id: true, clientId: true },
         });
-        const grouped = emptyGroups<OperationalPassengerNote>(participantIds);
-        if (participants.length === 0) return grouped;
+        return this.readActiveNotesForParticipants(tx, request, participantIds, participants);
+      },
+    );
+  }
 
-        const participantIdByClientId = new Map(
-          participants.map((participant) => [participant.clientId, participant.id]),
-        );
-        const notes = await tx.contractNote.findMany({
+  async readNotesForParticipant(
+    request: ReadOperationalPassengerNotesForParticipantRequest,
+  ): Promise<OperationalPassengerNote[] | null> {
+    const [participantId] = normalizeParticipantIds([request.participantId]);
+    return runTenantTransaction<any, OperationalPassengerNote[] | null>(
+      this.prisma as any,
+      request.tenantId,
+      async (tx: Prisma.TransactionClient) => {
+        const participant = await tx.travelPackageParticipant.findFirst({
           where: {
+            id: participantId,
             tenantId: request.tenantId,
             travelPackageId: request.travelPackageId,
-            clientId: { in: [...participantIdByClientId.keys()] },
-            status: "ACTIVE",
           },
-          select: {
-            id: true,
-            clientId: true,
-            contractId: true,
-            note: true,
-            status: true,
-            createdAt: true,
-            archivedAt: true,
-            createdByName: true,
-          },
-          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          select: { id: true, clientId: true },
         });
-        for (const note of notes) {
-          if (note.status !== "ACTIVE" || !note.clientId) continue;
-          const travelPackageParticipantId = participantIdByClientId.get(note.clientId);
-          if (!travelPackageParticipantId) continue;
-          grouped.get(travelPackageParticipantId)!.push({
-            id: note.id,
-            travelPackageParticipantId,
-            text: note.note,
-            status: "ACTIVE",
-            createdAt: note.createdAt,
-            archivedAt: note.archivedAt,
-            sourceType: "CONTRACT",
-            authorName: note.createdByName,
-            source: { type: "CONTRACT_NOTE", sourceId: note.contractId },
-          });
-        }
-        return grouped;
+        if (!participant) return null;
+        const grouped = await this.readActiveNotesForParticipants(
+          tx,
+          { ...request, participantIds: [participantId] },
+          [participantId],
+          [participant],
+        );
+        return grouped.get(participantId) ?? [];
       },
     );
   }
@@ -201,6 +189,61 @@ export class ContractTravelOperationsReadAdapter
         return grouped;
       },
     );
+  }
+
+  private async readActiveNotesForParticipants(
+    tx: Prisma.TransactionClient,
+    request: ReadOperationalPassengerNotesRequest,
+    requestedParticipantIds: readonly string[],
+    participants: Array<{ id: string; clientId: string }>,
+  ): Promise<Map<string, OperationalPassengerNote[]>> {
+    const grouped = emptyGroups<OperationalPassengerNote>(requestedParticipantIds);
+    if (participants.length === 0) return grouped;
+
+    const participantIdByClientId = new Map(
+      participants.map((participant) => [participant.clientId, participant.id]),
+    );
+    const notes = await tx.contractNote.findMany({
+      where: {
+        tenantId: request.tenantId,
+        travelPackageId: request.travelPackageId,
+        clientId: { in: [...participantIdByClientId.keys()] },
+        status: "ACTIVE",
+      },
+      select: {
+        id: true,
+        clientId: true,
+        contractId: true,
+        note: true,
+        status: true,
+        createdAt: true,
+        archivedAt: true,
+        createdByName: true,
+        contract: { select: { contractNumber: true } },
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    });
+    for (const note of notes) {
+      if (note.status !== "ACTIVE" || !note.clientId) continue;
+      const travelPackageParticipantId = participantIdByClientId.get(note.clientId);
+      if (!travelPackageParticipantId) continue;
+      grouped.get(travelPackageParticipantId)!.push({
+        id: note.id,
+        travelPackageParticipantId,
+        text: note.note,
+        status: "ACTIVE",
+        createdAt: note.createdAt,
+        archivedAt: note.archivedAt,
+        sourceType: "CONTRACT",
+        authorName: note.createdByName,
+        source: {
+          type: "CONTRACT_NOTE",
+          sourceId: note.contractId,
+          contractNumber: note.contract.contractNumber,
+        },
+      });
+    }
+    return grouped;
   }
 }
 

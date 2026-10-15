@@ -26,20 +26,17 @@ test('omits the modern badge for null source categories, including historical wo
   assert.doesNotMatch(source, /CONTRACT|MANUAL/);
 });
 
-test('consumes explicit API metadata without rendering raw categories or source identities', () => {
+test('legacy queue keeps its source badge while the passenger dashboard renders its user-facing source label', () => {
   assert.match(api(), /sourceType: string \| null; sourceCategory: OperationalWorkItemSourceCategory/);
-  for (const source of [queue(), unified()]) {
-    assert.match(source, /<OperationalWorkSourceBadge sourceCategory=\{item\.sourceCategory\} \/>/);
-    assert.doesNotMatch(source, /item\.sourceType/);
-    assert.doesNotMatch(source, />\{item\.sourceCategory\}</);
-  }
+  assert.match(queue(), /<OperationalWorkSourceBadge sourceCategory=\{item\.sourceCategory\} \/>/);
+  assert.match(unified(), /requirement\.sourceLabel/);
+  assert.doesNotMatch(unified(), /TRAVEL_PACKAGE_COST_COMPONENT|ADDITIONAL_SERVICE_ORDER_LINE/);
 });
 
-test('renders one source badge from each existing card renderer without changing request filters or card keys', () => {
+test('legacy queue keeps its source badge and dashboard renders one sourceLabel per requirement row', () => {
   assert.equal((queue().match(/<OperationalWorkSourceBadge sourceCategory=\{item\.sourceCategory\} \/>/g) ?? []).length, 1);
-  assert.equal((unified().match(/<OperationalWorkSourceBadge sourceCategory=\{item\.sourceCategory\} \/>/g) ?? []).length, 1);
   assert.match(queue(), /needs\.map\(\(item\) => <NeedCard key=\{item\.id\}/);
-  assert.match(unified(), /work\.map\(\(item\) => <Card key=\{item\.id\}/);
+  assert.match(unified(), /item\.requirements\.map\(\(requirement\) => <RequirementRow key=\{requirement\.requirementId\}/);
   assert.match(queue(), /sourceCategory, search/);
-  assert.match(unified(), /sourceCategory, \.\.\.workFilter/);
+  assert.match(unified(), /source, status/);
 });

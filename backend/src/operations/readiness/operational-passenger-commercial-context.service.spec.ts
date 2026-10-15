@@ -32,6 +32,6 @@ function context() {
   const prisma = { $transaction: jest.fn(async (work: (client: typeof tx) => unknown) => work(tx)) };
   const additional = { readForClients: jest.fn() };
   const contractContext = { readContractContextsForParticipants: jest.fn().mockResolvedValue(new Map()) };
-  const notes = { readNotesForParticipants: jest.fn().mockResolvedValue(new Map()) };
+  const notes = { readNotesForParticipant: jest.fn(), readNotesForParticipants: jest.fn().mockResolvedValue(new Map()) };
   return { tx, additional, contractContext, notes, service: new OperationalPassengerCommercialContextService(prisma as never, additional as never, contractContext, notes) };
 }

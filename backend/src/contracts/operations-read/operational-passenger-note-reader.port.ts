@@ -14,6 +14,7 @@ export type OperationalPassengerNote = {
   source: {
     type: "CONTRACT_NOTE";
     sourceId: string;
+    contractNumber: string;
   };
 };
 
@@ -23,8 +24,18 @@ export type ReadOperationalPassengerNotesRequest = {
   participantIds: readonly string[];
 };
 
+export type ReadOperationalPassengerNotesForParticipantRequest = {
+  tenantId: string;
+  travelPackageId: string;
+  participantId: string;
+};
+
 /** Neutral Contract-originated passenger-note boundary for future consumers. */
 export interface OperationalPassengerNoteReader {
+  readNotesForParticipant(
+    request: ReadOperationalPassengerNotesForParticipantRequest,
+  ): Promise<OperationalPassengerNote[] | null>;
+
   readNotesForParticipants(
     request: ReadOperationalPassengerNotesRequest,
   ): Promise<Map<string, OperationalPassengerNote[]>>;

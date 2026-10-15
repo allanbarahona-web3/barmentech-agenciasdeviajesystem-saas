@@ -26,18 +26,18 @@ test('Direct purchase ensures an exact uncovered participant scope and retains t
   assert.match(text, /const \[purchaseTarget, setPurchaseTarget\]/);
   assert.match(text, /const \[purchaseScope, setPurchaseScope\]/);
   assert.match(text, /async function ensurePurchaseFulfillment\(\)/);
-  assert.match(text, /ensureOperationalFulfillment\(travelPackageId, requirementId, purchaseScope\)/);
+  assert.match(text, /ensureOperationalFulfillment\(travelPackageId, requirementId, purchaseScope, participantScope\)/);
   assert.match(text, /setPurchaseTarget\(result\.fulfillment\)/);
   assert.match(text, /fulfillmentId=\{purchaseTarget\?\.id\} ensureFulfillment=\{purchaseTarget \? undefined : ensurePurchaseFulfillment\}/);
   assert.match(client, /export function ensureOperationalFulfillment/);
   assert.match(client, /fulfillmentsPath\(travelPackageId, requirementId, '\/ensure'\)/);
-  assert.match(client, /\{ participantIds \}/);
+  assert.match(client, /participantScopeId/);
 });
 
 test('Reservation uses ensure/reuse, preserves selected identities, and does not create a purchase', () => {
   const text = workspace();
   assert.match(text, /formMode === 'reserve'/);
-  assert.match(text, /ensureOperationalFulfillment\(travelPackageId, requirementId, \[\.\.\.selected\]\)/);
+  assert.match(text, /ensureOperationalFulfillment\(travelPackageId, requirementId, \[\.\.\.selected\], participantScope\)/);
   assert.match(text, /updateOperationalFulfillment\(travelPackageId, requirementId, fulfillment\.id, input\)/);
   assert.match(text, /transitionOperationalFulfillment\(travelPackageId, requirementId, updated\.id, 'RESERVED'\)/);
   assert.match(text, /formMode === 'reserve' && !editing/);

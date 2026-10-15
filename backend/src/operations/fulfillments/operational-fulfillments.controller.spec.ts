@@ -4,7 +4,7 @@ import { UserRole } from "@prisma/client";
 import { JwtAuthGuard } from "../../auth/guards/jwt-auth.guard";
 import { ROLES_KEY } from "../../auth/roles.decorator";
 import { RolesGuard } from "../../auth/roles.guard";
-import { CreateOperationalFulfillmentDto, OperationalFulfillmentPassengersDto, UpdateOperationalFulfillmentDto } from "./dto/operational-fulfillments.dto";
+import { CreateOperationalFulfillmentDto, EnsureOperationalFulfillmentDto, OperationalFulfillmentPassengersDto, UpdateOperationalFulfillmentDto } from "./dto/operational-fulfillments.dto";
 import { OperationalFulfillmentsController } from "./operational-fulfillments.controller";
 
 describe("OperationalFulfillmentsController", () => {
@@ -29,5 +29,8 @@ describe("OperationalFulfillmentsController", () => {
     await expect(pipe.transform({ participantIds: [" participant-a "], providerName: "forged" }, {
       ...metadata, metatype: OperationalFulfillmentPassengersDto,
     })).rejects.toThrow();
+    await expect(pipe.transform({ participantIds: [" participant-a "], participantScopeId: " participant-a " }, {
+      ...metadata, metatype: EnsureOperationalFulfillmentDto,
+    })).resolves.toMatchObject({ participantIds: ["participant-a"], participantScopeId: "participant-a" });
   });
 });

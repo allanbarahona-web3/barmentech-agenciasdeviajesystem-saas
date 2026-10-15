@@ -19,6 +19,7 @@ test('the one normalized passenger context renders all selected-detail passenger
   assert.match(source, /context\.dateOfBirth \?/);
   assert.match(source, /context\.age !== null/);
   assert.match(source, /formatDateOnly/);
+  assert.doesNotMatch(source, /contractNumber|Passenger Group|passengerGroup|email|emergencyContact/);
 });
 
 test('reservation and every shared purchase entry use the same context without changing operational submit behavior', () => {
@@ -26,13 +27,25 @@ test('reservation and every shared purchase entry use the same context without c
   const drawer = purchaseDrawer();
   const standalone = read('../src/components/operations/standalone-operational-requirements-workspace.tsx');
   const purchasesEvidence = read('../src/components/operations/operational-purchases-evidence-workspace.tsx');
-  assert.match(reservationSource, /<PassengerOperationalContext requirementId=\{requirementId\} passengerContexts=\{editing\?\.passengerContexts \?\? requirement\?\.passengerContexts\}/);
+  assert.match(reservationSource, /const newExecutionPassengerContext/);
+  assert.match(reservationSource, /participantIds: \[participantScope\]/);
+  assert.match(reservationSource, /passengerContexts=\{reservationPassengerContext\.passengerContexts\}/);
+  assert.match(reservationSource, /participantIds=\{reservationPassengerContext\.participantIds\}/);
+  assert.match(reservationSource, /passengerContexts=\{purchasePassengerContext\.passengerContexts\}/);
   assert.match(drawer, /<PassengerOperationalContext requirementId=\{requirementId\} passengerContexts=\{passengerContexts\}/);
-  assert.match(reservationSource, /ensureOperationalFulfillment\(travelPackageId, requirementId, \[\.\.\.selected\]\)/);
+  assert.match(reservationSource, /ensureOperationalFulfillment\(travelPackageId, requirementId, \[\.\.\.selected\], participantScope\)/);
   assert.match(drawer, /await createOperationalPurchase\(travelPackageId, requirementId, effectiveFulfillmentId, input\)/);
   assert.match(drawer, /await createStandaloneOperationalPurchase\(requirementId, effectiveFulfillmentId, input\)/);
   assert.match(standalone, /passengerContexts=\{purchaseFulfillment\?\.passengerContexts \?\? requirement\.passengerContexts\}/);
   assert.match(purchasesEvidence, /passengerContexts=\{fulfillment\?\.passengerContexts \?\? requirement\?\.passengerContexts\}/);
+});
+
+test('passenger-scoped management keeps documents and notes on the selected participant only', () => {
+  const source = context();
+  assert.match(source, /participantContextKey=\{`passenger:\$\{contextParticipantIds\[index\]\}`\}/);
+  assert.match(source, /passengerName=\{context\.displayName\}/);
+  assert.match(source, /<PassengerOperationalNotesAction travelPackageId=\{travelPackageId\} participantId=\{contextParticipantIds\[index\]\}/);
+  assert.match(source, /!travelPackageId \? <PassengerDocumentsAction requirementId=\{requirementId\}/);
 });
 
 test('identification metadata and signed access remain explicitly lazy and requirement-scoped', () => {
@@ -44,19 +57,27 @@ test('identification metadata and signed access remain explicitly lazy and requi
   assert.match(source, /await listOperationalPassengerDocuments\(requirementId\)/);
   assert.match(source, /getOperationalPassengerDocumentAccess\(requirementId, attachment\.id\)/);
   assert.match(source, /AttachmentViewer attachments=\{\[viewerAttachment\]\} resolveAttachmentUrl=\{resolveDocumentUrl\}/);
+  assert.match(source, /<Dialog open=\{documentsOpen\} onOpenChange=\{setDocumentsOpen\}>/);
+  assert.match(source, /Documentos de \{passengerName \?\? 'pasajero'\}/);
   assert.match(client, /\/operations\/requirements\/\$\{encodeURIComponent\(requirementId\)\}\/passenger-documents/);
   assert.match(client, /passenger-documents\/\$\{encodeURIComponent\(documentId\)\}\/url/);
   assert.doesNotMatch(source, /useEffect\(/);
   assert.doesNotMatch(source + client, /objectKey|storage path|bucket/i);
 });
 
-test('document labels, empty and error states preserve operational form state and expose no raw backend errors', () => {
+test('document selector uses a compact modal with human labels, priority order, and no primary technical filename', () => {
   const source = context();
-  assert.match(source, /ID_FRONT: 'Identificación — frente'/);
-  assert.match(source, /ID_BACK: 'Identificación — reverso'/);
+  assert.match(source, /ID_FRONT: 'Cédula — frente'/);
+  assert.match(source, /ID_BACK: 'Cédula — reverso'/);
   assert.match(source, /PASSPORT: 'Pasaporte'/);
+  assert.match(source, /const documentPriority = \{ PASSPORT: 0, ID_FRONT: 1, ID_BACK: 2 \}/);
+  assert.match(source, /sort\(\(left, right\) => documentPriority\[left\.category\] - documentPriority\[right\.category\]\)/);
+  assert.match(source, /<FileText/);
+  assert.match(source, /<ChevronRight/);
+  assert.doesNotMatch(source, /document\.originalFilename \?/);
+  assert.doesNotMatch(source, /role="region"/);
   assert.match(source, /No hay identificación o pasaporte disponible para este pasajero\./);
-  assert.match(source, /No se pudo cargar la identificación o el pasaporte\. Inténtelo de nuevo\./);
+  assert.match(source, /No se pudieron cargar los documentos\./);
   assert.match(source, /No se pudo abrir el documento\. Inténtelo de nuevo\./);
   assert.match(source, /onClose=\{\(\) => setViewerAttachment\(null\)\}/);
   assert.doesNotMatch(source, /router\.|window\.location|href=/);

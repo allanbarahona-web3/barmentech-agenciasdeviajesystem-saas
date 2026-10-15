@@ -209,6 +209,16 @@ export class OperationalFulfillmentPassengersDto {
   participantIds!: string[];
 }
 
+/** A passenger-dashboard action must retain exactly its locked participant. */
+export class EnsureOperationalFulfillmentDto extends OperationalFulfillmentPassengersDto {
+  @IsOptional()
+  @Transform(trim)
+  @IsString()
+  @MaxLength(191)
+  @Matches(/\S/)
+  participantScopeId?: string;
+}
+
 export class TransitionOperationalFulfillmentDto {
   @IsIn(OPERATIONAL_FULFILLMENT_STATUSES)
   targetStatus!: (typeof OPERATIONAL_FULFILLMENT_STATUSES)[number];

@@ -13,6 +13,7 @@ import { validateOperationalDetail } from "../service-details/operational-servic
 import {
   CreateOperationalFulfillmentDto,
   CreateStandaloneOperationalFulfillmentDto,
+  EnsureOperationalFulfillmentDto,
   ListOperationalFulfillmentsDto,
   OperationalFulfillmentPassengersDto,
   OPERATIONAL_FULFILLMENT_STATUSES,
@@ -353,10 +354,11 @@ export class OperationalFulfillmentsService {
     tenantId: string,
     travelPackageId: string,
     requirementId: string,
-    input: OperationalFulfillmentPassengersDto,
+    input: EnsureOperationalFulfillmentDto,
     actor: OperationalFulfillmentsActor,
   ) {
     const participantIds = uniqueParticipantIds(input.participantIds);
+    requireLockedParticipantScope(input.participantScopeId, participantIds);
     return this.withTenantTransaction(tenantId, async (tx) => {
       await this.lockRequirementForEnsure(tx, tenantId, travelPackageId, requirementId);
       const requirement = await this.requireMutableRequirement(tx, tenantId, travelPackageId, requirementId);
@@ -854,6 +856,14 @@ function uniqueParticipantIds(value: unknown): string[] {
   const ids = value.map((item) => typeof item === "string" ? item.trim() : "");
   if (ids.some((id) => !id || id.length > 191)) throw new BadRequestException("OPERATIONAL_FULFILLMENT_PARTICIPANTS_INVALID");
   return [...new Set(ids)];
+}
+
+function requireLockedParticipantScope(value: unknown, participantIds: readonly string[]) {
+  if (value === undefined) return;
+  const participantScopeId = typeof value === "string" ? value.trim() : "";
+  if (!participantScopeId || participantScopeId.length > 191 || participantIds.length !== 1 || participantIds[0] !== participantScopeId) {
+    throw new BadRequestException("OPERATIONAL_FULFILLMENT_PARTICIPANT_SCOPE_INVALID");
+  }
 }
 
 function normalizedOptionalText(value: unknown): string | null | undefined {

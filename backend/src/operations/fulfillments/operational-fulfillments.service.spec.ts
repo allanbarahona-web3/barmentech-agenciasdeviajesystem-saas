@@ -301,6 +301,32 @@ describe("OperationalFulfillmentsService", () => {
       .toEqual(["participant-a", "participant-b"]);
   });
 
+  it("locks a passenger-dashboard ensure to its one requirement participant", async () => {
+    const c = context();
+    const source = requirement({ sourceType: "TRAVEL_PACKAGE_COST_COMPONENT", sourceId: "project-a", sourceLineId: "component-a" });
+    c.tx.operationalRequirement.findFirst.mockResolvedValue(source);
+    c.tx.travelPackageParticipant.findMany.mockResolvedValue([{ id: "participant-a" }]);
+    c.tx.operationalRequirementPassenger.findMany.mockResolvedValue([{ travelPackageParticipantId: "participant-a" }]);
+    c.tx.operationalFulfillment.findMany.mockResolvedValue([]);
+    c.tx.operationalFulfillment.create.mockResolvedValue({ id: fulfillmentId });
+    c.tx.operationalFulfillmentPassenger.createMany.mockResolvedValue({ count: 1 });
+    c.tx.operationalRequirement.updateMany.mockResolvedValue({ count: 1 });
+    c.tx.operationalFulfillment.findFirst.mockResolvedValue(fulfillment({ operationalRequirement: source, passengers: [passenger("participant-a")] }));
+
+    await expect(c.service.ensureForPurchase(tenantId, travelPackageId, requirementId, { participantIds: ["participant-a"], participantScopeId: "participant-a" }, actor))
+      .resolves.toMatchObject({ created: true, fulfillment: { passengers: [{ travelPackageParticipantId: "participant-a" }] } });
+    expect(c.tx.operationalFulfillmentPassenger.createMany.mock.calls[0][0].data.map((row: { travelPackageParticipantId: string }) => row.travelPackageParticipantId))
+      .toEqual(["participant-a"]);
+  });
+
+  it("rejects a passenger-dashboard scope that expands or differs from the locked participant", async () => {
+    const c = context();
+    await expect(c.service.ensureForPurchase(tenantId, travelPackageId, requirementId, { participantIds: ["participant-a", "participant-b"], participantScopeId: "participant-a" }, actor))
+      .rejects.toMatchObject({ response: expect.objectContaining({ message: "OPERATIONAL_FULFILLMENT_PARTICIPANT_SCOPE_INVALID" }) });
+    await expect(c.service.ensureForPurchase(tenantId, travelPackageId, requirementId, { participantIds: ["participant-a"], participantScopeId: "participant-b" }, actor))
+      .rejects.toMatchObject({ response: expect.objectContaining({ message: "OPERATIONAL_FULFILLMENT_PARTICIPANT_SCOPE_INVALID" }) });
+  });
+
   it.each(["DRAFT", "RESERVED"] as const)("reuses an exact compatible %s fulfillment for an Additional Service purchase", async (status) => {
     const c = context();
     const source = requirement({ status: "IN_PROGRESS", sourceType: "ADDITIONAL_SERVICE_ORDER_LINE", sourceId: "order-a", sourceLineId: "line-a" });
@@ -334,7 +360,7 @@ describe("OperationalFulfillmentsService", () => {
     outside.tx.operationalRequirement.findFirst.mockResolvedValue(source);
     outside.tx.travelPackageParticipant.findMany.mockResolvedValue([{ id: "participant-b" }]);
     outside.tx.operationalRequirementPassenger.findMany.mockResolvedValue([]);
-    await expect(outside.service.ensureForPurchase(tenantId, travelPackageId, requirementId, { participantIds: ["participant-b"] }, actor))
+    await expect(outside.service.ensureForPurchase(tenantId, travelPackageId, requirementId, { participantIds: ["participant-b"], participantScopeId: "participant-b" }, actor))
       .rejects.toMatchObject({ response: expect.objectContaining({ message: "OPERATIONAL_FULFILLMENT_PARTICIPANT_OUTSIDE_REQUIREMENT" }) });
   });
 

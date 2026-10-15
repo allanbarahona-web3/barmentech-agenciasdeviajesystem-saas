@@ -86,10 +86,10 @@ describe("ContractTravelOperationsReadAdapter", () => {
       { id: "participant-2", clientId: "client-2" },
     ]);
     c.tx.contractNote.findMany.mockResolvedValue([
-      { id: "note-2", clientId: "client-1", contractId: "contract-2", note: "Second", status: "ACTIVE", createdAt: second, archivedAt: null, createdByName: "Agent" },
-      { id: "note-1", clientId: "client-1", contractId: "contract-1", note: "First", status: "ACTIVE", createdAt: first, archivedAt: null, createdByName: "Agent" },
-      { id: "archived", clientId: "client-1", contractId: "contract-1", note: "Archived", status: "ARCHIVED", createdAt: first, archivedAt: first, createdByName: "Agent" },
-      { id: "legacy", clientId: null, contractId: "legacy-contract", note: "Do not guess", status: "ACTIVE", createdAt: first, archivedAt: null, createdByName: "Agent" },
+      { id: "note-2", clientId: "client-1", contractId: "contract-2", note: "Second", status: "ACTIVE", createdAt: second, archivedAt: null, createdByName: "Agent", contract: { contractNumber: "CT-2" } },
+      { id: "note-1", clientId: "client-1", contractId: "contract-1", note: "First", status: "ACTIVE", createdAt: first, archivedAt: null, createdByName: "Agent", contract: { contractNumber: "CT-1" } },
+      { id: "archived", clientId: "client-1", contractId: "contract-1", note: "Archived", status: "ARCHIVED", createdAt: first, archivedAt: first, createdByName: "Agent", contract: { contractNumber: "CT-1" } },
+      { id: "legacy", clientId: null, contractId: "legacy-contract", note: "Do not guess", status: "ACTIVE", createdAt: first, archivedAt: null, createdByName: "Agent", contract: { contractNumber: "CT-LEGACY" } },
     ]);
 
     const result = await c.adapter.readNotesForParticipants({
@@ -99,8 +99,8 @@ describe("ContractTravelOperationsReadAdapter", () => {
     });
 
     expect(result.get("participant-1")).toEqual([
-      { id: "note-2", travelPackageParticipantId: "participant-1", text: "Second", status: "ACTIVE", createdAt: second, archivedAt: null, sourceType: "CONTRACT", authorName: "Agent", source: { type: "CONTRACT_NOTE", sourceId: "contract-2" } },
-      { id: "note-1", travelPackageParticipantId: "participant-1", text: "First", status: "ACTIVE", createdAt: first, archivedAt: null, sourceType: "CONTRACT", authorName: "Agent", source: { type: "CONTRACT_NOTE", sourceId: "contract-1" } },
+      { id: "note-2", travelPackageParticipantId: "participant-1", text: "Second", status: "ACTIVE", createdAt: second, archivedAt: null, sourceType: "CONTRACT", authorName: "Agent", source: { type: "CONTRACT_NOTE", sourceId: "contract-2", contractNumber: "CT-2" } },
+      { id: "note-1", travelPackageParticipantId: "participant-1", text: "First", status: "ACTIVE", createdAt: first, archivedAt: null, sourceType: "CONTRACT", authorName: "Agent", source: { type: "CONTRACT_NOTE", sourceId: "contract-1", contractNumber: "CT-1" } },
     ]);
     expect(result.get("participant-2")).toEqual([]);
     expect(c.tx.travelPackageParticipant.findMany).toHaveBeenCalledTimes(1);
@@ -129,6 +129,7 @@ describe("ContractTravelOperationsReadAdapter", () => {
         createdAt: true,
         archivedAt: true,
         createdByName: true,
+        contract: { select: { contractNumber: true } },
       },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     });
@@ -141,6 +142,39 @@ describe("ContractTravelOperationsReadAdapter", () => {
       tenantId: "tenant-1", travelPackageId: "package-1", participantIds: [],
     })).resolves.toEqual(new Map());
     expect(c.prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("resolves one passenger before reading only that passenger's active notes", async () => {
+    const c = context();
+    c.tx.travelPackageParticipant.findFirst = jest.fn().mockResolvedValue({ id: "participant-1", clientId: "client-1" });
+    c.tx.contractNote.findMany.mockResolvedValue([
+      { id: "note-1", clientId: "client-1", contractId: "contract-1", note: "Only passenger one", status: "ACTIVE", createdAt: first, archivedAt: null, createdByName: "Agent", contract: { contractNumber: "CT-1" } },
+    ]);
+
+    await expect(c.adapter.readNotesForParticipant({
+      tenantId: "tenant-1", travelPackageId: "package-1", participantId: "participant-1",
+    })).resolves.toEqual([
+      expect.objectContaining({
+        id: "note-1",
+        travelPackageParticipantId: "participant-1",
+        source: { type: "CONTRACT_NOTE", sourceId: "contract-1", contractNumber: "CT-1" },
+      }),
+    ]);
+    expect(c.tx.travelPackageParticipant.findFirst).toHaveBeenCalledWith({
+      where: { id: "participant-1", tenantId: "tenant-1", travelPackageId: "package-1" },
+      select: { id: true, clientId: true },
+    });
+    expect(c.tx.contractNote.findMany).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns null without querying notes when the participant is outside the tenant or trip", async () => {
+    const c = context();
+    c.tx.travelPackageParticipant.findFirst = jest.fn().mockResolvedValue(null);
+
+    await expect(c.adapter.readNotesForParticipant({
+      tenantId: "tenant-1", travelPackageId: "package-1", participantId: "participant-missing",
+    })).resolves.toBeNull();
+    expect(c.tx.contractNote.findMany).not.toHaveBeenCalled();
   });
 
   it("binds both neutral ports to the Contract/Travel adapter", () => {
@@ -178,7 +212,7 @@ function context() {
   const tx = {
     $executeRaw: jest.fn().mockResolvedValue(undefined),
     travelPackageParticipantContractSource: { findMany: jest.fn() },
-    travelPackageParticipant: { findMany: jest.fn() },
+    travelPackageParticipant: { findMany: jest.fn(), findFirst: jest.fn() },
     contractNote: { findMany: jest.fn() },
   };
   const prisma = {

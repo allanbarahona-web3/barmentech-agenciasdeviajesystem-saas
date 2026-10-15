@@ -5,6 +5,7 @@ import { Roles } from "../../auth/roles.decorator";
 import { RolesGuard } from "../../auth/roles.guard";
 import {
   CreateOperationalFulfillmentDto,
+  EnsureOperationalFulfillmentDto,
   ListOperationalFulfillmentsDto,
   OperationalFulfillmentPassengersDto,
   TransitionOperationalFulfillmentDto,
@@ -38,7 +39,7 @@ export class OperationalFulfillmentsController {
 
   @Post("ensure")
   @Roles(UserRole.ADMIN, UserRole.OPERACIONES)
-  ensureForPurchase(@Req() request: OperationsRequest, @Param("travelPackageId") travelPackageId: string, @Param("requirementId") requirementId: string, @Body() body: OperationalFulfillmentPassengersDto) {
+  ensureForPurchase(@Req() request: OperationsRequest, @Param("travelPackageId") travelPackageId: string, @Param("requirementId") requirementId: string, @Body() body: EnsureOperationalFulfillmentDto) {
     return this.service.ensureForPurchase(request.user.tenantId, travelPackageId, requirementId, body, actor(request));
   }
 

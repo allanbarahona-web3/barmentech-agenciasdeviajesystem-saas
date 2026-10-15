@@ -21,9 +21,9 @@ test('all-work has no independent passenger-overview or group-directory request'
   assert.match(source, /passengerOptions\.filter/);
 });
 
-test('unified workspace owns shared roster and active groups once and lazily mounts all-work', () => {
+test('unified workspace owns one passenger dashboard request with no client-side auxiliary readers', () => {
   const source = workspace();
-  assert.equal((source.match(/listPassengerGroups\(travelPackageId\)/g) ?? []).length, 1);
-  assert.match(source, /getOperationalPassengerRoster\(travelPackageId, 1, search/);
-  assert.match(source, /allVisited/);
+  assert.match(source, /getOperationalPassengerDashboard\(travelPackageId/);
+  assert.doesNotMatch(source, /listPassengerGroups\(travelPackageId\)|getOperationalPassengerRoster|getOperationalPassengerOverview|listOperationalWorkItems/);
+  assert.match(source, /requestId\.current/);
 });

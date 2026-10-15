@@ -16,6 +16,10 @@ import { OperationalPassengerCommercialContextController } from "./operational-p
 import { OperationalPassengerCommercialContextService } from "./operational-passenger-commercial-context.service";
 import { OperationalTravelHistoryController } from "./operational-travel-history.controller";
 import { OperationalTravelHistoryService } from "./operational-travel-history.service";
+import { OperationalPassengerDashboardController } from "./operational-passenger-dashboard.controller";
+import { OperationalPassengerDashboardService } from "./operational-passenger-dashboard.service";
+import { OperationalPassengerNotesController } from "./operational-passenger-notes.controller";
+import { OperationalPassengerNotesService } from "./operational-passenger-notes.service";
 
-@Module({ imports: [ContractsModule, FinanceModule, AdditionalServicesModule], controllers: [OperationalReadinessController, OperationalTravelPackageSummariesController, OperationalPassengerOverviewController, OperationalPassengerRosterController, OperationalPassengerCommercialContextController, OperationalWorkItemsController, OperationalTravelHistoryController], providers: [OperationalReadinessService, OperationalTravelPackageSummariesService, OperationalPassengerOverviewService, OperationalPassengerRosterService, OperationalPassengerCommercialContextService, OperationalWorkItemsService, OperationalTravelHistoryService] })
+@Module({ imports: [ContractsModule, FinanceModule, AdditionalServicesModule], controllers: [OperationalReadinessController, OperationalTravelPackageSummariesController, OperationalPassengerOverviewController, OperationalPassengerRosterController, OperationalPassengerCommercialContextController, OperationalPassengerDashboardController, OperationalPassengerNotesController, OperationalWorkItemsController, OperationalTravelHistoryController], providers: [OperationalReadinessService, OperationalTravelPackageSummariesService, OperationalPassengerOverviewService, OperationalPassengerRosterService, OperationalPassengerCommercialContextService, OperationalPassengerDashboardService, OperationalPassengerNotesService, OperationalWorkItemsService, OperationalTravelHistoryService] })
 export class OperationalReadinessModule {}

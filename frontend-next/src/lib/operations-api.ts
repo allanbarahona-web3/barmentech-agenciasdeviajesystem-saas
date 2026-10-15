@@ -59,6 +59,32 @@ export interface OperationalPassengerOverviewPage {
 export type OperationalAdditionalServiceContext = { sourceRef: { type: 'ADDITIONAL_SERVICE_ORDER_LINE'; id: string; lineId: string; version: number | null }; serviceCode: string; serviceName: string; commercialStatus: 'APPROVED'; soldValue: { amount: string; currency: string; scope: 'EXACT_SERVICE_LINE' }; presentation: { title: string | null; subtitle: string | null; fields: Array<{ key: string; label: string; value: string; valueType: 'TEXT' | 'DATE' }> } };
 export interface OperationalPassengerRosterRow { travelPackageParticipantId: string; clientId: string; fullName: string; role: string; groups: Array<{ id: string; name: string; servicePurposeCode: string; servicePurposeName: string; color: string | null }>; progress: { fulfilled: number; total: number; percent: number | null; isOperationallyComplete: boolean }; }
 export interface OperationalPassengerRosterPage { items: OperationalPassengerRosterRow[]; total: number; page: number; pageSize: number; totalPages: number; }
+export type OperationalPassengerDashboardSource = 'BASE_TRIP' | 'ADDITIONAL_SERVICES';
+export type OperationalPassengerDashboardStatus = 'PENDING' | 'IN_PROGRESS' | 'RESERVED' | 'PURCHASED' | 'CONFIRMED' | 'CANCELLED' | 'NOT_APPLICABLE';
+export interface OperationalPassengerDashboardRequirement {
+  requirementId: string; serviceName: string; sourceType: string; sourceLabel: string; status: OperationalPassengerDashboardStatus;
+  reservationStatus: 'RESERVED' | 'NONE'; purchaseStatus: 'PURCHASED' | 'NONE'; confirmationStatus: 'CONFIRMED' | 'PENDING'; sharedPassengerCount: number;
+}
+export interface OperationalPassengerDashboardItem {
+  participant: { travelPackageParticipantId: string; clientId: string; fullName: string; identification: string | null; role: string; ageAtTrip: number | null };
+  contractSources: Array<{ contractId: string; contractNumber: string; status: string; sourceRole: string }>;
+  passengerGroups: Array<{ id: string; name: string; color: string | null; serviceCode: string | null; serviceName: string | null }>;
+  requirements: OperationalPassengerDashboardRequirement[];
+  summary: { requirementCount: number; pendingCount: number; confirmedCount: number };
+  operationalNoteCount: number;
+}
+export interface OperationalPassengerDashboardFacets {
+  contracts: Array<{ contractId: string; contractNumber: string; status: string }>;
+  passengerGroups: Array<{ id: string; name: string; color: string | null; serviceCode: string | null; serviceName: string | null }>;
+  sources: Array<{ value: OperationalPassengerDashboardSource; label: string }>;
+  statuses: OperationalPassengerDashboardStatus[];
+}
+export interface OperationalPassengerDashboardPage {
+  items: OperationalPassengerDashboardItem[]; facets: OperationalPassengerDashboardFacets;
+  summary?: { passengerCount: number; requirementCount: number; pendingCount: number; confirmedCount: number };
+  pagination: { page: number; pageSize: number; total: number; totalPages: number };
+}
+export interface OperationalPassengerDashboardInput { page?: number; pageSize?: number; search?: string; contractId?: string; passengerGroupId?: string; source?: OperationalPassengerDashboardSource; status?: OperationalPassengerDashboardStatus; }
 export type OperationalPassengerContractRole = 'HOLDER' | 'COMPANION' | 'MINOR';
 export interface OperationalPassengerContractContext {
   travelPackageParticipantId: string;
@@ -85,6 +111,13 @@ export interface OperationalPassengerCommercialContext {
   additionalServices: OperationalAdditionalServiceContext[];
   contractContexts: OperationalPassengerContractContext[];
   operationalNotes: OperationalPassengerOperationalNote[];
+}
+export interface OperationalPassengerNote {
+  id: string;
+  note: string;
+  contract: { id: string; contractNumber: string };
+  author: { displayName: string | null };
+  createdAt: string;
 }
 
 export type OperationalRequirementStatus = 'PENDING' | 'IN_PROGRESS' | 'FULFILLED' | 'CANCELLED' | 'NOT_APPLICABLE';
@@ -199,8 +232,21 @@ export async function getOperationalPassengerRoster(travelPackageId: string, pag
   return response.json() as Promise<OperationalPassengerRosterPage>;
 }
 
+export function getOperationalPassengerDashboard(travelPackageId: string, input: OperationalPassengerDashboardInput = {}): Promise<OperationalPassengerDashboardPage> {
+  const params = new URLSearchParams({ page: String(input.page ?? 1), pageSize: String(input.pageSize ?? 20) });
+  if (input.search?.trim()) params.set('search', input.search.trim());
+  if (input.contractId) params.set('contractId', input.contractId);
+  if (input.passengerGroupId) params.set('passengerGroupId', input.passengerGroupId);
+  if (input.source) params.set('source', input.source);
+  if (input.status) params.set('status', input.status);
+  return operationsRequest(`/operations/travel-packages/${encodeURIComponent(travelPackageId)}/passenger-dashboard?${params.toString()}`, 'GET');
+}
+
 export function getOperationalPassengerCommercialContext(travelPackageId: string, participantId: string): Promise<OperationalPassengerCommercialContext> {
   return operationsRequest(`/operations/travel-packages/${encodeURIComponent(travelPackageId)}/passengers/${encodeURIComponent(participantId)}/commercial-context`, 'GET');
+}
+export function getOperationalPassengerNotes(travelPackageId: string, participantId: string): Promise<OperationalPassengerNote[]> {
+  return operationsRequest(`/operations/travel-packages/${encodeURIComponent(travelPackageId)}/passengers/${encodeURIComponent(participantId)}/operational-notes`, 'GET');
 }
 
 export function listOperationalTravelHistory(input: OperationalTravelHistoryInput = {}): Promise<OperationalTravelHistoryPage> {
@@ -237,7 +283,7 @@ export function getOperationalPassengerDocumentAccess(requirementId: string, doc
 function fulfillmentsPath(travelPackageId: string, requirementId: string, suffix = '') { return `${requirementsPath(travelPackageId, `/${encodeURIComponent(requirementId)}/fulfillments`)}${suffix}`; }
 export function listOperationalFulfillments(travelPackageId: string, requirementId: string, page = 1): Promise<OperationalFulfillmentsPage> { return operationsRequest(`${fulfillmentsPath(travelPackageId, requirementId)}?${new URLSearchParams({ page: String(page), pageSize: '20' })}`, 'GET'); }
 export function getOperationalFulfillment(travelPackageId: string, requirementId: string, fulfillmentId: string): Promise<OperationalFulfillmentDetail> { return operationsRequest(fulfillmentsPath(travelPackageId, requirementId, `/${encodeURIComponent(fulfillmentId)}`), 'GET'); }
-export function ensureOperationalFulfillment(travelPackageId: string, requirementId: string, participantIds: string[]): Promise<EnsureOperationalFulfillmentResult> { return operationsRequest(fulfillmentsPath(travelPackageId, requirementId, '/ensure'), 'POST', { participantIds }); }
+export function ensureOperationalFulfillment(travelPackageId: string, requirementId: string, participantIds: string[], participantScopeId?: string): Promise<EnsureOperationalFulfillmentResult> { return operationsRequest(fulfillmentsPath(travelPackageId, requirementId, '/ensure'), 'POST', { participantIds, ...(participantScopeId ? { participantScopeId } : {}) }); }
 export function updateOperationalFulfillment(travelPackageId: string, requirementId: string, fulfillmentId: string, input: FulfillmentInput): Promise<OperationalFulfillmentDetail> { return operationsRequest(fulfillmentsPath(travelPackageId, requirementId, `/${encodeURIComponent(fulfillmentId)}`), 'PATCH', input); }
 export function addOperationalFulfillmentPassengers(travelPackageId: string, requirementId: string, fulfillmentId: string, participantIds: string[]): Promise<OperationalFulfillmentDetail> { return operationsRequest(fulfillmentsPath(travelPackageId, requirementId, `/${encodeURIComponent(fulfillmentId)}/passengers`), 'POST', { participantIds }); }
 export function removeOperationalFulfillmentPassengers(travelPackageId: string, requirementId: string, fulfillmentId: string, participantIds: string[]): Promise<OperationalFulfillmentDetail> { return operationsRequest(fulfillmentsPath(travelPackageId, requirementId, `/${encodeURIComponent(fulfillmentId)}/passengers`), 'DELETE', { participantIds }); }
