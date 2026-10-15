@@ -50,6 +50,7 @@ describe("PrismaAdditionalServicesRepository quote customer persistence", () => 
           additionalServiceCatalogId: "catalog-1",
           serviceCode: "TOUR",
           serviceName: "Tour",
+          customerFacingDescription: "Tour Madrid",
           serviceDetailsVersion: 1,
           serviceDetails: {
             serviceDate: "2026-08-01",
@@ -75,10 +76,23 @@ describe("PrismaAdditionalServicesRepository quote customer persistence", () => 
           vatPercentage: 13,
           vatAmount: 13,
           finalSellingPrice: 113,
+          commercialNotes: "Internal provider context",
+          customerFacingNotes: "Customer-visible condition",
           participants: [
             {
               clientId: "service-recipient",
               role: "COMPANION",
+              contractContextSnapshot: {
+                travelPackageParticipantId: "travel-participant-1",
+                contractSources: [
+                  {
+                    contractId: "contract-1",
+                    contractNumber: "CT-00125",
+                    status: "SIGNED",
+                    sourceRole: "COMPANION",
+                  },
+                ],
+              },
               fullName: "Service Recipient",
               identification: "1-1111-1111",
               email: null,
@@ -108,11 +122,28 @@ describe("PrismaAdditionalServicesRepository quote customer persistence", () => 
     expect(createLines.mock.calls[0][0].data[0]).not.toHaveProperty(
       "quoteCustomerId",
     );
+    expect(createLines.mock.calls[0][0].data[0]).toEqual(
+      expect.objectContaining({
+        commercialNotes: "Internal provider context",
+        customerFacingNotes: "Customer-visible condition",
+      }),
+    );
     expect(createParticipants).toHaveBeenCalledWith({
       data: [
         expect.objectContaining({
           clientId: "service-recipient",
           lineId: expect.any(String),
+          contractContextSnapshot: {
+            travelPackageParticipantId: "travel-participant-1",
+            contractSources: [
+              {
+                contractId: "contract-1",
+                contractNumber: "CT-00125",
+                status: "SIGNED",
+                sourceRole: "COMPANION",
+              },
+            ],
+          },
         }),
       ],
     });

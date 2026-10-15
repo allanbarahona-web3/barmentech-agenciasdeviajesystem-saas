@@ -47,6 +47,9 @@ export default function AccommodationTypeAdditionalFormPage() {
       () => editingLine?.accommodationType ?? null,
     );
   const [notes, setNotes] = useState(() => editingLine?.notes ?? '');
+  const [customerFacingNotes, setCustomerFacingNotes] = useState(
+    () => editingLine?.customerFacingNotes ?? '',
+  );
   const [validationError, setValidationError] = useState<string | null>(null);
 
   function submitForm(event: FormEvent<HTMLFormElement>) {
@@ -67,6 +70,7 @@ export default function AccommodationTypeAdditionalFormPage() {
         serviceType: 'ACCOMMODATION_TYPE',
         accommodationType,
         notes: notes.trim(),
+        customerFacingNotes: customerFacingNotes.trim(),
       });
       router.push(getTemporaryAdditionalServiceEditReturnPath());
       return;
@@ -78,6 +82,7 @@ export default function AccommodationTypeAdditionalFormPage() {
         serviceType: 'ACCOMMODATION_TYPE',
         accommodationType,
         notes: notes.trim(),
+        customerFacingNotes: customerFacingNotes.trim(),
       });
     });
     router.push('/additional-services/catalog');
@@ -134,11 +139,28 @@ export default function AccommodationTypeAdditionalFormPage() {
               </fieldset>
 
               <label className={styles.fieldGroup}>
-                <span className={styles.label}>Observaciones</span>
+                <span className={styles.label}>Observación interna</span>
+                <small className={styles.subtitle}>
+                  Solo visible para el equipo interno.
+                </small>
                 <textarea
                   className={styles.textarea}
                   value={notes}
                   onChange={(event) => setNotes(event.target.value)}
+                  rows={5}
+                />
+              </label>
+              <label className={styles.fieldGroup}>
+                <span className={styles.label}>
+                  Nota para el cliente (opcional)
+                </span>
+                <small className={styles.subtitle}>
+                  Esta nota aparecerá en la propuesta del cliente.
+                </small>
+                <textarea
+                  className={styles.textarea}
+                  value={customerFacingNotes}
+                  onChange={(event) => setCustomerFacingNotes(event.target.value)}
                   rows={5}
                 />
               </label>

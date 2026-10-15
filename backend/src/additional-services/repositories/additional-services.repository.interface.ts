@@ -17,6 +17,7 @@ export interface AdditionalServiceOrderLineRecord {
   additionalServiceCatalogId: string;
   serviceCode: string;
   serviceName: string;
+  customerFacingDescription?: string | null;
   serviceDetailsVersion: number | null;
   serviceDetails: AdditionalServiceDetails | null;
   supplierId: string;
@@ -45,6 +46,7 @@ export interface AdditionalServiceOrderLineRecord {
   vatAmount: string;
   finalSellingPrice: string;
   commercialNotes: string | null;
+  customerFacingNotes: string | null;
   participants: AdditionalServiceOrderParticipantDetails[];
   createdAt: Date;
   updatedAt: Date;
@@ -57,6 +59,23 @@ export interface AdditionalServiceOrderParticipantDetails {
   identification: string;
   email: string | null;
   phone: string | null;
+  contractSources: AdditionalServiceOrderParticipantContractSource[] | null;
+}
+
+export interface AdditionalServiceOrderParticipantContractSource {
+  contractNumber: string;
+  status: string;
+  sourceRole: AdditionalServiceParticipantRole;
+}
+
+export interface AdditionalServiceOrderParticipantContractContextSnapshot {
+  travelPackageParticipantId: string;
+  contractSources: Array<{
+    contractId: string;
+    contractNumber: string;
+    status: string;
+    sourceRole: AdditionalServiceParticipantRole;
+  }>;
 }
 
 export interface AdditionalServiceOrderTravelDetails {
@@ -158,6 +177,7 @@ export interface AdditionalServiceTenantRecord {
 export interface AdditionalServiceTravelRecord {
   id: string;
   tenantId: string;
+  destination?: string | null;
 }
 
 export interface AdditionalServiceParticipantRecord {
@@ -177,6 +197,8 @@ export type AdditionalServiceParticipantRole =
 export interface AdditionalServiceTravelParticipantRecord {
   clientId: string;
   role: AdditionalServiceParticipantRole;
+  travelPackageParticipantId: string | null;
+  contractSources: AdditionalServiceOrderParticipantContractContextSnapshot["contractSources"];
 }
 
 export interface AdditionalServiceCatalogRecord {
@@ -336,6 +358,7 @@ export interface CreateAdditionalServiceOrderLineData {
   additionalServiceCatalogId: string;
   serviceCode: string;
   serviceName: string;
+  customerFacingDescription: string;
   serviceDetailsVersion: number;
   serviceDetails: AdditionalServiceDetails;
   supplierId: string;
@@ -365,6 +388,7 @@ export interface CreateAdditionalServiceOrderLineData {
   vatAmount: number;
   finalSellingPrice: number;
   commercialNotes?: string;
+  customerFacingNotes?: string;
   participants: Array<{
     clientId: string;
     role: AdditionalServiceParticipantRole;
@@ -372,6 +396,7 @@ export interface CreateAdditionalServiceOrderLineData {
     identification: string;
     email: string | null;
     phone: string | null;
+    contractContextSnapshot?: AdditionalServiceOrderParticipantContractContextSnapshot | null;
   }>;
 }
 

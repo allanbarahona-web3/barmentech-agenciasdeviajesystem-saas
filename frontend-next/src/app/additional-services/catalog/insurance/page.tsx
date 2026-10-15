@@ -63,6 +63,9 @@ export default function InsuranceAdditionalFormPage() {
   );
   const [editingCustomCoverage, setEditingCustomCoverage] = useState(false);
   const [notes, setNotes] = useState(() => editingLine?.notes ?? '');
+  const [customerFacingNotes, setCustomerFacingNotes] = useState(
+    () => editingLine?.customerFacingNotes ?? '',
+  );
   const [validationError, setValidationError] = useState<string | null>(null);
 
   function selectCoverage(value: InsuranceCoverage) {
@@ -106,6 +109,7 @@ export default function InsuranceAdditionalFormPage() {
         customCoverageAmount,
         currency: TENANT_CURRENCY,
         notes: notes.trim(),
+        customerFacingNotes: customerFacingNotes.trim(),
       });
       router.push(getTemporaryAdditionalServiceEditReturnPath());
       return;
@@ -119,6 +123,7 @@ export default function InsuranceAdditionalFormPage() {
         customCoverageAmount,
         currency: TENANT_CURRENCY,
         notes: notes.trim(),
+        customerFacingNotes: customerFacingNotes.trim(),
       });
     });
     router.push('/additional-services/catalog');
@@ -217,11 +222,28 @@ export default function InsuranceAdditionalFormPage() {
               )}
 
               <label className={sharedStyles.fieldGroup}>
-                <span className={sharedStyles.label}>Observaciones</span>
+                <span className={sharedStyles.label}>Observación interna</span>
+                <small className={sharedStyles.subtitle}>
+                  Solo visible para el equipo interno.
+                </small>
                 <textarea
                   className={sharedStyles.textarea}
                   value={notes}
                   onChange={(event) => setNotes(event.target.value)}
+                  rows={5}
+                />
+              </label>
+              <label className={sharedStyles.fieldGroup}>
+                <span className={sharedStyles.label}>
+                  Nota para el cliente (opcional)
+                </span>
+                <small className={sharedStyles.subtitle}>
+                  Esta nota aparecerá en la propuesta del cliente.
+                </small>
+                <textarea
+                  className={sharedStyles.textarea}
+                  value={customerFacingNotes}
+                  onChange={(event) => setCustomerFacingNotes(event.target.value)}
                   rows={5}
                 />
               </label>

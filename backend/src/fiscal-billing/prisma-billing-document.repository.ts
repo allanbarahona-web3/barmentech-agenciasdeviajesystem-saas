@@ -1743,6 +1743,8 @@ function crV44InputFromSalesOrder(order: AuthoritativeSalesOrder): {
         taxRateCode: profile.taxRateCode,
         taxPercentage: profile.taxPercentage,
         description: buildSalesOrderLineFiscalDescription({
+          sourceType: order.sourceType,
+          customerFacingDescription: line.customerFacingDescription,
           serviceName: line.serviceName,
           serviceCode: line.serviceCode,
           serviceDetailsVersion: line.serviceDetailsVersion,

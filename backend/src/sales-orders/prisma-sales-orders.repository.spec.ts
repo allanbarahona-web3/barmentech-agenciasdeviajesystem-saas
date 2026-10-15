@@ -62,11 +62,16 @@ describe("PrismaSalesOrdersRepository", () => {
     expect(selection).not.toHaveProperty("tenantId");
     expect(selection).not.toHaveProperty("additionalServiceOrder");
     expect(selection.lines.select).toEqual(
-      expect.objectContaining({ participants: true, serviceDetails: true }),
+      expect.objectContaining({
+        customerFacingDescription: true,
+        participants: true,
+        serviceDetails: true,
+      }),
     );
     expect(result?.lines[0]).toEqual(
       expect.objectContaining({
         serviceCode: "BAGGAGE",
+        customerFacingDescription: "Equipaje adicional",
         participants: [{ fullName: "Customer One", role: "HOLDER" }],
       }),
     );
@@ -74,6 +79,23 @@ describe("PrismaSalesOrdersRepository", () => {
     expect(JSON.stringify(result)).not.toMatch(
       /supplier|margin|exchangeRate|pricingConfiguration/i,
     );
+  });
+
+  it("preserves a null customer-facing description for compatible non-Additional Service lines", async () => {
+    const { repository, findFirst } = setup();
+    const row = detailRow(null);
+    row.sourceType = "CUSTOM_QUOTATION";
+    findFirst.mockResolvedValue(row);
+
+    const result = await repository.findById("tenant-1", "sales-order-1");
+
+    expect(result?.sourceType).toBe("CUSTOM_QUOTATION");
+    expect(result?.lines[0]).toMatchObject({
+      serviceName: "Equipaje",
+      customerFacingDescription: null,
+      serviceDetails: { baggageTypes: ["CARRY_ON"] },
+      commercialNotes: null,
+    });
   });
 
   it("returns null when the tenant-scoped detail query finds nothing", async () => {
@@ -125,7 +147,7 @@ function listRow() {
   };
 }
 
-function detailRow() {
+function detailRow(customerFacingDescription: string | null = "Equipaje adicional") {
   return {
     ...listRow(),
     sourceId: "source-1",
@@ -138,6 +160,7 @@ function detailRow() {
         id: "line-1",
         serviceCode: "BAGGAGE",
         serviceName: "Equipaje",
+        customerFacingDescription,
         serviceDetailsVersion: 1,
         serviceDetails: { baggageTypes: ["CARRY_ON"] },
         commercialNotes: null,

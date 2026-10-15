@@ -76,6 +76,7 @@ export interface CreateAdditionalServiceOrderLineInput {
   supplierCost: number;
   supplierCostCurrency: TemporaryLineCurrency;
   commercialNotes?: string;
+  customerFacingNotes?: string;
   participantIds: string[];
 }
 
@@ -107,6 +108,12 @@ export type AdditionalServiceOrderParticipantRole =
   | 'HOLDER'
   | 'COMPANION'
   | 'MINOR';
+
+export interface AdditionalServiceOrderParticipantContractSource {
+  contractNumber: string;
+  status: string;
+  sourceRole: AdditionalServiceOrderParticipantRole;
+}
 
 export type AdditionalServiceOrderCurrency = 'USD' | 'CRC';
 export type AdditionalServicePaymentConditionType =
@@ -171,6 +178,7 @@ export interface AdditionalServiceOrderParticipant {
   identification: string;
   email: string | null;
   phone: string | null;
+  contractSources: AdditionalServiceOrderParticipantContractSource[] | null;
 }
 
 export interface AdditionalServiceOrderTravel {

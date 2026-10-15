@@ -1,9 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { Baby, Crown, UserRound } from 'lucide-react';
 import { ContractReference } from '@/components/additional-services-context-header';
 import { LoadingSpinner } from '@/components/loading-spinner';
+import { Badge } from '@/components/ui/badge';
 import { CustomerSearchSelector } from '@/features/customers/components';
 import {
   getClientActiveTravels,
@@ -14,11 +16,22 @@ import {
   type TravelParticipantRole,
 } from '@/lib/additional-services-workspace-api';
 import {
+  ALL_ADDITIONAL_SERVICES_CONTRACTS_FILTER,
+  additionalServicesContractTagKey,
+  additionalServicesContractFilterValue,
+  buildAdditionalServicesContractTagClasses,
+  filterAdditionalServicesContractParticipants,
+  toggleAdditionalServicesContractFilter,
+  WITHOUT_ADDITIONAL_SERVICES_CONTRACT_FILTER,
+  type AdditionalServicesContractFilter,
+} from '@/lib/additional-services-contract-tags';
+import {
   setAdditionalServicesWorkflowContext,
   resetAdditionalServicesWorkflow,
   setSelectedAdditionalServicesParticipants,
 } from '@/lib/additional-services-temporary-store';
 import type { CustomerListItem } from '@/lib/customers-api';
+import styles from './page.module.css';
 
 function formatDateRange(startDate: string, endDate: string) {
   const formatter = new Intl.DateTimeFormat('es-CR', {
@@ -31,84 +44,111 @@ function formatDateRange(startDate: string, endDate: string) {
   )}`;
 }
 
-const PARTICIPANT_GROUPS: Array<{
-  role: TravelParticipantRole;
-  title: string;
-}> = [
-  { role: 'HOLDER', title: '👤 Titular' },
-  { role: 'COMPANION', title: '👥 Acompañantes' },
-  { role: 'MINOR', title: '🧒 Menores' },
-];
-
 function participantRoleLabel(role: TravelParticipantRole) {
   if (role === 'HOLDER') return 'Titular';
   if (role === 'COMPANION') return 'Acompañante';
   return 'Menor';
 }
 
+function ParticipantRoleIcon({ role }: { role: TravelParticipantRole }) {
+  const [RoleIcon, colorClass] =
+    role === 'HOLDER'
+      ? [Crown, styles.roleIconHolder]
+      : role === 'COMPANION'
+        ? [UserRound, styles.roleIconCompanion]
+        : [Baby, styles.roleIconMinor];
+
+  return <RoleIcon aria-hidden="true" className={`${styles.roleIcon} ${colorClass}`} />;
+}
+
 function travelTypeLabel(travelType: ActiveTravelSelection['travelType']) {
   return travelType === 'INTERNATIONAL' ? 'Internacional' : 'Interno';
 }
 
-function ParticipantCard({
+function ParticipantRow({
   participant,
   selected,
   onToggle,
+  onFilterByContract,
+  onFilterWithoutContract,
+  contractTagClasses,
 }: {
   participant: TravelContextParticipant;
   selected: boolean;
   onToggle: () => void;
+  onFilterByContract: (contractNumber: string) => void;
+  onFilterWithoutContract: () => void;
+  contractTagClasses: ReadonlyMap<string, string>;
 }) {
-  const isHolder = participant.participantRole === 'HOLDER';
+  const checkboxId = `additional-service-participant-${participant.clientId}`;
 
   return (
-    <label
-      style={{
-        padding: '14px 16px',
-        border: selected
-          ? '2px solid #4f46e5'
-          : isHolder
-            ? '1px solid #93c5fd'
-            : '1px solid #dbe4f0',
-        borderRadius: '12px',
-        background: selected ? '#eef2ff' : isHolder ? '#eff6ff' : '#fff',
-        cursor: 'pointer',
-        display: 'flex',
-        gap: '12px',
-        alignItems: 'start',
-      }}
+    <div
+      className={`${styles.participantRow} ${
+        selected ? styles.participantRowSelected : ''
+      }`}
     >
       <input
+        className={styles.checkbox}
+        id={checkboxId}
         type="checkbox"
         checked={selected}
         onChange={onToggle}
         aria-label={`Seleccionar ${participant.fullName}`}
-        style={{ width: '18px', height: '18px', marginTop: '2px' }}
       />
-      <div style={{ minWidth: 0 }}>
-        <strong style={{ color: '#172554' }}>{participant.fullName}</strong>
-        <div style={{ color: '#64748b', fontSize: '13px', marginTop: '5px' }}>
-          {participantRoleLabel(participant.participantRole)}
+      <div className={styles.participantNameCell}>
+        <ParticipantRoleIcon role={participant.participantRole} />
+        <div className={styles.participantNameContent}>
+          <label className={styles.participantName} htmlFor={checkboxId}>
+            {participant.fullName}
+          </label>
+          {participant.identification && (
+            <div className={styles.identification}>
+              Identificación: {participant.identification}
+            </div>
+          )}
         </div>
-        {isHolder && (
-          <div
-            style={{
-              color: '#1d4ed8',
-              fontSize: '12px',
-              fontWeight: 600,
-              marginTop: '4px',
-            }}
+      </div>
+      <span className={styles.role}>
+        {participantRoleLabel(participant.participantRole)}
+      </span>
+      <div
+        className={styles.contractTags}
+        aria-label={`Contratos de ${participant.fullName}`}
+      >
+        {participant.contractSources.length > 0 ? (
+          participant.contractSources.map((contractSource) => (
+            <button
+              aria-label={`Filtrar por contrato ${contractSource.contractNumber}`}
+              className={styles.contractBadgeButton}
+              key={additionalServicesContractTagKey(contractSource)}
+              onClick={() => onFilterByContract(contractSource.contractNumber)}
+              title={`Ver participantes del contrato ${contractSource.contractNumber}`}
+              type="button"
+            >
+              <Badge
+                className={contractTagClasses.get(
+                  additionalServicesContractTagKey(contractSource),
+                )}
+                variant="outline"
+              >
+                {contractSource.contractNumber}
+              </Badge>
+            </button>
+          ))
+        ) : (
+          <button
+            aria-label="Filtrar participantes sin contrato asociado"
+            className={styles.contractBadgeButton}
+            onClick={onFilterWithoutContract}
+            title="Ver participantes sin contrato asociado"
+            type="button"
           >
-            Responsable del viaje
-          </div>
-        )}
-        {participant.identification && (
-          <div style={{ color: '#64748b', fontSize: '13px', marginTop: '3px' }}>
-            Identificación: {participant.identification}
-          </div>
+            <Badge variant="outline">Sin contrato asociado</Badge>
+          </button>
         )}
       </div>
-    </label>
+    </div>
   );
 }
 
@@ -126,6 +166,25 @@ export default function AdditionalServicesPage() {
   const [selectedParticipantIds, setSelectedParticipantIds] = useState<
     Set<string>
   >(new Set());
+  const [contractFilter, setContractFilter] =
+    useState<AdditionalServicesContractFilter>(
+      ALL_ADDITIONAL_SERVICES_CONTRACTS_FILTER,
+    );
+  const contractTagClasses = useMemo(
+    () =>
+      buildAdditionalServicesContractTagClasses(
+        travelContext?.participants ?? [],
+      ),
+    [travelContext],
+  );
+  const visibleParticipants = useMemo(
+    () =>
+      filterAdditionalServicesContractParticipants(
+        travelContext?.participants ?? [],
+        contractFilter,
+      ),
+    [contractFilter, travelContext],
+  );
 
   useEffect(() => {
     if (!selectedCustomer) return;
@@ -196,6 +255,7 @@ export default function AdditionalServicesPage() {
     setContextError(null);
     setLoadingContext(false);
     setSelectedParticipantIds(new Set());
+    setContractFilter(ALL_ADDITIONAL_SERVICES_CONTRACTS_FILTER);
   }
 
   function clearCustomer() {
@@ -208,6 +268,7 @@ export default function AdditionalServicesPage() {
     setContextError(null);
     setLoadingContext(false);
     setSelectedParticipantIds(new Set());
+    setContractFilter(ALL_ADDITIONAL_SERVICES_CONTRACTS_FILTER);
   }
 
   function selectTravel(travel: ActiveTravelSelection) {
@@ -223,6 +284,7 @@ export default function AdditionalServicesPage() {
     setContextError(null);
     setLoadingContext(true);
     setSelectedParticipantIds(new Set());
+    setContractFilter(ALL_ADDITIONAL_SERVICES_CONTRACTS_FILTER);
   }
 
   function toggleParticipant(clientId: string) {
@@ -236,6 +298,19 @@ export default function AdditionalServicesPage() {
       return next;
     });
   }
+
+  function toggleContractFilter(nextFilter: AdditionalServicesContractFilter) {
+    setContractFilter((currentFilter) =>
+      toggleAdditionalServicesContractFilter(currentFilter, nextFilter),
+    );
+  }
+
+  const activeContractFilterLabel =
+    contractFilter === ALL_ADDITIONAL_SERVICES_CONTRACTS_FILTER
+      ? null
+      : contractFilter === WITHOUT_ADDITIONAL_SERVICES_CONTRACT_FILTER
+        ? 'Sin contrato asociado'
+        : contractFilter.slice('CONTRACT:'.length);
 
   return (
     <main className="app-shell">
@@ -388,44 +463,45 @@ export default function AdditionalServicesPage() {
                   </h3>
                   <div
                     style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
-                      gap: '14px',
                       padding: '18px',
                       background: '#f8fafc',
                       borderRadius: '14px',
                     }}
                   >
-                    <div>
-                      <small style={{ color: '#64748b' }}>Viaje</small>
-                      <div style={{ color: '#172554', fontWeight: 600 }}>
-                        {travelContext.displayName}
+                    <div className={styles.summaryFields}>
+                      <div>
+                        <small style={{ color: '#64748b' }}>Viaje</small>
+                        <div style={{ color: '#172554', fontWeight: 600 }}>
+                          {travelContext.displayName}
+                        </div>
+                      </div>
+                      <div>
+                        <small style={{ color: '#64748b' }}>Tipo</small>
+                        <div style={{ color: '#172554', fontWeight: 600 }}>
+                          {travelTypeLabel(travelContext.travelType)}
+                        </div>
+                      </div>
+                      <div>
+                        <small style={{ color: '#64748b' }}>Destino</small>
+                        <div style={{ color: '#172554', fontWeight: 600 }}>
+                          {travelContext.destination}
+                        </div>
+                      </div>
+                      <div>
+                        <small style={{ color: '#64748b' }}>Fechas</small>
+                        <div style={{ color: '#172554', fontWeight: 600 }}>
+                          {formatDateRange(
+                            travelContext.startDate,
+                            travelContext.endDate,
+                          )}
+                        </div>
                       </div>
                     </div>
-                    <div>
-                      <small style={{ color: '#64748b' }}>Tipo</small>
-                      <div style={{ color: '#172554', fontWeight: 600 }}>
-                        {travelTypeLabel(travelContext.travelType)}
-                      </div>
+                    <div className={styles.summaryContract}>
+                      <ContractReference
+                        contractNumber={travelContext.contractNumber}
+                      />
                     </div>
-                    <div>
-                      <small style={{ color: '#64748b' }}>Destino</small>
-                      <div style={{ color: '#172554', fontWeight: 600 }}>
-                        {travelContext.destination}
-                      </div>
-                    </div>
-                    <div>
-                      <small style={{ color: '#64748b' }}>Fechas</small>
-                      <div style={{ color: '#172554', fontWeight: 600 }}>
-                        {formatDateRange(
-                          travelContext.startDate,
-                          travelContext.endDate,
-                        )}
-                      </div>
-                    </div>
-                    <ContractReference
-                      contractNumber={travelContext.contractNumber}
-                    />
                   </div>
                 </div>
 
@@ -452,50 +528,49 @@ export default function AdditionalServicesPage() {
                       Este viaje no tiene participantes registrados.
                     </div>
                   ) : (
-                    <div style={{ display: 'grid', gap: '20px' }}>
-                      {PARTICIPANT_GROUPS.map((group) => {
-                        const participants = travelContext.participants.filter(
-                          (participant) =>
-                            participant.participantRole === group.role,
-                        );
-                        if (participants.length === 0) return null;
-
-                        return (
-                          <div key={group.role}>
-                            <h4
-                              style={{
-                                color: '#475569',
-                                fontSize: '14px',
-                                marginBottom: '10px',
-                              }}
-                            >
-                              {group.title}
-                            </h4>
-                            <div
-                              style={{
-                                display: 'grid',
-                                gridTemplateColumns:
-                                  'repeat(auto-fit, minmax(220px, 1fr))',
-                                gap: '12px',
-                              }}
-                            >
-                              {participants.map((participant) => (
-                                <ParticipantCard
-                                  key={participant.clientId}
-                                  participant={participant}
-                                  selected={selectedParticipantIds.has(
-                                    participant.clientId,
-                                  )}
-                                  onToggle={() =>
-                                    toggleParticipant(participant.clientId)
-                                  }
-                                />
-                              ))}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
+                    <>
+                      {activeContractFilterLabel && (
+                        <div className={styles.activeFilter} role="status">
+                          <span>
+                            Filtrando por contrato: {activeContractFilterLabel}
+                          </span>
+                          <button
+                            className={styles.clearFilterButton}
+                            onClick={() =>
+                              setContractFilter(
+                                ALL_ADDITIONAL_SERVICES_CONTRACTS_FILTER,
+                              )
+                            }
+                            type="button"
+                          >
+                            Limpiar
+                          </button>
+                        </div>
+                      )}
+                      <div className={styles.roster} aria-label="Roster de pasajeros">
+                        {visibleParticipants.map((participant) => (
+                          <ParticipantRow
+                            contractTagClasses={contractTagClasses}
+                            key={participant.clientId}
+                            onFilterByContract={(contractNumber) =>
+                              toggleContractFilter(
+                                additionalServicesContractFilterValue(contractNumber),
+                              )
+                            }
+                            onFilterWithoutContract={() =>
+                              toggleContractFilter(
+                                WITHOUT_ADDITIONAL_SERVICES_CONTRACT_FILTER,
+                              )
+                            }
+                            onToggle={() => toggleParticipant(participant.clientId)}
+                            participant={participant}
+                            selected={selectedParticipantIds.has(
+                              participant.clientId,
+                            )}
+                          />
+                        ))}
+                      </div>
+                    </>
                   )}
                   {travelContext.participants.length > 0 && (
                     <div

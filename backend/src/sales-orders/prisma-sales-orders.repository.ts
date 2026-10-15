@@ -122,6 +122,7 @@ export class PrismaSalesOrdersRepository implements SalesOrdersRepository {
             id: true,
             serviceCode: true,
             serviceName: true,
+            customerFacingDescription: true,
             serviceDetailsVersion: true,
             serviceDetails: true,
             commercialNotes: true,

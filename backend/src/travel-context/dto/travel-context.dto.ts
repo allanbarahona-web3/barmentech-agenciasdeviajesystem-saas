@@ -4,11 +4,19 @@ export enum TravelContextType {
 }
 export type TravelContextParticipantRole = 'HOLDER' | 'COMPANION' | 'MINOR';
 
+export class TravelContextParticipantContractSourceDto {
+  contractId!: string;
+  contractNumber!: string;
+  status!: string;
+  sourceRole!: TravelContextParticipantRole;
+}
+
 export class TravelContextParticipantDto {
   clientId!: string;
   fullName!: string;
   participantRole!: TravelContextParticipantRole;
   operationalNotes!: string[];
+  contractSources!: TravelContextParticipantContractSourceDto[];
 }
 
 export class TravelContextDto {

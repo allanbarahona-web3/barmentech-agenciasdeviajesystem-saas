@@ -34,6 +34,9 @@ describe("SalesOrderConversionService", () => {
     expect(result.reusedExisting).toBe(true);
     expect(execute).toHaveBeenCalledTimes(1); // no INSERT after lock
     expect(String(execute.mock.calls)).not.toMatch(/UPDATE/i);
+    expect(query.mock.calls[1]).toEqual(
+      expect.arrayContaining(["tenant-a", "proposal-a"]),
+    );
     expect(query).toHaveBeenCalledTimes(2);
   });
 
@@ -44,9 +47,11 @@ describe("SalesOrderConversionService", () => {
       fiscalItemCategory: "SERVICE",
       serviceCode: "BAGGAGE",
       serviceName: "Equipaje",
+      customerFacingDescription: "Equipaje adicional",
       serviceDetailsVersion: 1,
       serviceDetails: { pieceQuantity: 1 },
       commercialNotes: "Incluido",
+      customerFacingNotes: "Presentar en el mostrador",
       subtotal: "100.0000",
       vatPercentage: "13.0000",
       vatAmount: "13.0000",
@@ -67,15 +72,19 @@ describe("SalesOrderConversionService", () => {
     const lineInsertSql = String(execute.mock.calls[3][0]);
     expect(lineInsertSql).toContain('"additionalServiceCatalogId"');
     expect(lineInsertSql).toContain('"fiscalItemCategory"');
+    expect(lineInsertSql).toContain('"customerFacingDescription"');
+    expect(lineInsertSql).toContain('"customerFacingNotes"');
     expect(execute.mock.calls[3]).toEqual(
       expect.arrayContaining([
         "catalog-baggage",
         "SERVICE",
         "BAGGAGE",
         "Equipaje",
+        "Equipaje adicional",
         1,
         JSON.stringify({ pieceQuantity: 1 }),
         "Incluido",
+        "Presentar en el mostrador",
         "100.0000",
         "13.0000",
         "113.0000",
@@ -91,6 +100,23 @@ describe("SalesOrderConversionService", () => {
         "proposal-a",
       ]),
     );
+  });
+
+  it("persists null unchanged for a historical source description", async () => {
+    const { materialize, execute } = setup([
+      [proposal({ commercialStatus: "APPROVED" })],
+      [],
+      [sourceLine({ customerFacingDescription: null, customerFacingNotes: null })],
+      [{ next: 1n }],
+      [salesOrder()],
+    ]);
+
+    await materialize();
+
+    const lineInsert = execute.mock.calls[3];
+    expect(String(lineInsert[0])).toContain('"customerFacingDescription"');
+    expect(String(lineInsert[0])).toContain('"customerFacingNotes"');
+    expect(lineInsert).toContain(null);
   });
 
   it("copies mixed SERVICE and MERCHANDISE categories without per-line queries", async () => {
@@ -234,9 +260,11 @@ function sourceLine(overrides: Record<string, unknown> = {}) {
     fiscalItemCategory: "SERVICE",
     serviceCode: "BAGGAGE",
     serviceName: "Equipaje",
+    customerFacingDescription: "Equipaje adicional",
     serviceDetailsVersion: 1,
     serviceDetails: { pieceQuantity: 1 },
     commercialNotes: "Incluido",
+    customerFacingNotes: "Presentar en el mostrador",
     subtotal: "100.0000",
     vatPercentage: "13.0000",
     vatAmount: "13.0000",

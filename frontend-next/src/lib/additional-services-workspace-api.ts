@@ -14,12 +14,20 @@ export interface ActiveTravelSelection {
 
 export type TravelParticipantRole = 'HOLDER' | 'COMPANION' | 'MINOR';
 
+export interface TravelContextParticipantContractSource {
+  contractId: string;
+  contractNumber: string;
+  status: string;
+  sourceRole: TravelParticipantRole;
+}
+
 export interface TravelContextParticipant {
   clientId: string;
   fullName: string;
   participantRole: TravelParticipantRole;
   identification?: string | null;
   operationalNotes: string[];
+  contractSources: TravelContextParticipantContractSource[];
 }
 
 export interface TravelContext {

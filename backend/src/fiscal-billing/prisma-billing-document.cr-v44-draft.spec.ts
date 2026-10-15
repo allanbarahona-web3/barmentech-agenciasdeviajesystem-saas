@@ -123,6 +123,7 @@ describe("PrismaBillingDocumentRepository CR_V44_DECIMAL_V1 draft", () => {
     const line = sourceLine({
       serviceCode: "INSURANCE",
       serviceName: "Seguro",
+      customerFacingDescription: "Seguro médico de viaje",
       serviceDetailsVersion: 1,
       serviceDetails: {
         coverage: "USD_60000",
@@ -146,7 +147,7 @@ describe("PrismaBillingDocumentRepository CR_V44_DECIMAL_V1 draft", () => {
 
     const persisted = firstLine(createdData(context));
     expect(persisted.description).toBe(
-      "Seguro · Cobertura: USD 60,000",
+      "Seguro médico de viaje · Cobertura: USD 60,000",
     );
     expect(persisted.description).not.toMatch(
       /Internal Provider|100\.00|25\.00|commercial note|Private Participant|private-id/,
@@ -992,6 +993,7 @@ function sourceLine(overrides: Record<string, unknown> = {}) {
     fiscalItemCategory: "SERVICE",
     serviceCode: "TOUR",
     serviceName: "Tour",
+    customerFacingDescription: null,
     serviceDetailsVersion: 1,
     serviceDetails: null,
     commercialNotes: null,

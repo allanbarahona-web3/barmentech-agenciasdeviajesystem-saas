@@ -272,8 +272,8 @@ export default function AdditionalServicesPricingReviewPage() {
           supplierCostUrl: sourcing.providerUrl.trim() || undefined,
           supplierCost: sourcing.cost,
           supplierCostCurrency: sourcing.currency,
-          commercialNotes:
-            'notes' in line && line.notes ? line.notes : undefined,
+          commercialNotes: line.notes.trim() || undefined,
+          customerFacingNotes: line.customerFacingNotes?.trim() || undefined,
           participantIds: [line.participantId],
         };
       });

@@ -23,6 +23,18 @@ describe('Travel context domain reads', () => {
           clientId: 'client-1',
           role: 'HOLDER',
           client: { fullName: 'Juan Holder' },
+          contractSources: [
+            {
+              contractId: 'contract-125',
+              sourceRole: 'HOLDER',
+              contract: { contractNumber: 'CT-00125', status: 'SIGNED' },
+            },
+            {
+              contractId: 'contract-141',
+              sourceRole: 'HOLDER',
+              contract: { contractNumber: 'CT-00141', status: 'PENDING_SIGNATURE' },
+            },
+          ],
         },
       ]),
     };
@@ -49,6 +61,20 @@ describe('Travel context domain reads', () => {
           fullName: 'Juan Holder',
           participantRole: 'HOLDER',
           operationalNotes: [],
+          contractSources: [
+            {
+              contractId: 'contract-125',
+              contractNumber: 'CT-00125',
+              status: 'SIGNED',
+              sourceRole: 'HOLDER',
+            },
+            {
+              contractId: 'contract-141',
+              contractNumber: 'CT-00141',
+              status: 'PENDING_SIGNATURE',
+              sourceRole: 'HOLDER',
+            },
+          ],
         },
       ],
     });
@@ -81,6 +107,7 @@ describe('Travel context domain reads', () => {
           clientId: 'client-2',
           role: 'MINOR',
           client: { fullName: 'Esteban Minor' },
+          contractSources: [],
         },
       ],
     });
@@ -107,6 +134,7 @@ describe('Travel context domain reads', () => {
           fullName: 'Esteban Minor',
           participantRole: 'MINOR',
           operationalNotes: [],
+          contractSources: [],
         },
       ],
     });

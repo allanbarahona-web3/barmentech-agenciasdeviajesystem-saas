@@ -17,6 +17,14 @@ export interface TravelPackageParticipantRead {
   id: string;
   clientId: string;
   role: TravelPackageParticipantRoleValue;
+  contractSources: Array<{
+    contractId: string;
+    sourceRole: TravelPackageParticipantRoleValue;
+    contract: {
+      contractNumber: string;
+      status: string;
+    };
+  }>;
   client: {
     fullName: string;
   };
@@ -55,6 +63,27 @@ export class TravelPackageParticipantsRepository {
           select: {
             fullName: true,
           },
+        },
+        contractSources: {
+          where: {
+            tenantId,
+            travelPackageId,
+          },
+          select: {
+            contractId: true,
+            sourceRole: true,
+            contract: {
+              select: {
+                contractNumber: true,
+                status: true,
+              },
+            },
+          },
+          orderBy: [
+            { contract: { contractNumber: 'asc' } },
+            { contractId: 'asc' },
+            { id: 'asc' },
+          ],
         },
       },
       orderBy: {

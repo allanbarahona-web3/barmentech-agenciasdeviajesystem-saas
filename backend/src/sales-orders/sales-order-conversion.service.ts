@@ -35,6 +35,7 @@ export interface SalesOrderSummary {
     serviceDetailsVersion: number | null;
     serviceDetails: unknown;
     commercialNotes: string | null;
+    customerFacingNotes: string | null;
     subtotal: string;
     vatPercentage: string;
     vatAmount: string;
@@ -101,16 +102,18 @@ export class SalesOrderConversionService {
         fiscalItemCategory: unknown;
         serviceCode: string;
         serviceName: string;
+        customerFacingDescription: string | null;
         serviceDetailsVersion: number | null;
         serviceDetails: unknown;
         commercialNotes: string | null;
+        customerFacingNotes: string | null;
         subtotal: Prisma.Decimal;
         vatPercentage: Prisma.Decimal;
         vatAmount: Prisma.Decimal;
         total: Prisma.Decimal;
         participants: unknown;
-    }>>`SELECT l."additionalServiceCatalogId", catalog."fiscalItemCategory", l."serviceCode", l."serviceName", l."serviceDetailsVersion",
-                 l."serviceDetails", l."commercialNotes", l."subtotal",
+    }>>`SELECT l."additionalServiceCatalogId", catalog."fiscalItemCategory", l."serviceCode", l."serviceName", l."customerFacingDescription", l."serviceDetailsVersion",
+                 l."serviceDetails", l."commercialNotes", l."customerFacingNotes", l."subtotal",
                  l."vatPercentage", l."vatAmount", l."finalSellingPrice" AS "total",
                  COALESCE(jsonb_agg(jsonb_build_object(
                    'role', p."role", 'fullName', p."fullName",
@@ -170,12 +173,12 @@ export class SalesOrderConversionService {
 
     for (const line of snapshotLines) {
       await tx.$executeRaw`INSERT INTO "sales_order_lines" (
-            "id", "tenantId", "salesOrderId", "additionalServiceCatalogId", "fiscalItemCategory", "serviceCode", "serviceName", "serviceDetailsVersion",
-            "serviceDetails", "commercialNotes", "subtotal", "vatPercentage", "vatAmount", "total",
+            "id", "tenantId", "salesOrderId", "additionalServiceCatalogId", "fiscalItemCategory", "serviceCode", "serviceName", "customerFacingDescription", "serviceDetailsVersion",
+            "serviceDetails", "commercialNotes", "customerFacingNotes", "subtotal", "vatPercentage", "vatAmount", "total",
             "participants", "updatedAt"
           ) VALUES (
             ${randomUUID()}, ${tenantId}, ${salesOrderId}, ${line.additionalServiceCatalogId}, ${line.fiscalItemCategory}::"FiscalItemCategory", ${line.serviceCode}, ${line.serviceName},
-            ${line.serviceDetailsVersion}, ${JSON.stringify(line.serviceDetails)}::jsonb, ${line.commercialNotes},
+            ${line.customerFacingDescription}, ${line.serviceDetailsVersion}, ${JSON.stringify(line.serviceDetails)}::jsonb, ${line.commercialNotes}, ${line.customerFacingNotes},
             ${line.subtotal}, ${line.vatPercentage}, ${line.vatAmount}, ${line.total},
             ${JSON.stringify(line.participants)}::jsonb, CURRENT_TIMESTAMP
           )`;
@@ -219,7 +222,7 @@ export class SalesOrderConversionService {
                'serviceCode', l."serviceCode", 'serviceName', l."serviceName",
                'fiscalItemCategory', l."fiscalItemCategory",
                'serviceDetailsVersion', l."serviceDetailsVersion", 'serviceDetails', l."serviceDetails",
-               'commercialNotes', l."commercialNotes", 'subtotal', l."subtotal"::text,
+               'commercialNotes', l."commercialNotes", 'customerFacingNotes', l."customerFacingNotes", 'subtotal', l."subtotal"::text,
                'vatPercentage', l."vatPercentage"::text, 'vatAmount', l."vatAmount"::text,
                'total', l."total"::text, 'participants', l."participants"
              ) ORDER BY l."createdAt") FILTER (WHERE l."id" IS NOT NULL), '[]'::jsonb) AS "lines"

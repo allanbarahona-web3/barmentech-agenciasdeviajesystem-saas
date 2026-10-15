@@ -25,6 +25,59 @@ describe("SalesOrderLine fiscal description", () => {
     );
   });
 
+  it("uses the immutable Additional Services snapshot without reintroducing IATA", () => {
+    const result = buildSalesOrderLineFiscalDescription({
+      sourceType: "ADDITIONAL_SERVICE_ORDER",
+      customerFacingDescription: "Alajuela – Madrid",
+      serviceName: "Vuelo interno SJO-MAD",
+      serviceCode: "FLIGHT_TICKET",
+      serviceDetailsVersion: 1,
+      serviceDetails: {
+        tripType: "ONE_WAY",
+        originAirport: { iata: "SJO" },
+        destinationAirport: { iata: "MAD" },
+        departureDate: "2026-10-01",
+        returnDate: null,
+        quantity: 1,
+      },
+    });
+
+    expect(result).toBe(
+      "Alajuela – Madrid · Tipo de viaje: Solo ida · Salida: 01/10/2026 · Cantidad: 1 unidad",
+    );
+    expect(result).not.toContain("SJO");
+    expect(result).not.toContain("MAD");
+  });
+
+  it("uses the legacy formatter for null snapshots and other source types", () => {
+    const legacyInput = {
+      sourceType: "ADDITIONAL_SERVICE_ORDER",
+      customerFacingDescription: null,
+      serviceName: "Vuelo",
+      serviceCode: "FLIGHT_TICKET",
+      serviceDetailsVersion: 1,
+      serviceDetails: {
+        tripType: "ONE_WAY",
+        originAirport: { iata: "SJO" },
+        destinationAirport: { iata: "MAD" },
+        departureDate: "2026-10-01",
+        returnDate: null,
+        quantity: 1,
+      },
+    };
+
+    expect(buildSalesOrderLineFiscalDescription(legacyInput)).toContain(
+      "Ruta: SJO → MAD",
+    );
+    expect(
+      buildSalesOrderLineFiscalDescription({
+        ...legacyInput,
+        sourceType: "CUSTOM_QUOTATION",
+        customerFacingDescription: "No usar esta descripción",
+      }),
+    ).toContain("Ruta: SJO → MAD");
+  });
+
   it.each([
     [null, { coverage: "USD_60000" }],
     [2, { coverage: "USD_60000" }],
@@ -78,6 +131,26 @@ describe("SalesOrderLine fiscal description", () => {
     expect(result).not.toMatch(
       /supplier|provider|999|private|margin|internal|tenant|customer/i,
     );
+  });
+
+  it("does not consume either line-note snapshot", () => {
+    const snapshot = {
+      serviceName: "Seguro",
+      serviceCode: "INSURANCE",
+      serviceDetailsVersion: 1,
+      serviceDetails: {
+        coverage: "USD_60000",
+        customCoverageAmount: null,
+        currency: "USD",
+      },
+      commercialNotes: "Internal note",
+      customerFacingNotes: "Customer note",
+    };
+
+    const result = buildSalesOrderLineFiscalDescription(snapshot);
+
+    expect(result).toBe("Seguro · Cobertura: USD 60,000");
+    expect(result).not.toMatch(/internal note|customer note/i);
   });
 
   it("supports the version-one serviceDetails contract beyond Insurance", () => {

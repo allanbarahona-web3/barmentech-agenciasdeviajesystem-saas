@@ -12,6 +12,7 @@ export interface SalesOrderSourceLine {
   fiscalTaxPercentage: string | null;
   serviceCode: string;
   serviceName: string;
+  customerFacingDescription: string | null;
   serviceDetailsVersion: number | null;
   serviceDetails: unknown;
   commercialNotes: string | null;

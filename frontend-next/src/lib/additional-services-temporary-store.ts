@@ -16,6 +16,7 @@ export interface TemporaryBaggageLine {
   pieceQuantity: number;
   weightKg: number;
   notes: string;
+  customerFacingNotes?: string;
 }
 
 export type LodgingType =
@@ -31,6 +32,7 @@ export interface TemporaryLodgingLine {
   checkInDate: string;
   checkOutDate: string;
   notes: string;
+  customerFacingNotes?: string;
 }
 
 export type AccommodationType = 'SINGLE' | 'DOUBLE' | 'TRIPLE' | 'QUADRUPLE';
@@ -40,6 +42,7 @@ export interface TemporaryAccommodationTypeLine {
   serviceType: 'ACCOMMODATION_TYPE';
   accommodationType: AccommodationType;
   notes: string;
+  customerFacingNotes?: string;
 }
 
 export type InsuranceCoverage = 'USD_35000' | 'USD_60000' | 'OTHER';
@@ -51,6 +54,7 @@ export interface TemporaryInsuranceLine {
   customCoverageAmount: number | null;
   currency: 'USD';
   notes: string;
+  customerFacingNotes?: string;
 }
 
 export type TransportationType =
@@ -74,6 +78,7 @@ export interface TemporaryTransportationLine {
   origin: string;
   destination: string;
   notes: string;
+  customerFacingNotes?: string;
 }
 
 export interface TemporaryTourLine {
@@ -82,6 +87,7 @@ export interface TemporaryTourLine {
   tourName: string;
   serviceDate: string;
   notes: string;
+  customerFacingNotes?: string;
 }
 
 export interface TemporaryFlightTicketLine {
@@ -94,6 +100,7 @@ export interface TemporaryFlightTicketLine {
   returnDate: string | null;
   quantity: number;
   notes: string;
+  customerFacingNotes?: string;
 }
 
 export type SeatPreference =
@@ -113,6 +120,7 @@ export interface TemporarySeatSelectionLine {
   otherPreferenceDescription: string | null;
   quantity: number;
   notes: string;
+  customerFacingNotes?: string;
 }
 
 export interface TemporaryEventTicketLine {
@@ -123,6 +131,7 @@ export interface TemporaryEventTicketLine {
   quantity: number;
   venueOrCity: string;
   notes: string;
+  customerFacingNotes?: string;
 }
 
 export interface TemporaryTravelExtensionLine {
@@ -131,6 +140,7 @@ export interface TemporaryTravelExtensionLine {
   newReturnDate: string;
   quantity: number;
   notes: string;
+  customerFacingNotes?: string;
 }
 
 export interface TemporaryTripReductionLine {
@@ -139,6 +149,7 @@ export interface TemporaryTripReductionLine {
   newReturnDate: string;
   quantity: number;
   notes: string;
+  customerFacingNotes?: string;
 }
 
 export type VisaType =
@@ -156,6 +167,7 @@ export interface TemporaryVisaAssistanceLine {
   visaType: VisaType;
   expectedTravelDate: string | null;
   notes: string;
+  customerFacingNotes?: string;
 }
 
 export interface AdditionalServicesContextParticipant {

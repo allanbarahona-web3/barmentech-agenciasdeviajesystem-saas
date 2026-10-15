@@ -39,6 +39,8 @@ import {
   UpdateAdditionalServiceCatalogData,
 } from "./repositories";
 import { normalizeAdditionalServiceDetails } from "./service-details";
+import { resolveAdditionalServiceCustomerFacingDescription } from "./additional-service-customer-description.resolver";
+import { snapshotAdditionalServiceParticipantContractContext } from "./additional-service-order-participant-contract-context";
 import { PaymentConditionType } from "./enums";
 import { FiscalCatalogService } from "../fiscal-catalogs/fiscal-catalog.service";
 import {
@@ -719,13 +721,14 @@ export class AdditionalServicesService {
       this.repository,
       tenantId,
       dto,
+      travel.commercialDestination,
     );
     const { lines, participantIds } = resolvedLines;
     const quoteCustomerId = dto.quoteCustomerId.trim();
     const customerAndParticipantIds = [
       ...new Set([...participantIds, quoteCustomerId]),
     ];
-    const [participants, travelParticipantRoles] = await Promise.all([
+    const [participants, travelParticipantContext] = await Promise.all([
       this.validateParticipants(
         this.repository,
         tenantId,
@@ -734,11 +737,14 @@ export class AdditionalServicesService {
       this.validateTravelParticipants(
         this.repository,
         tenantId,
-        travel,
+        {
+          travelPackageId: travel.travelPackageId,
+          internalBookingId: travel.internalBookingId,
+        },
         customerAndParticipantIds,
       ),
     ]);
-    if (!travelParticipantRoles.has(quoteCustomerId)) {
+    if (!travelParticipantContext.roles.has(quoteCustomerId)) {
       throw new BadRequestException(
         "El cliente de la cotización no pertenece al viaje seleccionado.",
       );
@@ -776,11 +782,14 @@ export class AdditionalServicesService {
           const participant = participantById.get(clientId)!;
           return {
             clientId: participant.id,
-            role: travelParticipantRoles.get(clientId)!,
+            role: travelParticipantContext.roles.get(clientId)!,
             fullName: participant.fullName,
             identification: participant.idNumber,
             email: participant.email,
             phone: participant.phone,
+            contractContextSnapshot:
+              travelParticipantContext.contractContextSnapshots.get(clientId) ??
+              null,
           };
         }),
       }));
@@ -1290,6 +1299,7 @@ export class AdditionalServicesService {
   ): Promise<{
     travelPackageId?: string;
     internalBookingId?: string;
+    commercialDestination: string | null;
   }> {
     const travelId = dto.travelId.trim();
     const travel =
@@ -1308,14 +1318,21 @@ export class AdditionalServicesService {
     }
 
     return dto.travelType === "INTERNATIONAL"
-      ? { travelPackageId: travelId }
-      : { internalBookingId: travelId };
+      ? {
+          travelPackageId: travelId,
+          commercialDestination: this.toNullableText(travel.destination),
+        }
+      : {
+          internalBookingId: travelId,
+          commercialDestination: this.toNullableText(travel.destination),
+        };
   }
 
   private async validateAndResolveLines(
     repository: AdditionalServicesRepository,
     tenantId: string,
     dto: CreateAdditionalServiceOrderDto,
+    commercialDestination: string | null = null,
   ): Promise<{
     lines: Array<
       Omit<CreateAdditionalServiceOrderLineData, "participants"> & {
@@ -1432,15 +1449,23 @@ export class AdditionalServicesService {
     const lines = resolvedEntities.map((resolved, index) => {
       const { line, catalog, supplier, lineParticipantIds } = resolved;
       const pricing = pricingResults[index];
+      const serviceDetails = normalizeAdditionalServiceDetails(
+        catalog.code,
+        line.serviceDetails,
+      );
       return {
         additionalServiceCatalogId: catalog.id,
         serviceCode: catalog.code,
         serviceName: catalog.name,
         serviceDetailsVersion: line.serviceDetailsVersion,
-        serviceDetails: normalizeAdditionalServiceDetails(
-          catalog.code,
-          line.serviceDetails,
-        ),
+        serviceDetails,
+        customerFacingDescription:
+          resolveAdditionalServiceCustomerFacingDescription({
+            serviceCode: catalog.code,
+            serviceName: catalog.name,
+            serviceDetails,
+            commercialDestination,
+          }),
         supplierId: supplier.id,
         supplierName: supplier.name,
         supplierCostUrl: this.toNullableText(line.supplierCostUrl) ?? undefined,
@@ -1468,6 +1493,8 @@ export class AdditionalServicesService {
         finalSellingPrice: pricing.finalSellingPrice,
         commercialNotes:
           this.toNullableText(line.commercialNotes) ?? undefined,
+        customerFacingNotes:
+          this.toNullableText(line.customerFacingNotes) ?? undefined,
         participantClientIds: lineParticipantIds,
       };
     });
@@ -1534,7 +1561,15 @@ export class AdditionalServicesService {
       );
     }
 
-    return travelParticipantRoles;
+    return {
+      roles: travelParticipantRoles,
+      contractContextSnapshots: new Map(
+        travelParticipants.map((participant) => [
+          participant.clientId,
+          snapshotAdditionalServiceParticipantContractContext(participant),
+        ]),
+      ),
+    };
   }
 
   private toCreateData(
@@ -1544,18 +1579,22 @@ export class AdditionalServicesService {
     travel: {
       travelPackageId?: string;
       internalBookingId?: string;
+      commercialDestination: string | null;
     },
     lines: CreateAdditionalServiceOrderLineData[],
     orderNumber: string,
     orderId?: string,
   ): CreateAdditionalServiceOrderData {
+    const { commercialDestination: _commercialDestination, ...travelReference } =
+      travel;
+
     return {
       ...(orderId ? { id: orderId } : {}),
       tenantId,
       orderNumber,
       idempotencyKey: dto.idempotencyKey.trim(),
       quoteCustomerId: dto.quoteCustomerId.trim(),
-      ...travel,
+      ...travelReference,
       travelType: dto.travelType,
       quotationCurrency: dto.quotationCurrency,
       commercialSubtotal: this.sumMoney(lines, (line) => line.subtotal),

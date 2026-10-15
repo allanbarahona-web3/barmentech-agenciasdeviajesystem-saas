@@ -106,6 +106,137 @@ describe("CommercialProposalPdfMapper", () => {
       "costEvidenceByteSize",
       "createdByUserId",
     ].forEach((field) => expect(serialized).not.toContain(`\"${field}\"`));
+    expect(serialized).toContain("Sujeto a disponibilidad.");
+    expect(serialized).not.toContain("INTERNAL ONLY - DO NOT SHOW CUSTOMER");
+  });
+
+  it("does not fall back to the internal note for historical lines", () => {
+    const order = buildOrder();
+    order.lines[0] = {
+      ...order.lines[0],
+      commercialNotes: "INTERNAL ONLY - DO NOT SHOW CUSTOMER",
+      customerFacingNotes: null,
+    };
+
+    const service = mapper.map(order, company()).services[0];
+
+    expect(service.notes).toBeNull();
+    expect(JSON.stringify(service)).not.toContain(
+      "INTERNAL ONLY - DO NOT SHOW CUSTOMER",
+    );
+  });
+
+  it("uses the persisted flight snapshot without duplicating technical airport details", () => {
+    const order = buildOrder();
+    order.lines[0] = {
+      ...order.lines[0],
+      serviceCode: "FLIGHT_TICKET",
+      serviceName: "Vuelo interno SJO-MAD",
+      customerFacingDescription: "Alajuela – Madrid",
+      serviceDetails: {
+        tripType: "ONE_WAY",
+        originAirport: {
+          iata: "SJO",
+          name: "Juan Santamaría",
+          city: "Alajuela",
+          country: "Costa Rica",
+        },
+        destinationAirport: {
+          iata: "MAD",
+          name: "Barajas",
+          city: "Madrid",
+          country: "España",
+        },
+        departureDate: "2026-10-01",
+        returnDate: null,
+        quantity: 1,
+      },
+    };
+
+    const service = mapper.map(order, company()).services[0];
+    const serialized = JSON.stringify(service);
+
+    expect(service.name).toBe("Alajuela – Madrid");
+    expect(service.details).toEqual([
+      { label: "Tipo de vuelo", value: "Solo ida" },
+      { label: "Fecha de salida", value: "01/10/2026" },
+      { label: "Cantidad", value: "1" },
+    ]);
+    expect(serialized).not.toContain("SJO");
+    expect(serialized).not.toContain("MAD");
+    expect(serialized).not.toContain("Juan Santamaría");
+  });
+
+  it("uses a generic lodging snapshot while retaining customer-useful details", () => {
+    const order = buildOrder();
+    order.lines[0] = {
+      ...order.lines[0],
+      serviceCode: "LODGING",
+      serviceName: "Hotel Riu Plaza España",
+      customerFacingDescription: "Hotel Madrid",
+      serviceDetails: {
+        lodgingType: "HOTEL_WITH_BREAKFAST",
+        checkInDate: "2026-10-01",
+        checkOutDate: "2026-10-10",
+      },
+    };
+
+    const service = mapper.map(order, company()).services[0];
+    const serialized = JSON.stringify(service);
+
+    expect(service.name).toBe("Hotel Madrid");
+    expect(service.details).toEqual([
+      { label: "Tipo de hospedaje", value: "Hotel con desayuno" },
+      { label: "Entrada", value: "01/10/2026" },
+      { label: "Salida", value: "10/10/2026" },
+    ]);
+    expect(serialized).not.toContain("Riu Plaza");
+    expect(serialized).not.toContain("Proveedor interno");
+    expect(serialized).not.toContain("internal.example/cost");
+    expect(serialized).not.toContain("internal-cost-source.webp");
+  });
+
+  it("uses the existing formatter for historical lines without a snapshot", () => {
+    const order = buildOrder();
+    order.lines[0] = {
+      ...order.lines[0],
+      serviceCode: "FLIGHT_TICKET",
+      customerFacingDescription: null,
+      serviceDetails: {
+        tripType: "ONE_WAY",
+        originAirport: {
+          iata: "SJO",
+          name: "Juan Santamaría",
+          city: "Alajuela",
+          country: "Costa Rica",
+        },
+        destinationAirport: {
+          iata: "MAD",
+          name: "Barajas",
+          city: "Madrid",
+          country: "España",
+        },
+        departureDate: "2026-10-01",
+        returnDate: null,
+        quantity: 1,
+      },
+    };
+
+    const service = mapper.map(order, company()).services[0];
+
+    expect(service.name).toBe("Equipaje adicional");
+    expect(service.details).toEqual(
+      expect.arrayContaining([
+        {
+          label: "Aeropuerto de origen",
+          value: "SJO - Juan Santamaría - Alajuela - Costa Rica",
+        },
+        {
+          label: "Aeropuerto de destino",
+          value: "MAD - Barajas - Madrid - España",
+        },
+      ]),
+    );
   });
 
   it.each([
@@ -188,6 +319,7 @@ function buildOrder(): AdditionalServiceOrderRecord {
         additionalServiceCatalogId: "internal-catalog-id",
         serviceCode: "BAGGAGE",
         serviceName: "Equipaje adicional",
+        customerFacingDescription: null,
         serviceDetailsVersion: 1,
         serviceDetails: {
           baggageTypes: ["CHECKED_BAGGAGE"],
@@ -221,7 +353,8 @@ function buildOrder(): AdditionalServiceOrderRecord {
         vatPercentage: "13.00",
         vatAmount: "13.00",
         finalSellingPrice: "113.00",
-        commercialNotes: "Sujeto a disponibilidad.",
+        commercialNotes: "INTERNAL ONLY - DO NOT SHOW CUSTOMER",
+        customerFacingNotes: "Sujeto a disponibilidad.",
         participants: [
           {
             clientId: "internal-customer-id",
@@ -230,6 +363,7 @@ function buildOrder(): AdditionalServiceOrderRecord {
             identification: "1-1111-1111",
             email: "ana@example.com",
             phone: "+506 8888-8888",
+            contractSources: null,
           },
         ],
         createdAt: new Date("2026-08-06T15:00:00.000Z"),
@@ -240,5 +374,17 @@ function buildOrder(): AdditionalServiceOrderRecord {
     createdByName: "Agente Interno",
     createdAt: new Date("2026-08-06T15:00:00.000Z"),
     updatedAt: new Date("2026-08-06T15:00:00.000Z"),
+  };
+}
+
+function company() {
+  return {
+    name: "Viajes Ejemplo",
+    legalId: null,
+    contactEmail: null,
+    contactPhone: null,
+    businessAddress: null,
+    primaryColor: null,
+    logoSrc: null,
   };
 }

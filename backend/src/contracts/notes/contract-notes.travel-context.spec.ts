@@ -20,24 +20,28 @@ function buildContext(): TravelContextDto {
         fullName: 'Holder Current Name',
         participantRole: 'HOLDER',
         operationalNotes: [],
+        contractSources: [],
       },
       {
         clientId: 'companion-1',
         fullName: 'Companion Current Name',
         participantRole: 'COMPANION',
         operationalNotes: [],
+        contractSources: [],
       },
       {
         clientId: 'minor-1',
         fullName: 'Minor Current Name',
         participantRole: 'MINOR',
         operationalNotes: [],
+        contractSources: [],
       },
       {
         clientId: 'companion-no-notes',
         fullName: 'No Notes',
         participantRole: 'COMPANION',
         operationalNotes: [],
+        contractSources: [],
       },
     ],
   };

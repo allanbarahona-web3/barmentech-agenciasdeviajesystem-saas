@@ -3,6 +3,8 @@ export interface SalesOrderLineDescriptionSnapshot {
   serviceCode: string;
   serviceDetailsVersion: number | null;
   serviceDetails: unknown | null;
+  sourceType?: string;
+  customerFacingDescription?: string | null;
 }
 
 export interface CustomerVisibleServiceAttribute {
@@ -84,7 +86,10 @@ type LabelMap = Readonly<Record<string, string>>;
 export function buildSalesOrderLineFiscalDescription(
   snapshot: Readonly<SalesOrderLineDescriptionSnapshot>,
 ): string {
-  const serviceName = truncate(normalizeText(snapshot.serviceName));
+  const customerFacingDescription = resolveCustomerFacingDescription(snapshot);
+  const serviceName = truncate(
+    customerFacingDescription ?? normalizeText(snapshot.serviceName),
+  );
   if (
     snapshot.serviceDetailsVersion !== 1 ||
     !isDetails(snapshot.serviceDetails)
@@ -96,7 +101,12 @@ export function buildSalesOrderLineFiscalDescription(
     snapshot.serviceCode,
     snapshot.serviceDetails,
   );
-  return appendWholeAttributes(serviceName, attributes);
+  return appendWholeAttributes(
+    serviceName,
+    customerFacingDescription
+      ? withoutSnapshotCoveredAttributes(snapshot.serviceCode, attributes)
+      : attributes,
+  );
 }
 
 export function formatCustomerVisibleServiceAttributes(
@@ -284,6 +294,36 @@ function appendWholeAttributes(
     result += `${SEPARATOR}${part}`;
   }
   return result;
+}
+
+function resolveCustomerFacingDescription(
+  snapshot: Readonly<SalesOrderLineDescriptionSnapshot>,
+): string | null {
+  if (snapshot.sourceType !== "ADDITIONAL_SERVICE_ORDER") return null;
+  const description = snapshot.customerFacingDescription;
+  return typeof description === "string" && normalizeText(description)
+    ? normalizeText(description)
+    : null;
+}
+
+function withoutSnapshotCoveredAttributes(
+  serviceCode: string,
+  attributes: readonly CustomerVisibleServiceAttribute[],
+): readonly CustomerVisibleServiceAttribute[] {
+  const coveredLabels =
+    serviceCode === "FLIGHT_TICKET"
+      ? new Set(["Ruta"])
+      : serviceCode === "TRANSPORTATION"
+        ? new Set(["Origen", "Destino"])
+        : serviceCode === "TOUR"
+          ? new Set(["Tour"])
+          : serviceCode === "EVENT_TICKET"
+            ? new Set(["Evento", "Recinto / Ciudad"])
+            : null;
+
+  return coveredLabels
+    ? attributes.filter(({ label }) => !coveredLabels.has(label))
+    : attributes;
 }
 
 function isDetails(value: unknown): value is Details {

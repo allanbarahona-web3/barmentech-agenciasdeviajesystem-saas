@@ -1,0 +1,190 @@
+.summaryFields {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.summaryContract {
+  min-width: 0;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #e2e8f0;
+  overflow-wrap: anywhere;
+}
+
+.activeFilter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  border: 1px solid #c7d2fe;
+  border-radius: 10px;
+  background: #eef2ff;
+  color: #3730a3;
+  font-size: 13px;
+  font-weight: 600;
+  flex-wrap: wrap;
+}
+
+.clearFilterButton {
+  padding: 3px 7px;
+  border: 1px solid #a5b4fc;
+  border-radius: 7px;
+  background: #fff;
+  color: #3730a3;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.clearFilterButton:focus-visible {
+  outline: 2px solid #4f46e5;
+  outline-offset: 2px;
+}
+
+.roster {
+  overflow: hidden;
+  border: 1px solid #dbe4f0;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.participantRow {
+  display: grid;
+  grid-template-columns: auto minmax(180px, 1.25fr) minmax(110px, 0.55fr) minmax(180px, 1fr);
+  align-items: center;
+  gap: 10px 14px;
+  min-height: 58px;
+  padding: 10px 14px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.participantRow:last-child {
+  border-bottom: 0;
+}
+
+.participantRowSelected {
+  background: #eef2ff;
+}
+
+.checkbox {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+}
+
+.participantNameCell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.participantNameContent {
+  min-width: 0;
+}
+
+.participantName {
+  display: block;
+  min-width: 0;
+  color: #172554;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.identification {
+  margin-top: 2px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.role {
+  color: #475569;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.roleIcon {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+}
+
+.roleIconHolder {
+  color: var(--warning);
+}
+
+.roleIconCompanion {
+  color: var(--info);
+}
+
+.roleIconMinor {
+  color: #7e22ce;
+}
+
+.contractTags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+
+.contractBadgeButton {
+  display: inline-flex;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 9999px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.contractBadgeButton > div {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.contractBadgeButton:focus-visible {
+  outline: 2px solid #4f46e5;
+  outline-offset: 2px;
+}
+
+@media (max-width: 900px) {
+  .summaryFields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .participantRow {
+    grid-template-columns: auto minmax(180px, 1fr) minmax(150px, 0.8fr);
+  }
+
+  .contractTags {
+    grid-column: 2 / -1;
+  }
+}
+
+@media (max-width: 640px) {
+  .summaryFields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .participantRow {
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+    gap: 4px 10px;
+  }
+
+  .checkbox {
+    grid-row: 1 / span 3;
+    margin-top: 3px;
+  }
+
+  .role,
+  .contractTags {
+    grid-column: 2;
+  }
+}

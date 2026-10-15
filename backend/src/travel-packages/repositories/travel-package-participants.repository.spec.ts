@@ -7,12 +7,20 @@ describe('TravelPackageParticipantsRepository', () => {
         id: 'participant-holder-1',
         clientId: 'holder-1',
         role: 'HOLDER',
+        contractSources: [
+          {
+            contractId: 'contract-1',
+            sourceRole: 'HOLDER',
+            contract: { contractNumber: 'CT-00125', status: 'SIGNED' },
+          },
+        ],
         client: { fullName: 'Holder One' },
       },
       {
         id: 'participant-minor-1',
         clientId: 'minor-1',
         role: 'MINOR',
+        contractSources: [],
         client: { fullName: 'Minor One' },
       },
     ];
@@ -38,6 +46,27 @@ describe('TravelPackageParticipantsRepository', () => {
           select: {
             fullName: true,
           },
+        },
+        contractSources: {
+          where: {
+            tenantId: 'tenant-1',
+            travelPackageId: 'travel-1',
+          },
+          select: {
+            contractId: true,
+            sourceRole: true,
+            contract: {
+              select: {
+                contractNumber: true,
+                status: true,
+              },
+            },
+          },
+          orderBy: [
+            { contract: { contractNumber: 'asc' } },
+            { contractId: 'asc' },
+            { id: 'asc' },
+          ],
         },
       },
       orderBy: {

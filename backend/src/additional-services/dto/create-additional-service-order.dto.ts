@@ -65,6 +65,14 @@ export class CreateAdditionalServiceOrderLineDto {
   @IsString()
   commercialNotes?: string;
 
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  @Transform(({ value }) =>
+    typeof value === "string" ? value.trim() || null : value,
+  )
+  customerFacingNotes?: string | null;
+
   @IsArray()
   @ArrayMinSize(1)
   @IsString({ each: true })

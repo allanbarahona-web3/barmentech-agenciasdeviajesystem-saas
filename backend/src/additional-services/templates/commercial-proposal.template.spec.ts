@@ -62,6 +62,16 @@ describe("commercialProposalTemplate", () => {
     expect(html).not.toContain("Plazo de pago");
     expect(html).toContain("Contado");
   });
+
+  it("omits the optional customer note block when a service has no note", () => {
+    const proposal = buildProposal();
+    proposal.services[0].notes = null;
+
+    const html = commercialProposalTemplate(proposal);
+
+    expect(html).not.toContain("Sujeto a disponibilidad.");
+    expect(html).not.toContain("<strong>Nota</strong>");
+  });
 });
 
 function buildProposal(): CommercialProposalPdfDto {

@@ -172,6 +172,7 @@ export class PrismaSalesOrderFiscalBillingRepository
       total: order.total.toFixed(5),
       lines: order.lines.map((line) => ({
         ...line,
+        customerFacingDescription: line.customerFacingDescription ?? null,
         fiscalDescription: (line as typeof line & {
           fiscalDescription: string | null;
         }).fiscalDescription ?? null,

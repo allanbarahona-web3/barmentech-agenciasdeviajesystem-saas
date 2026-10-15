@@ -215,12 +215,12 @@ export class CommercialProposalPdfMapper {
           }
         : null,
       services: order.lines.map((line) => ({
-        name: line.serviceName,
+        name: line.customerFacingDescription ?? line.serviceName,
         details: this.mapDetails(line),
         participants: line.participants.map((participant) =>
           this.mapParticipant(participant),
         ),
-        notes: line.commercialNotes,
+        notes: line.customerFacingNotes,
         subtotal: line.subtotal,
         vatPercentage: line.vatPercentage,
         vatAmount: line.vatAmount,
@@ -272,6 +272,9 @@ export class CommercialProposalPdfMapper {
     if (!details) return [];
 
     return (DETAIL_DESCRIPTORS[line.serviceCode] ?? []).flatMap((descriptor) => {
+      if (this.isDetailCoveredBySnapshot(line, descriptor.key)) {
+        return [];
+      }
       const rawValue = details[descriptor.key];
       if (rawValue === null || rawValue === undefined || rawValue === "") return [];
       const value = descriptor.format
@@ -279,5 +282,27 @@ export class CommercialProposalPdfMapper {
         : String(rawValue);
       return value ? [{ label: descriptor.label, value }] : [];
     });
+  }
+
+  private isDetailCoveredBySnapshot(
+    line: AdditionalServiceOrderLineRecord,
+    detailKey: string,
+  ): boolean {
+    if (
+      line.customerFacingDescription === null ||
+      line.customerFacingDescription === undefined
+    ) {
+      return false;
+    }
+
+    return (
+      (line.serviceCode === "FLIGHT_TICKET" &&
+        (detailKey === "originAirport" || detailKey === "destinationAirport")) ||
+      (line.serviceCode === "TRANSPORTATION" &&
+        (detailKey === "origin" || detailKey === "destination")) ||
+      (line.serviceCode === "TOUR" && detailKey === "tourName") ||
+      (line.serviceCode === "EVENT_TICKET" &&
+        (detailKey === "eventName" || detailKey === "venueOrCity"))
+    );
   }
 }

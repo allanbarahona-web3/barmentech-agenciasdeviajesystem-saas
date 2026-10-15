@@ -101,6 +101,14 @@ describe("AdditionalServicesService orders", () => {
     );
   });
 
+  it("normalizes an empty customer-facing line note to null", () => {
+    const dto = plainToInstance(CreateAdditionalServiceOrderDto, {
+      lines: [{ customerFacingNotes: "   " }],
+    });
+
+    expect(dto.lines[0]?.customerFacingNotes).toBeNull();
+  });
+
   it("rejects a forged new-sale line when fiscal readiness is not READY before pricing", async () => {
     repository.findAdditionalServiceCatalogsByCodes.mockResolvedValue([{ id: "catalog-1", tenantId, code: "TOUR", name: "Tour", isActive: true }]);
     repository.findSuppliersByIds.mockResolvedValue([{ id: "supplier-1", tenantId, name: "Supplier", website: null, supplierType: null, supplierCategory: null, notes: null, isActive: true, createdAt: new Date(), updatedAt: new Date() }]);
@@ -191,7 +199,12 @@ describe("AdditionalServicesService orders", () => {
       },
     ]);
     repository.findTravelParticipants.mockResolvedValue([
-      { clientId: "client-2", role: "COMPANION" },
+      {
+        clientId: "client-2",
+        role: "COMPANION",
+        travelPackageParticipantId: null,
+        contractSources: [],
+      },
     ]);
     repository.create.mockResolvedValue({
       id: "order-1",
@@ -332,8 +345,31 @@ describe("AdditionalServicesService orders", () => {
       },
     ]);
     repository.findTravelParticipants.mockResolvedValue([
-      { clientId: "client-1", role: "HOLDER" },
-      { clientId: "client-2", role: "COMPANION" },
+      {
+        clientId: "client-1",
+        role: "HOLDER",
+        travelPackageParticipantId: "participant-1",
+        contractSources: [
+          {
+            contractId: "contract-2",
+            contractNumber: "CT-00141",
+            status: "SIGNED",
+            sourceRole: "HOLDER",
+          },
+          {
+            contractId: "contract-1",
+            contractNumber: "CT-00125",
+            status: "SIGNED",
+            sourceRole: "HOLDER",
+          },
+        ],
+      },
+      {
+        clientId: "client-2",
+        role: "COMPANION",
+        travelPackageParticipantId: "participant-2",
+        contractSources: [],
+      },
     ]);
     pricingEngine.calculateMany.mockResolvedValue([{
       supplierCost: 100,
@@ -411,6 +447,7 @@ describe("AdditionalServicesService orders", () => {
             supplierCost: 100,
             supplierCostCurrency: AdditionalServiceCurrency.USD,
             commercialNotes: "Snapshot note",
+            customerFacingNotes: "  Nota para el cliente  ",
             participantIds: ["client-1"],
           },
         ],
@@ -483,6 +520,8 @@ describe("AdditionalServicesService orders", () => {
             marginAmount: 7800,
             vatAmount: 7774,
             finalSellingPrice: 67574,
+            commercialNotes: "Snapshot note",
+            customerFacingNotes: "Nota para el cliente",
             participants: [
               {
                 clientId: "client-1",
@@ -491,6 +530,23 @@ describe("AdditionalServicesService orders", () => {
                 identification: "1-1111-1111",
                 email: "customer@example.com",
                 phone: "8888-8888",
+                contractContextSnapshot: {
+                  travelPackageParticipantId: "participant-1",
+                  contractSources: [
+                    {
+                      contractId: "contract-1",
+                      contractNumber: "CT-00125",
+                      status: "SIGNED",
+                      sourceRole: "HOLDER",
+                    },
+                    {
+                      contractId: "contract-2",
+                      contractNumber: "CT-00141",
+                      status: "SIGNED",
+                      sourceRole: "HOLDER",
+                    },
+                  ],
+                },
               },
             ],
           }),
@@ -576,7 +632,12 @@ describe("AdditionalServicesService orders", () => {
       },
     ]);
     repository.findTravelParticipants.mockResolvedValue([
-      { clientId: "client-1", role: "HOLDER" },
+      {
+        clientId: "client-1",
+        role: "HOLDER",
+        travelPackageParticipantId: "participant-1",
+        contractSources: [],
+      },
     ]);
     pricingEngine.calculateMany.mockResolvedValue([
       {

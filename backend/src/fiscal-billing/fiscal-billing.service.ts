@@ -126,6 +126,8 @@ export class SalesOrderFiscalBillingService {
           resolveSalesOrderLineFiscalSnapshot(source).kind === "COMPLETE"
             ? source.fiscalDescription
             : buildSalesOrderLineFiscalDescription({
+                sourceType: analysis.salesOrder.sourceType,
+                customerFacingDescription: source.customerFacingDescription,
                 serviceName: source.serviceName,
                 serviceCode: source.serviceCode,
                 serviceDetailsVersion: source.serviceDetailsVersion,

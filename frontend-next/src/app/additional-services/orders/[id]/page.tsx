@@ -35,6 +35,10 @@ import {
   type CommercialProposalPreview,
 } from '@/lib/additional-services-orders-api';
 import { formatCommercialService } from '@/shared/additional-services';
+import {
+  additionalServicesContractTagKey,
+  buildAdditionalServicesContractTagClasses,
+} from '@/lib/additional-services-contract-tags';
 import styles from './quotation-preview.module.css';
 import { commercialProposalStatusLabel } from '@/shared/commercial-proposal-status';
 
@@ -220,6 +224,10 @@ export default function AdditionalServiceOrderPreviewPage() {
     });
     return [...persistedParticipants.values()];
   }, [order]);
+  const contractTagClasses = useMemo(
+    () => buildAdditionalServicesContractTagClasses(participants),
+    [participants],
+  );
 
   function openSendModal() {
     setCcEmail('');
@@ -679,6 +687,30 @@ export default function AdditionalServiceOrderPreviewPage() {
                 <div>
                   <h3>{participant.fullName}</h3>
                   <Badge variant="outline">{roleLabel(participant.role)}</Badge>
+                </div>
+                <div
+                  className="mt-2 flex flex-wrap gap-1"
+                  aria-label={`Contexto contractual de ${participant.fullName}`}
+                >
+                  {participant.contractSources === null ? (
+                    <Badge variant="outline">
+                      Sin contexto contractual registrado
+                    </Badge>
+                  ) : participant.contractSources.length === 0 ? (
+                    <Badge variant="outline">Sin contrato asociado</Badge>
+                  ) : (
+                    participant.contractSources.map((contractSource) => (
+                      <Badge
+                        className={contractTagClasses.get(
+                          additionalServicesContractTagKey(contractSource),
+                        )}
+                        key={additionalServicesContractTagKey(contractSource)}
+                        variant="outline"
+                      >
+                        {contractSource.contractNumber}
+                      </Badge>
+                    ))
+                  )}
                 </div>
                 {participant.identification && (
                   <p>Identificación: {participant.identification}</p>

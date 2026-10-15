@@ -147,7 +147,10 @@ function setup() {
   internals.validateParticipants = jest.fn().mockResolvedValue([
     { id: "client-1", fullName: "Customer", idNumber: "1-1111-1111", email: null, phone: null },
   ]);
-  internals.validateTravelParticipants = jest.fn().mockResolvedValue(new Map([["client-1", "HOLDER"]]));
+  internals.validateTravelParticipants = jest.fn().mockResolvedValue({
+    roles: new Map([["client-1", "HOLDER"]]),
+    contractContextSnapshots: new Map([["client-1", null]]),
+  });
   return {
     repository,
     evidence,

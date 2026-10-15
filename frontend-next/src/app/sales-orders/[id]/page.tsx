@@ -29,6 +29,15 @@ type ParticipantSnapshot = {
   role: string | null;
 };
 
+const SNAPSHOT_COVERED_ATTRIBUTE_KEYS = new Set([
+  'route',
+  'origin',
+  'destination',
+  'tourName',
+  'eventName',
+  'venueOrCity',
+]);
+
 function formatDate(value: string) {
   return new Intl.DateTimeFormat('es-CR', {
     day: '2-digit',
@@ -92,18 +101,36 @@ function participantSnapshots(value: unknown): ParticipantSnapshot[] {
   });
 }
 
+function customerFacingDescription(
+  line: SalesOrderLine,
+  sourceType: string,
+): string | null {
+  if (sourceType !== 'ADDITIONAL_SERVICE_ORDER') return null;
+  const description = line.customerFacingDescription?.trim();
+  return description || null;
+}
+
 function ServiceCard({
   line,
   currency,
+  sourceType,
 }: {
   line: SalesOrderLine;
   currency: SalesOrderCurrency;
+  sourceType: string;
 }) {
+  const snapshot = customerFacingDescription(line, sourceType);
   const description = formatCommercialService({
     serviceCode: line.serviceCode,
     serviceDetailsVersion: line.serviceDetailsVersion,
     serviceDetails: line.serviceDetails,
   });
+  const attributes = snapshot
+    ? description.attributes.filter(
+        (attribute) => !SNAPSHOT_COVERED_ATTRIBUTE_KEYS.has(attribute.key),
+      )
+    : description.attributes;
+  const summary = snapshot ? null : description.summary;
   const participants = participantSnapshots(line.participants);
 
   return (
@@ -111,14 +138,14 @@ function ServiceCard({
       <div className={styles.serviceMain}>
         <div className={styles.serviceHeading}>
           <div>
-            <h3>{line.serviceName}</h3>
-            {line.serviceCode !== 'BAGGAGE' && <p>{description.summary}</p>}
+            <h3>{snapshot ?? line.serviceName}</h3>
+            {!snapshot && line.serviceCode !== 'BAGGAGE' && <p>{summary}</p>}
           </div>
         </div>
 
-        {description.attributes.length > 0 && (
+        {attributes.length > 0 && (
           <dl className={styles.attributes}>
-            {description.attributes.map((attribute) => (
+            {attributes.map((attribute) => (
               <div key={attribute.key}>
                 <dt>{attribute.label}</dt>
                 <dd>{attribute.value}</dd>
@@ -314,7 +341,12 @@ export default function SalesOrderWorkspacePage() {
           </div>
           <div className={styles.serviceList}>
             {order.lines.map((line) => (
-              <ServiceCard key={line.id} line={line} currency={order.currency} />
+              <ServiceCard
+                key={line.id}
+                line={line}
+                currency={order.currency}
+                sourceType={order.sourceType}
+              />
             ))}
           </div>
         </section>

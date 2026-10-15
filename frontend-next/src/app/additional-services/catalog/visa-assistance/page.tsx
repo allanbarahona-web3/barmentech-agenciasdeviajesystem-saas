@@ -68,6 +68,9 @@ export default function VisaAssistanceFormPage() {
     () => editingLine?.expectedTravelDate ?? '',
   );
   const [notes, setNotes] = useState(() => editingLine?.notes ?? '');
+  const [customerFacingNotes, setCustomerFacingNotes] = useState(
+    () => editingLine?.customerFacingNotes ?? '',
+  );
   const [validationError, setValidationError] =
     useState<ValidationError | null>(null);
 
@@ -100,6 +103,7 @@ export default function VisaAssistanceFormPage() {
       visaType,
       expectedTravelDate: expectedTravelDate || null,
       notes: notes.trim(),
+      customerFacingNotes: customerFacingNotes.trim(),
     };
 
     if (editingLine) {
@@ -196,11 +200,28 @@ export default function VisaAssistanceFormPage() {
               </label>
 
               <label className={styles.fieldGroup}>
-                <span className={styles.label}>Observaciones</span>
+                <span className={styles.label}>Observación interna</span>
+                <small className={styles.subtitle}>
+                  Solo visible para el equipo interno.
+                </small>
                 <textarea
                   className={styles.textarea}
                   value={notes}
                   onChange={(event) => setNotes(event.target.value)}
+                  rows={5}
+                />
+              </label>
+              <label className={styles.fieldGroup}>
+                <span className={styles.label}>
+                  Nota para el cliente (opcional)
+                </span>
+                <small className={styles.subtitle}>
+                  Esta nota aparecerá en la propuesta del cliente.
+                </small>
+                <textarea
+                  className={styles.textarea}
+                  value={customerFacingNotes}
+                  onChange={(event) => setCustomerFacingNotes(event.target.value)}
                   rows={5}
                 />
               </label>

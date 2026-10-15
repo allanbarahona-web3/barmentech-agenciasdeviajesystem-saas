@@ -12,6 +12,14 @@ export interface TravelContextParticipantSource {
     fullName: string;
   };
   operationalNotes?: string[];
+  contractSources?: Array<{
+    contractId: string;
+    sourceRole: TravelContextParticipantRole;
+    contract: {
+      contractNumber: string;
+      status: string;
+    };
+  }>;
 }
 
 export function mapTravelContextParticipants(
@@ -22,6 +30,12 @@ export function mapTravelContextParticipants(
     fullName: participant.client.fullName,
     participantRole: participant.role,
     operationalNotes: participant.operationalNotes ?? [],
+    contractSources: (participant.contractSources ?? []).map((source) => ({
+      contractId: source.contractId,
+      contractNumber: source.contract.contractNumber,
+      status: source.contract.status,
+      sourceRole: source.sourceRole,
+    })),
   }));
 }
 
