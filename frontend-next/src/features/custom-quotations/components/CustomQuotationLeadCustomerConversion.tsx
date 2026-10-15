@@ -75,7 +75,6 @@ export function CustomQuotationLeadCustomerConversion({
       <CustomerCreateModal
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
-        presentation="foundation"
         title="Completar cliente"
         description="Confirma los datos requeridos para convertir este prospecto en cliente."
         submitLabel="Completar cliente"

@@ -71,6 +71,7 @@ export function CompanionsStep({
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [customerToEdit, setCustomerToEdit] = useState<CustomerInfo | null>(null);
   const [editingCompanionId, setEditingCompanionId] = useState<string | null>(null);
+  const [shouldResumeLookupAfterEdit, setShouldResumeLookupAfterEdit] = useState(false);
 
   async function handleSearchCompanion() {
     if (!searchQuery.trim()) {
@@ -166,6 +167,8 @@ export function CompanionsStep({
     try {
       const profile = await getCustomerProfile(selectedCompanionCustomer.id);
       setCustomerToEdit(profile.customer);
+      setShowLookupModal(false);
+      setShouldResumeLookupAfterEdit(true);
       setIsEditModalOpen(true);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Error al cargar cliente';
@@ -187,6 +190,17 @@ export function CompanionsStep({
     setSelectedCompanionCustomer(newCustomerListItem);
     setLookupError(null);
     setIsCreateModalOpen(false);
+    setShowLookupModal(true);
+  }
+
+  function handleOpenCustomerCreate() {
+    setShowLookupModal(false);
+    setIsCreateModalOpen(true);
+  }
+
+  function handleCloseCustomerCreate() {
+    setIsCreateModalOpen(false);
+    setShowLookupModal(true);
   }
 
   async function handleEditCompanionCustomer(companionId: string, customerId: string) {
@@ -195,6 +209,7 @@ export function CompanionsStep({
       const profile = await getCustomerProfile(customerId);
       setCustomerToEdit(profile.customer);
       setEditingCompanionId(companionId);
+      setShouldResumeLookupAfterEdit(false);
       setIsEditModalOpen(true);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Error al cargar cliente';
@@ -284,6 +299,16 @@ export function CompanionsStep({
       const errorMessage = err instanceof Error ? err.message : 'Error al actualizar cliente';
       throw new Error(errorMessage);
     }
+  }
+
+  function handleCloseCustomerEdit() {
+    setIsEditModalOpen(false);
+    setCustomerToEdit(null);
+    setEditingCompanionId(null);
+    if (shouldResumeLookupAfterEdit) {
+      setShowLookupModal(true);
+    }
+    setShouldResumeLookupAfterEdit(false);
   }
 
   function handleOpenLookupModal() {
@@ -580,7 +605,7 @@ export function CompanionsStep({
                     No existe un cliente con el número de identificación &quot;{searchQuery}&quot;.
                   </p>
                   <button
-                    onClick={() => setIsCreateModalOpen(true)}
+                    onClick={handleOpenCustomerCreate}
                     style={{
                       padding: '12px 24px',
                       background: '#10b981',
@@ -628,7 +653,7 @@ export function CompanionsStep({
                     Si el acompañante ya existe, puede seleccionarlo para continuar.
                   </p>
                   <button
-                    onClick={() => setIsCreateModalOpen(true)}
+                    onClick={handleOpenCustomerCreate}
                     style={{
                       padding: '12px 24px',
                       background: '#667eea',
@@ -1221,7 +1246,8 @@ export function CompanionsStep({
 
       <CustomerCreateModal
         isOpen={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
+        includePersonalDetails
+        onClose={handleCloseCustomerCreate}
         onCustomerCreated={handleCustomerCreated}
       />
 
@@ -1230,11 +1256,8 @@ export function CompanionsStep({
         <CustomerEditModal
           isOpen={isEditModalOpen}
           customer={customerToEdit}
-          onClose={() => {
-            setIsEditModalOpen(false);
-            setCustomerToEdit(null);
-            setEditingCompanionId(null);
-          }}
+          includePersonalDetails
+          onClose={handleCloseCustomerEdit}
           onSave={handleSaveCustomerEdit}
         />
       )}

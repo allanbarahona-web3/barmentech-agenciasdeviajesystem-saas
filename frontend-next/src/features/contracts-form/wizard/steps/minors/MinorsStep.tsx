@@ -1,4 +1,4 @@
-import { addMinor, removeMinor, updateMinor } from "@/features/contracts-form/utils";
+import { addMinor, getTodayIsoLocal, removeMinor, updateMinor } from "@/features/contracts-form/utils";
 import type { ContractFormState } from "@/features/contracts-form/types";
 import { CLIENT_IDENTIFICATION_OPTIONS } from '@/features/customers/client-identification';
 
@@ -83,6 +83,16 @@ export function MinorsStep({
                 <input
                   value={minor.minorName}
                   onChange={(event) => setState((prev) => updateMinor(prev, minor.id, "minorName", event.target.value))}
+                />
+              </label>
+              <label>
+                Fecha de nacimiento
+                <input
+                  type="date"
+                  value={minor.dateOfBirth}
+                  max={getTodayIsoLocal()}
+                  required
+                  onChange={(event) => setState((prev) => updateMinor(prev, minor.id, "dateOfBirth", event.target.value))}
                 />
               </label>
               <label>

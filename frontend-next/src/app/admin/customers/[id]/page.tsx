@@ -1587,7 +1587,6 @@ export default function CustomerProfilePage() {
       <CustomerEditModal
         isOpen={editModalOpen}
         customer={customer}
-        presentation="foundation"
         includePersonalDetails
         onClose={() => setEditModalOpen(false)}
         onSave={handleSaveEdit}

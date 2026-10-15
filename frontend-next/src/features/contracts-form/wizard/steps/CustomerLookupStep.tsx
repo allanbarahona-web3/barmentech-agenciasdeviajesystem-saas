@@ -333,6 +333,7 @@ export function CustomerLookupStep({
 
       <CustomerCreateModal
         isOpen={isCreateModalOpen}
+        includePersonalDetails
         onClose={() => setIsCreateModalOpen(false)}
         onCustomerCreated={handleCustomerCreated}
       />
@@ -340,6 +341,7 @@ export function CustomerLookupStep({
         <CustomerEditModal
           isOpen={isEditModalOpen}
           customer={customerToEdit}
+          includePersonalDetails
           onClose={() => {
             setIsEditModalOpen(false);
             setCustomerToEdit(null);

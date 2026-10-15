@@ -6,6 +6,8 @@
  */
 
 import type { ContractFormState } from "@/features/contracts-form/types";
+import { getTodayIsoLocal } from "@/features/contracts-form/utils";
+import { getMinorDateOfBirthValidationError } from "@/features/contracts-form/minor-date-of-birth";
 
 /**
  * Validation context for contracts wizard steps
@@ -93,14 +95,24 @@ function validateItineraryStep(context: ContractsValidationContext): ValidationR
   return { valid: true };
 }
 
+function validateMinorsStep(context: ContractsValidationContext): ValidationResult {
+  const errorMessage = getMinorDateOfBirthValidationError(
+    context.state.minors,
+    getTodayIsoLocal(),
+  );
+
+  return errorMessage ? { valid: false, errorMessage: `Error: ${errorMessage}` } : { valid: true };
+}
+
 /**
  * Registry of step validators
  */
 const stepValidators: Record<string, StepValidator> = {
   travel: validateTravelStep,
   holder: validateHolderStep,
+  minors: validateMinorsStep,
   itinerary: validateItineraryStep,
-  // Other steps: companions, minors, documents, summary - no blocking validation
+  // Other steps: companions, documents, summary - no blocking validation
 };
 
 /**

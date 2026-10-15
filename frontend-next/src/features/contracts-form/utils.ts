@@ -40,6 +40,7 @@ const createMinor = (): Minor => ({
   id: `minor-${Date.now()}-${Math.random().toString(16).slice(2, 7)}`,
   selectedCustomerId: null,
   minorName: "",
+  dateOfBirth: "",
   minorIdType: "CEDULA_FISICA",
   minorId: "",
   travelsWithParent: false,

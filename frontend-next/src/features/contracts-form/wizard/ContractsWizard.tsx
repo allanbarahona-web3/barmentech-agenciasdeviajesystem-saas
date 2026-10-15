@@ -25,6 +25,7 @@ import {
 import { toLocalDateIso } from "@/shared/regional";
 import { resolveArchivePaymentTerms } from "@/features/contracts-form/commercial-terms";
 import { resolveArchiveInitialPayment } from "@/features/contracts-form/initial-contract-payment";
+import { getMinorDateOfBirthValidationError } from "@/features/contracts-form/minor-date-of-birth";
 import type { ContractFormState, IdType } from "@/features/contracts-form/types";
 import type { TravelPackage } from "@/lib/travel-packages-api";
 import { getContractDraft, reserveNextContractNumber, saveContractDraft, archiveContract } from "@/lib/contracts-api";
@@ -1103,6 +1104,14 @@ export function ContractsWizard({
       setStatus('Seleccione tipos de identificación canónicos antes de guardar el contrato.');
       return;
     }
+    const minorDateOfBirthError = getMinorDateOfBirthValidationError(
+      state.minors,
+      getTodayIsoLocal(),
+    );
+    if (minorDateOfBirthError) {
+      setStatus(minorDateOfBirthError);
+      return;
+    }
     if (rangeMessage || itineraryMessage) {
       console.log("❌ Hay errores de validación en fechas/itinerario");
       setStatus("Corrige las validaciones de fechas/itinerario antes de guardar.");
@@ -1269,6 +1278,7 @@ console.log("====================================");
             fullName: minor.minorName,
             idType: minor.minorIdType,
             idNumber: minor.minorId,
+            dateOfBirth: minor.dateOfBirth,
           });
           return {
             ...minor,

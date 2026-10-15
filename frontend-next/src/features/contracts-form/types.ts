@@ -34,6 +34,7 @@ export type Minor = {
   id: string;
   selectedCustomerId?: string | null;
   minorName: string;
+  dateOfBirth: string;
   minorIdType: IdType;
   minorId: string;
   travelsWithParent: boolean;
