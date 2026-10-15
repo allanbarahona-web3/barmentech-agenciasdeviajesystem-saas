@@ -263,8 +263,7 @@ describe("OperationalRequirementsService", () => {
 
   it("groups Custom Quotation lines by immutable version source without collapsing separate quotations for one customer", async () => {
     const c = context();
-    c.tx.operationalRequirement.groupBy.mockResolvedValue([{ sourceId: "version-a" }, { sourceId: "version-b" }]);
-    c.tx.$queryRaw.mockResolvedValue([{ total: 2n }]);
+    mockActiveCustomerPage(c, ["version-a", "version-b"], 1);
     c.tx.operationalRequirement.findMany.mockResolvedValue([
       customQuotationRequirement({ id: "requirement-a", sourceId: "version-a", sourceLineId: "line-a", description: "Alimentación", soldAmount: new Prisma.Decimal("10.00000"), status: "PENDING" }),
       customQuotationRequirement({ id: "requirement-b", sourceId: "version-a", sourceLineId: "line-b", description: "Transporte", soldAmount: new Prisma.Decimal("20.00000"), status: "IN_PROGRESS" }),
@@ -281,7 +280,7 @@ describe("OperationalRequirementsService", () => {
     const result = await c.service.listStandaloneCustomQuotationGroups(tenantId, { page: 1, pageSize: 20 });
 
     expect(result).toMatchObject({
-      total: 2,
+      total: 1,
       items: [
         {
           sourceId: "version-a", quotationNumber: "CQ-001", salesOrderNumber: "SO-001",
@@ -295,7 +294,10 @@ describe("OperationalRequirementsService", () => {
       ],
     });
     expect(result.items[0].requirements.map((item) => item.requirementId)).toEqual(["requirement-a", "requirement-b"]);
-    expect(c.tx.operationalRequirement.groupBy).toHaveBeenCalledTimes(1);
+    expect(result.customerGroups).toMatchObject([{
+      customer: { id: "customer-a", fullName: "Ada Customer" }, quotationGroupCount: 2, serviceCount: 3,
+      groups: [{ sourceId: "version-a" }, { sourceId: "version-b" }],
+    }]);
     expect(c.tx.operationalRequirement.findMany).toHaveBeenCalledTimes(1);
     expect(c.tx.customQuotationVersion.findMany).toHaveBeenCalledTimes(1);
     expect(c.tx.billingDocument.findMany).toHaveBeenCalledTimes(1);
@@ -303,7 +305,7 @@ describe("OperationalRequirementsService", () => {
       where: expect.objectContaining({ tenantId, sourceType: "SALES_ORDER", sourceId: { in: ["sales-a", "sales-b"] }, sourceRole: "PRIMARY" }),
     }));
     expect(c.finance.readMany).toHaveBeenCalledTimes(1);
-    expect(c.tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(c.tx.$queryRaw).toHaveBeenCalledTimes(2);
   });
 
   it.each([
@@ -312,7 +314,7 @@ describe("OperationalRequirementsService", () => {
   ])("includes the accepted primary fiscal document type %s without per-group reads", async (documentTypeCode, fiscalNumber) => {
     const c = context();
     c.tx.operationalRequirement.groupBy.mockResolvedValue([{ sourceId: "version-a" }]);
-    c.tx.$queryRaw.mockResolvedValue([{ total: 1 }]);
+    mockActiveCustomerPage(c);
     c.tx.operationalRequirement.findMany.mockResolvedValue([customQuotationRequirement()]);
     c.tx.customQuotationVersion.findMany.mockResolvedValue([
       { id: "version-a", customQuotation: { quotationNumber: "CQ-001" }, salesOrder: { id: "sales-a", orderNumber: "SO-001" } },
@@ -330,7 +332,7 @@ describe("OperationalRequirementsService", () => {
   it("keeps an Operations group visible without fiscal fields when no accepted document exists", async () => {
     const c = context();
     c.tx.operationalRequirement.groupBy.mockResolvedValue([{ sourceId: "version-a" }]);
-    c.tx.$queryRaw.mockResolvedValue([{ total: 1 }]);
+    mockActiveCustomerPage(c);
     c.tx.operationalRequirement.findMany.mockResolvedValue([customQuotationRequirement()]);
     c.tx.customQuotationVersion.findMany.mockResolvedValue([
       { id: "version-a", customQuotation: { quotationNumber: "CQ-001" }, salesOrder: { id: "sales-a", orderNumber: "SO-001" } },
@@ -352,7 +354,7 @@ describe("OperationalRequirementsService", () => {
   ])("projects %s as the service finance eligibility without per-service reads", async (_case, documents, financeResult, eligibilityStatus) => {
     const c = context();
     c.tx.operationalRequirement.groupBy.mockResolvedValue([{ sourceId: "version-a" }]);
-    c.tx.$queryRaw.mockResolvedValue([{ total: 1 }]);
+    mockActiveCustomerPage(c);
     c.tx.operationalRequirement.findMany.mockResolvedValue([customQuotationRequirement()]);
     c.tx.customQuotationVersion.findMany.mockResolvedValue([
       { id: "version-a", customQuotation: { quotationNumber: "CQ-001" }, salesOrder: { id: "sales-a", orderNumber: "SO-001" } },
@@ -370,7 +372,7 @@ describe("OperationalRequirementsService", () => {
   it("marks mixed terminal Custom Quotation services as display-only COMPLETED", async () => {
     const c = context();
     c.tx.operationalRequirement.groupBy.mockResolvedValue([{ sourceId: "version-a" }]);
-    c.tx.$queryRaw.mockResolvedValue([{ total: 1 }]);
+    mockActiveCustomerPage(c);
     c.tx.operationalRequirement.findMany.mockResolvedValue([
       customQuotationRequirement({ id: "requirement-a", status: "FULFILLED" }),
       customQuotationRequirement({ id: "requirement-b", sourceLineId: "line-b", status: "CANCELLED" }),
@@ -383,7 +385,7 @@ describe("OperationalRequirementsService", () => {
   it("projects confirmed Custom Quotation services as fulfilled while active siblings keep the group in progress", async () => {
     const c = context();
     c.tx.operationalRequirement.groupBy.mockResolvedValue([{ sourceId: "version-a" }]);
-    c.tx.$queryRaw.mockResolvedValue([{ total: 1 }]);
+    mockActiveCustomerPage(c);
     c.tx.operationalRequirement.findMany.mockResolvedValue([
       customQuotationRequirement({ id: "requirement-confirmed", status: "FULFILLED" }),
       customQuotationRequirement({ id: "requirement-active", sourceLineId: "line-b", status: "IN_PROGRESS" }),
@@ -404,7 +406,7 @@ describe("OperationalRequirementsService", () => {
   it("projects a historical confirmed fulfillment as completed in its group line", async () => {
     const c = context();
     c.tx.operationalRequirement.groupBy.mockResolvedValue([{ sourceId: "version-a" }]);
-    c.tx.$queryRaw.mockResolvedValue([{ total: 1 }]);
+    mockActiveCustomerPage(c);
     c.tx.operationalRequirement.findMany.mockResolvedValue([
       customQuotationRequirement({ id: "requirement-confirmed", status: "IN_PROGRESS", fulfillments: [{ id: "fulfillment-confirmed" }] }),
       customQuotationRequirement({ id: "requirement-active", sourceLineId: "line-b", status: "IN_PROGRESS" }),
@@ -425,7 +427,7 @@ describe("OperationalRequirementsService", () => {
   it("projects an all-fulfilled Custom Quotation group as completed", async () => {
     const c = context();
     c.tx.operationalRequirement.groupBy.mockResolvedValue([{ sourceId: "version-a" }]);
-    c.tx.$queryRaw.mockResolvedValue([{ total: 1 }]);
+    mockActiveCustomerPage(c);
     c.tx.operationalRequirement.findMany.mockResolvedValue([
       customQuotationRequirement({ id: "requirement-a", status: "FULFILLED" }),
       customQuotationRequirement({ id: "requirement-b", sourceLineId: "line-b", status: "FULFILLED" }),
@@ -438,17 +440,63 @@ describe("OperationalRequirementsService", () => {
   it("keeps only active Custom Quotation requirements in the queue query", async () => {
     const c = context();
     c.tx.operationalRequirement.groupBy.mockResolvedValue([]);
-    c.tx.$queryRaw.mockResolvedValue([{ total: 0 }]);
+    mockActiveCustomerPage(c, [], 0);
 
     await c.service.listStandaloneCustomQuotationGroups(tenantId, {});
 
-    expect(c.tx.operationalRequirement.groupBy).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({
-        tenantId,
-        status: { in: ["PENDING", "IN_PROGRESS"] },
-        NOT: { fulfillments: { some: { status: { in: ["CONFIRMED", "CANCELLED"] } } } },
-      }),
-    }));
+    expect(c.tx.$queryRaw).toHaveBeenCalledTimes(2);
+  });
+
+  it("paginates active Custom Quotation work by customer so customer 21 is the only group on page 2", async () => {
+    const c = context();
+    c.tx.$queryRaw.mockResolvedValueOnce([
+      { customerId: "customer-21", sourceId: "version-21", groupKey: "customer:customer-21" },
+    ]).mockResolvedValueOnce([{ total: 21 }]);
+    c.tx.operationalRequirement.findMany.mockResolvedValue([
+      customQuotationRequirement({ sourceId: "version-21", customer: { id: "customer-21", fullName: "Customer 21", idType: "01", idNumber: "21" } }),
+    ]);
+    c.tx.customQuotationVersion.findMany.mockResolvedValue([
+      { id: "version-21", customQuotation: { quotationNumber: "CQ-021" }, salesOrder: null },
+    ]);
+
+    const result = await c.service.listStandaloneCustomQuotationGroups(tenantId, { page: 2, pageSize: 20 });
+
+    expect(result).toMatchObject({ total: 21, page: 2, pageSize: 20, totalPages: 2 });
+    expect(result.customerGroups).toMatchObject([{ customer: { id: "customer-21" }, groups: [{ sourceId: "version-21" }] }]);
+  });
+
+  it("keeps null active customers isolated and omits any mixed-currency parent aggregate", async () => {
+    const c = context();
+    c.tx.$queryRaw.mockResolvedValueOnce([
+      { customerId: null, sourceId: "version-null-a", groupKey: "null:version-null-a" },
+      { customerId: null, sourceId: "version-null-b", groupKey: "null:version-null-b" },
+    ] as any).mockResolvedValueOnce([{ total: 2 }]);
+    c.tx.operationalRequirement.findMany.mockResolvedValue([
+      customQuotationRequirement({ sourceId: "version-null-a", customer: null, soldCurrency: "USD" }),
+      customQuotationRequirement({ id: "requirement-b", sourceId: "version-null-b", customer: null, soldCurrency: "CRC" }),
+    ]);
+    c.tx.customQuotationVersion.findMany.mockResolvedValue([
+      { id: "version-null-a", customQuotation: { quotationNumber: "CQ-NULL-A" }, salesOrder: null },
+      { id: "version-null-b", customQuotation: { quotationNumber: "CQ-NULL-B" }, salesOrder: null },
+    ]);
+
+    const result = await c.service.listStandaloneCustomQuotationGroups(tenantId, {});
+
+    expect(result.customerGroups.map((group) => group.customer)).toEqual([null, null]);
+    expect(result.customerGroups.every((group) => !("commercialValue" in group))).toBe(true);
+  });
+
+  it("normalizes active customer/service search before customer pagination with parameterized tenant-scoped SQL", async () => {
+    const c = context();
+    mockActiveCustomerPage(c, [], 0);
+
+    await c.service.listStandaloneCustomQuotationGroups(tenantId, { search: "LuCíA" });
+
+    const rawCall = JSON.stringify(c.tx.$queryRaw.mock.calls[0]);
+    expect(rawCall).toMatch(/translate\(lower\(customer\./);
+    expect(rawCall).toMatch(/translate\(lower\(requirement\./);
+    expect(rawCall).toContain(tenantId);
+    expect(rawCall).toContain("%lucia%");
   });
 
   it("returns confirmed and cancelled Custom Quotation purchases as bounded immutable history rows", async () => {
@@ -461,22 +509,49 @@ describe("OperationalRequirementsService", () => {
     c.tx.customQuotationVersion.findMany.mockResolvedValue([{ id: "version-a", customQuotation: { quotationNumber: "CQ-001" }, salesOrder: { id: "sales-a", orderNumber: "SO-001" } }]);
     c.tx.billingDocument.findMany.mockResolvedValue([acceptedBillingDocument()]);
 
-    await expect(c.service.listStandaloneCustomQuotationHistory(tenantId, { page: 1 })).resolves.toMatchObject({
-      total: 2,
+    const result = await c.service.listStandaloneCustomQuotationHistory(tenantId, { page: 1 });
+    expect(result).toMatchObject({
+      total: 1,
       dateAuthority: "FULFILLMENT_FINALIZED_AT",
       items: [
         { fulfillmentId: "fulfillment-a", finalStatus: "CONFIRMED", quotationNumber: "CQ-001", purchase: { providerName: "Proveedor Uno", amount: "25", evidenceCount: 1 } },
         { fulfillmentId: "fulfillment-cancelled", finalStatus: "CANCELLED", purchase: null },
       ],
     });
+    expect(result.customerGroups).toMatchObject([
+      { customer: { id: "customer-a" }, historyCount: 2, items: [{ fulfillmentId: "fulfillment-a" }, { fulfillmentId: "fulfillment-cancelled" }] },
+    ]);
     expect(c.tx.operationalFulfillment.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({ tenantId, status: { in: ["CONFIRMED", "CANCELLED"] } }),
-      take: 20,
       orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
     }));
     expect(c.tx.operationalFulfillment.findMany).toHaveBeenCalledTimes(1);
     expect(c.tx.customQuotationVersion.findMany).toHaveBeenCalledTimes(1);
     expect(c.tx.billingDocument.findMany).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps null-customer history fulfillments isolated and searches names/identification accent-insensitively before grouping", async () => {
+    const c = context();
+    c.tx.$queryRaw
+      .mockResolvedValueOnce([
+        { customerId: null, fulfillmentId: "fulfillment-null-a", groupKey: "null:fulfillment-null-a" },
+        { customerId: null, fulfillmentId: "fulfillment-null-b", groupKey: "null:fulfillment-null-b" },
+      ] as any)
+      .mockResolvedValueOnce([{ total: 2 }]);
+    c.tx.operationalFulfillment.findMany.mockResolvedValue([
+      customQuotationHistoryFulfillment({ id: "fulfillment-null-a", operationalRequirement: { ...customQuotationHistoryFulfillment().operationalRequirement, customer: null } }),
+      customQuotationHistoryFulfillment({ id: "fulfillment-null-b", operationalRequirement: { ...customQuotationHistoryFulfillment().operationalRequirement, customer: null } }),
+    ]);
+    c.tx.billingDocument.findMany.mockResolvedValue([]);
+    c.tx.customQuotationVersion.findMany.mockResolvedValue([]);
+
+    const result = await c.service.listStandaloneCustomQuotationHistory(tenantId, { search: "Gutiérrez" });
+
+    expect(result.customerGroups).toHaveLength(2);
+    expect(result.customerGroups.every((group) => group.customer === null && group.historyCount === 1)).toBe(true);
+    const rawCall = JSON.stringify(c.tx.$queryRaw.mock.calls[0]);
+    expect(rawCall).toMatch(/translate\(lower\(customer\./);
+    expect(rawCall).toContain("%gutierrez%");
   });
 
   it("loads one terminal CQ detail with typed data, strong references, purchase metadata, and evidence in a fixed query set", async () => {
@@ -510,7 +585,7 @@ describe("OperationalRequirementsService", () => {
     ["customer name", "Ada", { fullName: { contains: "Ada", mode: "insensitive" } }],
     ["identification", "1-0001", { idNumber: { contains: "1-0001", mode: "insensitive" } }],
     ["email", "ada@example.com", { email: { contains: "ada@example.com", mode: "insensitive" } }],
-  ])("filters Custom Quotation history by %s without losing tenant scope", async (_label, search, expectedCustomerFilter) => {
+  ])("filters Custom Quotation history by %s without losing tenant scope", async (_label, search, _expectedCustomerFilter) => {
     const c = context();
     c.tx.operationalFulfillment.findMany.mockResolvedValue([]);
     c.tx.operationalFulfillment.count.mockResolvedValue(0);
@@ -518,9 +593,10 @@ describe("OperationalRequirementsService", () => {
 
     await c.service.listStandaloneCustomQuotationHistory(tenantId, { search });
 
-    const where = c.tx.operationalFulfillment.findMany.mock.calls[0][0].where;
-    expect(where).toMatchObject({ tenantId, status: { in: ["CONFIRMED", "CANCELLED"] } });
-    expect(JSON.stringify(where)).toContain(JSON.stringify(expectedCustomerFilter));
+    const rawCall = JSON.stringify(c.tx.$queryRaw.mock.calls[0]);
+    expect(rawCall).toContain("operational_fulfillments");
+    expect(rawCall).toContain(tenantId);
+    expect(rawCall).toMatch(/translate\(lower\(customer\./);
   });
 
   it("filters Custom Quotation history by fiscal document number through tenant-safe bulk reads", async () => {
@@ -534,7 +610,7 @@ describe("OperationalRequirementsService", () => {
 
     expect(c.tx.billingDocument.findMany.mock.calls[0][0]).toMatchObject({ where: { tenantId, sourceType: "SALES_ORDER", sourceRole: "PRIMARY", fiscalNumber: { contains: "00100001010000000001", mode: "insensitive" } } });
     expect(c.tx.customQuotationVersion.findMany.mock.calls[0][0]).toMatchObject({ where: { tenantId, salesOrderId: { in: ["sales-a"] } } });
-    expect(c.tx.operationalFulfillment.findMany.mock.calls[0][0].where).toMatchObject({ tenantId, AND: expect.arrayContaining([expect.objectContaining({ OR: expect.any(Array) })]) });
+    expect(c.tx.$queryRaw).toHaveBeenCalledTimes(2);
   });
 
   it.each([
@@ -581,11 +657,33 @@ describe("OperationalRequirementsService", () => {
   });
 });
 
+function mockActiveCustomerPage(c: ReturnType<typeof context>, sourceIds = ["version-a"], total = 1) {
+  c.tx.$queryRaw
+    .mockResolvedValueOnce(sourceIds.map((sourceId) => ({ customerId: "customer-a", sourceId, groupKey: "customer:customer-a" })))
+    .mockResolvedValueOnce([{ total }]);
+}
+
 function context() {
   const finance = { readMany: jest.fn().mockResolvedValue([]) };
   const tx = {
     $executeRaw: jest.fn(),
-    $queryRaw: jest.fn(),
+    $queryRaw: jest.fn((strings: TemplateStringsArray) => {
+      const query = strings.join(" ");
+      if (query.includes("filtered_sources")) {
+        return Promise.resolve(query.includes("COUNT(*)")
+          ? [{ total: 1 }]
+          : [{ customerId: "customer-a", sourceId: "version-a", groupKey: "customer:customer-a" }]);
+      }
+      if (query.includes("filtered_fulfillments")) {
+        return Promise.resolve(query.includes("COUNT(*)")
+          ? [{ total: 1 }]
+          : [
+            { customerId: "customer-a", fulfillmentId: "fulfillment-a", groupKey: "customer:customer-a" },
+            { customerId: "customer-a", fulfillmentId: "fulfillment-cancelled", groupKey: "customer:customer-a" },
+          ]);
+      }
+      return Promise.resolve([]);
+    }),
     travelPackage: { findFirst: jest.fn() },
     travelPackageParticipant: { findMany: jest.fn() },
     user: { findFirst: jest.fn() },

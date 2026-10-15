@@ -139,6 +139,8 @@ type CustomQuotationHistoryFulfillmentRecord = {
   };
   purchases: CustomQuotationHistoryPurchaseRecord[];
 };
+type ActiveCustomerPageSource = { customerId: string | null; sourceId: string; groupKey: string };
+type HistoryCustomerPageFulfillment = { customerId: string | null; fulfillmentId: string; groupKey: string };
 
 type CustomQuotationHistoryDetailRecord = {
   id: string;
@@ -626,23 +628,15 @@ export class OperationalRequirementsService {
   async listStandaloneCustomQuotationGroups(tenantId: string, input: ListOperationalRequirementsDto) {
     const page = normalizePage(input.page);
     const pageSize = normalizePageSize(input.pageSize);
-    const where = customQuotationActiveWhere(tenantId, input);
     const pageResult = await this.withTenantTransaction(tenantId, async (tx) => {
-      const [groups, totalRows] = await Promise.all([
-        tx.operationalRequirement.groupBy({
-          by: ["sourceId"],
-          where,
-          _min: { createdAt: true },
-          orderBy: [{ _min: { createdAt: "asc" } }, { sourceId: "asc" }],
-          skip: (page - 1) * pageSize,
-          take: pageSize,
-        }) as Promise<Array<{ sourceId: string | null }>>,
-        countActiveCustomQuotationGroups(tx, tenantId, optionalText(input.search)),
+      const [pageSources, totalRows] = await Promise.all([
+        pageActiveCustomQuotationCustomerSources(tx, tenantId, optionalText(input.search), page, pageSize),
+        countActiveCustomQuotationCustomers(tx, tenantId, optionalText(input.search)),
       ]);
-      const sourceIds = groups.map((group) => group.sourceId).filter((value): value is string => Boolean(value));
+      const sourceIds = [...new Set(pageSources.map((row) => row.sourceId))];
       if (sourceIds.length === 0) {
         const total = numberValue(totalRows[0]?.total);
-        return { items: [], total, page, pageSize, totalPages: total === 0 ? 0 : Math.ceil(total / pageSize) };
+        return { items: [], customerGroups: [], total, page, pageSize, totalPages: total === 0 ? 0 : Math.ceil(total / pageSize) };
       }
       const [requirements, versions] = await Promise.all([
         tx.operationalRequirement.findMany({
@@ -711,7 +705,14 @@ export class OperationalRequirementsService {
         );
       });
       const total = numberValue(totalRows[0]?.total);
-      return { items, total, page, pageSize, totalPages: total === 0 ? 0 : Math.ceil(total / pageSize) };
+      return {
+        items,
+        customerGroups: groupActiveCustomQuotationCustomers(items, pageSources),
+        total,
+        page,
+        pageSize,
+        totalPages: total === 0 ? 0 : Math.ceil(total / pageSize),
+      };
     });
     const sources = new Map<string, CommercialSourceRef>();
     for (const group of pageResult.items) {
@@ -742,6 +743,24 @@ export class OperationalRequirementsService {
           };
         }),
       })),
+      customerGroups: pageResult.customerGroups.map((customerGroup) => ({
+        ...customerGroup,
+        groups: customerGroup.groups.map(({ fiscalDocumentState, ...group }) => ({
+          ...group,
+          requirements: group.requirements.map((requirement) => {
+            const source = requirement.sourceLineId
+              ? { sourceType: "CUSTOM_QUOTATION_LINE", sourceId: group.sourceId, sourceLineId: requirement.sourceLineId } as CommercialSourceRef
+              : null;
+            return {
+              ...requirement,
+              ...customQuotationEligibilityProjection(
+                financeBySource.get(source ? customQuotationFinanceSourceKey(source) : ""),
+                fiscalDocumentState,
+              ),
+            };
+          }),
+        })),
+      })),
     };
   }
 
@@ -762,18 +781,27 @@ export class OperationalRequirementsService {
       const fiscalVersionIds = search
         ? await customQuotationFiscalSearchVersionIds(tx, tenantId, search)
         : [];
-      const where = customQuotationHistoryWhere(tenantId, finalizationRange, search, fiscalVersionIds);
-      const [rows, total] = await Promise.all([
-        tx.operationalFulfillment.findMany({
-          where,
-          select: CUSTOM_QUOTATION_HISTORY_FULFILLMENT_SELECT,
-          orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
-          skip: (page - 1) * pageSize,
-          take: pageSize,
-        }) as Promise<CustomQuotationHistoryFulfillmentRecord[]>,
-        tx.operationalFulfillment.count({ where }) as Promise<number>,
+      const [pageFulfillments, totalRows] = await Promise.all([
+        pageCustomQuotationHistoryCustomers(tx, tenantId, finalizationRange, search, fiscalVersionIds, page, pageSize),
+        countCustomQuotationHistoryCustomers(tx, tenantId, finalizationRange, search, fiscalVersionIds),
       ]);
-      const sourceIds = [...new Set(rows.map((row) => row.operationalRequirement.sourceId).filter((value): value is string => Boolean(value)))];
+      const fulfillmentIds = pageFulfillments.map((row) => row.fulfillmentId);
+      if (fulfillmentIds.length === 0) {
+        const total = numberValue(totalRows[0]?.total);
+        return {
+          items: [], customerGroups: [], total, page, pageSize,
+          totalPages: total === 0 ? 0 : Math.ceil(total / pageSize),
+          dateAuthority: "FULFILLMENT_FINALIZED_AT" as const,
+        };
+      }
+      const rows = await (tx.operationalFulfillment.findMany({
+        where: { ...customQuotationHistoryWhere(tenantId, finalizationRange, null, []), id: { in: fulfillmentIds } },
+        select: CUSTOM_QUOTATION_HISTORY_FULFILLMENT_SELECT,
+        orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
+      }) as Promise<CustomQuotationHistoryFulfillmentRecord[]>);
+      const rowsById = new Map(rows.map((row) => [row.id, row]));
+      const orderedRows = fulfillmentIds.map((id) => rowsById.get(id)).filter((row): row is CustomQuotationHistoryFulfillmentRecord => Boolean(row));
+      const sourceIds = [...new Set(orderedRows.map((row) => row.operationalRequirement.sourceId).filter((value): value is string => Boolean(value)))];
       const versions = sourceIds.length === 0 ? [] : await tx.customQuotationVersion.findMany({
         where: { tenantId, id: { in: sourceIds } },
         select: {
@@ -805,20 +833,23 @@ export class OperationalRequirementsService {
         items.push(document);
         billingDocumentsBySalesOrderId.set(document.sourceId, items);
       }
+      const items = orderedRows.map((row) => {
+        const version = versionById.get(row.operationalRequirement.sourceId ?? "");
+        return toCustomQuotationHistoryRow(
+          row,
+          version,
+          version?.salesOrder ? billingDocumentsBySalesOrderId.get(version.salesOrder.id) ?? [] : [],
+        );
+      });
+      const total = numberValue(totalRows[0]?.total);
       return {
-        items: rows.map((row) => {
-          const version = versionById.get(row.operationalRequirement.sourceId ?? "");
-          return toCustomQuotationHistoryRow(
-            row,
-            version,
-            version?.salesOrder ? billingDocumentsBySalesOrderId.get(version.salesOrder.id) ?? [] : [],
-          );
-        }),
+        items,
+        customerGroups: groupCustomQuotationHistoryCustomers(items, pageFulfillments),
         total,
         page,
         pageSize,
         totalPages: total === 0 ? 0 : Math.ceil(total / pageSize),
-        dateAuthority: "FULFILLMENT_FINALIZED_AT",
+        dateAuthority: "FULFILLMENT_FINALIZED_AT" as const,
       };
     });
   }
@@ -1140,7 +1171,6 @@ function customQuotationActiveWhere(tenantId: string, input: Pick<ListOperationa
     tenantId,
     scopeType: "STANDALONE_CUSTOMER" as const,
     travelPackageId: null,
-    customerId: { not: null },
     sourceType: "CUSTOM_QUOTATION_LINE",
     sourceId: { not: null },
     status: { in: ["PENDING", "IN_PROGRESS"] },
@@ -1154,14 +1184,25 @@ function customQuotationActiveWhere(tenantId: string, input: Pick<ListOperationa
   };
 }
 
-function countActiveCustomQuotationGroups(tx: OperationsTransaction, tenantId: string, search: string | null) {
-  const searchClause = search
-    ? Prisma.sql`AND (requirement."description" ILIKE ${`%${search}%`} OR customer."fullName" ILIKE ${`%${search}%`})`
-    : Prisma.empty;
-  return tx.$queryRaw<Array<{ total: bigint | number }>>`
-    SELECT COUNT(DISTINCT requirement."sourceId") AS total
+const DIACRITIC_FROM = "áàäâãåāăąéèëêēĕėęěíìïîīĭįıóòöôõōŏőúùüûūŭůűųñńçćčýÿ";
+const DIACRITIC_TO = "aaaaaaaaaeeeeeeeeeiiiiiiiioooooooouuuuuuuuunncccyy";
+
+function normalizeAccentInsensitiveSearch(value: string) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+function accentInsensitiveContainsClause(search: string | null, columns: string[]) {
+  if (!search) return Prisma.empty;
+  const pattern = `%${normalizeAccentInsensitiveSearch(search)}%`;
+  const expressions = columns.map((column) => Prisma.sql`translate(lower(${Prisma.raw(column)}), ${DIACRITIC_FROM}, ${DIACRITIC_TO}) LIKE ${pattern}`);
+  return Prisma.sql`AND (${Prisma.join(expressions, " OR ")})`;
+}
+
+function activeCustomQuotationBaseSql(tenantId: string, search: string | null) {
+  const searchClause = accentInsensitiveContainsClause(search, ["requirement.\"description\"", "customer.\"fullName\""]);
+  return Prisma.sql`
     FROM "operational_requirements" requirement
-    INNER JOIN "Client" customer
+    LEFT JOIN "Client" customer
       ON customer."id" = requirement."customerId" AND customer."tenantId" = requirement."tenantId"
     WHERE requirement."tenantId" = ${tenantId}
       AND requirement."scopeType" = 'STANDALONE_CUSTOMER'
@@ -1178,6 +1219,58 @@ function countActiveCustomQuotationGroups(tx: OperationsTransaction, tenantId: s
           AND fulfillment."status" IN ('CONFIRMED', 'CANCELLED')
       )
       ${searchClause}
+  `;
+}
+
+function pageActiveCustomQuotationCustomerSources(
+  tx: OperationsTransaction,
+  tenantId: string,
+  search: string | null,
+  page: number,
+  pageSize: number,
+) {
+  const base = activeCustomQuotationBaseSql(tenantId, search);
+  return tx.$queryRaw<ActiveCustomerPageSource[]>`
+    WITH filtered_sources AS (
+      SELECT requirement."customerId", requirement."sourceId", MIN(requirement."createdAt") AS "sourceCreatedAt"
+      ${base}
+      GROUP BY requirement."customerId", requirement."sourceId"
+    ), customer_groups AS (
+      SELECT "customerId",
+        CASE WHEN "customerId" IS NULL THEN "sourceId" ELSE NULL END AS "nullSourceId",
+        MIN("sourceCreatedAt") AS "groupCreatedAt",
+        MIN("sourceId") AS "groupTie"
+      FROM filtered_sources
+      GROUP BY "customerId", CASE WHEN "customerId" IS NULL THEN "sourceId" ELSE NULL END
+    ), paged_groups AS (
+      SELECT *
+      FROM customer_groups
+      ORDER BY "groupCreatedAt" ASC, "groupTie" ASC, "customerId" ASC NULLS LAST
+      OFFSET ${(page - 1) * pageSize} LIMIT ${pageSize}
+    )
+    SELECT source."customerId", source."sourceId",
+      CASE WHEN paged."customerId" IS NULL THEN concat('null:', source."sourceId") ELSE concat('customer:', paged."customerId") END AS "groupKey"
+    FROM filtered_sources source
+    INNER JOIN paged_groups paged
+      ON (source."customerId" = paged."customerId" OR (source."customerId" IS NULL AND paged."customerId" IS NULL AND source."sourceId" = paged."nullSourceId"))
+    ORDER BY paged."groupCreatedAt" ASC, paged."groupTie" ASC, paged."customerId" ASC NULLS LAST, source."sourceCreatedAt" ASC, source."sourceId" ASC
+  `;
+}
+
+function countActiveCustomQuotationCustomers(tx: OperationsTransaction, tenantId: string, search: string | null) {
+  const base = activeCustomQuotationBaseSql(tenantId, search);
+  return tx.$queryRaw<Array<{ total: bigint | number }>>`
+    WITH filtered_sources AS (
+      SELECT requirement."customerId", requirement."sourceId"
+      ${base}
+      GROUP BY requirement."customerId", requirement."sourceId"
+    )
+    SELECT COUNT(*) AS total
+    FROM (
+      SELECT "customerId", CASE WHEN "customerId" IS NULL THEN "sourceId" ELSE NULL END
+      FROM filtered_sources
+      GROUP BY "customerId", CASE WHEN "customerId" IS NULL THEN "sourceId" ELSE NULL END
+    ) customer_groups
   `;
 }
 
@@ -1217,7 +1310,6 @@ function customQuotationHistoryWhere(
             tenantId,
             scopeType: "STANDALONE_CUSTOMER",
             travelPackageId: null,
-            customerId: { not: null },
             sourceType: "CUSTOM_QUOTATION_LINE",
             sourceId: { not: null },
           },
@@ -1226,6 +1318,102 @@ function customQuotationHistoryWhere(
       ...(customerSearch || fiscalSearch ? [{ OR: [customerSearch, fiscalSearch].filter(Boolean) }] : []),
     ],
   };
+}
+
+function customQuotationHistoryBaseSql(
+  tenantId: string,
+  finalizedAt: { gte: Date; lt: Date } | undefined,
+  search: string | null,
+  fiscalVersionIds: string[],
+) {
+  const customerSearch = search
+    ? accentInsensitiveContainsClause(search, ["customer.\"fullName\"", "customer.\"idNumber\"", "customer.\"email\""])
+    : Prisma.empty;
+  const fiscalSearch = fiscalVersionIds.length > 0
+    ? Prisma.sql`requirement."sourceId" IN (${Prisma.join(fiscalVersionIds)})`
+    : Prisma.empty;
+  const searchClause = search
+    ? fiscalVersionIds.length > 0
+      ? Prisma.sql`AND ((translate(lower(customer."fullName"), ${DIACRITIC_FROM}, ${DIACRITIC_TO}) LIKE ${`%${normalizeAccentInsensitiveSearch(search)}%`}
+          OR translate(lower(customer."idNumber"), ${DIACRITIC_FROM}, ${DIACRITIC_TO}) LIKE ${`%${normalizeAccentInsensitiveSearch(search)}%`}
+          OR translate(lower(customer."email"), ${DIACRITIC_FROM}, ${DIACRITIC_TO}) LIKE ${`%${normalizeAccentInsensitiveSearch(search)}%`}) OR ${fiscalSearch})`
+      : customerSearch
+    : Prisma.empty;
+  return Prisma.sql`
+    FROM "operational_fulfillments" fulfillment
+    INNER JOIN "operational_requirements" requirement
+      ON requirement."id" = fulfillment."operationalRequirementId" AND requirement."tenantId" = fulfillment."tenantId"
+    LEFT JOIN "Client" customer
+      ON customer."id" = requirement."customerId" AND customer."tenantId" = requirement."tenantId"
+    WHERE fulfillment."tenantId" = ${tenantId}
+      AND fulfillment."travelPackageId" IS NULL
+      AND fulfillment."status" IN ('CONFIRMED', 'CANCELLED')
+      AND requirement."tenantId" = ${tenantId}
+      AND requirement."scopeType" = 'STANDALONE_CUSTOMER'
+      AND requirement."travelPackageId" IS NULL
+      AND requirement."sourceType" = 'CUSTOM_QUOTATION_LINE'
+      AND requirement."sourceId" IS NOT NULL
+      ${finalizedAt ? Prisma.sql`AND fulfillment."updatedAt" >= ${finalizedAt.gte} AND fulfillment."updatedAt" < ${finalizedAt.lt}` : Prisma.empty}
+      ${searchClause}
+  `;
+}
+
+function pageCustomQuotationHistoryCustomers(
+  tx: OperationsTransaction,
+  tenantId: string,
+  finalizedAt: { gte: Date; lt: Date } | undefined,
+  search: string | null,
+  fiscalVersionIds: string[],
+  page: number,
+  pageSize: number,
+) {
+  const base = customQuotationHistoryBaseSql(tenantId, finalizedAt, search, fiscalVersionIds);
+  return tx.$queryRaw<HistoryCustomerPageFulfillment[]>`
+    WITH filtered_fulfillments AS (
+      SELECT requirement."customerId", fulfillment."id" AS "fulfillmentId", fulfillment."updatedAt"
+      ${base}
+    ), customer_groups AS (
+      SELECT "customerId",
+        CASE WHEN "customerId" IS NULL THEN "fulfillmentId" ELSE NULL END AS "nullFulfillmentId",
+        MAX("updatedAt") AS "groupFinalizedAt",
+        MIN("fulfillmentId") AS "groupTie"
+      FROM filtered_fulfillments
+      GROUP BY "customerId", CASE WHEN "customerId" IS NULL THEN "fulfillmentId" ELSE NULL END
+    ), paged_groups AS (
+      SELECT *
+      FROM customer_groups
+      ORDER BY "groupFinalizedAt" DESC, "groupTie" ASC, "customerId" ASC NULLS LAST
+      OFFSET ${(page - 1) * pageSize} LIMIT ${pageSize}
+    )
+    SELECT row."customerId", row."fulfillmentId",
+      CASE WHEN paged."customerId" IS NULL THEN concat('null:', row."fulfillmentId") ELSE concat('customer:', paged."customerId") END AS "groupKey"
+    FROM filtered_fulfillments row
+    INNER JOIN paged_groups paged
+      ON (row."customerId" = paged."customerId" OR (row."customerId" IS NULL AND paged."customerId" IS NULL AND row."fulfillmentId" = paged."nullFulfillmentId"))
+    ORDER BY paged."groupFinalizedAt" DESC, paged."groupTie" ASC, paged."customerId" ASC NULLS LAST, row."updatedAt" DESC, row."fulfillmentId" ASC
+  `;
+}
+
+function countCustomQuotationHistoryCustomers(
+  tx: OperationsTransaction,
+  tenantId: string,
+  finalizedAt: { gte: Date; lt: Date } | undefined,
+  search: string | null,
+  fiscalVersionIds: string[],
+) {
+  const base = customQuotationHistoryBaseSql(tenantId, finalizedAt, search, fiscalVersionIds);
+  return tx.$queryRaw<Array<{ total: bigint | number }>>`
+    WITH filtered_fulfillments AS (
+      SELECT requirement."customerId", fulfillment."id" AS "fulfillmentId"
+      ${base}
+    )
+    SELECT COUNT(*) AS total
+    FROM (
+      SELECT "customerId", CASE WHEN "customerId" IS NULL THEN "fulfillmentId" ELSE NULL END
+      FROM filtered_fulfillments
+      GROUP BY "customerId", CASE WHEN "customerId" IS NULL THEN "fulfillmentId" ELSE NULL END
+    ) customer_groups
+  `;
 }
 
 async function customQuotationFiscalSearchVersionIds(tx: OperationsTransaction, tenantId: string, search: string) {
@@ -1398,6 +1586,58 @@ function toCustomQuotationGroup(
       status: requirement.status,
     })),
   };
+}
+
+function groupActiveCustomQuotationCustomers(
+  groups: Array<ReturnType<typeof toCustomQuotationGroup>>,
+  pageSources: ActiveCustomerPageSource[],
+) {
+  const sourceGroupKey = new Map(pageSources.map((row) => [row.sourceId, row.groupKey]));
+  const orderedKeys = [...new Set(pageSources.map((row) => row.groupKey))];
+  const grouped = new Map<string, {
+    customer: ReturnType<typeof toCustomQuotationGroup>["customer"];
+    quotationGroupCount: number;
+    serviceCount: number;
+    groups: Array<ReturnType<typeof toCustomQuotationGroup>>;
+  }>();
+  for (const key of orderedKeys) {
+    grouped.set(key, { customer: null, quotationGroupCount: 0, serviceCount: 0, groups: [] });
+  }
+  for (const group of groups) {
+    const key = sourceGroupKey.get(group.sourceId);
+    if (!key) continue;
+    const customerGroup = grouped.get(key);
+    if (!customerGroup) continue;
+    customerGroup.customer = customerGroup.customer ?? group.customer;
+    customerGroup.quotationGroupCount += 1;
+    customerGroup.serviceCount += group.serviceCount;
+    customerGroup.groups.push(group);
+  }
+  return orderedKeys.map((key) => grouped.get(key)!);
+}
+
+function groupCustomQuotationHistoryCustomers(
+  items: Array<ReturnType<typeof toCustomQuotationHistoryRow>>,
+  pageFulfillments: HistoryCustomerPageFulfillment[],
+) {
+  const fulfillmentGroupKey = new Map(pageFulfillments.map((row) => [row.fulfillmentId, row.groupKey]));
+  const orderedKeys = [...new Set(pageFulfillments.map((row) => row.groupKey))];
+  const grouped = new Map<string, {
+    customer: ReturnType<typeof toCustomQuotationHistoryRow>["customer"];
+    historyCount: number;
+    items: Array<ReturnType<typeof toCustomQuotationHistoryRow>>;
+  }>();
+  for (const key of orderedKeys) grouped.set(key, { customer: null, historyCount: 0, items: [] });
+  for (const item of items) {
+    const key = fulfillmentGroupKey.get(item.fulfillmentId);
+    if (!key) continue;
+    const customerGroup = grouped.get(key);
+    if (!customerGroup) continue;
+    customerGroup.customer = customerGroup.customer ?? item.customer;
+    customerGroup.historyCount += 1;
+    customerGroup.items.push(item);
+  }
+  return orderedKeys.map((key) => grouped.get(key)!);
 }
 
 function customQuotationFinanceSourceKey(source: CommercialSourceRef) {

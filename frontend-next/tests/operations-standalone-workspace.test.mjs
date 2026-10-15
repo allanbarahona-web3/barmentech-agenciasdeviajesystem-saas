@@ -154,8 +154,9 @@ test('Custom Quotation confirmation still persists its reference before confirmi
 test('confirmed Custom Quotation work refreshes the parent group without a browser reload', () => {
   const text = workspace();
   assert.match(text, /async function refreshSelectedGroup\(sourceId: string\)/);
-  assert.match(text, /listCustomQuotationOperationsGroups\(\{ page, search: search \|\| undefined \}\)/);
-  assert.match(text, /setSelectedGroup\(\(current\) => current\?\.sourceId === sourceId \? response\.items\.find\(\(item\) => item\.sourceId === sourceId\) \?\? current : current\)/);
+  assert.match(text, /listCustomQuotationOperationsGroups\(\{ page, search: search\.trim\(\) \|\| undefined \}\)/);
+  assert.match(text, /setCustomerGroups\(response\.customerGroups\)/);
+  assert.match(text, /response\.customerGroups\.flatMap\(\(customerGroup\) => customerGroup\.groups\)\.find\(\(item\) => item\.sourceId === sourceId\)/);
   assert.match(text, /onChanged=\{\(\) => refreshSelectedGroup\(selectedGroup\.sourceId\)\}/);
   assert.match(text, /onClose=\{\(\) => setSelectedRequirement\(null\)\} onChanged=\{onChanged\}/);
   assert.match(text, /await transitionStandaloneOperationalFulfillment\(requirementId, confirmationFulfillment\.id, 'CONFIRMED'\);\s*setConfirmationFulfillment\(null\); setConfirmationReference\(''\);\s*await load\(\); await onChanged\(\);/);
@@ -186,9 +187,42 @@ test('Custom Quotation history is terminal, read-only, and delegates filters to 
   assert.match(history, /money\(addFinanceMoneyDisplayValues\(item\.purchase\.amount, item\.purchase\.taxAmount\), item\.purchase\.currency\)/);
   assert.match(history, /HistoryFilterBar/);
   assert.match(history, /HistoryTableShell/);
-  assert.match(history, /HistoryPagination/);
+  assert.match(history, /CustomerPagination/);
   assert.match(history, /event\.key === 'Enter' \|\| event\.key === ' '/);
   const listRequest = history.slice(history.indexOf('listCustomQuotationOperationsHistory({'), history.indexOf('});', history.indexOf('listCustomQuotationOperationsHistory({')));
   assert.doesNotMatch(listRequest, /terminalStatus/);
   for (const forbidden of ['Registrar compra', 'Confirmar', 'Editar compra', 'cancelStandalone', 'createStandalone']) assert.doesNotMatch(history, new RegExp(forbidden));
+});
+
+test('Custom Quotation customer accordions consume backend customerGroups and preserve child actions', () => {
+  const text = workspace();
+  const apiText = api();
+  for (const field of ['customerGroups', 'quotationGroupCount', 'historyCount']) assert.match(apiText, new RegExp(field));
+  assert.match(text, /function ActiveCustomerAccordion/);
+  assert.match(text, /function HistoryCustomerAccordion/);
+  assert.match(text, /function CustomerAccordionHeader/);
+  assert.match(text, /aria-expanded=\{expanded\}/);
+  assert.match(text, /customerGroup\.groups\.map\(\(item\)/);
+  assert.match(text, /customerGroup\.items\.map\(\(item\)/);
+  assert.match(text, /onSelectGroup\(item\)/);
+  assert.match(text, /onSelectFulfillment\(item\.fulfillmentId\)/);
+  assert.match(text, /setSelectedGroup\}/);
+  assert.match(text, /setSelectedFulfillmentId\}/);
+  assert.match(text, /Cliente no disponible/);
+  assert.doesNotMatch(text.slice(text.indexOf('export function StandaloneOperationalRequirementsWorkspace'), text.indexOf('function CustomQuotationOperationsHistory')), /customerGroups.*\.items/s);
+});
+
+test('Custom Quotation live search debounces customer pages and protects latest request state', () => {
+  const text = workspace();
+  assert.match(text, /searchTerm\.length < 2/);
+  assert.match(text, /window\.setTimeout\([^]*350\)/);
+  assert.match(text, /if \(!searchTerm\) \{ setPage\(1\); void load\(1, ''\); return; \}/);
+  assert.match(text, /function submitSearch\(\) \{ debounceGeneration\.current \+= 1; setPage\(1\); void load\(1, search\.trim\(\)\); \}/);
+  assert.match(text, /const generation = \+\+requestGeneration\.current/);
+  assert.match(text, /if \(generation !== requestGeneration\.current\) return/);
+  assert.match(text, /if \(generation === requestGeneration\.current\) setLoading\(false\)/);
+  assert.match(text, /function CustomerPagination/);
+  assert.match(text, /de \{total\} clientes/);
+  assert.doesNotMatch(text, /listCustomQuotationOperationsGroups\([^)]*customerGroup/);
+  assert.doesNotMatch(text, /listCustomQuotationOperationsHistory\([^)]*customerGroup/);
 });

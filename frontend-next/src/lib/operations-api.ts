@@ -298,7 +298,13 @@ export interface CustomQuotationOperationsGroup {
     currency: string | null;
   }>;
 }
-export interface CustomQuotationOperationsGroupsPage { items: CustomQuotationOperationsGroup[]; total: number; page: number; pageSize: number; totalPages: number; }
+export interface CustomQuotationOperationsCustomerGroup {
+  customer: CustomQuotationOperationsGroup['customer'];
+  quotationGroupCount: number;
+  serviceCount: number;
+  groups: CustomQuotationOperationsGroup[];
+}
+export interface CustomQuotationOperationsGroupsPage { items: CustomQuotationOperationsGroup[]; customerGroups: CustomQuotationOperationsCustomerGroup[]; total: number; page: number; pageSize: number; totalPages: number; }
 export type CustomQuotationHistoryDatePreset = 'TODAY' | 'LAST_7_DAYS' | 'LAST_15_DAYS' | 'LAST_MONTH' | 'CUSTOM';
 export interface CustomQuotationOperationsHistoryRow {
   fulfillmentId: string;
@@ -327,7 +333,12 @@ export interface CustomQuotationOperationsHistoryDetail {
   evidence: OperationalTravelHistoryEvidence[];
 }
 export interface CustomQuotationHistoryPurchase { id: string; providerName: string; supplierReference: string | null; amount: string; currency: string; taxAmount: string | null; purchasedAt: string; supplierInvoiceNumber: string | null; notes: string | null; }
-export interface CustomQuotationOperationsHistoryPage { items: CustomQuotationOperationsHistoryRow[]; total: number; page: number; pageSize: number; totalPages: number; dateAuthority: 'FULFILLMENT_FINALIZED_AT'; }
+export interface CustomQuotationOperationsHistoryCustomerGroup {
+  customer: CustomQuotationOperationsHistoryRow['customer'];
+  historyCount: number;
+  items: CustomQuotationOperationsHistoryRow[];
+}
+export interface CustomQuotationOperationsHistoryPage { items: CustomQuotationOperationsHistoryRow[]; customerGroups: CustomQuotationOperationsHistoryCustomerGroup[]; total: number; page: number; pageSize: number; totalPages: number; dateAuthority: 'FULFILLMENT_FINALIZED_AT'; }
 export type StandaloneOperationalFulfillmentSummary = Omit<OperationalFulfillmentSummary, 'travelPackageId' | 'passengerCount' | 'passengerPreview'> & { travelPackageId: null; passengerCount: 0; passengerPreview: []; };
 export type StandaloneOperationalFulfillmentDetail = Omit<OperationalFulfillmentDetail, 'travelPackageId' | 'passengerCount' | 'passengerPreview' | 'passengers'> & { travelPackageId: null; passengerCount: 0; passengerPreview: []; passengers: []; };
 export interface StandaloneOperationalFulfillmentsPage { items: StandaloneOperationalFulfillmentSummary[]; total: number; page: number; pageSize: number; totalPages: number; }

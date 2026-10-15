@@ -1,8 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { type FormEvent, useEffect, useState } from 'react';
-import { ClipboardList, FileText, History, Loader2, ShoppingCart } from 'lucide-react';
+import { type FormEvent, useEffect, useRef, useState } from 'react';
+import { ChevronDown, ClipboardList, FileText, History, Loader2, ShoppingCart } from 'lucide-react';
 import {
   createStandaloneOperationalFulfillment,
   getStandaloneOperationalFulfillment,
@@ -20,14 +20,15 @@ import {
   type CustomQuotationFinanceEligibilityStatus,
   type CustomQuotationHistoryDatePreset,
   type CustomQuotationOperationsGroup,
-  type CustomQuotationOperationsHistoryRow,
+  type CustomQuotationOperationsCustomerGroup,
+  type CustomQuotationOperationsHistoryCustomerGroup,
   type CustomQuotationOperationsHistoryDetail,
   type StandaloneOperationalFulfillmentSummary,
   type StandaloneOperationalFulfillmentDetail,
   type StandaloneOperationalRequirementDetail,
 } from '@/lib/operations-api';
 import { OperationalPurchaseDrawer } from '@/components/operations/operational-purchase-drawer';
-import { HistoryCustomDateControls, HistoryDetailDialog, HistoryError, HistoryEvidenceEmpty, HistoryEvidenceRow, HistoryFilterBar, HistoryInfo, HistoryMetadataGrid, HistoryPagination, HistoryPurchaseCard, HistoryPurchaseEmpty, HistoryTableShell, HistoryTableStateRow, HistoryTerminalState, HistoryTypedServiceDetails, TerminalStatusBadge } from '@/components/operations/operations-history-presentation';
+import { HistoryCustomDateControls, HistoryDetailDialog, HistoryError, HistoryEvidenceEmpty, HistoryEvidenceRow, HistoryFilterBar, HistoryInfo, HistoryMetadataGrid, HistoryPurchaseCard, HistoryPurchaseEmpty, HistoryTableShell, HistoryTerminalState, HistoryTypedServiceDetails, TerminalStatusBadge } from '@/components/operations/operations-history-presentation';
 import { OperationalServiceDetailFields, typedOperationalDetail, type OperationalServiceDetailPayload } from '@/components/operations/operational-service-detail-fields';
 import AttachmentViewer, { type Attachment } from '@/components/attachment-viewer';
 import { addFinanceMoneyDisplayValues, formatFinanceMoneyDisplay } from '@/lib/finance-money-display';
@@ -92,43 +93,68 @@ function fiscalDocumentReference(group: CustomQuotationOperationsGroup) {
 export function StandaloneOperationalRequirementsWorkspace() {
   const formatDateTime = useTenantDateTimeFormatter();
   const [view, setView] = useState<'ACTIVE' | 'HISTORY'>('ACTIVE');
-  const [items, setItems] = useState<CustomQuotationOperationsGroup[]>([]);
+  const [customerGroups, setCustomerGroups] = useState<CustomQuotationOperationsCustomerGroup[]>([]);
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ total: 0, totalPages: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [selectedGroup, setSelectedGroup] = useState<CustomQuotationOperationsGroup | null>(null);
+  const [expandedCustomers, setExpandedCustomers] = useState<Set<string>>(new Set());
+  const requestGeneration = useRef(0);
+  const debounceGeneration = useRef(0);
+  const initialized = useRef(false);
 
-  async function load(nextPage = page) {
+  async function load(nextPage = page, nextSearch = search.trim()) {
+    const generation = ++requestGeneration.current;
     setLoading(true); setError(null);
-    try { const response = await listCustomQuotationOperationsGroups({ page: nextPage, search: search || undefined }); setItems(response.items); setPagination({ total: response.total, totalPages: response.totalPages }); }
-    catch (reason) { setError(errorMessage(reason, 'No se pudieron cargar las cotizaciones personalizadas.')); }
-    finally { setLoading(false); }
+    try {
+      const response = await listCustomQuotationOperationsGroups({ page: nextPage, search: nextSearch || undefined });
+      if (generation !== requestGeneration.current) return;
+      setCustomerGroups(response.customerGroups); setPagination({ total: response.total, totalPages: response.totalPages });
+    } catch (reason) {
+      if (generation === requestGeneration.current) setError(errorMessage(reason, 'No se pudieron cargar las cotizaciones personalizadas.'));
+    } finally {
+      if (generation === requestGeneration.current) setLoading(false);
+    }
   }
   async function refreshSelectedGroup(sourceId: string) {
+    const generation = ++requestGeneration.current;
     try {
-      const response = await listCustomQuotationOperationsGroups({ page, search: search || undefined });
-      setItems(response.items); setPagination({ total: response.total, totalPages: response.totalPages });
-      setSelectedGroup((current) => current?.sourceId === sourceId ? response.items.find((item) => item.sourceId === sourceId) ?? current : current);
-    } catch (reason) { setError(errorMessage(reason, 'No se pudo actualizar la cotización personalizada.')); }
+      const response = await listCustomQuotationOperationsGroups({ page, search: search.trim() || undefined });
+      if (generation !== requestGeneration.current) return;
+      setCustomerGroups(response.customerGroups); setPagination({ total: response.total, totalPages: response.totalPages });
+      const refreshed = response.customerGroups.flatMap((customerGroup) => customerGroup.groups).find((item) => item.sourceId === sourceId);
+      setSelectedGroup((current) => current?.sourceId === sourceId ? refreshed ?? current : current);
+    } catch (reason) { if (generation === requestGeneration.current) setError(errorMessage(reason, 'No se pudo actualizar la cotización personalizada.')); }
   }
-  useEffect(() => { void load(); }, []);
+  useEffect(() => {
+    const searchTerm = search.trim();
+    const generation = ++debounceGeneration.current;
+    if (!initialized.current) { initialized.current = true; void load(1, searchTerm); return; }
+    if (!searchTerm) { setPage(1); void load(1, ''); return; }
+    if (searchTerm.length < 2) return;
+    const timer = window.setTimeout(() => { if (generation === debounceGeneration.current) { setPage(1); void load(1, searchTerm); } }, 350);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+  function submitSearch() { debounceGeneration.current += 1; setPage(1); void load(1, search.trim()); }
+  function changePage(nextPage: number) { debounceGeneration.current += 1; setPage(nextPage); void load(nextPage, search.trim()); }
+  function toggleCustomer(key: string) { setExpandedCustomers((current) => { const next = new Set(current); if (next.has(key)) next.delete(key); else next.add(key); return next; }); }
 
   return <main className="app-shell p-5"><div className="mx-auto max-w-7xl space-y-5">
-    <section className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-sm font-medium text-primary">Operaciones</p><h1 className="mt-1 text-2xl font-semibold tracking-tight">Cotizaciones personalizadas</h1><p className="mt-1 text-sm text-muted-foreground">Trabajo operativo de clientes que no pertenece a un viaje.</p></div>{view === 'ACTIVE' ? <Button type="button" variant="outline" onClick={() => void load()}>Actualizar</Button> : null}</section>
+    <section className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-sm font-medium text-primary">Operaciones</p><h1 className="mt-1 text-2xl font-semibold tracking-tight">Cotizaciones personalizadas</h1><p className="mt-1 text-sm text-muted-foreground">Trabajo operativo de clientes que no pertenece a un viaje.</p></div>{view === 'ACTIVE' ? <Button type="button" variant="outline" onClick={() => void load(page, search.trim())}>Actualizar</Button> : null}</section>
     <div className="flex gap-2 border-b"><Button type="button" variant={view === 'ACTIVE' ? 'default' : 'ghost'} onClick={() => { setView('ACTIVE'); setSelectedGroup(null); }}>Activas</Button><Button type="button" variant={view === 'HISTORY' ? 'default' : 'ghost'} onClick={() => { setView('HISTORY'); setSelectedGroup(null); }}>Historial</Button></div>
     {view === 'ACTIVE' ? <>
-      <Card><CardContent className="grid gap-3 py-4 md:grid-cols-[1fr_auto]"><Input aria-label="Buscar cotizaciones personalizadas" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cliente o servicio" /><Button type="button" onClick={() => { setPage(1); void load(1); }}>Buscar</Button></CardContent></Card>
+      <Card><CardContent className="grid gap-3 py-4 md:grid-cols-[1fr_auto]"><Input aria-label="Buscar cotizaciones personalizadas" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cliente o servicio" /><Button type="button" onClick={submitSearch}>Buscar</Button></CardContent></Card>
       {error ? <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert> : null}
-      <Card><CardHeader><CardTitle className="flex items-center gap-2"><ClipboardList aria-hidden="true" size={20} /> Cola operativa</CardTitle></CardHeader><CardContent className="p-0"><Table><TableHeader><TableRow><TableHead>Cliente</TableHead><TableHead>Identificación</TableHead><TableHead>Documento fiscal</TableHead><TableHead>Cantidad de servicios</TableHead><TableHead>Valor total</TableHead><TableHead>Estado</TableHead><TableHead>Ingreso</TableHead></TableRow></TableHeader><TableBody>{loading ? <TableRow><TableCell colSpan={7} className="py-10 text-center text-muted-foreground">Cargando cotizaciones...</TableCell></TableRow> : items.length === 0 ? <TableRow><TableCell colSpan={7} className="py-10 text-center text-muted-foreground">No hay cotizaciones personalizadas para los filtros seleccionados.</TableCell></TableRow> : items.map((item) => <TableRow key={item.sourceId} className="cursor-pointer hover:bg-muted/50" role="button" tabIndex={0} onClick={() => setSelectedGroup(item)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedGroup(item); } }}><TableCell className="font-medium">{item.customer?.fullName ?? 'Cliente no disponible'}</TableCell><TableCell>{identification(item.customer)}</TableCell><TableCell><p>{fiscalDocumentReference(item)}</p>{item.quotationNumber ? <p className="text-xs text-muted-foreground">Cotización #{item.quotationNumber}</p> : null}</TableCell><TableCell>{item.serviceCount}</TableCell><TableCell>{money(item.commercialValue.amount, item.commercialValue.currency)}</TableCell><TableCell><Badge variant={statusVariant(item.status)}>{groupLabels[item.status]}</Badge></TableCell><TableCell className="text-sm text-muted-foreground">{formatDateTime(item.createdAt)}</TableCell></TableRow>)}</TableBody></Table>{pagination.totalPages > 1 ? <div className="flex items-center justify-between border-t px-4 py-3 text-sm"><span className="text-muted-foreground">{pagination.total} cotizaciones</span><div className="flex items-center gap-2"><Button type="button" size="sm" variant="outline" disabled={page === 1} onClick={() => { const next = page - 1; setPage(next); void load(next); }}>Anterior</Button><span>Página {page} de {pagination.totalPages}</span><Button type="button" size="sm" variant="outline" disabled={page >= pagination.totalPages} onClick={() => { const next = page + 1; setPage(next); void load(next); }}>Siguiente</Button></div></div> : null}</CardContent></Card>
+      <Card><CardHeader><CardTitle className="flex items-center gap-2"><ClipboardList aria-hidden="true" size={20} /> Cola operativa</CardTitle></CardHeader><CardContent className="space-y-3">{loading ? <p className="py-10 text-center text-muted-foreground">Cargando cotizaciones...</p> : customerGroups.length === 0 ? <p className="py-10 text-center text-muted-foreground">No se encontraron operaciones activas con estos filtros.</p> : customerGroups.map((customerGroup, index) => <ActiveCustomerAccordion key={customerGroup.customer?.id ?? `unknown-active-${index}`} customerGroup={customerGroup} expanded={expandedCustomers.has(customerGroup.customer?.id ?? `unknown-active-${index}`)} onToggle={() => toggleCustomer(customerGroup.customer?.id ?? `unknown-active-${index}`)} onSelectGroup={setSelectedGroup} formatDateTime={formatDateTime} />)}<CustomerPagination total={pagination.total} page={page} totalPages={pagination.totalPages} loading={loading} onPrevious={() => changePage(page - 1)} onNext={() => changePage(page + 1)} /></CardContent></Card>
     </> : <CustomQuotationOperationsHistory />}
   </div>{view === 'ACTIVE' && selectedGroup ? <CustomQuotationGroupDetail group={selectedGroup} onClose={() => setSelectedGroup(null)} onChanged={() => refreshSelectedGroup(selectedGroup.sourceId)} /> : null}</main>;
 }
 
 function CustomQuotationOperationsHistory() {
   const formatDateTime = useTenantDateTimeFormatter();
-  const [items, setItems] = useState<CustomQuotationOperationsHistoryRow[]>([]);
+  const [customerGroups, setCustomerGroups] = useState<CustomQuotationOperationsHistoryCustomerGroup[]>([]);
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ total: 0, totalPages: 0 });
   const [loading, setLoading] = useState(true);
@@ -138,28 +164,63 @@ function CustomQuotationOperationsHistory() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [selectedFulfillmentId, setSelectedFulfillmentId] = useState<string | null>(null);
+  const [expandedCustomers, setExpandedCustomers] = useState<Set<string>>(new Set());
+  const requestGeneration = useRef(0);
+  const debounceGeneration = useRef(0);
+  const initialized = useRef(false);
 
-  async function load(nextPage = page) {
+  async function load(nextPage = page, nextSearch = search.trim()) {
+    const generation = ++requestGeneration.current;
     setLoading(true); setError(null);
     try {
       const response = await listCustomQuotationOperationsHistory({
         page: nextPage,
-        search: search || undefined,
+        search: nextSearch || undefined,
         datePreset: datePreset || undefined,
         dateFrom: datePreset === 'CUSTOM' ? dateFrom || undefined : undefined,
         dateTo: datePreset === 'CUSTOM' ? dateTo || undefined : undefined,
       });
-      setItems(response.items); setPagination({ total: response.total, totalPages: response.totalPages });
-    } catch (reason) { setError(errorMessage(reason, 'No se pudo cargar el historial de compras.')); }
-    finally { setLoading(false); }
+      if (generation !== requestGeneration.current) return;
+      setCustomerGroups(response.customerGroups); setPagination({ total: response.total, totalPages: response.totalPages });
+    } catch (reason) { if (generation === requestGeneration.current) setError(errorMessage(reason, 'No se pudo cargar el historial de compras.')); }
+    finally { if (generation === requestGeneration.current) setLoading(false); }
   }
-  useEffect(() => { void load(); }, []);
+  useEffect(() => {
+    const searchTerm = search.trim();
+    const generation = ++debounceGeneration.current;
+    if (!initialized.current) { initialized.current = true; void load(1, searchTerm); return; }
+    if (!searchTerm) { setPage(1); void load(1, ''); return; }
+    if (searchTerm.length < 2) return;
+    const timer = window.setTimeout(() => { if (generation === debounceGeneration.current) { setPage(1); void load(1, searchTerm); } }, 350);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+  function submitSearch() { debounceGeneration.current += 1; setPage(1); void load(1, search.trim()); }
+  function changePage(nextPage: number) { debounceGeneration.current += 1; setPage(nextPage); void load(nextPage, search.trim()); }
+  function toggleCustomer(key: string) { setExpandedCustomers((current) => { const next = new Set(current); if (next.has(key)) next.delete(key); else next.add(key); return next; }); }
 
-  return <section className="space-y-4"><HistoryFilterBar className="md:grid-cols-4"><Input aria-label="Buscar en historial" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cliente, identificación, correo o factura" /><Select aria-label="Fecha de finalización" value={datePreset} onChange={(event) => setDatePreset(event.target.value as CustomQuotationHistoryDatePreset | '')}><option value="">Todas las fechas</option><option value="TODAY">Hoy</option><option value="LAST_7_DAYS">Últimos 7 días</option><option value="LAST_15_DAYS">Últimos 15 días</option><option value="LAST_MONTH">Último mes</option><option value="CUSTOM">Personalizado</option></Select>{datePreset === 'CUSTOM' ? <HistoryCustomDateControls dateFrom={dateFrom} dateTo={dateTo} onDateFromChange={setDateFrom} onDateToChange={setDateTo} /> : null}<Button type="button" onClick={() => { setPage(1); void load(1); }}>Buscar</Button></HistoryFilterBar>
+  return <section className="space-y-4"><HistoryFilterBar className="md:grid-cols-4"><Input aria-label="Buscar en historial" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cliente, identificación, correo o factura" /><Select aria-label="Fecha de finalización" value={datePreset} onChange={(event) => setDatePreset(event.target.value as CustomQuotationHistoryDatePreset | '')}><option value="">Todas las fechas</option><option value="TODAY">Hoy</option><option value="LAST_7_DAYS">Últimos 7 días</option><option value="LAST_15_DAYS">Últimos 15 días</option><option value="LAST_MONTH">Último mes</option><option value="CUSTOM">Personalizado</option></Select>{datePreset === 'CUSTOM' ? <HistoryCustomDateControls dateFrom={dateFrom} onDateFromChange={setDateFrom} dateTo={dateTo} onDateToChange={setDateTo} /> : null}<Button type="button" onClick={submitSearch}>Buscar</Button></HistoryFilterBar>
     <HistoryError message={error} />
-    <HistoryTableShell title="Historial de compras" description="Solo servicios finalizados; la fecha corresponde a la confirmación o cancelación registrada." icon={<History aria-hidden="true" size={20} />} minWidth="min-w-[1200px]" footer={<HistoryPagination total={pagination.total} totalLabel="servicios" page={page} totalPages={pagination.totalPages} loading={loading} onPrevious={() => { const next = page - 1; setPage(next); void load(next); }} onNext={() => { const next = page + 1; setPage(next); void load(next); }} />}><Table><TableHeader><TableRow><TableHead>Cliente</TableHead><TableHead>Identificación</TableHead><TableHead>Correo</TableHead><TableHead>Documento fiscal</TableHead><TableHead>Servicio</TableHead><TableHead>Proveedor</TableHead><TableHead>Total</TableHead><TableHead>Fecha</TableHead><TableHead>Estado</TableHead></TableRow></TableHeader><TableBody>{loading || items.length === 0 ? <HistoryTableStateRow colSpan={9} loading={loading} emptyMessage="No hay compras finalizadas para los filtros seleccionados." /> : items.map((item) => <TableRow key={item.fulfillmentId} className="cursor-pointer hover:bg-muted/50 focus-visible:bg-muted/50" role="button" tabIndex={0} onClick={() => setSelectedFulfillmentId(item.fulfillmentId)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setSelectedFulfillmentId(item.fulfillmentId); } }}><TableCell className="font-medium">{item.customer?.fullName ?? 'Cliente no disponible'}</TableCell><TableCell>{identification(item.customer)}</TableCell><TableCell>{item.customer?.email ?? '—'}</TableCell><TableCell>{item.fiscalDocument ? `${fiscalDocumentTypeLabel(item.fiscalDocument.type)} ${item.fiscalDocument.number ?? 'sin número'}` : 'Sin factura emitida'}</TableCell><TableCell>{item.serviceDescription}</TableCell><TableCell>{item.purchase?.providerName ?? '—'}</TableCell><TableCell>{item.purchase ? money(addFinanceMoneyDisplayValues(item.purchase.amount, item.purchase.taxAmount), item.purchase.currency) : '—'}</TableCell><TableCell className="text-sm text-muted-foreground">{formatDateTime(item.finalizedAt)}</TableCell><TableCell><TerminalStatusBadge status={item.finalStatus} /></TableCell></TableRow>)}</TableBody></Table></HistoryTableShell>
+    <HistoryTableShell title="Historial de compras" description="Solo servicios finalizados; la fecha corresponde a la confirmación o cancelación registrada." icon={<History aria-hidden="true" size={20} />} footer={<CustomerPagination total={pagination.total} page={page} totalPages={pagination.totalPages} loading={loading} onPrevious={() => changePage(page - 1)} onNext={() => changePage(page + 1)} />}><div className="space-y-3 p-4">{loading ? <p className="py-10 text-center text-muted-foreground">Cargando historial...</p> : customerGroups.length === 0 ? <p className="py-10 text-center text-muted-foreground">No se encontraron registros históricos con estos filtros.</p> : customerGroups.map((customerGroup, index) => <HistoryCustomerAccordion key={customerGroup.customer?.id ?? `unknown-history-${index}`} customerGroup={customerGroup} expanded={expandedCustomers.has(customerGroup.customer?.id ?? `unknown-history-${index}`)} onToggle={() => toggleCustomer(customerGroup.customer?.id ?? `unknown-history-${index}`)} onSelectFulfillment={setSelectedFulfillmentId} formatDateTime={formatDateTime} />)}</div></HistoryTableShell>
     {selectedFulfillmentId ? <CustomQuotationOperationsHistoryDetailDialog fulfillmentId={selectedFulfillmentId} onClose={() => setSelectedFulfillmentId(null)} /> : null}
   </section>;
+}
+
+function CustomerAccordionHeader({ customer, summary, expanded, onToggle }: { customer: { fullName: string; idType: string | null; idNumber: string } | null; summary: string; expanded: boolean; onToggle: () => void }) {
+  return <button type="button" className="flex w-full items-center justify-between gap-3 rounded-lg px-4 py-3 text-left hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-expanded={expanded} onClick={onToggle}><div className="min-w-0"><p className="truncate font-semibold">{customer?.fullName ?? 'Cliente no disponible'}</p>{customer?.idNumber ? <p className="mt-1 text-sm text-muted-foreground">{identification(customer)}</p> : null}<p className="mt-1 text-sm text-muted-foreground">{summary}</p></div><ChevronDown aria-hidden="true" className={`size-5 shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`} /></button>;
+}
+
+function ActiveCustomerAccordion({ customerGroup, expanded, onToggle, onSelectGroup, formatDateTime }: { customerGroup: CustomQuotationOperationsCustomerGroup; expanded: boolean; onToggle: () => void; onSelectGroup: (group: CustomQuotationOperationsGroup) => void; formatDateTime: (value: string) => string }) {
+  return <div className="overflow-hidden rounded-lg border"><CustomerAccordionHeader customer={customerGroup.customer} summary={`${customerGroup.quotationGroupCount} ${customerGroup.quotationGroupCount === 1 ? 'cotización' : 'cotizaciones'} · ${customerGroup.serviceCount} ${customerGroup.serviceCount === 1 ? 'servicio' : 'servicios'}`} expanded={expanded} onToggle={onToggle} />{expanded ? <div className="border-t overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Cliente</TableHead><TableHead>Identificación</TableHead><TableHead>Documento fiscal</TableHead><TableHead>Cantidad de servicios</TableHead><TableHead>Valor total</TableHead><TableHead>Estado</TableHead><TableHead>Ingreso</TableHead></TableRow></TableHeader><TableBody>{customerGroup.groups.map((item) => <TableRow key={item.sourceId} className="cursor-pointer hover:bg-muted/50" role="button" tabIndex={0} onClick={() => onSelectGroup(item)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelectGroup(item); } }}><TableCell className="font-medium">{item.customer?.fullName ?? 'Cliente no disponible'}</TableCell><TableCell>{identification(item.customer)}</TableCell><TableCell><p>{fiscalDocumentReference(item)}</p>{item.quotationNumber ? <p className="text-xs text-muted-foreground">Cotización #{item.quotationNumber}</p> : null}</TableCell><TableCell>{item.serviceCount}</TableCell><TableCell>{money(item.commercialValue.amount, item.commercialValue.currency)}</TableCell><TableCell><Badge variant={statusVariant(item.status)}>{groupLabels[item.status]}</Badge></TableCell><TableCell className="text-sm text-muted-foreground">{formatDateTime(item.createdAt)}</TableCell></TableRow>)}</TableBody></Table></div> : null}</div>;
+}
+
+function HistoryCustomerAccordion({ customerGroup, expanded, onToggle, onSelectFulfillment, formatDateTime }: { customerGroup: CustomQuotationOperationsHistoryCustomerGroup; expanded: boolean; onToggle: () => void; onSelectFulfillment: (fulfillmentId: string) => void; formatDateTime: (value: string) => string }) {
+  return <div className="overflow-hidden rounded-lg border"><CustomerAccordionHeader customer={customerGroup.customer} summary={`${customerGroup.historyCount} ${customerGroup.historyCount === 1 ? 'registro histórico' : 'registros históricos'}`} expanded={expanded} onToggle={onToggle} />{expanded ? <div className="border-t overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Cliente</TableHead><TableHead>Identificación</TableHead><TableHead>Correo</TableHead><TableHead>Documento fiscal</TableHead><TableHead>Servicio</TableHead><TableHead>Proveedor</TableHead><TableHead>Total</TableHead><TableHead>Fecha</TableHead><TableHead>Estado</TableHead></TableRow></TableHeader><TableBody>{customerGroup.items.map((item) => <TableRow key={item.fulfillmentId} className="cursor-pointer hover:bg-muted/50 focus-visible:bg-muted/50" role="button" tabIndex={0} onClick={() => onSelectFulfillment(item.fulfillmentId)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onSelectFulfillment(item.fulfillmentId); } }}><TableCell className="font-medium">{item.customer?.fullName ?? 'Cliente no disponible'}</TableCell><TableCell>{identification(item.customer)}</TableCell><TableCell>{item.customer?.email ?? '—'}</TableCell><TableCell>{item.fiscalDocument ? `${fiscalDocumentTypeLabel(item.fiscalDocument.type)} ${item.fiscalDocument.number ?? 'sin número'}` : 'Sin factura emitida'}</TableCell><TableCell>{item.serviceDescription}</TableCell><TableCell>{item.purchase?.providerName ?? '—'}</TableCell><TableCell>{item.purchase ? money(addFinanceMoneyDisplayValues(item.purchase.amount, item.purchase.taxAmount), item.purchase.currency) : '—'}</TableCell><TableCell className="text-sm text-muted-foreground">{formatDateTime(item.finalizedAt)}</TableCell><TableCell><TerminalStatusBadge status={item.finalStatus} /></TableCell></TableRow>)}</TableBody></Table></div> : null}</div>;
+}
+
+function CustomerPagination({ total, page, totalPages, loading, onPrevious, onNext }: { total: number; page: number; totalPages: number; loading: boolean; onPrevious: () => void; onNext: () => void }) {
+  const first = total === 0 ? 0 : (page - 1) * 20 + 1;
+  const last = Math.min(page * 20, total);
+  return <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-3 text-sm"><span className="text-muted-foreground">{first}–{last} de {total} clientes</span>{totalPages > 1 ? <div className="flex items-center gap-2"><Button type="button" size="sm" variant="outline" disabled={page <= 1 || loading} onClick={onPrevious}>Anterior</Button><span>Página {page} de {totalPages}</span><Button type="button" size="sm" variant="outline" disabled={page >= totalPages || loading} onClick={onNext}>Siguiente</Button></div> : null}</div>;
 }
 
 function CustomQuotationOperationsHistoryDetailDialog({ fulfillmentId, onClose }: { fulfillmentId: string; onClose: () => void }) {
