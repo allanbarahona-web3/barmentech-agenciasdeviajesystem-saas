@@ -896,6 +896,10 @@ export type PageParams = {
   pageSize?: number;
 };
 
+export type GroupedCustomerSearchParams = PageParams & {
+  customerSearch?: string;
+};
+
 export type ListPaymentsParams = PageParams & {
   customerId?: string;
   currency?: FinanceCurrency;
@@ -1030,7 +1034,7 @@ export function listAccountReceivables(
 }
 
 export function listAccountReceivableGroups(
-  params: PageParams,
+  params: GroupedCustomerSearchParams,
   signal?: AbortSignal,
 ): Promise<AccountReceivableGroupsPage> {
   return request<AccountReceivableGroupsPage>(
@@ -1051,7 +1055,7 @@ export function listAccountReceivableGroupItems(
 }
 
 export function listContractObligationGroups(
-  params: PageParams,
+  params: GroupedCustomerSearchParams,
   signal?: AbortSignal,
 ): Promise<ContractObligationGroupsPage> {
   return request<ContractObligationGroupsPage>(

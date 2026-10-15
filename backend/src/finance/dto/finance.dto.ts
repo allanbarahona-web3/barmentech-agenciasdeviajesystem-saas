@@ -27,6 +27,11 @@ export enum PaymentApplicationTypeFilter {
 const trim = ({ value }: { value: unknown }) =>
   typeof value === "string" ? value.trim() : value;
 
+const trimOptional = ({ value }: { value: unknown }) => {
+  const trimmed = typeof value === "string" ? value.trim() : value;
+  return trimmed === "" ? undefined : trimmed;
+};
+
 const moneyText = /^\d+(?:\.\d+)?$/;
 
 const queryBoolean = ({ value }: { value: unknown }) => {
@@ -218,20 +223,25 @@ export class ReportedContractPaymentDto {
   intendedAmount!: string;
 }
 
-export class ListAccountReceivableGroupsDto {
+class ListGroupedPaginationDto {
   @IsOptional() @Transform(({ value }) => Number.parseInt(String(value), 10)) @IsInt() @Min(1)
   page?: number;
   @IsOptional() @Transform(({ value }) => Number.parseInt(String(value), 10)) @IsInt() @Min(1) @Max(100)
   pageSize?: number;
 }
 
+export class ListAccountReceivableGroupsDto extends ListGroupedPaginationDto {
+  @IsOptional() @Transform(trimOptional) @IsString() @MaxLength(191) @Matches(/\S/)
+  customerSearch?: string;
+}
+
 export class ListContractObligationGroupsDto extends ListAccountReceivableGroupsDto {}
 
-export class ListContractObligationGroupContractsDto extends ListAccountReceivableGroupsDto {}
+export class ListContractObligationGroupContractsDto extends ListGroupedPaginationDto {}
 
-export class ListContractPaymentsDto extends ListAccountReceivableGroupsDto {}
+export class ListContractPaymentsDto extends ListGroupedPaginationDto {}
 
-export class ListAccountReceivableGroupItemsDto extends ListAccountReceivableGroupsDto {}
+export class ListAccountReceivableGroupItemsDto extends ListGroupedPaginationDto {}
 
 export class ListPaymentsDto {
   @IsOptional() @Transform(({ value }) => Number.parseInt(String(value), 10)) @IsInt() @Min(1)

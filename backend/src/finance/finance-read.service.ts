@@ -435,6 +435,9 @@ export class FinanceReadService {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
     const offset = (page - 1) * pageSize;
+    const customerSearchFilter = query.customerSearch
+      ? Prisma.sql`WHERE "debtorDisplayName" ILIKE ${`%${query.customerSearch}%`} OR COALESCE("debtorIdentificationNumber", '') ILIKE ${`%${query.customerSearch}%`}`
+      : Prisma.empty;
     const tenantCurrentCalendarDate = await this.getTenantCurrentCalendarDate(tenantId);
     const tenantToday = dateOnly(tenantCurrentCalendarDate);
     const [rows, totals] = await Promise.all([
@@ -466,8 +469,13 @@ export class FinanceReadService {
             "customerId",
             "currencyCode"
         ),
+        filtered AS (
+          SELECT *
+          FROM grouped
+          ${customerSearchFilter}
+        ),
         paged AS (
-          SELECT * FROM grouped
+          SELECT * FROM filtered
           ORDER BY LOWER("debtorDisplayName") ASC, "groupKind" ASC, "groupIdentity" ASC, "currencyCode" ASC
           LIMIT ${pageSize}
           OFFSET ${offset}
@@ -533,9 +541,10 @@ export class FinanceReadService {
         ORDER BY LOWER(paged."debtorDisplayName") ASC, paged."groupKind" ASC, paged."groupIdentity" ASC, paged."currencyCode" ASC
       `,
       this.prisma.$queryRaw<Array<{ total: bigint }>>`
-        SELECT COUNT(*) AS "total"
-        FROM (
-          SELECT 1
+        WITH grouped AS (
+          SELECT
+            (ARRAY_AGG("debtorDisplayName" ORDER BY "recognizedAt" DESC, "id" DESC))[1] AS "debtorDisplayName",
+            (ARRAY_AGG("debtorIdentificationNumber" ORDER BY "recognizedAt" DESC, "id" DESC))[1] AS "debtorIdentificationNumber"
           FROM "account_receivables"
           WHERE "tenantId" = ${tenantId}
           GROUP BY
@@ -543,7 +552,10 @@ export class FinanceReadService {
             COALESCE("customerId", "id"),
             "customerId",
             "currencyCode"
-        ) AS grouped
+        )
+        SELECT COUNT(*) AS "total"
+        FROM grouped
+        ${customerSearchFilter}
       `,
     ]);
     const total = exactCount(totals[0]?.total ?? 0);
@@ -563,6 +575,9 @@ export class FinanceReadService {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
     const offset = (page - 1) * pageSize;
+    const customerSearchFilter = query.customerSearch
+      ? Prisma.sql`AND (customer."fullName" ILIKE ${`%${query.customerSearch}%`} OR customer."idNumber" ILIKE ${`%${query.customerSearch}%`})`
+      : Prisma.empty;
     const tenantCurrentCalendarDate = await this.getTenantCurrentCalendarDate(tenantId);
     const tenantToday = dateOnly(tenantCurrentCalendarDate);
     const [rows, totals] = await Promise.all([
@@ -597,6 +612,7 @@ export class FinanceReadService {
             AND customer."tenantId" = obligation."tenantId"
           WHERE obligation."tenantId" = ${tenantId}
             AND obligation."sourceType" = 'CONTRACT'
+            ${customerSearchFilter}
           GROUP BY
             obligation."customerId",
             obligation."currencyCode",
@@ -623,6 +639,7 @@ export class FinanceReadService {
             AND customer."tenantId" = obligation."tenantId"
           WHERE obligation."tenantId" = ${tenantId}
             AND obligation."sourceType" = 'CONTRACT'
+            ${customerSearchFilter}
           GROUP BY obligation."customerId", obligation."currencyCode"
         ) AS grouped
       `,

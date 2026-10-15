@@ -87,7 +87,7 @@ test('Contracts groups display backend customer, currency, and authoritative tot
   assert.match(portfolioSource, /group\.totalOriginalAmount/);
   assert.match(portfolioSource, /group\.totalPaidAmount/);
   assert.match(portfolioSource, /group\.totalOutstandingAmount/);
-  assert.match(portfolioSource, /listContractObligationGroups\(\{ page, pageSize: PAGE_SIZE \}/);
+  assert.match(portfolioSource, /listContractObligationGroups\(\{ page, pageSize: PAGE_SIZE, customerSearch: customerSearch\.trim\(\) \|\| undefined \}/);
   assert.doesNotMatch(portfolioSource, /totalOriginalAmount\.reduce|totalPaidAmount\.reduce|totalOutstandingAmount\.reduce/);
 });
 

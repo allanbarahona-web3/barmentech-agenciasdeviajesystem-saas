@@ -159,6 +159,7 @@ export function ContractObligationGroupsView({ canWrite, reloadToken, onContract
   onStatement: (group: ContractObligationGroup) => void;
 }) {
   const [page, setPage] = useState(1);
+  const [customerSearch, setCustomerSearch] = useState('');
   const [result, setResult] = useState<ContractObligationGroupsPage | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<FinanceApiError | null>(null);
@@ -173,7 +174,7 @@ export function ContractObligationGroupsView({ canWrite, reloadToken, onContract
     setLoading(true);
     setError(null);
     try {
-      const response = await listContractObligationGroups({ page, pageSize: PAGE_SIZE }, signal);
+      const response = await listContractObligationGroups({ page, pageSize: PAGE_SIZE, customerSearch: customerSearch.trim() || undefined }, signal);
       setResult(response);
       if (response.totalPages > 0 && page > response.totalPages) setPage(response.totalPages);
     } catch (requestError) {
@@ -181,7 +182,7 @@ export function ContractObligationGroupsView({ canWrite, reloadToken, onContract
     } finally {
       if (!signal.aborted) setLoading(false);
     }
-  }, [page, reloadToken, retry]);
+  }, [customerSearch, page, reloadToken, retry]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -202,8 +203,15 @@ export function ContractObligationGroupsView({ canWrite, reloadToken, onContract
     onContractsChanged();
   };
 
+  function updateCustomerSearch(value: string) { setCustomerSearch(value); setPage(1); }
+  function clearFilters() { setCustomerSearch(''); setPage(1); }
+
   return <>
     {installmentNotice ? <div className={styles.operationNotice} role="status">{installmentNotice}</div> : null}
+    <section className={styles.paymentFilters} aria-label="Filtros de contratos">
+      <div className={styles.field}><label htmlFor="contract-customer-search">Cliente / identificación</label><input id="contract-customer-search" className={styles.input} placeholder="Buscar cliente..." value={customerSearch} onChange={(event) => updateCustomerSearch(event.target.value)} /></div>
+      {customerSearch ? <Button className={styles.secondaryAction} type="button" variant="outline" onClick={clearFilters}>Limpiar filtros</Button> : null}
+    </section>
     <section className={styles.tableCard}>
       <div className={styles.tableHeading}><div><h2>Contratos por cliente y moneda</h2><p>Los compromisos y saldos provienen del modelo financiero de contratos.</p></div><span>{loading ? 'Cargando…' : summary}</span></div>
       {error ? <div className={styles.state}><div><span className={styles.stateIcon}><AlertCircle aria-hidden="true" /></span><h3 className={styles.error}>No se pudieron cargar los contratos</h3><p>{error.message}</p><Button className={styles.secondaryAction} variant="outline" type="button" onClick={() => setRetry((value) => value + 1)}>Intentar nuevamente</Button></div></div> : !loading && (!result || result.items.length === 0) ? <div className={styles.state}><div><span className={styles.stateIcon}><AlertCircle aria-hidden="true" /></span><h3>No hay grupos de contratos</h3><p>Los contratos con obligación comercial aparecerán aquí.</p></div></div> : <Table className={styles.contractGroupTable}><TableHeader><TableRow><TableHead>Cliente</TableHead><TableHead>Moneda</TableHead><TableHead className={styles.numeric}>Total contratado</TableHead><TableHead className={styles.numeric}>Pagado</TableHead><TableHead className={styles.numeric}>Saldo contratos</TableHead><TableHead>Acciones</TableHead></TableRow></TableHeader><TableBody>{loading ? Array.from({ length: 5 }, (_, row) => <TableRow key={row}>{Array.from({ length: 6 }, (_, cell) => <TableCell key={cell}><span className={styles.skeleton} /></TableCell>)}</TableRow>) : result?.items.map((group) => <GroupRows key={group.groupKey} group={group} canWrite={canWrite} reloadToken={reloadToken} onOpenDetail={setSelectedDetailContract} onRegisterInstallment={setSelectedInstallmentContract} onStatement={onStatement} />)}</TableBody></Table>}

@@ -1066,6 +1066,7 @@ describe("FinanceReadService", () => {
     );
 
     const pageSql = rawSql(queryRaw, 0);
+    const countSql = rawSql(queryRaw, 1);
     expect(pageSql).toContain('COALESCE("customerId", "id")');
     expect(pageSql).toContain('GROUP BY');
     expect(pageSql).toContain('OFFSET');
@@ -1086,6 +1087,10 @@ describe("FinanceReadService", () => {
     expect(pageSql).toContain('receivable."currencyCode"');
     expect(pageSql).toContain('paged."customerId" = received_payments."customerId"');
     expect(pageSql).toContain('paged."currencyCode" = active_payment_allocations."currencyCode"');
+    expect(pageSql).not.toContain('ILIKE');
+    expect(countSql).not.toContain('ILIKE');
+    expect(pageSql).not.toContain('? IS NULL');
+    expect(countSql).not.toContain('? IS NULL');
     expect(queryRaw.mock.calls[0]).toEqual(expect.arrayContaining([new Date("2026-08-31T00:00:00.000Z"), "tenant-a", 5, 5]));
     expect(prisma).not.toHaveProperty("client");
     expect(prisma).not.toHaveProperty("billingDocument");
@@ -1164,6 +1169,10 @@ describe("FinanceReadService", () => {
     expect(countSql).toContain('FROM "commercial_obligations" AS obligation');
     expect(countSql).toContain('obligation."sourceType" = \'CONTRACT\'');
     expect(countSql).toContain('GROUP BY obligation."customerId", obligation."currencyCode"');
+    expect(pageSql).not.toContain('ILIKE');
+    expect(countSql).not.toContain('ILIKE');
+    expect(pageSql).not.toContain('? IS NULL');
+    expect(countSql).not.toContain('? IS NULL');
     expect(queryRaw).toHaveBeenCalledTimes(2);
     expect(queryRaw.mock.calls[0]).toEqual(expect.arrayContaining([new Date("2026-08-31T00:00:00.000Z"), "tenant-auth", 3, 3]));
     expect(queryRaw.mock.calls[1]).toEqual(expect.arrayContaining(["tenant-auth"]));
@@ -1172,6 +1181,121 @@ describe("FinanceReadService", () => {
     expect(prisma).not.toHaveProperty("client");
     expect(prisma).not.toHaveProperty("contract");
     expect(prisma).not.toHaveProperty("payment");
+    jest.useRealTimers();
+  });
+
+  it("filters Cartera groups by their displayed debtor snapshots before grouped pagination and count", async () => {
+    jest.useFakeTimers().setSystemTime(new Date("2026-09-01T02:30:00.000Z"));
+    const queryRaw = jest.fn()
+      .mockResolvedValueOnce([
+        groupRow({ customerId: "customer-allan", groupIdentity: "customer-allan", currencyCode: "CRC", debtorDisplayName: "Allan Barahona", debtorIdentificationNumber: "303570962", totalOutstandingAmount: d("18.02340") }),
+        groupRow({ customerId: "customer-allan", groupIdentity: "customer-allan", currencyCode: "USD", debtorDisplayName: "Allan Barahona", debtorIdentificationNumber: "303570962", totalOutstandingAmount: d("41.00000") }),
+      ])
+      .mockResolvedValueOnce([{ total: 2n }]);
+    const prisma = {
+      $queryRaw: queryRaw,
+      tenantBillingConfiguration: { findUnique: jest.fn().mockResolvedValue({ fiscalTimezone: "America/Costa_Rica" }) },
+    };
+    const service = new FinanceReadService(prisma as unknown as PrismaService);
+
+    const result = await service.listAccountReceivableGroups("tenant-a", { page: 1, pageSize: 20, customerSearch: "Allan" });
+
+    expect(result).toMatchObject({ total: 2, page: 1, pageSize: 20, totalPages: 1 });
+    expect(result.groups.map((group) => group.currencyCode)).toEqual(["CRC", "USD"]);
+    expect(result.groups[0]).toMatchObject({
+      debtor: { displayName: "Allan Barahona", identificationNumber: "303570962" },
+      totalOutstandingAmount: "18.0234",
+    });
+    const pageSql = rawSql(queryRaw, 0);
+    const countSql = rawSql(queryRaw, 1);
+    for (const sql of [pageSql, countSql]) {
+      expect(sql).toContain('"tenantId" = ?');
+      expect(sql).toContain('"debtorDisplayName" ILIKE ?');
+      expect(sql).toContain('COALESCE("debtorIdentificationNumber", \'\') ILIKE ?');
+      expect(sql).toContain('ARRAY_AGG("debtorDisplayName" ORDER BY "recognizedAt" DESC, "id" DESC)');
+      expect(sql).toContain('ARRAY_AGG("debtorIdentificationNumber" ORDER BY "recognizedAt" DESC, "id" DESC)');
+    }
+    expect(pageSql).toContain('FROM filtered');
+    expect(pageSql.indexOf('FROM filtered')).toBeLessThan(pageSql.indexOf('LIMIT'));
+    expect(rawSqlValues(queryRaw, 0)).toEqual(expect.arrayContaining(["tenant-a", "%Allan%", 20, 0]));
+    expect(rawSqlValues(queryRaw, 1)).toEqual(expect.arrayContaining(["tenant-a", "%Allan%"]));
+    expect(prisma).not.toHaveProperty("client");
+    jest.useRealTimers();
+  });
+
+  it("filters Cartera identification snapshots before the requested filtered page", async () => {
+    jest.useFakeTimers().setSystemTime(new Date("2026-09-01T02:30:00.000Z"));
+    const queryRaw = jest.fn()
+      .mockResolvedValueOnce([groupRow({ customerId: "customer-allan", groupIdentity: "customer-allan", currencyCode: "USD", debtorDisplayName: "Allan Barahona", debtorIdentificationNumber: "303570962" })])
+      .mockResolvedValueOnce([{ total: 2n }]);
+    const prisma = {
+      $queryRaw: queryRaw,
+      tenantBillingConfiguration: { findUnique: jest.fn().mockResolvedValue({ fiscalTimezone: "America/Costa_Rica" }) },
+    };
+    const service = new FinanceReadService(prisma as unknown as PrismaService);
+
+    const result = await service.listAccountReceivableGroups("tenant-a", { page: 2, pageSize: 1, customerSearch: "303570962" });
+
+    expect(result).toMatchObject({ total: 2, page: 2, pageSize: 1, totalPages: 2 });
+    expect(result.groups).toEqual([expect.objectContaining({ currencyCode: "USD", debtor: expect.objectContaining({ identificationNumber: "303570962" }) })]);
+    expect(rawSql(queryRaw, 0)).toContain('COALESCE("debtorIdentificationNumber", \'\') ILIKE ?');
+    expect(rawSqlValues(queryRaw, 0)).toEqual(expect.arrayContaining(["%303570962%", 1, 1]));
+    expect(rawSqlValues(queryRaw, 1)).toEqual(expect.arrayContaining(["%303570962%"]));
+    jest.useRealTimers();
+  });
+
+  it("filters Contract groups by tenant-joined Client identity before grouped pagination and count", async () => {
+    jest.useFakeTimers().setSystemTime(new Date("2026-09-01T02:30:00.000Z"));
+    const queryRaw = jest.fn()
+      .mockResolvedValueOnce([
+        contractObligationGroupRow({ customerId: "customer-allan", currencyCode: "CRC", debtorDisplayName: "Allan Barahona", debtorIdentificationNumber: "303570962", totalOutstandingAmount: d("600") }),
+        contractObligationGroupRow({ customerId: "customer-allan", currencyCode: "USD", debtorDisplayName: "Allan Barahona", debtorIdentificationNumber: "303570962", totalOutstandingAmount: d("900") }),
+      ])
+      .mockResolvedValueOnce([{ total: 2n }]);
+    const prisma = {
+      $queryRaw: queryRaw,
+      tenantBillingConfiguration: { findUnique: jest.fn().mockResolvedValue({ fiscalTimezone: "America/Costa_Rica" }) },
+    };
+    const service = new FinanceReadService(prisma as unknown as PrismaService);
+
+    const result = await service.listContractObligationGroups("tenant-auth", { page: 1, pageSize: 20, customerSearch: "Allan" });
+
+    expect(result).toMatchObject({ total: 2, page: 1, pageSize: 20, totalPages: 1 });
+    expect(result.items.map((group) => group.currencyCode)).toEqual(["CRC", "USD"]);
+    const pageSql = rawSql(queryRaw, 0);
+    const countSql = rawSql(queryRaw, 1);
+    for (const sql of [pageSql, countSql]) {
+      expect(sql).toContain('obligation."tenantId" = ?');
+      expect(sql).toContain('contract."tenantId" = obligation."tenantId"');
+      expect(sql).toContain('customer."tenantId" = obligation."tenantId"');
+      expect(sql).toContain('customer."fullName" ILIKE ?');
+      expect(sql).toContain('customer."idNumber" ILIKE ?');
+    }
+    expect(pageSql.indexOf('customer."fullName" ILIKE ?')).toBeLessThan(pageSql.indexOf('GROUP BY'));
+    expect(pageSql.indexOf('GROUP BY')).toBeLessThan(pageSql.indexOf('LIMIT'));
+    expect(rawSqlValues(queryRaw, 0)).toEqual(expect.arrayContaining(["tenant-auth", "%Allan%", 20, 0]));
+    expect(rawSqlValues(queryRaw, 1)).toEqual(expect.arrayContaining(["tenant-auth", "%Allan%"]));
+    jest.useRealTimers();
+  });
+
+  it("filters Contract identification before the requested filtered page", async () => {
+    jest.useFakeTimers().setSystemTime(new Date("2026-09-01T02:30:00.000Z"));
+    const queryRaw = jest.fn()
+      .mockResolvedValueOnce([contractObligationGroupRow({ customerId: "customer-allan", currencyCode: "USD", debtorDisplayName: "Allan Barahona", debtorIdentificationNumber: "303570962" })])
+      .mockResolvedValueOnce([{ total: 2n }]);
+    const prisma = {
+      $queryRaw: queryRaw,
+      tenantBillingConfiguration: { findUnique: jest.fn().mockResolvedValue({ fiscalTimezone: "America/Costa_Rica" }) },
+    };
+    const service = new FinanceReadService(prisma as unknown as PrismaService);
+
+    const result = await service.listContractObligationGroups("tenant-auth", { page: 2, pageSize: 1, customerSearch: "303570962" });
+
+    expect(result).toMatchObject({ total: 2, page: 2, pageSize: 1, totalPages: 2 });
+    expect(result.items).toEqual([expect.objectContaining({ currencyCode: "USD", debtor: expect.objectContaining({ identificationNumber: "303570962" }) })]);
+    expect(rawSql(queryRaw, 0)).toContain('customer."idNumber" ILIKE ?');
+    expect(rawSqlValues(queryRaw, 0)).toEqual(expect.arrayContaining(["%303570962%", 1, 1]));
+    expect(rawSqlValues(queryRaw, 1)).toEqual(expect.arrayContaining(["%303570962%"]));
     jest.useRealTimers();
   });
 
@@ -1732,8 +1856,42 @@ function encodedContractObligationGroupKey(customerId: string, currencyCode: str
   return Buffer.from(JSON.stringify({ version: 1, kind: "CONTRACT_OBLIGATION", customerId, currencyCode }), "utf8").toString("base64url");
 }
 
+type SqlFragment = { strings: readonly string[]; values: readonly unknown[] };
+
+function isSqlFragment(value: unknown): value is SqlFragment {
+  return Boolean(value && typeof value === "object" && "strings" in value && "values" in value);
+}
+
+function renderSql(fragment: SqlFragment): string {
+  return fragment.strings.reduce(
+    (sql, text, index) => sql + text + (index < fragment.values.length
+      ? isSqlFragment(fragment.values[index]) ? renderSql(fragment.values[index]) : "?"
+      : ""),
+    "",
+  );
+}
+
+function renderTemplate(strings: readonly string[], values: readonly unknown[]): string {
+  return strings.reduce(
+    (sql, text, index) => sql + text + (index < values.length
+      ? isSqlFragment(values[index]) ? renderSql(values[index]) : "?"
+      : ""),
+    "",
+  );
+}
+
+function sqlValues(fragment: SqlFragment): unknown[] {
+  return fragment.values.flatMap((value) => isSqlFragment(value) ? sqlValues(value) : [value]);
+}
+
 function rawSql(mock: jest.Mock, call: number): string {
-  return (mock.mock.calls[call][0] as TemplateStringsArray).join("?");
+  const [strings, ...values] = mock.mock.calls[call] as [TemplateStringsArray, ...unknown[]];
+  return renderTemplate(strings, values);
+}
+
+function rawSqlValues(mock: jest.Mock, call: number): unknown[] {
+  const [, ...values] = mock.mock.calls[call] as [TemplateStringsArray, ...unknown[]];
+  return values.flatMap((value) => isSqlFragment(value) ? sqlValues(value) : [value]);
 }
 
 function paymentListRow(overrides: Record<string, unknown> = {}) {

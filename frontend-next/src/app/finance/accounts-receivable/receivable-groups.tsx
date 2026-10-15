@@ -136,6 +136,7 @@ export function ReceivableGroupsView({ canWrite, reloadToken, onOpenDetail, onRe
   onStatement: (group: AccountReceivableGroup) => void;
 }) {
   const [page, setPage] = useState(1);
+  const [customerSearch, setCustomerSearch] = useState('');
   const [result, setResult] = useState<AccountReceivableGroupsPage | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<FinanceApiError | null>(null);
@@ -145,7 +146,7 @@ export function ReceivableGroupsView({ canWrite, reloadToken, onOpenDetail, onRe
     void reloadToken; void retry;
     setLoading(true); setError(null);
     try {
-      const response = await listAccountReceivableGroups({ page, pageSize: PAGE_SIZE }, signal);
+      const response = await listAccountReceivableGroups({ page, pageSize: PAGE_SIZE, customerSearch: customerSearch.trim() || undefined }, signal);
       setResult(response);
       if (response.totalPages > 0 && page > response.totalPages) setPage(response.totalPages);
     } catch (requestError) {
@@ -153,7 +154,7 @@ export function ReceivableGroupsView({ canWrite, reloadToken, onOpenDetail, onRe
     } finally {
       if (!signal.aborted) setLoading(false);
     }
-  }, [page, reloadToken, retry]);
+  }, [customerSearch, page, reloadToken, retry]);
 
   useEffect(() => {
     const controller = new AbortController(); void load(controller.signal); return () => controller.abort();
@@ -166,9 +167,15 @@ export function ReceivableGroupsView({ canWrite, reloadToken, onOpenDetail, onRe
     return `${first}–${last} de ${result.total} grupos`;
   }, [result]);
 
-  return <section className={styles.tableCard}>
+  function updateCustomerSearch(value: string) { setCustomerSearch(value); setPage(1); }
+  function clearFilters() { setCustomerSearch(''); setPage(1); }
+
+  return <><section className={styles.paymentFilters} aria-label="Filtros de cartera">
+    <div className={styles.field}><label htmlFor="receivable-customer-search">Cliente / identificación</label><input id="receivable-customer-search" className={styles.input} placeholder="Buscar cliente..." value={customerSearch} onChange={(event) => updateCustomerSearch(event.target.value)} /></div>
+    {customerSearch ? <Button className={styles.secondaryAction} type="button" variant="outline" onClick={clearFilters}>Limpiar filtros</Button> : null}
+  </section><section className={styles.tableCard}>
     <div className={styles.tableHeading}><div><h2>Cartera por cliente y moneda</h2><p>Cuentas por cobrar generadas por facturación y servicios adicionales.</p></div><span>{loading ? 'Cargando…' : summary}</span></div>
     {error ? <div className={styles.state}><div><span className={styles.stateIcon}><AlertCircle aria-hidden="true" /></span><h3 className={styles.error}>No se pudo cargar la cartera</h3><p>{error.message}</p><Button className={styles.secondaryAction} variant="outline" type="button" onClick={() => setRetry((value) => value + 1)}>Intentar nuevamente</Button></div></div> : !loading && (!result || result.groups.length === 0) ? <div className={styles.state}><div><span className={styles.stateIcon}><AlertCircle aria-hidden="true" /></span><h3>No hay grupos de cuentas por cobrar</h3><p>Las deudas reconocidas aparecerán aquí después de la aceptación fiscal.</p></div></div> : <Table className={styles.groupTable}><TableHeader><TableRow><TableHead>Cliente / deudor</TableHead><TableHead>Moneda</TableHead><TableHead className={styles.numeric}>Saldo CxC</TableHead><TableHead className={styles.numeric}>Saldo disponible</TableHead><TableHead>Acciones</TableHead></TableRow></TableHeader><TableBody>{loading ? Array.from({ length: 5 }, (_, row) => <TableRow key={row}>{Array.from({ length: 5 }, (_, cell) => <TableCell key={cell}><span className={styles.skeleton} /></TableCell>)}</TableRow>) : result?.groups.map((group) => <GroupRows key={group.groupKey} group={group} canWrite={canWrite} reloadToken={reloadToken} onOpenDetail={onOpenDetail} onRegisterPayment={onRegisterPayment} onRegisterCustomerPayment={onRegisterCustomerPayment} onApplyBalance={onApplyBalance} onApplyGroupBalance={onApplyGroupBalance} onViewPayments={onViewPayments} onStatement={onStatement} />)}</TableBody></Table>}
     {!loading && !error && result && result.totalPages > 1 && <nav className={styles.pagination}><p>Página {result.page} de {result.totalPages} · {summary}</p><div className={styles.paginationActions}><Button className={styles.secondaryAction} disabled={result.page <= 1} variant="outline" onClick={() => setPage((value) => Math.max(1, value - 1))}>Anterior</Button><Button className={styles.secondaryAction} disabled={result.page >= result.totalPages} variant="outline" onClick={() => setPage((value) => Math.min(result.totalPages, value + 1))}>Siguiente</Button></div></nav>}
-  </section>;
+  </section></>;
 }
