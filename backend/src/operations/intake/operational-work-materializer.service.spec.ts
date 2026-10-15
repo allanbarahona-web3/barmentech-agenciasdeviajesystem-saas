@@ -68,13 +68,14 @@ describe("OperationalWorkMaterializer", () => {
   it("materializes a standalone customer source without package or passenger reads", async () => {
     const c = context(standaloneSource());
     c.tx.operationalRequirement.findFirst.mockResolvedValue(null);
-    c.tx.client.findFirst.mockResolvedValue({ id: "customer-a" });
+    c.tx.client.findFirst.mockResolvedValue({ id: "customer-a", dateOfBirth: new Date("2008-11-20T00:00:00.000Z") });
     c.tx.operationalRequirement.create.mockResolvedValue({ id: "requirement-standalone" });
 
     await expect(c.materializer.materialize(standaloneReference())).resolves.toEqual({ status: "CREATED", operationalRequirementId: "requirement-standalone" });
-    expect(c.tx.client.findFirst).toHaveBeenCalledWith({ where: { id: "customer-a", tenantId: "tenant-a" }, select: { id: true } });
+    expect(c.tx.client.findFirst).toHaveBeenCalledWith({ where: { id: "customer-a", tenantId: "tenant-a" }, select: { id: true, dateOfBirth: true } });
     expect(c.tx.operationalRequirement.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
       scopeType: "STANDALONE_CUSTOMER", customerId: "customer-a", travelPackageId: null,
+      customerDateOfBirth: new Date("2008-11-20T00:00:00.000Z"),
       sourceType: "CUSTOM_QUOTATION_LINE", sourceId: "version-a", sourceLineId: "version-line-a",
       status: "PENDING", soldValueScope: "EXACT_SERVICE_LINE", soldAmount: expect.any(Prisma.Decimal), soldCurrency: "USD",
     }) }));
@@ -94,6 +95,29 @@ describe("OperationalWorkMaterializer", () => {
     expect(c.tx.client.findFirst).not.toHaveBeenCalled();
     expect(c.tx.operationalRequirement.create).not.toHaveBeenCalled();
     expect(c.tx.operationalRequirementPassenger.createMany).not.toHaveBeenCalled();
+  });
+
+  it("keeps the standalone DOB snapshot immutable when the source is replayed after a Client change", async () => {
+    const c = context(standaloneSource());
+    c.tx.operationalRequirement.findFirst.mockResolvedValue({ id: "requirement-standalone" });
+
+    await expect(c.materializer.materialize(standaloneReference())).resolves.toEqual({ status: "ALREADY_MATERIALIZED", operationalRequirementId: "requirement-standalone" });
+
+    expect(c.tx.client.findFirst).not.toHaveBeenCalled();
+    expect(c.tx.operationalRequirement.create).not.toHaveBeenCalled();
+  });
+
+  it("persists a null standalone DOB snapshot when the Client has no date of birth", async () => {
+    const c = context(standaloneSource());
+    c.tx.operationalRequirement.findFirst.mockResolvedValue(null);
+    c.tx.client.findFirst.mockResolvedValue({ id: "customer-a", dateOfBirth: null });
+    c.tx.operationalRequirement.create.mockResolvedValue({ id: "requirement-standalone" });
+
+    await c.materializer.materialize(standaloneReference());
+
+    expect(c.tx.operationalRequirement.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ customerDateOfBirth: null }),
+    }));
   });
 
   it("recovers a standalone source-identity race by returning the concurrent requirement", async () => {

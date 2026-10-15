@@ -199,6 +199,7 @@ describe("OperationalRequirementsService", () => {
       orderBy: [{ operationalDeadlineAt: "asc" }, { createdAt: "asc" }, { id: "asc" }],
     }));
     expect(c.tx.operationalRequirement.findMany.mock.calls[0][0].select).not.toHaveProperty("passengers");
+    expect(c.tx.operationalRequirement.findMany.mock.calls[0][0].select).not.toHaveProperty("customerDateOfBirth");
     expect(c.tx.operationalFulfillmentPassenger.findMany).toHaveBeenCalledTimes(1);
     expect(c.tx.operationalRequirementPassenger.findMany).toHaveBeenCalledTimes(1);
   });
@@ -208,7 +209,9 @@ describe("OperationalRequirementsService", () => {
     c.tx.operationalRequirement.findFirst.mockResolvedValue(requirement());
     c.tx.operationalFulfillmentPassenger.findMany.mockResolvedValue([{ travelPackageParticipantId: "participant-a" }, { travelPackageParticipantId: "participant-a" }]);
     await expect(c.service.find(tenantId, travelPackageId, requirementId)).resolves.toMatchObject({
-      passengers: [{ travelPackageParticipantId: "participant-a", clientId: "client-a", fullName: "Ada Lovelace", role: "TRAVELER" }], coverage: { fulfilledPassengerCount: 1, totalPassengerCount: 1 },
+      passengers: [{ travelPackageParticipantId: "participant-a", clientId: "client-a", fullName: "Ada Lovelace", role: "TRAVELER" }],
+      passengerContexts: [{ displayName: "Ada Lovelace", dateOfBirth: "2008-11-20", age: 18, ageReferenceDate: "2026-12-01", ageReferenceType: "TRIP_DEPARTURE", role: "TRAVELER" }],
+      coverage: { fulfilledPassengerCount: 1, totalPassengerCount: 1 },
     });
     expect(c.tx.operationalRequirement.findFirst).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: requirementId, tenantId, travelPackageId },
@@ -221,9 +224,9 @@ describe("OperationalRequirementsService", () => {
 
   it("reads standalone requirements by generic tenant identity without package or participant queries", async () => {
     const c = context();
-    c.tx.operationalRequirement.findFirst.mockResolvedValue(requirement({ scopeType: "STANDALONE_CUSTOMER", travelPackageId: null, customerId: "customer-a", customer: { id: "customer-a", fullName: "Ada Customer" }, passengers: [] }));
+    c.tx.operationalRequirement.findFirst.mockResolvedValue(requirement({ scopeType: "STANDALONE_CUSTOMER", travelPackageId: null, customerId: "customer-a", customerDateOfBirth: new Date("2008-11-20T00:00:00.000Z"), customer: { id: "customer-a", fullName: "Ada Customer" }, passengers: [] }));
     c.tx.operationalFulfillment.findMany.mockResolvedValue([{ id: "fulfillment-a", status: "DRAFT", _count: { purchases: 1 } }]);
-    await expect(c.service.findStandalone(tenantId, requirementId)).resolves.toMatchObject({ scopeType: "STANDALONE_CUSTOMER", travelPackageId: null, customer: { id: "customer-a" }, passengers: [], coverage: { totalPassengerCount: 0 }, workflow: { fulfillmentCount: 1, purchaseCount: 1 } });
+    await expect(c.service.findStandalone(tenantId, requirementId)).resolves.toMatchObject({ scopeType: "STANDALONE_CUSTOMER", travelPackageId: null, customer: { id: "customer-a" }, passengers: [], passengerContexts: [{ displayName: "Ada Customer", dateOfBirth: "2008-11-20", role: null }], coverage: { totalPassengerCount: 0 }, workflow: { fulfillmentCount: 1, purchaseCount: 1 } });
     expect(c.tx.operationalRequirement.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ tenantId, id: requirementId, scopeType: "STANDALONE_CUSTOMER", travelPackageId: null }) }));
     expect(c.tx.travelPackage.findFirst).not.toHaveBeenCalled();
     expect(c.tx.travelPackageParticipant.findMany).not.toHaveBeenCalled();
@@ -785,7 +788,7 @@ function createInput(overrides: Record<string, unknown> = {}) {
 function passenger(id = "participant-a") {
   return {
     travelPackageParticipantId: id,
-    travelPackageParticipant: { id, clientId: id === "participant-a" ? "client-a" : "client-b", role: "TRAVELER", client: { fullName: "Ada Lovelace" } },
+    travelPackageParticipant: { id, clientId: id === "participant-a" ? "client-a" : "client-b", role: "TRAVELER", dateOfBirth: new Date("2008-11-20T00:00:00.000Z"), client: { fullName: "Ada Lovelace" } },
   };
 }
 
@@ -793,6 +796,11 @@ function requirement(overrides: Record<string, unknown> = {}) {
   return {
     id: requirementId,
     travelPackageId,
+    scopeType: "TRAVEL_PACKAGE",
+    customerId: null,
+    customerDateOfBirth: null,
+    customer: null,
+    travelPackage: { departureDate: new Date("2026-12-01T00:00:00.000Z") },
     servicePurposeCode: "LODGING",
     servicePurposeName: "Lodging",
     description: "Hotel rooms",

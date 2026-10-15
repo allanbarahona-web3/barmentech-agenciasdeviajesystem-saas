@@ -2,8 +2,9 @@ import { BadRequestException, ConflictException, Inject, Injectable, NotFoundExc
 import { Prisma } from "@prisma/client";
 import { FINANCE_ELIGIBILITY_READER, type CommercialSourceRef, type FinanceEligibilityReader, type FinanceEligibilityResult } from "../../finance/eligibility-read/finance-eligibility-reader.port";
 import { PrismaService } from "../../prisma/prisma.service";
-import { DEFAULT_FISCAL_TIMEZONE, nextTenantCalendarDate, tenantCalendarDateStartAsUtc } from "../../finance/tenant-fiscal-date";
+import { DEFAULT_FISCAL_TIMEZONE, nextTenantCalendarDate, tenantCalendarDateForInstant, tenantCalendarDateStartAsUtc } from "../../finance/tenant-fiscal-date";
 import { runTenantTransaction } from "../../tenant/tenant-transaction";
+import { passengerOperationalContexts } from "../passenger-operational-context";
 import {
   CreateOperationalRequirementDto,
   type ListCustomQuotationOperationsHistoryDto,
@@ -47,6 +48,7 @@ type RequirementParticipantRecord = {
     id: string;
     clientId: string;
     role: string;
+    dateOfBirth: Date | null;
     client: { fullName: string };
   };
 };
@@ -55,6 +57,7 @@ type RequirementRecord = {
   scopeType: "TRAVEL_PACKAGE" | "STANDALONE_CUSTOMER";
   travelPackageId: string | null;
   customerId: string | null;
+  customerDateOfBirth: Date | null;
   servicePurposeCode: string;
   servicePurposeName: string;
   description: string;
@@ -79,6 +82,7 @@ type RequirementRecord = {
   updatedAt: Date;
   passengers: RequirementParticipantRecord[];
   customer?: { id: string; fullName: string } | null;
+  travelPackage?: { departureDate: Date } | null;
 };
 type RequirementSummaryRecord = Omit<RequirementRecord, "passengers"> & {
   _count: { passengers: number };
@@ -180,6 +184,7 @@ const REQUIREMENT_DETAIL_SELECT = {
   scopeType: true,
   travelPackageId: true,
   customerId: true,
+  customerDateOfBirth: true,
   servicePurposeCode: true,
   servicePurposeName: true,
   description: true,
@@ -203,6 +208,7 @@ const REQUIREMENT_DETAIL_SELECT = {
   createdAt: true,
   updatedAt: true,
   customer: { select: { id: true, fullName: true } },
+  travelPackage: { select: { departureDate: true } },
   passengers: {
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     select: {
@@ -212,6 +218,7 @@ const REQUIREMENT_DETAIL_SELECT = {
           id: true,
           clientId: true,
           role: true,
+          dateOfBirth: true,
           client: { select: { fullName: true } },
         },
       },
@@ -413,7 +420,7 @@ export class OperationalRequirementsService {
         select: { travelPackageParticipantId: true },
       }) as Array<{ travelPackageParticipantId: string }>;
       const confirmedPassengerIds = [...new Set(confirmed.map((row) => row.travelPackageParticipantId))];
-      return { ...toDetail(requirement), confirmedPassengerIds, coverage: { fulfilledPassengerCount: confirmedPassengerIds.length, totalPassengerCount: requirement.passengers.length } };
+      return { ...await this.detail(tx, tenantId, requirement), confirmedPassengerIds, coverage: { fulfilledPassengerCount: confirmedPassengerIds.length, totalPassengerCount: requirement.passengers.length } };
     });
   }
 
@@ -948,7 +955,7 @@ export class OperationalRequirementsService {
         ),
       };
       return {
-        ...toDetail(displayRequirement),
+        ...await this.detail(tx, tenantId, displayRequirement),
         confirmedPassengerIds: [], coverage: { fulfilledPassengerCount: 0, totalPassengerCount: 0 },
         workflow: { fulfillmentCount: fulfillments.length, purchaseCount: fulfillments.reduce((total, fulfillment) => total + fulfillment._count.purchases, 0), fulfillmentStatuses: fulfillments.map((fulfillment) => ({ id: fulfillment.id, status: fulfillment.status })) },
       };
@@ -1090,6 +1097,18 @@ export class OperationalRequirementsService {
       throw new ConflictException("OPERATIONAL_REQUIREMENT_TERMINAL_STATUS");
     }
     throw new ConflictException("OPERATIONAL_REQUIREMENT_STATUS_TRANSITION_CONFLICT");
+  }
+
+  private async detail(tx: OperationsTransaction, tenantId: string, requirement: RequirementRecord) {
+    const configuration = await tx.tenantBillingConfiguration.findUnique({
+      where: { tenantId },
+      select: { fiscalTimezone: true },
+    }) as { fiscalTimezone: string } | null;
+    const tenantTimezone = configuration?.fiscalTimezone ?? DEFAULT_FISCAL_TIMEZONE;
+    return withPassengerContexts(requirement, {
+      tenantTimezone,
+      tenantCurrentDate: tenantCalendarDateForInstant(new Date(), tenantTimezone),
+    });
   }
 
   private withTenantTransaction<T>(
@@ -1792,6 +1811,31 @@ function toDetail(requirement: RequirementRecord) {
       fullName: passenger.travelPackageParticipant.client.fullName,
       role: passenger.travelPackageParticipant.role,
     })),
+  };
+}
+
+function withPassengerContexts(
+  requirement: RequirementRecord,
+  dateContext: { tenantTimezone: string; tenantCurrentDate: string },
+) {
+  return {
+    ...toDetail(requirement),
+    passengerContexts: passengerOperationalContexts(
+      requirement.scopeType === "STANDALONE_CUSTOMER"
+        ? requirement.customer
+          ? [{ displayName: requirement.customer.fullName, dateOfBirth: requirement.customerDateOfBirth, role: null }]
+          : []
+        : requirement.passengers.map((passenger) => ({
+          displayName: passenger.travelPackageParticipant.client.fullName,
+          dateOfBirth: passenger.travelPackageParticipant.dateOfBirth,
+          role: passenger.travelPackageParticipant.role,
+        })),
+      {
+        serviceStartAt: null,
+        tripDepartureDate: requirement.scopeType === "TRAVEL_PACKAGE" ? requirement.travelPackage?.departureDate ?? null : null,
+        ...dateContext,
+      },
+    ),
   };
 }
 

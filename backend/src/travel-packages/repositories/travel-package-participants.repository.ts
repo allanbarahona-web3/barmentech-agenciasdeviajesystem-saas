@@ -10,6 +10,7 @@ export interface TravelPackageParticipantWrite {
   tenantId: string;
   travelPackageId: string;
   clientId: string;
+  dateOfBirth: Date | null;
   role: TravelPackageParticipantRoleValue;
 }
 
@@ -131,7 +132,7 @@ export class TravelPackageParticipantsRepository {
     tx: any,
     tenantId: string,
     clientIds: string[],
-  ): Promise<Array<{ id: string }>> {
+  ): Promise<Array<{ id: string; dateOfBirth: Date | null }>> {
     if (clientIds.length === 0) {
       return [];
     }
@@ -143,6 +144,7 @@ export class TravelPackageParticipantsRepository {
       },
       select: {
         id: true,
+        dateOfBirth: true,
       },
     });
   }

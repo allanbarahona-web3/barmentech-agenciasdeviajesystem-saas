@@ -5,8 +5,10 @@ import {
   type FinanceEligibilityReader,
 } from "../../finance/eligibility-read/finance-eligibility-reader.port";
 import { PrismaService } from "../../prisma/prisma.service";
+import { DEFAULT_FISCAL_TIMEZONE, tenantCalendarDateForInstant } from "../../finance/tenant-fiscal-date";
 import { runTenantTransaction } from "../../tenant/tenant-transaction";
 import { procurementAuthorizationForRequirement } from "../operational-procurement-authorization";
+import { passengerOperationalContexts } from "../passenger-operational-context";
 import { validateOperationalDetail } from "../service-details/operational-service-detail-contracts";
 import {
   CreateOperationalFulfillmentDto,
@@ -28,6 +30,7 @@ type OperationsTransaction = {
   operationalRequirementPassenger: Record<string, (...args: any[]) => Promise<any>>;
   operationalFulfillment: Record<string, (...args: any[]) => Promise<any>>;
   operationalFulfillmentPassenger: Record<string, (...args: any[]) => Promise<any>>;
+  tenantBillingConfiguration: Record<string, (...args: any[]) => Promise<any>>;
 };
 type OperationsDatabase = {
   $transaction<T>(work: (transaction: OperationsTransaction) => Promise<T>): Promise<T>;
@@ -37,7 +40,7 @@ type RequirementState = {
   id: string;
   scopeType?: "TRAVEL_PACKAGE" | "STANDALONE_CUSTOMER";
   travelPackageId: string | null;
-  customerId?: string | null;
+  customerDateOfBirth?: Date | null;
   status: string;
   servicePurposeCode: string;
   servicePurposeName: string;
@@ -45,6 +48,8 @@ type RequirementState = {
   sourceId: string | null;
   sourceLineId: string | null;
   sourceVersionId: string | null;
+  customer?: { fullName: string } | null;
+  travelPackage?: { departureDate: Date } | null;
 };
 type FulfillmentPassengerRecord = {
   travelPackageParticipantId: string;
@@ -52,6 +57,7 @@ type FulfillmentPassengerRecord = {
     id: string;
     clientId: string;
     role: string;
+    dateOfBirth: Date | null;
     client: { fullName: string };
   };
 };
@@ -125,7 +131,9 @@ const DETAIL_SELECT = {
   operationalRequirement: {
     select: {
       id: true,
+      scopeType: true,
       travelPackageId: true,
+      customerDateOfBirth: true,
       status: true,
       servicePurposeCode: true,
       servicePurposeName: true,
@@ -133,6 +141,8 @@ const DETAIL_SELECT = {
       sourceId: true,
       sourceLineId: true,
       sourceVersionId: true,
+      customer: { select: { fullName: true } },
+      travelPackage: { select: { departureDate: true } },
     },
   },
   passengers: {
@@ -140,7 +150,7 @@ const DETAIL_SELECT = {
     select: {
       travelPackageParticipantId: true,
       travelPackageParticipant: {
-        select: { id: true, clientId: true, role: true, client: { select: { fullName: true } } },
+        select: { id: true, clientId: true, role: true, dateOfBirth: true, client: { select: { fullName: true } } },
       },
     },
   },
@@ -281,7 +291,7 @@ export class OperationalFulfillmentsService {
     return this.withTenantTransaction(tenantId, async (tx) => {
       const fulfillment = await this.findFulfillment(tx, tenantId, travelPackageId, requirementId, fulfillmentId);
       if (!fulfillment) throw new NotFoundException("OPERATIONAL_FULFILLMENT_NOT_FOUND");
-      return toDetail(fulfillment);
+      return this.detail(tx, tenantId, fulfillment);
     });
   }
 
@@ -454,7 +464,7 @@ export class OperationalFulfillmentsService {
       });
       const fulfillment = await this.findFulfillment(tx, tenantId, travelPackageId, requirementId, fulfillmentId);
       if (!fulfillment) throw new NotFoundException("OPERATIONAL_FULFILLMENT_NOT_FOUND");
-      return toDetail(fulfillment);
+      return this.detail(tx, tenantId, fulfillment);
     });
   }
 
@@ -534,7 +544,7 @@ export class OperationalFulfillmentsService {
     return this.withTenantTransaction(tenantId, async (tx) => {
       const fulfillment = await this.findStandaloneFulfillment(tx, tenantId, requirementId, fulfillmentId);
       if (!fulfillment) throw new NotFoundException("OPERATIONAL_STANDALONE_FULFILLMENT_NOT_FOUND");
-      return toDetail(fulfillment);
+      return this.detail(tx, tenantId, fulfillment);
     });
   }
 
@@ -717,6 +727,18 @@ export class OperationalFulfillmentsService {
       where: { id: fulfillmentId, tenantId, travelPackageId, operationalRequirementId: requirementId },
       select: DETAIL_SELECT,
     }) as Promise<FulfillmentRecord | null>;
+  }
+
+  private async detail(tx: OperationsTransaction, tenantId: string, fulfillment: FulfillmentRecord) {
+    const configuration = await tx.tenantBillingConfiguration.findUnique({
+      where: { tenantId },
+      select: { fiscalTimezone: true },
+    }) as { fiscalTimezone: string } | null;
+    const tenantTimezone = configuration?.fiscalTimezone ?? DEFAULT_FISCAL_TIMEZONE;
+    return withPassengerContexts(fulfillment, {
+      tenantTimezone,
+      tenantCurrentDate: tenantCalendarDateForInstant(new Date(), tenantTimezone),
+    });
   }
 
   private findFulfillmentState(tx: OperationsTransaction, tenantId: string, travelPackageId: string, requirementId: string, fulfillmentId: string): Promise<FulfillmentState | null> {
@@ -1015,5 +1037,36 @@ function toDetail(fulfillment: FulfillmentRecord) {
       fullName: passenger.travelPackageParticipant.client.fullName,
       role: passenger.travelPackageParticipant.role,
     })),
+  };
+}
+
+function withPassengerContexts(
+  fulfillment: FulfillmentRecord,
+  dateContext: { tenantTimezone: string; tenantCurrentDate: string },
+) {
+  return {
+    ...toDetail(fulfillment),
+    passengerContexts: passengerOperationalContexts(
+      fulfillment.operationalRequirement.scopeType === "STANDALONE_CUSTOMER"
+        ? fulfillment.operationalRequirement.customer
+          ? [{
+            displayName: fulfillment.operationalRequirement.customer.fullName,
+            dateOfBirth: fulfillment.operationalRequirement.customerDateOfBirth ?? null,
+            role: null,
+          }]
+          : []
+        : fulfillment.passengers.map((passenger) => ({
+          displayName: passenger.travelPackageParticipant.client.fullName,
+          dateOfBirth: passenger.travelPackageParticipant.dateOfBirth,
+          role: passenger.travelPackageParticipant.role,
+        })),
+      {
+        serviceStartAt: fulfillment.serviceStartAt,
+        tripDepartureDate: fulfillment.operationalRequirement.scopeType === "TRAVEL_PACKAGE"
+          ? fulfillment.operationalRequirement.travelPackage?.departureDate ?? null
+          : null,
+        ...dateContext,
+      },
+    ),
   };
 }

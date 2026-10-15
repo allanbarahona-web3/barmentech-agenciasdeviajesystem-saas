@@ -31,7 +31,7 @@ describe("ContractReservationApprovalService", () => {
     expect(c.tx.contract.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ tenantId: "tenant-1" }), data: { status: "PENDING_SIGNATURE" } }));
     expect(c.participants.findClients).toHaveBeenCalledWith(c.tx, "tenant-1", ["customer-1"]);
     expect(c.participants.findExistingClientIds).toHaveBeenCalledWith(c.tx, "tenant-1", "package-1", ["customer-1"]);
-    expect(c.participants.createMany).toHaveBeenCalledWith(c.tx, [{ tenantId: "tenant-1", travelPackageId: "package-1", clientId: "customer-1", role: "HOLDER" }]);
+    expect(c.participants.createMany).toHaveBeenCalledWith(c.tx, [{ tenantId: "tenant-1", travelPackageId: "package-1", clientId: "customer-1", dateOfBirth: null, role: "HOLDER" }]);
     expect(c.tx.travelPackageParticipant.findMany).toHaveBeenCalledWith({
       where: {
         tenantId: "tenant-1",
@@ -97,6 +97,24 @@ describe("ContractReservationApprovalService", () => {
     expect(c.tx.internalTrip.update).toHaveBeenCalledWith(expect.objectContaining({ data: { occupiedSlots: { increment: 2 } } }));
     expect(c.participants.createMany).not.toHaveBeenCalled();
     expect(c.tx.travelPackageParticipantContractSource.createMany).not.toHaveBeenCalled();
+  });
+
+  it("captures the tenant-scoped Client date of birth in the roster snapshot without a synchronization path", async () => {
+    const c = context({ travelPackageId: "package-1", internalTripId: null });
+    const dateOfBirth = new Date("2008-11-20T00:00:00.000Z");
+    c.participants.findClients.mockResolvedValue([{ id: "customer-1", dateOfBirth }]);
+    c.tx.travelPackage.findFirst.mockResolvedValue({ capacity: 2, occupiedSlots: 1, name: "Peru" });
+    c.tx.travelPackage.update
+      .mockResolvedValueOnce({ capacity: 2, occupiedSlots: 2, status: "OPEN" })
+      .mockResolvedValueOnce({ capacity: 2, occupiedSlots: 2, status: "CLOSED" });
+
+    await c.service.approveInTransaction(c.tx as never, approvalInput);
+
+    expect(c.participants.createMany).toHaveBeenCalledWith(c.tx, [expect.objectContaining({
+      clientId: "customer-1",
+      dateOfBirth,
+    })]);
+    expect((c.participants as Record<string, unknown>).updateMany).toBeUndefined();
   });
 
   it("passes archived Contract Pricing authority to commercial snapshot freezing", async () => {
@@ -394,7 +412,7 @@ function context(overrides: Record<string, unknown> = {}) {
     },
   };
   const participants = {
-    findClients: jest.fn().mockResolvedValue([{ id: "customer-1" }]),
+    findClients: jest.fn().mockResolvedValue([{ id: "customer-1", dateOfBirth: null }]),
     findExistingClientIds: jest.fn().mockResolvedValue([]),
     createMany: jest.fn().mockResolvedValue(undefined),
   };

@@ -18,7 +18,7 @@ type OperationsTransaction = {
   $executeRaw<T = unknown>(query: TemplateStringsArray, ...values: unknown[]): Promise<T>;
   travelPackage: { findFirst(args: unknown): Promise<{ id: string } | null> };
   travelPackageParticipant: { findMany(args: unknown): Promise<Array<{ id: string; clientId: string }>> };
-  client: { findFirst(args: unknown): Promise<{ id: string } | null> };
+  client: { findFirst(args: unknown): Promise<{ id: string; dateOfBirth: Date | null } | null> };
   operationalRequirement: {
     findFirst(args: unknown): Promise<{ id: string } | null>;
     create(args: unknown): Promise<{ id: string }>;
@@ -184,7 +184,7 @@ export class OperationalWorkMaterializer {
         if (existing) return { status: "ALREADY_MATERIALIZED" as const, operationalRequirementId: existing.id };
         const customer = await tx.client.findFirst({
           where: { id: source.customerId, tenantId: source.tenantId },
-          select: { id: true },
+          select: { id: true, dateOfBirth: true },
         });
         if (!customer) {
           throw new OperationalWorkMaterializationError("CUSTOMER_NOT_FOUND", false, {
@@ -193,7 +193,7 @@ export class OperationalWorkMaterializer {
         }
         try {
           const requirement = await tx.operationalRequirement.create({
-            data: requirementCreateData(source),
+            data: requirementCreateData(source, customer.dateOfBirth),
             select: { id: true },
           });
           return { status: "CREATED" as const, operationalRequirementId: requirement.id };
@@ -272,12 +272,13 @@ function findExisting(tx: OperationsTransaction, source: OperationalWorkSourceIt
   });
 }
 
-function requirementCreateData(source: OperationalWorkSourceItem) {
+function requirementCreateData(source: OperationalWorkSourceItem, customerDateOfBirth: Date | null = null) {
   return {
     tenantId: source.tenantId,
     scopeType: source.scopeType,
     travelPackageId: source.scopeType === "TRAVEL_PACKAGE" ? source.travelPackageId : null,
     customerId: source.scopeType === "STANDALONE_CUSTOMER" ? source.customerId : null,
+    customerDateOfBirth: source.scopeType === "STANDALONE_CUSTOMER" ? customerDateOfBirth : null,
     servicePurposeCode: source.servicePurposeCode,
     servicePurposeName: source.servicePurposeName,
     description: source.description,

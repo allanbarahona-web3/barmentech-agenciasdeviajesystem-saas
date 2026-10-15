@@ -1145,6 +1145,7 @@ model TravelPackageParticipant {
   tenantId                         String
   travelPackageId                  String
   clientId                         String
+  dateOfBirth                      DateTime?                                @db.Date
   role                             TravelPackageParticipantRole
   createdAt                        DateTime                                 @default(now())
   updatedAt                        DateTime                                 @updatedAt
@@ -1294,6 +1295,7 @@ model OperationalRequirement {
   scopeType                       OperationalScopeType              @default(TRAVEL_PACKAGE)
   travelPackageId                 String?
   customerId                      String?
+  customerDateOfBirth             DateTime?                         @db.Date
   servicePurposeCode              String                            @db.VarChar(80)
   servicePurposeName              String                            @db.VarChar(160)
   description                     String

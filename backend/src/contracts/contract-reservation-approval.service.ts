@@ -279,6 +279,7 @@ export class ContractReservationApprovalService {
     if (clients.length !== clientIds.length) {
       throw new BadRequestException("CONTRACT_RESERVATION_PARTICIPANT_TENANT_INVALID");
     }
+    const dateOfBirthByClientId = new Map(clients.map((client) => [client.id, client.dateOfBirth]));
     if (
       calculateContractBillablePassengerQuantity({ companions, minors }) !==
       contract.participantCount
@@ -295,9 +296,9 @@ export class ContractReservationApprovalService {
       throw new ConflictException(PARTICIPANT_ALREADY_ASSIGNED);
     }
     const participants: TravelPackageParticipantWrite[] = [
-      { tenantId: contract.tenantId, travelPackageId: contract.travelPackageId, clientId: contract.clientId, role: "HOLDER" },
-      ...companionIds.map((clientId) => ({ tenantId: contract.tenantId, travelPackageId: contract.travelPackageId, clientId, role: "COMPANION" as const })),
-      ...minorIds.map((clientId) => ({ tenantId: contract.tenantId, travelPackageId: contract.travelPackageId, clientId, role: "MINOR" as const })),
+      { tenantId: contract.tenantId, travelPackageId: contract.travelPackageId, clientId: contract.clientId, dateOfBirth: dateOfBirthByClientId.get(contract.clientId) ?? null, role: "HOLDER" },
+      ...companionIds.map((clientId) => ({ tenantId: contract.tenantId, travelPackageId: contract.travelPackageId, clientId, dateOfBirth: dateOfBirthByClientId.get(clientId) ?? null, role: "COMPANION" as const })),
+      ...minorIds.map((clientId) => ({ tenantId: contract.tenantId, travelPackageId: contract.travelPackageId, clientId, dateOfBirth: dateOfBirthByClientId.get(clientId) ?? null, role: "MINOR" as const })),
     ];
     try {
       await this.participantsRepository.createMany(tx, participants);

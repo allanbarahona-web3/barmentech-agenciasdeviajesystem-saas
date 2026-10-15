@@ -420,7 +420,14 @@ describe("OperationalFulfillmentsService", () => {
 
   it("creates standalone fulfillment without package or passenger reads", async () => {
     const c = context();
-    const standaloneRequirement = requirement({ scopeType: "STANDALONE_CUSTOMER", travelPackageId: null, customerId: "customer-a" });
+    const standaloneRequirement = requirement({
+      scopeType: "STANDALONE_CUSTOMER",
+      travelPackageId: null,
+      customerId: "customer-a",
+      customerDateOfBirth: new Date("2008-11-20T00:00:00.000Z"),
+      customer: { fullName: "Ada Customer" },
+      travelPackage: null,
+    });
     c.tx.operationalRequirement.findFirst.mockResolvedValue(standaloneRequirement);
     c.tx.operationalFulfillment.create.mockResolvedValue({ id: fulfillmentId });
     c.tx.operationalRequirement.updateMany.mockResolvedValue({ count: 1 });
@@ -430,6 +437,26 @@ describe("OperationalFulfillmentsService", () => {
     expect(c.tx.travelPackageParticipant.findMany).not.toHaveBeenCalled();
     expect(c.tx.operationalRequirementPassenger.findMany).not.toHaveBeenCalled();
     expect(c.tx.operationalFulfillmentPassenger.createMany).not.toHaveBeenCalled();
+  });
+
+  it("exposes standalone customer snapshot context only from the selected fulfillment detail", async () => {
+    const c = context();
+    const standaloneRequirement = requirement({
+      scopeType: "STANDALONE_CUSTOMER",
+      travelPackageId: null,
+      customerDateOfBirth: new Date("2008-11-20T00:00:00.000Z"),
+      customer: { fullName: "Ada Customer" },
+      travelPackage: null,
+    });
+    c.tx.operationalFulfillment.findFirst.mockResolvedValue(fulfillment({
+      travelPackageId: null,
+      operationalRequirement: standaloneRequirement,
+      passengers: [],
+    }));
+
+    await expect(c.service.findStandalone(tenantId, requirementId, fulfillmentId)).resolves.toMatchObject({
+      passengerContexts: [{ displayName: "Ada Customer", dateOfBirth: "2008-11-20", role: null }],
+    });
   });
 
   it("rejects standalone passenger operations clearly", async () => {
@@ -445,6 +472,27 @@ describe("OperationalFulfillmentsService", () => {
     }));
     await expect(c.service.find(tenantId, travelPackageId, requirementId, fulfillmentId))
       .resolves.toMatchObject({ detailPayload: { historical: "untyped" }, detailVersion: null });
+  });
+
+  it("uses the tenant-local service date before trip departure for passenger context", async () => {
+    const c = context();
+    c.tx.operationalFulfillment.findFirst.mockResolvedValue(fulfillment({
+      serviceStartAt: new Date("2026-11-20T02:00:00.000Z"),
+      operationalRequirement: requirement({
+        travelPackage: { departureDate: new Date("2026-12-01T00:00:00.000Z") },
+      }),
+    }));
+
+    await expect(c.service.find(tenantId, travelPackageId, requirementId, fulfillmentId)).resolves.toMatchObject({
+      passengerContexts: [{
+        displayName: "Ada Lovelace",
+        dateOfBirth: "2008-11-20",
+        age: 17,
+        ageReferenceDate: "2026-11-19",
+        ageReferenceType: "SERVICE_DATE",
+        role: "TRAVELER",
+      }],
+    });
   });
 
   it("reads a historical CUSTOM_QUOTATION requirement without changing its purpose snapshot", async () => {
@@ -565,6 +613,7 @@ function context() {
     operationalRequirementPassenger: { findMany: jest.fn() },
     operationalFulfillment: { create: jest.fn(), findFirst: jest.fn(), findMany: jest.fn(), count: jest.fn(), updateMany: jest.fn() },
     operationalFulfillmentPassenger: { createMany: jest.fn(), findMany: jest.fn().mockResolvedValue([]), deleteMany: jest.fn() },
+    tenantBillingConfiguration: { findUnique: jest.fn().mockResolvedValue({ fiscalTimezone: "America/Costa_Rica" }) },
   };
   const prisma = { $transaction: jest.fn(async (work: (transaction: typeof tx) => Promise<unknown>) => work(tx)) };
   const finance = { readMany: jest.fn() };
@@ -576,11 +625,26 @@ function createInput(overrides: Record<string, unknown> = {}) {
 }
 
 function requirement(overrides: Record<string, unknown> = {}) {
-  return { id: requirementId, travelPackageId, status: "PENDING", servicePurposeCode: "LODGING", servicePurposeName: "Lodging", sourceType: "MANUAL", sourceId: null, sourceLineId: null, sourceVersionId: null, ...overrides };
+  return {
+    id: requirementId,
+    scopeType: "TRAVEL_PACKAGE",
+    travelPackageId,
+    customerDateOfBirth: null,
+    customer: null,
+    travelPackage: { departureDate: new Date("2026-12-01T00:00:00.000Z") },
+    status: "PENDING",
+    servicePurposeCode: "LODGING",
+    servicePurposeName: "Lodging",
+    sourceType: "MANUAL",
+    sourceId: null,
+    sourceLineId: null,
+    sourceVersionId: null,
+    ...overrides,
+  };
 }
 
 function passenger(id = "participant-a") {
-  return { travelPackageParticipantId: id, travelPackageParticipant: { id, clientId: id === "participant-a" ? "client-a" : "client-b", role: "TRAVELER", client: { fullName: "Ada Lovelace" } } };
+  return { travelPackageParticipantId: id, travelPackageParticipant: { id, clientId: id === "participant-a" ? "client-a" : "client-b", role: "TRAVELER", dateOfBirth: new Date("2008-11-20T00:00:00.000Z"), client: { fullName: "Ada Lovelace" } } };
 }
 
 function fulfillmentState(overrides: Record<string, unknown> = {}) {
