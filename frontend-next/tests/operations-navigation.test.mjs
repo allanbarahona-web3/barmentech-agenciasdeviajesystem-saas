@@ -64,6 +64,14 @@ test('Operations trip cards use only the summary API and operational fields', ()
   assert.doesNotMatch(list, /getReadiness|passenger-matrix|Promise\.all/);
 });
 
+test('Operations travel selection is four columns on wide desktop while preserving tablet and mobile density', () => {
+  const list = readSource('../src/components/operations/operations-travel-package-list.tsx');
+  assert.match(list, /grid gap-4 md:grid-cols-2 xl:grid-cols-4/);
+  assert.match(list, /trip\.name.*trip\.packageCode.*trip\.destination/s);
+  assert.match(list, /trip\.operational\.progressPercent/);
+  assert.match(list, /onOpen=\{\(\) => router\.push\(`\/operations\/trips\/\$\{trip\.travelPackageId\}`\)\}/);
+});
+
 test('Operations readiness labels are explicit and the selected-trip workspace uses operator navigation', () => {
   const list = readSource('../src/components/operations/operations-travel-package-list.tsx');
   const shell = readSource('../src/components/operations/operations-trip-shell.tsx');

@@ -21,7 +21,7 @@ test('Custom Quotation queue uses the grouped version read model and preserves c
   const text = workspace();
   assert.match(text, /listCustomQuotationOperationsGroups/);
   assert.match(text, /getStandaloneOperationalRequirement/);
-  assert.match(text, /CUSTOM_QUOTATION_LINE/);
+  assert.match(text, /operationalSourceLabel/);
   assert.match(text, /Cotización personalizada/);
   for (const label of ['Identificación', 'Cotización #', 'Valor total', 'Cantidad de servicios', 'Gestionar servicio']) assert.match(text, new RegExp(label));
   assert.match(text, /item\.serviceCount/);
@@ -135,7 +135,7 @@ test('all Custom Quotation records use the canonical purchase path and legacy ma
   assert.match(drawer, /createStandaloneOperationalPurchase\(requirementId, effectiveFulfillmentId, input\)/);
   assert.match(drawer, /La gestión se creó, pero no se pudo registrar la compra\. Inténtelo de nuevo; se reutilizará esta gestión\./);
   for (const legacy of ['Nueva gestión', 'Gestiones', 'StandaloneFulfillmentWorkflow', 'directPurchase', 'editingProvider', 'uploadStandaloneOperationalEvidence', 'listStandaloneOperationalPurchases', 'listStandaloneOperationalEvidence']) assert.doesNotMatch(text, new RegExp(legacy));
-  assert.ok(text.indexOf("if (sourceType === 'CUSTOM_QUOTATION_LINE')") < text.indexOf('function StandaloneRequirementDetail'), 'source type is only a display label, not a purchase-layout branch');
+  assert.ok(text.indexOf('operationalSourceLabel') < text.indexOf('function StandaloneRequirementDetail'), 'source type is only a display label, not a purchase-layout branch');
 });
 
 test('Custom Quotation confirmation still persists its reference before confirming', () => {

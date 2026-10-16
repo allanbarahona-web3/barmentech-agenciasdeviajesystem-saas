@@ -72,6 +72,12 @@ test('grouping cards use readable stat labels and Lucide affordances without com
   assert.doesNotMatch(list, /packagePrice|minReservation|formatTravelCommercialPrice/);
 });
 
+test('Agrupaciones travel selection matches Operations four-column wide-desktop density', () => {
+  const list = readSource('../src/components/passenger-groups/grouping-travel-package-list.tsx');
+  assert.match(list, /grid gap-4 md:grid-cols-2 xl:grid-cols-4/);
+  assert.match(list, /\/trips\/\$\{trip\.travelPackageId\}\/groups/);
+});
+
 test('the detail workspace returns to Agrupaciones and permits the shared Migration TravelPackage domain', () => {
   const workspace = readSource('../src/components/passenger-groups/passenger-groups-workspace.tsx');
 

@@ -87,6 +87,20 @@ test('Management remains need-scoped, keeps passenger labels, cancellation, view
   assert.doesNotMatch(text, /addOperationalFulfillmentPassengers|removeOperationalFulfillmentPassengers|assignedToUserId|listTenantUsers/);
 });
 
+test('Locked participant management banner shows only its selected passenger while legacy management keeps the shared list', () => {
+  const text = workspace();
+  const banner = text.slice(text.indexOf('function PassengerBanner'), text.indexOf('function completeCoverage'));
+  const lockedBanner = banner.slice(banner.indexOf('const passengerIndex'));
+  assert.match(banner, /if \(!participantScope\) return .*Pasajeros.*passengerNames\(requirement\.passengers\.map/s);
+  assert.match(lockedBanner, /findIndex\(\(passenger\) => passenger\.travelPackageParticipantId === participantScope\)/);
+  assert.match(lockedBanner, /<p className="text-xs text-muted-foreground">Pasajero<\/p>/);
+  assert.match(lockedBanner, /operationalPassengerRoleLabel\(passenger\.role\)/);
+  assert.match(lockedBanner, /context\?\.age !== null/);
+  assert.match(lockedBanner, /Requerimiento compartido con \{requirement\.passengers\.length\} pasajeros/);
+  assert.doesNotMatch(lockedBanner, /passengerNames\(|requirement\.passengers\.map/);
+  assert.doesNotMatch(banner, /await |getOperationalRequirement|listOperationalFulfillments/);
+});
+
 test('Travel and Additional action and fulfillment status semantics use shared design-system variants', () => {
   const text = workspace();
   const purchasesEvidence = read('../src/components/operations/operational-purchases-evidence-workspace.tsx');

@@ -84,7 +84,7 @@ export function GroupingTravelPackageList({ travelType }: { travelType: Grouping
         {data?.items.length === 0 ? (
           <Card><CardContent className="py-10 text-center text-sm text-muted-foreground">No hay viajes de {title.toLowerCase()} para mostrar.</CardContent></Card>
         ) : (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             {data?.items.map((trip) => (
               <Card
                 key={trip.travelPackageId}

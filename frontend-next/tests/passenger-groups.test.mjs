@@ -5,6 +5,7 @@ import {
   isPassengerGroupableServiceCode,
   membershipDelta,
 } from '../src/lib/passenger-groups.ts';
+import { passengerGroupForegroundColor, resolvePassengerGroupColor } from '../src/lib/passenger-group-presentation.ts';
 
 const readSource = (relativePath) =>
   readFileSync(new URL(relativePath, import.meta.url), 'utf8');
@@ -63,4 +64,19 @@ test('keeps archived groups read-only in the basic UI', () => {
   assert.match(source, /archived \? <Badge variant="outline">Archivado<\/Badge> : null/);
   assert.match(source, /!archived && onEdit && onAssign && onArchive/);
   assert.match(source, /Los pasajeros y el historial actual se conservarán\./);
+});
+
+test('group badges use the saved color with a safe neutral fallback across Operations and Agrupaciones', () => {
+  const badge = readSource('../src/components/passenger-group-badge.tsx');
+  const workspace = readSource('../src/components/passenger-groups/passenger-groups-workspace.tsx');
+  const board = readSource('../src/components/passenger-groups/passenger-groups-board.tsx');
+  assert.equal(resolvePassengerGroupColor('#2563eb'), '#2563eb');
+  assert.equal(resolvePassengerGroupColor('#abc'), '#aabbcc');
+  assert.equal(resolvePassengerGroupColor('not-a-color'), '#64748b');
+  assert.equal(resolvePassengerGroupColor(null), '#64748b');
+  assert.equal(passengerGroupForegroundColor('#ffffff'), '#1f2937');
+  assert.match(badge, /backgroundColor: `\$\{resolvedColor\}26`/);
+  assert.match(badge, /borderColor: resolvedColor/);
+  assert.match(workspace, /<PassengerGroupBadge name=\{group\.name\} color=\{group\.color\} \/>/);
+  assert.match(board, /<PassengerGroupBadge name=\{group\.name\} color=\{group\.color\} \/>/);
 });

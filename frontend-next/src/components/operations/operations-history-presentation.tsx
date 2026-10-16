@@ -3,7 +3,9 @@
 import type { ReactNode } from 'react';
 import { FileText } from 'lucide-react';
 import { OperationalServiceDetailFields, typedOperationalDetail } from '@/components/operations/operational-service-detail-fields';
+import { operationalFieldLabel } from '@/lib/operations-presentation';
 import { addFinanceMoneyDisplayValues, formatFinanceMoneyDisplay } from '@/lib/finance-money-display';
+import { operationalEvidenceTypeLabel } from '@/lib/operations-presentation';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -51,7 +53,7 @@ export function HistoryMetadataGrid({ children, muted = false }: { children: Rea
 }
 
 export function HistoryInfo({ label, value }: { label: string; value: ReactNode }) {
-  return <div><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p><div className="mt-1 text-sm">{value}</div></div>;
+  return <div><p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{operationalFieldLabel(label)}</p><div className="mt-1 text-sm">{value}</div></div>;
 }
 
 export function HistoryTypedServiceDetails({ servicePurposeCode, detailVersion, detailPayload }: { servicePurposeCode: string; detailVersion: number | null; detailPayload: Record<string, unknown> | null }) {
@@ -69,7 +71,7 @@ export function HistoryPurchaseEmpty() {
 }
 
 export function HistoryEvidenceRow({ fileName, mimeType, evidenceType, byteSize, purchaseId, onView }: { fileName: string; mimeType: string; evidenceType?: string; byteSize?: number; purchaseId: string | null; onView: () => void }) {
-  return <div className="flex flex-wrap items-center justify-between gap-2"><span className="text-sm">{fileName} <span className="text-muted-foreground">· {purchaseId ? 'Evidencia de compra' : 'Evidencia operativa'}{evidenceType ? ` · ${evidenceTypeLabel(evidenceType)}` : ''} · {mimeType}{byteSize === undefined ? '' : ` · ${formatBytes(byteSize)}`}</span></span><Button type="button" size="sm" variant="outline" onClick={onView}><FileText aria-hidden="true" size={16} /> Abrir</Button></div>;
+  return <div className="flex flex-wrap items-center justify-between gap-2"><span className="text-sm">{fileName} <span className="text-muted-foreground">· {purchaseId ? 'Evidencia de compra' : 'Evidencia operativa'}{evidenceType ? ` · ${operationalEvidenceTypeLabel(evidenceType)}` : ''} · {mimeType}{byteSize === undefined ? '' : ` · ${formatBytes(byteSize)}`}</span></span><Button type="button" size="sm" variant="outline" onClick={onView}><FileText aria-hidden="true" size={16} /> Abrir</Button></div>;
 }
 
 export function HistoryEvidenceEmpty() {
@@ -82,8 +84,4 @@ export function HistoryTerminalState({ status, terminalAt, formatDateTime, confi
 
 function formatBytes(bytes: number) {
   return bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KiB` : `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
-}
-
-function evidenceTypeLabel(value: string) {
-  return ({ SUPPLIER_QUOTE: 'Cotización de proveedor', BOOKING_CONFIRMATION: 'Confirmación de reserva', TICKET: 'Boleto', VOUCHER: 'Voucher', SUPPLIER_INVOICE: 'Factura de proveedor', RECEIPT: 'Recibo', INSURANCE_CERTIFICATE: 'Certificado de seguro', SCREENSHOT: 'Captura', OTHER: 'Otro' } as Record<string, string>)[value] ?? value;
 }

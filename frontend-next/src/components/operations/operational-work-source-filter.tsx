@@ -1,10 +1,11 @@
 import { type OperationalWorkSourceCategory } from '@/lib/operations-api';
 import { Select } from '@/components/ui/select';
+import { operationalSourceLabel } from '@/lib/operations-presentation';
 
 const options: ReadonlyArray<{ value: OperationalWorkSourceCategory; label: string }> = [
   { value: 'ALL', label: 'Todos' },
-  { value: 'BASE_TRIP', label: 'Base del viaje' },
-  { value: 'ADDITIONAL_SERVICES', label: 'Servicios adicionales' },
+  { value: 'BASE_TRIP', label: operationalSourceLabel('BASE_TRIP') },
+  { value: 'ADDITIONAL_SERVICES', label: operationalSourceLabel('ADDITIONAL_SERVICES') },
 ];
 
 export function OperationalWorkSourceFilter({ value, onChange }: { value: OperationalWorkSourceCategory; onChange: (value: OperationalWorkSourceCategory) => void }) {

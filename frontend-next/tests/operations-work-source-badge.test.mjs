@@ -11,9 +11,8 @@ const api = () => read('../src/lib/operations-api.ts');
 test('maps only explicit modern source categories to visible origin labels', () => {
   const source = badge();
   assert.match(source, /sourceCategory === 'BASE_TRIP'/);
-  assert.match(source, /label: 'Paquete contratado'/);
+  assert.match(source, /operationalSourceLabel\(sourceCategory\)/);
   assert.match(source, /sourceCategory === 'ADDITIONAL_SERVICES'/);
-  assert.match(source, /label: 'Servicio adicional'/);
   assert.match(source, /: null;/);
   assert.match(source, /variant: 'secondary'/);
   assert.match(source, /variant: 'info'/);
@@ -29,7 +28,7 @@ test('omits the modern badge for null source categories, including historical wo
 test('legacy queue keeps its source badge while the passenger dashboard renders its user-facing source label', () => {
   assert.match(api(), /sourceType: string \| null; sourceCategory: OperationalWorkItemSourceCategory/);
   assert.match(queue(), /<OperationalWorkSourceBadge sourceCategory=\{item\.sourceCategory\} \/>/);
-  assert.match(unified(), /requirement\.sourceLabel/);
+  assert.match(unified(), /operationalSourceLabel\(requirement\.sourceType\)/);
   assert.doesNotMatch(unified(), /TRAVEL_PACKAGE_COST_COMPONENT|ADDITIONAL_SERVICE_ORDER_LINE/);
 });
 

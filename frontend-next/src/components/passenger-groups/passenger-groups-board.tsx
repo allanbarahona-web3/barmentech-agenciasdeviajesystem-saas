@@ -3,6 +3,7 @@
 import { DndContext, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { GripVertical, UserMinus, Users } from 'lucide-react';
 import type { PassengerGroup, TravelPackageRosterParticipant } from '@/lib/passenger-groups-api';
+import { PassengerGroupBadge } from '@/components/passenger-group-badge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
@@ -146,10 +147,7 @@ function GroupColumn({
     <Card className={`w-[18rem] shrink-0 transition-colors ${isOver ? 'border-primary bg-primary/5 ring-1 ring-primary/30' : ''}`}>
       <CardHeader>
         <div className="min-w-0">
-          <CardTitle className="flex items-center gap-2">
-            {group.color ? <span aria-label="Color del grupo" className="size-3 shrink-0 rounded-full" style={{ backgroundColor: group.color }} /> : null}
-            <span className="truncate">{group.name}</span>
-          </CardTitle>
+          <CardTitle><PassengerGroupBadge name={group.name} color={group.color} /></CardTitle>
           <Badge className="mt-2" variant="info">{group.serviceName}</Badge>
         </div>
         <span className="shrink-0 text-sm text-muted-foreground">{group.members.length}</span>

@@ -19,7 +19,7 @@ test('the one normalized passenger context renders all selected-detail passenger
   assert.match(source, /context\.dateOfBirth \?/);
   assert.match(source, /context\.age !== null/);
   assert.match(source, /formatDateOnly/);
-  assert.doesNotMatch(source, /contractNumber|Passenger Group|passengerGroup|email|emergencyContact/);
+  assert.doesNotMatch(source, /contractNumber|email|emergencyContact/);
 });
 
 test('reservation and every shared purchase entry use the same context without changing operational submit behavior', () => {

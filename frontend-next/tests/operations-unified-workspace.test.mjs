@@ -54,11 +54,12 @@ test('contract tags live on passenger rows, reuse Additional Services semantics,
 
 test('expanded requirements use source and execution labels without raw source codes and enter preserved management', () => {
   const text = source();
-  assert.match(text, /requirement\.sourceLabel/);
+  assert.match(text, /operationalSourceLabel\(requirement\.sourceType\)/);
+  assert.match(text, /operationalStatusLabel\(requirement\.status\)/);
   assert.match(text, /Contrato base/);
   assert.match(text, /Compartido con \{requirement\.sharedPassengerCount\} pasajeros/);
   assert.match(text, /Reserva:.*Compra:.*Confirmación:/);
-  assert.match(text, /setManaged\(\{ requirement, participantId: item\.participant\.travelPackageParticipantId \}\)/);
+  assert.match(text, /setManaged\(\{ requirement, participantId: item\.participant\.travelPackageParticipantId, passengerGroups: item\.passengerGroups \}\)/);
   assert.match(text, /<OperationalFulfillmentsWorkspace/);
   assert.match(text, /participantScope=\{managed\.participantId\}/);
   assert.match(fulfillmentWorkspace(), /scopedUncoveredParticipantIds/);
@@ -72,6 +73,9 @@ test('passenger rows show trip age and group badges before expansion, while docu
   assert.match(text, /participant\.ageAtTrip !== null/);
   assert.match(text, /\$\{participant\.ageAtTrip\} años/);
   assert.match(text, /item\.passengerGroups\.map/);
+  assert.match(text, /<PassengerGroupBadge name=\{group\.name\} color=\{group\.color\} \/>/);
+  assert.match(text, /onClick=\{\(\) => onGroup\(group\.id\)\}/);
+  assert.match(text, /additionalServicesContractTagKey\(contract\)/);
   assert.match(text, /<PassengerDocumentsAction requirementId=\{documentRequirement\.requirementId\}/);
   assert.match(text, /participantContextKey=\{`passenger:\$\{participant\.travelPackageParticipantId\}`\}/);
   assert.match(context, /participantContextKey && documentGroups \? documentGroups\.filter/);

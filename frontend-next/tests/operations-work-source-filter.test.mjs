@@ -11,11 +11,11 @@ const filter = () => read('../src/components/operations/operational-work-source-
 test('shared source filter defaults to Todos and exposes only user-facing origin labels', () => {
   const source = filter();
   assert.match(source, /label: 'Todos'/);
-  assert.match(source, /label: 'Base del viaje'/);
-  assert.match(source, /label: 'Servicios adicionales'/);
+  assert.match(source, /label: operationalSourceLabel\('BASE_TRIP'\)/);
+  assert.match(source, /label: operationalSourceLabel\('ADDITIONAL_SERVICES'\)/);
   assert.match(source, /aria-label="Filtrar por origen del trabajo"/);
   assert.doesNotMatch(source, /TRAVEL_PACKAGE_COST_COMPONENT|ADDITIONAL_SERVICE_ORDER_LINE/);
-  assert.doesNotMatch(source, /Contrato|Manual|Cotización personalizada/);
+  assert.match(source, /operationalSourceLabel/);
   assert.match(unified(), /aria-label="Filtrar por origen"/);
 });
 
@@ -30,7 +30,7 @@ test('passenger dashboard supplies source to its single server-side dashboard re
   const source = unified();
   assert.match(source, /useState<OperationalPassengerDashboardSource \| undefined>\(\)/);
   assert.match(source, /getOperationalPassengerDashboard\(travelPackageId, \{[^]*source, status/);
-  assert.match(source, /facet\.label/);
+  assert.match(source, /operationalSourceLabel\(facet\.value\)/);
   assert.doesNotMatch(source, /requirements\.filter\(/);
 });
 

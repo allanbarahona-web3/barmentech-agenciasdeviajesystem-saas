@@ -6,6 +6,9 @@ import AttachmentViewer, { type Attachment } from '@/components/attachment-viewe
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { PassengerOperationalNotesAction } from '@/components/operations/passenger-operational-notes-action';
+import { PassengerGroupContextAction, type PassengerGroupSummary } from '@/components/operations/passenger-group-context-action';
+import { PassengerGroupBadge } from '@/components/passenger-group-badge';
+import { operationalPassengerRoleLabel } from '@/lib/operations-presentation';
 import {
   getOperationalPassengerDocumentAccess,
   listOperationalPassengerDocuments,
@@ -20,6 +23,7 @@ interface PassengerOperationalContextProps {
   passengerContexts: PassengerOperationalContextValue[] | null | undefined;
   travelPackageId?: string | null;
   participantIds?: readonly string[];
+  passengerGroups?: PassengerGroupSummary[];
 }
 
 const ageLabels = {
@@ -36,14 +40,7 @@ const documentLabels = {
 
 const documentPriority = { PASSPORT: 0, ID_FRONT: 1, ID_BACK: 2 } as const;
 
-const roleLabels: Record<string, string> = {
-  HOLDER: 'Titular',
-  COMPANION: 'Acompañante',
-  MINOR: 'Menor',
-  TRAVELER: 'Pasajero',
-};
-
-export function PassengerOperationalContext({ requirementId, passengerContexts, travelPackageId, participantIds }: PassengerOperationalContextProps) {
+export function PassengerOperationalContext({ requirementId, passengerContexts, travelPackageId, participantIds, passengerGroups }: PassengerOperationalContextProps) {
   const contexts = passengerContexts ?? [];
   const contextParticipantIds = participantIds?.length === contexts.length ? participantIds : [];
   if (!contexts.length) return null;
@@ -52,9 +49,10 @@ export function PassengerOperationalContext({ requirementId, passengerContexts, 
     <div className="space-y-3">
       {contexts.map((context, index) => <div key={`${context.displayName}-${index}`} className={index ? 'border-t pt-3' : undefined}>
         <p className="font-medium">{context.displayName}</p>
-        {context.role ? <p className="text-sm text-muted-foreground">{roleLabels[context.role] ?? context.role}</p> : null}
+        {context.role ? <p className="text-sm text-muted-foreground">{operationalPassengerRoleLabel(context.role)}</p> : null}
         {context.dateOfBirth ? <p className="mt-1 text-sm"><span className="text-muted-foreground">Nacimiento:</span> {formatDateOnly(context.dateOfBirth)}</p> : null}
         {context.age !== null ? <p className="text-sm"><span className="text-muted-foreground">{ageLabels[context.ageReferenceType]}{context.ageReferenceDate ? ` (${formatDateOnly(context.ageReferenceDate)})` : ''}:</span> {context.age} {context.age === 1 ? 'año' : 'años'}</p> : null}
+        {travelPackageId && contextParticipantIds.length === 1 && index === 0 && passengerGroups?.length ? <div className="mt-2 flex flex-wrap items-center gap-1.5" aria-label="Grupos de pasajeros">{passengerGroups.map((group) => <span key={group.id} className="inline-flex items-center gap-0.5"><PassengerGroupBadge name={group.name} color={group.color} /><PassengerGroupContextAction travelPackageId={travelPackageId} group={group} className="size-7" /></span>)}</div> : null}
         {contextParticipantIds[index] ? <div className="mt-2 flex flex-wrap gap-2"><PassengerDocumentsAction requirementId={requirementId} participantContextKey={`passenger:${contextParticipantIds[index]}`} passengerName={context.displayName} label="Ver documentos" className="" />{travelPackageId ? <PassengerOperationalNotesAction travelPackageId={travelPackageId} participantId={contextParticipantIds[index]} passengerName={context.displayName} className="" /> : null}</div> : null}
       </div>)}
     </div>

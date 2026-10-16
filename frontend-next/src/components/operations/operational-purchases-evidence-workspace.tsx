@@ -23,13 +23,13 @@ import { FormField } from '@/components/patterns/form-field';
 import { FormSheet } from '@/components/patterns/form-sheet';
 import AttachmentViewer, { type Attachment } from '@/components/attachment-viewer';
 import { OperationalPurchaseDrawer } from '@/components/operations/operational-purchase-drawer';
+import { operationalStatusLabel } from '@/lib/operations-presentation';
 
 const evidenceLabels: Record<OperationalEvidenceType, string> = {
   SUPPLIER_QUOTE: 'Cotización del proveedor', BOOKING_CONFIRMATION: 'Confirmación de reserva', TICKET: 'Boleto',
   VOUCHER: 'Voucher', SUPPLIER_INVOICE: 'Factura del proveedor', RECEIPT: 'Recibo',
   INSURANCE_CERTIFICATE: 'Certificado de seguro', SCREENSHOT: 'Captura de pantalla', OTHER: 'Otro',
 };
-const fulfillmentLabels: Record<OperationalFulfillmentDetail['status'], string> = { DRAFT: 'Preparando', RESERVED: 'Reservado', PURCHASED: 'Comprado', CONFIRMED: 'Confirmado', CANCELLED: 'Cancelado' };
 const allowedMimeTypes = new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/webp']);
 const maxEvidenceBytes = 10 * 1024 * 1024;
 type PurchaseMetadataForm = { supplierReference: string; supplierInvoiceNumber: string; notes: string };
@@ -115,7 +115,7 @@ export function OperationalPurchasesEvidenceWorkspace({ travelPackageId, require
 
   return <section className="space-y-4" aria-label="Compras y documentos"><Button type="button" variant="link" className="px-0" onClick={onBack}>← Gestión del servicio</Button>
     <div><h1 className="text-xl font-semibold">Gestión del servicio</h1><p className="text-sm text-muted-foreground">Preparando → Reservado → Comprado → Confirmado. Registra la compra del proveedor y sus documentos para esta gestión.</p></div>
-    {loadingContext ? <Card><CardContent className="py-6 text-sm text-muted-foreground">Cargando contexto de la gestión...</CardContent></Card> : fulfillment ? <Card><CardContent className="grid gap-3 py-4 sm:grid-cols-2 lg:grid-cols-4"><div><p className="text-xs text-muted-foreground">Contexto del servicio</p><p className="font-medium">{fulfillment.servicePurposeName}</p><p className="text-sm">{requirement?.description}</p></div><div><p className="text-xs text-muted-foreground">Gestión / estado</p><Badge variant={fulfillmentStatusVariant(fulfillment.status)}>{fulfillmentLabels[fulfillment.status]}</Badge></div><div><p className="text-xs text-muted-foreground">Proveedor</p><p>{fulfillment.providerName ?? 'Sin proveedor'}</p></div><div><p className="text-xs text-muted-foreground">Pasajeros / referencias</p><p>{fulfillment.passengers.length} pasajeros</p><p className="text-sm">{[fulfillment.reservationCode, fulfillment.confirmationReference, fulfillment.voucherReference, fulfillment.ticketReference].filter(Boolean).join(' · ') || 'Sin referencias'}</p></div></CardContent></Card> : null}
+    {loadingContext ? <Card><CardContent className="py-6 text-sm text-muted-foreground">Cargando contexto de la gestión...</CardContent></Card> : fulfillment ? <Card><CardContent className="grid gap-3 py-4 sm:grid-cols-2 lg:grid-cols-4"><div><p className="text-xs text-muted-foreground">Contexto del servicio</p><p className="font-medium">{fulfillment.servicePurposeName}</p><p className="text-sm">{requirement?.description}</p></div><div><p className="text-xs text-muted-foreground">Gestión / estado</p><Badge variant={fulfillmentStatusVariant(fulfillment.status)}>{operationalStatusLabel(fulfillment.status)}</Badge></div><div><p className="text-xs text-muted-foreground">Proveedor</p><p>{fulfillment.providerName ?? 'Sin proveedor'}</p></div><div><p className="text-xs text-muted-foreground">Pasajeros / referencias</p><p>{fulfillment.passengers.length} pasajeros</p><p className="text-sm">{[fulfillment.reservationCode, fulfillment.confirmationReference, fulfillment.voucherReference, fulfillment.ticketReference].filter(Boolean).join(' · ') || 'Sin referencias'}</p></div></CardContent></Card> : null}
     {error ? <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert> : null}{notice ? <Alert><AlertDescription>{notice}</AlertDescription></Alert> : null}
     <PurchasesPanel purchases={purchases} loading={loadingPurchases} formatDateTime={formatDateTime} soldValue={requirement?.soldValue} canCreate={purchasesAllowed} historyOnly={historyOnly} onCreate={openPurchase} onEdit={openMetadataEdit} onPage={setPurchasePage} />
     <EvidencePanel evidence={evidence} purchases={purchaseById} loading={loadingEvidence} formatDateTime={formatDateTime} canMutate={!historyOnly} onUpload={openUpload} onOpen={(item) => void openEvidence(item)} onDelete={setDeleteTarget} onPage={setEvidencePage} />

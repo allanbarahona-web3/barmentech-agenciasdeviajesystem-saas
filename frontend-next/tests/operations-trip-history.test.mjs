@@ -39,11 +39,12 @@ test('trip history delegates terminal filtering and pagination to the bounded hi
 
 test('history list keeps passenger visibility and maps source and terminal labels without raw enums', () => {
   const text = history();
-  assert.match(text, /BASE_TRIP: 'Viaje base'/);
+  assert.match(text, /BASE_TRIP: 'Contrato base'/);
   assert.match(text, /ADDITIONAL_SERVICES: 'Servicio adicional'/);
   assert.match(text, /<TerminalStatusBadge status=\{item\.terminalStatus\}/);
   assert.doesNotMatch(text, /PURCHASED/);
   assert.match(text, /item\.passengers\.map\(\(passenger\) => passenger\.fullName\)/);
+  assert.match(text, /operationalPassengerRoleLabel\(passenger\.role\)/);
   assert.match(text, /item\.passengerCount/);
   assert.match(text, /item\.reservation\.providerName/);
   assert.match(text, /item\.purchase\.taxAmount/);

@@ -24,6 +24,7 @@ import {
 } from '@/lib/passenger-groups-board';
 import { getTravelPackageById, type TravelPackage } from '@/lib/travel-packages-api';
 import { PassengerGroupsBoard } from '@/components/passenger-groups/passenger-groups-board';
+import { PassengerGroupBadge } from '@/components/passenger-group-badge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -585,10 +586,7 @@ function GroupCard({ group, archived = false, onEdit, onAssign, onArchive }: {
     <Card className={archived ? 'opacity-75' : undefined}>
       <CardHeader>
         <div className="min-w-0">
-          <CardTitle className="flex items-center gap-2">
-            {group.color ? <span aria-label="Color del grupo" className="size-3 shrink-0 rounded-full" style={{ backgroundColor: group.color }} /> : null}
-            <span className="truncate">{group.name}</span>
-          </CardTitle>
+          <CardTitle><PassengerGroupBadge name={group.name} color={group.color} /></CardTitle>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <Badge variant="info">{group.serviceName}</Badge>
             {archived ? <Badge variant="outline">Archivado</Badge> : null}
