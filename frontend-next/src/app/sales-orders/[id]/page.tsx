@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { CustomerProfileLink } from '@/components/profile-detail-link';
 import {
   getSalesOrder,
   SalesOrderNotFoundError,
@@ -296,6 +297,7 @@ export default function SalesOrderWorkspacePage() {
                 <dt>Nombre</dt>
                 <dd>{order.customerName}</dd>
               </div>
+              {order.customerId ? <div><CustomerProfileLink customerId={order.customerId} /></div> : null}
               <div>
                 <dt>Correo</dt>
                 <dd>{order.customerEmail ?? 'No registrado'}</dd>

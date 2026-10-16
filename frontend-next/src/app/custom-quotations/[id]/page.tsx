@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { PageHeader } from '@/components/patterns/page-header';
 import { SectionCard } from '@/components/patterns/section-card';
+import { CustomerProfileLink, LeadDetailLink } from '@/components/profile-detail-link';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Select } from '@/components/ui/select';
 import { GenericCostComposition } from '@/features/cost-engine/generic-cost-composition';
@@ -151,7 +152,7 @@ export default function CustomQuotationDetailPage() {
     </nav>
 
     <div hidden={activeTab !== 'DETAIL'} className="space-y-6">
-      <SectionCard title="Información comercial"><dl className="grid gap-4 sm:grid-cols-2">
+      <SectionCard title="Información comercial" actions={quotation.target?.type === 'CUSTOMER' ? <CustomerProfileLink customerId={quotation.target.id} /> : quotation.target?.type === 'LEAD' ? <LeadDetailLink leadId={quotation.target.id} /> : undefined}><dl className="grid gap-4 sm:grid-cols-2">
         <Field label="Destinatario" value={quotation.target?.displayName ?? '—'} />
         <Field label="Tipo de destinatario" value={quotationTargetLabel(quotation.target)} />
         <Field label="Correo" value={quotation.target?.email ?? '—'} />

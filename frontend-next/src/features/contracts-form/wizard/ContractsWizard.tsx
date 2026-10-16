@@ -1485,7 +1485,7 @@ console.log("====================================");
         cancelText="Salir al Dashboard"
         onConfirm={() => {
           if (completion) {
-            router.push(`/admin/customers/${encodeURIComponent(completion.customerId)}`);
+            window.open(`/admin/customers/${encodeURIComponent(completion.customerId)}`, '_blank', 'noopener,noreferrer');
           }
         }}
         onCancel={() => router.push("/agent-dashboard")}

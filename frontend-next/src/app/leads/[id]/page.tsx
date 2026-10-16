@@ -13,6 +13,7 @@ import { IconBadge } from '@/components/ui/icon-badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { PageHeader } from '@/components/patterns/page-header';
 import { SectionCard } from '@/components/patterns/section-card';
+import { CustomerProfileLink } from '@/components/profile-detail-link';
 import { leadCommercialActivity } from '@/features/leads/lead-quotation-activity';
 import { canAccessLeadWorkspace, leadStatusLabel } from '@/features/leads/lead-workspace';
 import { getHomeRouteForRole, getStoredSession } from '@/lib/auth-api';
@@ -121,7 +122,7 @@ export default function LeadDetailPage() {
           <Alert>
             <CheckCircle2 aria-hidden="true" />
             <AlertTitle>Prospecto convertido</AlertTitle>
-            <AlertDescription>Este prospecto ya fue convertido a cliente. Su información comercial se muestra solo como referencia.</AlertDescription>
+            <AlertDescription><div className="flex flex-wrap items-center justify-between gap-3"><span>Este prospecto ya fue convertido a cliente. Su información comercial se muestra solo como referencia.</span><CustomerProfileLink customerId={lead.convertedCustomerId} /></div></AlertDescription>
           </Alert>
         ) : null}
 

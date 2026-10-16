@@ -19,6 +19,7 @@ import { LoadingModal } from '@/components/loading-modal';
 import { ConfirmModal } from '@/components/confirm-modal';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { CustomerProfileLink } from '@/components/profile-detail-link';
 import {
   getAdditionalServiceOrder,
   getAdditionalServiceCostEvidenceAccess,
@@ -416,6 +417,7 @@ export default function AdditionalServiceOrderPreviewPage() {
             </p>
           </div>
           <div className={styles.actions} aria-label="Acciones de la orden">
+            <CustomerProfileLink customerId={order.quoteCustomerId} />
             {order.commercialStatus === 'DRAFT' && (
               <Button
                 type="button"

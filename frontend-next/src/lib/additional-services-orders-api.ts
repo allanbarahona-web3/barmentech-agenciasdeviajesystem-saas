@@ -222,6 +222,7 @@ export interface AdditionalServiceOrderLine {
 export interface AdditionalServiceOrder {
   id: string;
   orderNumber: string;
+  quoteCustomerId: string | null;
   quoteCustomer: {
     fullName: string;
     email: string | null;

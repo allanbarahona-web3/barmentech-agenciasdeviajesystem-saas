@@ -10,6 +10,7 @@ import { ReportingReceivablesApplicationService } from "../receivables/reporting
 import type { AuthenticatedAccountingCostsRequest } from "../accounting-costs/accounting-costs.service";
 import { AccountingCostsService } from "../accounting-costs/accounting-costs.service";
 import { renderAccountingCostsExport, type AccountingCostsExportProjection } from "./accounting-costs-export.renderer";
+import { TenantService } from "../../tenant/tenant.service";
 
 export type ReportingExportFormat = "PDF" | "XLSX" | "CSV";
 export type ReportingExport = { bytes: Buffer; mimeType: string; fileName: string };
@@ -18,7 +19,7 @@ const MAX_EXPORT_ROWS = 10_000;
 /** Presentation-only adapters over the existing authorized report datasets. */
 @Injectable()
 export class ReportingExportService {
-  constructor(private readonly sales: ReportingSalesApplicationService, private readonly salesTax: ReportingSalesTaxApplicationService, private readonly receivables: ReportingReceivablesApplicationService = {} as ReportingReceivablesApplicationService, private readonly accountingCosts: AccountingCostsService = {} as AccountingCostsService) {}
+  constructor(private readonly sales: ReportingSalesApplicationService, private readonly salesTax: ReportingSalesTaxApplicationService, private readonly receivables: ReportingReceivablesApplicationService = {} as ReportingReceivablesApplicationService, private readonly accountingCosts: AccountingCostsService = {} as AccountingCostsService, private readonly tenants?: TenantService) {}
 
   async exportSales(request: AuthenticatedSalesReportRequest, format: ReportingExportFormat): Promise<ReportingExport> {
     const report = await this.sales.execute({ ...request, page: 1, pageSize: MAX_EXPORT_ROWS });
@@ -41,7 +42,8 @@ export class ReportingExportService {
   async exportAccountingCosts(request: AuthenticatedAccountingCostsRequest & { projectionMode: AccountingCostsExportProjection }, format: ReportingExportFormat): Promise<ReportingExport> {
     const report = await this.accountingCosts.execute({ ...request, read: { ...request.read, page: 1, pageSize: MAX_EXPORT_ROWS } });
     assertExportBound(report.pagination.totalItems);
-    return renderAccountingCostsExport(report, request.projectionMode, format);
+    const branding = format === "PDF" && this.tenants ? await this.tenants.getTenantConfig(request.tenantId) : undefined;
+    return renderAccountingCostsExport(report, request.projectionMode, format, branding);
   }
 }
 

@@ -2,6 +2,7 @@ import * as ExcelJS from "exceljs";
 import { PDFDocument } from "pdf-lib";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { normalizePdfText, tenantDisplayName } from "./accounting-costs-export.renderer";
 import { ReportingExportService } from "./reporting-export.service";
 
 describe("ReportingExportService", () => {
@@ -42,6 +43,53 @@ describe("ReportingExportService", () => {
     expect(csv).toMatchObject({ mimeType: "text/csv; charset=utf-8", fileName: "costos-reales-operaciones-2026-10-01-a-2026-10-12.csv" }); expect(csv.bytes.toString("utf8")).toContain("Conversión no disponible"); expect(csv.bytes.toString("utf8")).toContain("Cancelado"); expect(original.bytes.toString("utf8")).toContain("Resumen por moneda original");
     expect(pdf.bytes.subarray(0, 4).toString()).toBe("%PDF"); const workbook = new ExcelJS.Workbook(); await workbook.xlsx.load(xlsx.bytes as any); expect(workbook.worksheets.map((sheet) => sheet.name)).toEqual(["Resumen", "Operaciones"]); expect(workbook.getWorksheet("Operaciones")!.getRow(1).values).toEqual(expect.arrayContaining(["TC / autoridad", "Total moneda contable", "Factura proveedor", "Estado"])); expect(workbook.getWorksheet("Operaciones")!.views[0].state).toBe("frozen");
     expect(readFileSync(join(__dirname, "accounting-costs-export.renderer.ts"), "utf8")).not.toContain('"CRC"');
+  });
+
+  it("keeps Accounting Costs PDFs WinAnsi-safe while preserving Unicode in XLSX and CSV", async () => {
+    const report = accountingCosts();
+    const value = "San José → Madrid – conexión — final…";
+    report.rows[0].description = value;
+    report.rows[0].counterparty.name = "Proveedor Niño";
+    const execute = jest.fn().mockResolvedValue(report);
+    const service = new ReportingExportService({} as never, {} as never, {} as never, { execute } as never);
+    const request = { tenantId: "tenant-a", actorUserId: "user-a", role: "CONTADOR" as any, period: { kind: "CURRENT_MONTH" as const }, read: { page: 1, pageSize: 20 }, projectionMode: "ORIGINAL" as const };
+
+    await expect(service.exportAccountingCosts(request, "PDF")).resolves.toMatchObject({ mimeType: "application/pdf" });
+    expect(normalizePdfText(value)).toBe("San José -> Madrid - conexión - final...");
+    expect(normalizePdfText("áéíóú ñ ü ¿¡ ASCII")).toBe("áéíóú ñ ü ¿¡ ASCII");
+    expect(normalizePdfText("Vuelo 🚀")).toBe("Vuelo ?");
+
+    const csv = await service.exportAccountingCosts(request, "CSV");
+    const xlsx = await service.exportAccountingCosts(request, "XLSX");
+    expect(csv.bytes.toString("utf8")).toContain(value);
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(xlsx.bytes as any);
+    expect(workbook.getWorksheet("Operaciones")!.getRow(2).values).toEqual(expect.arrayContaining([value, "Proveedor Niño"]));
+  });
+
+  it("uses the existing tenant configuration for Accounting Costs PDF branding only", async () => {
+    const execute = jest.fn().mockResolvedValue(accountingCosts());
+    const tenants = { getTenantConfig: jest.fn().mockResolvedValue({ name: "Viajes Ticos", legalName: "Viajes Ticos S.A.", emailLogoUrl: "https://assets.example/logo.png", logoUrl: "https://assets.example/logo.webp" }) };
+    const service = new ReportingExportService({} as never, {} as never, {} as never, { execute } as never, tenants as never);
+    const request = { tenantId: "tenant-a", actorUserId: "user-a", role: "CONTADOR" as any, period: { kind: "CURRENT_MONTH" as const }, read: { page: 1, pageSize: 20 }, projectionMode: "ORIGINAL" as const };
+    const logo = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLZ2wAAAABJRU5ErkJggg==", "base64");
+    const fetchMock = jest.spyOn(global, "fetch").mockResolvedValue({ ok: true, headers: { get: () => "image/png" }, arrayBuffer: async () => Uint8Array.from(logo).buffer } as never);
+
+    try {
+      const pdf = await service.exportAccountingCosts(request, "PDF");
+      expect(tenants.getTenantConfig).toHaveBeenCalledWith("tenant-a");
+      expect(fetchMock).toHaveBeenCalledWith("https://assets.example/logo.png");
+      expect((await PDFDocument.load(pdf.bytes)).getPageCount()).toBe(1);
+      expect(tenantDisplayName({ name: "", legalName: "Razón Social" })).toBe("Razón Social");
+
+      tenants.getTenantConfig.mockClear();
+      fetchMock.mockClear();
+      await service.exportAccountingCosts(request, "XLSX");
+      expect(tenants.getTenantConfig).not.toHaveBeenCalled();
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      fetchMock.mockRestore();
+    }
   });
 
   it("keeps presentation adapters free of fiscal reads and provides a business PDF layout", () => {

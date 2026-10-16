@@ -119,6 +119,8 @@ function safeCount(value: bigint) { if (value > BigInt(Number.MAX_SAFE_INTEGER))
 
 function row(purchase: any, quotation: { id: string; versionNumber: number; customQuotationId: string; customQuotation: { quotationNumber: string }; salesOrder: { orderNumber: string } | null } | null): AccountingCostRow {
   const requirement = purchase.operationalFulfillment.operationalRequirement;
+  // OperationalPurchase.amount is the persisted subtotal and taxAmount is the persisted tax.
+  // There is no persisted purchase total; reporting derives it exactly to avoid a competing authority.
   const subtotal = new Prisma.Decimal(purchase.amount);
   const tax = new Prisma.Decimal(purchase.taxAmount ?? 0);
   return {

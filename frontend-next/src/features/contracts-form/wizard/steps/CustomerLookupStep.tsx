@@ -5,6 +5,7 @@ import type { ContractFormState } from '@/features/contracts-form/types';
 import { CustomerCreateModal } from '@/features/customers/components/CustomerCreateModal';
 import { CustomerEditModal } from '@/features/customers/components/CustomerEditModal';
 import { CustomerSearchSelector } from '@/features/customers/components/CustomerSearchSelector';
+import { CustomerProfileLink } from '@/components/profile-detail-link';
 import {
   getCustomerProfile,
   updateCustomer,
@@ -191,6 +192,7 @@ export function CustomerLookupStep({
                 </h3>
               </div>
               <div style={{ display: 'flex', gap: '8px' }}>
+                <CustomerProfileLink customerId={customer.id} />
                 {actions.edit && (
                   <button
                     type="button"

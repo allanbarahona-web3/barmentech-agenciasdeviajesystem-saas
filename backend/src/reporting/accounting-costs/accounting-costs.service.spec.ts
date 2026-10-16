@@ -22,6 +22,13 @@ describe("Accounting Costs reporting", () => {
     expect(prisma.operationalPurchase.findMany.mock.calls[0][0].orderBy).toEqual([{ purchasedAt: "desc" }, { id: "desc" }]);
   });
 
+  it("derives total from the persisted OperationalPurchase subtotal and tax without CostSnapshot input", async () => {
+    const prisma = purchasePrisma({ amount: decimal("12.5"), taxAmount: decimal("1.25") });
+    const result = await new OperationalPurchaseAccountingCostAdapter(prisma as never).readPage(context, period, { page: 1, pageSize: 20 });
+    expect(result.items[0]).toMatchObject({ subtotal: "12.5", tax: "1.25", total: "13.75" });
+    expect(prisma).not.toHaveProperty("costSnapshot");
+  });
+
   it("uses immutable requirement context and bounded CQ enrichment", async () => {
     const prisma = purchasePrisma({ sourceType: "CUSTOM_QUOTATION_LINE", sourceId: "version-a", travelPackageId: null, customerId: "customer-a" });
     prisma.customQuotationVersion.findMany.mockResolvedValue([{ id: "version-a", versionNumber: 2, customQuotationId: "quotation-a", customQuotation: { quotationNumber: "CQ-1" }, salesOrder: { orderNumber: "SO-1" } }]);
