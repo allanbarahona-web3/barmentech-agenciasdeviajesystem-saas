@@ -14,6 +14,7 @@ import {
   CustomQuotationApprovalService,
   type CustomQuotationApprovalTransaction,
 } from "./custom-quotation-approval.service";
+import { customerProposalLine } from "./custom-quotation-customer-presentation";
 
 type CustomerApprovalTransaction = CustomQuotationApprovalTransaction & GeneratedDocumentAccessTransaction & {
   tenant: Record<string, (...args: any[]) => Promise<any>>;
@@ -55,7 +56,7 @@ export class CustomQuotationCustomerApprovalService {
       title: proposal.version.title,
       recipientFullName: proposal.version.recipientFullName,
       tenant: { name: proposal.tenant.name, logoUrl: proposal.tenant.logoUrl },
-      lines: proposal.version.lines.map((line: any) => ({
+      lines: proposal.version.lines.map((line: any) => customerProposalLine({
         displayOrder: line.displayOrder,
         description: line.description,
         quantity: decimalString(line.quantity),

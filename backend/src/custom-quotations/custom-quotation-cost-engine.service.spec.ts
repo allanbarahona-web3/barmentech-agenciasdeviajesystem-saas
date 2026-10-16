@@ -29,7 +29,8 @@ describe("CustomQuotationCostEngineService", () => {
     const c = context();
     c.costs.createComponent.mockResolvedValue({ id: "component-a" });
     c.costs.updateComponent.mockResolvedValue({ id: "component-a", title: "Vuelo actualizado" });
-    c.costs.updateComponentCost.mockResolvedValue({ id: "component-a" });
+    c.costs.updateComponentCostInTransaction.mockResolvedValue("snapshot-b");
+    c.costs.getComponent.mockResolvedValue({ id: "component-a" });
     c.costs.archiveComponent.mockResolvedValue({ id: "component-a", status: "ARCHIVED" });
     c.costs.createSupplier.mockResolvedValue({ id: "supplier-a", name: "Proveedor" });
     const dto = { costCategoryId: "category-a", title: "Vuelo", amount: "100.12345", currency: "USD" } as never;
@@ -43,9 +44,24 @@ describe("CustomQuotationCostEngineService", () => {
     expect(c.tx.$queryRaw).toHaveBeenCalledTimes(5);
     expect(c.costs.createComponent).toHaveBeenCalledWith("tenant-a", "project-a", dto, actor);
     expect(c.costs.updateComponent).toHaveBeenCalledWith("tenant-a", "component-a", { title: "Vuelo actualizado" }, actor);
-    expect(c.costs.updateComponentCost).toHaveBeenCalledWith("tenant-a", "component-a", { amount: "101.12345", currency: "USD" }, actor);
+    expect(c.costs.updateComponentCostInTransaction).toHaveBeenCalledWith(c.tx, "tenant-a", "component-a", { amount: "101.12345", currency: "USD" }, actor);
     expect(c.costs.archiveComponent).toHaveBeenCalledWith("tenant-a", "component-a", actor);
     expect(c.costs.createSupplier).toHaveBeenCalledWith("tenant-a", { name: "Proveedor" });
+  });
+
+  it("writes the cost snapshot through the quotation transaction and reads the response after commit", async () => {
+    const c = context();
+    c.costs.updateComponentCostInTransaction.mockResolvedValue("snapshot-b");
+    c.costs.getComponent.mockImplementation(async () => {
+      expect(c.transactionCommitted()).toBe(true);
+      return { id: "component-a" };
+    });
+
+    await expect(c.service.updateComponentCost("tenant-a", "quotation-a", "component-a", { amount: "101.12345", currency: "USD" } as never, actor)).resolves.toEqual({ id: "component-a" });
+
+    expect(c.root.$transaction).toHaveBeenCalledTimes(1);
+    expect(c.costs.updateComponentCostInTransaction).toHaveBeenCalledWith(c.tx, "tenant-a", "component-a", { amount: "101.12345", currency: "USD" }, actor);
+    expect(c.costs.updateComponentCost).not.toHaveBeenCalled();
   });
 
   it("rejects mutations after issue without delegating Cost Engine work", async () => {
@@ -94,17 +110,22 @@ describe("CustomQuotationCostEngineService", () => {
 function context(options: { status?: string; quotation?: Record<string, unknown> | null; component?: Record<string, unknown> | null; snapshot?: Record<string, unknown> | null } = {}) {
   const tx = {
     $executeRaw: jest.fn(),
-    $queryRaw: jest.fn().mockResolvedValue([{ id: "quotation-a" }]),
+    $queryRaw: jest.fn().mockResolvedValue([{ id: "quotation-a", status: options.status ?? "DRAFT" }]),
     customQuotation: { findFirst: jest.fn().mockResolvedValue(options.quotation === undefined ? { id: "quotation-a", status: options.status ?? "DRAFT" } : options.quotation) },
     customQuotationCostingProjectLink: { findFirst: jest.fn().mockResolvedValue({ costingProject: { id: "project-a", tenantId: "tenant-a" } }) },
     costComponent: { findFirst: jest.fn().mockResolvedValue(options.component === undefined ? { id: "component-a" } : options.component) },
     costSnapshot: { findFirst: jest.fn().mockResolvedValue(options.snapshot === undefined ? { id: "snapshot-a" } : options.snapshot) },
   } as any;
-  const root = { $transaction: jest.fn((work: (value: typeof tx) => Promise<unknown>) => work(tx)) };
+  let committed = false;
+  const root = { $transaction: jest.fn(async (work: (value: typeof tx) => Promise<unknown>) => {
+    const result = await work(tx);
+    committed = true;
+    return result;
+  }) };
   const costs = {
-    getComposition: jest.fn(), listCategories: jest.fn(), createCategory: jest.fn(), listSuppliers: jest.fn(), createSupplier: jest.fn(),
-    createComponent: jest.fn(), updateComponent: jest.fn(), updateComponentCost: jest.fn(), archiveComponent: jest.fn(),
+    getComposition: jest.fn(), getComponent: jest.fn(), listCategories: jest.fn(), createCategory: jest.fn(), listSuppliers: jest.fn(), createSupplier: jest.fn(),
+    createComponent: jest.fn(), updateComponent: jest.fn(), updateComponentCost: jest.fn(), updateComponentCostInTransaction: jest.fn(), archiveComponent: jest.fn(),
   };
   const evidence = { list: jest.fn(), getAccess: jest.fn(), upload: jest.fn() };
-  return { tx, costs, evidence, service: new CustomQuotationCostEngineService(root as never, costs as never, evidence as never) };
+  return { tx, root, costs, evidence, transactionCommitted: () => committed, service: new CustomQuotationCostEngineService(root as never, costs as never, evidence as never) };
 }

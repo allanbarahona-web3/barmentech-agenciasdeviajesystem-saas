@@ -16,6 +16,7 @@ export type CustomQuotationActor = { userId: string; name: string };
 
 type CustomQuotationTransaction = {
   $executeRaw<T = unknown>(query: TemplateStringsArray, ...values: unknown[]): Promise<T>;
+  $queryRaw<T = unknown>(query: TemplateStringsArray, ...values: unknown[]): Promise<T>;
   client: Record<string, (...args: any[]) => Promise<any>>;
   lead: Record<string, (...args: any[]) => Promise<any>>;
   customQuotation: Record<string, (...args: any[]) => Promise<any>>;
@@ -96,6 +97,21 @@ type LeadQuotationSummaryRecord = {
   }>;
 };
 
+type RecipientGroupRow = {
+  recipientType: "LEAD" | "CUSTOMER";
+  recipientId: string;
+  recipientDisplayName: string;
+  quotationCount: number;
+  draftCount: number;
+  issuedCount: number;
+  acceptedCount: number;
+  rejectedCount: number;
+  expiredCount: number;
+  cancelledCount: number;
+  quotations: unknown;
+  total: number;
+};
+
 const CUSTOM_QUOTATION_SEQUENCE_KEY = "CUSTOM_QUOTATION";
 
 @Injectable()
@@ -147,33 +163,129 @@ export class CustomQuotationsService {
     const pageSize = Math.min(25, positiveInteger(input.pageSize, 20));
     const search = optionalText(input.search);
     return this.withTenantTransaction(tenantId, async (tx) => {
-      const where = {
-        tenantId,
-        ...(input.status ? { status: input.status } : {}),
-        ...(input.customerId ? { customerId: input.customerId } : {}),
-        ...(search ? {
-          OR: [
-            { quotationNumber: { contains: search, mode: "insensitive" } },
-            { title: { contains: search, mode: "insensitive" } },
-          ],
-        } : {}),
-      };
-      const [quotations, total] = await Promise.all([
-        tx.customQuotation.findMany({
-          where,
-          include: targetInclude(),
-          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-          skip: (page - 1) * pageSize,
-          take: pageSize,
-        }) as Promise<QuotationRecord[]>,
-        tx.customQuotation.count({ where }) as Promise<number>,
-      ]);
+      const rows = await tx.$queryRaw<RecipientGroupRow[]>`
+        WITH base_filtered_quotations AS (
+          SELECT
+            quotation."id",
+            quotation."tenantId",
+            quotation."quotationNumber",
+            quotation."leadId",
+            quotation."customerId",
+            quotation."currency",
+            quotation."title",
+            quotation."commercialObservations",
+            quotation."quotationValidUntil",
+            quotation."paymentConditionType",
+            quotation."paymentTermValue",
+            quotation."paymentTermUnit",
+            quotation."status",
+            quotation."createdAt",
+            quotation."updatedAt",
+            CASE WHEN quotation."customerId" IS NOT NULL THEN 'CUSTOMER' ELSE 'LEAD' END AS "recipientType",
+            COALESCE(quotation."customerId", quotation."leadId") AS "recipientId",
+            COALESCE(customer."fullName", lead."fullName", 'Destinatario no disponible') AS "recipientDisplayName",
+            COALESCE(customer."email", lead."email") AS "recipientEmail",
+            COALESCE(customer."phone", lead."phone") AS "recipientPhone",
+            lead."companyName" AS "recipientCompanyName"
+          FROM "custom_quotations" AS quotation
+          LEFT JOIN "leads" AS lead
+            ON lead."id" = quotation."leadId" AND lead."tenantId" = quotation."tenantId"
+          LEFT JOIN "Client" AS customer
+            ON customer."id" = quotation."customerId" AND customer."tenantId" = quotation."tenantId"
+          WHERE quotation."tenantId" = ${tenantId}
+            AND (${input.status ?? null}::text IS NULL OR quotation."status"::text = ${input.status ?? null})
+            AND (${input.customerId ?? null}::text IS NULL OR quotation."customerId" = ${input.customerId ?? null})
+            AND (
+              ${search}::text IS NULL
+              OR quotation."quotationNumber" ILIKE '%' || ${search} || '%'
+              OR quotation."title" ILIKE '%' || ${search} || '%'
+              OR lead."fullName" ILIKE '%' || ${search} || '%'
+              OR customer."fullName" ILIKE '%' || ${search} || '%'
+            )
+        ),
+        authoritative_proposal_versions AS (
+          SELECT DISTINCT ON (quotation_version."tenantId", quotation_version."customQuotationId")
+            quotation_version."tenantId",
+            quotation_version."customQuotationId",
+            quotation_version."id" AS "proposalVersionId"
+          FROM "custom_quotation_versions" AS quotation_version
+          INNER JOIN base_filtered_quotations AS quotation
+            ON quotation."id" = quotation_version."customQuotationId"
+              AND quotation."tenantId" = quotation_version."tenantId"
+          WHERE quotation_version."tenantId" = ${tenantId}
+            AND quotation_version."status" IN ('ISSUED', 'ACCEPTED')
+          ORDER BY quotation_version."tenantId", quotation_version."customQuotationId", quotation_version."versionNumber" DESC, quotation_version."id" DESC
+        ),
+        filtered_quotations AS (
+          SELECT
+            quotation.*,
+            CASE WHEN proposal_document."id" IS NOT NULL THEN proposal_version."proposalVersionId" ELSE NULL END AS "proposalVersionId",
+            (proposal_document."id" IS NOT NULL) AS "hasProposalPdf"
+          FROM base_filtered_quotations AS quotation
+          LEFT JOIN authoritative_proposal_versions AS proposal_version
+            ON proposal_version."tenantId" = quotation."tenantId"
+              AND proposal_version."customQuotationId" = quotation."id"
+          LEFT JOIN "generated_documents" AS proposal_document
+            ON proposal_document."tenantId" = quotation."tenantId"
+              AND proposal_document."ownerType" = 'CUSTOM_QUOTATION_VERSION'
+              AND proposal_document."ownerId" = proposal_version."proposalVersionId"
+              AND proposal_document."documentType" = 'COMMERCIAL_PROPOSAL'
+              AND proposal_document."variant" = 'GENERATED'
+              AND proposal_document."version" = 1
+        ),
+        recipient_groups AS (
+          SELECT
+            "recipientType",
+            "recipientId",
+            "recipientDisplayName",
+            COUNT(*)::integer AS "quotationCount",
+            COUNT(*) FILTER (WHERE "status" = 'DRAFT')::integer AS "draftCount",
+            COUNT(*) FILTER (WHERE "status" = 'ISSUED')::integer AS "issuedCount",
+            COUNT(*) FILTER (WHERE "status" = 'ACCEPTED')::integer AS "acceptedCount",
+            COUNT(*) FILTER (WHERE "status" = 'REJECTED')::integer AS "rejectedCount",
+            COUNT(*) FILTER (WHERE "status" = 'EXPIRED')::integer AS "expiredCount",
+            COUNT(*) FILTER (WHERE "status" = 'CANCELLED')::integer AS "cancelledCount",
+            JSON_AGG(JSON_BUILD_OBJECT(
+              'id', "id",
+              'quotationNumber', "quotationNumber",
+              'leadId', "leadId",
+              'customerId', "customerId",
+              'target', JSON_BUILD_OBJECT(
+                'type', "recipientType",
+                'id', "recipientId",
+                'displayName', "recipientDisplayName",
+                'email', "recipientEmail",
+                'phone', "recipientPhone",
+                'companyName', CASE WHEN "recipientType" = 'LEAD' THEN "recipientCompanyName" ELSE NULL END
+              ),
+              'currency', "currency",
+              'title', "title",
+              'commercialObservations', "commercialObservations",
+              'quotationValidUntil', "quotationValidUntil",
+              'paymentConditionType', "paymentConditionType",
+              'paymentTermValue', "paymentTermValue",
+              'paymentTermUnit', "paymentTermUnit",
+              'status', "status",
+              'proposalVersionId', "proposalVersionId",
+              'hasProposalPdf', "hasProposalPdf",
+              'createdAt', "createdAt",
+              'updatedAt', "updatedAt"
+            ) ORDER BY "createdAt" DESC, "id" DESC) AS "quotations",
+            MAX("createdAt") AS "latestCreatedAt"
+          FROM filtered_quotations
+          GROUP BY "recipientType", "recipientId", "recipientDisplayName"
+        )
+        SELECT recipient_groups.*, COUNT(*) OVER ()::integer AS "total"
+        FROM recipient_groups
+        ORDER BY "latestCreatedAt" DESC, "recipientType" ASC, "recipientId" ASC
+        LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}
+      `;
       return {
-        items: quotations.map(toQuotationResponse),
-        total,
+        recipientGroups: rows.map(toRecipientGroupResponse),
+        total: rows[0]?.total ?? 0,
         page,
         pageSize,
-        totalPages: Math.ceil(total / pageSize),
+        totalPages: Math.ceil((rows[0]?.total ?? 0) / pageSize),
       };
     });
   }
@@ -455,6 +567,27 @@ function toQuotationResponse(row: QuotationRecord) {
     updatedAt: row.updatedAt,
     createdBy: { userId: row.createdByUserId, name: row.createdByName },
     updatedBy: row.updatedByUserId ? { userId: row.updatedByUserId, name: row.updatedByName } : null,
+  };
+}
+
+function toRecipientGroupResponse(row: RecipientGroupRow) {
+  return {
+    key: `${row.recipientType}:${row.recipientId}`,
+    recipient: {
+      type: row.recipientType,
+      id: row.recipientId,
+      displayName: row.recipientDisplayName,
+    },
+    quotationCount: row.quotationCount,
+    statusSummary: {
+      DRAFT: row.draftCount,
+      ISSUED: row.issuedCount,
+      ACCEPTED: row.acceptedCount,
+      REJECTED: row.rejectedCount,
+      EXPIRED: row.expiredCount,
+      CANCELLED: row.cancelledCount,
+    },
+    quotations: Array.isArray(row.quotations) ? row.quotations : [],
   };
 }
 

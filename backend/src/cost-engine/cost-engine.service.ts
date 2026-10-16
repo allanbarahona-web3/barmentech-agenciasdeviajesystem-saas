@@ -12,7 +12,9 @@ import {
   UpdateCostSupplierDto,
 } from "./dto/cost-engine.dto";
 import { addExactDecimals } from "./exact-decimal";
-import { ApplicabilityInput, CostActor, CostComponentInput, CostEngineRepository, CostSnapshotInput } from "./cost-engine.repository";
+import { ApplicabilityInput, CostActor, CostComponentInput, CostEngineRepository, CostEngineTransaction, CostSnapshotInput } from "./cost-engine.repository";
+
+export type CostEngineWriteTransaction = CostEngineTransaction;
 
 @Injectable()
 export class CostEngineService {
@@ -122,6 +124,10 @@ export class CostEngineService {
   async updateComponentCost(tenantId: string, costComponentId: string, dto: UpdateCostComponentCostDto, actor: CostActor) {
     await this.repository.updateComponentCost(tenantId, costComponentId, snapshotInput(dto), actor);
     return this.getComponent(tenantId, costComponentId);
+  }
+
+  updateComponentCostInTransaction(transaction: CostEngineWriteTransaction, tenantId: string, costComponentId: string, dto: UpdateCostComponentCostDto, actor: CostActor) {
+    return this.repository.updateComponentCostInTransaction(transaction, tenantId, costComponentId, snapshotInput(dto), actor);
   }
 
   async listCategories(tenantId: string, page = 1, pageSize = 20) {

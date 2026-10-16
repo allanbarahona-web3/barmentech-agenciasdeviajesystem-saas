@@ -113,16 +113,49 @@ describe("CustomQuotationsService", () => {
       .rejects.toBeInstanceOf(ConflictException);
   });
 
-  it("uses bounded deterministic quotation listing and tenant predicates", async () => {
+  it("uses one bounded, tenant-scoped grouped read with filters applied before grouping", async () => {
     const c = context();
-    c.tx.customQuotation.findMany.mockResolvedValue([quotation()]);
-    c.tx.customQuotation.count.mockResolvedValue(1);
+    c.tx.$queryRaw.mockResolvedValue([recipientGroupRow({ total: 2 })]);
     const result = await c.service.list(tenantId, { page: 2, pageSize: 99, status: "DRAFT", customerId: "customer-a", search: "CQ" });
-    expect(c.tx.customQuotation.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({ tenantId, status: "DRAFT", customerId: "customer-a" }),
-      orderBy: [{ createdAt: "desc" }, { id: "desc" }], skip: 25, take: 25,
-    }));
-    expect(result).toMatchObject({ page: 2, pageSize: 25, total: 1 });
+    expect(c.tx.$queryRaw).toHaveBeenCalledTimes(1);
+    const query = c.tx.$queryRaw.mock.calls[0][0].join("");
+    expect(query).toContain('SELECT\n            quotation."id",\n            quotation."tenantId",');
+    expect(query).toContain('WHERE quotation."tenantId" = ');
+    expect(query).toContain('FROM "custom_quotations" AS quotation');
+    expect(query).toContain('LEFT JOIN "leads" AS lead');
+    expect(query).toContain('LEFT JOIN "Client" AS customer');
+    expect(query).not.toContain('"clients"');
+    expect(query).toContain('WITH base_filtered_quotations AS');
+    expect(query).toContain('authoritative_proposal_versions AS');
+    expect(query).toContain('FROM "custom_quotation_versions" AS quotation_version');
+    expect(query).toContain('INNER JOIN base_filtered_quotations AS quotation');
+    expect(query).toContain('SELECT DISTINCT ON (quotation_version."tenantId", quotation_version."customQuotationId")');
+    expect(query).toContain('LEFT JOIN "generated_documents" AS proposal_document');
+    expect(query).toContain('proposal_version."tenantId" = quotation."tenantId"');
+    expect(query).toContain('proposal_document."tenantId" = quotation."tenantId"');
+    expect(query).toContain('proposal_document."ownerId" = proposal_version."proposalVersionId"');
+    expect(query).toContain('proposal_document."ownerType" = \'CUSTOM_QUOTATION_VERSION\'');
+    expect(query).toContain('proposal_document."documentType" = \'COMMERCIAL_PROPOSAL\'');
+    expect(query).toContain("'proposalVersionId', \"proposalVersionId\"");
+    expect(query).toContain("'hasProposalPdf', \"hasProposalPdf\"");
+    expect(query).toContain('quotation."status"::text');
+    expect(query).toContain('customer."fullName" ILIKE');
+    expect(query).toContain('GROUP BY "recipientType", "recipientId", "recipientDisplayName"');
+    expect(result).toMatchObject({ page: 2, pageSize: 25, total: 2, totalPages: 1, recipientGroups: [{ key: "CUSTOMER:customer-a", quotationCount: 2, quotations: [{ proposalVersionId: null, hasProposalPdf: false }] }] });
+    expect(c.tx.customQuotation.findMany).not.toHaveBeenCalled();
+  });
+
+  it("returns a proposal version pointer only when the grouped read found a persisted proposal", async () => {
+    const c = context();
+    c.tx.$queryRaw.mockResolvedValue([recipientGroupRow({
+      quotations: [{ ...quotation(), proposalVersionId: "version-a", hasProposalPdf: true }],
+    })]);
+
+    await expect(c.service.list(tenantId, {})).resolves.toMatchObject({
+      recipientGroups: [{ quotations: [{ proposalVersionId: "version-a", hasProposalPdf: true }] }],
+    });
+    expect(c.tx.$queryRaw).toHaveBeenCalledTimes(1);
+    expect(c.tx.customQuotationVersion.findMany).not.toHaveBeenCalled();
   });
 
   it("returns bounded tenant-safe Lead quotation summaries with the latest immutable version in the relational query", async () => {
@@ -212,25 +245,22 @@ describe("CustomQuotationsService", () => {
     expect(c.tx.customQuotation.updateMany.mock.calls[0][0].data).not.toHaveProperty("fiscalClassificationId");
   });
 
-  it("returns target summaries in list/detail without per-row target lookups", async () => {
+  it("keeps Customer and Lead recipient groups distinct by stable identity without per-recipient lookups", async () => {
     const c = context();
-    c.tx.customQuotation.findMany.mockResolvedValue([
-      quotation({ leadId: "lead-a", customerId: null, lead: lead(), customer: null }),
-      quotation({ leadId: null, customerId: "customer-a", lead: null, customer: customer() }),
+    c.tx.$queryRaw.mockResolvedValue([
+      recipientGroupRow({ recipientType: "LEAD", recipientId: "lead-a", recipientDisplayName: "Alex", total: 2, quotations: [quotation({ leadId: "lead-a", customerId: null, lead: lead(), customer: null })] }),
+      recipientGroupRow({ recipientType: "CUSTOMER", recipientId: "customer-a", recipientDisplayName: "Alex", total: 2, quotations: [quotation({ leadId: null, customerId: "customer-a", lead: null, customer: customer() })] }),
     ]);
-    c.tx.customQuotation.count.mockResolvedValue(2);
     c.tx.customQuotation.findFirst.mockResolvedValue(quotation({ leadId: "lead-a", customerId: null, lead: lead(), customer: null, lines: [] }));
 
-    await expect(c.service.list(tenantId, {})).resolves.toMatchObject({ items: [
-      { target: { type: "LEAD", displayName: "Ada Lead", companyName: "Orbit Travel" } },
-      { target: { type: "CUSTOMER", displayName: "Cliente A", companyName: null } },
+    await expect(c.service.list(tenantId, {})).resolves.toMatchObject({ recipientGroups: [
+      { key: "LEAD:lead-a", recipient: { type: "LEAD", displayName: "Alex" } },
+      { key: "CUSTOMER:customer-a", recipient: { type: "CUSTOMER", displayName: "Alex" } },
     ] });
     await expect(c.service.find(tenantId, "quotation-a")).resolves.toMatchObject({ target: { type: "LEAD", email: "ada@example.test" } });
     expect(c.tx.lead.findFirst).not.toHaveBeenCalled();
     expect(c.tx.client.findFirst).not.toHaveBeenCalled();
-    expect(c.tx.customQuotation.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      include: expect.objectContaining({ lead: expect.anything(), customer: expect.anything() }),
-    }));
+    expect(c.tx.customQuotation.findMany).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -314,7 +344,7 @@ describe("CustomQuotationsService", () => {
 
 function context() {
   const delegate = () => ({ findFirst: jest.fn(), findMany: jest.fn(), count: jest.fn(), create: jest.fn(), updateMany: jest.fn(), deleteMany: jest.fn() });
-  const tx = { $executeRaw: jest.fn(), client: delegate(), lead: delegate(), customQuotation: delegate(), customQuotationVersion: delegate(), customQuotationLine: delegate(), customQuotationCostingProjectLink: delegate() } as any;
+  const tx = { $executeRaw: jest.fn(), $queryRaw: jest.fn(), client: delegate(), lead: delegate(), customQuotation: delegate(), customQuotationVersion: delegate(), customQuotationLine: delegate(), customQuotationCostingProjectLink: delegate() } as any;
   const prisma = { $transaction: jest.fn(async (work: (value: typeof tx) => Promise<unknown>) => work(tx)) };
   const numbers = { next: jest.fn() };
   return { tx, numbers, service: new CustomQuotationsService(prisma as never, numbers as never) };
@@ -355,6 +385,24 @@ function latestVersion(overrides: Record<string, unknown> = {}) {
   return {
     id: "version-a", versionNumber: 1, status: "ISSUED", finalSellingPrice: decimal("1000.00000"),
     createdAt: new Date("2026-09-21T01:00:00.000Z"), acceptedAt: null, rejectedAt: null, salesOrderId: null, salesOrder: null, ...overrides,
+  };
+}
+
+function recipientGroupRow(overrides: Record<string, unknown> = {}) {
+  return {
+    recipientType: "CUSTOMER",
+    recipientId: "customer-a",
+    recipientDisplayName: "Cliente A",
+    quotationCount: 2,
+    draftCount: 0,
+    issuedCount: 0,
+    acceptedCount: 2,
+    rejectedCount: 0,
+    expiredCount: 0,
+    cancelledCount: 0,
+    quotations: [{ ...quotation(), proposalVersionId: null, hasProposalPdf: false }],
+    total: 1,
+    ...overrides,
   };
 }
 

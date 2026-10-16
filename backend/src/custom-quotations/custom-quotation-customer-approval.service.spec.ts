@@ -17,7 +17,7 @@ describe("CustomQuotationCustomerApprovalService", () => {
       quotationNumber: "CQ-2026-000001", versionNumber: 1, currency: "USD", finalSellingPrice: "1450.12345", status: "ISSUED",
       title: "Propuesta congelada", recipientFullName: "Ana Cliente",
       lines: [
-        { displayOrder: 1, description: "Vuelo SJO – MAD", quantity: "1.0000", commercialNote: null },
+        { displayOrder: 1, description: "Vuelo", quantity: "1.0000", commercialNote: null },
         { displayOrder: 2, description: "Hospedaje 5 noches", quantity: "1.0000", commercialNote: "Incluye desayuno" },
       ],
       document: expect.objectContaining({ url: "https://signed.example/proposal.pdf", expiresInSeconds: 900 }),

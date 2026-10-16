@@ -42,7 +42,11 @@ export class CustomQuotationProposalService {
   }
 
   async persist(tenantId: string, quotationId: string, versionId: string) {
-    const proposal = await this.prepareDocument(tenantId, quotationId, versionId);
+    const { version, timezone } = await this.requireIssuedVersion(tenantId, quotationId, versionId);
+    if (version.deliverySentAt) {
+      throw new ConflictException("CUSTOM_QUOTATION_PROPOSAL_ALREADY_DELIVERED");
+    }
+    const proposal = await this.mapDocument(tenantId, version, timezone);
     const html = customQuotationProposalTemplate(proposal);
     const { pdfBuffer } = await this.documents.renderDocumentToBuffer(html);
     const settings = await this.tenants.getTenantConfig(tenantId);
@@ -62,7 +66,7 @@ export class CustomQuotationProposalService {
   }
 
   async getPersistedPreview(tenantId: string, quotationId: string, versionId: string) {
-    const { version } = await this.requireIssuedVersion(tenantId, quotationId, versionId);
+    const { version } = await this.requireViewableVersion(tenantId, quotationId, versionId);
     const document = await this.generatedDocuments.findLatest({
       tenantId,
       ownerType: GENERATED_DOCUMENT_OWNER_TYPES.CUSTOM_QUOTATION_VERSION,
@@ -89,6 +93,10 @@ export class CustomQuotationProposalService {
 
   async prepareDocument(tenantId: string, quotationId: string, versionId: string): Promise<CustomQuotationProposalDocument> {
     const { version, timezone } = await this.requireIssuedVersion(tenantId, quotationId, versionId);
+    return this.mapDocument(tenantId, version, timezone);
+  }
+
+  private async mapDocument(tenantId: string, version: any, timezone: string): Promise<CustomQuotationProposalDocument> {
     const settings = await this.tenants.getTenantConfig(tenantId);
     return this.mapper.map(version, {
       name: settings.name,
@@ -101,6 +109,20 @@ export class CustomQuotationProposalService {
   }
 
   private async requireIssuedVersion(tenantId: string, quotationId: string, versionId: string) {
+    return this.requireVersion(tenantId, quotationId, versionId, ["ISSUED"], "CUSTOM_QUOTATION_VERSION_NOT_ISSUED");
+  }
+
+  private async requireViewableVersion(tenantId: string, quotationId: string, versionId: string) {
+    return this.requireVersion(tenantId, quotationId, versionId, ["ISSUED", "ACCEPTED"], "CUSTOM_QUOTATION_VERSION_NOT_VIEWABLE");
+  }
+
+  private async requireVersion(
+    tenantId: string,
+    quotationId: string,
+    versionId: string,
+    allowedStatuses: readonly string[],
+    statusError: string,
+  ) {
     return this.withTenantTransaction(tenantId, async (tx) => {
       const version = await tx.customQuotationVersion.findFirst({
         where: { id: versionId, tenantId, customQuotationId: quotationId },
@@ -128,7 +150,7 @@ export class CustomQuotationProposalService {
         },
       });
       if (!version) throw new NotFoundException("CUSTOM_QUOTATION_VERSION_NOT_FOUND");
-      if (version.status !== "ISSUED") throw new ConflictException("CUSTOM_QUOTATION_VERSION_NOT_ISSUED");
+      if (!allowedStatuses.includes(version.status)) throw new ConflictException(statusError);
       const configuration = await tx.tenantBillingConfiguration.findUnique({
         where: { tenantId },
         select: { fiscalTimezone: true },

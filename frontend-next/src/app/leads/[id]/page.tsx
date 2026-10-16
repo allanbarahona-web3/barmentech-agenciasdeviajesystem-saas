@@ -18,9 +18,10 @@ import { canAccessLeadWorkspace, leadStatusLabel } from '@/features/leads/lead-w
 import { getHomeRouteForRole, getStoredSession } from '@/lib/auth-api';
 import { formatFinanceMoneyDisplay } from '@/lib/finance-money-display';
 import { quotationStatusLabel } from '@/features/custom-quotations/custom-quotation-presentation';
-import { getLeadCustomQuotationSummaries, type LeadCustomQuotationSummaryList } from '@/lib/custom-quotations-api';
+import { createCustomQuotation, getLeadCustomQuotationSummaries, type CustomQuotationInput, type LeadCustomQuotationSummaryList } from '@/lib/custom-quotations-api';
 import { getLead, type Lead } from '@/lib/leads-api';
 import { useTenantDateTimeFormatter } from '@/shared/regional/tenant-regional-provider';
+import { CustomQuotationEditorDialog } from '@/features/custom-quotations/components/CustomQuotationEditorDialog';
 
 export default function LeadDetailPage() {
   const params = useParams();
@@ -35,6 +36,7 @@ export default function LeadDetailPage() {
   const [quotations, setQuotations] = useState<LeadCustomQuotationSummaryList | null>(null);
   const [quotationsLoading, setQuotationsLoading] = useState(false);
   const [quotationsError, setQuotationsError] = useState<string | null>(null);
+  const [createQuotationOpen, setCreateQuotationOpen] = useState(false);
 
   useEffect(() => {
     const session = getStoredSession();
@@ -106,6 +108,7 @@ export default function LeadDetailPage() {
           title={<span className="flex items-center gap-3"><IconBadge tone="primary"><UserRound aria-hidden="true" /></IconBadge>{lead.fullName}</span>}
           description={lead.email}
           meta={<Badge variant={lead.status === 'OPEN' ? 'info' : 'secondary'}>{leadStatusLabel(lead.status)}</Badge>}
+          actions={lead.status === 'OPEN' ? <Button type="button" onClick={() => setCreateQuotationOpen(true)}><FileText aria-hidden="true" />Crear cotización</Button> : undefined}
         />
 
         <nav className="flex flex-wrap gap-2" aria-label="Secciones del prospecto">
@@ -133,10 +136,11 @@ export default function LeadDetailPage() {
           </dl>
         </SectionCard> : null}
 
-        {activeTab === 'QUOTATIONS' ? <LeadQuotationsTab quotations={quotations} loading={quotationsLoading} error={quotationsError} formatTenantDateTime={formatTenantDateTime} onRetry={() => void loadQuotations()} onPageChange={(page) => void loadQuotations(page)} onOpenQuotation={(quotationId) => router.push(`/custom-quotations/${encodeURIComponent(quotationId)}`)} onCreateQuotation={() => router.push('/custom-quotations')} /> : null}
+        {activeTab === 'QUOTATIONS' ? <LeadQuotationsTab quotations={quotations} loading={quotationsLoading} error={quotationsError} formatTenantDateTime={formatTenantDateTime} onRetry={() => void loadQuotations()} onPageChange={(page) => void loadQuotations(page)} onOpenQuotation={(quotationId) => router.push(`/custom-quotations/${encodeURIComponent(quotationId)}`)} onCreateQuotation={() => setCreateQuotationOpen(true)} /> : null}
 
         {activeTab === 'ACTIVITY' ? <LeadActivityTab lead={lead} quotations={quotations} loading={quotationsLoading} error={quotationsError} formatTenantDateTime={formatTenantDateTime} onRetry={() => void loadQuotations()} onPageChange={(page) => void loadQuotations(page)} /> : null}
       </div>
+      <CustomQuotationEditorDialog isOpen={createQuotationOpen} onClose={() => setCreateQuotationOpen(false)} initialLead={lead.status === 'OPEN' ? lead : null} onSubmit={async (input: CustomQuotationInput) => { const created = await createCustomQuotation(input); router.push(`/custom-quotations/${created.id}`); }} />
     </main>
   );
 }

@@ -2,7 +2,7 @@ import { mapCostComponentsToCommercialLines } from "./custom-quotation-commercia
 
 describe("Custom Quotation commercial line mapper", () => {
   it.each([
-    ["AIRFARE", { flightType: "INTERNATIONAL", tripType: "ROUND_TRIP", origin: "SJO", destination: "MAD", departureDate: "2026-10-01", returnDate: "2026-10-10", airline: "Iberia", cabinClass: "BUSINESS" }, null, "Vuelo: SJO → MAD", "1"],
+    ["AIRFARE", { flightType: "INTERNATIONAL", tripType: "ROUND_TRIP", origin: "SJO", destination: "MAD", departureDate: "2026-10-01", returnDate: "2026-10-10", airline: "Iberia", cabinClass: "BUSINESS" }, null, "Vuelo", "1"],
     ["BAGGAGE", { baggageType: "CHECKED", pieces: 2, weightKg: "23" }, null, "Equipaje: Equipaje documentado", "2"],
     ["LODGING", { propertyName: "Hotel Central", city: "Madrid", lodgingType: "HOTEL", roomType: "DOUBLE", checkIn: "2026-10-01", checkOut: "2026-10-10", nights: 9, roomCount: 2 }, null, "Hospedaje: Hotel Central · Madrid", "1"],
     ["TRANSPORTATION", { transportationType: "PRIVATE_TRANSFER", tripType: "ONE_WAY", origin: "Aeropuerto", destination: "Hotel", serviceDate: "2026-10-01", serviceTime: "14:30" }, null, "Transporte: Aeropuerto → Hotel", "1"],
@@ -24,12 +24,32 @@ describe("Custom Quotation commercial line mapper", () => {
       costSupplier: { name: "Proveedor interno" }, currentSnapshot: { amount: "999.99999", sourceUrl: "https://internal.example", sourceReference: "secreto" }, evidence: [{ id: "evidence-a" }], internalNotes: "No mostrar",
     } as any]);
 
-    expect(line).toEqual(expect.objectContaining({ description: "Vuelo: SJO → MAD", quantity: "1" }));
+    expect(line).toEqual(expect.objectContaining({ description: "Vuelo", quantity: "1" }));
     expect(JSON.stringify(line)).not.toContain("Proveedor interno");
     expect(JSON.stringify(line)).not.toContain("999.99999");
     expect(JSON.stringify(line)).not.toContain("internal.example");
     expect(JSON.stringify(line)).not.toContain("secreto");
     expect(JSON.stringify(line)).not.toContain("No mostrar");
+  });
+
+  it("uses human-readable route names and customer dates without exposing airport codes or sourcing airline", () => {
+    const [line] = mapCostComponentsToCommercialLines([component({
+      code: "AIRFARE",
+      detailPayload: {
+        flightType: "INTERNATIONAL", tripType: "ONE_WAY",
+        origin: "SJO", originDisplayName: "San José (SJO)",
+        destination: "MAD", destinationDisplayName: "Madrid (MAD)",
+        departureDate: "2026-10-21", airline: "Proveedor interno", cabinClass: "ECONOMY",
+      },
+    })]);
+
+    expect(line).toEqual(expect.objectContaining({
+      description: "Vuelo: San José → Madrid",
+      commercialNote: "Solo ida · Clase económica · Salida: 21/10/2026",
+    }));
+    expect(JSON.stringify(line)).not.toContain("SJO");
+    expect(JSON.stringify(line)).not.toContain("MAD");
+    expect(JSON.stringify(line)).not.toContain("Proveedor interno");
   });
 
   it("uses stable input ordering and never derives quantity from a financial amount", () => {

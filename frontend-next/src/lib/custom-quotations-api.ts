@@ -17,7 +17,18 @@ export type CustomQuotation = { id: string; quotationNumber: string; leadId: str
 export type CustomQuotationCommercialLine = { costComponentId: string; displayOrder: number; description: string; quantity: string; commercialNote: string | null };
 export type CustomQuotationFiscalClassification = { id: string; displayName: string; description: string | null; fiscalItemCategory: 'SERVICE' | 'MERCHANDISE'; cabysCode: string; unitOfMeasureCode: string; taxCode: string; taxRateCode: string; taxPercentage: string };
 export type CustomQuotationDetail = CustomQuotation;
-export type CustomQuotationList = { items: CustomQuotation[]; total: number; page: number; pageSize: number; totalPages: number };
+export type CustomQuotationGroupedRow = CustomQuotation & {
+  proposalVersionId: string | null;
+  hasProposalPdf: boolean;
+};
+export type CustomQuotationRecipientGroup = {
+  key: string;
+  recipient: { type: 'LEAD' | 'CUSTOMER'; id: string; displayName: string };
+  quotationCount: number;
+  statusSummary: Record<CustomQuotationStatus, number>;
+  quotations: CustomQuotationGroupedRow[];
+};
+export type CustomQuotationRecipientGroupList = { recipientGroups: CustomQuotationRecipientGroup[]; total: number; page: number; pageSize: number; totalPages: number };
 export type LeadCustomQuotationSummary = {
   id: string;
   quotationNumber: string;
@@ -88,7 +99,7 @@ async function versionRequest<T>(path: string, method: 'GET' | 'POST'): Promise<
   return response.json();
 }
 
-export async function listCustomQuotations(params: { page?: number; pageSize?: number; status?: CustomQuotationStatus; search?: string } = {}): Promise<CustomQuotationList> {
+export async function listCustomQuotations(params: { page?: number; pageSize?: number; status?: CustomQuotationStatus; search?: string } = {}): Promise<CustomQuotationRecipientGroupList> {
   const query = new URLSearchParams();
   query.set('page', String(Math.max(1, params.page ?? 1)));
   query.set('pageSize', String(Math.min(MAX_PAGE_SIZE, Math.max(1, params.pageSize ?? PAGE_SIZE))));

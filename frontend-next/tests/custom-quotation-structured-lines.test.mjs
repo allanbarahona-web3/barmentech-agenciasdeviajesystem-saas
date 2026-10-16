@@ -30,6 +30,22 @@ test('la cotización inyecta el adaptador scoped sin convertir costingProjectId 
   assert.match(costApi, /defaultCostCompositionApi/);
 });
 
+test('las acciones de componentes de costos muestran progreso y evitan envíos duplicados', () => {
+  assert.match(composition, /import \{ LoaderCircle \} from "lucide-react"/);
+  assert.match(composition, /type ComponentAction = "SAVE" \| "SAVE_AND_ADD" \| "ARCHIVE"/);
+  assert.match(composition, /setComponentAction\(addAnother \? "SAVE_AND_ADD" : "SAVE"\)/);
+  assert.match(composition, /setComponentAction\("ARCHIVE"\)/);
+  assert.match(composition, /function ButtonLoadingLabel[\s\S]*LoaderCircle className="animate-spin"/);
+  assert.match(composition, /<ButtonLoadingLabel label="Guardando…" \/>/);
+  assert.match(composition, /<ButtonLoadingLabel label="Desactivando…" \/>/);
+  assert.match(composition, /if \(!project \|\| !selectedCategory \|\| saving\) return/);
+  assert.match(composition, /async function archiveComponent\(component: CostComponent\) \{ if \(saving\) return/);
+  assert.match(composition, /onOpenChange=\{\(open\) => \{ if \(!open && !saving\) setArchiveCandidate\(null\); \}\}/);
+  assert.match(composition, /onClick=\{resetForm\} disabled=\{saving\}>Cancelar/);
+  assert.match(composition, /await refreshComposition\(\); resetForm\(\); setArchiveCandidate\(null\);/);
+  assert.match(composition, /catch \(caught\) \{ setError\(message\(caught, "No se pudo guardar el componente\."\)\); \} finally \{ setSaving\(false\); setComponentAction\(null\); \}/);
+});
+
 test('la propuesta de borrador se basa en servicios estructurados y no en líneas raíz mutables', () => {
   const proposal = readSource('../src/features/custom-quotations/components/CustomQuotationProposalTab.tsx');
   assert.match(proposal, /commercialLines: CustomQuotationCommercialLine\[\]/);

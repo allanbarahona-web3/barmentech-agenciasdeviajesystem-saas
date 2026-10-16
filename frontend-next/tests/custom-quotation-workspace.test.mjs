@@ -27,15 +27,43 @@ test('Cotizaciones personalizadas está habilitada y lleva al workspace', () => 
   assert.match(dashboard, /router\.push\('\/custom-quotations'\)/);
 });
 
-test('el listado usa la API paginada y presenta estados y destinatarios en español', () => {
+test('el listado usa grupos paginados por destinatario y presenta estados en español', () => {
   assert.match(api, /PAGE_SIZE = 20/);
   assert.match(api, /MAX_PAGE_SIZE = 25/);
   assert.match(api, /\/custom-quotations\?\$\{query\}/);
+  assert.match(api, /CustomQuotationRecipientGroup/);
+  assert.match(api, /recipientGroups/);
   assert.equal(quotationStatusLabel('DRAFT'), 'Borrador');
   assert.equal(quotationStatusLabel('ACCEPTED'), 'Aceptada');
   assert.equal(quotationTargetLabel({ type: 'LEAD' }), 'Prospecto');
   assert.equal(quotationTargetLabel({ type: 'CUSTOMER' }), 'Cliente');
-  assert.match(list, /formatTenantDateTime\(q\.createdAt\)/);
+  assert.match(list, /data\.recipientGroups\.map/);
+  assert.match(list, /group\.recipient\.type === 'CUSTOMER' \? 'Cliente' : 'Prospecto'/);
+  assert.match(list, /statusSummaryText\(group\)/);
+  assert.match(list, /quotationStatusLabel\(quotation\.status\)/);
+  assert.match(list, /formatTenantDateTime\(quotation\.createdAt\)/);
+  assert.match(list, /placeholder="Buscar por destinatario, número o asunto"/);
+});
+
+test('los grupos están colapsados por defecto, admiten múltiples expansiones y mantienen la navegación existente', () => {
+  assert.match(list, /useState<Set<string>>\(\(\) => new Set\(\)\)/);
+  assert.match(list, /aria-expanded=\{expanded\}/);
+  assert.match(list, /new Set\(current\)/);
+  assert.match(list, /group\.key/);
+  assert.match(list, /router\.push\(`\/custom-quotations\/\$\{quotationId\}`\)/);
+  assert.match(list, /setPage\(1\)/);
+  assert.match(list, /<CustomQuotationEditorDialog isOpen=\{createOpen\}/);
+});
+
+test('el acordeón diferencia el destinatario padre de sus cotizaciones hijas', () => {
+  assert.match(list, /rounded-xl border border-border bg-card/);
+  assert.match(list, /bg-muted\/50/);
+  assert.match(list, /<Badge variant="outline">\{typeLabel\}<\/Badge>/);
+  assert.match(list, /ml-4 space-y-2 border-l-2 border-border pl-3/);
+  assert.match(list, /bg-background px-3 py-2\.5/);
+  assert.match(list, /\{expanded \? <div className="mt-3 ml-4/);
+  assert.match(list, /quotationStatusVariant\(quotation\.status\)/);
+  assert.match(list, /onClick=\{\(\) => onOpenQuotation\(quotation\.id\)\}/);
 });
 
 test('el editor exige un solo destinatario y reutiliza selector de cliente y creación de prospecto', () => {
@@ -45,8 +73,19 @@ test('el editor exige un solo destinatario y reutiliza selector de cliente y cre
   assert.equal(hasExactlyOneQuotationTarget(null, null), false);
   assert.match(editor, /CustomerSearchSelector/);
   assert.match(editor, /LeadQuickCreateModal/);
-  assert.match(editor, /setLead\(created\)/);
+  assert.match(editor, /setShowQuickCreate\(next === 'LEAD'\)/);
+  assert.match(editor, /setLead\(created\); setShowQuickCreate\(false\)/);
+  assert.match(editor, /Prospecto seleccionado/);
+  assert.match(editor, /Cliente seleccionado/);
+  assert.match(editor, /Cree un prospecto para continuar con la cotización/);
+  assert.doesNotMatch(editor, /Buscar prospecto/);
   assert.match(editor, /\.\.\.\(leadId \? \{ leadId \} : \{ customerId: customerId! \}\)/);
+  assert.match(editor, /initialLead\?: Lead \| null/);
+  assert.match(editor, /\(!quotation \? initialLead \?\? null : null\)/);
+  assert.match(editor, /selectedLead \? 'LEAD' : null/);
+  assert.match(editor, /Nombre de la cotización/);
+  assert.match(list, /<CustomQuotationEditorDialog isOpen=\{createOpen\}/);
+  assert.doesNotMatch(list, /initialLead=/);
 });
 
 test('el detalle muestra sólo servicios comerciales derivados y no permite líneas libres', () => {

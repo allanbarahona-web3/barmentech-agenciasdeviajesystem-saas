@@ -87,6 +87,27 @@ describe("CustomQuotationProposalService", () => {
     expect(c.tx.customQuotationVersion.updateMany).toBeUndefined();
   });
 
+  it("allows the persisted commercial proposal for an ACCEPTED immutable version", async () => {
+    const c = context();
+    c.tx.customQuotationVersion.findFirst.mockResolvedValue(version({ status: "ACCEPTED" }));
+    c.generated.findLatest.mockResolvedValue({ id: "document-a", fileName: "propuesta-comercial.pdf", mimeType: "application/pdf", size: 2048, createdAt: new Date(), updatedAt: new Date() });
+    c.generated.getSignedUrl.mockResolvedValue("https://signed.example/proposal.pdf");
+
+    await expect(c.service.getPersistedPreview("tenant-a", "quotation-a", "version-a"))
+      .resolves.toMatchObject({ id: "document-a", url: "https://signed.example/proposal.pdf" });
+  });
+
+  it("does not generate or replace a delivered proposal", async () => {
+    const c = context();
+    c.tx.customQuotationVersion.findFirst.mockResolvedValue(version({ deliverySentAt: new Date() }));
+
+    await expect(c.service.persist("tenant-a", "quotation-a", "version-a"))
+      .rejects.toThrow("CUSTOM_QUOTATION_PROPOSAL_ALREADY_DELIVERED");
+    expect(c.pdf.renderDocumentToBuffer).not.toHaveBeenCalled();
+    expect(c.storage.uploadObject).not.toHaveBeenCalled();
+    expect(c.generated.register).not.toHaveBeenCalled();
+  });
+
   it("rejects cross-tenant, non-issued, and missing immutable versions before rendering", async () => {
     const crossTenant = context();
     crossTenant.tx.customQuotationVersion.findFirst.mockResolvedValue(null);
@@ -97,6 +118,11 @@ describe("CustomQuotationProposalService", () => {
     notIssued.tx.customQuotationVersion.findFirst.mockResolvedValue(version({ status: "CANCELLED" }));
     await expect(notIssued.service.persist("tenant-a", "quotation-a", "version-a")).rejects.toBeInstanceOf(ConflictException);
     expect(notIssued.pdf.renderDocumentToBuffer).not.toHaveBeenCalled();
+
+    const accepted = context();
+    accepted.tx.customQuotationVersion.findFirst.mockResolvedValue(version({ status: "ACCEPTED" }));
+    await expect(accepted.service.persist("tenant-a", "quotation-a", "version-a")).rejects.toThrow("CUSTOM_QUOTATION_VERSION_NOT_ISSUED");
+    expect(accepted.pdf.renderDocumentToBuffer).not.toHaveBeenCalled();
 
     const missingRecipient = context();
     missingRecipient.tx.customQuotationVersion.findFirst.mockResolvedValue(version({ recipientFullName: null }));

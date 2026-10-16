@@ -1,4 +1,5 @@
 import { ConflictException, Injectable } from "@nestjs/common";
+import { customerProposalLine } from "./custom-quotation-customer-presentation";
 import type { CustomQuotationProposalDocument } from "./custom-quotation-proposal.types";
 
 @Injectable()
@@ -24,7 +25,7 @@ export class CustomQuotationProposalMapper {
         phone: recipient.phone,
       },
       title: version.title,
-      lines: version.lines.map((line: any) => ({
+      lines: version.lines.map((line: any) => customerProposalLine({
         displayOrder: line.displayOrder,
         description: line.description,
         quantity: decimalString(line.quantity),

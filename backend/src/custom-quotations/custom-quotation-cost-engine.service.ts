@@ -1,6 +1,6 @@
 import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { CostEvidenceService, type CostEvidenceFile } from "../cost-engine/cost-evidence.service";
-import { CostEngineService } from "../cost-engine/cost-engine.service";
+import { CostEngineService, type CostEngineWriteTransaction } from "../cost-engine/cost-engine.service";
 import {
   CreateCostCategoryDto,
   CreateCostComponentDto,
@@ -76,8 +76,10 @@ export class CustomQuotationCostEngineService {
   }
 
   updateComponentCost(tenantId: string, quotationId: string, componentId: string, dto: UpdateCostComponentCostDto, actor: CustomQuotationActor) {
-    return this.withComponentScope(tenantId, quotationId, componentId, true, () =>
-      this.costs.updateComponentCost(tenantId, componentId, dto, actor));
+    return this.withComponentScope(tenantId, quotationId, componentId, true, async (_scope, tx) => {
+      await this.costs.updateComponentCostInTransaction(tx as unknown as CostEngineWriteTransaction, tenantId, componentId, dto, actor);
+      return componentId;
+    }).then((savedComponentId) => this.costs.getComponent(tenantId, savedComponentId));
   }
 
   archiveComponent(tenantId: string, quotationId: string, componentId: string, actor: CustomQuotationActor) {
@@ -100,14 +102,14 @@ export class CustomQuotationCostEngineService {
       this.evidence.upload(tenantId, snapshotId, file, actor));
   }
 
-  private withComponentScope<T>(tenantId: string, quotationId: string, componentId: string, editable: boolean, work: () => Promise<T>) {
+  private withComponentScope<T>(tenantId: string, quotationId: string, componentId: string, editable: boolean, work: (scope: QuotationCostScope, tx: ScopedCostTransaction) => Promise<T>) {
     return this.withScope(tenantId, quotationId, editable, async (scope, tx) => {
       const component = await tx.costComponent.findFirst({
         where: { id: componentId, tenantId, costingProjectId: scope.costingProjectId },
         select: { id: true },
       });
       if (!component) throw new NotFoundException("CUSTOM_QUOTATION_COST_COMPONENT_NOT_FOUND");
-      return work();
+      return work(scope, tx);
     });
   }
 
@@ -124,20 +126,22 @@ export class CustomQuotationCostEngineService {
 
   private withScope<T>(tenantId: string, quotationId: string, editable: boolean, work: (scope: QuotationCostScope, tx: ScopedCostTransaction) => Promise<T>) {
     return runTenantTransaction(this.database, tenantId, async (tx) => {
+      let quotation: { id: string; status: string } | null;
       if (editable) {
-        const locked = await tx.$queryRaw<Array<{ id: string }>>`
-          SELECT "id" FROM "custom_quotations"
+        const locked = await tx.$queryRaw<Array<{ id: string; status: string }>>`
+          SELECT "id", "status" FROM "custom_quotations"
           WHERE "id" = ${quotationId} AND "tenantId" = ${tenantId}
           FOR UPDATE
         `;
         if (locked.length !== 1) throw new NotFoundException("CUSTOM_QUOTATION_NOT_FOUND");
+        quotation = locked[0];
+      } else {
+        quotation = await tx.customQuotation.findFirst({
+          where: { id: quotationId, tenantId },
+          select: { id: true, status: true },
+        });
+        if (!quotation) throw new NotFoundException("CUSTOM_QUOTATION_NOT_FOUND");
       }
-
-      const quotation = await tx.customQuotation.findFirst({
-        where: { id: quotationId, tenantId },
-        select: { id: true, status: true },
-      });
-      if (!quotation) throw new NotFoundException("CUSTOM_QUOTATION_NOT_FOUND");
       if (editable && quotation.status !== "DRAFT") throw new ConflictException("CUSTOM_QUOTATION_NOT_DRAFT");
 
       const link = await tx.customQuotationCostingProjectLink.findFirst({

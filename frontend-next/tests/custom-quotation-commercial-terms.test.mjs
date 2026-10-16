@@ -6,12 +6,14 @@ const editor = readFileSync(new URL('../src/features/custom-quotations/component
 const api = readFileSync(new URL('../src/lib/custom-quotations-api.ts', import.meta.url), 'utf8');
 const proposal = readFileSync(new URL('../src/features/custom-quotations/components/CustomQuotationProposalTab.tsx', import.meta.url), 'utf8');
 
-test('Custom Quotation crédito only offers días and keeps CASH term controls hidden', () => {
+test('Custom Quotation crédito only exposes a days count and keeps CASH term controls hidden', () => {
   assert.match(editor, /paymentConditionType === 'CREDIT'/);
-  assert.match(editor, /<option value="DAYS">Días<\/option>/);
-  assert.match(editor, /value="DAYS" disabled/);
+  assert.match(editor, /label="Cantidad de días"/);
+  assert.doesNotMatch(editor, /label="Unidad"/);
+  assert.doesNotMatch(editor, /<option value="DAYS">Días<\/option>/);
   assert.doesNotMatch(editor, /<option value="MONTHS">Meses<\/option>/);
   assert.match(editor, /paymentTermUnit: 'DAYS'/);
+  assert.match(editor, /paymentConditionType === 'CREDIT' \? \{\} : \{ paymentTermValue: '' \}/);
 });
 
 test('Custom Quotation requests use days-only credit terms and map the domain error safely', () => {

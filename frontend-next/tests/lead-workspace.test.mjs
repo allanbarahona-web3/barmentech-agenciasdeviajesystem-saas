@@ -12,6 +12,7 @@ const listSource = readFileSync(new URL('../src/app/leads/page.tsx', import.meta
 const detailSource = readFileSync(new URL('../src/app/leads/[id]/page.tsx', import.meta.url), 'utf8');
 const leadsApiSource = readFileSync(new URL('../src/lib/leads-api.ts', import.meta.url), 'utf8');
 const quotationsApiSource = readFileSync(new URL('../src/lib/custom-quotations-api.ts', import.meta.url), 'utf8');
+const quotationEditorSource = readFileSync(new URL('../src/features/custom-quotations/components/CustomQuotationEditorDialog.tsx', import.meta.url), 'utf8');
 
 test('la navegación muestra Prospectos solo para los roles comerciales autorizados', () => {
   assert.match(navigationSource, /isAdmin \|\| role === "AGENT"/);
@@ -56,4 +57,18 @@ test('Cotizaciones y Actividad son pestañas reales, sin cambiar el Resumen', ()
   assert.doesNotMatch(detailSource, /Cotizaciones · Próximamente|Actividad · Próximamente/);
   assert.match(detailSource, /Información comercial del prospecto/);
   assert.match(quotationsApiSource, /getLeadCustomQuotationSummaries/);
+});
+
+test('un Lead abierto crea una cotización con el diálogo compartido y conserva el flujo existente', () => {
+  assert.match(detailSource, /CustomQuotationEditorDialog/);
+  assert.match(detailSource, /lead\.status === 'OPEN' \? <Button[^>]*>.*Crear cotización/);
+  assert.match(detailSource, /onCreateQuotation=\{\(\) => setCreateQuotationOpen\(true\)\}/);
+  assert.match(detailSource, /initialLead=\{lead\.status === 'OPEN' \? lead : null\}/);
+  assert.match(detailSource, /createCustomQuotation\(input\)/);
+  assert.match(detailSource, /router\.push\(`\/custom-quotations\/\$\{created\.id\}`\)/);
+  assert.match(quotationEditorSource, /initialLead\?: Lead \| null/);
+  assert.match(quotationEditorSource, /\(!quotation \? initialLead \?\? null : null\)/);
+  assert.match(quotationEditorSource, /selectedLead \? 'LEAD' : null/);
+  assert.match(quotationEditorSource, /Prospecto seleccionado/);
+  assert.match(quotationEditorSource, /const leadId = mode === 'LEAD' \? lead\?\.id \?\? null : null/);
 });

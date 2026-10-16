@@ -37,9 +37,8 @@ function mapComponent(component: CommercialCostComponent): Omit<DerivedCommercia
   if (!title) return null;
 
   switch (code) {
-    case "AIRFARE": return line(`Vuelo: ${route(details) || title}`, "1", join(
+    case "AIRFARE": return line(routeLine("Vuelo", details), "1", join(
       enumText(details, "tripType", TRIP_TYPE_LABELS),
-      value(details, "airline") && `Aerolínea: ${value(details, "airline")}`,
       enumText(details, "cabinClass", CABIN_LABELS),
       dateRange(details, "departureDate", "returnDate", "Salida", "Regreso"),
     ));
@@ -53,7 +52,7 @@ function mapComponent(component: CommercialCostComponent): Omit<DerivedCommercia
       numberValue(details, "nights") && `${numberValue(details, "nights")} ${numberValue(details, "nights") === "1" ? "noche" : "noches"}`,
       numberValue(details, "roomCount") && `${numberValue(details, "roomCount")} ${numberValue(details, "roomCount") === "1" ? "habitación" : "habitaciones"}`,
     ));
-    case "TRANSPORTATION": return line(`Transporte: ${route(details) || title}`, "1", join(
+    case "TRANSPORTATION": return line(routeLine("Transporte", details), "1", join(
       enumText(details, "transportationType", TRANSPORTATION_LABELS), enumText(details, "tripType", TRIP_TYPE_LABELS),
       dateValue(details, "serviceDate", "Fecha"), value(details, "serviceTime") && `Hora: ${value(details, "serviceTime")}`,
       dateValue(details, "returnDate", "Regreso"),
@@ -120,18 +119,50 @@ function componentQuantity(component: CommercialCostComponent, fallback: string)
   return fallback;
 }
 
-function route(details: Record<string, unknown> | null) {
-  const origin = value(details, "origin"); const destination = value(details, "destination");
-  return origin && destination ? `${origin} → ${destination}` : null;
+function routeLine(label: string, details: Record<string, unknown> | null) {
+  const route = customerRoute(
+    displayPlace(details, "origin", "originDisplayName", "originName", "originCity"),
+    displayPlace(details, "destination", "destinationDisplayName", "destinationName", "destinationCity"),
+  );
+  return route ? `${label}: ${route}` : label;
+}
+
+function customerRoute(origin: string | null, destination: string | null) {
+  if (origin && destination) return `${origin} → ${destination}`;
+  return origin ?? destination;
+}
+
+function displayPlace(details: Record<string, unknown> | null, ...fields: string[]) {
+  for (const field of fields) {
+    const candidate = customerText(value(details, field));
+    if (candidate) return candidate;
+  }
+  return null;
+}
+
+function customerText(value: string | null) {
+  if (!value) return null;
+  const sanitized = value
+    .replace(/\b[A-Z]{3}\b/g, "")
+    .replace(/\(\s*\)/g, "")
+    .replace(/\s{2,}/g, " ")
+    .replace(/^[\s\-–—→]+|[\s\-–—→]+$/g, "")
+    .trim();
+  return sanitized || null;
 }
 
 function dateValue(details: Record<string, unknown> | null, field: string, label: string) {
   const date = value(details, field);
-  return date ? `${label}: ${date}` : null;
+  return date ? `${label}: ${customerDate(date)}` : null;
 }
 
 function dateRange(details: Record<string, unknown> | null, startField: string, endField: string, startLabel: string, endLabel: string) {
   return join(dateValue(details, startField, startLabel), dateValue(details, endField, endLabel));
+}
+
+function customerDate(value: string) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : value;
 }
 
 function enumText(details: Record<string, unknown> | null, field: string, labels: Record<string, string>) {

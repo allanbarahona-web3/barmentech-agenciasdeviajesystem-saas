@@ -27,7 +27,7 @@ export type CostSnapshotInput = {
   reason: string | null;
 };
 
-type CostEngineTransaction = {
+export type CostEngineTransaction = {
   $executeRaw<T = unknown>(query: TemplateStringsArray, ...values: unknown[]): Promise<T>;
   $queryRaw<T>(query: TemplateStringsArray, ...values: unknown[]): Promise<T>;
   costingProject: Record<string, (...args: any[]) => Promise<any>>;
@@ -505,21 +505,24 @@ export class CostEngineRepository {
   }
 
   updateComponentCost(tenantId: string, costComponentId: string, input: CostSnapshotInput, actor: CostActor) {
-    return this.withTenantTransaction(tenantId, "cost-engine.update-component-cost", async (tx) => {
-      const component = await this.lockAndRequireComponent(tx, tenantId, costComponentId, true);
-      if (component.costCategory.origin === "STANDARD" && component.costCategory.code === "AIRFARE" && await this.isTravelLinkedProject(tx, tenantId, component.costingProjectId)) {
-        throw new BadRequestException("Travel-linked AIRFARE monetary updates must use the AIRFARE daily authority flow.");
-      }
-      const project = await this.requireActiveProject(tx, tenantId, component.costingProjectId);
-      this.requireProjectCurrency(project.baseCurrency, input.currency);
-      const lastSnapshot = await tx.costSnapshot.findFirst({
-        where: { tenantId, costComponentId }, select: { sequence: true },
-        orderBy: [{ sequence: "desc" }, { id: "desc" }],
-      });
-      const snapshot = await this.createSnapshot(tx, tenantId, component.costingProjectId, costComponentId, (lastSnapshot?.sequence ?? 0) + 1, input, actor);
-      await this.setCurrentSnapshot(tx, tenantId, costComponentId, snapshot.id);
-      return snapshot.id;
+    return this.withTenantTransaction(tenantId, "cost-engine.update-component-cost", (tx) =>
+      this.updateComponentCostInTransaction(tx, tenantId, costComponentId, input, actor));
+  }
+
+  async updateComponentCostInTransaction(tx: CostEngineTransaction, tenantId: string, costComponentId: string, input: CostSnapshotInput, actor: CostActor) {
+    const component = await this.lockAndRequireComponent(tx, tenantId, costComponentId, true);
+    if (component.costCategory.origin === "STANDARD" && component.costCategory.code === "AIRFARE" && await this.isTravelLinkedProject(tx, tenantId, component.costingProjectId)) {
+      throw new BadRequestException("Travel-linked AIRFARE monetary updates must use the AIRFARE daily authority flow.");
+    }
+    const project = await this.requireActiveProject(tx, tenantId, component.costingProjectId);
+    this.requireProjectCurrency(project.baseCurrency, input.currency);
+    const lastSnapshot = await tx.costSnapshot.findFirst({
+      where: { tenantId, costComponentId }, select: { sequence: true },
+      orderBy: [{ sequence: "desc" }, { id: "desc" }],
     });
+    const snapshot = await this.createSnapshot(tx, tenantId, component.costingProjectId, costComponentId, (lastSnapshot?.sequence ?? 0) + 1, input, actor);
+    await this.setCurrentSnapshot(tx, tenantId, costComponentId, snapshot.id);
+    return snapshot.id;
   }
 
   listCategories(tenantId: string, page: number, pageSize: number) {
