@@ -17,6 +17,7 @@ import {
   type TenantBillingConfiguration,
   type UpdateTenantBillingConfiguration,
 } from '@/lib/fiscal-billing-admin-api';
+import { useTenantDateTimeFormatter } from '@/shared/regional/tenant-regional-provider';
 
 type FormState = UpdateTenantBillingConfiguration;
 
@@ -40,14 +41,6 @@ function toForm(configuration: TenantBillingConfiguration): FormState {
     exchangeRateSource: configuration.exchangeRateSource,
     fiscalSchemaVersion: configuration.fiscalSchemaVersion,
   };
-}
-
-function formatUpdatedAt(value: string | null) {
-  if (!value) return null;
-  return new Intl.DateTimeFormat('es-CR', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(new Date(value));
 }
 
 function ToggleField({
@@ -90,6 +83,7 @@ function ToggleField({
 
 export default function FiscalBillingAdminPage() {
   const router = useRouter();
+  const formatTenantDateTime = useTenantDateTimeFormatter();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [configured, setConfigured] = useState(false);
@@ -227,7 +221,7 @@ export default function FiscalBillingAdminPage() {
               Esta configuración aún no se ha guardado. El formulario muestra los valores seguros predeterminados.
             </p>
           )}
-          {updatedAt && <p className="mt-3 text-xs text-slate-500">Última actualización: {formatUpdatedAt(updatedAt)}</p>}
+          {updatedAt && <p className="mt-3 text-xs text-slate-500">Última actualización: {formatTenantDateTime(updatedAt)}</p>}
         </header>
 
         <form className="space-y-6" onSubmit={save}>

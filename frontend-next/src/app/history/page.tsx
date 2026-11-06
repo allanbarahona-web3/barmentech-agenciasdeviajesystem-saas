@@ -20,20 +20,9 @@ import { DocumentStatusIndicator } from "@/components/document-status-indicator"
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { useTenantDateTimeFormatter } from "@/shared/regional/tenant-regional-provider";
 
 const STATUS_SIGNED = "SIGNED";
-
-const formatDateTime = (value: string): string => {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleString("es-CR", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-};
 
 const resolveTripType = (item: HistoryContractItem): {
   label: string;
@@ -59,6 +48,7 @@ const resolveTripType = (item: HistoryContractItem): {
 
 export default function HistoryPage() {
   const router = useRouter();
+  const formatTenantDateTime = useTenantDateTimeFormatter();
   
   // Cargar filtros desde localStorage
   const [query, setQuery] = useState(() => {
@@ -515,7 +505,7 @@ export default function HistoryPage() {
                       <tr key={item.id}>
                         <td>
                           <div className="history-col-name">{item.clientFullName}</div>
-                          <div className="history-col-muted">{formatDateTime(item.createdAt)}</div>
+                          <div className="history-col-muted">{formatTenantDateTime(item.createdAt)}</div>
                         </td>
                         <td>{item.clientIdNumber || "-"}</td>
                         <td>{item.clientEmail || "-"}</td>

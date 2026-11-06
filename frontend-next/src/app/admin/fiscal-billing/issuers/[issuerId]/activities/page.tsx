@@ -21,6 +21,7 @@ import {
   type FiscalIssuer,
   type FiscalIssuerEconomicActivity,
 } from '@/lib/fiscal-billing-admin-api';
+import { useTenantDateTimeFormatter } from '@/shared/regional/tenant-regional-provider';
 
 type Confirmation =
   | { kind: 'primary'; activity: FiscalIssuerEconomicActivity }
@@ -44,6 +45,7 @@ function yesNo(value: boolean | undefined) {
 export default function IssuerEconomicActivitiesPage() {
   const { issuerId } = useParams<{ issuerId: string }>();
   const router = useRouter();
+  const formatTenantDateTime = useTenantDateTimeFormatter();
   const [authorized, setAuthorized] = useState(false);
   const [issuer, setIssuer] = useState<FiscalIssuer | null>(null);
   const [issuerError, setIssuerError] = useState('');
@@ -226,7 +228,7 @@ export default function IssuerEconomicActivitiesPage() {
                       {activity.isPrimary && <Badge className="bg-blue-100 text-blue-800">Principal</Badge>}
                     </div>
                     <p className="mt-1 text-sm text-slate-700">{activity.description ?? 'Sin descripción registrada'}</p>
-                    <p className="mt-1 text-xs text-slate-500">Orden {activity.displayOrder} · Actualizada {new Intl.DateTimeFormat('es-CR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(activity.updatedAt))}</p>
+                    <p className="mt-1 text-xs text-slate-500">Orden {activity.displayOrder} · Actualizada {formatTenantDateTime(activity.updatedAt)}</p>
                   </div>
                   {!activity.isPrimary && (
                     <div className="flex flex-wrap gap-2">

@@ -23,6 +23,7 @@ import {
   type SalesOrderPaymentTermUnit,
 } from '@/lib/sales-orders-api';
 import { formatCommercialService } from '@/shared/additional-services';
+import { useTenantDateTimeFormatter } from '@/shared/regional/tenant-regional-provider';
 import styles from './sales-order-workspace.module.css';
 
 type ParticipantSnapshot = {
@@ -38,14 +39,6 @@ const SNAPSHOT_COVERED_ATTRIBUTE_KEYS = new Set([
   'eventName',
   'venueOrCity',
 ]);
-
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat('es-CR', {
-    day: '2-digit',
-    month: 'long',
-    year: 'numeric',
-  }).format(new Date(value));
-}
 
 function formatMoney(value: string, currency: SalesOrderCurrency) {
   const amount = Number(value);
@@ -202,6 +195,9 @@ function ServiceCard({
 
 export default function SalesOrderWorkspacePage() {
   const params = useParams<{ id: string }>();
+  const formatTenantDateTime = useTenantDateTimeFormatter();
+  const formatTenantDate = (value: string) =>
+    formatTenantDateTime(value).split(' ')[0] || '-';
   const [order, setOrder] = useState<SalesOrderDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
@@ -281,7 +277,7 @@ export default function SalesOrderWorkspacePage() {
             </Badge>
             <span>
               <CalendarDays aria-hidden="true" />
-              {formatDate(order.createdAt)}
+              {formatTenantDate(order.createdAt)}
             </span>
           </div>
         </header>
@@ -325,7 +321,7 @@ export default function SalesOrderWorkspacePage() {
               </div>
               <div>
                 <dt>Fecha</dt>
-                <dd>{formatDate(order.createdAt)}</dd>
+                <dd>{formatTenantDate(order.createdAt)}</dd>
               </div>
             </dl>
           </section>

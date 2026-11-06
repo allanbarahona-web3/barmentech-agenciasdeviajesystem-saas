@@ -22,17 +22,10 @@ import {
   type SalesOrderStatus,
   type SalesOrdersPage,
 } from '@/lib/sales-orders-api';
+import { useTenantDateTimeFormatter } from '@/shared/regional/tenant-regional-provider';
 import styles from './sales-orders-dashboard.module.css';
 
 const PAGE_SIZE = 20;
-
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat('es-CR', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  }).format(new Date(value));
-}
 
 function formatAmount(value: string, currency: SalesOrderCurrency) {
   const amount = Number(value);
@@ -81,6 +74,9 @@ function LoadingRows() {
 }
 
 export default function SalesOrdersDashboardPage() {
+  const formatTenantDateTime = useTenantDateTimeFormatter();
+  const formatTenantDate = (value: string) =>
+    formatTenantDateTime(value).split(' ')[0] || '-';
   const [response, setResponse] = useState<SalesOrdersPage | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -323,7 +319,7 @@ export default function SalesOrdersDashboardPage() {
                             </span>
                           )}
                         </TableCell>
-                        <TableCell>{formatDate(order.createdAt)}</TableCell>
+                        <TableCell>{formatTenantDate(order.createdAt)}</TableCell>
                         <TableCell className={`${styles.numeric} font-semibold`}>
                           {formatAmount(order.total, order.currency)}
                         </TableCell>

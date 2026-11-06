@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { FormField } from '@/components/patterns/form-field';
 import { SectionCard } from '@/components/patterns/section-card';
 import { DOCUMENT_TYPE_LABELS, type EmployeeDocument } from '@/lib/employees-api';
+import { useTenantDateTimeFormatter } from '@/shared/regional/tenant-regional-provider';
 import { Eye, FileText, Trash2, Upload } from 'lucide-react';
 
 const DOCUMENT_TYPES = [
@@ -47,6 +48,14 @@ function EmployeeDocumentsSection({
   onViewDocument,
   onDeleteDocument,
 }: EmployeeDocumentsSectionProps) {
+  const formatTenantDateTime = useTenantDateTimeFormatter();
+  const formatUploadDate = (value: Date | string) => {
+    const instant = value instanceof Date
+      ? Number.isNaN(value.getTime()) ? '' : value.toISOString()
+      : value;
+    return formatTenantDateTime(instant).split(' ')[0] || '-';
+  };
+
   return (
     <SectionCard
       title={<span className="flex items-center gap-2"><IconBadge tone="info" size="sm"><FileText aria-hidden="true" /></IconBadge>Documentos</span>}
@@ -94,7 +103,7 @@ function EmployeeDocumentsSection({
                   <div key={doc.id} className="flex flex-col gap-3 rounded-lg border border-border bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium text-foreground" title={doc.fileName}>{doc.fileName}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">Subido: {new Date(doc.uploadedAt).toLocaleDateString('es-CR')} por {doc.uploadedByName}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">Subido: {formatUploadDate(doc.uploadedAt)} por {doc.uploadedByName}</p>
                       {doc.notes && <p className="mt-1 text-xs text-muted-foreground">{doc.notes}</p>}
                     </div>
                     <div className="flex shrink-0 gap-1">

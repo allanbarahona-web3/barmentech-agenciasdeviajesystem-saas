@@ -1,5 +1,5 @@
 import * as ExcelJS from "exceljs";
-import { PDFDocument } from "pdf-lib";
+import { PDFDocument, PDFPage } from "pdf-lib";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { normalizePdfText, tenantDisplayName } from "./accounting-costs-export.renderer";
@@ -20,6 +20,42 @@ describe("ReportingExportService", () => {
     const execute = jest.fn().mockResolvedValue(salesTax()); const service = new ReportingExportService({} as never, { execute } as never);
     const xlsx = await service.exportSalesTax({ ...request, filter: { rate: "2" } }, "XLSX"); const csv = await service.exportSalesTax({ ...request, filter: { rate: "2" } }, "CSV"); const workbook = new ExcelJS.Workbook(); await workbook.xlsx.load(xlsx.bytes as any); expect(workbook.worksheets.map((sheet) => sheet.name)).toEqual(["Resumen", "Impuestos por tarifa", "Documentos"]); expect(workbook.getWorksheet("Impuestos por tarifa")!.getRow(1).values).toEqual(expect.arrayContaining(["Código tarifa", "Tarifa %", "Exoneración"])); expect(csv.bytes.toString("utf8")).toContain("Código impuesto");
     execute.mockResolvedValue({ ...salesTax(), pagination: { page: 1, pageSize: 10_000, totalItems: 10_001, totalPages: 2 } }); await expect(service.exportSalesTax(request, "CSV")).rejects.toThrow("REPORTING_EXPORT_ROW_LIMIT_EXCEEDED");
+  });
+
+  it.each([
+    ["America/Costa_Rica", "05/11/2026 23:30"],
+    ["America/Lima", "06/11/2026 00:30"],
+  ])("renders Sales and Receivables PDF and XLSX Generado metadata in %s", async (timeZone, expectedGeneratedAt) => {
+    const execute = jest.fn().mockResolvedValue({ ...sales(), generatedAt: "2026-11-06T05:30:00Z" });
+    const tenants = { getTenantConfig: jest.fn().mockResolvedValue({ timeZone }) };
+    const service = new ReportingExportService({ execute } as never, {} as never, {} as never, {} as never, tenants as never);
+    const receivablesExecute = jest.fn().mockResolvedValue({ ...receivables(), generatedAt: "2026-11-06T05:30:00Z" });
+    const receivablesService = new ReportingExportService({} as never, {} as never, { execute: receivablesExecute } as never, {} as never, tenants as never);
+    const receivablesRequest = { tenantId: "tenant-a", actorUserId: "user-a", role: "CONTADOR" as any, dueDate: { preset: "ALL" as const }, page: 1, pageSize: 25 };
+    const drawText = jest.spyOn(PDFPage.prototype, "drawText");
+
+    try {
+      await service.exportSales(request, "PDF");
+      expect(drawText).toHaveBeenCalledWith(`Generado: ${expectedGeneratedAt}`, expect.any(Object));
+
+      const xlsx = await service.exportSales(request, "XLSX");
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(xlsx.bytes as any);
+      const metadataRows = workbook.getWorksheet("Resumen")!.getRows(1, 6) ?? [];
+      expect(metadataRows.find((row) => row.getCell(1).value === "Generado")?.getCell(2).value).toBe(expectedGeneratedAt);
+
+      drawText.mockClear();
+      await receivablesService.exportReceivables(receivablesRequest, "PDF");
+      expect(drawText).toHaveBeenCalledWith(`Generado: ${expectedGeneratedAt}`, expect.any(Object));
+
+      const receivablesXlsx = await receivablesService.exportReceivables(receivablesRequest, "XLSX");
+      const receivablesWorkbook = new ExcelJS.Workbook();
+      await receivablesWorkbook.xlsx.load(receivablesXlsx.bytes as any);
+      const receivablesMetadataRows = receivablesWorkbook.getWorksheet("Resumen")!.getRows(1, 6) ?? [];
+      expect(receivablesMetadataRows.find((row) => row.getCell(1).value === "Generado")?.getCell(2).value).toBe(expectedGeneratedAt);
+    } finally {
+      drawText.mockRestore();
+    }
   });
 
   it("renders the complete newest-first Receivables dataset through the authorized application service", async () => {

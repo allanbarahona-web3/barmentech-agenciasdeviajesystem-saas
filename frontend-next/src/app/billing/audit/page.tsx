@@ -8,22 +8,17 @@ import { ToastNotification, useToast } from "@/components/toast-notification";
 import { PageLoader } from "@/components/loading-spinner";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-
-const formatDateTime = (value: string): string => {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleString("es-CR", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-};
+import { useTenantDateTimeFormatter } from "@/shared/regional/tenant-regional-provider";
 
 export default function BillingAuditPage() {
   const router = useRouter();
+  const formatTenantDateTime = useTenantDateTimeFormatter();
+  const formatAuditDateTime = (value: string): string => {
+    const formatted = formatTenantDateTime(value);
+    if (formatted === "-") return "-";
+    const seconds = new Date(value).getUTCSeconds();
+    return Number.isNaN(seconds) ? "-" : `${formatted}:${String(seconds).padStart(2, "0")}`;
+  };
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
   const [entityType, setEntityType] = useState("");
@@ -134,7 +129,7 @@ export default function BillingAuditPage() {
 
               {items.map((item) => (
                 <tr key={item.id}>
-                  <td>{formatDateTime(item.createdAt)}</td>
+                  <td>{formatAuditDateTime(item.createdAt)}</td>
                   <td>
                     <div className="history-col-name">{item.entityType}</div>
                     <div className="history-col-muted">{item.entityId}</div>

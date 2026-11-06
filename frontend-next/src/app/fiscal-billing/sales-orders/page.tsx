@@ -14,6 +14,7 @@ import {
   type EligibleSalesOrdersPage,
 } from '@/lib/fiscal-billing-api';
 import { formatFiscalDecimal } from '@/lib/fiscal-money';
+import { useTenantDateTimeFormatter } from '@/shared/regional/tenant-regional-provider';
 import styles from '../fiscal-billing.module.css';
 
 const PAGE_SIZE = 20;
@@ -24,12 +25,6 @@ type FiscalPresentation = {
   label: string;
   actionLabel: string | null;
 };
-
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat('es-CR', {
-    day: '2-digit', month: 'short', year: 'numeric',
-  }).format(new Date(value));
-}
 
 function fiscalPresentation(order: EligibleSalesOrder): FiscalPresentation {
   const status = order.fiscalStatus;
@@ -77,6 +72,9 @@ function Action({ order }: { order: EligibleSalesOrder }) {
 }
 
 export default function EligibleFiscalSalesOrdersPage() {
+  const formatTenantDateTime = useTenantDateTimeFormatter();
+  const formatTenantDate = (value: string) =>
+    formatTenantDateTime(value).split(' ')[0] || '-';
   const [result, setResult] = useState<EligibleSalesOrdersPage | null>(null);
   const [page, setPage] = useState(1);
   const [reload, setReload] = useState(0);
@@ -180,7 +178,7 @@ export default function EligibleFiscalSalesOrdersPage() {
                 <TableRow key={order.id}>
                   <TableCell className={styles.number}>{order.orderNumber}</TableCell>
                   <TableCell><div className={styles.stack}><span>{order.customerName}</span>{order.customerEmail && <span className={styles.secondary}>{order.customerEmail}</span>}</div></TableCell>
-                  <TableCell>{formatDate(order.createdAt)}</TableCell>
+                  <TableCell>{formatTenantDate(order.createdAt)}</TableCell>
                   <TableCell>{order.currency}</TableCell>
                   <TableCell className={styles.numeric}>{order.currency} {formatFiscalDecimal(order.total)}</TableCell>
                   <TableCell>{(() => { const presentation = fiscalPresentation(order); return <Badge className={statusClass(presentation.kind)} variant="outline">{presentation.kind === 'PROCESSING' && <LoaderCircle className={styles.spin} aria-hidden="true" />}{presentation.label}</Badge>; })()}</TableCell>
