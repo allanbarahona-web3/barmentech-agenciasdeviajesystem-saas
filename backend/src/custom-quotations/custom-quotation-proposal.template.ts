@@ -9,6 +9,7 @@ import {
   sectionHeading,
 } from "../documents/templates/shared";
 import type { CustomQuotationProposalDocument } from "./custom-quotation-proposal.types";
+import { formatCustomQuotationValidityDate } from "./custom-quotation-validity";
 
 export function customQuotationProposalTemplate(proposal: CustomQuotationProposalDocument): string {
   const header = documentHeader(proposal.company, {
@@ -17,7 +18,7 @@ export function customQuotationProposalTemplate(proposal: CustomQuotationProposa
     issuedAt: tenantDate(proposal.issuedAt, proposal.timezone),
     additionalItems: [
       { label: "Versión", value: String(proposal.versionNumber) },
-      { label: "Válida hasta", value: proposal.quotationValidUntil ? tenantDate(proposal.quotationValidUntil, proposal.timezone) : "No indicada" },
+      { label: "Válida hasta", value: formatCustomQuotationValidityDate(proposal.quotationValidUntil) },
     ],
   });
   const content = `${header}

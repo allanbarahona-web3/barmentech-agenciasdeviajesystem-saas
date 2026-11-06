@@ -92,6 +92,20 @@ describe("FiscalBillingAdminController", () => {
       exchangeRateSource: "BCCR",
     });
   });
+
+  it("rejects unsupported fiscal timezone identifiers at the request boundary", async () => {
+    const pipe = new ValidationPipe({
+      transform: true,
+      whitelist: true,
+      forbidNonWhitelisted: true,
+    });
+    await expect(
+      pipe.transform(
+        { fiscalTimezone: "Not/A_Timezone" },
+        { type: "body", metatype: UpdateTenantBillingConfigurationDto },
+      ),
+    ).rejects.toBeDefined();
+  });
 });
 
 function canActivate(role: UserRole) {

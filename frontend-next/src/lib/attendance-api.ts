@@ -41,6 +41,8 @@ export type AttendanceEntry = {
 export type AttendanceAdminListItem = {
   id: string;
   type: AttendanceState;
+  /** Persisted workday key serialized by the Attendance API. */
+  date: string;
   clockIn: string;
   clockOut: string | null;
   duration: number | null;

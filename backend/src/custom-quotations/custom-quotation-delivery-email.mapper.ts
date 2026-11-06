@@ -1,6 +1,6 @@
 import { Decimal } from "@prisma/client/runtime/library";
 import { Injectable } from "@nestjs/common";
-import { tenantCalendarDate } from "../cost-engine/tenant-business-date.resolver";
+import { formatCustomQuotationValidityDate } from "./custom-quotation-validity";
 
 export type CustomQuotationDeliveryEmailInput = {
   customerName: string;
@@ -9,7 +9,6 @@ export type CustomQuotationDeliveryEmailInput = {
   currency: string;
   finalSellingPrice: string;
   quotationValidUntil: Date | null;
-  timezone: string;
   approvalUrl: string;
 };
 
@@ -17,9 +16,7 @@ export type CustomQuotationDeliveryEmailInput = {
 export class CustomQuotationDeliveryEmailMapper {
   map(input: CustomQuotationDeliveryEmailInput) {
     const title = input.title?.trim() ?? "";
-    const validity = input.quotationValidUntil
-      ? tenantCalendarDate(input.quotationValidUntil, input.timezone).split("-").reverse().join("/")
-      : "No indicada";
+    const validity = formatCustomQuotationValidityDate(input.quotationValidUntil);
     return {
       subject: "Propuesta comercial {{documentNumber}} - {{tenantName}}",
       template: "business-document-attachment" as const,

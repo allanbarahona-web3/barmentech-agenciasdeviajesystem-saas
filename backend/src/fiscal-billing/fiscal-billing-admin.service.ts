@@ -4,6 +4,10 @@ import {
   type FiscalBillingAdminRepository,
 } from "./fiscal-billing-admin.repository";
 import { fiscalBillingAdminError } from "./fiscal-billing-admin.errors";
+import {
+  DEFAULT_TENANT_TIME_ZONE,
+  normalizeTenantTimeZone,
+} from "../common/utils/tenant-timezone";
 import type {
   TenantBillingConfigurationRecord,
   TenantBillingConfigurationUpdate,
@@ -17,7 +21,7 @@ const SAFE_DEFAULTS = {
   defaultCurrencyCode: "CRC",
   accountingCurrencyCode: null,
   exchangeRateSource: "MANUAL",
-  fiscalTimezone: "America/Costa_Rica",
+  fiscalTimezone: DEFAULT_TENANT_TIME_ZONE,
   fiscalSchemaVersion: "4.4",
 } as const;
 
@@ -47,8 +51,20 @@ export class FiscalBillingAdminService {
     tenantId: string,
     input: TenantBillingConfigurationUpdate,
   ) {
+    let normalizedInput = input;
+    if (input.fiscalTimezone !== undefined) {
+      const fiscalTimezone = normalizeTenantTimeZone(input.fiscalTimezone);
+      if (fiscalTimezone === null) {
+        throw fiscalBillingAdminError("BILLING_CONFIGURATION_INVALID_TIMEZONE");
+      }
+      normalizedInput = { ...input, fiscalTimezone };
+    }
     const current = await this.repository.findConfiguration(tenantId);
-    const effective = { ...SAFE_DEFAULTS, ...(current ?? {}), ...input };
+    const effective = {
+      ...SAFE_DEFAULTS,
+      ...(current ?? {}),
+      ...normalizedInput,
+    };
     if (effective.electronicIssuanceEnabled) {
       if (effective.countryCode !== "CR") {
         throw fiscalBillingAdminError("BILLING_CONFIGURATION_INVALID_COUNTRY");
@@ -59,7 +75,7 @@ export class FiscalBillingAdminService {
     }
     const configuration = await this.repository.upsertConfiguration(
       tenantId,
-      input,
+      normalizedInput,
     );
     return this.toResponse(true, configuration);
   }

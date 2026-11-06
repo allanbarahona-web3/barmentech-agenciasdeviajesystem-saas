@@ -2,25 +2,21 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getStoredSession } from '@/lib/auth-api';
 import { canViewTimesheet } from '@/lib/attendance-permissions';
 import { getAttendanceMySummary, getAttendanceMyEntries } from '@/lib/attendance-api';
 import { LoadingModal } from '@/components/loading-modal';
 import { CorrectionsModal } from '@/components/corrections-modal';
-import { formatBusinessDate } from '@/shared/regional';
+import { addCalendarDays, formatBusinessDate, tenantCalendarToday } from '@/shared/regional';
+import { useTenantDateTimeFormatter, useTenantRegional } from '@/shared/regional/tenant-regional-provider';
 
-const isoDate = (d: Date) => d.toISOString().slice(0, 10);
-
-const getDefaultDateRange = () => {
-  const end = new Date();
-  const start = new Date();
-  start.setDate(end.getDate() - 7);
-
+const getDefaultDateRange = (timeZone: string) => {
+  const end = tenantCalendarToday(timeZone);
   return {
-    startDate: isoDate(start),
-    endDate: isoDate(end),
+    startDate: addCalendarDays(end, -7),
+    endDate: end,
   };
 };
 
@@ -39,18 +35,31 @@ const formatDuration = (seconds: number | null): string => {
 
 export default function MyTimesheetPage() {
   const router = useRouter();
+  const { timeZone, isConfigured } = useTenantRegional();
+  const formatTenantDateTime = useTenantDateTimeFormatter();
   const [loading, setLoading] = useState(true);
   const [loadingModalOpen, setLoadingModalOpen] = useState(false);
   const [loadingModalState, setLoadingModalState] = useState<"loading" | "success" | "error">("loading");
   const [loadingModalMessage, setLoadingModalMessage] = useState('');
-  const [dateRange, setDateRange] = useState(() => getDefaultDateRange());
-  const [appliedDateRange, setAppliedDateRange] = useState(() => getDefaultDateRange());
+  const [dateRange, setDateRange] = useState({ startDate: '', endDate: '' });
+  const [appliedDateRange, setAppliedDateRange] = useState({ startDate: '', endDate: '' });
   const [summary, setSummary] = useState<Awaited<ReturnType<typeof getAttendanceMySummary>> | null>(null);
   const [entries, setEntries] = useState<Awaited<ReturnType<typeof getAttendanceMyEntries>>>([]);
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
   const [isCorrectionsModalOpen, setIsCorrectionsModalOpen] = useState(false);
+  const initializedTenantDefaults = useRef(false);
+
+  useEffect(() => {
+    if (!isConfigured || initializedTenantDefaults.current) return;
+
+    const defaults = getDefaultDateRange(timeZone);
+    initializedTenantDefaults.current = true;
+    setDateRange(defaults);
+    setAppliedDateRange(defaults);
+  }, [isConfigured, timeZone]);
 
   const load = useCallback(async () => {
+  if (!appliedDateRange.startDate || !appliedDateRange.endDate) return;
   setLoading(true);
 
   try {
@@ -93,8 +102,10 @@ export default function MyTimesheetPage() {
       return;
     }
 
-    void load();
-  }, [router, load]);
+    if (isConfigured) {
+      void load();
+    }
+  }, [router, load, isConfigured]);
 
   const efficiency = useMemo(() => summary?.avgEfficiency ?? 0, [summary]);
 
@@ -109,17 +120,18 @@ export default function MyTimesheetPage() {
         <div className="flex flex-wrap gap-3 items-end">
           <div>
             <label className="block text-sm text-gray-600 mb-1">Inicio</label>
-            <input type="date" className="border rounded-md px-3 py-2" value={dateRange.startDate} onChange={(e) => setDateRange({ ...dateRange, startDate: e.target.value })} />
+            <input type="date" className="border rounded-md px-3 py-2" value={dateRange.startDate} disabled={!isConfigured} onChange={(e) => setDateRange({ ...dateRange, startDate: e.target.value })} />
           </div>
           <div>
             <label className="block text-sm text-gray-600 mb-1">Fin</label>
-            <input type="date" className="border rounded-md px-3 py-2" value={dateRange.endDate} onChange={(e) => setDateRange({ ...dateRange, endDate: e.target.value })} />
+            <input type="date" className="border rounded-md px-3 py-2" value={dateRange.endDate} disabled={!isConfigured} onChange={(e) => setDateRange({ ...dateRange, endDate: e.target.value })} />
           </div>
           <button
   type="button"
   onClick={() => {
     setAppliedDateRange(dateRange);
   }}
+  disabled={!isConfigured || !dateRange.startDate || !dateRange.endDate}
   className="rounded-md bg-gray-900 text-white px-4 py-2 text-sm font-medium"
 >
   🔍 Buscar
@@ -128,11 +140,12 @@ export default function MyTimesheetPage() {
 <button
   type="button"
   onClick={() => {
-    const defaults = getDefaultDateRange();
+    const defaults = getDefaultDateRange(timeZone);
 
     setDateRange(defaults);
     setAppliedDateRange(defaults);
   }}
+  disabled={!isConfigured}
   className="rounded-md bg-gray-200 text-gray-700 px-4 py-2 text-sm font-medium"
 >
   🧹 Limpiar
@@ -175,8 +188,8 @@ export default function MyTimesheetPage() {
                   {formatBusinessDate(entry.date)}
                 </td>
                 <td className="py-2 pr-3 font-medium">{entry.type}</td>
-                <td className="py-2 pr-3">{new Date(entry.clockIn).toLocaleTimeString()}</td>
-                <td className="py-2 pr-3">{entry.clockOut ? new Date(entry.clockOut).toLocaleTimeString() : '-'}</td>
+                <td className="py-2 pr-3">{formatTenantDateTime(entry.clockIn)}</td>
+                <td className="py-2 pr-3">{entry.clockOut ? formatTenantDateTime(entry.clockOut) : '-'}</td>
                 <td className="py-2 pr-3">{entry.type === 'OFF' ? '-' : formatDuration(entry.duration)}</td>
                 <td className="py-2 pr-3">
                   {(entry.correctionCount || 0) > 0 ? (

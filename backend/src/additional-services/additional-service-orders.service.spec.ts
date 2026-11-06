@@ -431,7 +431,7 @@ describe("AdditionalServicesService orders", () => {
         paymentConditionType: PaymentConditionType.CREDIT,
         paymentTermValue: 30,
         paymentTermUnit: PaymentTermUnit.DAYS,
-        quotationValidUntil: "2026-08-31T23:59:59.999Z",
+        quotationValidUntil: "2026-08-31",
         commercialObservations: "Commercial conditions apply.",
         lines: [
           {
@@ -503,7 +503,7 @@ describe("AdditionalServicesService orders", () => {
         paymentConditionType: PaymentConditionType.CREDIT,
         paymentTermValue: 30,
         paymentTermUnit: PaymentTermUnit.DAYS,
-        quotationValidUntil: new Date("2026-08-31T23:59:59.999Z"),
+        quotationValidUntil: new Date("2026-08-31T00:00:00.000Z"),
         commercialObservations: "Commercial conditions apply.",
         lines: [
           expect.objectContaining({

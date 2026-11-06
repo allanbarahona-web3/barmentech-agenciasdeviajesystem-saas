@@ -93,6 +93,10 @@ describe("CustomQuotationCustomerApprovalService", () => {
     expect(c.tx.customQuotation.updateMany).toHaveBeenCalledWith(expect.objectContaining({
       data: { status: "ACCEPTED", updatedByUserId: null, updatedByName: "Ana Cliente" },
     }));
+    expect(c.tx.tenantBillingConfiguration.findUnique).toHaveBeenCalledWith({
+      where: { tenantId: "tenant-a" },
+      select: { fiscalTimezone: true },
+    });
     expect(result).toMatchObject({ status: "ACCEPTED", acceptedBy: { userId: null, name: "Ana Cliente" } });
     expect(c.tx.customQuotation.findFirst).toBeUndefined();
     noDownstreamSideEffects(c);
@@ -103,7 +107,7 @@ describe("CustomQuotationCustomerApprovalService", () => {
     c.access.resolve.mockResolvedValue(access());
     c.tx.customQuotationVersion.findFirst
       .mockResolvedValueOnce(transitionTarget())
-      .mockResolvedValueOnce(lifecycleVersion({ quotationValidUntil: new Date("2020-01-01T12:00:00.000Z") }));
+      .mockResolvedValueOnce(lifecycleVersion({ quotationValidUntil: new Date("2020-01-01T00:00:00.000Z") }));
 
     await expect(c.service.accept("secure-token")).rejects.toThrow("CUSTOM_QUOTATION_VERSION_EXPIRED");
 
@@ -239,7 +243,7 @@ function document(overrides: Record<string, unknown> = {}) {
 
 function publicVersion(overrides: Record<string, unknown> = {}) {
   return {
-    id: "version-a", versionNumber: 1, status: "ISSUED", title: "Propuesta congelada", currency: "USD", finalSellingPrice: "1450.12345", quotationValidUntil: new Date("2099-12-31T12:00:00.000Z"), paymentConditionType: "CREDIT", paymentTermValue: 30, paymentTermUnit: "DAYS", commercialObservations: "Tarifa sujeta a disponibilidad",
+    id: "version-a", versionNumber: 1, status: "ISSUED", title: "Propuesta congelada", currency: "USD", finalSellingPrice: "1450.12345", quotationValidUntil: new Date("2099-12-31T00:00:00.000Z"), paymentConditionType: "CREDIT", paymentTermValue: 30, paymentTermUnit: "DAYS", commercialObservations: "Tarifa sujeta a disponibilidad",
     lines: [{ displayOrder: 1, description: "Vuelo SJO – MAD", quantity: "1.0000", commercialNote: null }, { displayOrder: 2, description: "Hospedaje 5 noches", quantity: "1.0000", commercialNote: "Incluye desayuno" }],
     recipientFullName: "Ana Cliente", recipientEmail: "ana@example.test", recipientPhone: null, recipientCompanyName: null,
     customQuotation: { quotationNumber: "CQ-2026-000001" },
@@ -258,7 +262,7 @@ function transitionTarget(overrides: Record<string, unknown> = {}) {
 
 function lifecycleVersion(overrides: Record<string, unknown> = {}) {
   return {
-    id: "version-a", customQuotationId: "quotation-a", costingProjectId: "project-a", pricingCalculationVersionId: "pricing-a", status: "ISSUED", currency: "USD", finalSellingPrice: "1450.12345", quotationValidUntil: new Date("2099-12-31T12:00:00.000Z"), fiscalDescription: "Transporte privado", fiscalItemCategory: "SERVICE", cabysCode: "1234567890123", unitOfMeasureCode: "Unid", taxCode: "01", taxRateCode: "08", fiscalTaxPercentage: "13.0000", acceptedAt: null, acceptedByUserId: null, acceptedByName: null, rejectedAt: null, lines: [{ id: "line-a" }], pricingCalculationVersion: { id: "pricing-a", status: "APPROVED", currency: "USD" }, ...overrides,
+    id: "version-a", customQuotationId: "quotation-a", costingProjectId: "project-a", pricingCalculationVersionId: "pricing-a", status: "ISSUED", currency: "USD", finalSellingPrice: "1450.12345", quotationValidUntil: new Date("2099-12-31T00:00:00.000Z"), fiscalDescription: "Transporte privado", fiscalItemCategory: "SERVICE", cabysCode: "1234567890123", unitOfMeasureCode: "Unid", taxCode: "01", taxRateCode: "08", fiscalTaxPercentage: "13.0000", acceptedAt: null, acceptedByUserId: null, acceptedByName: null, rejectedAt: null, lines: [{ id: "line-a" }], pricingCalculationVersion: { id: "pricing-a", status: "APPROVED", currency: "USD" }, ...overrides,
   };
 }
 

@@ -11,6 +11,8 @@ import type {
   AdditionalServiceOrderRecord,
 } from "./repositories";
 import type { AdditionalServiceDetails } from "./service-details";
+import { additionalServiceQuotationValidityCalendarDate } from "./additional-service-quotation-validity";
+import { tenantCalendarDateForInstant } from "../finance/tenant-fiscal-date";
 
 type DetailDescriptor = {
   key: string;
@@ -189,14 +191,18 @@ export class CommercialProposalPdfMapper {
   map(
     order: AdditionalServiceOrderRecord,
     company: CommercialProposalPdfCompanyDto,
+    generatedAt: Date = order.createdAt,
+    tenantTimeZone: string = "UTC",
   ): CommercialProposalPdfDto {
     const customer = this.findCustomer(order);
 
     return {
       company: { ...company },
       proposalNumber: order.orderNumber,
-      issuedAt: order.createdAt.toISOString(),
-      validUntil: order.quotationValidUntil?.toISOString() ?? null,
+      issuedAt: tenantCalendarDateForInstant(generatedAt, tenantTimeZone),
+      validUntil: order.quotationValidUntil
+        ? additionalServiceQuotationValidityCalendarDate(order.quotationValidUntil)
+        : null,
       currency: order.quotationCurrency,
       customer: {
         fullName: customer.fullName,

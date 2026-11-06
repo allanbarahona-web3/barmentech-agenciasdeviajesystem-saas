@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -18,6 +19,7 @@ import type { AdditionalServiceOrderRecord } from "./repositories";
 import { approvalSalesOrderFailureCode } from "./approval-sales-order.logging";
 import { AdditionalServiceOperationsIntakeOutboxProducer } from "./additional-service-operations-intake-outbox.producer";
 import { runTenantTransaction } from "../tenant/tenant-transaction";
+import { assertAdditionalServiceQuotationNotExpired } from "./additional-service-quotation-validity";
 
 export interface InPersonApprovalActor {
   id: string;
@@ -76,6 +78,12 @@ export class CommercialProposalInPersonApprovalService {
     let materialization;
     try {
       materialization = await runTenantTransaction<any, any>(this.prisma as any, tenantId, async (transaction) => {
+        await assertAdditionalServiceQuotationNotExpired(
+          transaction,
+          tenantId,
+          order.quotationValidUntil,
+          approvedAt,
+        );
         await this.salesOrderConversionService.lockAdditionalServiceOrder(
           transaction,
           tenantId,
@@ -116,6 +124,9 @@ export class CommercialProposalInPersonApprovalService {
         );
       });
     } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
       this.logger.warn({
         event: "additional-service-approval-sales-order-failed",
         tenantId,

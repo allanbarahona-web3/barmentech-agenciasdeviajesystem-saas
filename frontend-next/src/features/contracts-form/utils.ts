@@ -1,22 +1,27 @@
-import { Companion, ContractFormState, ItineraryItem, Minor } from "@/features/contracts-form/types";
+import type { Companion, ContractFormState, ItineraryItem, Minor } from "@/features/contracts-form/types";
 import { isClientIdentificationType } from '@/features/customers/client-identification';
 import {
   calculateContractDisplayPassengerQuantity,
   calculatePublishedPricingDisplayTotal,
   isPricingPublished,
 } from "@/features/contracts-form/published-pricing-display";
+import {
+  addCalendarDays,
+  calendarDayDifference,
+  isCalendarDate,
+  tenantCalendarToday,
+} from "@/shared/regional";
 
 /**
- * Get today's date in YYYY-MM-DD format using local timezone
- * Avoids UTC conversion issues that cause date to shift by one day
+ * Returns today's tenant-calendar date as YYYY-MM-DD.
+ *
+ * The optional parameters preserve existing call sites while allowing the
+ * contracts wizard to supply the active tenant timezone and a test instant.
  */
-export const getTodayIsoLocal = (): string => {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
+export const getTodayIsoLocal = (
+  timeZone?: string,
+  instant?: Date | string | number,
+): string => tenantCalendarToday(timeZone, instant);
 
 const createCompanion = (): Companion => ({
   id: `companion-${Date.now()}-${Math.random().toString(16).slice(2, 7)}`,
@@ -99,19 +104,10 @@ const recalculateTravelPackageAmounts = (state: ContractFormState): ContractForm
   });
 };
 
-const daysBetweenInclusive = (startIso: string, endIso: string): number => {
-  const start = new Date(`${startIso}T00:00:00`);
-  const end = new Date(`${endIso}T00:00:00`);
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-    return 0;
-  }
-
-  const diffMs = end.getTime() - start.getTime();
-  if (diffMs < 0) {
-    return 0;
-  }
-
-  return Math.floor(diffMs / (24 * 60 * 60 * 1000)) + 1;
+const daysBetweenInclusive = (startIso: string, endIso: string): number | null => {
+  const difference = calendarDayDifference(startIso, endIso);
+  if (difference === null || difference < 0) return null;
+  return difference + 1;
 };
 
 export const normalizeMoneyInputValue = (value: string): string => {
@@ -120,23 +116,18 @@ export const normalizeMoneyInputValue = (value: string): string => {
 };
 
 const minusDaysIso = (dateIso: string, days: number): string => {
-  if (!dateIso) return "";
-  const date = new Date(`${dateIso}T00:00:00`);
-  if (Number.isNaN(date.getTime())) return "";
-  date.setDate(date.getDate() - days);
-  return date.toISOString().slice(0, 10);
+  return addCalendarDays(dateIso, -days);
 };
 
 export const addDaysIso = (dateIso: string, days: number): string => {
-  if (!dateIso) return "";
-  const date = new Date(`${dateIso}T00:00:00`);
-  if (Number.isNaN(date.getTime())) return "";
-  date.setDate(date.getDate() + days);
-  return date.toISOString().slice(0, 10);
+  return addCalendarDays(dateIso, days);
 };
 
-export const createInitialFormState = (agent?: { fullName?: string; email?: string }): ContractFormState => {
-  const today = getTodayIsoLocal();
+export const createInitialFormState = (
+  agent?: { fullName?: string; email?: string },
+  timeZone?: string,
+): ContractFormState => {
+  const today = getTodayIsoLocal(timeZone);
 
   return {
     contractNumber: "",
@@ -196,7 +187,9 @@ export const applyMoneyDerivedValues = (state: ContractFormState): ContractFormS
   const reservation = toMoney(state.reservationAmount);
   const frequencyDays = state.paymentFrequency === "QUINCENAL" ? 15 : 30;
   const availableWindowDays = daysBetweenInclusive(state.issuedAt, state.paymentDueDate);
-  const computedInstallments = availableWindowDays > 0 ? Math.max(1, Math.ceil(availableWindowDays / frequencyDays)) : 0;
+  const computedInstallments = availableWindowDays !== null && availableWindowDays > 0
+    ? Math.max(1, Math.ceil(availableWindowDays / frequencyDays))
+    : 0;
 
   const balance = Number.isFinite(total) && Number.isFinite(reservation) ? total - reservation : Number.NaN;
   const regularInstallment =
@@ -219,14 +212,19 @@ export const syncTourDates = (
   state: ContractFormState,
   side: "start" | "end",
   value: string,
+  today = getTodayIsoLocal(),
 ): ContractFormState => {
-  const today = getTodayIsoLocal();
   const normalizedStartCandidate = side === "start" ? value : state.startDate;
-  const normalizedStart = normalizedStartCandidate && normalizedStartCandidate < today ? today : normalizedStartCandidate;
-  const minEnd = normalizedStart ? addDaysIso(normalizedStart, 1) : "";
+  const normalizedStart =
+    isCalendarDate(normalizedStartCandidate) && normalizedStartCandidate < today
+      ? today
+      : normalizedStartCandidate;
+  const minEnd = isCalendarDate(normalizedStart) ? addDaysIso(normalizedStart, 1) : "";
   const normalizedEndCandidate = side === "end" ? value : state.endDate;
   const normalizedEnd =
-    normalizedEndCandidate && minEnd && normalizedEndCandidate < minEnd ? minEnd : normalizedEndCandidate;
+    isCalendarDate(normalizedEndCandidate) && minEnd && normalizedEndCandidate < minEnd
+      ? minEnd
+      : normalizedEndCandidate;
 
   const next = {
     ...state,
@@ -247,12 +245,22 @@ export const syncTourDates = (
   return {
     ...next,
     itinerary,
-    paymentDueDate: minusDaysIso(next.startDate, 22),
+    paymentDueDate: isCalendarDate(next.startDate)
+      ? minusDaysIso(next.startDate, 22)
+      : state.paymentDueDate,
   };
 };
 
-export const getDateRangeValidityMessage = (state: ContractFormState): string => {
-  const today = getTodayIsoLocal();
+export const getDateRangeValidityMessage = (
+  state: ContractFormState,
+  today = getTodayIsoLocal(),
+): string => {
+  if (state.startDate && !isCalendarDate(state.startDate)) {
+    return "La fecha inicio del viaje no es válida.";
+  }
+  if (state.endDate && !isCalendarDate(state.endDate)) {
+    return "La fecha fin del viaje no es válida.";
+  }
 
   if (state.startDate && state.startDate < today) {
     return "La fecha inicio del viaje no puede ser anterior al dia actual.";
@@ -331,6 +339,10 @@ export const getItineraryValidityMessage = (state: ContractFormState): string =>
   for (const item of state.itinerary) {
     if (!item.date) {
       return "Cada item del itinerario debe tener fecha.";
+    }
+
+    if (!isCalendarDate(item.date)) {
+      return "Cada item del itinerario debe tener una fecha válida.";
     }
 
     if (state.startDate && item.date < state.startDate) {

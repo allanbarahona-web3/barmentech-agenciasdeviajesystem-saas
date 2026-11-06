@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { Decimal } from "@prisma/client/runtime/library";
 import { BusinessNumberingService } from "../business-numbering/business-numbering.service";
+import { customQuotationValidityDate } from "./custom-quotation-validity";
 import { PrismaService } from "../prisma/prisma.service";
 import { runTenantTransaction } from "../tenant/tenant-transaction";
 import type {
@@ -147,7 +148,7 @@ export class CustomQuotationsService {
           currency: input.currency,
           title: requiredText(input.title, "CUSTOM_QUOTATION_TITLE_INVALID"),
           commercialObservations: optionalText(input.commercialObservations),
-          quotationValidUntil: optionalInstant(input.quotationValidUntil),
+          quotationValidUntil: optionalCalendarDate(input.quotationValidUntil),
           ...terms,
           status: "DRAFT",
           createdByUserId: actor.userId,
@@ -389,7 +390,7 @@ export class CustomQuotationsService {
           ...(input.currency === undefined ? {} : { currency: input.currency }),
           ...(input.title === undefined ? {} : { title: requiredText(input.title, "CUSTOM_QUOTATION_TITLE_INVALID") }),
           ...(input.commercialObservations === undefined ? {} : { commercialObservations: optionalText(input.commercialObservations) }),
-          ...(input.quotationValidUntil === undefined ? {} : { quotationValidUntil: optionalInstant(input.quotationValidUntil) }),
+          ...(input.quotationValidUntil === undefined ? {} : { quotationValidUntil: optionalCalendarDate(input.quotationValidUntil) }),
           ...terms,
           updatedByUserId: actor.userId,
           updatedByName: actor.name,
@@ -535,11 +536,9 @@ function optionalText(value: string | null | undefined) {
   return normalized || null;
 }
 
-function optionalInstant(value: string | null | undefined) {
+function optionalCalendarDate(value: string | null | undefined) {
   if (value === undefined || value === null) return null;
-  const instant = new Date(value);
-  if (!Number.isFinite(instant.getTime())) throw new BadRequestException("CUSTOM_QUOTATION_VALID_UNTIL_INVALID");
-  return instant;
+  return customQuotationValidityDate(value);
 }
 
 function positiveQuantity(value: string) {

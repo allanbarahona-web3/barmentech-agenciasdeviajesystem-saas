@@ -34,7 +34,7 @@ export class CreateCustomQuotationDto {
   @IsOptional() @Transform(trim) @IsString() @MaxLength(2000)
   commercialObservations?: string | null;
 
-  @IsOptional() @IsDateString()
+  @IsOptional() @IsDateString({ strict: true }) @Matches(/^\d{4}-\d{2}-\d{2}$/)
   quotationValidUntil?: string | null;
 
   @IsOptional() @IsEnum(PaymentConditionType)
@@ -66,7 +66,7 @@ export class UpdateCustomQuotationDto {
   @IsOptional() @Transform(trim) @IsString() @MaxLength(2000)
   commercialObservations?: string | null;
 
-  @IsOptional() @IsDateString()
+  @IsOptional() @IsDateString({ strict: true }) @Matches(/^\d{4}-\d{2}-\d{2}$/)
   quotationValidUntil?: string | null;
 
   @IsOptional() @IsEnum(PaymentConditionType)

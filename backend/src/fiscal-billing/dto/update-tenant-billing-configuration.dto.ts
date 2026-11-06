@@ -7,6 +7,7 @@ import {
   Matches,
   MaxLength,
 } from "class-validator";
+import { IsSupportedTenantTimeZone } from "../../common/validation/is-supported-tenant-time-zone.decorator";
 
 const trimString = ({ value }: { value: unknown }) =>
   typeof value === "string" ? value.trim() : value;
@@ -55,7 +56,7 @@ export class UpdateTenantBillingConfigurationDto {
   @Transform(trimString)
   @IsString()
   @MaxLength(100)
-  @Matches(/\S/, { message: "fiscalTimezone no puede estar vacío." })
+  @IsSupportedTenantTimeZone()
   fiscalTimezone?: string;
 
   @IsOptional()

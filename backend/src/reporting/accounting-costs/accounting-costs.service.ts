@@ -5,6 +5,7 @@ import { addDecimal } from "../core/exact-decimal";
 import { ReportingPeriodResolver, type ReportingPeriodSelection } from "../period/reporting-period.resolver";
 import { PrismaService } from "../../prisma/prisma.service";
 import { tenantCalendarDateStartAsUtc } from "../../finance/tenant-fiscal-date";
+import { resolveTenantTimeZone } from "../../common/utils/tenant-timezone";
 import { AccountingCostFxProjector } from "./accounting-cost-fx.projector";
 import { OperationalPurchaseAccountingCostAdapter } from "./operational-purchase-accounting-cost.adapter";
 import type { AccountingCostReadRequest, AccountingCostRow, AccountingCostSourceReader, AccountingCostSummaryRow } from "./accounting-costs.types";
@@ -19,7 +20,7 @@ export class AccountingCostsService {
   async execute(request: AuthenticatedAccountingCostsRequest) {
     // Keep this cast isolated until generated Prisma client types are refreshed after the additive schema migration.
     const configuration = await (this.prisma.tenantBillingConfiguration as unknown as { findUnique(input: unknown): Promise<{ fiscalTimezone: string; accountingCurrencyCode: string | null } | null> }).findUnique({ where: { tenantId: request.tenantId }, select: { fiscalTimezone: true, accountingCurrencyCode: true } });
-    const timezone = configuration?.fiscalTimezone ?? "UTC";
+    const timezone = resolveTenantTimeZone(configuration?.fiscalTimezone);
     const accountingCurrencyCode = configuration?.accountingCurrencyCode?.toUpperCase() ?? null;
     const context = this.access.createReadContext({ tenantId: request.tenantId, actorUserId: request.actorUserId, role: request.role, timezone }, "ACCOUNTING_COSTS");
     const period = this.periods.resolve(request.period, timezone);

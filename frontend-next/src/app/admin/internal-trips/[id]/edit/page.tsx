@@ -10,7 +10,11 @@ import { resolveApiBase } from '@/lib/runtime-config';
 import { PageLoader } from '@/components/loading-spinner';
 import { ConfirmModal } from '@/components/confirm-modal';
 import { LoadingModal } from '@/components/loading-modal';
-import { toLocalDateIso } from '@/shared/regional';
+import {
+  calendarDayDifference,
+  isCalendarDate,
+  toLocalDateIso,
+} from '@/shared/regional';
 import {
   TravelFiscalClassificationField,
   useAdminTravelFiscalClassifications,
@@ -190,10 +194,14 @@ export default function EditInternalTripPage() {
       return;
     }
 
-    const departureDateTime = new Date(departureDate);
-    const returnDateTime = new Date(returnDate);
+    if (!isCalendarDate(departureDate) || !isCalendarDate(returnDate)) {
+      showWarningModal('Fecha inválida', 'Ingresa fechas válidas');
+      return;
+    }
 
-    if (returnDateTime <= departureDateTime) {
+    const tripDurationDays = calendarDayDifference(departureDate, returnDate);
+
+    if (tripDurationDays === null || tripDurationDays <= 0) {
       showWarningModal('Fecha inválida', 'La fecha de regreso debe ser después de la salida');
       return;
     }
@@ -219,8 +227,8 @@ export default function EditInternalTripPage() {
           name: name.trim(),
           destination: destination.trim(),
           description: description.trim() || undefined,
-          departureDate: departureDateTime.toISOString(),
-          returnDate: returnDateTime.toISOString(),
+          departureDate,
+          returnDate,
           departureTime: departureTime || undefined,
           returnTime: returnTime || undefined,
           capacity: parseInt(capacity),

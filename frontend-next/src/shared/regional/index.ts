@@ -5,6 +5,11 @@ export {
   formatTenantDateTimeInput,
   tenantDateTimeInputToUtc,
   formatBusinessTimestampDate,
+  isCalendarDate,
+  calendarDateFromUtcMidnight,
+  tenantCalendarToday,
+  addCalendarDays,
+  calendarDayDifference,
   normalizeTenantTimeZone,
   toLocalDateIso,
 } from "./business-date";

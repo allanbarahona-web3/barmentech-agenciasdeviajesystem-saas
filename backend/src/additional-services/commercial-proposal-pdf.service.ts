@@ -24,6 +24,7 @@ import {
 } from "../generated-documents";
 import { StorageService } from "../storage/storage.service";
 import { CommercialProposalStatus } from "./enums";
+import { resolveTenantTimeZone } from "../common/utils/tenant-timezone";
 import {
   ADDITIONAL_SERVICES_REPOSITORY,
   AdditionalServicesRepository,
@@ -45,6 +46,7 @@ export class CommercialProposalPdfService {
   async prepareDocument(
     order: AdditionalServiceOrderRecord,
     tenantId: string,
+    generatedAt: Date = new Date(),
   ): Promise<CommercialProposalPdfDto> {
     const settings = await this.tenantService.getTenantConfig(tenantId);
     const company: CommercialProposalPdfCompanyDto = {
@@ -57,7 +59,12 @@ export class CommercialProposalPdfService {
       logoSrc: settings.logoUrl,
     };
 
-    return this.mapper.map(order, company);
+    return this.mapper.map(
+      order,
+      company,
+      generatedAt,
+      resolveTenantTimeZone(settings.timeZone),
+    );
   }
 
   renderHtml(document: CommercialProposalPdfDto): string {
@@ -67,8 +74,9 @@ export class CommercialProposalPdfService {
   async renderPdf(
     order: AdditionalServiceOrderRecord,
     tenantId: string,
+    generatedAt: Date = new Date(),
   ): Promise<Buffer> {
-    const document = await this.prepareDocument(order, tenantId);
+    const document = await this.prepareDocument(order, tenantId, generatedAt);
     const html = this.renderHtml(document);
     const { pdfBuffer } = await this.documentPdfService.renderDocumentToBuffer(
       html,
@@ -85,7 +93,8 @@ export class CommercialProposalPdfService {
         "The commercial proposal does not belong to the authenticated tenant.",
       );
     }
-    const pdfBuffer = await this.renderPdf(order, tenantId);
+    const generatedAt = new Date();
+    const pdfBuffer = await this.renderPdf(order, tenantId, generatedAt);
     const settings = await this.tenantService.getTenantConfig(tenantId);
     const appEnv = this.sanitizePathSegment(
       this.configService.get<string>("APP_ENV", "dev"),

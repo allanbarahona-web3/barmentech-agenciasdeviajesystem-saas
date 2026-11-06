@@ -5,6 +5,7 @@ import type { ReceivableDueDateSelection, ReceivableReportReadFilter, Receivable
 import { ReportingAccessPolicy } from "../access/reporting-access-policy";
 import { ReportingPeriodResolver } from "../period/reporting-period.resolver";
 import { ReceivablesReportService, type ReceivablesReportResult } from "./receivables-report.service";
+import { resolveTenantTimeZone } from "../../common/utils/tenant-timezone";
 
 export interface AuthenticatedReceivablesReportRequest {
   tenantId: string;
@@ -23,7 +24,7 @@ export class ReportingReceivablesApplicationService {
 
   async execute(request: AuthenticatedReceivablesReportRequest): Promise<ReceivablesReportResult> {
     const config = await this.prisma.tenantBillingConfiguration.findUnique({ where: { tenantId: request.tenantId }, select: { fiscalTimezone: true } });
-    const context = this.access.createReadContext({ tenantId: request.tenantId, actorUserId: request.actorUserId, role: request.role, timezone: config?.fiscalTimezone ?? "UTC" }, "RECEIVABLES");
+    const context = this.access.createReadContext({ tenantId: request.tenantId, actorUserId: request.actorUserId, role: request.role, timezone: resolveTenantTimeZone(config?.fiscalTimezone) }, "RECEIVABLES");
     const asOfDate = this.periods.resolve({ kind: "TODAY" }, context.timezone).startOn;
     const dueDateRange = resolveDueDateRange(request.dueDate, asOfDate);
     const window: ReceivableReportWindow = {

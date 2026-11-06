@@ -13,6 +13,12 @@ import {
   travelFiscalUsageForType,
   withFiscalClassification,
 } from '@/lib/travel-fiscal-classification';
+import {
+  calendarDayDifference,
+  isCalendarDate,
+  tenantCalendarToday,
+} from '@/shared/regional';
+import { useTenantRegional } from '@/shared/regional/tenant-regional-provider';
 
 interface CreateTripModalProps {
   title: string;
@@ -34,6 +40,7 @@ export function CreateTripModal({
   redirectUrl,
 }: CreateTripModalProps) {
   const router = useRouter();
+  const { timeZone, isConfigured } = useTenantRegional();
 
   const [saving, setSaving] = useState(false);
   const [showLoadingModal, setShowLoadingModal] = useState(false);
@@ -142,17 +149,26 @@ export function CreateTripModal({
         return;
       }
 
-      const departureDateTime = new Date(departureDate);
-      const returnDateTime = new Date(returnDate);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
+      if (!isConfigured) {
+        showWarningModal('Configuración regional', 'Espera a que se cargue la configuración regional del tenant');
+        return;
+      }
 
-      if (departureDateTime <= today) {
+      if (!isCalendarDate(departureDate) || !isCalendarDate(returnDate)) {
+        showWarningModal('Fecha inválida', 'Ingresa fechas válidas');
+        return;
+      }
+
+      const today = tenantCalendarToday(timeZone);
+      const daysUntilDeparture = calendarDayDifference(today, departureDate);
+      const tripDurationDays = calendarDayDifference(departureDate, returnDate);
+
+      if (daysUntilDeparture === null || daysUntilDeparture <= 0) {
         showWarningModal('Fecha inválida', 'La fecha de salida debe ser en el futuro');
         return;
       }
 
-      if (returnDateTime <= departureDateTime) {
+      if (tripDurationDays === null || tripDurationDays <= 0) {
         showWarningModal('Fecha inválida', 'La fecha de regreso debe ser después de la salida');
         return;
       }
@@ -174,8 +190,8 @@ export function CreateTripModal({
       const baseData = {
         name: name.trim(),
         destination: destination.trim(),
-        departureDate: departureDateTime.toISOString(),
-        returnDate: returnDateTime.toISOString(),
+        departureDate,
+        returnDate,
         capacity: parseInt(capacity),
         status,
       };

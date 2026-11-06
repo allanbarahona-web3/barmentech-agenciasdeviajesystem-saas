@@ -19,7 +19,11 @@ import {
 import { AttendanceState } from './constants/attendance-state.constant';
 import { ATTENDANCE_OPERATIONAL_ROLES } from './constants/attendance-roles.constant';
 
-import { DateUtils } from '../common/utils/date.utils';
+import {
+  tenantCalendarDateForInstant,
+  tenantCalendarDateStartAsUtc,
+} from '../finance/tenant-fiscal-date';
+import { resolveTenantTimeZone } from '../common/utils/tenant-timezone';
 
 interface AuthUser {
   id: string;
@@ -88,10 +92,13 @@ export class AttendanceService {
       throw new BadRequestException('Este rol no requiere asistencia.');
     }
 
+    // Capture the authority once. The same UTC instant is persisted and used
+    // to derive the tenant workday, rather than relying on the server zone.
     const now = new Date();
-    const date = DateUtils.getCostaRicaToday();
+    const timezone = await this.getTenantTimezone(user.tenantId);
+    const date = this.workdayForInstant(now, timezone);
 
-    await this.closeLastOpenEntry(user.id, user.tenantId, now);
+    const closedWorkday = await this.closeLastOpenEntry(user.id, user.tenantId, now);
 
     const nextState = dto.state as AttendanceState;
     const entry = await this.prisma.attendanceEntry.create({
@@ -108,6 +115,9 @@ export class AttendanceService {
     });
 
     await this.recalculateDailySummary(user.id, user.tenantId, date);
+    if (closedWorkday && closedWorkday.getTime() !== date.getTime()) {
+      await this.recalculateDailySummary(user.id, user.tenantId, closedWorkday);
+    }
 
     const summary = await this.prisma.attendanceDailySummary.findUnique({
       where: {
@@ -140,14 +150,14 @@ export class AttendanceService {
       };
     }
 
-    const date = DateUtils.getCostaRicaToday();
+    const timezone = await this.getTenantTimezone(user.tenantId);
+    const date = this.workdayForInstant(new Date(), timezone);
 
     const [lastOpenEntry, hasOffEntry] = await Promise.all([
       this.prisma.attendanceEntry.findFirst({
         where: {
           tenantId: user.tenantId,
           userId: user.id,
-          date,
           clockOut: null,
         },
         orderBy: { clockIn: 'desc' },
@@ -196,7 +206,8 @@ export class AttendanceService {
       return { entries: [], summary: null };
     }
 
-    const date = DateUtils.getCostaRicaToday();
+    const timezone = await this.getTenantTimezone(user.tenantId);
+    const date = this.workdayForInstant(new Date(), timezone);
 
     const [entries, summary] = await Promise.all([
       this.prisma.attendanceEntry.findMany({
@@ -260,8 +271,9 @@ export class AttendanceService {
       };
     }
 
-    const startDate = DateUtils.getCostaRicaStartOfDay(query.startDate);
-    const endDate = DateUtils.getCostaRicaEndOfDay(query.endDate);
+    const timezone = await this.getTenantTimezone(user.tenantId);
+    const startDate = this.workdayKey(query.startDate, timezone);
+    const endDate = this.workdayKey(query.endDate, timezone);
 
     
     const summaries = await this.prisma.attendanceDailySummary.findMany({
@@ -303,8 +315,9 @@ export class AttendanceService {
     return [];
   }
 
-  const startDate = DateUtils.getCostaRicaStartOfDay(query.startDate);
-  const endDate = DateUtils.getCostaRicaEndOfDay(query.endDate);
+  const timezone = await this.getTenantTimezone(user.tenantId);
+  const startDate = this.workdayKey(query.startDate, timezone);
+  const endDate = this.workdayKey(query.endDate, timezone);
 
   const entries = await this.prisma.attendanceEntry.findMany({
     where: {
@@ -343,19 +356,22 @@ export class AttendanceService {
 }
   async getAdminEntries(user: AuthUser, query: FilterEntriesDto) {
   const tenantScope = this.resolveAdminTenantScope(user, query.tenantId);
+  const timezone = (query.date || query.startDate || query.endDate)
+    ? await this.getTenantTimezone(tenantScope.tenantId)
+    : null;
 
   const dateFilter = query.date
     ? {
-        date: DateUtils.getCostaRicaStartOfDay(query.date),
+        date: this.workdayKey(query.date, timezone!),
       }
     : (query.startDate || query.endDate)
     ? {
         date: {
           ...(query.startDate
-            ? { gte: DateUtils.getCostaRicaStartOfDay(query.startDate) }
+            ? { gte: this.workdayKey(query.startDate, timezone!) }
             : {}),
           ...(query.endDate
-            ? { lte: DateUtils.getCostaRicaEndOfDay(query.endDate) }
+            ? { lte: this.workdayKey(query.endDate, timezone!) }
             : {}),
         },
       }
@@ -436,18 +452,21 @@ export class AttendanceService {
     query: ListPaginatedAdminEntriesDto,
   ): Promise<PaginatedAdminAttendanceEntriesResponseDto> {
     const tenantScope = this.resolveAdminTenantScope(user, query.tenantId);
+    const timezone = (query.date || query.startDate || query.endDate)
+      ? await this.getTenantTimezone(tenantScope.tenantId)
+      : null;
     const dateFilter = query.date
       ? {
-          date: DateUtils.getCostaRicaStartOfDay(query.date),
+          date: this.workdayKey(query.date, timezone!),
         }
       : (query.startDate || query.endDate)
       ? {
           date: {
             ...(query.startDate
-              ? { gte: DateUtils.getCostaRicaStartOfDay(query.startDate) }
+              ? { gte: this.workdayKey(query.startDate, timezone!) }
               : {}),
             ...(query.endDate
-              ? { lte: DateUtils.getCostaRicaEndOfDay(query.endDate) }
+              ? { lte: this.workdayKey(query.endDate, timezone!) }
               : {}),
           },
         }
@@ -469,6 +488,7 @@ export class AttendanceService {
         select: {
           id: true,
           type: true,
+          date: true,
           clockIn: true,
           clockOut: true,
           duration: true,
@@ -505,6 +525,7 @@ export class AttendanceService {
       items: entries.map((entry) => ({
         id: entry.id,
         type: entry.type,
+        date: entry.date,
         clockIn: entry.clockIn,
         clockOut: entry.clockOut,
         duration: entry.duration,
@@ -521,14 +542,15 @@ export class AttendanceService {
 
   async getAdminSummaries(user: AuthUser, query: AdminSummaryQueryDto) {
     const tenantScope = this.resolveAdminTenantScope(user, query.tenantId);
+    const timezone = await this.getTenantTimezone(tenantScope.tenantId);
 
     return this.prisma.attendanceDailySummary.findMany({
       where: {
         ...tenantScope,
 
         date: {
-          gte: DateUtils.getCostaRicaStartOfDay(query.startDate),
-          lte: DateUtils.getCostaRicaEndOfDay(query.endDate),
+          gte: this.workdayKey(query.startDate, timezone),
+          lte: this.workdayKey(query.endDate, timezone),
         },
       },
       orderBy: { date: 'desc' },
@@ -559,10 +581,10 @@ export class AttendanceService {
       throw new BadRequestException('No se puede corregir una sesión activa. Finaliza el shift primero.');
     }
 
-    const todayStart = DateUtils.getCostaRicaToday();
-    const entryDayStart = DateUtils.getCostaRicaStartOfDay(existing.date);
+    const timezone = await this.getTenantTimezone(existing.tenantId);
+    const todayStart = this.workdayForInstant(new Date(), timezone);
 
-    if (entryDayStart.getTime() >= todayStart.getTime()) {
+    if (existing.date.getTime() >= todayStart.getTime()) {
       throw new BadRequestException('Las correcciones manuales solo se permiten en días anteriores. Aplica al día siguiente.');
     }
 
@@ -658,20 +680,18 @@ export class AttendanceService {
   }
 
   
-  private async closeLastOpenEntry(userId: string, tenantId: string, now: Date) {
-    const date = DateUtils.getCostaRicaToday();
+  private async closeLastOpenEntry(userId: string, tenantId: string, now: Date): Promise<Date | null> {
     const lastOpen = await this.prisma.attendanceEntry.findFirst({
       where: {
         userId,
         tenantId,
-        date,
         clockOut: null,
       },
       orderBy: { clockIn: 'desc' },
     });
 
     if (!lastOpen) {
-      return;
+      return null;
     }
 
     const durationSeconds = lastOpen.type === 'OFF'
@@ -685,6 +705,32 @@ export class AttendanceService {
         duration: durationSeconds,
       },
     });
+
+    return lastOpen.date;
+  }
+
+  /**
+   * Workday keys remain local-midnight instants. Existing rows are queried by
+   * that stored key and are never reclassified from their clock timestamps.
+   */
+  private workdayForInstant(instant: Date, timezone: string): Date {
+    return this.workdayKey(tenantCalendarDateForInstant(instant, timezone), timezone);
+  }
+
+  private workdayKey(calendarDate: string, timezone: string): Date {
+    return tenantCalendarDateStartAsUtc(calendarDate, timezone);
+  }
+
+  private async getTenantTimezone(tenantId?: string): Promise<string> {
+    if (!tenantId) {
+      return resolveTenantTimeZone(undefined);
+    }
+
+    const configuration = await this.prisma.tenantBillingConfiguration.findUnique({
+      where: { tenantId },
+      select: { fiscalTimezone: true },
+    });
+    return resolveTenantTimeZone(configuration?.fiscalTimezone);
   }
 
   private async recalculateDailySummary(userId: string, tenantId: string, date: Date) {

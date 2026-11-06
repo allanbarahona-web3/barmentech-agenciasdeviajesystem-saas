@@ -5,7 +5,8 @@ export const dynamic = 'force-dynamic';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getStoredSession } from '@/lib/auth-api';
-import { formatBusinessDateTime } from '@/shared/regional';
+import { addCalendarDays, formatBusinessDate, tenantCalendarToday } from '@/shared/regional';
+import { useTenantDateTimeFormatter, useTenantRegional } from '@/shared/regional/tenant-regional-provider';
 import {
   getAttendanceAdminConfig,
   getAttendanceAdminEntriesPaginated,
@@ -32,9 +33,14 @@ import { PageHeader } from '@/components/patterns/page-header';
 import { SectionCard } from '@/components/patterns/section-card';
 import { Clock3, History, RotateCcw, Search, Settings2 } from 'lucide-react';
 
-const isoDate = (date: Date) => date.toISOString().slice(0, 10);
-const getDefaultStartDate = () => isoDate(new Date(new Date().setDate(new Date().getDate() - 7)));
-const getDefaultEndDate = () => isoDate(new Date());
+const getDefaultAttendanceFilters = (timeZone: string): AttendanceFilters => {
+  const endDate = tenantCalendarToday(timeZone);
+  return {
+    startDate: addCalendarDays(endDate, -7),
+    endDate,
+    userId: '',
+  };
+};
 const ATTENDANCE_PAGE_SIZE = 50;
 
 type AttendanceFilters = {
@@ -71,6 +77,8 @@ function AttendanceStateBadge({ state }: { state: AttendanceState }) {
 
 export default function AdminAttendancePage() {
   const router = useRouter();
+  const { timeZone, isConfigured } = useTenantRegional();
+  const formatTenantDateTime = useTenantDateTimeFormatter();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [loadingModalOpen, setLoadingModalOpen] = useState(false);
@@ -81,8 +89,8 @@ export default function AdminAttendancePage() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
-  const [startDate, setStartDate] = useState(() => getDefaultStartDate());
-  const [endDate, setEndDate] = useState(() => getDefaultEndDate());
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
   const [selectedEntry, setSelectedEntry] = useState<AttendanceAdminListItem | null>(null);
   const [isCorrectionModalOpen, setIsCorrectionModalOpen] = useState(false);
@@ -90,15 +98,15 @@ export default function AdminAttendancePage() {
   const [isCorrectionsModalOpen, setIsCorrectionsModalOpen] = useState(false);
   const [employeeOptions, setEmployeeOptions] = useState<AttendanceEmployeeOption[]>([]);
   const [filterEmployeeId, setFilterEmployeeId] = useState('');
-  const [appliedFilters, setAppliedFilters] = useState<AttendanceFilters>(() => ({
-    startDate: getDefaultStartDate(),
-    endDate: getDefaultEndDate(),
+  const [appliedFilters, setAppliedFilters] = useState<AttendanceFilters>({
+    startDate: '',
+    endDate: '',
     userId: '',
-  }));
+  });
   const [isConfigSheetOpen, setIsConfigSheetOpen] = useState(false);
   const entriesRequestControllerRef = useRef<AbortController | null>(null);
   const entriesRequestGenerationRef = useRef(0);
-  const initialAppliedFiltersRef = useRef(appliedFilters);
+  const initializedTenantDefaults = useRef(false);
 
   const loadEntries = useCallback(async (requestedPage: number, filters: AttendanceFilters) => {
     entriesRequestControllerRef.current?.abort();
@@ -181,8 +189,15 @@ export default function AdminAttendancePage() {
       return;
     }
 
-    void load(initialAppliedFiltersRef.current);
-  }, [load, router]);
+    if (!isConfigured || initializedTenantDefaults.current) return;
+
+    const defaults = getDefaultAttendanceFilters(timeZone);
+    initializedTenantDefaults.current = true;
+    setStartDate(defaults.startDate);
+    setEndDate(defaults.endDate);
+    setAppliedFilters(defaults);
+    void load(defaults);
+  }, [isConfigured, load, router, timeZone]);
 
   useEffect(() => {
     return () => entriesRequestControllerRef.current?.abort();
@@ -244,22 +259,21 @@ export default function AdminAttendancePage() {
   };
 
   const clearFilters = async () => {
-    const defaultStartDate = getDefaultStartDate();
-    const defaultEndDate = getDefaultEndDate();
+    const defaults = getDefaultAttendanceFilters(timeZone);
 
     setLoadingModalOpen(true);
     setLoadingModalState('loading');
     setLoadingModalMessage('Restableciendo filtros...');
 
     setFilterEmployeeId('');
-    setStartDate(defaultStartDate);
-    setEndDate(defaultEndDate);
+    setStartDate(defaults.startDate);
+    setEndDate(defaults.endDate);
     setPage(1);
 
     try {
       const nextFilters = {
-        startDate: defaultStartDate,
-        endDate: defaultEndDate,
+        startDate: defaults.startDate,
+        endDate: defaults.endDate,
         userId: '',
       };
       setAppliedFilters(nextFilters);
@@ -293,14 +307,14 @@ export default function AdminAttendancePage() {
             </Select>
           </FormField>
           <FormField className="xl:col-span-2" htmlFor="attendance-filter-start" label="Fecha de inicio">
-            <Input id="attendance-filter-start" type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} />
+            <Input id="attendance-filter-start" type="date" value={startDate} disabled={!isConfigured} onChange={(event) => setStartDate(event.target.value)} />
           </FormField>
           <FormField className="xl:col-span-2" htmlFor="attendance-filter-end" label="Fecha de fin">
-            <Input id="attendance-filter-end" type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} />
+            <Input id="attendance-filter-end" type="date" value={endDate} disabled={!isConfigured} onChange={(event) => setEndDate(event.target.value)} />
           </FormField>
           <div className="flex items-end gap-2 xl:col-span-5">
-            <Button type="button" onClick={() => void searchEntries()}><Search aria-hidden="true" />Buscar</Button>
-            <Button type="button" variant="outline" onClick={() => void clearFilters()}><RotateCcw aria-hidden="true" />Limpiar</Button>
+            <Button type="button" disabled={!isConfigured || !startDate || !endDate} onClick={() => void searchEntries()}><Search aria-hidden="true" />Buscar</Button>
+            <Button type="button" variant="outline" disabled={!isConfigured} onClick={() => void clearFilters()}><RotateCcw aria-hidden="true" />Limpiar</Button>
           </div>
         </div>
       </SectionCard>
@@ -319,16 +333,17 @@ export default function AdminAttendancePage() {
           </div>
         )}
       >
-        <Table className="min-w-[1040px] table-fixed">
+        <Table className="min-w-[1140px] table-fixed">
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[22%]">Empleado</TableHead>
-              <TableHead className="w-[13%] whitespace-nowrap">Estado</TableHead>
-              <TableHead className="w-[17%] whitespace-nowrap">Inicio</TableHead>
-              <TableHead className="w-[17%] whitespace-nowrap">Fin</TableHead>
-              <TableHead className="w-[11%] whitespace-nowrap">Duración</TableHead>
-              <TableHead className="w-[9%] whitespace-nowrap">Horas extra</TableHead>
-              <TableHead className="w-[11%] whitespace-nowrap text-right">Correcciones</TableHead>
+              <TableHead className="w-[19%]">Empleado</TableHead>
+              <TableHead className="w-[11%] whitespace-nowrap">Jornada</TableHead>
+              <TableHead className="w-[12%] whitespace-nowrap">Estado</TableHead>
+              <TableHead className="w-[16%] whitespace-nowrap">Inicio</TableHead>
+              <TableHead className="w-[16%] whitespace-nowrap">Fin</TableHead>
+              <TableHead className="w-[10%] whitespace-nowrap">Duración</TableHead>
+              <TableHead className="w-[7%] whitespace-nowrap">Horas extra</TableHead>
+              <TableHead className="w-[9%] whitespace-nowrap text-right">Correcciones</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -342,9 +357,10 @@ export default function AdminAttendancePage() {
                     <span className="truncate">{entry.user.fullName || '-'}</span>
                   </Button>
                 </TableCell>
+                <TableCell className="whitespace-nowrap text-muted-foreground">{entry.date ? formatBusinessDate(entry.date) : '-'}</TableCell>
                 <TableCell className="whitespace-nowrap"><AttendanceStateBadge state={entry.type} /></TableCell>
-                <TableCell className="whitespace-nowrap text-muted-foreground">{formatBusinessDateTime(entry.clockIn)}</TableCell>
-                <TableCell className="whitespace-nowrap text-muted-foreground">{entry.clockOut ? formatBusinessDateTime(entry.clockOut) : '-'}</TableCell>
+                <TableCell className="whitespace-nowrap text-muted-foreground">{formatTenantDateTime(entry.clockIn)}</TableCell>
+                <TableCell className="whitespace-nowrap text-muted-foreground">{entry.clockOut ? formatTenantDateTime(entry.clockOut) : '-'}</TableCell>
                 <TableCell className="whitespace-nowrap">{formatDuration(entry.duration)}</TableCell>
                 <TableCell className="whitespace-nowrap"><Badge variant={entry.isOT ? 'warning' : 'secondary'}>{entry.isOT ? 'Sí' : 'No'}</Badge></TableCell>
                 <TableCell className="text-right">

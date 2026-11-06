@@ -1,8 +1,9 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from "@nestjs/common";
-import { tenantCalendarDate } from "../cost-engine/tenant-business-date.resolver";
+import { resolveTenantTimeZone } from "../common/utils/tenant-timezone";
 import { PrismaService } from "../prisma/prisma.service";
 import { runTenantTransaction } from "../tenant/tenant-transaction";
 import type { CustomQuotationActor } from "./custom-quotations.service";
+import { isCustomQuotationValidityExpired } from "./custom-quotation-validity";
 
 export type CustomQuotationApprovalActor = { userId: string | null; name: string | null };
 
@@ -145,14 +146,18 @@ function assertApprovalTransition(currentStatus: unknown, targetStatus: Approval
   }
 }
 
-export async function assertCustomQuotationVersionNotExpired(tx: CustomQuotationApprovalTransaction, tenantId: string, validUntil: Date | null): Promise<string> {
+export async function assertCustomQuotationVersionNotExpired(
+  tx: CustomQuotationApprovalTransaction,
+  tenantId: string,
+  validUntil: Date | null,
+  now: Date = new Date(),
+): Promise<string> {
   const configuration = await tx.tenantBillingConfiguration.findUnique({
     where: { tenantId },
     select: { fiscalTimezone: true },
   });
-  const timezone = configuration?.fiscalTimezone || "America/Costa_Rica";
-  if (!validUntil) return timezone;
-  if (tenantCalendarDate(validUntil, timezone) < tenantCalendarDate(new Date(), timezone)) {
+  const timezone = resolveTenantTimeZone(configuration?.fiscalTimezone);
+  if (isCustomQuotationValidityExpired(validUntil, timezone, now)) {
     throw new BadRequestException("CUSTOM_QUOTATION_VERSION_EXPIRED");
   }
   return timezone;

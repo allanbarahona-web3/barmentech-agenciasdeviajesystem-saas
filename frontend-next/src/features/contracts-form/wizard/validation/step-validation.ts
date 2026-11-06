@@ -6,7 +6,6 @@
  */
 
 import type { ContractFormState } from "@/features/contracts-form/types";
-import { getTodayIsoLocal } from "@/features/contracts-form/utils";
 import { getMinorDateOfBirthValidationError } from "@/features/contracts-form/minor-date-of-birth";
 
 /**
@@ -17,6 +16,7 @@ export type ContractsValidationContext = {
   rangeMessage: string;
   itineraryMessage: string;
   isInternalTrip: boolean;
+  todayIso: string;
 };
 
 /**
@@ -98,7 +98,7 @@ function validateItineraryStep(context: ContractsValidationContext): ValidationR
 function validateMinorsStep(context: ContractsValidationContext): ValidationResult {
   const errorMessage = getMinorDateOfBirthValidationError(
     context.state.minors,
-    getTodayIsoLocal(),
+    context.todayIso,
   );
 
   return errorMessage ? { valid: false, errorMessage: `Error: ${errorMessage}` } : { valid: true };

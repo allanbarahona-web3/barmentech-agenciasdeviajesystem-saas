@@ -1,4 +1,4 @@
-import { addMinor, getTodayIsoLocal, removeMinor, updateMinor } from "@/features/contracts-form/utils";
+import { addMinor, removeMinor, updateMinor } from "@/features/contracts-form/utils";
 import type { ContractFormState } from "@/features/contracts-form/types";
 import { CLIENT_IDENTIFICATION_OPTIONS } from '@/features/customers/client-identification';
 
@@ -6,6 +6,7 @@ export interface MinorsStepProps {
   state: ContractFormState;
   setState: React.Dispatch<React.SetStateAction<ContractFormState>>;
   isInternalTrip: boolean;
+  todayIso: string;
   minorDocs: Record<
     string,
     {
@@ -35,6 +36,7 @@ export function MinorsStep({
   state,
   setState,
   isInternalTrip,
+  todayIso,
   minorDocs,
   setMinorDocs,
   responsibleAdults,
@@ -90,7 +92,7 @@ export function MinorsStep({
                 <input
                   type="date"
                   value={minor.dateOfBirth}
-                  max={getTodayIsoLocal()}
+                  max={todayIso}
                   required
                   onChange={(event) => setState((prev) => updateMinor(prev, minor.id, "dateOfBirth", event.target.value))}
                 />

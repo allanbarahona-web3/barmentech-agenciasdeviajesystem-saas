@@ -10,7 +10,7 @@ const shell = () => read('../src/components/operations/operations-trip-shell.tsx
 test('Readiness dashboard is the Operations summary section and exposes all backend readiness labels', () => {
   const source = dashboard();
   assert.match(shell(), /OperationalReadinessDashboard/);
-  assert.match(shell(), /type Section = 'summary' \| 'operation'/);
+  assert.match(shell(), /type Section = 'summary' \| 'operations'/);
   for (const label of ['Listo', 'En riesgo', 'No listo', 'Sin críticos definidos']) assert.match(source, new RegExp(label));
   assert.match(source, /Todos los requerimientos críticos aplicables están cubiertos/);
 });

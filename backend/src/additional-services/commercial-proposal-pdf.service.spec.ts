@@ -59,7 +59,7 @@ describe("CommercialProposalPdfService", () => {
       businessAddress: "San José",
       primaryColor: "#123456",
       logoSrc: "https://example.com/logo.png",
-    });
+    }, expect.any(Date), "America/Costa_Rica");
   });
 
   it("renders the prepared HTML through DocumentPdfService and returns its buffer", async () => {
@@ -112,6 +112,8 @@ describe("CommercialProposalPdfService", () => {
   });
 
   it("uploads and registers one deterministic GENERATED proposal", async () => {
+    jest.useFakeTimers().setSystemTime(new Date("2026-11-06T05:30:00.000Z"));
+    try {
     const order = {
       id: "order-1",
       tenantId: "tenant-1",
@@ -150,6 +152,11 @@ describe("CommercialProposalPdfService", () => {
     await expect(service.persist(order, "tenant-1")).resolves.toBe(
       storedDocument,
     );
+    expect(service.renderPdf).toHaveBeenCalledWith(
+      order,
+      "tenant-1",
+      new Date("2026-11-06T05:30:00.000Z"),
+    );
 
     const objectKey =
       "production/acme-travel/additional-services/proposals/AS-2026-0042/proposal.pdf";
@@ -174,6 +181,9 @@ describe("CommercialProposalPdfService", () => {
       "order-1",
       { commercialStatus: CommercialProposalStatus.PDF_GENERATED },
     );
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it("rejects persistence across tenant boundaries before rendering", async () => {

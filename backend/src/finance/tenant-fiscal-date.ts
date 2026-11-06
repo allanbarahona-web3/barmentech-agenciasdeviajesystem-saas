@@ -6,6 +6,39 @@ export type TenantCalendarDate = {
   day: number;
 };
 
+/** Validates a YYYY-MM-DD calendar date and returns its UTC-midnight DATE carrier. */
+export function calendarDateAsUtc(calendarDate: string): Date {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(calendarDate);
+  if (!match) throw new Error("FINANCE_TENANT_CALENDAR_DATE_INVALID");
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const instant = new Date(Date.UTC(year, month - 1, day));
+  if (
+    instant.getUTCFullYear() !== year ||
+    instant.getUTCMonth() !== month - 1 ||
+    instant.getUTCDate() !== day
+  ) {
+    throw new Error("FINANCE_TENANT_CALENDAR_DATE_INVALID");
+  }
+  return instant;
+}
+
+/** Reads only the UTC-midnight representation used as a calendar-date carrier. */
+export function calendarDateFromUtcMidnight(value: Date): string {
+  if (
+    !Number.isFinite(value.getTime()) ||
+    value.getUTCHours() !== 0 ||
+    value.getUTCMinutes() !== 0 ||
+    value.getUTCSeconds() !== 0 ||
+    value.getUTCMilliseconds() !== 0
+  ) {
+    throw new Error("FINANCE_TENANT_CALENDAR_DATE_INVALID");
+  }
+  return value.toISOString().slice(0, 10);
+}
+
 /** Projects a UTC instant onto the tenant's fiscal calendar without using server or browser time. */
 export function tenantCalendarDateForInstant(instant: Date, timezone: string): string {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -23,17 +56,12 @@ export function tenantCalendarDateForInstant(instant: Date, timezone: string): s
 }
 
 export function tenantCalendarDateStartAsUtc(calendarDate: string, timezone: string): Date {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(calendarDate);
-  if (!match) throw new Error("FINANCE_TENANT_CALENDAR_DATE_INVALID");
-  const value = { year: Number(match[1]), month: Number(match[2]), day: Number(match[3]) };
-  const instant = new Date(Date.UTC(value.year, value.month - 1, value.day));
-  if (
-    instant.getUTCFullYear() !== value.year ||
-    instant.getUTCMonth() !== value.month - 1 ||
-    instant.getUTCDate() !== value.day
-  ) {
-    throw new Error("FINANCE_TENANT_CALENDAR_DATE_INVALID");
-  }
+  const instant = calendarDateAsUtc(calendarDate);
+  const value = {
+    year: instant.getUTCFullYear(),
+    month: instant.getUTCMonth() + 1,
+    day: instant.getUTCDate(),
+  };
   return tenantLocalMidnightAsUtc(value, timezone);
 }
 

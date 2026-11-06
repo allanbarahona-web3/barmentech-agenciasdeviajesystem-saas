@@ -24,7 +24,8 @@ import {
   type PaymentStatus,
   type RegisterPaymentInput,
 } from '@/lib/finance-api';
-import { useTenantDateTimeFormatter } from '@/shared/regional/tenant-regional-provider';
+import { formatTenantDateTimeInput, tenantDateTimeInputToUtc } from '@/shared/regional';
+import { useTenantDateTimeFormatter, useTenantRegional } from '@/shared/regional/tenant-regional-provider';
 import { FINANCE_PAYMENT_METHOD_OPTIONS, formatFinancePaymentMethod } from '@/lib/finance-payment-methods';
 import styles from './accounts-receivable.module.css';
 
@@ -48,16 +49,6 @@ const AR_STATUS_LABELS: Record<AccountReceivableStatus, string> = {
 };
 
 const ALLOCATION_STATUS_LABELS = { ACTIVE: 'Aplicado', REVERSED: 'Revertido' } as const;
-
-function localDateTimeValue() {
-  const now = new Date();
-  const year = String(now.getFullYear());
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  const hours = String(now.getHours()).padStart(2, '0');
-  const minutes = String(now.getMinutes()).padStart(2, '0');
-  return `${year}-${month}-${day}T${hours}:${minutes}`;
-}
 
 function idempotencyKey(prefix: string) {
   return `${prefix}-${crypto.randomUUID()}`;
@@ -150,13 +141,22 @@ type PaymentFlowProps = {
   onCompleted?: (message: string) => void;
 };
 
-export function PaymentFlow({ receivable, customer, initialPayment, canAllocate = true, canManage = canAllocate, onClose, onAllocated, onCompleted }: PaymentFlowProps) {
+export function PaymentFlow(props: PaymentFlowProps) {
+  const { timeZone, isConfigured } = useTenantRegional();
+
+  if (!isConfigured) return null;
+
+  return <PaymentFlowContent {...props} timeZone={timeZone} />;
+}
+
+function PaymentFlowContent({ receivable, customer, initialPayment, canAllocate = true, canManage = canAllocate, onClose, onAllocated, onCompleted, timeZone }: PaymentFlowProps & { timeZone: string }) {
   const [registrationKey] = useState(() => idempotencyKey('finance-payment'));
   const allocationKeys = useRef(new Map<string, string>());
   const requestedSuggestions = useRef(new Set<string>());
   const [payment, setPayment] = useState<PaymentDetail | null>(initialPayment ?? null);
   const [payerDisplayName, setPayerDisplayName] = useState(receivable?.debtorDisplayName ?? customer?.name ?? '');
-  const [receivedAt, setReceivedAt] = useState(localDateTimeValue);
+  const [receivedAt, setReceivedAt] = useState(() => formatTenantDateTimeInput(new Date().toISOString(), timeZone));
+  const receivedAtTimeZoneRef = useRef(timeZone);
   const [receivedAmount, setReceivedAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<RegisterPaymentInput['paymentMethod']>('BANK_TRANSFER');
   const [externalReference, setExternalReference] = useState('');
@@ -240,8 +240,13 @@ export function PaymentFlow({ receivable, customer, initialPayment, canAllocate 
     event.preventDefault();
     if (!receivable && !customer) return;
     setError(null);
-    if (!payerDisplayName.trim() || !receivedAt || !DECIMAL_TEXT.test(receivedAmount.trim())) {
+    const receivedAtUtc = tenantDateTimeInputToUtc(receivedAt, timeZone);
+    if (!payerDisplayName.trim() || !receivedAtUtc || !DECIMAL_TEXT.test(receivedAmount.trim())) {
       setError('Complete el cliente, la fecha y un monto decimal válido.');
+      return;
+    }
+    if (receivedAtTimeZoneRef.current !== timeZone) {
+      setError('La zona horaria del tenant cambió mientras editaba la fecha. Revise la fecha y hora del pago antes de enviarlo.');
       return;
     }
     setSubmitting(true);
@@ -256,7 +261,7 @@ export function PaymentFlow({ receivable, customer, initialPayment, canAllocate 
         payerDisplayName: payerDisplayName.trim(),
         currencyCode: receivable?.currencyCode ?? customer!.currency,
         receivedAmount: receivedAmount.trim(),
-        receivedAt: new Date(receivedAt).toISOString(),
+        receivedAt: receivedAtUtc,
         paymentMethod,
         ...(receivable?.customerId ? { customerId: receivable.customerId } : customer ? { customerId: customer.id } : {}),
         ...identification,
@@ -382,7 +387,7 @@ export function PaymentFlow({ receivable, customer, initialPayment, canAllocate 
             <form className={styles.paymentForm} onSubmit={submitRegistration}>
               <div className={styles.paymentFormGrid}>
                 <label><span>Cliente</span><input value={payerDisplayName} maxLength={500} required onChange={(event) => setPayerDisplayName(event.target.value)} /></label>
-                <label><span>Fecha del pago</span><input type="datetime-local" value={receivedAt} required onChange={(event) => setReceivedAt(event.target.value)} /></label>
+                <label><span>Fecha del pago</span><input type="datetime-local" value={receivedAt} required onChange={(event) => { receivedAtTimeZoneRef.current = timeZone; setReceivedAt(event.target.value); }} /></label>
                 <label><span>Moneda</span><input value={contextCurrency} readOnly /></label>
                 <label><span>Monto recibido</span><input inputMode="decimal" maxLength={100} placeholder="0.00" value={receivedAmount} required onChange={(event) => setReceivedAmount(event.target.value)} /></label>
                 <label><span>Método de pago</span><select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value as RegisterPaymentInput['paymentMethod'])}>{FINANCE_PAYMENT_METHOD_OPTIONS.map((option) => <option key={option.token} value={option.token}>{option.label}</option>)}</select></label>

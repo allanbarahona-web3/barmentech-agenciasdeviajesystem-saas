@@ -215,7 +215,7 @@ export function TravelStep({
               onChange={(event) => {
                 const selected = String(event.target.value || "");
                 const safe = selected && selected < todayIso ? todayIso : selected;
-                setState((prev) => applyMoneyDerivedValues(syncTourDates(prev, "start", safe)));
+                setState((prev) => applyMoneyDerivedValues(syncTourDates(prev, "start", safe, todayIso)));
               }}
               readOnly={packageFieldsLocked}
               style={packageFieldsLocked ? { backgroundColor: "#f3f4f6", cursor: "not-allowed" } : undefined}
@@ -229,7 +229,7 @@ export function TravelStep({
               value={state.endDate}
               min={state.startDate ? addDaysIso(state.startDate, 1) : addDaysIso(todayIso, 1)}
               onChange={(event) =>
-                setState((prev) => applyMoneyDerivedValues(syncTourDates(prev, "end", event.target.value)))
+                setState((prev) => applyMoneyDerivedValues(syncTourDates(prev, "end", event.target.value, todayIso)))
               }
               readOnly={packageFieldsLocked}
               style={packageFieldsLocked ? { backgroundColor: "#f3f4f6", cursor: "not-allowed" } : undefined}

@@ -1,4 +1,5 @@
 const BUSINESS_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})/;
+const STRICT_BUSINESS_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 export const DEFAULT_TENANT_TIMEZONE = "America/Costa_Rica";
 
@@ -18,16 +19,69 @@ export const toLocalDateIso = (dateString: string): string => {
   if (!match) return "";
 
   const [, year, month, day] = match;
-  const date = new Date(Number(year), Number(month) - 1, Number(day));
-  if (
-    date.getFullYear() !== Number(year) ||
-    date.getMonth() !== Number(month) - 1 ||
-    date.getDate() !== Number(day)
-  ) {
-    return "";
-  }
+  return calendarDateFromParts(Number(year), Number(month), Number(day));
+};
 
-  return `${year}-${month}-${day}`;
+/** True only for a complete, valid YYYY-MM-DD calendar date. */
+export const isCalendarDate = (value: string): boolean =>
+  STRICT_BUSINESS_DATE_PATTERN.test(value) && toLocalDateIso(value) === value;
+
+/** Reads the backend's UTC-midnight DATE carrier without timezone conversion. */
+export const calendarDateFromUtcMidnight = (value: string | null | undefined): string => {
+  if (!value) return "";
+  if (isCalendarDate(value)) return value;
+  const match = /^(\d{4}-\d{2}-\d{2})T00:00:00(?:\.000)?Z$/.exec(value);
+  return match && isCalendarDate(match[1]) ? match[1] : "";
+};
+
+/**
+ * Returns the tenant calendar date for an instant as YYYY-MM-DD.
+ *
+ * Invalid instants return an empty string, matching the existing date-only
+ * helper convention. The optional instant makes this deterministic in tests.
+ */
+export const tenantCalendarToday = (
+  timeZone = DEFAULT_TENANT_TIMEZONE,
+  instant: Date | string | number = new Date(),
+): string => {
+  const date = instant instanceof Date ? new Date(instant.getTime()) : new Date(instant);
+  if (Number.isNaN(date.getTime())) return "";
+
+  const parts = dateTimeParts(date, timeZone);
+  return calendarDateFromParts(Number(parts.year), Number(parts.month), Number(parts.day));
+};
+
+/**
+ * Adds whole calendar days to a YYYY-MM-DD date without using local time.
+ *
+ * Negative values subtract days. Invalid dates, non-integer offsets, and
+ * results outside YYYY-MM-DD return an empty string.
+ */
+export const addCalendarDays = (value: string, days: number): string => {
+  if (!isCalendarDate(value) || !Number.isSafeInteger(days)) return "";
+
+  const [year, month, day] = value.split("-").map(Number);
+  const date = utcCalendarDate(year, month, day);
+  date.setUTCDate(date.getUTCDate() + days);
+  if (Number.isNaN(date.getTime())) return "";
+
+  return calendarDateFromParts(date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate());
+};
+
+/**
+ * Returns whole calendar days from start through end: end minus start.
+ *
+ * A later end is positive, an earlier end is negative, and equal dates are
+ * zero. Invalid calendar dates return null.
+ */
+export const calendarDayDifference = (start: string, end: string): number | null => {
+  if (!isCalendarDate(start) || !isCalendarDate(end)) return null;
+
+  const [startYear, startMonth, startDay] = start.split("-").map(Number);
+  const [endYear, endMonth, endDay] = end.split("-").map(Number);
+  const startDate = utcCalendarDate(startYear, startMonth, startDay);
+  const endDate = utcCalendarDate(endYear, endMonth, endDay);
+  return (endDate.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000);
 };
 
 export const formatBusinessDate = (dateString: string): string => {
@@ -94,6 +148,27 @@ function dateTimeParts(date: Date, timeZone: string) {
   const parts = new Intl.DateTimeFormat('en-CA', { timeZone: normalizeTenantTimeZone(timeZone), year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(date);
   const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value ?? '';
   return { year: part('year'), month: part('month'), day: part('day'), hour: part('hour'), minute: part('minute') };
+}
+
+function utcCalendarDate(year: number, month: number, day: number): Date {
+  const date = new Date(0);
+  date.setUTCFullYear(year, month - 1, day);
+  return date;
+}
+
+function calendarDateFromParts(year: number, month: number, day: number): string {
+  if (!Number.isInteger(year) || year < 1 || year > 9999 || !Number.isInteger(month) || !Number.isInteger(day)) return "";
+  const date = utcCalendarDate(year, month, day);
+  if (
+    Number.isNaN(date.getTime()) ||
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return "";
+  }
+
+  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
 export const formatBusinessTimestampDate = (dateString: string): string => {

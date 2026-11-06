@@ -26,7 +26,7 @@ const stepValidationSource = readFileSync(
 
 test("MinorsStep renders a required date-only Fecha de nacimiento input without an age field", () => {
   assert.match(minorsStepSource, /Fecha de nacimiento/);
-  assert.match(minorsStepSource, /type="date"[\s\S]*?value=\{minor\.dateOfBirth\}[\s\S]*?max=\{getTodayIsoLocal\(\)\}[\s\S]*?required/);
+  assert.match(minorsStepSource, /type="date"[\s\S]*?value=\{minor\.dateOfBirth\}[\s\S]*?max=\{todayIso\}[\s\S]*?required/);
   assert.match(minorsStepSource, /updateMinor\(prev, minor\.id, "dateOfBirth", event\.target\.value\)/);
   assert.doesNotMatch(minorsStepSource, /passengerAge|currentAge|\bAge\b/);
 });
@@ -48,7 +48,7 @@ test("minor DOB validation requires a value and rejects future values without pe
 });
 
 test("DOB remains in minor wizard state and is forwarded to the existing resolver and archive payload", () => {
-  assert.match(wizardSource, /getMinorDateOfBirthValidationError\([\s\S]*?state\.minors[\s\S]*?getTodayIsoLocal\(\)/);
+  assert.match(wizardSource, /getMinorDateOfBirthValidationError\([\s\S]*?state\.minors[\s\S]*?todayIso/);
   assert.match(wizardSource, /resolveMinorCustomer\(\{[\s\S]*?idNumber: minor\.minorId,[\s\S]*?dateOfBirth: minor\.dateOfBirth,/);
   assert.match(wizardSource, /resolvedArchiveState: ContractFormState = \{[\s\S]*?minors: resolvedMinors,/);
   assert.match(wizardSource, /archivePayloadForCommercialAuthority\(archiveState, pricingPublishedForArchive\)/);

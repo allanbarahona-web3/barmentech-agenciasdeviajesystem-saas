@@ -21,7 +21,7 @@ describe("CommercialProposalPdfMapper", () => {
       businessAddress: "San José, Costa Rica",
       primaryColor: "#123456",
       logoSrc: "https://example.com/logo.png",
-    });
+    }, new Date("2026-08-06T15:00:00.000Z"), "America/Costa_Rica");
 
     expect(document).toEqual({
       company: {
@@ -34,8 +34,8 @@ describe("CommercialProposalPdfMapper", () => {
         logoSrc: "https://example.com/logo.png",
       },
       proposalNumber: "AS-2026-0042",
-      issuedAt: "2026-08-06T15:00:00.000Z",
-      validUntil: "2026-08-20T00:00:00.000Z",
+      issuedAt: "2026-08-06",
+      validUntil: "2026-08-20",
       currency: AdditionalServiceCurrency.USD,
       customer: {
         fullName: "Ana Cliente",
@@ -108,6 +108,20 @@ describe("CommercialProposalPdfMapper", () => {
     ].forEach((field) => expect(serialized).not.toContain(`\"${field}\"`));
     expect(serialized).toContain("Sujeto a disponibilidad.");
     expect(serialized).not.toContain("INTERNAL ONLY - DO NOT SHOW CUSTOMER");
+  });
+
+  it("uses the generation instant in the issuing tenant timezone", () => {
+    const companyDetails = company();
+    const generatedAt = new Date("2026-11-06T05:30:00.000Z");
+
+    expect(
+      mapper.map(buildOrder(), companyDetails, generatedAt, "America/Costa_Rica")
+        .issuedAt,
+    ).toBe("2026-11-05");
+    expect(
+      mapper.map(buildOrder(), companyDetails, generatedAt, "America/Lima")
+        .issuedAt,
+    ).toBe("2026-11-06");
   });
 
   it("does not fall back to the internal note for historical lines", () => {

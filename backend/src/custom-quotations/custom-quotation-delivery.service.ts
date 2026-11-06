@@ -43,7 +43,7 @@ export class CustomQuotationDeliveryService {
   }
 
   async send(tenantId: string, quotationId: string, versionId: string, actor: CustomQuotationDeliveryActor) {
-    const { version, timezone } = await this.withTenantTransaction(tenantId, async (tx) => {
+    const { version } = await this.withTenantTransaction(tenantId, async (tx) => {
       const version = await tx.customQuotationVersion.findFirst({
         where: { id: versionId, tenantId, customQuotationId: quotationId },
         select: {
@@ -69,8 +69,8 @@ export class CustomQuotationDeliveryService {
       if (version.status !== "ISSUED" || version.customQuotation.status !== "ISSUED") {
         throw new ConflictException("CUSTOM_QUOTATION_VERSION_NOT_DELIVERABLE");
       }
-      const timezone = await assertCustomQuotationVersionNotExpired(tx, tenantId, version.quotationValidUntil);
-      return { version, timezone };
+      await assertCustomQuotationVersionNotExpired(tx, tenantId, version.quotationValidUntil);
+      return { version };
     });
 
     const recipient = snapshotRecipient(version);
@@ -108,7 +108,6 @@ export class CustomQuotationDeliveryService {
         currency: version.currency,
         finalSellingPrice: decimalString(version.finalSellingPrice),
         quotationValidUntil: version.quotationValidUntil,
-        timezone,
         approvalUrl,
       });
       const result = await this.email.sendEmail({

@@ -47,7 +47,7 @@ describe("CustomQuotationDeliveryService", () => {
 
   it("rejects expired, terminal, missing-email, and cross-tenant delivery before email/document work", async () => {
     const expired = context();
-    expired.tx.customQuotationVersion.findFirst.mockResolvedValue(version({ quotationValidUntil: new Date("2020-01-01T12:00:00.000Z") }));
+    expired.tx.customQuotationVersion.findFirst.mockResolvedValue(version({ quotationValidUntil: new Date("2020-01-01T00:00:00.000Z") }));
     await expect(expired.service.send("tenant-a", "quotation-a", "version-a", actor)).rejects.toBeInstanceOf(BadRequestException);
     expect(expired.documents.findLatest).not.toHaveBeenCalled();
 
@@ -146,7 +146,7 @@ function context() {
 
 function version(overrides: Record<string, unknown> = {}) {
   return {
-    id: "version-a", status: "ISSUED", currency: "USD", finalSellingPrice: "1450.12345", quotationValidUntil: new Date("2099-12-31T12:00:00.000Z"),
+    id: "version-a", status: "ISSUED", currency: "USD", finalSellingPrice: "1450.12345", quotationValidUntil: new Date("2099-12-31T00:00:00.000Z"),
     recipientFullName: "Ana Cliente", recipientEmail: " Ana@Example.com ", recipientPhone: "+506 8888-8888", recipientCompanyName: null,
     title: "Propuesta congelada",
     customQuotation: { quotationNumber: "CQ-2026-000001", title: "Título mutable", status: "ISSUED" },

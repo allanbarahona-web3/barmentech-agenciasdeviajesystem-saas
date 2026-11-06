@@ -295,7 +295,7 @@ export default function AdditionalServicesPricingReviewPage() {
         paymentTermUnit:
           commercialConditions.paymentTermUnit ?? undefined,
         quotationValidUntil: commercialConditions.quotationValidUntil
-          ? `${commercialConditions.quotationValidUntil}T23:59:59.999-06:00`
+          ? commercialConditions.quotationValidUntil
           : undefined,
         commercialObservations:
           commercialConditions.commercialObservations.trim() || undefined,

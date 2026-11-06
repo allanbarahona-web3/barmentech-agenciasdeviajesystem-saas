@@ -40,6 +40,8 @@ import {
   additionalServicesContractTagKey,
   buildAdditionalServicesContractTagClasses,
 } from '@/lib/additional-services-contract-tags';
+import { formatBusinessDate } from '@/shared/regional';
+import { useTenantDateTimeFormatter } from '@/shared/regional/tenant-regional-provider';
 import styles from './quotation-preview.module.css';
 import { commercialProposalStatusLabel } from '@/shared/commercial-proposal-status';
 
@@ -53,20 +55,6 @@ function formatCurrency(
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(Number(value));
-}
-
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat('es-CR', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(new Date(value));
-}
-
-function formatDateOnly(value: string) {
-  return new Intl.DateTimeFormat('es-CR', {
-    dateStyle: 'medium',
-    timeZone: 'America/Costa_Rica',
-  }).format(new Date(value));
 }
 
 function paymentConditionLabel(
@@ -139,6 +127,7 @@ function participantKey(participant: AdditionalServiceOrderParticipant) {
 export default function AdditionalServiceOrderPreviewPage() {
   const params = useParams<{ id: string }>();
   const searchParams = useSearchParams();
+  const formatTenantDateTime = useTenantDateTimeFormatter();
   const orderId = params.id;
   const isCreationCompletion = searchParams.get('created') === 'true';
   const [order, setOrder] = useState<AdditionalServiceOrder | null>(null);
@@ -617,7 +606,7 @@ export default function AdditionalServiceOrderPreviewPage() {
             </div>
             <div>
               <dt>Fecha de creación</dt>
-              <dd>{formatDate(order.createdAt)}</dd>
+              <dd>{formatTenantDateTime(order.createdAt)}</dd>
             </div>
             <div>
               <dt>Creado por</dt>
@@ -657,7 +646,7 @@ export default function AdditionalServiceOrderPreviewPage() {
               <dt>Cotización válida hasta</dt>
               <dd>
                 {order.quotationValidUntil
-                  ? formatDateOnly(order.quotationValidUntil)
+                  ? formatBusinessDate(order.quotationValidUntil)
                   : 'No especificada'}
               </dd>
             </div>

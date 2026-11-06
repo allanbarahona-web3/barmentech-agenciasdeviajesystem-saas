@@ -14,6 +14,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { runTenantTransaction } from "../tenant/tenant-transaction";
 import type { CustomQuotationActor } from "./custom-quotations.service";
 import { CustomQuotationCommercialLinesService } from "./custom-quotation-commercial-lines.service";
+import { canonicalCustomQuotationValidityDate } from "./custom-quotation-validity";
 
 type CustomQuotationIssueTransaction = PricingTransaction & {
   customQuotation: Record<string, (...args: any[]) => Promise<any>>;
@@ -383,9 +384,7 @@ function validatePaymentTerms(quotation: {
 }
 
 function validateValidityDate(value: Date | null) {
-  if (value !== null && !Number.isFinite(value.getTime())) {
-    throw new BadRequestException("CUSTOM_QUOTATION_VALID_UNTIL_INVALID");
-  }
+  if (value !== null) canonicalCustomQuotationValidityDate(value);
 }
 
 function recipientSnapshot(quotation: any) {

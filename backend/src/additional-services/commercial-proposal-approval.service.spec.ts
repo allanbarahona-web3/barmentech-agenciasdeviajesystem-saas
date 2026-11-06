@@ -6,6 +6,7 @@ import {
 import { SalesOrderConversionService } from "../sales-orders/sales-order-conversion.service";
 import { CommercialProposalApprovalService } from "./commercial-proposal-approval.service";
 import { CommercialProposalStatus } from "./enums";
+import { BadRequestException } from "@nestjs/common";
 
 describe("CommercialProposalApprovalService", () => {
   it("returns only public proposal data and the persisted PDF URL", async () => {
@@ -161,10 +162,41 @@ describe("CommercialProposalApprovalService", () => {
     ).rejects.toThrow("cannot be approved");
     expect(transactionTokenUpdate).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ["America/Costa_Rica", "2026-11-24T05:59:59.999Z", false],
+    ["America/Costa_Rica", "2026-11-24T06:00:00.000Z", true],
+    ["America/Lima", "2026-11-24T04:59:59.999Z", false],
+    ["America/Lima", "2026-11-24T05:00:00.000Z", true],
+  ])("uses the tenant calendar boundary for public approval in %s", async (timeZone, now, expired) => {
+    jest.useFakeTimers().setSystemTime(new Date(now));
+    try {
+      const { service, transactionTokenUpdate } = setup(
+        CommercialProposalStatus.SENT,
+        { timeZone, quotationValidUntil: new Date("2026-11-23T00:00:00.000Z") },
+      );
+
+      const approval = service.approve("token", null, null);
+      if (expired) {
+        await expect(approval).rejects.toBeInstanceOf(BadRequestException);
+        expect(transactionTokenUpdate).not.toHaveBeenCalled();
+      } else {
+        await expect(approval).resolves.toMatchObject({
+          commercialStatus: CommercialProposalStatus.APPROVED,
+        });
+      }
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 });
 
 function setup(
   commercialStatus: CommercialProposalStatus = CommercialProposalStatus.SENT,
+  options: {
+    timeZone?: string;
+    quotationValidUntil?: Date | null;
+  } = {},
 ) {
   const access = {
     id: "access-1",
@@ -194,6 +226,11 @@ function setup(
     $executeRaw: jest.fn(),
     generatedDocumentAccessToken: { updateMany: transactionTokenUpdate },
     additionalServiceOrder: { updateMany: transactionOrderUpdate },
+    tenantBillingConfiguration: {
+      findUnique: jest.fn().mockResolvedValue({
+        fiscalTimezone: options.timeZone ?? "America/Costa_Rica",
+      }),
+    },
   };
   let committed = false;
   const transaction = jest.fn(async (work: (client: unknown) => unknown) => {
@@ -220,6 +257,7 @@ function setup(
         id: "order-1",
         orderNumber: "AS-1",
         commercialStatus,
+        quotationValidUntil: options.quotationValidUntil ?? null,
         createdByUserId: "creator-1",
         createdByName: "Order Creator",
       }),

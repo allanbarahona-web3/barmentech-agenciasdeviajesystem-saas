@@ -27,7 +27,6 @@ const EMPTY_FORM: FormState = {
   countryCode: 'CR',
   defaultCurrencyCode: 'CRC',
   exchangeRateSource: 'MANUAL',
-  fiscalTimezone: 'America/Costa_Rica',
   fiscalSchemaVersion: '4.4',
 };
 
@@ -39,7 +38,6 @@ function toForm(configuration: TenantBillingConfiguration): FormState {
     countryCode: configuration.countryCode,
     defaultCurrencyCode: configuration.defaultCurrencyCode,
     exchangeRateSource: configuration.exchangeRateSource,
-    fiscalTimezone: configuration.fiscalTimezone,
     fiscalSchemaVersion: configuration.fiscalSchemaVersion,
   };
 }
@@ -145,17 +143,11 @@ export default function FiscalBillingAdminPage() {
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (saving) return;
-    const timezone = form.fiscalTimezone.trim();
     const currency = form.defaultCurrencyCode.trim();
     if (!/^[A-Z]{3}$/.test(currency)) {
       showError('La moneda debe contener exactamente tres letras mayúsculas.');
       return;
     }
-    if (!timezone || timezone.length > 100) {
-      showError('La zona horaria fiscal es obligatoria y debe tener como máximo 100 caracteres.');
-      return;
-    }
-
     setSaving(true);
     try {
       const response = await updateTenantBillingConfiguration({
@@ -165,7 +157,6 @@ export default function FiscalBillingAdminPage() {
         countryCode: form.countryCode,
         defaultCurrencyCode: currency,
         exchangeRateSource: form.exchangeRateSource,
-        fiscalTimezone: timezone,
         fiscalSchemaVersion: form.fiscalSchemaVersion,
       });
       setConfigured(response.configured);
@@ -272,18 +263,6 @@ export default function FiscalBillingAdminPage() {
                   className="rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-900 focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-100"
                 />
                 <span className="text-xs font-normal text-slate-500">Código de moneda de tres letras, por ejemplo CRC. Se utiliza únicamente cuando el documento no tiene una moneda de origen. Las Sales Orders y otros documentos existentes conservan su propia moneda.</span>
-              </label>
-              <label className="grid gap-1.5 text-sm font-medium text-slate-700">
-                Zona horaria fiscal
-                <input
-                  required
-                  maxLength={100}
-                  value={form.fiscalTimezone}
-                  disabled={saving}
-                  onChange={(event) => setForm((current) => ({ ...current, fiscalTimezone: event.target.value }))}
-                  className="rounded-md border border-slate-300 bg-white px-3 py-2 text-slate-900 focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                />
-                <span className="text-xs font-normal text-slate-500">Se eliminarán espacios al inicio y al final al guardar.</span>
               </label>
             </div>
           </section>

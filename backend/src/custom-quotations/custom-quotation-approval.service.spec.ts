@@ -44,7 +44,7 @@ describe("CustomQuotationApprovalService", () => {
 
   it("rejects expired acceptance before lifecycle writes using tenant business dates", async () => {
     const c = context();
-    c.tx.customQuotationVersion.findFirst.mockResolvedValue(version({ quotationValidUntil: new Date("2020-01-01T12:00:00.000Z") }));
+    c.tx.customQuotationVersion.findFirst.mockResolvedValue(version({ quotationValidUntil: new Date("2020-01-01T00:00:00.000Z") }));
 
     await expect(c.service.accept("tenant-a", "quotation-a", "version-a", actor)).rejects.toBeInstanceOf(BadRequestException);
 
@@ -120,7 +120,7 @@ function context() {
 function version(overrides: Record<string, unknown> = {}) {
   return {
     id: "version-a", customQuotationId: "quotation-a", costingProjectId: "project-a", pricingCalculationVersionId: "pricing-a",
-    status: "ISSUED", currency: "USD", finalSellingPrice: "1450.12345", quotationValidUntil: new Date("2099-12-31T12:00:00.000Z"),
+    status: "ISSUED", currency: "USD", finalSellingPrice: "1450.12345", quotationValidUntil: new Date("2099-12-31T00:00:00.000Z"),
     fiscalDescription: "Transporte privado", fiscalItemCategory: "SERVICE", cabysCode: "1234567890123", unitOfMeasureCode: "Unid", taxCode: "01", taxRateCode: "08", fiscalTaxPercentage: "13.0000",
     acceptedAt: null, acceptedByUserId: null, acceptedByName: null, rejectedAt: null, lines: [{ id: "snapshot-line-a" }],
     pricingCalculationVersion: { id: "pricing-a", status: "APPROVED", currency: "USD" },

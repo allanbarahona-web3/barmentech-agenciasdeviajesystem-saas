@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -25,36 +26,76 @@ type TenantRegionalState = {
   isConfigured: boolean;
 };
 
+type TenantRegionalContextValue = TenantRegionalState & {
+  /** Re-fetches the authenticated tenant configuration without changing session state. */
+  refreshRegionalConfiguration: () => Promise<void>;
+};
+
 const DEFAULT_TENANT_CURRENCY = "CRC";
 
-const TenantRegionalContext = createContext<TenantRegionalState>({
+const initialState: TenantRegionalState = {
   timeZone: DEFAULT_TENANT_TIMEZONE,
   preferredCurrency: DEFAULT_TENANT_CURRENCY,
   isConfigured: false,
+};
+
+const TenantRegionalContext = createContext<TenantRegionalContextValue>({
+  ...initialState,
+  refreshRegionalConfiguration: async () => undefined,
 });
 
 export function TenantRegionalProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<TenantRegionalState>({
-    timeZone: DEFAULT_TENANT_TIMEZONE,
-    preferredCurrency: DEFAULT_TENANT_CURRENCY,
-    isConfigured: false,
-  });
+  const [state, setState] = useState<TenantRegionalState>(initialState);
+  const requestSequence = useRef(0);
+  const mounted = useRef(false);
+
+  const refreshRegionalConfiguration = useCallback(async () => {
+    const token = getStoredToken();
+    const requestId = requestSequence.current + 1;
+    requestSequence.current = requestId;
+
+    if (!token) {
+      if (mounted.current && requestId === requestSequence.current) {
+        setState(initialState);
+      }
+      return;
+    }
+
+    const profile = await getAuthenticatedSessionProfile();
+    if (
+      !mounted.current ||
+      requestId !== requestSequence.current ||
+      token !== getStoredToken()
+    ) {
+      return;
+    }
+
+    setState({
+      timeZone: normalizeTenantTimeZone(profile.tenant?.fiscalTimezone),
+      preferredCurrency: normalizeTenantCurrency(profile.tenant?.preferredCurrency),
+      isConfigured: true,
+    });
+  }, []);
 
   useEffect(() => {
-    let controller: AbortController | null = null;
+    mounted.current = true;
 
-    const load = () => {
-      controller?.abort();
+    const loadForSession = () => {
+      const token = getStoredToken();
+      const requestId = requestSequence.current + 1;
+      requestSequence.current = requestId;
       if (!getStoredToken()) {
-        setState({ timeZone: DEFAULT_TENANT_TIMEZONE, preferredCurrency: DEFAULT_TENANT_CURRENCY, isConfigured: false });
+        setState(initialState);
         return;
       }
 
-      const request = new AbortController();
-      controller = request;
-      void getAuthenticatedSessionProfile(request.signal)
+      void getAuthenticatedSessionProfile()
         .then((profile) => {
-          if (!request.signal.aborted) {
+          if (
+            mounted.current &&
+            requestId === requestSequence.current &&
+            token === getStoredToken()
+          ) {
             setState({
               timeZone: normalizeTenantTimeZone(profile.tenant?.fiscalTimezone),
               preferredCurrency: normalizeTenantCurrency(profile.tenant?.preferredCurrency),
@@ -63,28 +104,33 @@ export function TenantRegionalProvider({ children }: { children: ReactNode }) {
           }
         })
         .catch(() => {
-          if (!request.signal.aborted) {
-            setState({ timeZone: DEFAULT_TENANT_TIMEZONE, preferredCurrency: DEFAULT_TENANT_CURRENCY, isConfigured: false });
+          if (
+            mounted.current &&
+            requestId === requestSequence.current &&
+            token === getStoredToken()
+          ) {
+            setState(initialState);
           }
         });
     };
 
-    load();
-    window.addEventListener(AUTH_SESSION_CHANGED_EVENT, load);
+    loadForSession();
+    window.addEventListener(AUTH_SESSION_CHANGED_EVENT, loadForSession);
     return () => {
-      controller?.abort();
-      window.removeEventListener(AUTH_SESSION_CHANGED_EVENT, load);
+      mounted.current = false;
+      requestSequence.current += 1;
+      window.removeEventListener(AUTH_SESSION_CHANGED_EVENT, loadForSession);
     };
   }, []);
 
   return (
-    <TenantRegionalContext.Provider value={state}>
+    <TenantRegionalContext.Provider value={{ ...state, refreshRegionalConfiguration }}>
       {children}
     </TenantRegionalContext.Provider>
   );
 }
 
-export function useTenantRegional(): TenantRegionalState {
+export function useTenantRegional(): TenantRegionalContextValue {
   return useContext(TenantRegionalContext);
 }
 

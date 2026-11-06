@@ -6,6 +6,7 @@ import type { ReportingPeriodSelection } from "../period/reporting-period.resolv
 import { ReportingPeriodResolver } from "../period/reporting-period.resolver";
 import type { ReportDocumentReadFilter, ReportingProjection } from "../contracts/reporting.contracts";
 import { SalesTaxReportService, type SalesTaxReportResult } from "./sales-tax-report.service";
+import { resolveTenantTimeZone } from "../../common/utils/tenant-timezone";
 
 export interface AuthenticatedSalesTaxReportRequest {
   tenantId: string;
@@ -37,7 +38,7 @@ export class ReportingSalesTaxApplicationService {
       tenantId: request.tenantId,
       actorUserId: request.actorUserId,
       role: request.role,
-      timezone: config?.fiscalTimezone ?? "UTC",
+      timezone: resolveTenantTimeZone(config?.fiscalTimezone),
     }, "SALES_TAX");
     return this.salesTax.execute(context, this.periods.resolve(request.period, context.timezone), {
       page: request.page,

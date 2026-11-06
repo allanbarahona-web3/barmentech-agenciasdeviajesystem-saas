@@ -2,26 +2,20 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8');
-test('Passenger navigation uses the lightweight roster without manual-demand controls', () => {
+test('Passenger dashboard uses one bounded reader without legacy roster controls', () => {
   const source = read('../src/components/operations/operational-unified-workspace.tsx');
-  for (const text of ['Pasajeros', 'Grupo:', 'Trabajo operativo', 'Avance', 'Contexto comercial']) assert.match(source, new RegExp(text));
+  assert.match(source, /getOperationalPassengerDashboard\(travelPackageId, \{ page, pageSize: 20,/);
+  for (const text of ['Operaciones por pasajero', 'Buscar pasajero o identificación', 'Filtrar por grupo', 'Filtrar por origen', 'Filtrar por estado']) assert.match(source, new RegExp(text));
   assert.doesNotMatch(source, /Agregar necesidad|Selecciona uno o más pasajeros|selectedPassengerIds|checkbox/);
   assert.doesNotMatch(source, /<TableHead>Finanzas<\/TableHead>/);
-  assert.doesNotMatch(source, /getOperationalPassengerOverview|missingItems|financeEligibility|passenger\.requirements/);
+  assert.doesNotMatch(source, /getOperationalPassengerOverview|getOperationalPassengerRoster|missingItems|financeEligibility|passenger\.requirements/);
 });
-test('Passenger group filtering remains server-paginated and participant identity stays available', () => {
+test('Passenger group filtering uses dashboard facets and the bounded dashboard request', () => {
   const source = read('../src/components/operations/operational-unified-workspace.tsx');
-  assert.match(source, /listPassengerGroups\(travelPackageId\)/);
-  assert.match(source, /getOperationalPassengerRoster\(travelPackageId, 1, search/);
-  assert.match(source, /passengerGroupId: selectedGroupId/);
+  assert.match(source, /data\?\.facets\.passengerGroups\.map/);
+  assert.match(source, /passengerGroupId: passengerGroupId \?\? undefined/);
+  assert.match(source, /const selectGroup = \(nextGroupId: string\).*resetPage\(\)/);
   assert.match(source, /travelPackageParticipantId/);
+  assert.doesNotMatch(source, /listPassengerGroups\(travelPackageId\)|getOperationalPassengerRoster/);
   assert.doesNotMatch(source, /filter\(.*passenger.*group/i);
-});
-test('Additional Services remain compact, semantic, and lazy per selected passenger', () => {
-  const source = read('../src/components/operations/operational-unified-workspace.tsx');
-  assert.match(source, /getOperationalPassengerCommercialContext\(travelPackageId, participantId\)/);
-  assert.match(source, /commercialRequests = useRef/);
-  assert.match(source, /onToggle=\{toggle\}/);
-  assert.match(source, /service\.presentation\.title/);
-  assert.doesNotMatch(source, /JSON\.stringify|Object\.entries\(service|getOperationsReadiness|listOperationalPurchases|listOperationalEvidence/);
 });

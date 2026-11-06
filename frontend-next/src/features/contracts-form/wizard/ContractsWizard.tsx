@@ -50,6 +50,7 @@ import {
   isPricingPublished,
 } from "@/features/contracts-form/published-pricing-display";
 import { ConfirmModal } from "@/components/confirm-modal";
+import { useTenantRegional } from "@/shared/regional/tenant-regional-provider";
 
 /**
  * Contracts Wizard Props
@@ -89,18 +90,33 @@ function hasOnlyCanonicalClientIdentityTypes(state: ContractFormState): boolean 
  * Owns all state, refs, and computed values.
  * Passes everything to ContractsForm as props.
  */
-export function ContractsWizard({ 
+export function ContractsWizard(props: ContractsWizardProps) {
+  const { timeZone, isConfigured } = useTenantRegional();
+
+  if (!isConfigured) {
+    return (
+      <main className="app-shell">
+        <p className="text-sm text-muted-foreground">Cargando configuración regional…</p>
+      </main>
+    );
+  }
+
+  return <ContractsWizardContent {...props} timeZone={timeZone} />;
+}
+
+function ContractsWizardContent({
   agent = null, 
   initialDraftId = null, 
   initialTravelPackageId = null, 
   initialInternalTripId = null, 
-  mode 
-}: ContractsWizardProps) {
+  mode,
+  timeZone,
+}: ContractsWizardProps & { timeZone: string }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   
   // ==================== STATE ====================
-  const [state, setState] = useState(() => createInitialFormState(agent || undefined));
+  const [state, setState] = useState(() => createInitialFormState(agent || undefined, timeZone));
   const [status, setStatus] = useState("Listo para iniciar migracion del formulario.");
   
   // ==================== NAVIGATION STATE ====================
@@ -386,13 +402,18 @@ export function ContractsWizard({
   };
 
   // ==================== COMPUTED VALUES ====================
-  const todayIso = useMemo(() => getTodayIsoLocal(), []);
+  const todayIso = useMemo(() => getTodayIsoLocal(timeZone), [timeZone]);
   const isMigrationMode = mode === "migration" || loadedTravelPackage?.travelType === "MIGRATION";
   const hasSelectedPackage = Boolean(initialTravelPackageId);
   const isInternalTrip = Boolean(initialInternalTripId);
   const packageFieldsLocked = hasSelectedPackage || isInternalTrip;
-  const rangeMessage = useMemo(() => getDateRangeValidityMessage(state), [state]);
+  const rangeMessage = useMemo(() => getDateRangeValidityMessage(state, todayIso), [state, todayIso]);
   const itineraryMessage = useMemo(() => getItineraryValidityMessage(state), [state]);
+  const currentRegionalCalendarRef = useRef({ timeZone, todayIso });
+
+  useEffect(() => {
+    currentRegionalCalendarRef.current = { timeZone, todayIso };
+  }, [timeZone, todayIso]);
 
   const responsibleAdults = useMemo(() => {
     const base = state.clientFullName.trim();
@@ -452,6 +473,7 @@ export function ContractsWizard({
       rangeMessage,
       itineraryMessage,
       isInternalTrip,
+      todayIso,
     });
 
     if (!result.valid && result.errorMessage) {
@@ -526,12 +548,15 @@ export function ContractsWizard({
 
     void getContractDraft(draftId)
       .then((draft) => {
+        if (loadedDraftIdRef.current !== draftId) return;
+
         const payload = draft.payload;
         if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
           throw new Error("El borrador no contiene informacion valida del formulario.");
         }
 
-        const base = createInitialFormState(agent || undefined);
+        const { timeZone: currentTimeZone, todayIso: currentTodayIso } = currentRegionalCalendarRef.current;
+        const base = createInitialFormState(agent || undefined, currentTimeZone);
         const payloadState = payload as Partial<ContractFormState>;
         
         // Restaurar el estado del borrador
@@ -549,7 +574,7 @@ export function ContractsWizard({
         };
 
         // Recalcular paymentDueDate y valores monetarios derivados para asegurar consistencia
-        const withUpdatedDates = syncTourDates(restoredState, "start", restoredState.startDate);
+        const withUpdatedDates = syncTourDates(restoredState, "start", restoredState.startDate, currentTodayIso);
         const withCalculations = applyMoneyDerivedValues(withUpdatedDates);
         
         setState(withCalculations);
@@ -568,6 +593,7 @@ export function ContractsWizard({
         );
       })
       .catch((error) => {
+        if (loadedDraftIdRef.current !== draftId) return;
         setActiveDraftId(null);
         setStatus(error instanceof Error ? error.message : "No se pudo cargar el borrador.");
       });
@@ -580,12 +606,13 @@ export function ContractsWizard({
       loadedTravelPackageIdRef.current = "";
       return;
     }
-    // No cargar si ya se cargó este paquete
-    if (loadedTravelPackageIdRef.current === packageId) {
+    // A draft is authoritative over package defaults; invalidate any pending package load.
+    if (String(initialDraftId || "").trim()) {
+      loadedTravelPackageIdRef.current = "";
       return;
     }
-    // No cargar si hay un borrador activo
-    if (String(initialDraftId || "").trim()) {
+    // No cargar si ya se cargó este paquete
+    if (loadedTravelPackageIdRef.current === packageId) {
       return;
     }
 
@@ -594,6 +621,8 @@ export function ContractsWizard({
 
     void getTravelPackageById(packageId)
       .then((travelPackage) => {
+        if (loadedTravelPackageIdRef.current !== packageId) return;
+
         // Almacenar el paquete cargado para detectar el tipo
         setLoadedTravelPackage(travelPackage);
         if (travelPackage.commercialPriceStatus === "PENDING" || travelPackage.packagePrice === null) {
@@ -603,6 +632,7 @@ export function ContractsWizard({
         
         // Pre-llenar el formulario con los datos del paquete
         setState((prev) => {
+          const { todayIso: currentTodayIso } = currentRegionalCalendarRef.current;
           const pricingPublished = isPricingPublished(travelPackage.commercialPriceStatus);
           const sourcePrice = String(travelPackage.packagePrice || "").trim();
           const price = pricingPublished
@@ -640,7 +670,7 @@ export function ContractsWizard({
             endDate: toLocalDateIso(travelPackage.returnDate),
             totalAmount: totalAmount,
             reservationAmount: reservationPrice,
-          }, "start", toLocalDateIso(travelPackage.departureDate));
+          }, "start", toLocalDateIso(travelPackage.departureDate), currentTodayIso);
 
           // Luego aplicar los cálculos monetarios derivados
           return applyMoneyDerivedValues(withDates);
@@ -648,6 +678,7 @@ export function ContractsWizard({
         setStatus(`Viaje "${travelPackage.name}" cargado. Completa la información del cliente.`);
       })
       .catch((error) => {
+        if (loadedTravelPackageIdRef.current !== packageId) return;
         setStatus(error instanceof Error ? error.message : "No se pudo cargar el viaje.");
       });
   }, [initialTravelPackageId, initialDraftId]);
@@ -700,12 +731,13 @@ export function ContractsWizard({
       setInternalTripMeta(null);
       return;
     }
-    // No cargar si ya se cargó este viaje interno
-    if (loadedInternalTripIdRef.current === tripId) {
+    // A draft is authoritative over trip defaults; invalidate any pending trip load.
+    if (String(initialDraftId || "").trim()) {
+      loadedInternalTripIdRef.current = "";
       return;
     }
-    // No cargar si hay un borrador activo
-    if (String(initialDraftId || "").trim()) {
+    // No cargar si ya se cargó este viaje interno
+    if (loadedInternalTripIdRef.current === tripId) {
       return;
     }
 
@@ -714,12 +746,15 @@ export function ContractsWizard({
 
     void getInternalTripById(tripId)
       .then((trip) => {
+        if (loadedInternalTripIdRef.current !== tripId) return;
+
         setInternalTripMeta({
           tripCode: String(trip.tripCode || "").trim(),
           name: String(trip.name || "").trim(),
         });
 
         setState((prev) => {
+          const { todayIso: currentTodayIso } = currentRegionalCalendarRef.current;
           const totalPrice = trip.price
             ? String(typeof trip.price === "string" ? Number.parseFloat(trip.price).toFixed(2) : trip.price.toFixed(2))
             : "";
@@ -748,6 +783,7 @@ export function ContractsWizard({
             },
             "start",
             departure,
+            currentTodayIso,
           );
 
           return applyMoneyDerivedValues(withDates);
@@ -758,6 +794,7 @@ export function ContractsWizard({
         );
       })
       .catch((error) => {
+        if (loadedInternalTripIdRef.current !== tripId) return;
         setInternalTripMeta(null);
         setStatus(error instanceof Error ? error.message : "No se pudo cargar el viaje interno.");
       });
@@ -879,7 +916,7 @@ export function ContractsWizard({
       });
 
       setActiveDraftId(saved.id);
-      const nextBaseState = createInitialFormState(agent || undefined);
+      const nextBaseState = createInitialFormState(agent || undefined, timeZone);
       setState(nextBaseState);
       setHolderDocs({ idFront: null, idBack: null, passport: null });
       setSupportDocs([]);
@@ -1106,7 +1143,7 @@ export function ContractsWizard({
     }
     const minorDateOfBirthError = getMinorDateOfBirthValidationError(
       state.minors,
-      getTodayIsoLocal(),
+      todayIso,
     );
     if (minorDateOfBirthError) {
       setStatus(minorDateOfBirthError);

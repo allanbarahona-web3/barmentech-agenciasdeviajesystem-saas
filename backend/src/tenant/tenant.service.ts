@@ -3,6 +3,10 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { UpdateTenantConfigDto } from './dto/update-tenant-config.dto';
+import {
+  DEFAULT_TENANT_TIME_ZONE,
+  normalizeTenantTimeZone,
+} from '../common/utils/tenant-timezone';
 import * as sharp from 'sharp';
 
 export interface ResolvedTenant {
@@ -247,7 +251,7 @@ export class TenantService {
       }),
       this.accountingConfiguration().findUnique({
         where: { tenantId },
-        select: { accountingCurrencyCode: true },
+        select: { accountingCurrencyCode: true, fiscalTimezone: true },
       }),
     ]);
 
@@ -255,7 +259,11 @@ export class TenantService {
       throw new NotFoundException('Tenant no encontrado');
     }
 
-    return { ...tenant, accountingCurrencyCode: billingConfiguration?.accountingCurrencyCode ?? null };
+    return {
+      ...tenant,
+      accountingCurrencyCode: billingConfiguration?.accountingCurrencyCode ?? null,
+      timeZone: billingConfiguration?.fiscalTimezone ?? DEFAULT_TENANT_TIME_ZONE,
+    };
   }
 
   /**
@@ -263,7 +271,13 @@ export class TenantService {
    */
   async updateTenantConfig(tenantId: string, dto: UpdateTenantConfigDto) {
     // Extraer campos de email
-    const { fromEmail, replyToEmail, accountingCurrencyCode } = dto;
+    const { fromEmail, replyToEmail, accountingCurrencyCode, timeZone } = dto;
+
+    const normalizedTimeZone =
+      timeZone === undefined ? undefined : normalizeTenantTimeZone(timeZone);
+    if (timeZone !== undefined && normalizedTimeZone === null) {
+      throw new BadRequestException('TENANT_TIMEZONE_INVALID');
+    }
 
     // � Validar que no sean emails genéricos
     this.validateBusinessEmail(fromEmail);
@@ -345,11 +359,19 @@ export class TenantService {
     });
 
     const normalizedAccountingCurrencyCode = normalizeAccountingCurrencyCode(accountingCurrencyCode);
-    if (accountingCurrencyCode !== undefined) {
+    if (accountingCurrencyCode !== undefined || timeZone !== undefined) {
+      const billingConfigurationUpdate = {
+        ...(accountingCurrencyCode !== undefined && {
+          accountingCurrencyCode: normalizedAccountingCurrencyCode,
+        }),
+        ...(normalizedTimeZone !== undefined && {
+          fiscalTimezone: normalizedTimeZone,
+        }),
+      };
       await this.accountingConfiguration().upsert({
         where: { tenantId },
-        create: { tenantId, accountingCurrencyCode: normalizedAccountingCurrencyCode },
-        update: { accountingCurrencyCode: normalizedAccountingCurrencyCode },
+        create: { tenantId, ...billingConfigurationUpdate },
+        update: billingConfigurationUpdate,
       });
     }
 
@@ -360,13 +382,23 @@ export class TenantService {
     }
 
     this.logger.log(`✅ Configuración actualizada para tenant: ${updated.name}`);
-    return { ...updated, accountingCurrencyCode: accountingCurrencyCode === undefined ? undefined : normalizedAccountingCurrencyCode };
+    return {
+      ...updated,
+      accountingCurrencyCode:
+        accountingCurrencyCode === undefined
+          ? undefined
+          : normalizedAccountingCurrencyCode,
+      timeZone: normalizedTimeZone,
+    };
   }
 
   /** Isolates generated-client compatibility for the additive accounting setting. */
   private accountingConfiguration() {
     return this.prisma.tenantBillingConfiguration as unknown as {
-      findUnique(input: unknown): Promise<{ accountingCurrencyCode: string | null } | null>;
+      findUnique(input: unknown): Promise<{
+        accountingCurrencyCode: string | null;
+        fiscalTimezone: string;
+      } | null>;
       upsert(input: unknown): Promise<unknown>;
     };
   }

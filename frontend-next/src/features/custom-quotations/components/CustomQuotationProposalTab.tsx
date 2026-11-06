@@ -28,6 +28,7 @@ import {
 import { paymentConditionLabel, quotationStatusLabel } from '@/features/custom-quotations/custom-quotation-presentation';
 import { CustomQuotationSalesOrderCompletion } from '@/features/custom-quotations/components/CustomQuotationSalesOrderCompletion';
 import { useTenantDateTimeFormatter } from '@/shared/regional/tenant-regional-provider';
+import { formatBusinessDate } from '@/shared/regional';
 
 type CustomQuotationProposalTabProps = {
   quotation: CustomQuotationDetail;
@@ -249,7 +250,7 @@ export function CustomQuotationProposalTab({ quotation, commercialLines, stateRe
           <ProposalField label="Destinatario" value={quotation.target?.displayName ?? '—'} />
           <ProposalField label="Correo" value={quotation.target?.email ?? '—'} />
           <ProposalField label="Moneda" value={quotation.currency} />
-          <ProposalField label="Vigencia" value={formatDateOnly(quotation.quotationValidUntil)} />
+          <ProposalField label="Vigencia" value={quotation.quotationValidUntil ? formatBusinessDate(quotation.quotationValidUntil) : '—'} />
           <ProposalField label="Condición de pago" value={paymentConditionLabel(quotation.paymentConditionType, quotation.paymentTermValue, quotation.paymentTermUnit)} />
           <ProposalField label="Observaciones" value={quotation.commercialObservations || '—'} />
         </dl>
@@ -284,7 +285,7 @@ export function CustomQuotationProposalTab({ quotation, commercialLines, stateRe
         {version.recipientCompanyName ? <ProposalField label="Empresa" value={version.recipientCompanyName} /> : null}
         <ProposalField label="Precio" value={formatFinanceMoneyDisplay(version.finalSellingPrice, version.currency)} />
         <ProposalField label="Moneda" value={version.currency} />
-        <ProposalField label="Vigencia" value={formatDateOnly(version.quotationValidUntil)} />
+        <ProposalField label="Vigencia" value={version.quotationValidUntil ? formatBusinessDate(version.quotationValidUntil) : '—'} />
         <ProposalField label="Condición de pago" value={paymentConditionLabel(version.paymentConditionType, version.paymentTermValue, version.paymentTermUnit)} />
         <ProposalField label="Emitida el" value={formatTenantDateTime(version.createdAt)} />
         <ProposalField label="Observaciones" value={version.commercialObservations || '—'} />
@@ -324,7 +325,6 @@ export function CustomQuotationProposalTab({ quotation, commercialLines, stateRe
 function ProposalField({ label, value }: { label: string; value: string }) { return <div><dt className="text-xs font-medium text-muted-foreground">{label}</dt><dd className="mt-1 text-sm">{value}</dd></div>; }
 function ProposalError({ message }: { message: string }) { return <Alert variant="destructive"><AlertTitle>No se pudo procesar la cotización</AlertTitle><AlertDescription>{message}</AlertDescription></Alert>; }
 function pricingStatusLabel(status: string | null) { return status === 'DRAFT' ? 'Borrador' : status === 'APPROVED' ? 'Aprobado' : status ?? '—'; }
-function formatDateOnly(value: string | null) { return value ? value.slice(0, 10).split('-').reverse().join('/') : '—'; }
 function issueErrorMessage(error: unknown) { const code = error instanceof Error ? error.message : ''; if (code.includes('PRICING_CALCULATION_NOT_FOUND')) return 'Calcula el precio antes de emitir la cotización.'; if (code.includes('PRICING_CALCULATION_STALE')) return 'Los costos cambiaron. Recalcula el precio antes de emitir.'; if (code.includes('FISCAL_DEFAULT')) return 'No hay una configuración fiscal predeterminada para emitir la cotización.'; if (code.includes('STRUCTURED_COMPONENTS_REQUIRED') || code.includes('LINES_REQUIRED')) return 'Agrega al menos un servicio desde Costos antes de emitir la cotización.'; if (code.includes('CREDIT_TERM_UNIT')) return 'Para cotizaciones a crédito, el plazo debe definirse en días.'; if (code.includes('PAYMENT_TERMS') || code.includes('VALID_UNTIL')) return 'Revisa la vigencia y las condiciones de pago antes de emitir.'; if (code.includes('RECIPIENT_SNAPSHOT') || code.includes('TARGET_SNAPSHOT')) return 'No se pudo obtener el destinatario de la cotización.'; return 'No se pudo emitir la cotización. Intente nuevamente.'; }
 function deliveryErrorMessage(error: unknown) { const code = error instanceof Error ? error.message : ''; if (code.includes('PROPOSAL_NOT_FOUND')) return 'Genera la propuesta antes de enviarla.'; if (code.includes('RECIPIENT_EMAIL') || code.includes('RECIPIENT_SNAPSHOT')) return 'La cotización no tiene un correo de destinatario válido.'; if (code.includes('VERSION_NOT_DELIVERABLE')) return 'La cotización ya no está disponible para envío.'; if (code.includes('EXPIRED')) return 'La cotización venció y no puede enviarse.'; if (code.includes('DELIVERY_FAILED')) return 'No se pudo enviar el correo. Intente nuevamente.'; return 'No se pudo enviar el correo. Intente nuevamente.'; }
 function approvalStateChanged(error: unknown) { const code = error instanceof Error ? error.message : ''; return code.includes('INVALID_TRANSITION') || code.includes('TRANSITION_CONFLICT') || code.includes('VERSION_NOT_ISSUED') || code.includes('QUOTATION_NOT_ISSUED'); }

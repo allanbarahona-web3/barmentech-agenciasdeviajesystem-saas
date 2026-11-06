@@ -104,6 +104,25 @@ describe("FiscalBillingAdminService", () => {
     });
   });
 
+  it("normalizes valid timezones and rejects invalid direct fiscal writes", async () => {
+    const repository = repositoryMock();
+    repository.findConfiguration.mockResolvedValue(null);
+    repository.upsertConfiguration.mockResolvedValue(record());
+    const service = new FiscalBillingAdminService(repository);
+
+    await service.updateConfiguration("tenant-a", {
+      fiscalTimezone: " America/Lima ",
+    });
+    expect(repository.upsertConfiguration).toHaveBeenCalledWith("tenant-a", {
+      fiscalTimezone: "America/Lima",
+    });
+
+    await expectStableError(
+      service.updateConfiguration("tenant-a", { fiscalTimezone: "Not/A_Timezone" }),
+      "BILLING_CONFIGURATION_INVALID_TIMEZONE",
+    );
+  });
+
   it("rejects electronic issuance for a non-CR country with a stable error", async () => {
     const repository = repositoryMock();
     repository.findConfiguration.mockResolvedValue(null);

@@ -52,6 +52,7 @@ import {
   AdditionalServiceCommercialCostEvidenceService,
   PreparedAdditionalServiceCostEvidence,
 } from "./additional-service-commercial-cost-evidence.service";
+import { additionalServiceQuotationValidityDate } from "./additional-service-quotation-validity";
 
 export interface AdditionalServiceOrderActor {
   id: string;
@@ -1613,7 +1614,7 @@ export class AdditionalServicesService {
           ? (dto.paymentTermUnit ?? null)
           : null,
       quotationValidUntil: dto.quotationValidUntil
-        ? new Date(dto.quotationValidUntil)
+        ? additionalServiceQuotationValidityDate(dto.quotationValidUntil)
         : null,
       commercialObservations: this.toNullableText(
         dto.commercialObservations,

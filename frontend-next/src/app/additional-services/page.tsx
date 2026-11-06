@@ -31,17 +31,11 @@ import {
   setSelectedAdditionalServicesParticipants,
 } from '@/lib/additional-services-temporary-store';
 import type { CustomerListItem } from '@/lib/customers-api';
+import { formatBusinessDate } from '@/shared/regional';
 import styles from './page.module.css';
 
 function formatDateRange(startDate: string, endDate: string) {
-  const formatter = new Intl.DateTimeFormat('es-CR', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  });
-  return `${formatter.format(new Date(startDate))} – ${formatter.format(
-    new Date(endDate),
-  )}`;
+  return `${formatBusinessDate(startDate)} – ${formatBusinessDate(endDate)}`;
 }
 
 function participantRoleLabel(role: TravelParticipantRole) {

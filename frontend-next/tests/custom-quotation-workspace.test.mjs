@@ -8,6 +8,7 @@ import {
   quotationStatusLabel,
   quotationTargetLabel,
 } from '../src/features/custom-quotations/custom-quotation-presentation.ts';
+import { calendarDateFromUtcMidnight, formatBusinessDate } from '../src/shared/regional/business-date.ts';
 
 const actionMenu = readFileSync(new URL('../src/components/action-menu-modal.tsx', import.meta.url), 'utf8');
 const dashboard = readFileSync(new URL('../src/app/agent-dashboard/page.tsx', import.meta.url), 'utf8');
@@ -16,6 +17,7 @@ const editor = readFileSync(new URL('../src/features/custom-quotations/component
 const list = readFileSync(new URL('../src/app/custom-quotations/page.tsx', import.meta.url), 'utf8');
 const detail = readFileSync(new URL('../src/app/custom-quotations/[id]/page.tsx', import.meta.url), 'utf8');
 const proposalTab = readFileSync(new URL('../src/features/custom-quotations/components/CustomQuotationProposalTab.tsx', import.meta.url), 'utf8');
+const publicApproval = readFileSync(new URL('../src/app/custom-quotation-approval/[token]/page.tsx', import.meta.url), 'utf8');
 const salesOrderCompletion = readFileSync(new URL('../src/features/custom-quotations/components/CustomQuotationSalesOrderCompletion.tsx', import.meta.url), 'utf8');
 
 test('Cotizaciones personalizadas está habilitada y lleva al workspace', () => {
@@ -88,6 +90,20 @@ test('el editor exige un solo destinatario y reutiliza selector de cliente y cre
   assert.doesNotMatch(list, /initialLead=/);
 });
 
+test('la vigencia conserva el calendario YYYY-MM-DD y se presenta como DD/MM/YYYY sin conversión de zona', () => {
+  assert.equal(calendarDateFromUtcMidnight('2026-09-20T00:00:00.000Z'), '2026-09-20');
+  assert.equal(calendarDateFromUtcMidnight('2026-09-20'), '2026-09-20');
+  assert.equal(calendarDateFromUtcMidnight('2026-09-20T12:00:00.000Z'), '');
+  assert.equal(formatBusinessDate('2026-09-20T00:00:00.000Z'), '20/09/2026');
+  assert.match(editor, /calendarDateFromUtcMidnight\(quotation\.quotationValidUntil\)/);
+  assert.match(editor, /isCalendarDate\(form\.quotationValidUntil\)/);
+  assert.match(editor, /type="date" lang="es-CR"/);
+  assert.match(list, /formatBusinessDate\(quotation\.quotationValidUntil\)/);
+  assert.match(detail, /formatBusinessDate\(quotation\.quotationValidUntil\)/);
+  assert.match(proposalTab, /formatBusinessDate\(version\.quotationValidUntil\)/);
+  assert.match(publicApproval, /formatBusinessDate\(proposal\.quotationValidUntil\)/);
+});
+
 test('el detalle muestra sólo servicios comerciales derivados y no permite líneas libres', () => {
   assert.match(detail, /const draft = quotation\.status === 'DRAFT'/);
   assert.match(detail, /Editar detalle/);
@@ -153,7 +169,6 @@ test('la UI comercial clasifica fiscalmente cada servicio sin exponer valores in
 test('la pestaña Propuesta emite sin autoridad financiera del cliente y refresca snapshots inmutables', () => {
   assert.match(api, /issueCustomQuotation.*\/issue.*'POST'/);
   assert.match(api, /getLatestCustomQuotationVersion.*\/versions\/latest.*'GET'/);
-  assert.match(api, /getCustomQuotationVersion.*\/versions\/\$\{encodeURIComponent\(versionId\)\}.*'GET'/);
   assert.match(proposalTab, /await issueCustomQuotation\(quotation\.id\)/);
   assert.match(proposalTab, /const issued = await refreshVersion\(\{ loadDocument: true \}\)/);
   assert.match(proposalTab, /await onIssued\(\)/);

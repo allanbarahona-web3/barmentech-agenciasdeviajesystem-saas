@@ -29,7 +29,6 @@ export type UpdateTenantBillingConfiguration = Pick<
   | 'defaultCurrencyCode'
   | 'accountingCurrencyCode'
   | 'exchangeRateSource'
-  | 'fiscalTimezone'
   | 'fiscalSchemaVersion'
 >;
 

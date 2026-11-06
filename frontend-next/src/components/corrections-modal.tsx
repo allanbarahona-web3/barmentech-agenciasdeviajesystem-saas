@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { getEntryCorrections } from '@/lib/attendance-api';
+import { useTenantDateTimeFormatter } from '@/shared/regional/tenant-regional-provider';
 
 interface Correction {
   id: string;
@@ -40,11 +41,8 @@ const formatDuration = (seconds: number | null): string => {
   return `${minutes}m ${secs}s`;
 };
 
-const formatDateTime = (dateString: string): string => {
-  return new Date(dateString).toLocaleString();
-};
-
 export function CorrectionsModal({ entryId, isOpen, onClose }: CorrectionsModalProps) {
+  const formatTenantDateTime = useTenantDateTimeFormatter();
   const [loading, setLoading] = useState(false);
   const [corrections, setCorrections] = useState<Correction[]>([]);
 
@@ -93,7 +91,7 @@ export function CorrectionsModal({ entryId, isOpen, onClose }: CorrectionsModalP
                   <div className="flex justify-between items-start">
                     <div>
                       <p className="text-sm font-medium text-gray-900">Corregido por {correction.User.fullName}</p>
-                      <p className="text-xs text-gray-500">{formatDateTime(correction.createdAt)}</p>
+                      <p className="text-xs text-gray-500">{formatTenantDateTime(correction.createdAt)}</p>
                     </div>
                   </div>
 
@@ -129,9 +127,9 @@ export function CorrectionsModal({ entryId, isOpen, onClose }: CorrectionsModalP
                     <div className="col-span-2">
                       <p className="text-gray-500 mb-1">Inicio</p>
                       <p className="text-gray-800 text-xs">
-                        <span className="line-through text-red-600">{formatDateTime(correction.beforeClockIn)}</span>
+                        <span className="line-through text-red-600">{formatTenantDateTime(correction.beforeClockIn)}</span>
                         {' → '}
-                        <span className="text-green-600 font-semibold">{formatDateTime(correction.afterClockIn)}</span>
+                        <span className="text-green-600 font-semibold">{formatTenantDateTime(correction.afterClockIn)}</span>
                       </p>
                     </div>
 
@@ -141,14 +139,14 @@ export function CorrectionsModal({ entryId, isOpen, onClose }: CorrectionsModalP
                       <p className="text-gray-800 text-xs">
                         {correction.beforeClockOut ? (
                           <>
-                            <span className="line-through text-red-600">{formatDateTime(correction.beforeClockOut)}</span>
+                            <span className="line-through text-red-600">{formatTenantDateTime(correction.beforeClockOut)}</span>
                             {' → '}
                           </>
                         ) : (
                           ''
                         )}
                         <span className="text-green-600 font-semibold">
-                          {correction.afterClockOut ? formatDateTime(correction.afterClockOut) : '-'}
+                          {correction.afterClockOut ? formatTenantDateTime(correction.afterClockOut) : '-'}
                         </span>
                       </p>
                     </div>

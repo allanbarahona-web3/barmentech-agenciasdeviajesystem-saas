@@ -990,10 +990,12 @@ export type TenantConfigResponse = {
   representativeAddress: string | null;
   representativePowers: string | null;
   accountingCurrencyCode: string | null;
+  timeZone: string;
 };
 
 export type UpdateTenantConfigDto = {
   accountingCurrencyCode?: string | null;
+  timeZone?: string;
   primaryColor?: string;
   secondaryColor?: string;
   contactPhone?: string;
@@ -1036,7 +1038,14 @@ export const getTenantConfigAdmin = async (): Promise<TenantConfigResponse> => {
  */
 export const updateTenantConfigAdmin = async (
   dto: UpdateTenantConfigDto,
-): Promise<{ id: string; name: string; primaryColor: string | null; secondaryColor: string | null; legalName: string | null }> => {
+): Promise<{
+  id: string;
+  name: string;
+  primaryColor: string | null;
+  secondaryColor: string | null;
+  legalName: string | null;
+  timeZone?: string;
+}> => {
   const apiBase = resolveApiBase();
   const response = await authenticatedFetch(`${apiBase}/tenant/config`, {
     method: "PATCH",

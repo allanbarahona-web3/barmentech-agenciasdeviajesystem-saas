@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   getTenantConfigAdmin,
@@ -17,6 +17,162 @@ import {
 import Image from "next/image";
 import { GenericEmailBlockedModal } from "@/components/generic-email-blocked-modal";
 import { LoadingModal } from "@/components/loading-modal";
+import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
+import { useTenantRegional } from "@/shared/regional/tenant-regional-provider";
+
+const TIME_ZONE_FALLBACK_OPTIONS = [
+  "Africa/Cairo",
+  "Africa/Johannesburg",
+  "America/Argentina/Buenos_Aires",
+  "America/Bogota",
+  "America/Caracas",
+  "America/Chicago",
+  "America/Costa_Rica",
+  "America/Guatemala",
+  "America/Lima",
+  "America/Los_Angeles",
+  "America/Mexico_City",
+  "America/New_York",
+  "America/Panama",
+  "America/Santiago",
+  "America/Sao_Paulo",
+  "Asia/Dubai",
+  "Asia/Singapore",
+  "Asia/Tokyo",
+  "Australia/Sydney",
+  "Europe/London",
+  "Europe/Madrid",
+  "Pacific/Auckland",
+  "UTC",
+] as const;
+
+const TIME_ZONE_SPANISH_LABELS: Readonly<Record<string, string>> = {
+  "America/Costa_Rica": "Costa Rica — America/Costa_Rica",
+  "America/Lima": "Perú, Lima — America/Lima",
+  "America/Argentina/Buenos_Aires": "Argentina, Buenos Aires — America/Argentina/Buenos_Aires",
+};
+
+function isSupportedTimeZone(value: string): boolean {
+  const timeZone = value.trim();
+  if (!timeZone) return false;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone }).format();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function getTimeZoneOptions(): string[] {
+  try {
+    const supported = Intl.supportedValuesOf?.("timeZone");
+    if (supported?.length) {
+      return [...new Set([...TIME_ZONE_FALLBACK_OPTIONS, ...supported])].sort();
+    }
+  } catch {
+    // The input remains editable when a browser does not expose this optional API.
+  }
+  return [...TIME_ZONE_FALLBACK_OPTIONS];
+}
+
+function timeZoneLabel(timeZone: string): string {
+  return TIME_ZONE_SPANISH_LABELS[timeZone] ?? timeZone;
+}
+
+function searchText(value: string): string {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+function TenantTimeZoneField({
+  value,
+  disabled,
+  onChange,
+}: {
+  value: string;
+  disabled: boolean;
+  onChange: (value: string) => void;
+}) {
+  const timeZoneOptions = useMemo(() => getTimeZoneOptions(), []);
+  const [timeZoneSearch, setTimeZoneSearch] = useState("");
+  const currentTimeZone = value.trim();
+  const valueIsValid = isSupportedTimeZone(currentTimeZone);
+  const options = useMemo(
+    () =>
+      valueIsValid && currentTimeZone && !timeZoneOptions.includes(currentTimeZone)
+        ? [currentTimeZone, ...timeZoneOptions]
+        : timeZoneOptions,
+    [currentTimeZone, timeZoneOptions, valueIsValid],
+  );
+  const matchingOptions = useMemo(() => {
+    const query = searchText(timeZoneSearch.trim());
+    if (!query) return options;
+    return options.filter((timeZone) =>
+      searchText(`${timeZoneLabel(timeZone)} ${timeZone}`).includes(query),
+    );
+  }, [options, timeZoneSearch]);
+
+  return (
+    <div className="max-w-xl">
+      <label htmlFor="tenant-time-zone" className="block text-sm font-medium text-gray-700 mb-2">
+        Zona horaria (IANA)
+      </label>
+      <Input
+        id="tenant-time-zone"
+        type="text"
+        value={value}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder="America/Costa_Rica"
+        autoComplete="off"
+        aria-describedby="tenant-time-zone-help tenant-time-zone-status"
+        aria-invalid={!valueIsValid}
+      />
+      <p id="tenant-time-zone-help" className="mt-2 text-xs text-gray-500">
+        Controla cómo se muestran las horas y las reglas de días calendario del tenant. Puede escribir un identificador IANA directamente.
+      </p>
+      <div className="mt-3 grid gap-2">
+        <label htmlFor="tenant-time-zone-search" className="text-sm font-medium text-gray-700">
+          Buscar por país, ciudad o identificador IANA
+        </label>
+        <Input
+          id="tenant-time-zone-search"
+          type="search"
+          value={timeZoneSearch}
+          disabled={disabled}
+          onChange={(event) => setTimeZoneSearch(event.target.value)}
+          placeholder="Perú, Lima o America/Lima"
+        />
+        <Select
+          aria-label="Resultados de zonas horarias"
+          value=""
+          disabled={disabled}
+          onChange={(event) => {
+            if (!event.target.value) return;
+            onChange(event.target.value);
+            setTimeZoneSearch("");
+          }}
+        >
+          <option value="">Seleccione una zona horaria…</option>
+          {matchingOptions.map((timeZone) => (
+            <option key={timeZone} value={timeZone}>{timeZoneLabel(timeZone)}</option>
+          ))}
+        </Select>
+        {matchingOptions.length === 0 && (
+          <p className="text-xs text-amber-700">No se encontraron zonas horarias con esa búsqueda.</p>
+        )}
+      </div>
+      {currentTimeZone && valueIsValid && (
+        <p className="mt-2 text-xs text-gray-600">Seleccionada: {timeZoneLabel(currentTimeZone)}</p>
+      )}
+      {!valueIsValid && (
+        <p id="tenant-time-zone-status" className="mt-2 text-sm text-amber-800" role="alert">
+          La zona horaria guardada no es válida en este navegador. Corríjala explícitamente antes de cambiarla; no se seleccionará ni guardará un reemplazo automático.
+        </p>
+      )}
+    </div>
+  );
+}
 
 /**
  * 🏢 Configuración del Tenant
@@ -69,6 +225,9 @@ export default function SettingsPage() {
   const [representativeAddress, setRepresentativeAddress] = useState("");
   const [representativePowers, setRepresentativePowers] = useState("");
   const [accountingCurrencyCode, setAccountingCurrencyCode] = useState("");
+  const [timeZone, setTimeZone] = useState("");
+  const [savedTimeZone, setSavedTimeZone] = useState("");
+  const { refreshRegionalConfiguration } = useTenantRegional();
 
   useEffect(() => {
     // Verificar autenticación y rol ADMIN
@@ -106,6 +265,8 @@ export default function SettingsPage() {
       setRepresentativeAddress(data.representativeAddress || "");
       setRepresentativePowers(data.representativePowers || "");
       setAccountingCurrencyCode(data.accountingCurrencyCode || "");
+      setTimeZone(data.timeZone || "");
+      setSavedTimeZone(data.timeZone || "");
     } catch (err) {
       console.error("Error al cargar configuración:", err);
       setError(err instanceof Error ? err.message : "Error al cargar configuración");
@@ -292,9 +453,9 @@ export default function SettingsPage() {
 
   const handleSaveConfig = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (saving) return;
 
     try {
-      setSaving(true);
       setError("");
       setSuccess("");
 
@@ -303,6 +464,15 @@ export default function SettingsPage() {
         setError("La moneda contable debe tener exactamente 3 letras mayúsculas.");
         return;
       }
+
+      const normalizedTimeZone = timeZone.trim();
+      const timeZoneChanged = normalizedTimeZone !== savedTimeZone.trim();
+      if (timeZoneChanged && !isSupportedTimeZone(normalizedTimeZone)) {
+        setError("Seleccione una zona horaria IANA válida antes de guardar.");
+        return;
+      }
+
+      setSaving(true);
 
       // Normalizar websiteUrl: agregar https:// si no tiene protocolo
       let normalizedWebsiteUrl = websiteUrl.trim();
@@ -317,6 +487,7 @@ export default function SettingsPage() {
 
       await updateTenantConfigAdmin({
         accountingCurrencyCode: normalizedAccountingCurrencyCode || null,
+        ...(timeZoneChanged ? { timeZone: normalizedTimeZone } : {}),
         primaryColor,
         secondaryColor,
         fromEmail: fromEmail.trim() || undefined,
@@ -336,6 +507,21 @@ export default function SettingsPage() {
         representativePowers,
       });
 
+      if (timeZoneChanged) {
+        setTimeZone(normalizedTimeZone);
+        setSavedTimeZone(normalizedTimeZone);
+        setConfig((current) => current ? { ...current, timeZone: normalizedTimeZone } : current);
+      }
+
+      let refreshError = "";
+      if (timeZoneChanged) {
+        try {
+          await refreshRegionalConfiguration();
+        } catch {
+          refreshError = "La configuración se guardó, pero no se pudo actualizar la zona horaria activa. Intente recargar la configuración regional.";
+        }
+      }
+
       // Recargar config para obtener el nuevo estado de emailVerified
       await loadConfig();
 
@@ -347,6 +533,7 @@ export default function SettingsPage() {
       } else {
         setSuccess("✅ Configuración guardada exitosamente");
       }
+      if (refreshError) setError(refreshError);
     } catch (err) {
       console.error("Error al guardar configuración:", err);
       
@@ -551,6 +738,14 @@ export default function SettingsPage() {
 
         {/* Formulario de Configuración */}
         <form onSubmit={handleSaveConfig} className="bg-white rounded-lg shadow-md p-6">
+          <section className="mb-8 rounded-lg border border-gray-200 p-4">
+            <h2 className="text-xl font-bold text-gray-900 mb-2">Configuración regional</h2>
+            <TenantTimeZoneField
+              value={timeZone}
+              disabled={saving}
+              onChange={setTimeZone}
+            />
+          </section>
           <section className="mb-8 rounded-lg border border-gray-200 p-4">
             <h2 className="text-xl font-bold text-gray-900 mb-2">Configuración financiera</h2>
             <div className="max-w-sm">

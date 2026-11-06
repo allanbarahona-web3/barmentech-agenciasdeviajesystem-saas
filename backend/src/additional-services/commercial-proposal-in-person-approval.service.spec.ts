@@ -1,4 +1,4 @@
-import { ConflictException, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ConflictException, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { GeneratedDocumentsService } from "../generated-documents";
 import { SalesOrderConversionService } from "../sales-orders/sales-order-conversion.service";
@@ -129,6 +129,34 @@ describe("CommercialProposalInPersonApprovalService", () => {
       }),
     ).rejects.toBeInstanceOf(ConflictException);
   });
+
+  it.each([
+    ["America/Costa_Rica", "2026-11-24T05:59:59.999Z", false],
+    ["America/Costa_Rica", "2026-11-24T06:00:00.000Z", true],
+    ["America/Lima", "2026-11-24T04:59:59.999Z", false],
+    ["America/Lima", "2026-11-24T05:00:00.000Z", true],
+  ])("uses the tenant calendar boundary for in-person approval in %s", async (timeZone, now, expired) => {
+    jest.useFakeTimers().setSystemTime(new Date(now));
+    try {
+      const { service, executeRaw } = setup(1, timeZone);
+      const approval = service.approve(
+        order({ quotationValidUntil: new Date("2026-11-23T00:00:00.000Z") }),
+        "tenant-1",
+        { id: "agent-1", fullName: "Agent One" },
+      );
+
+      if (expired) {
+        await expect(approval).rejects.toBeInstanceOf(BadRequestException);
+        expect(executeRaw).toHaveBeenCalledTimes(1);
+      } else {
+        await expect(approval).resolves.toMatchObject({
+          commercialStatus: CommercialProposalStatus.APPROVED,
+        });
+      }
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 });
 
 function order(
@@ -143,9 +171,14 @@ function order(
   } as AdditionalServiceOrderRecord;
 }
 
-function setup(updateCount: number) {
+function setup(updateCount: number, timeZone = "America/Costa_Rica") {
   const executeRaw = jest.fn().mockResolvedValue(updateCount);
-  const transactionClient = { $executeRaw: executeRaw };
+  const transactionClient = {
+    $executeRaw: executeRaw,
+    tenantBillingConfiguration: {
+      findUnique: jest.fn().mockResolvedValue({ fiscalTimezone: timeZone }),
+    },
+  };
   let committed = false;
   const prisma = {
     $transaction: jest.fn(async (work: (tx: unknown) => unknown) => {

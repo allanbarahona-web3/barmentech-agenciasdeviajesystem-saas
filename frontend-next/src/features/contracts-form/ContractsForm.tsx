@@ -421,6 +421,7 @@ export function ContractsForm(props: ContractsFormProps) {
               state={state}
               setState={setState}
               isInternalTrip={isInternalTrip}
+              todayIso={todayIso}
               minorDocs={minorDocs}
               setMinorDocs={setMinorDocs}
               responsibleAdults={responsibleAdults}

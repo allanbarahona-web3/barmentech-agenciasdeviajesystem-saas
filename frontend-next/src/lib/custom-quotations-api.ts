@@ -142,7 +142,6 @@ export const getCustomQuotationPricing = (id: string) => pricingRequest<CustomQu
 export const calculateCustomQuotationPricing = (id: string) => pricingRequest<Omit<CustomQuotationPricing, 'hasCalculation'>>(`/custom-quotations/${encodeURIComponent(id)}/pricing/calculate`, 'POST');
 export const issueCustomQuotation = (id: string) => versionRequest<{ customQuotationVersionId: string }>(`/custom-quotations/${encodeURIComponent(id)}/issue`, 'POST');
 export const getLatestCustomQuotationVersion = (id: string) => versionRequest<CustomQuotationVersion>(`/custom-quotations/${encodeURIComponent(id)}/versions/latest`, 'GET');
-export const getCustomQuotationVersion = (id: string, versionId: string) => versionRequest<CustomQuotationVersion>(`/custom-quotations/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionId)}`, 'GET');
 export const acceptCustomQuotationVersion = (id: string, versionId: string) => versionRequest<{ status: 'ACCEPTED' }>(`/custom-quotations/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionId)}/accept`, 'POST');
 export const rejectCustomQuotationVersion = (id: string, versionId: string) => versionRequest<{ status: 'REJECTED' }>(`/custom-quotations/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionId)}/reject`, 'POST');
 export const generateCustomQuotationProposal = (id: string, versionId: string) => versionRequest<{ documentId: string }>(`/custom-quotations/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionId)}/proposal`, 'POST');

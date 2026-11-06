@@ -19,6 +19,7 @@ import { CommercialProposalStatus } from "./enums";
 import { approvalSalesOrderFailureCode } from "./approval-sales-order.logging";
 import { AdditionalServiceOperationsIntakeOutboxProducer } from "./additional-service-operations-intake-outbox.producer";
 import { runTenantTransaction } from "../tenant/tenant-transaction";
+import { assertAdditionalServiceQuotationNotExpired } from "./additional-service-quotation-validity";
 
 @Injectable()
 export class CommercialProposalApprovalService {
@@ -74,6 +75,12 @@ export class CommercialProposalApprovalService {
     let materialization;
     try {
       materialization = await runTenantTransaction<any, any>(this.prisma as any, context.document.tenantId, async (transaction) => {
+        await assertAdditionalServiceQuotationNotExpired(
+          transaction,
+          context.document.tenantId,
+          context.order.quotationValidUntil,
+          approvedAt,
+        );
         const consumed = await transaction.generatedDocumentAccessToken.updateMany({
           where: {
             id: context.access.id,
@@ -134,6 +141,9 @@ export class CommercialProposalApprovalService {
         );
       });
     } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
       this.logger.warn({
         event: "additional-service-approval-sales-order-failed",
         tenantId: context.document.tenantId,
@@ -191,6 +201,7 @@ export class CommercialProposalApprovalService {
         id: true,
         orderNumber: true,
         commercialStatus: true,
+        quotationValidUntil: true,
         createdByUserId: true,
         createdByName: true,
       },

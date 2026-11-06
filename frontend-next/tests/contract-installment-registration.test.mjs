@@ -9,6 +9,11 @@ import {
   installmentFormError,
 } from '../src/features/contracts-finance/contract-installment.ts';
 import { FINANCE_PAYMENT_METHOD_OPTIONS } from '../src/lib/finance-payment-methods.ts';
+import {
+  formatBusinessDate,
+  formatBusinessDateTime,
+  tenantDateTimeInputToUtc,
+} from '../src/shared/regional/business-date.ts';
 
 test('only authorized Finance roles can register Contract installments', () => {
   assert.equal(canRegisterContractInstallments('ADMIN'), true);
@@ -68,6 +73,36 @@ test('installment requests contain only client-authorized fields', () => {
   assert.equal('obligationId' in request, false);
 });
 
+test('the active drawer submits a tenant-local receivedAt as the corresponding UTC instant', () => {
+  const previousTimeZone = process.env.TZ;
+  try {
+    process.env.TZ = 'America/Costa_Rica';
+    const receivedAt = tenantDateTimeInputToUtc('2026-11-06T00:30', 'America/Lima');
+    const request = buildContractInstallmentRequest({
+      registrationDeduplicationKey: 'contract-installment-lima-timezone',
+      amount: '400.00',
+      receivedAt,
+      paymentMethod: 'BANK_TRANSFER',
+      externalReference: '',
+      description: '',
+    });
+
+    assert.equal(request.receivedAt, '2026-11-06T05:30:00.000Z');
+  } finally {
+    if (previousTimeZone === undefined) delete process.env.TZ;
+    else process.env.TZ = previousTimeZone;
+  }
+});
+
+test('instant dates use the tenant calendar while contractual due dates remain date-only', () => {
+  const instant = '2026-11-06T05:30:00.000Z';
+  const dateOnlyFromInstant = (timeZone) => formatBusinessDateTime(instant, timeZone).split(' ')[0];
+
+  assert.equal(dateOnlyFromInstant('America/Costa_Rica'), '05/11/2026');
+  assert.equal(dateOnlyFromInstant('America/Lima'), '06/11/2026');
+  assert.equal(formatBusinessDate('2026-11-06'), '06/11/2026');
+});
+
 test('a retry retains one idempotency key and a new registration creates a fresh key', () => {
   const retryKey = createContractInstallmentDeduplicationKey();
   const retryOne = buildContractInstallmentRequest({ registrationDeduplicationKey: retryKey, amount: '10', receivedAt: '2026-09-05T10:00', paymentMethod: 'CASH', externalReference: '', description: '' });
@@ -78,17 +113,16 @@ test('a retry retains one idempotency key and a new registration creates a fresh
   assert.notEqual(nextKey, retryKey);
 });
 
-test('Contract Finance panel reads the obligation, refetches after success, reuses receipt download, and does not add uploads or Billing fields', () => {
+test('the active drawer binds datetime-local input and instant dates to tenant regional helpers', () => {
   const source = readFileSync(
-    new URL('../src/features/contracts-finance/contract-finance-panel.tsx', import.meta.url),
+    new URL('../src/features/contracts-finance/contract-finance-drawer.tsx', import.meta.url),
     'utf8',
   );
 
-  assert.match(source, /getContractCommercialObligation\(contractId/);
-  assert.match(source, /await refreshObligation\(\)/);
-  assert.match(source, /downloadPaymentReceipt\(success\.payment\.id\)/);
-  assert.match(source, /FINANCE_PAYMENT_METHOD_OPTIONS/);
-  assert.match(source, /Abono registrado correctamente\./);
-  assert.doesNotMatch(source, /type=["']file["']/);
-  assert.doesNotMatch(source, /BillingDocument|Hacienda|fiscal/i);
+  assert.match(source, /useTenantRegional/);
+  assert.match(source, /formatTenantDateTimeInput/);
+  assert.match(source, /tenantDateTimeInputToUtc/);
+  assert.match(source, /tenantInstantDate\(payment\.receivedAt, formatTenantDateTime\)/);
+  assert.match(source, /formatOptionalBusinessDate\(effectiveDueDate\)/);
+  assert.doesNotMatch(source, /localDateTimeValue/);
 });

@@ -17,6 +17,7 @@ import { GenericCostComposition } from '@/features/cost-engine/generic-cost-comp
 import { CustomQuotationEditorDialog } from '@/features/custom-quotations/components/CustomQuotationEditorDialog';
 import { CustomQuotationProposalTab } from '@/features/custom-quotations/components/CustomQuotationProposalTab';
 import { paymentConditionLabel, quotationStatusLabel, quotationTargetLabel } from '@/features/custom-quotations/custom-quotation-presentation';
+import { formatBusinessDate } from '@/shared/regional';
 import {
   createCustomQuotationCostEngineApi,
   getCustomQuotation,
@@ -158,7 +159,7 @@ export default function CustomQuotationDetailPage() {
         <Field label="Correo" value={quotation.target?.email ?? '—'} />
         <Field label="Teléfono" value={quotation.target?.phone ?? '—'} />
         <Field label="Moneda" value={quotation.currency} />
-        <Field label="Vigencia" value={formatDateOnly(quotation.quotationValidUntil)} />
+        <Field label="Vigencia" value={quotation.quotationValidUntil ? formatBusinessDate(quotation.quotationValidUntil) : '—'} />
         <Field label="Condición de pago" value={paymentConditionLabel(quotation.paymentConditionType, quotation.paymentTermValue, quotation.paymentTermUnit)} />
         <Field label="Observaciones" value={quotation.commercialObservations || '—'} />
       </dl></SectionCard>
@@ -184,5 +185,4 @@ export default function CustomQuotationDetailPage() {
   </div></main>;
 }
 
-function formatDateOnly(value: string | null) { return value ? value.slice(0, 10).split('-').reverse().join('/') : '—'; }
 function Field({ label, value }: { label: string; value: string }) { return <div><dt className="text-xs font-medium text-muted-foreground">{label}</dt><dd className="mt-1 text-sm">{value}</dd></div>; }

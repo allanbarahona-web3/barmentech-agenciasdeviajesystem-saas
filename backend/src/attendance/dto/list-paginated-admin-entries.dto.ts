@@ -65,6 +65,8 @@ export class ListPaginatedAdminEntriesDto {
 export class AttendanceAdminListItemDto {
   id!: string;
   type!: string;
+  /** Persisted attendance workday key; do not infer it from clock instants. */
+  date!: Date;
   clockIn!: Date;
   clockOut!: Date | null;
   duration!: number | null;

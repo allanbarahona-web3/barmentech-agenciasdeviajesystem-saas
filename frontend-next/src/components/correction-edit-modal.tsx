@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -9,7 +9,8 @@ import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { FormField } from '@/components/patterns/form-field';
 import { correctAttendanceEntry, type AttendanceAdminListItem } from '@/lib/attendance-api';
-import { formatBusinessTimestampDate } from '@/shared/regional';
+import { formatBusinessDateTime, formatTenantDateTimeInput, tenantDateTimeInputToUtc } from '@/shared/regional';
+import { useTenantRegional } from '@/shared/regional/tenant-regional-provider';
 import { LoadingModal } from './loading-modal';
 
 const ATTENDANCE_STATES = ['WORKING', 'MEETING', 'BREAK1', 'LUNCH', 'BREAK2', 'BREAK3', 'OT', 'OFF'];
@@ -22,18 +23,6 @@ interface CorrectionEditModalProps {
   onSuccess: () => void;
 }
 
-const toDateTimeLocal = (dateString: string) => {
-  const date = new Date(dateString);
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  const hours = String(date.getHours()).padStart(2, '0');
-  const minutes = String(date.getMinutes()).padStart(2, '0');
-  const seconds = String(date.getSeconds()).padStart(2, '0');
-
-  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`;
-};
-
 const getCorrectionErrorMessage = (error: unknown) => {
   const message = error instanceof Error ? error.message : '';
 
@@ -45,6 +34,7 @@ const getCorrectionErrorMessage = (error: unknown) => {
 };
 
 export function CorrectionEditModal({ entryId, entry, isOpen, onClose, onSuccess }: CorrectionEditModalProps) {
+  const { timeZone, isConfigured } = useTenantRegional();
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState({
     type: '',
@@ -56,18 +46,36 @@ export function CorrectionEditModal({ entryId, entry, isOpen, onClose, onSuccess
   const [feedbackState, setFeedbackState] = useState<'loading' | 'success' | 'error'>('loading');
   const [feedbackMessage, setFeedbackMessage] = useState('');
   const [formError, setFormError] = useState('');
+  const [formTimeZone, setFormTimeZone] = useState<string | null>(null);
+  const initialClockValues = useRef({ clockIn: '', clockOut: '', originalClockIn: '', originalClockOut: '' });
+  const initializedEntryKey = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!isOpen || !entryId || !entry) return;
+    if (!isOpen) {
+      initializedEntryKey.current = null;
+      return;
+    }
+    if (!isConfigured || !entryId || !entry || initializedEntryKey.current === entryId) return;
+
+    const clockIn = entry.clockIn ? formatTenantDateTimeInput(entry.clockIn, timeZone) : '';
+    const clockOut = entry.clockOut ? formatTenantDateTimeInput(entry.clockOut, timeZone) : '';
 
     setFormData({
       type: entry.type,
-      clockIn: entry.clockIn ? toDateTimeLocal(entry.clockIn) : '',
-      clockOut: entry.clockOut ? toDateTimeLocal(entry.clockOut) : '',
+      clockIn,
+      clockOut,
       reason: '',
     });
+    initialClockValues.current = {
+      clockIn,
+      clockOut,
+      originalClockIn: entry.clockIn || '',
+      originalClockOut: entry.clockOut || '',
+    };
+    setFormTimeZone(timeZone);
+    initializedEntryKey.current = entryId;
     setFormError('');
-  }, [isOpen, entryId, entry]);
+  }, [entry, entryId, isConfigured, isOpen, timeZone]);
 
   const handleSave = async () => {
     if (!entryId || !formData.reason.trim()) {
@@ -82,10 +90,26 @@ export function CorrectionEditModal({ entryId, entry, isOpen, onClose, onSuccess
     setFeedbackMessage('Guardando corrección...');
 
     try {
+      const inputTimeZone = formTimeZone ?? timeZone;
+      const clockInChanged = formData.clockIn !== initialClockValues.current.clockIn;
+      const clockOutChanged = formData.clockOut !== initialClockValues.current.clockOut;
+      const clockIn = clockInChanged && formData.clockIn
+        ? tenantDateTimeInputToUtc(formData.clockIn, inputTimeZone)
+        : initialClockValues.current.originalClockIn || undefined;
+      const clockOut = clockOutChanged && formData.clockOut
+        ? tenantDateTimeInputToUtc(formData.clockOut, inputTimeZone)
+        : initialClockValues.current.originalClockOut || undefined;
+
+      if ((clockInChanged && formData.clockIn && !clockIn) || (clockOutChanged && formData.clockOut && !clockOut)) {
+        setFeedbackOpen(false);
+        setFormError('Ingresa una fecha y hora válidas.');
+        return;
+      }
+
       const payload = {
         type: formData.type !== entry?.type ? formData.type : undefined,
-        clockIn: formData.clockIn ? new Date(formData.clockIn).toISOString() : undefined,
-        clockOut: formData.clockOut ? new Date(formData.clockOut).toISOString() : undefined,
+        clockIn: clockIn ?? undefined,
+        clockOut: clockOut ?? undefined,
         reason: formData.reason,
       };
 
@@ -118,11 +142,11 @@ export function CorrectionEditModal({ entryId, entry, isOpen, onClose, onSuccess
             <DialogDescription>Actualiza la información del marcaje y registra el motivo de la corrección.</DialogDescription>
           </DialogHeader>
 
-          {entry ? (
+          {entry && isConfigured ? (
             <div className="mt-5 grid gap-4">
               <Alert variant="info">
                 <AlertDescription>
-                  Empleado: {entry.user.fullName || entry.user.id || '-'} · Fecha: {formatBusinessTimestampDate(entry.clockIn)}
+                  Empleado: {entry.user.fullName || entry.user.id || '-'} · Fecha: {formatBusinessDateTime(entry.clockIn, formTimeZone ?? timeZone)}
                 </AlertDescription>
               </Alert>
 
@@ -139,11 +163,11 @@ export function CorrectionEditModal({ entryId, entry, isOpen, onClose, onSuccess
               </FormField>
 
               <FormField htmlFor="attendance-correction-start" label="Inicio">
-                <Input id="attendance-correction-start" type="datetime-local" step="1" value={formData.clockIn} onChange={(event) => setFormData({ ...formData, clockIn: event.target.value })} />
+                <Input id="attendance-correction-start" type="datetime-local" step="60" value={formData.clockIn} onChange={(event) => setFormData({ ...formData, clockIn: event.target.value })} />
               </FormField>
 
               <FormField htmlFor="attendance-correction-end" label="Fin">
-                <Input id="attendance-correction-end" type="datetime-local" step="1" value={formData.clockOut} onChange={(event) => setFormData({ ...formData, clockOut: event.target.value })} />
+                <Input id="attendance-correction-end" type="datetime-local" step="60" value={formData.clockOut} onChange={(event) => setFormData({ ...formData, clockOut: event.target.value })} />
               </FormField>
 
               <FormField htmlFor="attendance-correction-reason" label="Razón de la corrección" required>
@@ -156,7 +180,7 @@ export function CorrectionEditModal({ entryId, entry, isOpen, onClose, onSuccess
               </DialogFooter>
             </div>
           ) : (
-            <div className="mt-5 text-center text-sm text-muted-foreground">No se pudo cargar el marcaje.</div>
+            <div className="mt-5 text-center text-sm text-muted-foreground">{entry ? 'Cargando configuración regional...' : 'No se pudo cargar el marcaje.'}</div>
           )}
         </DialogContent>
       </Dialog>

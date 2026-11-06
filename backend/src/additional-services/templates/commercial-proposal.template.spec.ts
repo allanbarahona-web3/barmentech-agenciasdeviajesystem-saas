@@ -20,6 +20,7 @@ describe("commercialProposalTemplate", () => {
     expect(html).toContain("España");
     expect(html).toContain("01/10/2026");
     expect(html).toContain("10/10/2026");
+    expect(html).toContain("23/11/2026");
     expect(html).not.toContain("Referencia");
     expect(html).not.toContain("PKG-2026-10");
     expect(html).toContain("Equipaje adicional");
@@ -86,8 +87,8 @@ function buildProposal(): CommercialProposalPdfDto {
       logoSrc: "https://example.com/logo.png",
     },
     proposalNumber: "AS-2026-0042",
-    issuedAt: "2026-08-06T15:00:00.000Z",
-    validUntil: "2026-08-20T00:00:00.000Z",
+    issuedAt: "2026-11-06",
+    validUntil: "2026-11-23",
     currency: AdditionalServiceCurrency.USD,
     customer: {
       fullName: "Ana <Cliente>",

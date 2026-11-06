@@ -1,7 +1,15 @@
 import { Transform } from 'class-transformer';
 import { IsOptional, IsString, MaxLength, IsEmail, Matches, ValidateIf } from 'class-validator';
+import { IsSupportedTenantTimeZone } from '../../common/validation/is-supported-tenant-time-zone.decorator';
 
 export class UpdateTenantConfigDto {
+  @IsOptional()
+  @Transform(({ value }) => typeof value === 'string' ? value.trim() : value)
+  @IsString()
+  @MaxLength(100)
+  @IsSupportedTenantTimeZone()
+  timeZone?: string;
+
   @IsOptional()
   @ValidateIf((o) => o.accountingCurrencyCode !== null)
   @Transform(({ value }) => typeof value === 'string' ? value.trim().toUpperCase() : value)

@@ -16,6 +16,7 @@ import {
   type PublicCustomQuotationApprovalProposal,
 } from '@/lib/custom-quotation-public-approval-api';
 import { paymentConditionLabel } from '@/features/custom-quotations/custom-quotation-presentation';
+import { formatBusinessDate } from '@/shared/regional';
 
 type Decision = 'ACCEPT' | 'REJECT';
 
@@ -95,7 +96,7 @@ export default function CustomQuotationApprovalPage() {
             <Detail label="Versión" value={`Versión ${proposal.versionNumber}`} />
             <Detail label="Precio final" value={price} exactValue={proposal.finalSellingPrice} />
             <Detail label="Moneda" value={proposal.currency} />
-            <Detail label="Vigencia" value={formatDateOnly(proposal.quotationValidUntil)} />
+            <Detail label="Vigencia" value={proposal.quotationValidUntil ? formatBusinessDate(proposal.quotationValidUntil) : 'No indicada'} />
             <Detail label="Condición de pago" value={paymentConditionLabel(proposal.paymentConditionType, proposal.paymentTermValue, proposal.paymentTermUnit)} />
           </dl>
           <section aria-labelledby="quotation-lines-title"><h2 id="quotation-lines-title" className="text-sm font-medium">Servicios incluidos</h2><ol className="mt-3 space-y-3">{proposal.lines.map((line) => <li key={`${line.displayOrder}-${line.description}`} className="rounded-lg border border-border bg-muted/20 p-3 text-sm"><p className="font-medium">{line.description}</p><p className="mt-1 text-muted-foreground">Cantidad: {line.quantity}{line.commercialNote ? ` · ${line.commercialNote}` : ''}</p></li>)}</ol></section>
@@ -123,7 +124,6 @@ function PublicCenterState({ label, unavailable = false }: { label: string; unav
   return <main className="grid min-h-screen place-content-center justify-items-center gap-3 bg-muted/30 p-6 text-center"><>{unavailable ? <XCircle aria-hidden="true" className="size-10 text-muted-foreground" /> : <LoaderCircle aria-hidden="true" className="size-10 animate-spin text-primary" />}</><h1 className="text-xl font-semibold">{unavailable ? 'Cotización no disponible' : label}</h1>{unavailable ? <p className="max-w-sm text-sm text-muted-foreground">{label}</p> : null}</main>;
 }
 
-function formatDateOnly(value: string | null) { return value ? value.slice(0, 10).split('-').reverse().join('/') : 'No indicada'; }
 function statusLabel(status: PublicCustomQuotationApprovalProposal['status']) { return ({ ISSUED: 'Emitida', ACCEPTED: 'Aceptada', REJECTED: 'Rechazada', EXPIRED: 'Vencida', CANCELLED: 'Cancelada' })[status]; }
 function statusVariant(status: PublicCustomQuotationApprovalProposal['status']) { return status === 'ACCEPTED' ? 'success' : status === 'REJECTED' || status === 'CANCELLED' ? 'destructive' : status === 'EXPIRED' ? 'warning' : 'info'; }
 function terminalStatusMessage(status: PublicCustomQuotationApprovalProposal['status']) { return ({ ISSUED: null, ACCEPTED: 'Tu cotización fue aceptada correctamente.', REJECTED: 'Tu cotización fue rechazada correctamente.', EXPIRED: 'Esta cotización ha vencido.', CANCELLED: 'Esta cotización ya no está disponible.' })[status]; }
