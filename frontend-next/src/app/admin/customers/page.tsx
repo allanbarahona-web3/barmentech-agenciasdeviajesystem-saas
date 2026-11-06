@@ -16,9 +16,11 @@ import { DataTableShell } from '@/components/patterns/data-table-shell';
 import { PageHeader } from '@/components/patterns/page-header';
 import { getCustomers, type CustomerListResponse } from '@/lib/customers-api';
 import { CustomerCreateModal } from '@/features/customers/components';
+import { useTenantDateTimeFormatter } from '@/shared/regional/tenant-regional-provider';
 
 export default function CustomersPage() {
   const router = useRouter();
+  const formatTenantDateTime = useTenantDateTimeFormatter();
   const [loading, setLoading] = useState(true);
   const [customers, setCustomers] = useState<CustomerListResponse | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -59,14 +61,7 @@ export default function CustomersPage() {
     router.push(`/admin/customers/${customerId}`);
   }
 
-  function formatDate(dateString: string) {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('es-ES', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  }
+  const formatTenantDate = (value: string) => formatTenantDateTime(value).split(' ')[0] || '-';
 
   const tableState = loading ? (
     <div className="mx-auto grid max-w-sm gap-3" aria-label="Cargando clientes">
@@ -175,7 +170,7 @@ export default function CustomersPage() {
                     <TableCell>{customer.idNumber}</TableCell>
                     <TableCell className="text-muted-foreground">{customer.email}</TableCell>
                     <TableCell className="text-muted-foreground">{customer.phone || '-'}</TableCell>
-                    <TableCell className="text-muted-foreground">{formatDate(customer.createdAt)}</TableCell>
+                    <TableCell className="text-muted-foreground">{formatTenantDate(customer.createdAt)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

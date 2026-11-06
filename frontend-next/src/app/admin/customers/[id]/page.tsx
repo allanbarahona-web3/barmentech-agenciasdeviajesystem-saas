@@ -42,6 +42,7 @@ export default function CustomerProfilePage() {
   const searchParams = useSearchParams();
   const customerId = params?.id as string;
   const formatTenantDateTime = useTenantDateTimeFormatter();
+  const formatTenantDate = (value: string) => formatTenantDateTime(value).split(' ')[0] || '-';
   const requestedTab = searchParams.get('tab') === 'finance' ? 'finance' : 'information';
   const [activeTab, setActiveTab] = useState<'information' | 'finance'>(requestedTab);
 
@@ -264,15 +265,6 @@ export default function CustomerProfilePage() {
     } finally {
       setLoadingOperationalNotes(false);
     }
-  }
-
-  function formatDate(dateString: string) {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('es-ES', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    });
   }
 
   function formatParticipationRole(role: 'HOLDER' | 'COMPANION' | 'MINOR') {
@@ -906,7 +898,7 @@ export default function CustomerProfilePage() {
                 <div><p className="text-xs font-medium text-muted-foreground">Estado civil</p><p className="mt-1 text-sm text-foreground">{customer.maritalStatus || '-'}</p></div>
                 <div><p className="text-xs font-medium text-muted-foreground">Nacionalidad</p><p className="mt-1 text-sm text-foreground">{customer.nationality || '-'}</p></div>
                 <div><p className="text-xs font-medium text-muted-foreground">Ocupación</p><p className="mt-1 text-sm text-foreground">{customer.occupation || '-'}</p></div>
-                <div><p className="text-xs font-medium text-muted-foreground">Cliente desde</p><p className="mt-1 text-sm text-foreground">{formatDate(customer.createdAt)}</p></div>
+                <div><p className="text-xs font-medium text-muted-foreground">Cliente desde</p><p className="mt-1 text-sm text-foreground">{formatTenantDate(customer.createdAt)}</p></div>
               </div>
             </section>
             <section className="space-y-4">
@@ -1004,7 +996,7 @@ export default function CustomerProfilePage() {
                 </div>
                 <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-foreground">{note.note}</p>
                 <div className="mt-3 flex flex-col gap-3 border-t border-border pt-3 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="text-xs text-muted-foreground">Creada por: {note.createdByName} · {formatDate(note.createdAt.toString())}</p>
+                  <p className="text-xs text-muted-foreground">Creada por: {note.createdByName} · {formatTenantDate(note.createdAt.toString())}</p>
                   <div className="flex items-center gap-2">
                     {note.status === 'ACTIVE' ? <Button type="button" variant="outline" size="sm" onClick={() => handleOpenEditOperationalNote(note)}><Pencil aria-hidden="true" />Editar</Button> : null}
                     {isAdmin ? <Button
@@ -1056,7 +1048,7 @@ export default function CustomerProfilePage() {
                     <div className="mb-2 flex flex-wrap items-center gap-2">
                       <Badge variant="info">{getCategoryLabel(doc.category)}</Badge>
                       <Badge variant={isCurrentDocument(doc) ? 'success' : 'destructive'}>{isCurrentDocument(doc) ? 'Actual' : 'Histórico'}</Badge>
-                      <span className="text-xs text-muted-foreground">{formatDate(doc.createdAt)}</span>
+                      <span className="text-xs text-muted-foreground">{formatTenantDate(doc.createdAt)}</span>
                     </div>
                     <p className="truncate text-sm font-medium text-foreground">{doc.originalFileName}</p>
                     <p className="mt-1 text-xs text-muted-foreground">{doc.mimeType} · {(doc.size / 1024).toFixed(2)} KB</p>

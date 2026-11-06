@@ -14,6 +14,8 @@ import {
   EMERGENCY_CONTACT_RELATIONSHIP_OTHER,
   type EmergencyContactRelationshipOption,
 } from '@/features/customers/emergency-contact-relationship';
+import { formatBusinessDate } from '@/shared/regional';
+import { useTenantDateTimeFormatter } from '@/shared/regional/tenant-regional-provider';
 
 interface CustomerFormProps {
   title?: string;
@@ -57,15 +59,6 @@ interface CustomerFormProps {
   includePersonalDetails?: boolean;
 }
 
-function formatDate(dateString: string) {
-  const date = new Date(dateString);
-  return date.toLocaleDateString('es-ES', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
-}
-
 export function CustomerForm({
   title = 'Información del Cliente',
   customer,
@@ -78,6 +71,9 @@ export function CustomerForm({
   presentation = 'legacy',
   includePersonalDetails = false,
 }: CustomerFormProps) {
+  const formatTenantDateTime = useTenantDateTimeFormatter();
+  const formatTenantDate = (value: string) => formatTenantDateTime(value).split(' ')[0] || '-';
+
   if (presentation === 'foundation') {
     return (
       <div className="grid gap-4 sm:grid-cols-2">
@@ -103,7 +99,7 @@ export function CustomerForm({
         </FormField>
         {includePersonalDetails ? (
           <FormField htmlFor="customer-edit-date-of-birth" label="Fecha de nacimiento">
-            {isEditMode ? <Input id="customer-edit-date-of-birth" type="date" value={editForm.dateOfBirth} onChange={(event) => onEditFormChange({ dateOfBirth: event.target.value })} /> : <p className="text-sm text-foreground">{customer.dateOfBirth || '-'}</p>}
+            {isEditMode ? <Input id="customer-edit-date-of-birth" type="date" value={editForm.dateOfBirth} onChange={(event) => onEditFormChange({ dateOfBirth: event.target.value })} /> : <p className="text-sm text-foreground">{customer.dateOfBirth ? formatBusinessDate(customer.dateOfBirth) : '-'}</p>}
           </FormField>
         ) : null}
         <FormField htmlFor="customer-edit-occupation" label="Ocupación">
@@ -152,7 +148,7 @@ export function CustomerForm({
           {isEditMode ? <Input id="customer-edit-address" value={editForm.address} onChange={(event) => onEditFormChange({ address: event.target.value })} /> : <p className="text-sm text-foreground">{customer.address || '-'}</p>}
         </FormField>
         <FormField label="Cliente desde">
-          <p className="text-sm text-foreground">{formatDate(customer.createdAt)}</p>
+          <p className="text-sm text-foreground">{formatTenantDate(customer.createdAt)}</p>
         </FormField>
       </div>
     );
@@ -543,7 +539,7 @@ export function CustomerForm({
             Cliente Desde
           </div>
           <div style={{ fontSize: '15px', color: '#1f2937' }}>
-            {formatDate(customer.createdAt)}
+            {formatTenantDate(customer.createdAt)}
           </div>
         </div>
       </div>
